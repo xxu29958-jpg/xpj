@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.security.SecureTokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,7 @@ data class AppUiState(
     val isBound: Boolean = false,
     val unlocked: Boolean = false,
     val binding: Boolean = false,
+    val skin: AppSkin = AppSkin.Default,
     val authMessage: String? = null,
 )
 
@@ -27,6 +29,7 @@ class AppViewModel(
         AppUiState(
             isBound = settingsStore.isBound() && tokenStore.getToken() != null,
             unlocked = settingsStore.isBound() && tokenStore.getToken() != null && !settingsStore.requiresUnlock(),
+            skin = AppSkin.fromStorageKey(settingsStore.appSkinKey()),
         ),
     )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -65,8 +68,15 @@ class AppViewModel(
         _uiState.update { it.copy(authMessage = message) }
     }
 
+    fun selectSkin(skin: AppSkin) {
+        settingsStore.saveAppSkinKey(skin.storageKey)
+        _uiState.update { it.copy(skin = skin, authMessage = "已切换为${skin.displayName}") }
+    }
+
     fun clearBinding() {
+        val currentSkin = _uiState.value.skin
         repository.clearBinding()
-        _uiState.update { AppUiState() }
+        settingsStore.saveAppSkinKey(currentSkin.storageKey)
+        _uiState.update { AppUiState(skin = currentSkin) }
     }
 }
