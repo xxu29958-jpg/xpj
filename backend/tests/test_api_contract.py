@@ -42,6 +42,22 @@ def test_health_and_auth_contract(client: TestClient) -> None:
     assert response.json()["message"]
 
 
+def test_upload_check_contract(client: TestClient) -> None:
+    response = client.get("/api/upload/check", headers=upload_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["max_upload_size_mb"] == 10
+    assert payload["recommended_body"] == "file"
+    assert "png" in payload["supported_file_types"]
+    assert "token" not in str(payload).lower()
+    assert "path" not in str(payload).lower()
+
+    response = client.get("/api/upload/check", headers={"Upload-Token": "bad"})
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+
+
 def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     expense_id = upload_png(client)
 

@@ -4,14 +4,28 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth import verify_upload_token
+from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
-from app.schemas import UploadResponse
+from app.schemas import UploadCheckResponse, UploadResponse
 from app.services.expense_service import create_pending_expense
-from app.services.file_service import save_upload, save_upload_bytes
+from app.services.file_service import ALLOWED_EXTENSIONS, save_upload, save_upload_bytes
 
 
 router = APIRouter(prefix="/api", tags=["uploads"])
+
+
+@router.get(
+    "/upload/check",
+    response_model=UploadCheckResponse,
+    dependencies=[Depends(verify_upload_token)],
+)
+def upload_check() -> UploadCheckResponse:
+    settings = get_settings()
+    return UploadCheckResponse(
+        max_upload_size_mb=settings.max_upload_size_mb,
+        supported_file_types=sorted(ALLOWED_EXTENSIONS),
+    )
 
 
 @router.post(

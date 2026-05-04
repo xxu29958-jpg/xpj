@@ -30,6 +30,13 @@ class UploadResponse(BaseModel):
     message: str
 
 
+class UploadCheckResponse(BaseModel):
+    status: str = "ok"
+    max_upload_size_mb: int
+    supported_file_types: list[str]
+    recommended_body: str = "file"
+
+
 class ExpenseUpdateRequest(BaseModel):
     amount_cents: int | None = Field(default=None, ge=0)
     merchant: str | None = None
