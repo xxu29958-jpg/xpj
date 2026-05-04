@@ -70,6 +70,7 @@ fun LedgerScreen(
     state: LedgerUiState,
     onMonthChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
+    onQueryChange: (String) -> Unit,
     onClearFilters: () -> Unit,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
@@ -120,6 +121,7 @@ fun LedgerScreen(
                 canExport = canExport,
                 onOpenMonthPicker = { showMonthPicker = true },
                 onCategoryChange = onCategoryChange,
+                onQueryChange = onQueryChange,
                 onClearFilters = onClearFilters,
                 onSync = onSync,
                 onExportCsv = onExportCsv,
@@ -155,6 +157,7 @@ private fun LedgerFilterPanel(
     canExport: Boolean,
     onOpenMonthPicker: () -> Unit,
     onCategoryChange: (String) -> Unit,
+    onQueryChange: (String) -> Unit,
     onClearFilters: () -> Unit,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
@@ -176,6 +179,14 @@ private fun LedgerFilterPanel(
         MonthSelectorButton(
             selectedMonth = state.monthFilter,
             onClick = onOpenMonthPicker,
+        )
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("搜索账单") },
+            placeholder = { Text("商家、备注、标签") },
+            singleLine = true,
         )
         CategoryFilterRow(
             categories = state.categories,
@@ -542,5 +553,6 @@ private fun LedgerEmptyIllustration() {
 private fun ledgerFilterSummary(state: LedgerUiState): String {
     val month = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
     val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
-    return "当前查看：$month · $category"
+    val query = state.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
+    return "当前查看：$month · $category$query"
 }

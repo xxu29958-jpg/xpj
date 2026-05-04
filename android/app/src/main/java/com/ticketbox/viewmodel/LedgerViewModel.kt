@@ -21,6 +21,7 @@ data class LedgerUiState(
     val exportFile: CsvExport? = null,
     val monthFilter: String = YearMonth.now().toString(),
     val categoryFilter: String = "",
+    val query: String = "",
     val syncing: Boolean = false,
     val exporting: Boolean = false,
     val creatingManual: Boolean = false,
@@ -65,6 +66,7 @@ class LedgerViewModel(
             expenses = expenses,
             month = state.monthFilter,
             category = state.categoryFilter,
+            query = state.query,
         )
     }
 
@@ -80,9 +82,15 @@ class LedgerViewModel(
         }
     }
 
+    fun setQuery(value: String) {
+        _uiState.update { state ->
+            state.copy(query = value, items = filterItems(allConfirmed, state.copy(query = value)))
+        }
+    }
+
     fun clearFilters() {
         _uiState.update { state ->
-            val next = state.copy(monthFilter = "", categoryFilter = "")
+            val next = state.copy(monthFilter = "", categoryFilter = "", query = "")
             next.copy(items = filterItems(allConfirmed, next))
         }
     }

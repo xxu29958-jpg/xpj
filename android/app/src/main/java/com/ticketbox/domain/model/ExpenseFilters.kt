@@ -12,14 +12,23 @@ fun filterConfirmedExpenses(
     expenses: List<Expense>,
     month: String,
     category: String,
+    query: String = "",
 ): List<Expense> {
     val cleanMonth = month.trim()
     val cleanCategory = category.trim()
+    val cleanQuery = query.trim().lowercase()
     return expenses.filter { expense ->
         val timeKey = expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt
         val monthMatched = cleanMonth.isBlank() || timeKey.startsWith(cleanMonth)
         val categoryMatched = cleanCategory.isBlank() || expense.category == cleanCategory
-        monthMatched && categoryMatched
+        val queryMatched = cleanQuery.isBlank() || listOfNotNull(
+            expense.merchant,
+            expense.category,
+            expense.note,
+            expense.tags,
+            expense.source,
+        ).any { it.lowercase().contains(cleanQuery) }
+        monthMatched && categoryMatched && queryMatched
     }
 }
 
