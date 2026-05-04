@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.ui.components.formatStorageSize
 import com.ticketbox.viewmodel.SettingsUiState
 
@@ -31,6 +32,7 @@ import com.ticketbox.viewmodel.SettingsUiState
 fun SettingsScreen(
     state: SettingsUiState,
     onTestConnection: () -> Unit,
+    onRunDiagnostics: () -> Unit,
     onRefreshServerSettings: () -> Unit,
     onSync: () -> Unit,
     onClearCache: () -> Unit,
@@ -68,6 +70,39 @@ fun SettingsScreen(
             onClick = onTestConnection,
         ) {
             Text(if (state.busy) "处理中" else "测试连接")
+        }
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onRunDiagnostics,
+        ) {
+            Text("联调自检")
+        }
+        state.diagnostics?.let { diagnostics ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "自检结果：通过 ${diagnostics.passedCount} · 警告 ${diagnostics.warningCount} · 失败 ${diagnostics.failedCount}",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    diagnostics.checks.forEach { check ->
+                        val color = when (check.status) {
+                            DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
+                            DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
+                            DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(check.name, color = color)
+                                Text("${check.elapsedMs} ms", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(check.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
         }
         OutlinedButton(
             modifier = Modifier.fillMaxWidth(),

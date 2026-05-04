@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.ServerSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val serverUrl: String? = null,
     val serverSettings: ServerSettings? = null,
+    val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
     val busy: Boolean = false,
     val message: String? = null,
@@ -47,6 +49,34 @@ class SettingsViewModel(
             repository.syncConfirmed()
                 .onSuccess { _uiState.update { it.copy(busy = false, message = "同步完成") } }
                 .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "同步失败") } }
+        }
+    }
+
+    fun runDiagnostics() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null, diagnostics = null) }
+            repository.runConnectionDiagnostics()
+                .onSuccess { diagnostics ->
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            diagnostics = diagnostics,
+                            message = if (diagnostics.isHealthy) {
+                                "联调自检通过"
+                            } else {
+                                "联调自检发现 ${diagnostics.failedCount} 个问题"
+                            },
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            message = error.message ?: "联调自检失败",
+                        )
+                    }
+                }
         }
     }
 

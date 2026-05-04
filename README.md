@@ -40,7 +40,7 @@ docs/      架构、API、安全、部署和后续规划文档
 当前已经实现：
 
 - `backend/`：FastAPI、SQLite、SQLAlchemy、Token 校验、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、服务器状态、可插拔 OCR 入口和图片清理维护接口。
-- `android/`：Android Studio 可打开的 Kotlin/Compose 工程，包含绑定服务器、指纹解锁、待确认、编辑、账本、统计、设置、Room、Retrofit、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、CSV 导出和分类规则管理。
+- `android/`：Android Studio 可打开的 Kotlin/Compose 工程，包含绑定服务器、指纹解锁、待确认、编辑、账本、统计、设置、Room、Retrofit、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、CSV 导出、联调自检和分类规则管理。
 - `docs/`：架构、API、安全、工程规范、第二版路线和关键决策。
 
 ## 第一版优先级
