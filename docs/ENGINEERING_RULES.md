@@ -588,7 +588,36 @@ HEIC 无法预览：
 不要白屏
 ```
 
-## 17. Git 提交规范
+## 17. 实机联调规范
+
+实机联调必须同时覆盖：
+
+```text
+iPhone 快捷指令上传
+Cloudflare Tunnel 公网域名
+Windows FastAPI 后端
+Android 真机绑定和自检
+pending 编辑确认
+Room confirmed 缓存
+统计页刷新
+```
+
+联调脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1
+```
+
+约束：
+
+- 预检脚本不得打印 `UPLOAD_TOKEN`、`APP_TOKEN` 或 `ADMIN_TOKEN`。
+- 测试上传只能使用脚本内置小图或用户明确指定的受控文件，不做通用文件管理能力。
+- 设备安装逻辑复用 `android\scripts\install_debug_apk.ps1`。
+- 真机联调仍然不能公开 `uploads/`。
+- 真机联调仍然不能把后端监听地址改成 `0.0.0.0`。
+- Cloudflare Tunnel 只映射到 `http://127.0.0.1:8000`。
+
+## 18. Git 提交规范
 
 推荐提交粒度：
 
@@ -618,7 +647,7 @@ implement settings screen
 测试没跑就提交
 ```
 
-## 18. 后端验收清单
+## 19. 后端验收清单
 
 每次后端阶段完成必须能测试：
 
@@ -649,7 +678,7 @@ GET /api/stats/monthly
 .venv\Scripts\python.exe scripts\smoke_test.py
 ```
 
-## 19. Android 验收清单
+## 20. Android 验收清单
 
 每次 Android 阶段完成必须验证：
 
@@ -680,7 +709,7 @@ Token 错误显示中文错误
 .\gradlew.bat --no-daemon :app:lintDebug
 ```
 
-## 20. 文档规范
+## 21. 文档规范
 
 docs 目录建议：
 
@@ -703,7 +732,7 @@ docs/
 
 关键决策必须写入 `docs/DECISIONS/`。
 
-## 21. 扩展性原则
+## 22. 扩展性原则
 
 小票夹采用：
 
@@ -727,7 +756,7 @@ Web 管理端
 
 未来扩展不应破坏第一版核心闭环。
 
-## 22. 不允许回退的决定
+## 23. 不允许回退的决定
 
 后续开发不得改回：
 

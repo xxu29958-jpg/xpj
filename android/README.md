@@ -123,6 +123,12 @@ cd E:\projects\xiaopiaojia\android
 
 自检会检查 Token、服务器状态、pending、confirmed 分页、统计、分类、月份、重复检测和受保护图片接口。
 
+完整端到端实机流程见：
+
+```text
+docs\REAL_DEVICE_RUNBOOK.md
+```
+
 ## 数据同步规则
 
 - 远端金额字段是 `amount_cents`，本地字段是 `amountCents`，单位都是分。

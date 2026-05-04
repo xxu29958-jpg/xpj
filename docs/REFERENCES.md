@@ -38,6 +38,8 @@
 - Android Storage Access Framework：https://developer.android.com/guide/topics/providers/document-provider
 - Android Activity Result APIs：https://developer.android.com/training/basics/intents/result
 - Android `ActivityResultContracts.CreateDocument`：https://developer.android.com/reference/androidx/activity/result/contract/ActivityResultContracts.CreateDocument
+- Android 真机运行与调试：https://developer.android.com/studio/run/device
+- Android Debug Bridge：https://developer.android.com/tools/adb
 - Gradle Java testing / JUnit Platform：https://docs.gradle.org/current/userguide/java_testing.html
 - Kotlin `kotlin.test`：https://kotlinlang.org/api/core/kotlin-test/
 
@@ -53,6 +55,11 @@
 - actions/setup-java releases：https://github.com/actions/setup-java/releases
 - actions/upload-artifact releases：https://github.com/actions/upload-artifact/releases
 - GitHub hosted runners：https://docs.github.com/actions/using-github-hosted-runners/about-github-hosted-runners
+
+## 联调与部署
+
+- Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
+- Apple 快捷指令“获取 URL 内容”：https://support.apple.com/guide/shortcuts/use-the-get-contents-of-url-action-apd58d46713f/ios
 
 ## Android 依赖元数据
 

@@ -10,6 +10,9 @@ E:\projects\xiaopiaojia\
   .editorconfig
   .gitignore
   README.md
+  scripts\
+    real_device_preflight.ps1
+    verify_project.ps1
   .github\
     workflows\
       ci.yml
@@ -116,6 +119,7 @@ docs\
   CI.md
   ENGINEERING_RULES.md
   IOS_SHORTCUT.md
+  REAL_DEVICE_RUNBOOK.md
   SECURITY.md
   V2_ROADMAP.md
   PROJECT_STRUCTURE.md

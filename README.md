@@ -20,6 +20,7 @@ iPhone 截图账单
 - [API 文档](docs/API.md)
 - [安全说明](docs/SECURITY.md)
 - [iPhone 快捷指令](docs/IOS_SHORTCUT.md)
+- [实机联调 Runbook](docs/REAL_DEVICE_RUNBOOK.md)
 - [第二版路线](docs/V2_ROADMAP.md)
 - [项目结构](docs/PROJECT_STRUCTURE.md)
 - [CI 说明](docs/CI.md)
@@ -93,6 +94,13 @@ cd E:\projects\xiaopiaojia\android
 .\install_debug_apk.bat -Build -Launch
 ```
 
+实机联调预检：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1 -SkipDevice
+```
+
 ## 验证命令
 
 后端：
@@ -115,4 +123,11 @@ $env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 .\gradlew.bat --no-daemon :app:testDebugUnitTest
 .\gradlew.bat --no-daemon :app:assembleDebug
 .\gradlew.bat --no-daemon :app:lintDebug
+```
+
+一键跑完整本地验证：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\verify_project.ps1
 ```
