@@ -192,6 +192,16 @@ Android App 只用 Authorization: Bearer APP_TOKEN。
 powershell -ExecutionPolicy Bypass -File scripts\show_server_status.ps1
 ```
 
+出门前建议运行一键保障检查。它会尝试启动 FastAPI 后端、启动已安装的 cloudflared 服务或计划任务，并检查公网 health/auth：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
+  -ServerUrl https://api.zen70.cn
+```
+
+如果这条命令通过，手机离开家里 Wi-Fi 后仍然可以通过 `https://api.zen70.cn` 访问。前提是 Windows 主机没有睡眠、断网或关机。
+
 如果手机请求真的打到了后端，应该能在 `backend\logs\ticketbox-backend-*.out.log` 里看到对应接口和状态码。若这里没有任何新请求，问题在手机网络、域名、Cloudflare Tunnel 或快捷指令请求发起阶段，后端日志不会凭空出现。
 
 ## 官方资料

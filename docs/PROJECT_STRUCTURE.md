@@ -13,6 +13,7 @@ E:\projects\xiaopiaojia\
   scripts\
     check_cloudflare_endpoint.ps1
     check_text_encoding.ps1
+    ensure_ticketbox_runtime.ps1
     real_device_preflight.ps1
     verify_project.ps1
   .github\
