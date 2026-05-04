@@ -261,6 +261,7 @@ private fun MainShell(
                         state = state,
                         onMonthChange = ledgerViewModel::setMonthFilter,
                         onCategoryChange = ledgerViewModel::setCategoryFilter,
+                        onQueryChange = ledgerViewModel::setQuery,
                         onClearFilters = ledgerViewModel::clearFilters,
                         onSync = ledgerViewModel::sync,
                         onExportCsv = ledgerViewModel::exportCsv,

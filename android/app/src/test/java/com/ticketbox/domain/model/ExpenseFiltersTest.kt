@@ -32,6 +32,21 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun filtersByMerchantNoteTagsAndSourceQuery() {
+        val items = listOf(
+            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z", merchant = "美团外卖"),
+            expense(id = 2, category = "交通", expenseTime = "2026-05-03T04:20:00Z", note = "地铁通勤"),
+            expense(id = 3, category = "购物", expenseTime = "2026-05-03T04:20:00Z", tags = "真香"),
+            expense(id = 4, category = "其他", expenseTime = "2026-05-03T04:20:00Z", source = "手动记账"),
+        )
+
+        assertEquals(listOf(1L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "美团").map { it.id })
+        assertEquals(listOf(2L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "通勤").map { it.id })
+        assertEquals(listOf(3L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "真香").map { it.id })
+        assertEquals(listOf(4L), filterConfirmedExpenses(items, month = "2026-05", category = "", query = "手动").map { it.id })
+    }
+
+    @Test
     fun buildsSevenDayTrendUsingExpenseTimeFallback() {
         val items = listOf(
             expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
@@ -123,14 +138,18 @@ class ExpenseFiltersTest {
         expenseTime: String?,
         confirmedAt: String? = "2026-05-03T04:20:00Z",
         amountCents: Long? = 100,
+        merchant: String? = "测试商家",
+        note: String? = null,
+        tags: String? = null,
+        source: String = "iPhone截图",
     ): Expense {
         return Expense(
             id = id,
             amountCents = amountCents,
-            merchant = "测试商家",
+            merchant = merchant,
             category = category,
-            note = null,
-            source = "iPhone截图",
+            note = note,
+            source = source,
             imagePath = null,
             thumbnailPath = null,
             imageHash = null,
@@ -139,7 +158,7 @@ class ExpenseFiltersTest {
             duplicateStatus = "none",
             duplicateOfId = null,
             duplicateReason = null,
-            tags = null,
+            tags = tags,
             valueScore = null,
             regretScore = null,
             status = "confirmed",
