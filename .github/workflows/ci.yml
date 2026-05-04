@@ -32,7 +32,8 @@ jobs:
         working-directory: .
         shell: powershell
         run: |
-          $files = Get-ChildItem -Path backend/scripts, android/scripts -Filter *.ps1 -Recurse
+          $roots = @("backend/scripts", "android/scripts", "scripts") | Where-Object { Test-Path $_ }
+          $files = Get-ChildItem -Path $roots -Filter *.ps1 -Recurse
           foreach ($file in $files) {
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
             $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF

@@ -418,3 +418,16 @@ cd /d E:\projects\xiaopiaojia\backend
 .venv\Scripts\python.exe -m pytest
 .venv\Scripts\python.exe scripts\smoke_test.py
 ```
+
+从项目根目录一键跑后端和 Android 验证：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\verify_project.ps1
+```
+
+实机联调预检：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1 -SkipDevice
+```
