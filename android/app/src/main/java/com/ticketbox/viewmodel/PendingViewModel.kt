@@ -44,7 +44,7 @@ class PendingViewModel(
                     }
                     loadThumbnails(expenses)
                 }
-                .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "加载失败") } }
+                .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "暂时加载不了，请稍后再试。") } }
         }
     }
 
@@ -84,7 +84,7 @@ class PendingViewModel(
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,
-                            message = error.message ?: "确认失败",
+                            message = error.message ?: "没有确认成功，请稍后再试。",
                         )
                     }
                 }
@@ -110,7 +110,7 @@ class PendingViewModel(
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,
-                            message = error.message ?: "删除失败",
+                            message = error.message ?: "没有删除成功，请稍后再试。",
                         )
                     }
                 }
@@ -135,7 +135,7 @@ class PendingViewModel(
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,
-                            message = error.message ?: "操作失败",
+                            message = error.message ?: "暂时没处理成功，请稍后再试。",
                         )
                     }
                 }

@@ -44,7 +44,7 @@ class AppViewModel(
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(binding = false, authMessage = error.message ?: "绑定失败") }
+                    _uiState.update { it.copy(binding = false, authMessage = error.message ?: "绑定没成功，请检查地址和访问口令。") }
                 }
         }
     }

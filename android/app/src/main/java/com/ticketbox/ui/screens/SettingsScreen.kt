@@ -112,9 +112,9 @@ fun SettingsScreen(
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            title = { Text("清除本地缓存？") },
+            title = { Text("清除手机缓存？") },
             text = {
-                Text("清除后，本机缓存的已确认账单会被删除。服务器上的账单不会删除，之后可以重新同步。")
+                Text("清除后，手机里已同步的账单会被移除。服务器上的账单不会删除，之后可以重新同步。")
             },
             confirmButton = {
                 TextButton(

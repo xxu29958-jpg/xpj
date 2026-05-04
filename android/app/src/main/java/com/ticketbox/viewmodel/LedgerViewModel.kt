@@ -141,7 +141,7 @@ class LedgerViewModel(
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(exporting = false, message = error.message ?: "导出失败") }
+                    _uiState.update { it.copy(exporting = false, message = error.message ?: "没有导出成功，可以换个保存位置再试。") }
                 }
         }
     }
@@ -169,7 +169,7 @@ class LedgerViewModel(
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(creatingManual = false, message = error.message ?: "保存失败")
+                        it.copy(creatingManual = false, message = error.message ?: "没有保存成功，请稍后再试。")
                     }
                 }
         }
