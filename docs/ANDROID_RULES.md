@@ -96,6 +96,14 @@ UI 不能直接使用 DTO 或 Entity。
 
 `serverId` 必须唯一。
 
+Room schema 必须导出到：
+
+```text
+android/app/schemas/
+```
+
+后续修改 Room Entity 或数据库版本时，必须提交 schema 变化，并补迁移策略或明确重建策略。
+
 同步 confirmed 账单时：
 
 ```text
