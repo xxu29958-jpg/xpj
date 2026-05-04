@@ -107,7 +107,8 @@ function Write-EnvFile {
         "DELETE_IMAGE_AFTER_DAYS=0",
         "OCR_PROVIDER=empty"
     )
-    Set-Content -LiteralPath $EnvPath -Value $content -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($EnvPath, $content, $utf8NoBom)
     Write-Host "已创建 .env，Token 已随机生成。请妥善保管，不要提交或截图。"
 }
 

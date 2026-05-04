@@ -74,6 +74,17 @@ powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
 - 用内置 1x1 PNG 测试 `/api/upload-screenshot`。
 - 从 `backend\.env` 读取 `APP_TOKEN` 和 `UPLOAD_TOKEN`，但不会打印 Token。
 
+当前 Windows 联调推荐同时启用两个登录自启任务：
+
+```powershell
+Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel
+```
+
+其中：
+
+- `TicketboxBackend` 启动本机 FastAPI：`127.0.0.1:8000`。
+- `TicketboxCloudflareTunnel` 启动 Cloudflare Tunnel connector。
+
 只检查健康和 App Token，不上传测试图：
 
 ```powershell

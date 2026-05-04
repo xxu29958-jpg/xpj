@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.database import init_db
-from app.errors import add_exception_handlers
+from app.errors import Utf8JSONResponse, add_exception_handlers
 from app.routes import auth, duplicates, expenses, maintenance, rules, settings, stats, uploads
 from app.schemas import HealthResponse
 
@@ -21,6 +21,7 @@ app = FastAPI(
     version="0.1.0",
     description="私人半自动记账系统后端。",
     lifespan=lifespan,
+    default_response_class=Utf8JSONResponse,
 )
 
 add_exception_handlers(app)

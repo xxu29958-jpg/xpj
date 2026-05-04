@@ -334,6 +334,7 @@ Git
 
 ```text
 backend/scripts/*.ps1 使用 UTF-8 with BOM
+backend/.env 使用 UTF-8 without BOM
 README 和 docs 使用 UTF-8
 脚本必须能被 powershell.exe -File 直接运行
 不要求 PowerShell 7、WSL、Docker 或 Linux shell
