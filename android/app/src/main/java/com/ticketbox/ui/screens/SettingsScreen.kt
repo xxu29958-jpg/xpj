@@ -170,7 +170,7 @@ fun SettingsScreen(
 
         SettingSection(title = "外观") {
             Text(
-                text = "港湾作为默认主题。每套外观都预览真实账单层级，不直接暴露 JSON。",
+                text = "港湾作为默认主题。每套外观都预览真实账单层级，切换后立即生效。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -331,14 +331,14 @@ fun SettingsScreen(
             }
         }
 
-        SettingSection(title = "服务器状态") {
+        SettingSection(title = "服务概况") {
             state.serverSettings?.let { serverSettings ->
                 ServerStatusCard(
                     serverSettings = serverSettings,
                     expanded = showServerStatusDetails,
                     onToggleExpanded = { showServerStatusDetails = !showServerStatusDetails },
                 )
-            } ?: Text("服务器状态未加载", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } ?: Text("服务概况暂未加载", color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onRefreshServerSettings,
@@ -375,7 +375,7 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        text = "后续 OCR 会参考这些规则推荐分类，第一版仍然需要你确认后才入账。",
+                        text = "后续识别会参考这些规则推荐分类，第一版仍然需要你确认后才入账。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -594,7 +594,7 @@ private fun CategoryRulesSheet(
         }
 
         if (rules.isEmpty()) {
-            Text("暂无分类规则。添加后，后续 OCR 会优先参考这些关键词。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("暂无分类规则。添加后，拍照识别会优先参考这些关键词。", color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             rules.forEach { rule ->
                 CategoryRuleCard(
@@ -738,22 +738,22 @@ private fun ServerStatusCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "账单 ${serverSettings.pendingCount} / ${serverSettings.confirmedCount} / ${serverSettings.rejectedCount}",
+                text = "待确认 ${serverSettings.pendingCount} · 已入账 ${serverSettings.confirmedCount} · 已忽略 ${serverSettings.rejectedCount}",
                 style = MaterialTheme.typography.titleSmall,
             )
             Text(
-                text = "图片 ${formatStorageSize(serverSettings.uploadStorageBytes)} · OCR ${serverSettings.ocrProvider}",
+                text = "截图占用 ${formatStorageSize(serverSettings.uploadStorageBytes)} · 识别：${recognitionProviderLabel(serverSettings.ocrProvider)}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("上传限制：${serverSettings.maxUploadSizeMb} MB")
-                    Text("缩略图：${if (serverSettings.generateThumbnail) "已启用" else "未启用"}")
-                    Text("确认后删原图：${if (serverSettings.deleteImageAfterConfirm) "已启用" else "未启用"}")
-                    Text("保留天数：${serverSettings.deleteImageAfterDays}")
-                    Text("疑似重复：${serverSettings.suspectedDuplicateCount}")
+                    Text("单张截图上限：${serverSettings.maxUploadSizeMb} MB")
+                    Text("截图预览：${if (serverSettings.generateThumbnail) "已启用" else "未启用"}")
+                    Text("入账后清理原图：${if (serverSettings.deleteImageAfterConfirm) "已启用" else "未启用"}")
+                    Text("自动清理周期：${serverSettings.deleteImageAfterDays} 天")
+                    Text("可能重复的账单：${serverSettings.suspectedDuplicateCount}")
                 }
             }
             OutlinedButton(
@@ -763,6 +763,15 @@ private fun ServerStatusCard(
                 Text(if (expanded) "收起详情" else "查看详情")
             }
         }
+    }
+}
+
+private fun recognitionProviderLabel(provider: String): String {
+    val clean = provider.trim()
+    return when (clean.lowercase()) {
+        "", "empty" -> "未开启"
+        "mock" -> "演示模式"
+        else -> clean
     }
 }
 
