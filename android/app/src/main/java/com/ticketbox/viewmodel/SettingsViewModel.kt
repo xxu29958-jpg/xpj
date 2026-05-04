@@ -19,6 +19,7 @@ data class SettingsUiState(
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
+    val lastConfirmedSyncAt: String? = null,
     val busy: Boolean = false,
     val message: String? = null,
 )
@@ -31,6 +32,7 @@ class SettingsViewModel(
         SettingsUiState(
             serverUrl = settingsStore.serverUrl(),
             monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
+            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
         ),
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -53,7 +55,15 @@ class SettingsViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
             repository.syncConfirmed()
-                .onSuccess { _uiState.update { it.copy(busy = false, message = "同步完成") } }
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
+                            message = "同步完成",
+                        )
+                    }
+                }
                 .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "同步失败") } }
         }
     }
@@ -115,7 +125,12 @@ class SettingsViewModel(
     fun clearLocalCache() {
         viewModelScope.launch {
             repository.clearLocalCache()
-            _uiState.update { it.copy(message = "本地缓存已清除") }
+            _uiState.update {
+                it.copy(
+                    lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
+                    message = "本地缓存已清除",
+                )
+            }
         }
     }
 

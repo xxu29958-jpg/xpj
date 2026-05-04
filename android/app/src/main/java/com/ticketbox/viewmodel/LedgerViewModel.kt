@@ -22,6 +22,7 @@ data class LedgerUiState(
     val monthFilter: String = YearMonth.now().toString(),
     val categoryFilter: String = "",
     val query: String = "",
+    val lastSyncAt: String? = null,
     val syncing: Boolean = false,
     val exporting: Boolean = false,
     val creatingManual: Boolean = false,
@@ -31,7 +32,7 @@ data class LedgerUiState(
 class LedgerViewModel(
     private val repository: ExpenseRepository,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(LedgerUiState())
+    private val _uiState = MutableStateFlow(LedgerUiState(lastSyncAt = repository.lastConfirmedSyncAt()))
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
     private var allConfirmed: List<Expense> = emptyList()
 
@@ -103,7 +104,15 @@ class LedgerViewModel(
                 month = filters.monthFilter.trim().ifBlank { null },
                 category = filters.categoryFilter.trim().ifBlank { null },
             )
-                .onSuccess { _uiState.update { it.copy(syncing = false, message = "同步完成") } }
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            syncing = false,
+                            lastSyncAt = repository.lastConfirmedSyncAt(),
+                            message = "同步完成",
+                        )
+                    }
+                }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(syncing = false, message = error.message ?: "服务器不可用，已显示本地缓存")

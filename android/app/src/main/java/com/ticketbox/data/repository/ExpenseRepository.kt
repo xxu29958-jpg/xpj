@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.map
 import retrofit2.HttpException
 import retrofit2.Response
 import java.io.IOException
+import java.time.Instant
 import kotlin.system.measureTimeMillis
 import okhttp3.ResponseBody
 
@@ -262,6 +263,7 @@ class ExpenseRepository(
             collected += response.items.map { it.toDomain() }
             page += 1
         } while (collected.size < total)
+        settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
         collected
     }
 
@@ -349,12 +351,15 @@ class ExpenseRepository(
 
     fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()
 
+    fun lastConfirmedSyncAt(): String? = settingsStore.lastConfirmedSyncAt()
+
     fun saveMonthlyBudgetCents(amountCents: Long?) {
         settingsStore.saveMonthlyBudgetCents(amountCents)
     }
 
     suspend fun clearLocalCache() {
         expenseDao.clear()
+        settingsStore.clearLastConfirmedSyncAt()
     }
 
     fun clearBinding() {

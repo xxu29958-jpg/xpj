@@ -56,6 +56,7 @@ import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseAmountCents
@@ -255,7 +256,10 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
                 )
             }
             Text(
-                text = "${state.items.size} 笔",
+                text = buildString {
+                    append("${state.items.size} 笔")
+                    state.lastSyncAt?.let { append("\n同步 ").append(displayTime(it)) }
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.titleMedium,
             )
