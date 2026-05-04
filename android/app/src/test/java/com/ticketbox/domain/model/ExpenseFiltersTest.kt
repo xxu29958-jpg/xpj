@@ -82,6 +82,41 @@ class ExpenseFiltersTest {
         assertEquals(null, monthlySpendingComparison(emptyList(), "全部月份"))
     }
 
+    @Test
+    fun buildsBudgetProgressAndCapsProgressBar() {
+        val progress = monthlyBudgetProgress(
+            stats = MonthlyStats(
+                month = "2026-05",
+                totalAmountCents = 12_000,
+                count = 3,
+                byCategory = emptyList(),
+            ),
+            budgetCents = 10_000,
+        )
+
+        checkNotNull(progress)
+        assertEquals("2026-05", progress.month)
+        assertEquals(10_000, progress.budgetCents)
+        assertEquals(12_000, progress.spentCents)
+        assertEquals(-2_000, progress.remainingCents)
+        assertEquals(1.0f, progress.progress)
+        assertEquals(120, progress.percent)
+        assertEquals(true, progress.overBudget)
+    }
+
+    @Test
+    fun skipsBudgetProgressWithoutPositiveBudget() {
+        val stats = MonthlyStats(
+            month = "2026-05",
+            totalAmountCents = 1_000,
+            count = 1,
+            byCategory = emptyList(),
+        )
+
+        assertEquals(null, monthlyBudgetProgress(stats, null))
+        assertEquals(null, monthlyBudgetProgress(stats, 0))
+    }
+
     private fun expense(
         id: Long,
         category: String,

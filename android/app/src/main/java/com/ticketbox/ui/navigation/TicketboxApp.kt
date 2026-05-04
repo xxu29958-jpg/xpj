@@ -286,6 +286,7 @@ private fun MainShell(
                         onRefreshServerSettings = settingsViewModel::refreshServerSettings,
                         onSync = settingsViewModel::sync,
                         onClearCache = settingsViewModel::clearLocalCache,
+                        onSaveMonthlyBudget = settingsViewModel::saveMonthlyBudget,
                         onCreateRule = settingsViewModel::createCategoryRule,
                         onUpdateRule = settingsViewModel::updateCategoryRule,
                         onToggleRule = settingsViewModel::toggleCategoryRule,

@@ -334,6 +334,12 @@ class ExpenseRepository(
         api().serverSettings().toDomain()
     }
 
+    fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()
+
+    fun saveMonthlyBudgetCents(amountCents: Long?) {
+        settingsStore.saveMonthlyBudgetCents(amountCents)
+    }
+
     suspend fun clearLocalCache() {
         expenseDao.clear()
     }

@@ -70,6 +70,16 @@ data class MonthComparison(
     val percentChange: Int?,
 )
 
+data class BudgetProgress(
+    val month: String,
+    val budgetCents: Long,
+    val spentCents: Long,
+    val remainingCents: Long,
+    val progress: Float,
+    val percent: Int,
+    val overBudget: Boolean,
+)
+
 data class LifestyleStats(
     val month: String,
     val aiSubscriptionAmountCents: Long,

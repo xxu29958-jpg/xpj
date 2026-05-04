@@ -3,11 +3,13 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.monthlyBudgetProgress
 import com.ticketbox.domain.model.monthlySpendingComparison
 import com.ticketbox.domain.model.recentDailySpending
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,7 @@ data class StatsUiState(
     val lifestyleStats: LifestyleStats? = null,
     val dailyTrend: List<DailySpend> = emptyList(),
     val monthComparison: MonthComparison? = null,
+    val budgetProgress: BudgetProgress? = null,
     val months: List<String> = emptyList(),
     val month: String = YearMonth.now().toString(),
     val loading: Boolean = false,
@@ -76,19 +79,26 @@ class StatsViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, message = null) }
             val month = _uiState.value.month.trim().ifBlank { null }
+            val budgetCents = repository.monthlyBudgetCents()
             repository.monthlyStats(month)
                 .onSuccess { stats ->
                     repository.lifestyleStats(month)
                         .onSuccess { lifestyle ->
                             repository.syncConfirmed(month)
                             _uiState.update {
-                                it.copy(stats = stats, lifestyleStats = lifestyle, loading = false)
+                                it.copy(
+                                    stats = stats,
+                                    lifestyleStats = lifestyle,
+                                    budgetProgress = monthlyBudgetProgress(stats, budgetCents),
+                                    loading = false,
+                                )
                             }
                         }
                         .onFailure { error ->
                             _uiState.update {
                                 it.copy(
                                     stats = stats,
+                                    budgetProgress = monthlyBudgetProgress(stats, budgetCents),
                                     loading = false,
                                     message = error.message ?: "生活统计加载失败",
                                 )

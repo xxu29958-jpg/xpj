@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val serverUrl: String? = null,
+    val monthlyBudgetCents: Long? = null,
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
@@ -26,7 +27,12 @@ class SettingsViewModel(
     private val repository: ExpenseRepository,
     private val settingsStore: LocalSettingsStore,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(SettingsUiState(serverUrl = settingsStore.serverUrl()))
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(
+            serverUrl = settingsStore.serverUrl(),
+            monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
+        ),
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -110,6 +116,20 @@ class SettingsViewModel(
         viewModelScope.launch {
             repository.clearLocalCache()
             _uiState.update { it.copy(message = "本地缓存已清除") }
+        }
+    }
+
+    fun saveMonthlyBudget(amountCents: Long?) {
+        repository.saveMonthlyBudgetCents(amountCents)
+        _uiState.update {
+            it.copy(
+                monthlyBudgetCents = amountCents?.takeIf { value -> value > 0L },
+                message = if (amountCents == null || amountCents <= 0L) {
+                    "月预算已关闭"
+                } else {
+                    "月预算已保存"
+                },
+            )
         }
     }
 
