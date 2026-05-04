@@ -3,7 +3,6 @@ val ticketboxVersionName = "0.1.0"
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
@@ -30,6 +29,7 @@ android {
 
     buildFeatures {
         compose = true
+        resValues = true
     }
 }
 
@@ -73,5 +73,5 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.coroutines.android)
 
-    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlin.test)
 }

@@ -71,11 +71,11 @@
 - Maven repository metadata：https://maven.apache.org/repositories/metadata.html
 - PyPI JSON API：https://docs.pypi.org/api/json/
 - Android SDK packages / sdkmanager：https://developer.android.com/tools/sdkmanager
-- Gradle 8.14.4 release notes：https://docs.gradle.org/8.14.4/release-notes.html
+- Gradle 9.4.1 release notes：https://docs.gradle.org/9.4.1/release-notes.html
 - Room runtime metadata：https://dl.google.com/dl/android/maven2/androidx/room/room-runtime/maven-metadata.xml
 - Compose BOM metadata：https://dl.google.com/dl/android/maven2/androidx/compose/compose-bom/maven-metadata.xml
 - Android Gradle Plugin metadata：https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml
-- Kotlin Android plugin metadata：https://repo1.maven.org/maven2/org/jetbrains/kotlin/android/org.jetbrains.kotlin.android.gradle.plugin/maven-metadata.xml
+- Kotlin Compose plugin metadata：https://repo1.maven.org/maven2/org/jetbrains/kotlin/plugin/compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin/maven-metadata.xml
 - KSP Gradle plugin metadata：https://repo1.maven.org/maven2/com/google/devtools/ksp/com.google.devtools.ksp.gradle.plugin/maven-metadata.xml
 - Retrofit metadata：https://repo1.maven.org/maven2/com/squareup/retrofit2/retrofit/maven-metadata.xml
 - OkHttp metadata：https://repo1.maven.org/maven2/com/squareup/okhttp3/okhttp/maven-metadata.xml

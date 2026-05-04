@@ -44,7 +44,7 @@ Windows PowerShell 语法
 
 ```text
 ubuntu-latest
-Temurin JDK 17
+Temurin JDK 21
 Android SDK platform 36
 ```
 

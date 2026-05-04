@@ -21,6 +21,9 @@ $MavenRepositories = @(
     "https://dl.google.com/dl/android/maven2",
     "https://repo.maven.apache.org/maven2"
 )
+$PluginModuleOverrides = @{
+    "com.android.application" = "com.android.tools.build:gradle"
+}
 
 function Test-StableVersion {
     param([Parameter(Mandatory = $true)][string]$Version)
@@ -33,7 +36,10 @@ function Test-StableVersion {
     if ($normalized -match "(alpha|beta|snapshot|eap|preview)") {
         return $false
     }
-    if ($normalized -match "(^|[0-9._-])(a|b|rc|pre|dev)[0-9]+") {
+    if ($normalized -match "(^|[0-9._-])(a|b)[0-9]+") {
+        return $false
+    }
+    if ($normalized -match "(^|[0-9._-])(rc|pre|dev)[0-9]*($|[._-])") {
         return $false
     }
 
@@ -117,6 +123,7 @@ function Read-VersionCatalog {
 
     $versions = @{}
     $libraries = @()
+    $plugins = @()
     $section = ""
 
     foreach ($rawLine in Get-Content -Encoding UTF8 -LiteralPath $Path) {
@@ -162,9 +169,47 @@ function Read-VersionCatalog {
                 }
             }
         }
+
+        if ($section -eq "plugins" -and $line -match "^([A-Za-z0-9_.-]+)\s*=\s*\{(.+)\}$") {
+            $alias = $Matches[1]
+            $body = $Matches[2]
+            if ($body -notmatch "id\s*=\s*`"([^`"]+)`"") {
+                continue
+            }
+
+            $pluginId = $Matches[1]
+            $version = $null
+            if ($body -match "version\.ref\s*=\s*`"([^`"]+)`"") {
+                $versionRef = $Matches[1]
+                if ($versions.ContainsKey($versionRef)) {
+                    $version = $versions[$versionRef]
+                }
+            }
+            elseif ($body -match "version\s*=\s*`"([^`"]+)`"") {
+                $version = $Matches[1]
+            }
+
+            if ($null -ne $version) {
+                $module = if ($PluginModuleOverrides.ContainsKey($pluginId)) {
+                    $PluginModuleOverrides[$pluginId]
+                }
+                else {
+                    "${pluginId}:${pluginId}.gradle.plugin"
+                }
+                $plugins += [pscustomobject]@{
+                    Alias   = $alias
+                    Id      = $pluginId
+                    Module  = $module
+                    Version = $version
+                }
+            }
+        }
     }
 
-    return $libraries
+    return [pscustomobject]@{
+        Libraries = $libraries
+        Plugins   = $plugins
+    }
 }
 
 function Read-RequirementsFile {
@@ -215,17 +260,17 @@ function Get-MavenLatestVersion {
 
     $groupPath = $parts[0].Replace(".", "/")
     $artifact = $parts[1]
+    $bestLatest = $null
+    $bestSource = $null
     foreach ($repository in $MavenRepositories) {
         $metadataUri = "$repository/$groupPath/$artifact/maven-metadata.xml"
         try {
             [xml]$metadata = Invoke-TextGet -Uri $metadataUri
             $versions = @($metadata.metadata.versioning.versions.version | ForEach-Object { [string]$_ })
             $latest = Get-LatestVersion -Versions $versions
-            if ($null -ne $latest) {
-                return [pscustomobject]@{
-                    Latest = $latest
-                    Source = $metadataUri
-                }
+            if ($null -ne $latest -and ($null -eq $bestLatest -or (Compare-VersionString -Left $latest -Right $bestLatest) -gt 0)) {
+                $bestLatest = $latest
+                $bestSource = $metadataUri
             }
         }
         catch {
@@ -233,7 +278,14 @@ function Get-MavenLatestVersion {
         }
     }
 
-    return $null
+    if ($null -eq $bestLatest) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        Latest = $bestLatest
+        Source = $bestSource
+    }
 }
 
 function Get-PypiLatestVersion {
@@ -289,10 +341,11 @@ Write-Host "策略：默认只比较稳定版本，排除 alpha/beta/rc/snapshot
 
 $catalogPath = Join-Path $ProjectRoot "android/gradle/libs.versions.toml"
 if (Test-Path -LiteralPath $catalogPath) {
+    $catalog = Read-VersionCatalog -Path $catalogPath
+
     Write-Host ""
     Write-Host "Android Maven 依赖："
-    $libraries = Read-VersionCatalog -Path $catalogPath
-    $uniqueLibraries = $libraries | Sort-Object Module, Version -Unique
+    $uniqueLibraries = $catalog.Libraries | Sort-Object Module, Version -Unique
     foreach ($library in $uniqueLibraries) {
         try {
             $latest = Get-MavenLatestVersion -Module $library.Module
@@ -305,6 +358,27 @@ if (Test-Path -LiteralPath $catalogPath) {
         }
         catch {
             $result = Write-CheckResult -Kind "maven" -Name $library.Module -Current $library.Version -Warning $_.Exception.Message
+        }
+        $checked += $result.Checked
+        $outdated += $result.Outdated
+        $warnings += $result.Warnings
+    }
+
+    Write-Host ""
+    Write-Host "Android Gradle 插件："
+    $uniquePlugins = $catalog.Plugins | Sort-Object Module, Version -Unique
+    foreach ($plugin in $uniquePlugins) {
+        try {
+            $latest = Get-MavenLatestVersion -Module $plugin.Module
+            if ($null -eq $latest) {
+                $result = Write-CheckResult -Kind "plugin" -Name $plugin.Id -Current $plugin.Version -Warning "没有在 Google Maven 或 Maven Central 找到 metadata"
+            }
+            else {
+                $result = Write-CheckResult -Kind "plugin" -Name $plugin.Id -Current $plugin.Version -Latest $latest.Latest -Source $latest.Source
+            }
+        }
+        catch {
+            $result = Write-CheckResult -Kind "plugin" -Name $plugin.Id -Current $plugin.Version -Warning $_.Exception.Message
         }
         $checked += $result.Checked
         $outdated += $result.Outdated
