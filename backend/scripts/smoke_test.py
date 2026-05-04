@@ -169,9 +169,12 @@ def wait_for_server(base_url: str, process: subprocess.Popen) -> None:
         if process.poll() is not None:
             output = process.stdout.read() if process.stdout else ""
             raise RuntimeError(f"server exited early:\n{output}")
-        result = request("GET", f"{base_url}/api/health")
-        if result.status == 200:
-            return
+        try:
+            result = request("GET", f"{base_url}/api/health")
+            if result.status == 200:
+                return
+        except urllib.error.URLError:
+            pass
         time.sleep(0.2)
     raise TimeoutError("server did not become ready")
 
