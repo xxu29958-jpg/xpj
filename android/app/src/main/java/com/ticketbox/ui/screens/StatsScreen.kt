@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.FrequentMerchant
@@ -98,6 +99,7 @@ fun StatsScreen(
                     stats = stats,
                     lifestyle = state.lifestyleStats,
                     comparison = state.monthComparison,
+                    budget = state.budgetProgress,
                 )
             }
             item {
@@ -238,6 +240,7 @@ private fun StatsOverviewCard(
     stats: MonthlyStats,
     lifestyle: LifestyleStats?,
     comparison: MonthComparison?,
+    budget: BudgetProgress?,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -262,6 +265,9 @@ private fun StatsOverviewCard(
             comparison?.let {
                 MonthComparisonPill(it)
             }
+            budget?.let {
+                BudgetProgressPanel(it)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricPill(
                     modifier = Modifier.weight(1f),
@@ -275,6 +281,60 @@ private fun StatsOverviewCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun BudgetProgressPanel(budget: BudgetProgress) {
+    val remainingText = if (budget.overBudget) {
+        "已超 ${formatAmount(kotlin.math.abs(budget.remainingCents))}"
+    } else {
+        "剩余 ${formatAmount(budget.remainingCents)}"
+    }
+    val progressColor = if (budget.overBudget) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = "月预算",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = "$remainingText · 预算 ${formatAmount(budget.budgetCents)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text(
+                text = "${budget.percent}%",
+                color = progressColor,
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { budget.progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(999.dp)),
+            color = progressColor,
+            trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        )
     }
 }
 

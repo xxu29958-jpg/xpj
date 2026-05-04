@@ -89,6 +89,25 @@ fun monthlySpendingComparison(
     )
 }
 
+fun monthlyBudgetProgress(
+    stats: MonthlyStats?,
+    budgetCents: Long?,
+): BudgetProgress? {
+    val budget = budgetCents?.takeIf { it > 0L } ?: return null
+    val monthlyStats = stats ?: return null
+    val spent = monthlyStats.totalAmountCents
+    val progress = (spent.toFloat() / budget.toFloat()).coerceAtLeast(0f)
+    return BudgetProgress(
+        month = monthlyStats.month,
+        budgetCents = budget,
+        spentCents = spent,
+        remainingCents = budget - spent,
+        progress = progress.coerceIn(0f, 1f),
+        percent = (progress * 100).roundToInt(),
+        overBudget = spent > budget,
+    )
+}
+
 private fun Expense.ledgerLocalDate(zoneId: ZoneId): LocalDate? {
     val value = expenseTime ?: confirmedAt ?: createdAt
     return runCatching { Instant.parse(value).atZone(zoneId).toLocalDate() }

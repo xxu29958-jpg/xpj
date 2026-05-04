@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,8 +28,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -50,10 +53,14 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.formatStorageSize
+import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
@@ -63,6 +70,7 @@ fun SettingsScreen(
     onRefreshServerSettings: () -> Unit,
     onSync: () -> Unit,
     onClearCache: () -> Unit,
+    onSaveMonthlyBudget: (Long?) -> Unit,
     onCreateRule: (String, String, Int) -> Unit,
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
     onToggleRule: (CategoryRule) -> Unit,
@@ -70,10 +78,9 @@ fun SettingsScreen(
     onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
-    var keyword by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("") }
-    var priorityText by remember { mutableStateOf("10") }
-    var editingRule by remember { mutableStateOf<CategoryRule?>(null) }
+    var budgetInput by remember(state.monthlyBudgetCents) {
+        mutableStateOf(formatAmountInput(state.monthlyBudgetCents))
+    }
     var localMessage by remember { mutableStateOf<String?>(null) }
     var showDiagnosticsDetails by remember { mutableStateOf(false) }
     var showServerStatusDetails by remember { mutableStateOf(false) }
@@ -81,6 +88,20 @@ fun SettingsScreen(
     var showClearBindingDialog by remember { mutableStateOf(false) }
     var showCategoryRules by remember { mutableStateOf(false) }
     val serverDisplayName = remember(state.serverUrl) { serverDisplayName(state.serverUrl) }
+
+    if (showCategoryRules) {
+        ModalBottomSheet(onDismissRequest = { showCategoryRules = false }) {
+            CategoryRulesSheet(
+                rules = state.categoryRules,
+                busy = state.busy,
+                onCreateRule = onCreateRule,
+                onUpdateRule = onUpdateRule,
+                onToggleRule = onToggleRule,
+                onDeleteRule = onDeleteRule,
+                onClose = { showCategoryRules = false },
+            )
+        }
+    }
 
     if (showClearCacheDialog) {
         AlertDialog(
@@ -218,6 +239,75 @@ fun SettingsScreen(
             }
         }
 
+        SettingSection(title = "预算") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("月度预算", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = state.monthlyBudgetCents?.let { formatAmount(it) } ?: "未设置",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            text = "统计页显示进度",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = budgetInput,
+                        onValueChange = { budgetInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("预算，单位元") },
+                        placeholder = { Text("3000") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                val amount = parseAmountCents(budgetInput)
+                                if (budgetInput.isNotBlank() && (amount == null || amount <= 0L)) {
+                                    localMessage = "请输入大于 0 的预算金额。"
+                                    return@Button
+                                }
+                                localMessage = null
+                                onSaveMonthlyBudget(amount)
+                            },
+                        ) {
+                            Text("保存预算")
+                        }
+                        OutlinedButton(
+                            modifier = Modifier.weight(1f),
+                            enabled = state.monthlyBudgetCents != null || budgetInput.isNotBlank(),
+                            onClick = {
+                                budgetInput = ""
+                                localMessage = null
+                                onSaveMonthlyBudget(null)
+                            },
+                        ) {
+                            Text("关闭预算")
+                        }
+                    }
+                }
+            }
+        }
+
         SettingSection(title = "服务器状态") {
             state.serverSettings?.let { serverSettings ->
                 ServerStatusCard(
@@ -253,120 +343,19 @@ fun SettingsScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text("商家关键词规则", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                text = "${state.categoryRules.size} 条规则",
+                                text = categoryRuleSummary(state.categoryRules),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        OutlinedButton(onClick = { showCategoryRules = !showCategoryRules }) {
-                            Text(if (showCategoryRules) "收起" else "管理")
+                        OutlinedButton(onClick = { showCategoryRules = true }) {
+                            Text("管理")
                         }
                     }
                     Text(
-                        text = "用于后续 OCR 和自动分类，第一版仍然需要你确认后才入账。",
+                        text = "后续 OCR 会参考这些规则推荐分类，第一版仍然需要你确认后才入账。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
-                }
-            }
-            if (showCategoryRules) {
-                OutlinedTextField(
-                    value = keyword,
-                    onValueChange = { keyword = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("关键词") },
-                    placeholder = { Text("OpenAI") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = category,
-                    onValueChange = { category = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("分类") },
-                    placeholder = { Text("AI订阅") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = priorityText,
-                    onValueChange = { priorityText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("优先级") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                )
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        val priority = priorityText.toIntOrNull()
-                        if (priority == null) {
-                            localMessage = "优先级必须是数字。"
-                            return@Button
-                        }
-                        localMessage = null
-                        val currentEditing = editingRule
-                        if (currentEditing == null) {
-                            onCreateRule(keyword, category, priority)
-                        } else {
-                            onUpdateRule(currentEditing, keyword, category, priority)
-                        }
-                        keyword = ""
-                        category = ""
-                        priorityText = "10"
-                        editingRule = null
-                    },
-                ) {
-                    Text(if (editingRule == null) "添加规则" else "保存规则")
-                }
-                if (editingRule != null) {
-                    OutlinedButton(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            keyword = ""
-                            category = ""
-                            priorityText = "10"
-                            editingRule = null
-                        },
-                    ) {
-                        Text("取消编辑")
-                    }
-                }
-                if (state.categoryRules.isEmpty()) {
-                    Text("暂无分类规则", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    state.categoryRules.forEach { rule ->
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(rule.keyword, style = MaterialTheme.typography.titleSmall)
-                                    Text(rule.category, color = MaterialTheme.colorScheme.primary)
-                                }
-                                Text(
-                                    text = "优先级 ${rule.priority} · ${if (rule.enabled) "已启用" else "已停用"}",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick = { onToggleRule(rule) }) {
-                                        Text(if (rule.enabled) "停用" else "启用")
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            editingRule = rule
-                                            keyword = rule.keyword
-                                            category = rule.category
-                                            priorityText = rule.priority.toString()
-                                        },
-                                    ) {
-                                        Text("编辑")
-                                    }
-                                    OutlinedButton(onClick = { onDeleteRule(rule) }) {
-                                        Text("删除")
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -406,6 +395,226 @@ fun SettingsScreen(
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
         Text("关于小票夹：私人截图确认账本，第一版不做自动入账。")
+    }
+}
+
+@Composable
+private fun CategoryRulesSheet(
+    rules: List<CategoryRule>,
+    busy: Boolean,
+    onCreateRule: (String, String, Int) -> Unit,
+    onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
+    onToggleRule: (CategoryRule) -> Unit,
+    onDeleteRule: (CategoryRule) -> Unit,
+    onClose: () -> Unit,
+) {
+    var keyword by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("") }
+    var priorityText by remember { mutableStateOf("10") }
+    var editingRule by remember { mutableStateOf<CategoryRule?>(null) }
+    var deletingRule by remember { mutableStateOf<CategoryRule?>(null) }
+    var localMessage by remember { mutableStateOf<String?>(null) }
+
+    deletingRule?.let { rule ->
+        AlertDialog(
+            onDismissRequest = { deletingRule = null },
+            title = { Text("删除这条规则？") },
+            text = { Text("删除后，后续自动分类不会再使用“${rule.keyword}”。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deletingRule = null
+                        onDeleteRule(rule)
+                    },
+                ) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingRule = null }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxHeight(0.92f)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("分类规则", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    text = categoryRuleSummary(rules),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onClose) {
+                Text("完成")
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = editingRule?.let { "编辑规则" } ?: "新增规则",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                OutlinedTextField(
+                    value = keyword,
+                    onValueChange = { keyword = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("商家关键词") },
+                    placeholder = { Text("OpenAI") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = category,
+                    onValueChange = { category = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("推荐分类") },
+                    placeholder = { Text("AI订阅") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = priorityText,
+                    onValueChange = { priorityText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("优先级") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                )
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !busy,
+                    onClick = {
+                        val priority = priorityText.toIntOrNull()
+                        if (keyword.isBlank() || category.isBlank()) {
+                            localMessage = "请填写关键词和分类。"
+                            return@Button
+                        }
+                        if (priority == null) {
+                            localMessage = "优先级必须是数字。"
+                            return@Button
+                        }
+                        localMessage = null
+                        val currentEditing = editingRule
+                        if (currentEditing == null) {
+                            onCreateRule(keyword, category, priority)
+                        } else {
+                            onUpdateRule(currentEditing, keyword, category, priority)
+                        }
+                        keyword = ""
+                        category = ""
+                        priorityText = "10"
+                        editingRule = null
+                    },
+                ) {
+                    Text(if (busy) "处理中" else if (editingRule == null) "添加规则" else "保存规则")
+                }
+                if (editingRule != null) {
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            keyword = ""
+                            category = ""
+                            priorityText = "10"
+                            editingRule = null
+                            localMessage = null
+                        },
+                    ) {
+                        Text("取消编辑")
+                    }
+                }
+                localMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
+        }
+
+        if (rules.isEmpty()) {
+            Text("暂无分类规则。添加后，后续 OCR 会优先参考这些关键词。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            rules.forEach { rule ->
+                CategoryRuleCard(
+                    rule = rule,
+                    onToggleRule = onToggleRule,
+                    onEditRule = {
+                        editingRule = rule
+                        keyword = rule.keyword
+                        category = rule.category
+                        priorityText = rule.priority.toString()
+                        localMessage = null
+                    },
+                    onDeleteRule = { deletingRule = rule },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryRuleCard(
+    rule: CategoryRule,
+    onToggleRule: (CategoryRule) -> Unit,
+    onEditRule: () -> Unit,
+    onDeleteRule: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(rule.keyword, style = MaterialTheme.typography.titleSmall)
+                Text(rule.category, color = MaterialTheme.colorScheme.primary)
+            }
+            Text(
+                text = "优先级 ${rule.priority} · ${if (rule.enabled) "已启用" else "已停用"}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onToggleRule(rule) }) {
+                    Text(if (rule.enabled) "停用" else "启用")
+                }
+                OutlinedButton(onClick = onEditRule) {
+                    Text("编辑")
+                }
+                OutlinedButton(onClick = onDeleteRule) {
+                    Text("删除")
+                }
+            }
+        }
+    }
+}
+
+private fun categoryRuleSummary(rules: List<CategoryRule>): String {
+    val enabled = rules.count { it.enabled }
+    return if (rules.isEmpty()) {
+        "暂无规则"
+    } else {
+        "$enabled 条启用 · 共 ${rules.size} 条"
     }
 }
 

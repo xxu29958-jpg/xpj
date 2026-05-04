@@ -10,6 +10,21 @@ class LocalSettingsStore(context: Context) {
 
     fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
 
+    fun monthlyBudgetCents(): Long? {
+        val value = prefs.getLong(KEY_MONTHLY_BUDGET_CENTS, NO_BUDGET)
+        return value.takeIf { it > 0L }
+    }
+
+    fun saveMonthlyBudgetCents(amountCents: Long?) {
+        prefs.edit {
+            if (amountCents == null || amountCents <= 0L) {
+                remove(KEY_MONTHLY_BUDGET_CENTS)
+            } else {
+                putLong(KEY_MONTHLY_BUDGET_CENTS, amountCents)
+            }
+        }
+    }
+
     fun saveAppSkinKey(skinKey: String) {
         prefs.edit {
             putString(KEY_APP_SKIN, skinKey)
@@ -53,8 +68,10 @@ class LocalSettingsStore(context: Context) {
     private companion object {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_APP_SKIN = "app_skin"
+        const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
+        const val NO_BUDGET = -1L
         const val LOCK_AFTER_MS = 5 * 60 * 1000L
     }
 }
