@@ -52,6 +52,36 @@ class ExpenseFiltersTest {
         assertEquals(2300, trend[6].amountCents)
     }
 
+    @Test
+    fun buildsMonthComparisonUsingLocalCache() {
+        val items = listOf(
+            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
+            expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
+            expense(id = 3, category = "购物", expenseTime = "2026-04-28T04:20:00Z", amountCents = 2000),
+            expense(id = 4, category = "购物", expenseTime = "2026-03-28T04:20:00Z", amountCents = 9900),
+        )
+
+        val comparison = monthlySpendingComparison(
+            expenses = items,
+            month = "2026-05",
+            zoneId = ZoneOffset.UTC,
+        )
+
+        checkNotNull(comparison)
+        assertEquals("2026-05", comparison.currentMonth)
+        assertEquals("2026-04", comparison.previousMonth)
+        assertEquals(3500, comparison.currentAmountCents)
+        assertEquals(2000, comparison.previousAmountCents)
+        assertEquals(1500, comparison.deltaAmountCents)
+        assertEquals(75, comparison.percentChange)
+    }
+
+    @Test
+    fun skipsMonthComparisonWhenMonthIsBlankOrInvalid() {
+        assertEquals(null, monthlySpendingComparison(emptyList(), ""))
+        assertEquals(null, monthlySpendingComparison(emptyList(), "全部月份"))
+    }
+
     private fun expense(
         id: Long,
         category: String,

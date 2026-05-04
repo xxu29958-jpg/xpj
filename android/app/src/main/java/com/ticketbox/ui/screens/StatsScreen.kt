@@ -32,6 +32,7 @@ import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
+import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
@@ -96,6 +97,7 @@ fun StatsScreen(
                 StatsOverviewCard(
                     stats = stats,
                     lifestyle = state.lifestyleStats,
+                    comparison = state.monthComparison,
                 )
             }
             item {
@@ -235,6 +237,7 @@ private fun DailyTrendBar(
 private fun StatsOverviewCard(
     stats: MonthlyStats,
     lifestyle: LifestyleStats?,
+    comparison: MonthComparison?,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -256,6 +259,9 @@ private fun StatsOverviewCard(
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
+            comparison?.let {
+                MonthComparisonPill(it)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricPill(
                     modifier = Modifier.weight(1f),
@@ -270,6 +276,44 @@ private fun StatsOverviewCard(
             }
         }
     }
+}
+
+@Composable
+private fun MonthComparisonPill(comparison: MonthComparison) {
+    val text = monthComparisonText(comparison)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.48f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            text = "月环比",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun monthComparisonText(comparison: MonthComparison): String {
+    if (comparison.previousAmountCents == 0L) {
+        return if (comparison.currentAmountCents == 0L) {
+            "本月和上月暂无本地账单"
+        } else {
+            "上月暂无记录 · 本月 ${formatAmount(comparison.currentAmountCents)}"
+        }
+    }
+    val delta = comparison.deltaAmountCents
+    if (delta == 0L) return "和上月持平"
+    val direction = if (delta > 0L) "多花" else "少花"
+    val percent = comparison.percentChange
+        ?.let { value -> " · ${if (value > 0) "+" else ""}$value%" }
+        .orEmpty()
+    return "比上月$direction ${formatAmount(kotlin.math.abs(delta))}$percent"
 }
 
 @Composable

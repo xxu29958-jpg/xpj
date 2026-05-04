@@ -61,6 +61,15 @@ data class DailySpend(
     val amountCents: Long,
 )
 
+data class MonthComparison(
+    val currentMonth: String,
+    val previousMonth: String,
+    val currentAmountCents: Long,
+    val previousAmountCents: Long,
+    val deltaAmountCents: Long,
+    val percentChange: Int?,
+)
+
 data class LifestyleStats(
     val month: String,
     val aiSubscriptionAmountCents: Long,
