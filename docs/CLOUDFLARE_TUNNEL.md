@@ -186,6 +186,14 @@ Android App 只用 Authorization: Bearer APP_TOKEN。
 在 Windows 运行 scripts\check_cloudflare_endpoint.ps1。
 ```
 
+查看后端和 Tunnel 当前状态、最近访问日志：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\show_server_status.ps1
+```
+
+如果手机请求真的打到了后端，应该能在 `backend\logs\ticketbox-backend-*.out.log` 里看到对应接口和状态码。若这里没有任何新请求，问题在手机网络、域名、Cloudflare Tunnel 或快捷指令请求发起阶段，后端日志不会凭空出现。
+
 ## 官方资料
 
 - Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
