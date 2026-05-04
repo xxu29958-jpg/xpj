@@ -78,6 +78,7 @@ fun SettingsScreen(
     var showDiagnosticsDetails by remember { mutableStateOf(false) }
     var showServerStatusDetails by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
+    var showClearBindingDialog by remember { mutableStateOf(false) }
     var showCategoryRules by remember { mutableStateOf(false) }
     val serverDisplayName = remember(state.serverUrl) { serverDisplayName(state.serverUrl) }
 
@@ -100,6 +101,31 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearCacheDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showClearBindingDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearBindingDialog = false },
+            title = { Text("清除服务器绑定？") },
+            text = {
+                Text("清除后需要重新输入服务器地址和 App Token。服务器上的账单不会删除。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearBindingDialog = false
+                        onBindingCleared()
+                    },
+                ) {
+                    Text("确定清除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearBindingDialog = false }) {
                     Text("取消")
                 }
             },
@@ -184,22 +210,11 @@ fun SettingsScreen(
             )
         }
         SettingSection(title = "维护") {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = onSync,
-                ) {
-                    Text("重新同步")
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = { showClearCacheDialog = true },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) {
-                    Text("清缓存")
-                }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onSync,
+            ) {
+                Text("重新同步账本")
             }
         }
 
@@ -356,13 +371,32 @@ fun SettingsScreen(
             }
         }
 
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = {
-                onBindingCleared()
-            },
-        ) {
-            Text("清除服务器绑定")
+        SettingSection(title = "风险操作") {
+            Text(
+                text = "这些操作只影响本机绑定和缓存，不会删除服务器上的账单。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { showClearCacheDialog = true },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("清缓存")
+                }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { showClearBindingDialog = true },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("清绑定")
+                }
+            }
         }
 
         state.message?.let {

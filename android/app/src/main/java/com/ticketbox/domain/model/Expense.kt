@@ -55,6 +55,12 @@ data class FrequentMerchant(
     val count: Int,
 )
 
+data class DailySpend(
+    val date: String,
+    val label: String,
+    val amountCents: Long,
+)
+
 data class LifestyleStats(
     val month: String,
     val aiSubscriptionAmountCents: Long,
