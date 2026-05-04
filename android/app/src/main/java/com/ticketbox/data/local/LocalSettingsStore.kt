@@ -8,6 +8,14 @@ class LocalSettingsStore(context: Context) {
 
     fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
+    fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
+
+    fun saveAppSkinKey(skinKey: String) {
+        prefs.edit {
+            putString(KEY_APP_SKIN, skinKey)
+        }
+    }
+
     fun saveServerUrl(serverUrl: String) {
         prefs.edit {
             putString(KEY_SERVER_URL, serverUrl.trim().trimEnd('/'))
@@ -44,6 +52,7 @@ class LocalSettingsStore(context: Context) {
 
     private companion object {
         const val KEY_SERVER_URL = "server_url"
+        const val KEY_APP_SKIN = "app_skin"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
         const val LOCK_AFTER_MS = 5 * 60 * 1000L

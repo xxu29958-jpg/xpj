@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.navigation.TicketboxApp
-import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.appViewModelFactory
 import com.ticketbox.viewmodel.settingsViewModelFactory
 
@@ -18,21 +17,19 @@ class MainActivity : FragmentActivity() {
         bindFromDebugIntentIfPresent(container)
 
         setContent {
-            TicketboxTheme {
-                TicketboxApp(
+            TicketboxApp(
+                repository = container.expenseRepository,
+                appViewModelFactory = appViewModelFactory(
                     repository = container.expenseRepository,
-                    appViewModelFactory = appViewModelFactory(
-                        repository = container.expenseRepository,
-                        settingsStore = container.settingsStore,
-                        tokenStore = container.tokenStore,
-                    ),
-                    settingsViewModelFactory = settingsViewModelFactory(
-                        repository = container.expenseRepository,
-                        settingsStore = container.settingsStore,
-                    ),
-                    biometricAuthManager = biometricAuthManager,
-                )
-            }
+                    settingsStore = container.settingsStore,
+                    tokenStore = container.tokenStore,
+                ),
+                settingsViewModelFactory = settingsViewModelFactory(
+                    repository = container.expenseRepository,
+                    settingsStore = container.settingsStore,
+                ),
+                biometricAuthManager = biometricAuthManager,
+            )
         }
     }
 

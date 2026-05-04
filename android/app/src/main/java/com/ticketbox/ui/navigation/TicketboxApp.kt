@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.security.BiometricAuthManager
@@ -41,6 +42,8 @@ import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.screens.PendingScreen
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.ui.screens.StatsScreen
+import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.LedgerViewModel
@@ -85,6 +88,25 @@ fun TicketboxApp(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    TicketboxTheme(skin = appState.skin) {
+        TicketboxContent(
+            appState = appState,
+            appViewModel = appViewModel,
+            repository = repository,
+            settingsViewModelFactory = settingsViewModelFactory,
+            biometricAuthManager = biometricAuthManager,
+        )
+    }
+}
+
+@Composable
+private fun TicketboxContent(
+    appState: AppUiState,
+    appViewModel: AppViewModel,
+    repository: ExpenseRepository,
+    settingsViewModelFactory: ViewModelProvider.Factory,
+    biometricAuthManager: BiometricAuthManager,
+) {
     if (!appState.isBound) {
         BindServerScreen(
             loading = appState.binding,
@@ -114,6 +136,8 @@ fun TicketboxApp(
     MainShell(
         repository = repository,
         settingsViewModelFactory = settingsViewModelFactory,
+        currentSkin = appState.skin,
+        onSkinChange = appViewModel::selectSkin,
         onBindingCleared = {
             appViewModel.clearBinding()
         },
@@ -125,6 +149,8 @@ fun TicketboxApp(
 private fun MainShell(
     repository: ExpenseRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
+    currentSkin: AppSkin,
+    onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
@@ -237,6 +263,7 @@ private fun MainShell(
                     val state by settingsViewModel.uiState.collectAsStateWithLifecycle()
                     SettingsScreen(
                         state = state,
+                        currentSkin = currentSkin,
                         onTestConnection = settingsViewModel::testConnection,
                         onRunDiagnostics = settingsViewModel::runDiagnostics,
                         onRefreshServerSettings = settingsViewModel::refreshServerSettings,
@@ -246,6 +273,7 @@ private fun MainShell(
                         onUpdateRule = settingsViewModel::updateCategoryRule,
                         onToggleRule = settingsViewModel::toggleCategoryRule,
                         onDeleteRule = settingsViewModel::deleteCategoryRule,
+                        onSkinChange = onSkinChange,
                         onBindingCleared = onBindingCleared,
                     )
                 }

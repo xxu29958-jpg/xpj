@@ -1,16 +1,21 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -21,16 +26,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
+import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.ui.components.formatStorageSize
+import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
 
 @Composable
 fun SettingsScreen(
     state: SettingsUiState,
+    currentSkin: AppSkin,
     onTestConnection: () -> Unit,
     onRunDiagnostics: () -> Unit,
     onRefreshServerSettings: () -> Unit,
@@ -40,6 +50,7 @@ fun SettingsScreen(
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
     onToggleRule: (CategoryRule) -> Unit,
     onDeleteRule: (CategoryRule) -> Unit,
+    onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     var keyword by remember { mutableStateOf("") }
@@ -64,6 +75,17 @@ fun SettingsScreen(
             text = "小票夹是私人半自动账本。截图上传后不会自动入账，需要你确认后才会记录。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        Text("外观", style = MaterialTheme.typography.titleMedium)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppSkin.entries.forEach { skin ->
+                SkinOptionButton(
+                    skin = skin,
+                    selected = skin == currentSkin,
+                    onClick = { onSkinChange(skin) },
+                )
+            }
+        }
 
         Button(
             modifier = Modifier.fillMaxWidth(),
@@ -260,5 +282,74 @@ fun SettingsScreen(
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
         Text("关于小票夹：私人截图确认账本，第一版不做自动入账。")
+    }
+}
+
+@Composable
+private fun SkinOptionButton(
+    skin: AppSkin,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = colorSchemeForSkin(skin)
+    val content: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SkinSwatches(scheme)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = if (selected) "${skin.displayName} · 当前" else skin.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = skin.description,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+
+    if (selected) {
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onClick,
+            contentPadding = ButtonDefaults.ContentPadding,
+        ) {
+            content()
+        }
+    } else {
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onClick,
+            contentPadding = ButtonDefaults.ContentPadding,
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SkinSwatches(scheme: ColorScheme) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(
+            scheme.primary,
+            scheme.secondary,
+            scheme.tertiary,
+            scheme.surfaceVariant,
+        ).forEach { color ->
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(color),
+            )
+        }
     }
 }
