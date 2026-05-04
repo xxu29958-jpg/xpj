@@ -13,13 +13,20 @@ fun filterConfirmedExpenses(
     month: String,
     category: String,
     query: String = "",
+    zoneId: ZoneId = ZoneId.systemDefault(),
 ): List<Expense> {
     val cleanMonth = month.trim()
     val cleanCategory = category.trim()
     val cleanQuery = query.trim().lowercase()
+    val targetMonth = cleanMonth
+        .takeIf { it.isNotBlank() }
+        ?.let { value -> runCatching { YearMonth.parse(value) }.getOrNull() }
+    if (cleanMonth.isNotBlank() && targetMonth == null) {
+        return emptyList()
+    }
     return expenses.filter { expense ->
-        val timeKey = expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt
-        val monthMatched = cleanMonth.isBlank() || timeKey.startsWith(cleanMonth)
+        val expenseMonth = expense.ledgerLocalDate(zoneId)?.let { YearMonth.from(it) }
+        val monthMatched = targetMonth == null || expenseMonth == targetMonth
         val categoryMatched = cleanCategory.isBlank() || expense.category == cleanCategory
         val queryMatched = cleanQuery.isBlank() || listOfNotNull(
             expense.merchant,
