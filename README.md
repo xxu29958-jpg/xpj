@@ -20,6 +20,7 @@ iPhone 截图账单
 - [API 文档](docs/API.md)
 - [安全说明](docs/SECURITY.md)
 - [iPhone 快捷指令](docs/IOS_SHORTCUT.md)
+- [Cloudflare Tunnel 配置](docs/CLOUDFLARE_TUNNEL.md)
 - [实机联调 Runbook](docs/REAL_DEVICE_RUNBOOK.md)
 - [第二版路线](docs/V2_ROADMAP.md)
 - [项目结构](docs/PROJECT_STRUCTURE.md)
@@ -136,4 +137,11 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_project.ps1
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+```
+
+检查 Cloudflare Tunnel 公网入口：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
+  -ServerUrl https://api.你的域名.com
 ```

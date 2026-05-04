@@ -11,6 +11,7 @@ E:\projects\xiaopiaojia\
   .gitignore
   README.md
   scripts\
+    check_cloudflare_endpoint.ps1
     check_text_encoding.ps1
     real_device_preflight.ps1
     verify_project.ps1
@@ -118,6 +119,7 @@ docs\
   ANDROID_RULES.md
   BACKEND_RULES.md
   CI.md
+  CLOUDFLARE_TUNNEL.md
   ENGINEERING_RULES.md
   IOS_SHORTCUT.md
   REAL_DEVICE_RUNBOOK.md
