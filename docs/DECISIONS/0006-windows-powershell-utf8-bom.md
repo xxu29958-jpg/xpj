@@ -2,7 +2,7 @@
 
 ## 决策
 
-后端 `backend/scripts/*.ps1` 使用 UTF-8 with BOM 保存。
+所有 `.ps1` 使用 UTF-8 with BOM 保存。读取中文文本时，Windows PowerShell 5.1 必须显式使用 `-Encoding UTF8`。
 
 ## 原因
 
@@ -13,6 +13,8 @@ Microsoft Learn `about_Character_Encoding` 说明：如果脚本包含非 ASCII 
 ## 影响
 
 - 新增或修改 `.ps1` 后，需要确认 Windows PowerShell 5.1 能直接运行。
+- 用 PowerShell 查看 Markdown、README、Kotlin、Python、YAML 等中文文本时，必须使用 `Get-Content -Encoding UTF8`。
+- CI 运行 `scripts\check_text_encoding.ps1`，检查文本文件是合法 UTF-8，并阻止常见 UTF-8/ANSI 误读后写回的乱码片段。
 - 不用 WSL、Docker 或 Linux shell 作为脚本运行前提。
 - `.bat` 入口继续使用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ...`。
 
@@ -20,6 +22,7 @@ Microsoft Learn `about_Character_Encoding` 说明：如果脚本包含非 ASCII 
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\setup_backend.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
 ```
 
 必须能直接运行，不得依赖用户先修改系统编码或 PowerShell profile。

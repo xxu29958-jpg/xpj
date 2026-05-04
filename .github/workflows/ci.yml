@@ -32,6 +32,7 @@ jobs:
         working-directory: .
         shell: powershell
         run: |
+          powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
           $roots = @("backend/scripts", "android/scripts", "scripts") | Where-Object { Test-Path $_ }
           $files = Get-ChildItem -Path $roots -Filter *.ps1 -Recurse
           foreach ($file in $files) {

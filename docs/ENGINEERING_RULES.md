@@ -346,6 +346,28 @@ Windows PowerShell 5.1 对无 BOM 的 UTF-8 脚本可能按 ANSI 解析。
 包含中文输出的脚本如果无 BOM，可能乱码或解析失败。
 ```
 
+读取规则：
+
+```powershell
+Get-Content -Raw -Encoding UTF8 README.md
+Get-Content -Raw -Encoding UTF8 docs\ENGINEERING_RULES.md
+```
+
+禁止：
+
+```powershell
+Get-Content -Raw README.md
+Get-Content -Raw docs\ENGINEERING_RULES.md
+```
+
+原因是 Windows PowerShell 5.1 在无 BOM 文件上可能按系统 ANSI 代码页读取，中文会显示为常见 UTF-8/ANSI 误读乱码。文件本身可以是 UTF-8，但读取命令必须显式声明编码。
+
+验收：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+```
+
 ## 10. 网络与认证规范
 
 上传截图只使用：
