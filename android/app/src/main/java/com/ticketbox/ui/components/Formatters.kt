@@ -5,10 +5,13 @@ import java.math.RoundingMode
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 fun formatAmount(amountCents: Long?): String {
@@ -51,25 +54,76 @@ fun displayDate(value: String?): String {
         .getOrElse { value.take(10) }
 }
 
-fun selectedDateMillisFromIso(value: String?): Long? {
+fun displayDateTime(value: String?): String {
+    if (value.isNullOrBlank()) return "未设置"
+    val formatter = DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")
+    return parseLocalDateTime(value)
+        ?.format(formatter)
+        ?: value.replace("T", " ").removeSuffix("Z")
+}
+
+fun selectedDateMillisFromIso(value: String?, zoneId: ZoneId = ZoneId.systemDefault()): Long? {
     if (value.isNullOrBlank()) return null
-    val localDate = runCatching { Instant.parse(value).atZone(ZoneId.systemDefault()).toLocalDate() }
-        .recoverCatching { OffsetDateTime.parse(value).toInstant().atZone(ZoneId.systemDefault()).toLocalDate() }
-        .getOrNull()
+    val localDate = parseLocalDateTime(value, zoneId)
+        ?.toLocalDate()
         ?: return null
     return localDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 }
 
-fun datePickerMillisToUtcIso(value: Long): String {
-    val selectedDate = Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).toLocalDate()
-    return selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
+fun selectedHourFromIso(value: String?, zoneId: ZoneId = ZoneId.systemDefault()): Int {
+    return parseLocalDateTime(value, zoneId)?.hour ?: LocalTime.now(zoneId).hour
 }
 
-fun todayUtcIsoStartOfDay(): String {
-    return LocalDate.now(ZoneId.systemDefault())
-        .atStartOfDay(ZoneId.systemDefault())
+fun selectedMinuteFromIso(value: String?, zoneId: ZoneId = ZoneId.systemDefault()): Int {
+    return parseLocalDateTime(value, zoneId)?.minute ?: LocalTime.now(zoneId).minute
+}
+
+fun datePickerMillisToUtcIso(
+    value: Long,
+    currentIso: String? = null,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String {
+    val selectedDate = Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).toLocalDate()
+    val time = parseLocalDateTime(currentIso, zoneId)?.toLocalTime()
+        ?: LocalTime.now(zoneId).truncatedTo(ChronoUnit.MINUTES)
+    return LocalDateTime.of(selectedDate, time)
+        .atZone(zoneId)
         .toInstant()
         .toString()
+}
+
+fun timePickerToUtcIso(
+    hour: Int,
+    minute: Int,
+    currentIso: String? = null,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String {
+    val date = parseLocalDateTime(currentIso, zoneId)?.toLocalDate()
+        ?: LocalDate.now(zoneId)
+    return LocalDateTime.of(date, LocalTime.of(hour, minute))
+        .atZone(zoneId)
+        .toInstant()
+        .toString()
+}
+
+fun nowUtcIso(zoneId: ZoneId = ZoneId.systemDefault()): String {
+    return LocalDateTime.now(zoneId)
+        .truncatedTo(ChronoUnit.MINUTES)
+        .atZone(zoneId)
+        .toInstant()
+        .toString()
+}
+
+private fun parseLocalDateTime(
+    value: String?,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): LocalDateTime? {
+    if (value.isNullOrBlank()) return null
+    return runCatching { Instant.parse(value).atZone(zoneId).toLocalDateTime() }
+        .recoverCatching { OffsetDateTime.parse(value).toInstant().atZone(zoneId).toLocalDateTime() }
+        .recoverCatching { LocalDateTime.parse(value) }
+        .recoverCatching { LocalDate.parse(value.take(10)).atStartOfDay() }
+        .getOrNull()
 }
 
 fun formatStorageSize(bytes: Long): String {

@@ -4,6 +4,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 class FormattersTest {
     @Test
@@ -25,6 +27,36 @@ class FormattersTest {
 
         assertTrue(rendered.contains("2026-05-03"))
         assertTrue(rendered.contains(":"))
+    }
+
+    @Test
+    fun updatesDateWithoutLosingExistingTime() {
+        val selectedDateMillis = LocalDate.parse("2026-05-04")
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+
+        val iso = datePickerMillisToUtcIso(
+            value = selectedDateMillis,
+            currentIso = "2026-05-03T04:20:00Z",
+            zoneId = ZoneOffset.UTC,
+        )
+
+        assertEquals("2026-05-04T04:20:00Z", iso)
+    }
+
+    @Test
+    fun updatesTimeWithoutLosingExistingDate() {
+        val iso = timePickerToUtcIso(
+            hour = 8,
+            minute = 45,
+            currentIso = "2026-05-03T04:20:00Z",
+            zoneId = ZoneOffset.UTC,
+        )
+
+        assertEquals("2026-05-03T08:45:00Z", iso)
+        assertEquals(8, selectedHourFromIso(iso, ZoneOffset.UTC))
+        assertEquals(45, selectedMinuteFromIso(iso, ZoneOffset.UTC))
     }
 
     @Test

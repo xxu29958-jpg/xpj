@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,11 +45,14 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
-import com.ticketbox.ui.components.displayDate
+import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.components.selectedDateMillisFromIso
-import com.ticketbox.ui.components.todayUtcIsoStartOfDay
+import com.ticketbox.ui.components.selectedHourFromIso
+import com.ticketbox.ui.components.selectedMinuteFromIso
+import com.ticketbox.ui.components.timePickerToUtcIso
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,6 +89,7 @@ fun ExpenseEditScreen(
     var rawTextExpanded by remember(currentExpense.id) { mutableStateOf(false) }
     var moreExpanded by remember(currentExpense.id) { mutableStateOf(false) }
     var showDatePicker by remember(currentExpense.id) { mutableStateOf(false) }
+    var showTimePicker by remember(currentExpense.id) { mutableStateOf(false) }
     var showRejectDialog by remember(currentExpense.id) { mutableStateOf(false) }
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() } ?: "第一版为空"
     val previewImage = state.fullImage ?: state.thumbnail
@@ -99,7 +104,7 @@ fun ExpenseEditScreen(
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { selected ->
-                            expenseTime = datePickerMillisToUtcIso(selected)
+                            expenseTime = datePickerMillisToUtcIso(selected, expenseTime)
                         }
                         showDatePicker = false
                     },
@@ -115,6 +120,38 @@ fun ExpenseEditScreen(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+
+    if (showTimePicker) {
+        val timePickerState = androidx.compose.material3.rememberTimePickerState(
+            initialHour = selectedHourFromIso(expenseTime),
+            initialMinute = selectedMinuteFromIso(expenseTime),
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("选择时间") },
+            text = { TimeInput(state = timePickerState) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        expenseTime = timePickerToUtcIso(
+                            hour = timePickerState.hour,
+                            minute = timePickerState.minute,
+                            currentIso = expenseTime,
+                        )
+                        showTimePicker = false
+                    },
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 
     if (showRejectDialog) {
@@ -250,7 +287,8 @@ fun ExpenseEditScreen(
         ExpenseDateField(
             expenseTime = expenseTime,
             onPickDate = { showDatePicker = true },
-            onUseToday = { expenseTime = todayUtcIsoStartOfDay() },
+            onPickTime = { showTimePicker = true },
+            onUseNow = { expenseTime = nowUtcIso() },
             onClear = { expenseTime = "" },
         )
         Text("来源：${currentExpense.source}", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -396,7 +434,8 @@ private fun SelectableCategoryChip(
 private fun ExpenseDateField(
     expenseTime: String,
     onPickDate: () -> Unit,
-    onUseToday: () -> Unit,
+    onPickTime: () -> Unit,
+    onUseNow: () -> Unit,
     onClear: () -> Unit,
 ) {
     Card(
@@ -414,19 +453,22 @@ private fun ExpenseDateField(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("消费日期", style = MaterialTheme.typography.titleSmall)
+                    Text("消费时间", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        text = displayDate(expenseTime),
+                        text = displayDateTime(expenseTime),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 OutlinedButton(onClick = onPickDate) {
-                    Text("选择")
+                    Text("选日期")
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onUseToday) {
-                    Text("设为今天")
+                TextButton(onClick = onPickTime) {
+                    Text("选时间")
+                }
+                TextButton(onClick = onUseNow) {
+                    Text("设为现在")
                 }
                 TextButton(
                     enabled = expenseTime.isNotBlank(),
