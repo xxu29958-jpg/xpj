@@ -21,6 +21,8 @@ ERROR_MESSAGES = {
     "rule_in_use": "分类规则仍在使用，不能删除。",
     "server_error": "服务器内部错误。",
     "invalid_request": "请求参数不正确。",
+    "route_not_found": "接口不存在。",
+    "method_not_allowed": "请求方法不允许。",
 }
 
 
@@ -53,6 +55,10 @@ async def validation_error_handler(_: Request, __: RequestValidationError) -> JS
 async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
     if exc.status_code in {401, 403}:
         return error_response("invalid_token", ERROR_MESSAGES["invalid_token"], exc.status_code)
+    if exc.status_code == 404:
+        return error_response("route_not_found", ERROR_MESSAGES["route_not_found"], exc.status_code)
+    if exc.status_code == 405:
+        return error_response("method_not_allowed", ERROR_MESSAGES["method_not_allowed"], exc.status_code)
     return error_response("invalid_request", str(exc.detail), exc.status_code)
 
 
