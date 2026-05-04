@@ -10,8 +10,8 @@ class ConnectionDiagnosticsTest {
     fun summarizesHealthyDiagnostics() {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
-                DiagnosticCheck("Token 校验", DiagnosticStatus.Pass, "APP_TOKEN 有效", 12),
-                DiagnosticCheck("服务器状态", DiagnosticStatus.Pass, "状态接口可用", 20),
+                DiagnosticCheck("身份验证", DiagnosticStatus.Pass, "访问凭证有效", 12),
+                DiagnosticCheck("服务器状态", DiagnosticStatus.Pass, "小票夹服务正常", 20),
             ),
         )
 
@@ -37,7 +37,7 @@ class ConnectionDiagnosticsTest {
     fun failuresMakeDiagnosticsUnhealthy() {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
-                DiagnosticCheck("Token 校验", DiagnosticStatus.Fail, "Token 无效", 18),
+                DiagnosticCheck("身份验证", DiagnosticStatus.Fail, "访问口令不对，请重新检查。", 18),
             ),
         )
 

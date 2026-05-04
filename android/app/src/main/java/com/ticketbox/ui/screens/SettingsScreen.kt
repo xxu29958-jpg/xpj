@@ -139,7 +139,7 @@ fun SettingsScreen(
             onDismissRequest = { showClearBindingDialog = false },
             title = { Text("清除服务器绑定？") },
             text = {
-                Text("清除后需要重新输入服务器地址和 App Token。服务器上的账单不会删除。")
+                Text("清除后需要重新输入服务器地址和访问口令。服务器上的账单不会删除。")
             },
             confirmButton = {
                 TextButton(

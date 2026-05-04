@@ -60,7 +60,7 @@ fun BindServerScreen(
             value = token,
             onValueChange = { token = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("App Token") },
+            label = { Text("访问口令") },
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
         )

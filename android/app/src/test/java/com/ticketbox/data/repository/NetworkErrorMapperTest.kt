@@ -25,7 +25,7 @@ class NetworkErrorMapperTest {
             serverUrl = "https://api.zen70.cn",
         )
 
-        assertEquals("连接不上服务器，请稍后再试。", message)
+        assertEquals("暂时连不上小票夹，请稍后再试。", message)
     }
 
     @Test
@@ -73,6 +73,6 @@ class NetworkErrorMapperTest {
             validateBindingInput(serverUrl = "https://api.zen70.cn", appToken = " ")
         }
 
-        assertEquals("请输入 App Token。", error.message)
+        assertEquals("请输入访问口令。", error.message)
     }
 }

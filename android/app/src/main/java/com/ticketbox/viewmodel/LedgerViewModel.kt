@@ -115,7 +115,7 @@ class LedgerViewModel(
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(syncing = false, message = error.message ?: "服务器不可用，已显示本地缓存")
+                        it.copy(syncing = false, message = error.message ?: "暂时同步不了，先看本机账本。")
                     }
                 }
         }
