@@ -25,6 +25,20 @@ class LocalSettingsStore(context: Context) {
         }
     }
 
+    fun lastConfirmedSyncAt(): String? = prefs.getString(KEY_LAST_CONFIRMED_SYNC_AT, null)
+
+    fun saveLastConfirmedSyncAt(value: String) {
+        prefs.edit {
+            putString(KEY_LAST_CONFIRMED_SYNC_AT, value)
+        }
+    }
+
+    fun clearLastConfirmedSyncAt() {
+        prefs.edit {
+            remove(KEY_LAST_CONFIRMED_SYNC_AT)
+        }
+    }
+
     fun saveAppSkinKey(skinKey: String) {
         prefs.edit {
             putString(KEY_APP_SKIN, skinKey)
@@ -69,6 +83,7 @@ class LocalSettingsStore(context: Context) {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_APP_SKIN = "app_skin"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
+        const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
         const val NO_BUDGET = -1L

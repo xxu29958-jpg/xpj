@@ -56,6 +56,7 @@ import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.formatStorageSize
+import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -231,6 +232,23 @@ fun SettingsScreen(
             )
         }
         SettingSection(title = "维护") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("本地账本同步", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = state.lastConfirmedSyncAt?.let { "上次同步：${displayTime(it)}" } ?: "还没有成功同步过账本",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onSync,
