@@ -3,8 +3,10 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.recentDailySpending
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +17,7 @@ import java.time.YearMonth
 data class StatsUiState(
     val stats: MonthlyStats? = null,
     val lifestyleStats: LifestyleStats? = null,
+    val dailyTrend: List<DailySpend> = emptyList(),
     val months: List<String> = emptyList(),
     val month: String = YearMonth.now().toString(),
     val loading: Boolean = false,
@@ -29,6 +32,7 @@ class StatsViewModel(
 
     init {
         loadMonths()
+        observeDailyTrend()
         refresh()
     }
 
@@ -36,6 +40,14 @@ class StatsViewModel(
         viewModelScope.launch {
             repository.months()
                 .onSuccess { months -> _uiState.update { it.copy(months = months) } }
+        }
+    }
+
+    private fun observeDailyTrend() {
+        viewModelScope.launch {
+            repository.observeConfirmed().collect { expenses ->
+                _uiState.update { it.copy(dailyTrend = recentDailySpending(expenses)) }
+            }
         }
     }
 
@@ -52,6 +64,7 @@ class StatsViewModel(
                 .onSuccess { stats ->
                     repository.lifestyleStats(month)
                         .onSuccess { lifestyle ->
+                            repository.syncConfirmed(month)
                             _uiState.update {
                                 it.copy(stats = stats, lifestyleStats = lifestyle, loading = false)
                             }

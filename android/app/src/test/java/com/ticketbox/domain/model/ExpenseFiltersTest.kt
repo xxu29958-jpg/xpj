@@ -2,6 +2,8 @@ package com.ticketbox.domain.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 class ExpenseFiltersTest {
     @Test
@@ -29,15 +31,37 @@ class ExpenseFiltersTest {
         assertEquals(listOf(1L), filtered.map { it.id })
     }
 
+    @Test
+    fun buildsSevenDayTrendUsingExpenseTimeFallback() {
+        val items = listOf(
+            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
+            expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
+            expense(id = 3, category = "购物", expenseTime = "2026-04-28T04:20:00Z", amountCents = 9900),
+        )
+
+        val trend = recentDailySpending(
+            expenses = items,
+            referenceDate = LocalDate.parse("2026-05-04"),
+            zoneId = ZoneOffset.UTC,
+        )
+
+        assertEquals(7, trend.size)
+        assertEquals("2026-04-28", trend.first().date)
+        assertEquals(9900, trend.first().amountCents)
+        assertEquals(1200, trend[5].amountCents)
+        assertEquals(2300, trend[6].amountCents)
+    }
+
     private fun expense(
         id: Long,
         category: String,
         expenseTime: String?,
         confirmedAt: String? = "2026-05-03T04:20:00Z",
+        amountCents: Long? = 100,
     ): Expense {
         return Expense(
             id = id,
-            amountCents = 100,
+            amountCents = amountCents,
             merchant = "测试商家",
             category = category,
             note = null,

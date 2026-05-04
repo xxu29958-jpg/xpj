@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.CategoryStats
+import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
@@ -96,6 +98,9 @@ fun StatsScreen(
                     lifestyle = state.lifestyleStats,
                 )
             }
+            item {
+                RecentTrendCard(state.dailyTrend)
+            }
             state.lifestyleStats?.let { lifestyle ->
                 item {
                     LifestyleCard(lifestyle)
@@ -125,6 +130,104 @@ fun StatsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RecentTrendCard(trend: List<DailySpend>) {
+    val maxAmount = trend.maxOfOrNull { it.amountCents } ?: 0L
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("最近 7 天趋势", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "本地账本",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (trend.isEmpty() || maxAmount == 0L) {
+                Text(
+                    text = "本地缓存暂无最近支出，同步后会显示每日变化。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(132.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    trend.forEach { day ->
+                        DailyTrendBar(
+                            modifier = Modifier.weight(1f),
+                            day = day,
+                            maxAmount = maxAmount,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyTrendBar(
+    modifier: Modifier,
+    day: DailySpend,
+    maxAmount: Long,
+) {
+    val progress = if (maxAmount > 0) {
+        (day.amountCents.toFloat() / maxAmount.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val barHeight = if (day.amountCents > 0L) {
+        (16 + 76 * progress).dp
+    } else {
+        8.dp
+    }
+    val barColor = if (day.amountCents > 0L) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+    }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(92.dp),
+            contentAlignment = androidx.compose.ui.Alignment.BottomCenter,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(barHeight)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(barColor),
+            )
+        }
+        Text(
+            text = day.label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
