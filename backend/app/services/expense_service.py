@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense
-from app.schemas import ExpenseUpdateRequest
+from app.schemas import ExpenseManualCreateRequest, ExpenseUpdateRequest
 from app.services.classify_service import classify_expense
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.duplicate_service import (
@@ -47,6 +47,41 @@ def create_pending_expense(db: Session, saved_file: SavedUpload) -> Expense:
         created_at=now,
         updated_at=now,
     )
+    db.add(expense)
+    db.flush()
+    mark_duplicate_status(db, expense)
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest) -> Expense:
+    if payload.amount_cents is None:
+        raise AppError("amount_required", status_code=400)
+
+    now = now_utc()
+    expense = Expense(
+        amount_cents=payload.amount_cents,
+        merchant=payload.merchant.strip() if payload.merchant else None,
+        category=(payload.category or "其他").strip() or "其他",
+        note=payload.note or "",
+        source="手动记账",
+        image_path=None,
+        thumbnail_path=None,
+        image_hash=None,
+        raw_text="",
+        confidence=None,
+        status="confirmed",
+        expense_time=ensure_utc(payload.expense_time) or now,
+        created_at=now,
+        updated_at=now,
+        confirmed_at=now,
+        tags=payload.tags,
+        value_score=payload.value_score,
+        regret_score=payload.regret_score,
+    )
+    if expense.category == "其他":
+        classify_expense(db, expense)
     db.add(expense)
     db.flush()
     mark_duplicate_status(db, expense)

@@ -274,6 +274,39 @@ def run_smoke(base_url: str) -> None:
     assert_true(uploaded["image_hash"], "image hash should be saved")
     print("OK pending query")
 
+    manual_body = json.dumps(
+        {
+            "amount_cents": 1280,
+            "merchant": "手动早餐",
+            "category": "吃饭",
+            "note": "上班路上",
+            "expense_time": "2026-05-04T00:30:00Z",
+            "tags": "手动",
+            "value_score": 4,
+            "regret_score": 1,
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/manual",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=manual_body,
+    )
+    assert_equal(result.status, 200, "manual create status")
+    manual_expense = result.json()
+    assert_equal(manual_expense["status"], "confirmed", "manual create confirmed")
+    assert_equal(manual_expense["source"], "手动记账", "manual create source")
+    assert_true(manual_expense["confirmed_at"].endswith("Z"), "manual confirmed_at should be ISO UTC")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/manual",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=b'{"merchant":"missing amount"}',
+    )
+    assert_error(result, 400, "amount_required")
+    print("OK manual expense create")
+
     result = request("GET", f"{base_url}/api/settings/server", headers=app_headers())
     assert_equal(result.status, 200, "server settings status")
     server_settings = result.json()
@@ -372,8 +405,8 @@ def run_smoke(base_url: str) -> None:
     result = request("GET", f"{base_url}/api/stats/monthly?month=2026-05", headers=app_headers())
     assert_equal(result.status, 200, "stats status")
     stats = result.json()
-    assert_equal(stats["total_amount_cents"], 3680, "stats total")
-    assert_equal(stats["count"], 1, "stats count")
+    assert_equal(stats["total_amount_cents"], 4960, "stats total")
+    assert_equal(stats["count"], 2, "stats count")
     assert_equal(stats["by_category"][0]["category"], "吃饭", "stats category")
     print("OK monthly stats")
 

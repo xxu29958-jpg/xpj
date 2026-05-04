@@ -181,6 +181,36 @@ Authorization: Bearer APP_TOKEN
 
 返回 pending 账单列表。
 
+### POST /api/expenses/manual
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
+用于 Android App 手动记一笔，创建后直接进入已确认账本。
+
+请求体：
+
+```json
+{
+  "amount_cents": 1280,
+  "merchant": "便利店",
+  "category": "生活",
+  "note": "上班路上",
+  "expense_time": "2026-05-04T00:30:00Z"
+}
+```
+
+规则：
+
+- `amount_cents` 必填，单位为分。
+- `expense_time` 可为空；为空时后端使用确认时间。
+- `source` 固定为 `手动记账`。
+- `status` 固定为 `confirmed`。
+- 不保存图片路径，不暴露本机路径。
+
 ### GET /api/expenses/confirmed
 
 请求头：

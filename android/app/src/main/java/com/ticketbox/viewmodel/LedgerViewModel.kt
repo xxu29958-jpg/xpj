@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.filterConfirmedExpenses
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,7 @@ data class LedgerUiState(
     val categoryFilter: String = "",
     val syncing: Boolean = false,
     val exporting: Boolean = false,
+    val creatingManual: Boolean = false,
     val message: String? = null,
 )
 
@@ -123,6 +125,35 @@ class LedgerViewModel(
                 }
                 .onFailure { error ->
                     _uiState.update { it.copy(exporting = false, message = error.message ?: "导出失败") }
+                }
+        }
+    }
+
+    fun createManualExpense(draft: ExpenseDraft) {
+        viewModelScope.launch {
+            if (draft.amountCents == null) {
+                _uiState.update { it.copy(message = "请先填写金额。") }
+                return@launch
+            }
+            _uiState.update { it.copy(creatingManual = true, message = null) }
+            repository.createManualExpense(draft)
+                .onSuccess { expense ->
+                    loadCategories()
+                    loadMonths()
+                    _uiState.update { state ->
+                        val next = state.copy(
+                            creatingManual = false,
+                            monthFilter = expense.expenseTime?.take(7) ?: state.monthFilter,
+                            categoryFilter = "",
+                            message = "已记入账本",
+                        )
+                        next.copy(items = filterItems(allConfirmed, next))
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(creatingManual = false, message = error.message ?: "保存失败")
+                    }
                 }
         }
     }

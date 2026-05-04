@@ -142,6 +142,46 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient) -> None:
     assert item["image_hash"]
 
 
+def test_manual_expense_create_contract(client: TestClient) -> None:
+    response = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1280,
+            "merchant": "手动早餐",
+            "category": "吃饭",
+            "note": "上班路上",
+            "expense_time": "2026-05-04T00:30:00Z",
+            "tags": "手动",
+            "value_score": 4,
+            "regret_score": 1,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "confirmed"
+    assert payload["source"] == "手动记账"
+    assert payload["amount_cents"] == 1280
+    assert payload["image_path"] is None
+    assert payload["confirmed_at"].endswith("Z")
+
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05&category=吃饭", headers=app_headers())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["total"] == 1
+
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert stats.status_code == 200
+    assert stats.json()["total_amount_cents"] == 1280
+
+    missing_amount = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={"merchant": "无金额"},
+    )
+    assert missing_amount.status_code == 400
+    assert missing_amount.json()["error"] == "amount_required"
+
+
 def test_duplicate_and_category_rule_contract(client: TestClient) -> None:
     first_id = upload_png(client)
     second_id = upload_png(client)

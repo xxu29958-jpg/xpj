@@ -262,6 +262,7 @@ private fun MainShell(
                         onClearFilters = ledgerViewModel::clearFilters,
                         onSync = ledgerViewModel::sync,
                         onExportCsv = ledgerViewModel::exportCsv,
+                        onManualCreate = ledgerViewModel::createManualExpense,
                     )
                 }
                 BottomTab.Stats -> {
