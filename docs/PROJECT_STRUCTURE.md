@@ -10,6 +10,9 @@ E:\projects\xiaopiaojia\
   .editorconfig
   .gitignore
   README.md
+  .github\
+    workflows\
+      ci.yml
 ```
 
 ## backend
@@ -107,6 +110,7 @@ docs\
   ARCHITECTURE.md
   ANDROID_RULES.md
   BACKEND_RULES.md
+  CI.md
   ENGINEERING_RULES.md
   IOS_SHORTCUT.md
   SECURITY.md

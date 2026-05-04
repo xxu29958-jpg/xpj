@@ -46,6 +46,14 @@
 - `schtasks create`：https://learn.microsoft.com/windows-server/administration/windows-commands/schtasks-create
 - PowerShell character encoding：https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding
 
+## CI
+
+- actions/checkout releases：https://github.com/actions/checkout/releases
+- actions/setup-python releases：https://github.com/actions/setup-python/releases
+- actions/setup-java releases：https://github.com/actions/setup-java/releases
+- actions/upload-artifact releases：https://github.com/actions/upload-artifact/releases
+- GitHub hosted runners：https://docs.github.com/actions/using-github-hosted-runners/about-github-hosted-runners
+
 ## Android 依赖元数据
 
 依赖版本升级必须查询官方 Maven 元数据，避免使用过时库、alpha/beta 弱依赖或凭记忆升级。
