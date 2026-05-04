@@ -67,6 +67,8 @@ fun ExpenseEditScreen(
     onLoadFullImage: () -> Unit,
     onKeepDuplicate: () -> Unit,
     onDone: () -> Unit,
+    allowConfirm: Boolean = true,
+    allowReject: Boolean = true,
 ) {
     val currentExpense = state.expense ?: expense
     var amountText by remember(currentExpense.id, currentExpense.updatedAt) {
@@ -383,23 +385,29 @@ fun ExpenseEditScreen(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = {
-                    val draft = draftOrMessage() ?: return@Button
-                    if (draft.amountCents == null) {
-                        message = "请先填写金额。"
-                        return@Button
+        if (allowConfirm || allowReject) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (allowConfirm) {
+                    Button(
+                        onClick = {
+                            val draft = draftOrMessage() ?: return@Button
+                            if (draft.amountCents == null) {
+                                message = "请先填写金额。"
+                                return@Button
+                            }
+                            onConfirm(draft)
+                        },
+                    ) {
+                        Text("确认入账")
                     }
-                    onConfirm(draft)
-                },
-            ) {
-                Text("确认入账")
-            }
-            OutlinedButton(
-                onClick = { showRejectDialog = true },
-            ) {
-                Text("删除")
+                }
+                if (allowReject) {
+                    OutlinedButton(
+                        onClick = { showRejectDialog = true },
+                    ) {
+                        Text("删除")
+                    }
+                }
             }
         }
         Spacer(Modifier.height(24.dp))

@@ -202,7 +202,11 @@ class ExpenseRepository(
     }
 
     suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = safeCall {
-        api().updateExpense(id, draft.toRequest()).toDomain()
+        val dto = api().updateExpense(id, draft.toRequest())
+        if (dto.status == "confirmed") {
+            expenseDao.upsertByServerId(dto.toEntity())
+        }
+        dto.toDomain()
     }
 
     suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = safeCall {

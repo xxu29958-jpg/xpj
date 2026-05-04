@@ -30,6 +30,9 @@ fun ExpenseCard(
     expense: Expense,
     thumbnail: ProtectedImage? = null,
     showActions: Boolean,
+    showConfirmAction: Boolean = showActions,
+    showRejectAction: Boolean = showActions,
+    showDuplicateAction: Boolean = showActions,
     onEdit: () -> Unit = {},
     onConfirm: () -> Unit = {},
     onReject: () -> Unit = {},
@@ -138,14 +141,18 @@ fun ExpenseCard(
                     OutlinedButton(onClick = onEdit) {
                         Text("编辑")
                     }
-                    Button(onClick = onConfirm) {
-                        Text("确认")
+                    if (showConfirmAction) {
+                        Button(onClick = onConfirm) {
+                            Text("确认")
+                        }
                     }
-                    OutlinedButton(onClick = { showRejectDialog = true }) {
-                        Text("删除")
+                    if (showRejectAction) {
+                        OutlinedButton(onClick = { showRejectDialog = true }) {
+                            Text("删除")
+                        }
                     }
                 }
-                if (expense.duplicateStatus == "suspected") {
+                if (showDuplicateAction && expense.duplicateStatus == "suspected") {
                     OutlinedButton(onClick = onKeepDuplicate) {
                         Text("仍然保留")
                     }
