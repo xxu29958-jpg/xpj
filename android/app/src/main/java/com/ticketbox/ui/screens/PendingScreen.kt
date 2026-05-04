@@ -1,16 +1,25 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -19,10 +28,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.ExpenseCard
+import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.viewmodel.PendingUiState
 
 @Composable
@@ -36,45 +48,45 @@ fun PendingScreen(
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        state.message?.let {
-            Text(
-                text = it,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                color = MaterialTheme.colorScheme.secondary,
-            )
-        }
-
-        if (state.items.isEmpty() && state.loading) {
-            Text(
-                text = "正在加载待确认账单…",
-                modifier = Modifier.padding(20.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            return
-        }
-
-        if (state.items.isEmpty() && !state.loading) {
-            EmptyPendingState(
-                showUploadGuide = showUploadGuide,
-                onToggleGuide = { showUploadGuide = !showUploadGuide },
-                onRefresh = onRefresh,
-            )
-            return
-        }
-
-        LazyColumn(
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    RefreshableLazyColumn(
+        isRefreshing = state.loading,
+        onRefresh = onRefresh,
+    ) {
+        state.message?.let { message ->
             item {
-                Button(
-                    enabled = !state.loading,
-                    onClick = onRefresh,
-                ) {
-                    Text(if (state.loading) "刷新中" else "刷新")
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+            }
+        }
+
+        when {
+            state.items.isEmpty() && state.loading -> {
+                item { LoadingPendingState() }
+            }
+
+            state.items.isEmpty() -> {
+                item {
+                    EmptyPendingState(
+                        showUploadGuide = showUploadGuide,
+                        onToggleGuide = { showUploadGuide = !showUploadGuide },
+                        onRefresh = onRefresh,
+                    )
                 }
             }
+
+            else -> {
+                item {
+                    PendingHeader(
+                        loading = state.loading,
+                        onRefresh = onRefresh,
+                    )
+                }
+            }
+        }
+
+        if (state.items.isNotEmpty()) {
             items(state.items, key = { it.id }) { expense ->
                 ExpenseCard(
                     expense = expense,
@@ -86,6 +98,49 @@ fun PendingScreen(
                     onKeepDuplicate = { onKeepDuplicate(expense) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun LoadingPendingState() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        ),
+    ) {
+        Text(
+            text = "正在加载待确认账单…",
+            modifier = Modifier.padding(18.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PendingHeader(
+    loading: Boolean,
+    onRefresh: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("待确认", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                text = "下拉刷新，确认后才会进入账本。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        OutlinedButton(
+            enabled = !loading,
+            onClick = onRefresh,
+        ) {
+            Text(if (loading) "刷新中" else "刷新")
         }
     }
 }
@@ -110,8 +165,11 @@ private fun EmptyPendingState(
         ) {
             Column(
                 modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                ReceiptEmptyIllustration()
+                Spacer(Modifier.height(2.dp))
                 Text("还没有待确认账单", style = MaterialTheme.typography.titleLarge)
                 Text(
                     text = "在 iPhone 上分享账单截图到“小票夹”，上传成功后会出现在这里，确认后才会入账。",
@@ -119,15 +177,15 @@ private fun EmptyPendingState(
                 )
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    onClick = onRefresh,
-                ) {
-                    Text("刷新看看")
-                }
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
                     onClick = onToggleGuide,
                 ) {
                     Text(if (showUploadGuide) "收起上传方法" else "查看上传方法")
+                }
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onRefresh,
+                ) {
+                    Text("刷新看看")
                 }
             }
         }
@@ -148,6 +206,32 @@ private fun EmptyPendingState(
                     Text("3. 上传成功后回到这里刷新。")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ReceiptEmptyIllustration() {
+    Box(
+        modifier = Modifier
+            .size(92.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(36.dp),
+            )
         }
     }
 }

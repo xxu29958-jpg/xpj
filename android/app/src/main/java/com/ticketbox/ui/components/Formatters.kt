@@ -4,8 +4,10 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
 import java.time.Instant
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -38,6 +40,36 @@ fun displayTime(value: String?): String {
     return runCatching { formatter.format(Instant.parse(value)) }
         .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
         .getOrElse { value.replace("T", " ").removeSuffix("Z") }
+}
+
+fun displayDate(value: String?): String {
+    if (value.isNullOrBlank()) return "未设置"
+    val localZone = ZoneId.systemDefault()
+    val formatter = DateTimeFormatter.ofPattern("yyyy年M月d日").withZone(localZone)
+    return runCatching { formatter.format(Instant.parse(value)) }
+        .recoverCatching { formatter.format(OffsetDateTime.parse(value).toInstant()) }
+        .getOrElse { value.take(10) }
+}
+
+fun selectedDateMillisFromIso(value: String?): Long? {
+    if (value.isNullOrBlank()) return null
+    val localDate = runCatching { Instant.parse(value).atZone(ZoneId.systemDefault()).toLocalDate() }
+        .recoverCatching { OffsetDateTime.parse(value).toInstant().atZone(ZoneId.systemDefault()).toLocalDate() }
+        .getOrNull()
+        ?: return null
+    return localDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+}
+
+fun datePickerMillisToUtcIso(value: Long): String {
+    val selectedDate = Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).toLocalDate()
+    return selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
+}
+
+fun todayUtcIsoStartOfDay(): String {
+    return LocalDate.now(ZoneId.systemDefault())
+        .atStartOfDay(ZoneId.systemDefault())
+        .toInstant()
+        .toString()
 }
 
 fun formatStorageSize(bytes: Long): String {
