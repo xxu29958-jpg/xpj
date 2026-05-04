@@ -1,9 +1,16 @@
 package com.ticketbox.ui.theme
 
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.ticketbox.domain.model.AppSkin
 
@@ -12,11 +19,11 @@ private val PineScheme = darkColorScheme(
     onPrimary = Color(0xFF122116),
     secondary = Color(0xFFFFD6A5),
     onSecondary = Color(0xFF2D1A00),
-    background = Color(0xFF101417),
-    onBackground = Color(0xFFE8EEE9),
-    surface = Color(0xFF171D20),
+    background = Color(0xFF07120D),
+    onBackground = Color(0xFFE9F2EA),
+    surface = Color(0xFF132019),
     onSurface = Color(0xFFE8EEE9),
-    surfaceVariant = Color(0xFF243035),
+    surfaceVariant = Color(0xFF26362C),
     onSurfaceVariant = Color(0xFFC5D0CA),
     tertiary = Color(0xFFFFB4C8),
     onTertiary = Color(0xFF3B1020),
@@ -29,11 +36,11 @@ private val PomeloScheme = darkColorScheme(
     onSecondary = Color(0xFF062116),
     tertiary = Color(0xFFFFA6B8),
     onTertiary = Color(0xFF3A101B),
-    background = Color(0xFF141411),
-    onBackground = Color(0xFFF0EEE6),
-    surface = Color(0xFF1D1C18),
+    background = Color(0xFF211607),
+    onBackground = Color(0xFFF4EBDD),
+    surface = Color(0xFF2A2112),
     onSurface = Color(0xFFF0EEE6),
-    surfaceVariant = Color(0xFF302C24),
+    surfaceVariant = Color(0xFF43351E),
     onSurfaceVariant = Color(0xFFD7D0C4),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
@@ -46,11 +53,11 @@ private val HarborScheme = darkColorScheme(
     onSecondary = Color(0xFF2B1B00),
     tertiary = Color(0xFFC9D7FF),
     onTertiary = Color(0xFF17254A),
-    background = Color(0xFF101414),
-    onBackground = Color(0xFFE9EEEE),
-    surface = Color(0xFF171D1D),
+    background = Color(0xFF061827),
+    onBackground = Color(0xFFE7F1F3),
+    surface = Color(0xFF102635),
     onSurface = Color(0xFFE9EEEE),
-    surfaceVariant = Color(0xFF243030),
+    surfaceVariant = Color(0xFF1C4050),
     onSurfaceVariant = Color(0xFFC7D1CF),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
@@ -63,11 +70,11 @@ private val BerryScheme = darkColorScheme(
     onSecondary = Color(0xFF092116),
     tertiary = Color(0xFFFFD98D),
     onTertiary = Color(0xFF2D1D00),
-    background = Color(0xFF171215),
-    onBackground = Color(0xFFF1E8EC),
-    surface = Color(0xFF21191E),
+    background = Color(0xFF25101B),
+    onBackground = Color(0xFFF5E8EF),
+    surface = Color(0xFF311B26),
     onSurface = Color(0xFFF1E8EC),
-    surfaceVariant = Color(0xFF34262D),
+    surfaceVariant = Color(0xFF4A2C3A),
     onSurfaceVariant = Color(0xFFD8C6CE),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
@@ -82,6 +89,39 @@ fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
     }
 }
 
+fun backgroundBrushForSkin(skin: AppSkin): Brush {
+    return when (skin) {
+        AppSkin.Pine -> Brush.verticalGradient(
+            listOf(
+                Color(0xFF06100B),
+                Color(0xFF0E1B14),
+                Color(0xFF18251D),
+            ),
+        )
+        AppSkin.Pomelo -> Brush.verticalGradient(
+            listOf(
+                Color(0xFF281706),
+                Color(0xFF1D2112),
+                Color(0xFF10241D),
+            ),
+        )
+        AppSkin.Harbor -> Brush.verticalGradient(
+            listOf(
+                Color(0xFF061A2B),
+                Color(0xFF123747),
+                Color(0xFF231A10),
+            ),
+        )
+        AppSkin.Berry -> Brush.verticalGradient(
+            listOf(
+                Color(0xFF2B1020),
+                Color(0xFF211B33),
+                Color(0xFF10261B),
+            ),
+        )
+    }
+}
+
 @Composable
 fun TicketboxTheme(
     skin: AppSkin,
@@ -90,6 +130,15 @@ fun TicketboxTheme(
     MaterialTheme(
         colorScheme = colorSchemeForSkin(skin),
         typography = MaterialTheme.typography,
-        content = content,
-    )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(backgroundBrushForSkin(skin)),
+        ) {
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+                content()
+            }
+        }
+    }
 }

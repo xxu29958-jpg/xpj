@@ -1,20 +1,25 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -25,14 +30,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.CircleShape
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.DiagnosticStatus
+import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.components.formatStorageSize
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -58,46 +65,72 @@ fun SettingsScreen(
     var priorityText by remember { mutableStateOf("10") }
     var editingRule by remember { mutableStateOf<CategoryRule?>(null) }
     var localMessage by remember { mutableStateOf<String?>(null) }
+    var showServerStatusDetails by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Text("设置", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            text = "当前服务器：${state.serverUrl ?: "未绑定"}",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "小票夹是私人半自动账本。截图上传后不会自动入账，需要你确认后才会记录。",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
 
-        Text("外观", style = MaterialTheme.typography.titleMedium)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppSkin.entries.forEach { skin ->
-                SkinOptionButton(
-                    skin = skin,
-                    selected = skin == currentSkin,
-                    onClick = { onSkinChange(skin) },
-                )
+        SettingSection(title = "外观") {
+            AppSkin.entries.chunked(2).forEach { rowSkins ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    rowSkins.forEach { skin ->
+                        SkinOptionCard(
+                            modifier = Modifier.weight(1f),
+                            skin = skin,
+                            selected = skin == currentSkin,
+                            onClick = { onSkinChange(skin) },
+                        )
+                    }
+                    if (rowSkins.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
 
-        Button(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onTestConnection,
-        ) {
-            Text(if (state.busy) "处理中" else "测试连接")
-        }
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onRunDiagnostics,
-        ) {
-            Text("联调自检")
+        SettingSection(title = "连接") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("当前服务器", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text = state.serverUrl ?: "未绑定",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = onTestConnection,
+                ) {
+                    Text(if (state.busy) "处理中" else "测试连接")
+                }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onRunDiagnostics,
+                ) {
+                    Text("联调自检")
+                }
+            }
         }
         state.diagnostics?.let { diagnostics ->
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -126,43 +159,37 @@ fun SettingsScreen(
                 }
             }
         }
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onSync,
-        ) {
-            Text("重新同步")
-        }
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onClearCache,
-        ) {
-            Text("清除本地缓存")
-        }
-
-        Text("服务器状态", style = MaterialTheme.typography.titleMedium)
-        state.serverSettings?.let { serverSettings ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("上传限制：${serverSettings.maxUploadSizeMb} MB")
-                    Text("缩略图：${if (serverSettings.generateThumbnail) "已启用" else "未启用"}")
-                    Text(
-                        "确认后删原图：${if (serverSettings.deleteImageAfterConfirm) "已启用" else "未启用"}",
-                    )
-                    Text("保留天数：${serverSettings.deleteImageAfterDays}")
-                    Text("OCR：${serverSettings.ocrProvider}")
-                    Text(
-                        "账单：待确认 ${serverSettings.pendingCount} · 已确认 ${serverSettings.confirmedCount} · 已拒绝 ${serverSettings.rejectedCount}",
-                    )
-                    Text("疑似重复：${serverSettings.suspectedDuplicateCount}")
-                    Text("图片占用：${formatStorageSize(serverSettings.uploadStorageBytes)}")
+        SettingSection(title = "维护") {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onSync,
+                ) {
+                    Text("重新同步")
+                }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onClearCache,
+                ) {
+                    Text("清缓存")
                 }
             }
-        } ?: Text("服务器状态未加载", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onRefreshServerSettings,
-        ) {
-            Text("刷新服务器状态")
+        }
+
+        SettingSection(title = "服务器状态") {
+            state.serverSettings?.let { serverSettings ->
+                ServerStatusCard(
+                    serverSettings = serverSettings,
+                    expanded = showServerStatusDetails,
+                    onToggleExpanded = { showServerStatusDetails = !showServerStatusDetails },
+                )
+            } ?: Text("服务器状态未加载", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onRefreshServerSettings,
+            ) {
+                Text("刷新")
+            }
         }
 
         Text("自动分类规则", style = MaterialTheme.typography.titleMedium)
@@ -286,51 +313,116 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SkinOptionButton(
+private fun ServerStatusCard(
+    serverSettings: ServerSettings,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "账单 ${serverSettings.pendingCount} / ${serverSettings.confirmedCount} / ${serverSettings.rejectedCount}",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                text = "图片 ${formatStorageSize(serverSettings.uploadStorageBytes)} · OCR ${serverSettings.ocrProvider}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("上传限制：${serverSettings.maxUploadSizeMb} MB")
+                    Text("缩略图：${if (serverSettings.generateThumbnail) "已启用" else "未启用"}")
+                    Text("确认后删原图：${if (serverSettings.deleteImageAfterConfirm) "已启用" else "未启用"}")
+                    Text("保留天数：${serverSettings.deleteImageAfterDays}")
+                    Text("疑似重复：${serverSettings.suspectedDuplicateCount}")
+                }
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onToggleExpanded,
+            ) {
+                Text(if (expanded) "收起详情" else "查看详情")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        content()
+    }
+}
+
+@Composable
+private fun SkinOptionCard(
+    modifier: Modifier = Modifier,
     skin: AppSkin,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
     val scheme = colorSchemeForSkin(skin)
-    val content: @Composable () -> Unit = {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+    val containerColor = if (selected) {
+        scheme.primary.copy(alpha = 0.22f)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.68f)
+    }
+    val borderColor = if (selected) scheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+
+    Card(
+        modifier = modifier.height(118.dp),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
             SkinSwatches(scheme)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = if (selected) "${skin.displayName} · 当前" else skin.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = skin.displayName,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                    )
+                    if (selected) {
+                        Text(
+                            text = "当前",
+                            color = scheme.primary,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
                 Text(
                     text = skin.description,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f)
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-    }
-
-    if (selected) {
-        Button(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onClick,
-            contentPadding = ButtonDefaults.ContentPadding,
-        ) {
-            content()
-        }
-    } else {
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onClick,
-            contentPadding = ButtonDefaults.ContentPadding,
-        ) {
-            content()
         }
     }
 }
@@ -346,7 +438,7 @@ private fun SkinSwatches(scheme: ColorScheme) {
         ).forEach { color ->
             Box(
                 modifier = Modifier
-                    .size(18.dp)
+                    .size(20.dp)
                     .clip(CircleShape)
                     .background(color),
             )
