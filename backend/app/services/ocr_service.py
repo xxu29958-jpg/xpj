@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from app.config import get_settings
 from app.models import Expense
@@ -12,17 +13,17 @@ class OcrResult:
     confidence: float | None
 
 
-class OcrProvider:
+class OcrProvider(Protocol):
     def extract(self, expense: Expense) -> OcrResult:
-        raise NotImplementedError
+        ...
 
 
-class EmptyOcrProvider(OcrProvider):
+class EmptyOcrProvider:
     def extract(self, expense: Expense) -> OcrResult:
         return OcrResult(raw_text=expense.raw_text or "", confidence=expense.confidence)
 
 
-class MockOcrProvider(OcrProvider):
+class MockOcrProvider:
     def extract(self, expense: Expense) -> OcrResult:
         raw_text = expense.raw_text or "MOCK_OCR_PROVIDER 未接入真实 OCR"
         return OcrResult(raw_text=raw_text, confidence=expense.confidence if expense.confidence is not None else 0.0)
