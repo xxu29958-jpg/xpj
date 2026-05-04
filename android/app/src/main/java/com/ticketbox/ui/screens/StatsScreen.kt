@@ -164,7 +164,7 @@ private fun RecentTrendCard(trend: List<DailySpend>) {
             }
             if (trend.isEmpty() || maxAmount == 0L) {
                 Text(
-                    text = "本地缓存暂无最近支出，同步后会显示每日变化。",
+                    text = "手机里暂无最近支出，同步后会显示每日变化。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {

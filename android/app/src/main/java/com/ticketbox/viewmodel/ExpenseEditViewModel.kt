@@ -61,7 +61,7 @@ class ExpenseEditViewModel(
                     _uiState.update {
                         it.copy(
                             imageLoading = false,
-                            message = error.message ?: "原图加载失败",
+                            message = error.message ?: "截图暂时打不开，请稍后再试。",
                         )
                     }
                 }
@@ -75,7 +75,7 @@ class ExpenseEditViewModel(
                 .onSuccess { expense ->
                     _uiState.update { it.copy(expense = expense, saving = false, message = "已保存", done = true) }
                 }
-                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "保存失败") } }
+                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
         }
     }
 
@@ -93,10 +93,10 @@ class ExpenseEditViewModel(
                             _uiState.update { state -> state.copy(expense = confirmed, saving = false, done = true) }
                         }
                         .onFailure { error ->
-                            _uiState.update { state -> state.copy(saving = false, message = error.message ?: "确认失败") }
+                            _uiState.update { state -> state.copy(saving = false, message = error.message ?: "没有确认成功，请稍后再试。") }
                         }
                 }
-                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "保存失败") } }
+                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
         }
     }
 
@@ -105,7 +105,7 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(saving = true, message = null) }
             repository.rejectExpense(expenseId)
                 .onSuccess { _uiState.update { it.copy(saving = false, done = true) } }
-                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "删除失败") } }
+                .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有删除成功，请稍后再试。") } }
         }
     }
 
@@ -117,7 +117,7 @@ class ExpenseEditViewModel(
                     _uiState.update { it.copy(expense = expense, ocrRunning = false, message = "识别已重试") }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(ocrRunning = false, message = error.message ?: "识别失败") }
+                    _uiState.update { it.copy(ocrRunning = false, message = error.message ?: "没有识别成功，请稍后再试。") }
                 }
         }
     }
@@ -128,7 +128,7 @@ class ExpenseEditViewModel(
                 .onSuccess { expense ->
                     _uiState.update { it.copy(expense = expense, message = "已保留这条账单") }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "操作失败") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "暂时没处理成功，请稍后再试。") } }
         }
     }
 }

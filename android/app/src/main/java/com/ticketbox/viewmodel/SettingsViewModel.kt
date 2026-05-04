@@ -47,7 +47,7 @@ class SettingsViewModel(
             _uiState.update { it.copy(busy = true, message = null) }
             repository.testConnection()
                 .onSuccess { _uiState.update { it.copy(busy = false, message = "连接正常") } }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "连接失败") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "暂时连不上小票夹，请稍后再试。") } }
         }
     }
 
@@ -64,7 +64,7 @@ class SettingsViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "同步失败") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "暂时同步不了，请稍后再试。") } }
         }
     }
 
@@ -89,7 +89,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             busy = false,
-                            message = error.message ?: "连接检测失败",
+                            message = error.message ?: "没有完成检测，请稍后再试。",
                         )
                     }
                 }
@@ -115,7 +115,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             busy = if (showBusy) false else it.busy,
-                            message = error.message ?: "服务器设置加载失败",
+                            message = error.message ?: "服务概况暂时打不开，请稍后再试。",
                         )
                     }
                 }
@@ -128,7 +128,7 @@ class SettingsViewModel(
             _uiState.update {
                 it.copy(
                     lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
-                    message = "本地缓存已清除",
+                    message = "手机缓存已清除",
                 )
             }
         }
@@ -152,7 +152,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             repository.categoryRules()
                 .onSuccess { rules -> _uiState.update { it.copy(categoryRules = rules) } }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "分类规则加载失败") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "分类规则暂时打不开。") } }
         }
     }
 
@@ -173,7 +173,7 @@ class SettingsViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "添加失败") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有添加成功，请稍后再试。") } }
         }
     }
 
@@ -195,7 +195,7 @@ class SettingsViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "更新失败") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
         }
     }
 
@@ -210,7 +210,7 @@ class SettingsViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "更新失败") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有更新成功，请稍后再试。") } }
         }
     }
 
@@ -225,7 +225,7 @@ class SettingsViewModel(
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "删除失败") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
         }
     }
 }

@@ -100,12 +100,12 @@ class StatsViewModel(
                                     stats = stats,
                                     budgetProgress = monthlyBudgetProgress(stats, budgetCents),
                                     loading = false,
-                                    message = error.message ?: "生活统计加载失败",
+                                    message = error.message ?: "生活统计暂时打不开，请稍后再试。",
                                 )
                             }
                         }
                 }
-                .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "统计加载失败") } }
+                .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "统计暂时打不开，请稍后再试。") } }
         }
     }
 }

@@ -244,10 +244,10 @@ private fun MainShell(
                         runCatching {
                             context.contentResolver.openOutputStream(uri)?.use { output ->
                                 output.write(exportFile.bytes)
-                            } ?: error("无法写入文件")
+                            } ?: error("Output stream is null")
                         }
                             .onSuccess { ledgerViewModel.exportFinished("账本已导出") }
-                            .onFailure { ledgerViewModel.exportFinished(it.message ?: "导出失败") }
+                            .onFailure { ledgerViewModel.exportFinished("没有导出成功，可以换个保存位置再试。") }
                     }
 
                     LaunchedEffect(state.exportFile) {
