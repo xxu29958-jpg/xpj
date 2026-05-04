@@ -29,6 +29,14 @@ fun networkDiagnosticMessage(error: IOException, serverUrl: String?): String {
     }
 }
 
+fun validateBindingInput(serverUrl: String, appToken: String): String {
+    val normalized = serverUrl.trim().trimEnd('/')
+    require(normalized.isNotBlank()) { "请输入服务器地址。" }
+    require(!isLocalOnlyServerUrl(normalized)) { "请填写公网服务器地址。" }
+    require(appToken.isNotBlank()) { "请输入 App Token。" }
+    return normalized
+}
+
 fun isLocalOnlyServerUrl(serverUrl: String): Boolean {
     return serverUrl.contains("127.0.0.1") ||
         serverUrl.contains("localhost", ignoreCase = true)
