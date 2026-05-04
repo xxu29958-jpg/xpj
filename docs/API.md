@@ -103,6 +103,27 @@ Android 首次绑定服务器时使用。
 
 ## 上传
 
+### GET /api/upload/check
+
+请求头：
+
+```http
+Upload-Token: UPLOAD_TOKEN
+```
+
+用于 iPhone 快捷指令联调，确认公网域名、Cloudflare Tunnel、后端服务和 `UPLOAD_TOKEN` 都正常。
+
+返回：
+
+```json
+{
+  "status": "ok",
+  "max_upload_size_mb": 10,
+  "supported_file_types": ["heic", "jpeg", "jpg", "png", "webp"],
+  "recommended_body": "file"
+}
+```
+
 ### POST /api/upload-screenshot
 
 请求头：

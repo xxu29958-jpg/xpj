@@ -13,6 +13,35 @@ https://api.我的域名.com -> http://127.0.0.1:8000
 
 - `.env` 中已设置随机长字符串 `UPLOAD_TOKEN`。
 
+## 上传自检
+
+如果第一次配置，建议先做一个临时快捷指令测试 Token 和隧道：
+
+1. 添加“获取 URL 内容”。
+2. URL 填：
+
+```text
+https://api.我的域名.com/api/upload/check
+```
+
+3. 方法选择 `GET`。
+4. 添加请求头：
+
+```http
+Upload-Token: 你的_UPLOAD_TOKEN
+```
+
+5. 后面添加“显示结果”。
+
+成功时显示：
+
+```json
+{"status":"ok","max_upload_size_mb":10,"supported_file_types":["heic","jpeg","jpg","png","webp"],"recommended_body":"file"}
+```
+
+如果这里显示 `invalid_token`，说明 `UPLOAD_TOKEN` 粘错了。  
+如果这里提示网络中断，先检查手机是否能打开 `https://api.我的域名.com/api/health`。
+
 ## 快捷指令
 
 名称：

@@ -185,6 +185,13 @@ Invoke-RestMethod http://127.0.0.1:8000/api/auth/check -Headers $appHeaders
 
 PowerShell 里建议使用 `curl.exe`，避免 `curl` 被 PowerShell alias 到 `Invoke-WebRequest`。
 
+先校验上传 Token：
+
+```powershell
+curl.exe "http://127.0.0.1:8000/api/upload/check" `
+  -H "Upload-Token: upload-test-token"
+```
+
 ```powershell
 curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
   -H "Upload-Token: upload-test-token" `

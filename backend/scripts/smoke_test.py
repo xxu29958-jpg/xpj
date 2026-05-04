@@ -207,6 +207,16 @@ def run_smoke(base_url: str) -> None:
     assert_error(result, 401, "invalid_token")
     print("OK invalid token error")
 
+    result = request("GET", f"{base_url}/api/upload/check", headers={"Upload-Token": UPLOAD_TOKEN})
+    assert_equal(result.status, 200, "upload check status")
+    upload_check = result.json()
+    assert_equal(upload_check["status"], "ok", "upload check body")
+    assert_true("png" in upload_check["supported_file_types"], "upload check supported types")
+    assert_true("token" not in json.dumps(upload_check).lower(), "upload check must not expose token")
+    result = request("GET", f"{base_url}/api/upload/check", headers={"Upload-Token": "bad"})
+    assert_error(result, 401, "invalid_token")
+    print("OK upload token check")
+
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=app_headers())
     assert_error(result, 401, "invalid_token")
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=admin_headers())
@@ -232,6 +242,16 @@ def run_smoke(base_url: str) -> None:
     result = upload(base_url, "large.png", "image/png", large_png)
     assert_error(result, 413, "file_too_large")
     print("OK file too large")
+
+    result = request(
+        "POST",
+        f"{base_url}/api/upload-screenshot",
+        headers={"Upload-Token": UPLOAD_TOKEN, "Content-Type": "image/png"},
+        body=PNG_BYTES,
+    )
+    assert_equal(result.status, 200, "raw upload status")
+    assert_equal(result.json()["status"], "pending", "raw upload status body")
+    print("OK raw image upload")
 
     result = upload(base_url, "ticket.png", "image/png", PNG_BYTES)
     assert_equal(result.status, 200, "upload status")
