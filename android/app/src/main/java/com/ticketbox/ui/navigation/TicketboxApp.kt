@@ -179,6 +179,8 @@ private fun MainShell(
             onLoadFullImage = editViewModel::loadFullImage,
             onKeepDuplicate = editViewModel::markNotDuplicate,
             onDone = { editingExpense = null },
+            allowConfirm = expense.status == "pending",
+            allowReject = expense.status == "pending",
         )
         return
     }
@@ -263,6 +265,7 @@ private fun MainShell(
                         onSync = ledgerViewModel::sync,
                         onExportCsv = ledgerViewModel::exportCsv,
                         onManualCreate = ledgerViewModel::createManualExpense,
+                        onEdit = { editingExpense = it },
                     )
                 }
                 BottomTab.Stats -> {

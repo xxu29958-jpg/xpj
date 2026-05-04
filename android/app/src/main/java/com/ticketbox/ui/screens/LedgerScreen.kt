@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.MonthPickerSheet
@@ -73,6 +74,7 @@ fun LedgerScreen(
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
     onManualCreate: (ExpenseDraft) -> Unit,
+    onEdit: (Expense) -> Unit,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
@@ -135,7 +137,14 @@ fun LedgerScreen(
             }
         }
         items(state.items, key = { it.id }) { expense ->
-            ExpenseCard(expense = expense, showActions = false)
+            ExpenseCard(
+                expense = expense,
+                showActions = true,
+                showConfirmAction = false,
+                showRejectAction = false,
+                showDuplicateAction = false,
+                onEdit = { onEdit(expense) },
+            )
         }
     }
 }
