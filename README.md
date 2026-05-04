@@ -86,6 +86,13 @@ https://api.我的域名.com
 http://10.0.2.2:8000
 ```
 
+真机安装 debug APK：
+
+```powershell
+cd E:\projects\xiaopiaojia\android
+.\install_debug_apk.bat -Build -Launch
+```
+
 ## 验证命令
 
 后端：

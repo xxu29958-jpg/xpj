@@ -74,6 +74,55 @@ APK 输出位置：
 android\app\build\outputs\apk\debug\app-debug.apk
 ```
 
+## 真机安装
+
+手机准备：
+
+1. 打开开发者选项。
+2. 打开 USB 调试。
+3. 用数据线连接 Windows。
+4. 手机上允许这台电脑调试。
+
+安装已有 debug APK：
+
+```powershell
+cd E:\projects\xiaopiaojia\android
+.\install_debug_apk.bat
+```
+
+构建并安装：
+
+```powershell
+.\install_debug_apk.bat -Build
+```
+
+安装后启动：
+
+```powershell
+.\install_debug_apk.bat -Launch
+```
+
+多台设备同时连接时先列出设备：
+
+```powershell
+.\install_debug_apk.bat -ListDevices
+```
+
+再指定设备：
+
+```powershell
+.\install_debug_apk.bat -Serial 设备序列号
+```
+
+安装后首次打开 App：
+
+1. 绑定服务器地址。
+2. 输入 `APP_TOKEN`。
+3. 进入设置页。
+4. 点击“联调自检”。
+
+自检会检查 Token、服务器状态、pending、confirmed 分页、统计、分类、月份、重复检测和受保护图片接口。
+
 ## 数据同步规则
 
 - 远端金额字段是 `amount_cents`，本地字段是 `amountCents`，单位都是分。
