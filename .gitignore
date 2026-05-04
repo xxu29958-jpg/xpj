@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+
+# Backend runtime data
+backend/data/*
+!backend/data/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/logs/*
+!backend/logs/.gitkeep
+backend/backups/*
+!backend/backups/.gitkeep
+
+# Android / Gradle
+.gradle/
+.toolchains/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+local.properties
+
+# IDE
+.idea/
+*.iml

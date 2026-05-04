@@ -1,0 +1,98 @@
+package com.ticketbox.domain.model
+
+data class Expense(
+    val id: Long,
+    val amountCents: Long?,
+    val merchant: String?,
+    val category: String,
+    val note: String?,
+    val source: String,
+    val imagePath: String?,
+    val thumbnailPath: String?,
+    val imageHash: String?,
+    val rawText: String?,
+    val confidence: Double?,
+    val duplicateStatus: String,
+    val duplicateOfId: Long?,
+    val duplicateReason: String?,
+    val tags: String?,
+    val valueScore: Int?,
+    val regretScore: Int?,
+    val status: String,
+    val expenseTime: String?,
+    val createdAt: String,
+    val updatedAt: String,
+    val confirmedAt: String?,
+    val rejectedAt: String?,
+)
+
+data class ExpenseDraft(
+    val amountCents: Long?,
+    val merchant: String?,
+    val category: String?,
+    val note: String?,
+    val expenseTime: String?,
+    val tags: String?,
+    val valueScore: Int?,
+    val regretScore: Int?,
+)
+
+data class CategoryStats(
+    val category: String,
+    val amountCents: Long,
+    val count: Int,
+)
+
+data class MonthlyStats(
+    val month: String,
+    val totalAmountCents: Long,
+    val count: Int,
+    val byCategory: List<CategoryStats>,
+)
+
+data class FrequentMerchant(
+    val merchant: String,
+    val count: Int,
+)
+
+data class LifestyleStats(
+    val month: String,
+    val aiSubscriptionAmountCents: Long,
+    val digitalAmountCents: Long,
+    val maxExpense: Expense?,
+    val recent7DaysAmountCents: Long,
+    val frequentMerchants: List<FrequentMerchant>,
+)
+
+data class CategoryRule(
+    val id: Long,
+    val keyword: String,
+    val category: String,
+    val enabled: Boolean,
+    val priority: Int,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+class ProtectedImage(
+    val bytes: ByteArray,
+    val contentType: String?,
+)
+
+data class ServerSettings(
+    val maxUploadSizeMb: Int,
+    val generateThumbnail: Boolean,
+    val deleteImageAfterConfirm: Boolean,
+    val deleteImageAfterDays: Int,
+    val ocrProvider: String,
+    val pendingCount: Int,
+    val confirmedCount: Int,
+    val rejectedCount: Int,
+    val suspectedDuplicateCount: Int,
+    val uploadStorageBytes: Long,
+)
+
+class CsvExport(
+    val fileName: String,
+    val bytes: ByteArray,
+)

@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+from app.services.time_service import now_utc
+
+
+class Expense(Base):
+    __tablename__ = "expenses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str] = mapped_column(String(64), default="其他", nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, default="", nullable=True)
+    source: Mapped[str] = mapped_column(String(64), default="iPhone截图", nullable=False)
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    image_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    raw_text: Mapped[str | None] = mapped_column(Text, default="", nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    duplicate_status: Mapped[str] = mapped_column(String(32), default="none", nullable=False, index=True)
+    duplicate_of_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    duplicate_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    regret_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    expense_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    image_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    thumbnail_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index("ix_expenses_status_created_at", Expense.status, Expense.created_at)
+Index("ix_expenses_category_status", Expense.category, Expense.status)
+
+
+class CategoryRule(Base):
+    __tablename__ = "category_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    keyword: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class DuplicateIgnore(Base):
+    __tablename__ = "duplicate_ignores"
+    __table_args__ = (
+        UniqueConstraint("expense_id", "duplicate_of_id", "kind", name="uq_duplicate_ignore_pair_kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    expense_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    duplicate_of_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="manual", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

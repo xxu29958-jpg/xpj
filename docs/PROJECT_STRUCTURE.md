@@ -1,0 +1,121 @@
+# 项目结构
+
+项目根目录：
+
+```text
+E:\projects\xiaopiaojia\
+  backend\
+  android\
+  docs\
+  .editorconfig
+  .gitignore
+  README.md
+```
+
+## backend
+
+```text
+backend\
+  app\
+    main.py
+    config.py
+    database.py
+    models.py
+    schemas.py
+    auth.py
+    errors.py
+    routes\
+      auth.py
+      duplicates.py
+      expenses.py
+      maintenance.py
+      rules.py
+      settings.py
+      stats.py
+      uploads.py
+    services\
+      classify_service.py
+      cleanup_service.py
+      duplicate_service.py
+      expense_service.py
+      file_service.py
+      ocr_service.py
+      server_settings_service.py
+      thumb_service.py
+      time_service.py
+  data\
+    .gitkeep
+  uploads\
+    .gitkeep
+  logs\
+    .gitkeep
+  backups\
+    .gitkeep
+  tests\
+    conftest.py
+    test_api_contract.py
+  scripts\
+    backup_database.ps1
+    export_confirmed.ps1
+    install_startup_task.ps1
+    restore_database.ps1
+    setup_backend.ps1
+    start_backend.ps1
+    uninstall_startup_task.ps1
+    smoke_test.py
+  .env.example
+  requirements.txt
+  requirements-dev.txt
+  run.bat
+  setup.bat
+  README.md
+```
+
+## android
+
+```text
+android\
+  settings.gradle.kts
+  build.gradle.kts
+  gradlew
+  gradlew.bat
+  gradle\wrapper\
+  README.md
+  app\
+    build.gradle.kts
+    src\main\
+      AndroidManifest.xml
+      java\com\ticketbox\
+        MainActivity.kt
+        TicketboxApplication.kt
+        AppContainer.kt
+        data\
+        domain\
+        security\
+        ui\
+        viewmodel\
+      res\
+    src\test\
+      java\com\ticketbox\
+```
+
+## docs
+
+```text
+docs\
+  API.md
+  ARCHITECTURE.md
+  ANDROID_RULES.md
+  BACKEND_RULES.md
+  ENGINEERING_RULES.md
+  IOS_SHORTCUT.md
+  SECURITY.md
+  V2_ROADMAP.md
+  PROJECT_STRUCTURE.md
+  REFERENCES.md
+  DECISIONS\
+```
+
+## 当前初始化范围
+
+后端已经包含第一版闭环和第二版最小增量 API：受保护缩略图、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已包含 Compose 工程、基础界面、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、生活化统计、分类规则管理和本地单元测试。

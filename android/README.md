@@ -1,0 +1,102 @@
+# 小票夹 Android
+
+Android Studio 工程目录。当前使用 Kotlin、Jetpack Compose、Material 3、Room、Retrofit、BiometricPrompt 和 Android Keystore。
+
+## 本机要求
+
+- Android Studio。
+- JDK 17。
+- Android SDK Platform 36，与项目 `compileSdk` 对应。
+- Gradle 由 Android Studio/Wrapper 管理。
+
+## 打开方式
+
+1. 用 Android Studio 打开 `E:\projects\xiaopiaojia\android`。
+2. 等待 Gradle Sync 完成。
+3. 运行 `app`。
+
+如果使用模拟器连接 Windows 本机后端，可以把服务器地址配置为：
+
+```text
+http://10.0.2.2:8000
+```
+
+正式使用建议配置 Cloudflare Tunnel 的 HTTPS 域名。
+
+## 命令行构建
+
+本项目已生成 Gradle Wrapper。
+
+如果机器已经安装 JDK 17+ 和 Android SDK，可以运行：
+
+```powershell
+cd E:\projects\xiaopiaojia\android
+.\gradlew.bat :app:assembleDebug
+```
+
+当前这台机器也准备了项目本地工具链：
+
+```text
+E:\projects\xiaopiaojia\.toolchains\gradle\gradle-8.13
+E:\projects\xiaopiaojia\.toolchains\android-sdk
+```
+
+Wrapper 当前使用 Gradle 8.14.4。首次运行会下载对应 Gradle 发行包。本地工具链构建命令：
+
+```powershell
+$env:JAVA_HOME="$env:LOCALAPPDATA\Programs\Kimi\runtime"
+$env:ANDROID_HOME=(Resolve-Path "..\.toolchains\android-sdk").Path
+$env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
+.\gradlew.bat --no-daemon :app:assembleDebug
+```
+
+本地单元测试：
+
+```powershell
+$env:JAVA_HOME="$env:LOCALAPPDATA\Programs\Kimi\runtime"
+$env:ANDROID_HOME=(Resolve-Path "..\.toolchains\android-sdk").Path
+$env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
+.\gradlew.bat --no-daemon :app:testDebugUnitTest
+```
+
+Lint：
+
+```powershell
+$env:JAVA_HOME="$env:LOCALAPPDATA\Programs\Kimi\runtime"
+$env:ANDROID_HOME=(Resolve-Path "..\.toolchains\android-sdk").Path
+$env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
+.\gradlew.bat --no-daemon :app:lintDebug
+```
+
+APK 输出位置：
+
+```text
+android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+## 数据同步规则
+
+- 远端金额字段是 `amount_cents`，本地字段是 `amountCents`，单位都是分。
+- Room 的 `serverId` 有唯一索引。
+- confirmed 同步时按 `serverId` 显式查询并更新，不重复插入。
+- 服务器不可用时，账本页显示 Room 本地 confirmed 缓存。
+
+## 已接入功能
+
+- 绑定服务器使用 `/api/auth/check`。
+- 待确认页加载 pending 账单和受保护缩略图。
+- 编辑页可查看缩略图/原图、保存、确认、删除、OCR retry、标记“仍然保留”。
+- 账本页同步 confirmed 并写入 Room。
+- 账本页支持月份和分类筛选。
+- 编辑页和账本页支持后端分类快捷选择。
+- 账本页和统计页支持后端月份快捷选择。
+- 统计页显示月统计和生活化统计，并支持月份切换。
+- 设置页可测试连接、查看服务器状态、重新同步、清缓存、清绑定、添加/编辑/启停/删除分类规则。
+- 账本页支持通过系统文件选择器导出 CSV，不需要存储权限。
+
+## 安全规则
+
+- 首次绑定使用 `GET /api/auth/check` 校验 Token。
+- APP_TOKEN 存入 Android Keystore。
+- 生物识别只用于本地解锁，不替代后端 Bearer Token。
+- OkHttp 日志不得打印 Header、Body 或 Token。
