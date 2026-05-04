@@ -56,6 +56,7 @@ import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.components.selectedDateMillisFromIso
@@ -198,6 +199,7 @@ private fun LedgerFilterPanel(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
+        LedgerSummaryStrip(state)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 modifier = Modifier.weight(1f),
@@ -221,6 +223,41 @@ private fun LedgerFilterPanel(
                 text = "当前没有可导出的已确认账单。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LedgerSummaryStrip(state: LedgerUiState) {
+    val total = state.items.sumOf { it.amountCents ?: 0L }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "当前合计",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = formatAmount(total),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            Text(
+                text = "${state.items.size} 笔",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
             )
         }
     }
