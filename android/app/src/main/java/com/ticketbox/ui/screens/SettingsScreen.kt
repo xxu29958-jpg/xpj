@@ -45,10 +45,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.res.integerResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ticketbox.domain.model.AppInfo
+import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -83,6 +85,8 @@ fun SettingsScreen(
     var budgetInput by remember(state.monthlyBudgetCents) {
         mutableStateOf(formatAmountInput(state.monthlyBudgetCents))
     }
+    val appVersionName = stringResource(R.string.app_version_name)
+    val appVersionCode = integerResource(R.integer.app_version_code)
     var localMessage by remember { mutableStateOf<String?>(null) }
     var showDiagnosticsDetails by remember { mutableStateOf(false) }
     var showServerStatusDetails by remember { mutableStateOf(false) }
@@ -426,7 +430,7 @@ fun SettingsScreen(
                 ) {
                     Text("小票夹", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        text = "版本 ${AppInfo.versionName} (${AppInfo.versionCode})",
+                        text = "版本 $appVersionName ($appVersionCode)",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
