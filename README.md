@@ -22,6 +22,7 @@ iPhone 截图账单
 - [iPhone 快捷指令](docs/IOS_SHORTCUT.md)
 - [第二版路线](docs/V2_ROADMAP.md)
 - [项目结构](docs/PROJECT_STRUCTURE.md)
+- [CI 说明](docs/CI.md)
 - [工程规范](docs/ENGINEERING_RULES.md)
 - [后端开发规则](docs/BACKEND_RULES.md)
 - [Android 开发规则](docs/ANDROID_RULES.md)
