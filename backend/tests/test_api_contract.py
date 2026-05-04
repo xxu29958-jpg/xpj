@@ -58,6 +58,16 @@ def test_upload_check_contract(client: TestClient) -> None:
     assert response.json()["error"] == "invalid_token"
 
 
+def test_framework_errors_use_uniform_chinese_shape(client: TestClient) -> None:
+    response = client.get("/api/not-exists", headers=app_headers())
+    assert response.status_code == 404
+    assert response.json() == {"error": "route_not_found", "message": "接口不存在。"}
+
+    response = client.post("/api/health")
+    assert response.status_code == 405
+    assert response.json() == {"error": "method_not_allowed", "message": "请求方法不允许。"}
+
+
 def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     expense_id = upload_png(client)
 
