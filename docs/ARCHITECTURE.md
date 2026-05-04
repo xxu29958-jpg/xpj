@@ -190,6 +190,9 @@ unsupported_file_type
 expense_not_found
 amount_required
 server_error
+invalid_request
+route_not_found
+method_not_allowed
 ```
 
 示例：
