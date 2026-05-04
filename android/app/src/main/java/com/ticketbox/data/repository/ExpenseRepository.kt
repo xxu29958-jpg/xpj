@@ -9,7 +9,10 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.CsvExport
+import com.ticketbox.domain.model.DiagnosticCheck
+import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.LifestyleStats
@@ -22,6 +25,7 @@ import kotlinx.coroutines.flow.map
 import retrofit2.HttpException
 import retrofit2.Response
 import java.io.IOException
+import kotlin.system.measureTimeMillis
 import okhttp3.ResponseBody
 
 class RepositoryException(message: String) : RuntimeException(message)
@@ -92,6 +96,16 @@ class ExpenseRepository(
         return ProtectedImage(bytes = bytes, contentType = contentType)
     }
 
+    private fun diagnosticErrorMessage(error: Throwable): String {
+        return when (error) {
+            is HttpException -> parseHttpError(error)
+            is IOException -> "网络不可用，请检查服务器地址、Tunnel 或局域网。"
+            is RepositoryException -> error.message ?: "操作失败。"
+            is IllegalArgumentException -> error.message ?: "请求参数不正确。"
+            else -> error.message ?: "操作失败。"
+        }
+    }
+
     suspend fun bindServer(serverUrl: String, appToken: String): Result<Unit> = safeCall {
         val normalized = serverUrl.trim().trimEnd('/')
         require(normalized.isNotBlank()) { "请输入服务器地址。" }
@@ -104,6 +118,83 @@ class ExpenseRepository(
 
     suspend fun testConnection(): Result<Unit> = safeCall {
         api().checkAuth()
+    }
+
+    suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> = safeCall {
+        val service = api()
+        val checks = mutableListOf<DiagnosticCheck>()
+
+        suspend fun record(
+            name: String,
+            successDetail: String,
+            block: suspend () -> Unit,
+        ) {
+            var failure: Throwable? = null
+            val elapsedMs = measureTimeMillis {
+                try {
+                    block()
+                } catch (error: Throwable) {
+                    failure = error
+                }
+            }
+            val error = failure
+            checks += if (error == null) {
+                DiagnosticCheck(
+                    name = name,
+                    status = DiagnosticStatus.Pass,
+                    detail = successDetail,
+                    elapsedMs = elapsedMs,
+                )
+            } else {
+                DiagnosticCheck(
+                    name = name,
+                    status = DiagnosticStatus.Fail,
+                    detail = diagnosticErrorMessage(error),
+                    elapsedMs = elapsedMs,
+                )
+            }
+        }
+
+        var pending = emptyList<Expense>()
+
+        record("Token 校验", "APP_TOKEN 有效") {
+            service.checkAuth()
+        }
+        record("服务器状态", "状态接口可用") {
+            service.serverSettings()
+        }
+        record("待确认账单", "pending 接口可用") {
+            pending = service.pendingExpenses().map { it.toDomain() }
+        }
+        record("已确认分页", "confirmed 分页接口可用") {
+            service.confirmedExpenses(page = 1, pageSize = 1)
+        }
+        record("月度统计", "monthly stats 接口可用") {
+            service.monthlyStats(null)
+        }
+        record("分类与月份", "分类和月份接口可用") {
+            service.categories()
+            service.months()
+        }
+        record("疑似重复", "duplicates 接口可用") {
+            service.duplicates()
+        }
+
+        val imageCandidate = pending.firstOrNull { it.imagePath != null || it.thumbnailPath != null }
+        if (imageCandidate == null) {
+            checks += DiagnosticCheck(
+                name = "受保护图片",
+                status = DiagnosticStatus.Warn,
+                detail = "暂无待确认截图，未检查图片接口。",
+                elapsedMs = 0,
+            )
+        } else {
+            record("受保护图片", "缩略图接口可用") {
+                readProtectedImage(service.expenseThumbnail(imageCandidate.id))
+            }
+        }
+
+        ConnectionDiagnostics(checks)
     }
 
     suspend fun fetchPending(): Result<List<Expense>> = safeCall {

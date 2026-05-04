@@ -122,4 +122,4 @@ docs\
 
 ## 当前初始化范围
 
-后端已经包含第一版闭环和第二版最小增量 API：受保护缩略图、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已包含 Compose 工程、基础界面、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、生活化统计、分类规则管理和本地单元测试。
+后端已经包含第一版闭环和第二版最小增量 API：受保护缩略图、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已包含 Compose 工程、基础界面、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、生活化统计、联调自检、分类规则管理和本地单元测试。

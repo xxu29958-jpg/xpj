@@ -238,6 +238,7 @@ private fun MainShell(
                     SettingsScreen(
                         state = state,
                         onTestConnection = settingsViewModel::testConnection,
+                        onRunDiagnostics = settingsViewModel::runDiagnostics,
                         onRefreshServerSettings = settingsViewModel::refreshServerSettings,
                         onSync = settingsViewModel::sync,
                         onClearCache = settingsViewModel::clearLocalCache,

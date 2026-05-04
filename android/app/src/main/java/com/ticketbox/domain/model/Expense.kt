@@ -96,3 +96,25 @@ class CsvExport(
     val fileName: String,
     val bytes: ByteArray,
 )
+
+enum class DiagnosticStatus {
+    Pass,
+    Warn,
+    Fail,
+}
+
+data class DiagnosticCheck(
+    val name: String,
+    val status: DiagnosticStatus,
+    val detail: String,
+    val elapsedMs: Long,
+)
+
+data class ConnectionDiagnostics(
+    val checks: List<DiagnosticCheck>,
+) {
+    val failedCount: Int = checks.count { it.status == DiagnosticStatus.Fail }
+    val warningCount: Int = checks.count { it.status == DiagnosticStatus.Warn }
+    val passedCount: Int = checks.count { it.status == DiagnosticStatus.Pass }
+    val isHealthy: Boolean = failedCount == 0
+}
