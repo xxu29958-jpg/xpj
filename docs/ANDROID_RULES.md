@@ -133,6 +133,7 @@ serverId 不存在 -> 插入本地记录
 - 根工程和 App 模块通过 `libs.plugins.*`、`libs.*` 引用插件与库。
 - 模块 `build.gradle.kts` 不散写第三方库版本号。
 - 新增依赖前确认来源可靠、活跃维护，并避免 alpha/beta 弱依赖进入主线。
+- 依赖升级前先运行 `scripts\check_dependency_versions.ps1`，再查官方 release notes。
 - 依赖调整后必须运行单元测试、debug 构建和 lint。
 
 ## 受保护图片

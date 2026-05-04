@@ -30,6 +30,7 @@ iPhone 截图账单
 - [Android 开发规则](docs/ANDROID_RULES.md)
 - [关键决策](docs/DECISIONS/)
 - [官方资料与依赖来源](docs/REFERENCES.md)
+- [依赖管理](docs/DEPENDENCIES.md)
 
 ## 项目组成
 

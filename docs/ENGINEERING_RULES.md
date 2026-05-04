@@ -590,6 +590,7 @@ android/gradle/libs.versions.toml
 - 新增 Android 依赖时先写入 Version Catalog，再在模块中引用。
 - 不在模块 `build.gradle.kts` 中散写版本号。
 - 不引入 alpha、beta、停止维护或来源不清的依赖进入主线。
+- 依赖版本审计统一使用 `scripts\check_dependency_versions.ps1`。
 - 升级依赖必须跑 `:app:testDebugUnitTest`、`:app:assembleDebug` 和 `:app:lintDebug`。
 
 ## 16. UI 规范
