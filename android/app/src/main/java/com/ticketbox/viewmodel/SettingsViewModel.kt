@@ -62,9 +62,9 @@ class SettingsViewModel(
                             busy = false,
                             diagnostics = diagnostics,
                             message = if (diagnostics.isHealthy) {
-                                "联调自检通过"
+                                "连接检测通过"
                             } else {
-                                "联调自检发现 ${diagnostics.failedCount} 个问题"
+                                "连接检测发现 ${diagnostics.failedCount} 个问题"
                             },
                         )
                     }
@@ -73,7 +73,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             busy = false,
-                            message = error.message ?: "联调自检失败",
+                            message = error.message ?: "连接检测失败",
                         )
                     }
                 }

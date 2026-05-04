@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,17 +13,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,11 +41,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.components.formatStorageSize
@@ -65,7 +75,35 @@ fun SettingsScreen(
     var priorityText by remember { mutableStateOf("10") }
     var editingRule by remember { mutableStateOf<CategoryRule?>(null) }
     var localMessage by remember { mutableStateOf<String?>(null) }
+    var showDiagnosticsDetails by remember { mutableStateOf(false) }
     var showServerStatusDetails by remember { mutableStateOf(false) }
+    var showClearCacheDialog by remember { mutableStateOf(false) }
+    val serverDisplayName = remember(state.serverUrl) { serverDisplayName(state.serverUrl) }
+
+    if (showClearCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearCacheDialog = false },
+            title = { Text("清除本地缓存？") },
+            text = {
+                Text("清除后，本机缓存的已确认账单会被删除。服务器上的账单不会删除，之后可以重新同步。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearCacheDialog = false
+                        onClearCache()
+                    },
+                ) {
+                    Text("确定清除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearCacheDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -77,6 +115,11 @@ fun SettingsScreen(
         Text("设置", style = MaterialTheme.typography.headlineSmall)
 
         SettingSection(title = "外观") {
+            Text(
+                text = "港湾作为默认主题。每套外观都预览真实账单层级，不直接暴露 JSON。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
             AppSkin.entries.chunked(2).forEach { rowSkins ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -108,9 +151,9 @@ fun SettingsScreen(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("当前服务器", style = MaterialTheme.typography.labelLarge)
+                    Text("当前连接", style = MaterialTheme.typography.labelLarge)
                     Text(
-                        text = state.serverUrl ?: "未绑定",
+                        text = serverDisplayName,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -122,42 +165,22 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f),
                     onClick = onTestConnection,
                 ) {
-                    Text(if (state.busy) "处理中" else "测试连接")
+                    Text(if (state.busy) "处理中" else "连接测试")
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
                     onClick = onRunDiagnostics,
                 ) {
-                    Text("联调自检")
+                    Text("检测连接")
                 }
             }
         }
         state.diagnostics?.let { diagnostics ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "自检结果：通过 ${diagnostics.passedCount} · 警告 ${diagnostics.warningCount} · 失败 ${diagnostics.failedCount}",
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    diagnostics.checks.forEach { check ->
-                        val color = when (check.status) {
-                            DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
-                            DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
-                            DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(check.name, color = color)
-                                Text("${check.elapsedMs} ms", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(check.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
+            DiagnosticsCard(
+                diagnostics = diagnostics,
+                expanded = showDiagnosticsDetails,
+                onToggleExpanded = { showDiagnosticsDetails = !showDiagnosticsDetails },
+            )
         }
         SettingSection(title = "维护") {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -169,7 +192,10 @@ fun SettingsScreen(
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    onClick = onClearCache,
+                    onClick = { showClearCacheDialog = true },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
                 ) {
                     Text("清缓存")
                 }
@@ -313,6 +339,64 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun DiagnosticsCard(
+    diagnostics: ConnectionDiagnostics,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+) {
+    val title = when {
+        diagnostics.failedCount > 0 -> "检测到 ${diagnostics.failedCount} 个需要处理的问题"
+        diagnostics.warningCount > 0 -> "连接可用，${diagnostics.warningCount} 个提醒"
+        else -> "服务连接正常"
+    }
+    val detail = when {
+        diagnostics.failedCount > 0 -> "部分服务不可用，请查看详情。"
+        diagnostics.warningCount > 0 -> "有提醒项，但不影响主要功能。"
+        else -> "上传、同步、统计等服务都可以访问。"
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (expanded) {
+                diagnostics.checks.forEach { check ->
+                    val color = when (check.status) {
+                        DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
+                        DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
+                        DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(check.name, color = color)
+                            Text("${check.elapsedMs} ms", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(check.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onToggleExpanded,
+            ) {
+                Text(if (expanded) "收起详情" else "查看详情")
+            }
+        }
+    }
+}
+
+@Composable
 private fun ServerStatusCard(
     serverSettings: ServerSettings,
     expanded: Boolean,
@@ -357,6 +441,16 @@ private fun ServerStatusCard(
     }
 }
 
+private fun serverDisplayName(serverUrl: String?): String {
+    if (serverUrl.isNullOrBlank()) return "未绑定"
+    val lower = serverUrl.lowercase()
+    return when {
+        "127.0.0.1" in lower || "localhost" in lower -> "本地服务器"
+        "api.zen70.cn" in lower -> "zen70.cn"
+        else -> serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/')
+    }
+}
+
 @Composable
 private fun SettingSection(
     title: String,
@@ -384,7 +478,7 @@ private fun SkinOptionCard(
     val borderColor = if (selected) scheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
 
     Card(
-        modifier = modifier.height(118.dp),
+        modifier = modifier.height(164.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, borderColor),
@@ -395,7 +489,7 @@ private fun SkinOptionCard(
                 .padding(12.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            SkinSwatches(scheme)
+            SkinPreview(scheme = scheme)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -408,22 +502,161 @@ private fun SkinOptionCard(
                         maxLines = 1,
                     )
                     if (selected) {
-                        Text(
+                        SkinPill(
                             text = "当前",
-                            color = scheme.primary,
+                            scheme = scheme,
+                            emphasized = true,
+                        )
+                    } else if (skin == AppSkin.Harbor) {
+                        SkinPill(
+                            text = "推荐",
+                            scheme = scheme,
+                            emphasized = false,
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = skin.description,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    SkinSwatches(scheme)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkinPreview(scheme: ColorScheme) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(82.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        scheme.background,
+                        scheme.surfaceVariant,
+                        scheme.surface,
+                    ),
+                ),
+            )
+            .padding(9.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    PreviewBar(width = 48.dp, color = scheme.onBackground.copy(alpha = 0.76f))
+                    PreviewBar(width = 34.dp, color = scheme.onSurfaceVariant.copy(alpha = 0.64f))
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(scheme.primary)
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                ) {
+                    Text(
+                        text = "¥36.80",
+                        color = scheme.onPrimary,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(scheme.surface.copy(alpha = 0.90f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        PreviewBar(width = 46.dp, color = scheme.onSurface.copy(alpha = 0.80f))
+                        PreviewBar(width = 26.dp, color = scheme.onSurfaceVariant.copy(alpha = 0.68f))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(scheme.secondary.copy(alpha = 0.92f))
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                    ) {
+                        Text(
+                            text = "餐饮",
+                            color = scheme.onSecondary,
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }
-                Text(
-                    text = skin.description,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
         }
+    }
+}
+
+@Composable
+private fun PreviewBar(
+    width: androidx.compose.ui.unit.Dp,
+    color: androidx.compose.ui.graphics.Color,
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(5.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(color),
+    )
+}
+
+@Composable
+private fun SkinPill(
+    text: String,
+    scheme: ColorScheme,
+    emphasized: Boolean,
+) {
+    val background = if (emphasized) scheme.primary else scheme.surfaceVariant.copy(alpha = 0.80f)
+    val content = if (emphasized) scheme.onPrimary else scheme.onSurfaceVariant
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(background)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (emphasized) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+        Text(
+            text = text,
+            color = content,
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
@@ -438,7 +671,7 @@ private fun SkinSwatches(scheme: ColorScheme) {
         ).forEach { color ->
             Box(
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(12.dp)
                     .clip(CircleShape)
                     .background(color),
             )

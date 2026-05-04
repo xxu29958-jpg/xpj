@@ -157,26 +157,26 @@ class ExpenseRepository(
 
         var pending = emptyList<Expense>()
 
-        record("Token 校验", "APP_TOKEN 有效") {
+        record("身份验证", "访问凭证有效") {
             service.checkAuth()
         }
         record("服务器状态", "状态接口可用") {
             service.serverSettings()
         }
-        record("待确认账单", "pending 接口可用") {
+        record("待确认账单", "可以读取待确认账单") {
             pending = service.pendingExpenses().map { it.toDomain() }
         }
-        record("已确认分页", "confirmed 分页接口可用") {
+        record("已确认账本", "可以同步已确认账单") {
             service.confirmedExpenses(page = 1, pageSize = 1)
         }
-        record("月度统计", "monthly stats 接口可用") {
+        record("月度统计", "可以读取月度统计") {
             service.monthlyStats(null)
         }
-        record("分类与月份", "分类和月份接口可用") {
+        record("分类与月份", "可以读取分类和月份") {
             service.categories()
             service.months()
         }
-        record("疑似重复", "duplicates 接口可用") {
+        record("疑似重复", "可以读取疑似重复账单") {
             service.duplicates()
         }
 
