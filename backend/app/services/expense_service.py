@@ -30,6 +30,23 @@ DEFAULT_CATEGORIES = ["吃饭", "数码", "生活", "交通", "游戏", "AI订�
 EDITABLE_STATUSES = {"pending", "confirmed"}
 
 
+def _clean_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _clean_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return value.strip()
+
+
+def _clean_category(value: str | None) -> str:
+    return (value or "其他").strip() or "其他"
+
+
 def create_pending_expense(db: Session, saved_file: SavedUpload) -> Expense:
     now = now_utc()
     expense = Expense(
@@ -62,9 +79,9 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest) -> E
     now = now_utc()
     expense = Expense(
         amount_cents=payload.amount_cents,
-        merchant=payload.merchant.strip() if payload.merchant else None,
-        category=(payload.category or "其他").strip() or "其他",
-        note=payload.note or "",
+        merchant=_clean_optional_text(payload.merchant),
+        category=_clean_category(payload.category),
+        note=_clean_text(payload.note),
         source="手动记账",
         image_path=None,
         thumbnail_path=None,
@@ -76,7 +93,7 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest) -> E
         created_at=now,
         updated_at=now,
         confirmed_at=now,
-        tags=payload.tags,
+        tags=_clean_optional_text(payload.tags),
         value_score=payload.value_score,
         regret_score=payload.regret_score,
     )
@@ -222,15 +239,15 @@ def update_expense(db: Session, expense_id: int, payload: ExpenseUpdateRequest) 
     if "amount_cents" in updates:
         expense.amount_cents = updates["amount_cents"]
     if "merchant" in updates:
-        expense.merchant = updates["merchant"]
+        expense.merchant = _clean_optional_text(updates["merchant"])
     if "category" in updates and updates["category"]:
-        expense.category = updates["category"]
+        expense.category = _clean_category(updates["category"])
     if "note" in updates:
-        expense.note = updates["note"] or ""
+        expense.note = _clean_text(updates["note"])
     if "expense_time" in updates:
         expense.expense_time = ensure_utc(updates["expense_time"])
     if "tags" in updates:
-        expense.tags = updates["tags"]
+        expense.tags = _clean_optional_text(updates["tags"])
     if "value_score" in updates:
         expense.value_score = updates["value_score"]
     if "regret_score" in updates:
