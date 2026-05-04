@@ -1,6 +1,6 @@
 # 小票夹 Android
 
-Android Studio 工程目录。当前使用 Kotlin、Jetpack Compose、Material 3、Room、Retrofit、BiometricPrompt 和 Android Keystore。
+Android Studio 工程目录。当前使用 Kotlin、Jetpack Compose、Material 3、Room、Retrofit、BiometricPrompt 和 Android Keystore。依赖版本集中维护在 `gradle/libs.versions.toml`。
 
 ## 本机要求
 
