@@ -6,12 +6,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +35,31 @@ fun ExpenseCard(
     onReject: () -> Unit = {},
     onKeepDuplicate: () -> Unit = {},
 ) {
+    var showRejectDialog by remember(expense.id) { mutableStateOf(false) }
+
+    if (showRejectDialog) {
+        AlertDialog(
+            onDismissRequest = { showRejectDialog = false },
+            title = { Text("删除这笔待确认账单？") },
+            text = { Text("删除后这张截图会标记为已拒绝，不会进入账本。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRejectDialog = false
+                        onReject()
+                    },
+                ) {
+                    Text("确定删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -110,7 +141,7 @@ fun ExpenseCard(
                     Button(onClick = onConfirm) {
                         Text("确认")
                     }
-                    OutlinedButton(onClick = onReject) {
+                    OutlinedButton(onClick = { showRejectDialog = true }) {
                         Text("删除")
                     }
                 }

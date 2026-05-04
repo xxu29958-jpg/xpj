@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -34,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
+import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -64,7 +64,9 @@ fun LedgerScreen(
         }
     }
 
-    LazyColumn(
+    RefreshableLazyColumn(
+        isRefreshing = state.syncing,
+        onRefresh = onSync,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

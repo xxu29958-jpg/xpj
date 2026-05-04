@@ -8,13 +8,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -32,10 +43,15 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.components.ExpenseImagePreview
+import com.ticketbox.ui.components.datePickerMillisToUtcIso
+import com.ticketbox.ui.components.displayDate
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.selectedDateMillisFromIso
+import com.ticketbox.ui.components.todayUtcIsoStartOfDay
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseEditScreen(
     expense: Expense,
@@ -67,8 +83,62 @@ fun ExpenseEditScreen(
     }
     var message by remember { mutableStateOf<String?>(null) }
     var rawTextExpanded by remember(currentExpense.id) { mutableStateOf(false) }
+    var moreExpanded by remember(currentExpense.id) { mutableStateOf(false) }
+    var showDatePicker by remember(currentExpense.id) { mutableStateOf(false) }
+    var showRejectDialog by remember(currentExpense.id) { mutableStateOf(false) }
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() } ?: "第一版为空"
     val previewImage = state.fullImage ?: state.thumbnail
+
+    if (showDatePicker) {
+        val datePickerState = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = selectedDateMillisFromIso(expenseTime),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { selected ->
+                            expenseTime = datePickerMillisToUtcIso(selected)
+                        }
+                        showDatePicker = false
+                    },
+                ) {
+                    Text("确定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("取消")
+                }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showRejectDialog) {
+        AlertDialog(
+            onDismissRequest = { showRejectDialog = false },
+            title = { Text("删除这笔账单？") },
+            text = { Text("删除后会标记为已拒绝，不会进入账本。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRejectDialog = false
+                        onReject()
+                    },
+                ) {
+                    Text("确定删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
 
     LaunchedEffect(state.done) {
         if (state.done) onDone()
@@ -163,9 +233,10 @@ fun ExpenseEditScreen(
         if (state.categories.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.categories, key = { it }) { item ->
-                    AssistChip(
+                    SelectableCategoryChip(
+                        selected = category == item,
+                        label = item,
                         onClick = { category = item },
-                        label = { Text(item) },
                     )
                 }
             }
@@ -176,51 +247,81 @@ fun ExpenseEditScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("备注") },
         )
-        OutlinedTextField(
-            value = tags,
-            onValueChange = { tags = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("标签") },
-            placeholder = { Text("真香、必要支出") },
-        )
-        OutlinedTextField(
-            value = valueScoreText,
-            onValueChange = { valueScoreText = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("值不值评分，1-5") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = regretScoreText,
-            onValueChange = { regretScoreText = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("后悔指数，1-5") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = expenseTime,
-            onValueChange = { expenseTime = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("消费时间，ISO 8601") },
-            placeholder = { Text("2026-05-03T04:20:00Z") },
-            singleLine = true,
+        ExpenseDateField(
+            expenseTime = expenseTime,
+            onPickDate = { showDatePicker = true },
+            onUseToday = { expenseTime = todayUtcIsoStartOfDay() },
+            onClear = { expenseTime = "" },
         )
         Text("来源：${currentExpense.source}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         currentExpense.confidence?.let {
             Text("识别置信度：${(it * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { rawTextExpanded = !rawTextExpanded }) {
-                Text(if (rawTextExpanded) "收起 OCR 原文" else "查看 OCR 原文")
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("更多记录", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = "标签、值不值、后悔指数和 OCR 原文",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    OutlinedButton(onClick = { moreExpanded = !moreExpanded }) {
+                        Text(if (moreExpanded) "收起" else "展开")
+                    }
+                }
+
+                if (moreExpanded) {
+                    OutlinedTextField(
+                        value = tags,
+                        onValueChange = { tags = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("标签") },
+                        placeholder = { Text("真香、必要支出") },
+                    )
+                    OutlinedTextField(
+                        value = valueScoreText,
+                        onValueChange = { valueScoreText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("值不值评分，1-5") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = regretScoreText,
+                        onValueChange = { regretScoreText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("后悔指数，1-5") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { rawTextExpanded = !rawTextExpanded }) {
+                            Text(if (rawTextExpanded) "收起 OCR 原文" else "查看 OCR 原文")
+                        }
+                        OutlinedButton(onClick = onRetryOcr) {
+                            Text(if (state.ocrRunning) "识别中" else "重新识别")
+                        }
+                    }
+                    if (rawTextExpanded) {
+                        Text("OCR 原文：$rawTextDisplay", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
-            OutlinedButton(onClick = onRetryOcr) {
-                Text(if (state.ocrRunning) "识别中" else "重新识别")
-            }
-        }
-        if (rawTextExpanded) {
-            Text("OCR 原文：$rawTextDisplay", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         message?.let {
@@ -258,11 +359,82 @@ fun ExpenseEditScreen(
                 Text("确认入账")
             }
             OutlinedButton(
-                onClick = onReject,
+                onClick = { showRejectDialog = true },
             ) {
                 Text("删除")
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun SelectableCategoryChip(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = if (selected) {
+            {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(FilterChipDefaults.IconSize),
+                )
+            }
+        } else {
+            null
+        },
+    )
+}
+
+@Composable
+private fun ExpenseDateField(
+    expenseTime: String,
+    onPickDate: () -> Unit,
+    onUseToday: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("消费日期", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = displayDate(expenseTime),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                OutlinedButton(onClick = onPickDate) {
+                    Text("选择")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onUseToday) {
+                    Text("设为今天")
+                }
+                TextButton(
+                    enabled = expenseTime.isNotBlank(),
+                    onClick = onClear,
+                ) {
+                    Text("清除")
+                }
+            }
+        }
     }
 }
