@@ -22,7 +22,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_dependency_ver
 默认行为：
 
 - 读取 Android Version Catalog。
-- 查询 Google Maven 和 Maven Central 的 `maven-metadata.xml`。
+- 查询 Android 库、Gradle 插件在 Google Maven 和 Maven Central 的 `maven-metadata.xml`。
 - 读取后端 requirements。
 - 查询 PyPI JSON API。
 - 排除 alpha、beta、rc、snapshot、dev、eap、preview 等预发布版本。

@@ -41,7 +41,7 @@ E:\projects\xiaopiaojia\.toolchains\gradle\gradle-8.13
 E:\projects\xiaopiaojia\.toolchains\android-sdk
 ```
 
-Wrapper 当前使用 Gradle 8.14.4。首次运行会下载对应 Gradle 发行包。本地工具链构建命令：
+Wrapper 当前使用 Gradle 9.4.1。首次运行会下载对应 Gradle 发行包。本地工具链构建命令：
 
 ```powershell
 $env:JAVA_HOME="$env:LOCALAPPDATA\Programs\Kimi\runtime"
