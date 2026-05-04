@@ -105,6 +105,12 @@ class LedgerViewModel(
     fun exportCsv() {
         viewModelScope.launch {
             val filters = _uiState.value
+            if (filters.items.isEmpty()) {
+                _uiState.update {
+                    it.copy(message = "暂无可导出的已确认账单。请先确认几笔账单，或重新同步后再试。")
+                }
+                return@launch
+            }
             _uiState.update { it.copy(exporting = true, message = null) }
             repository.exportConfirmedCsv(
                 month = filters.monthFilter,

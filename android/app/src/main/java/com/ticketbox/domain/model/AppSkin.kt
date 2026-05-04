@@ -18,7 +18,7 @@ enum class AppSkin(
     Harbor(
         storageKey = "harbor",
         displayName = "港湾",
-        description = "蓝橙分层",
+        description = "海蓝暖光",
     ),
     Berry(
         storageKey = "berry",
@@ -27,7 +27,7 @@ enum class AppSkin(
     );
 
     companion object {
-        val Default: AppSkin = Pine
+        val Default: AppSkin = Harbor
 
         fun fromStorageKey(value: String?): AppSkin {
             return entries.firstOrNull { skin -> skin.storageKey == value } ?: Default

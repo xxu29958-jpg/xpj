@@ -47,17 +47,17 @@ private val PomeloScheme = darkColorScheme(
 )
 
 private val HarborScheme = darkColorScheme(
-    primary = Color(0xFF9BE7DE),
+    primary = Color(0xFF8FE7E0),
     onPrimary = Color(0xFF003733),
-    secondary = Color(0xFFFFD8A8),
+    secondary = Color(0xFFFFC47D),
     onSecondary = Color(0xFF2B1B00),
-    tertiary = Color(0xFFC9D7FF),
+    tertiary = Color(0xFFB9CAFF),
     onTertiary = Color(0xFF17254A),
-    background = Color(0xFF061827),
+    background = Color(0xFF05151F),
     onBackground = Color(0xFFE7F1F3),
-    surface = Color(0xFF102635),
+    surface = Color(0xFF102836),
     onSurface = Color(0xFFE9EEEE),
-    surfaceVariant = Color(0xFF1C4050),
+    surfaceVariant = Color(0xFF1B3A49),
     onSurfaceVariant = Color(0xFFC7D1CF),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
@@ -107,9 +107,10 @@ fun backgroundBrushForSkin(skin: AppSkin): Brush {
         )
         AppSkin.Harbor -> Brush.verticalGradient(
             listOf(
-                Color(0xFF061A2B),
-                Color(0xFF123747),
-                Color(0xFF231A10),
+                Color(0xFF04121D),
+                Color(0xFF0C2A3C),
+                Color(0xFF173D44),
+                Color(0xFF2A2116),
             ),
         )
         AppSkin.Berry -> Brush.verticalGradient(
