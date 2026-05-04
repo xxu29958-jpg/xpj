@@ -33,6 +33,7 @@ fun ExpenseCard(
     showConfirmAction: Boolean = showActions,
     showRejectAction: Boolean = showActions,
     showDuplicateAction: Boolean = showActions,
+    actionsEnabled: Boolean = true,
     onEdit: () -> Unit = {},
     onConfirm: () -> Unit = {},
     onReject: () -> Unit = {},
@@ -42,11 +43,12 @@ fun ExpenseCard(
 
     if (showRejectDialog) {
         AlertDialog(
-            onDismissRequest = { showRejectDialog = false },
+            onDismissRequest = { if (actionsEnabled) showRejectDialog = false },
             title = { Text("删除这笔待确认账单？") },
             text = { Text("删除后这张截图会标记为已拒绝，不会进入账本。") },
             confirmButton = {
                 TextButton(
+                    enabled = actionsEnabled,
                     onClick = {
                         showRejectDialog = false
                         onReject()
@@ -56,7 +58,10 @@ fun ExpenseCard(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showRejectDialog = false }) {
+                TextButton(
+                    enabled = actionsEnabled,
+                    onClick = { showRejectDialog = false },
+                ) {
                     Text("取消")
                 }
             },
@@ -138,22 +143,34 @@ fun ExpenseCard(
 
             if (showActions) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onEdit) {
+                    OutlinedButton(
+                        enabled = actionsEnabled,
+                        onClick = onEdit,
+                    ) {
                         Text("编辑")
                     }
                     if (showConfirmAction) {
-                        Button(onClick = onConfirm) {
+                        Button(
+                            enabled = actionsEnabled,
+                            onClick = onConfirm,
+                        ) {
                             Text("确认")
                         }
                     }
                     if (showRejectAction) {
-                        OutlinedButton(onClick = { showRejectDialog = true }) {
+                        OutlinedButton(
+                            enabled = actionsEnabled,
+                            onClick = { showRejectDialog = true },
+                        ) {
                             Text("删除")
                         }
                     }
                 }
                 if (showDuplicateAction && expense.duplicateStatus == "suspected") {
-                    OutlinedButton(onClick = onKeepDuplicate) {
+                    OutlinedButton(
+                        enabled = actionsEnabled,
+                        onClick = onKeepDuplicate,
+                    ) {
                         Text("仍然保留")
                     }
                 }

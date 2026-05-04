@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 data class PendingUiState(
     val items: List<Expense> = emptyList(),
     val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
+    val actionInProgressIds: Set<Long> = emptySet(),
     val loading: Boolean = false,
     val message: String? = null,
 )
@@ -65,41 +66,79 @@ class PendingViewModel(
             _uiState.update { it.copy(message = "请先填写金额。") }
             return
         }
+        if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
             repository.confirmExpense(expense.id)
                 .onSuccess { confirmed ->
                     _uiState.update { state ->
-                        state.copy(items = state.items.filterNot { it.id == confirmed.id }, message = "已确认入账")
+                        state.copy(
+                            items = state.items.filterNot { it.id == confirmed.id },
+                            thumbnails = state.thumbnails - confirmed.id,
+                            actionInProgressIds = state.actionInProgressIds - confirmed.id,
+                            message = "已确认入账",
+                        )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "确认失败") } }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            actionInProgressIds = it.actionInProgressIds - expense.id,
+                            message = error.message ?: "确认失败",
+                        )
+                    }
+                }
         }
     }
 
     fun reject(expense: Expense) {
+        if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
             repository.rejectExpense(expense.id)
                 .onSuccess { rejected ->
                     _uiState.update { state ->
-                        state.copy(items = state.items.filterNot { it.id == rejected.id }, message = "已删除")
+                        state.copy(
+                            items = state.items.filterNot { it.id == rejected.id },
+                            thumbnails = state.thumbnails - rejected.id,
+                            actionInProgressIds = state.actionInProgressIds - rejected.id,
+                            message = "已删除",
+                        )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "删除失败") } }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            actionInProgressIds = it.actionInProgressIds - expense.id,
+                            message = error.message ?: "删除失败",
+                        )
+                    }
+                }
         }
     }
 
     fun markNotDuplicate(expense: Expense) {
+        if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
+            _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
             repository.markNotDuplicate(expense.id)
                 .onSuccess { updated ->
                     _uiState.update { state ->
                         state.copy(
                             items = state.items.map { if (it.id == updated.id) updated else it },
+                            actionInProgressIds = state.actionInProgressIds - updated.id,
                             message = "已保留这条账单",
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "操作失败") } }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            actionInProgressIds = it.actionInProgressIds - expense.id,
+                            message = error.message ?: "操作失败",
+                        )
+                    }
+                }
         }
     }
 }
