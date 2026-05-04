@@ -353,7 +353,10 @@ fun ExpenseEditScreen(
                         TextButton(onClick = { rawTextExpanded = !rawTextExpanded }) {
                             Text(if (rawTextExpanded) "收起 OCR 原文" else "查看 OCR 原文")
                         }
-                        OutlinedButton(onClick = onRetryOcr) {
+                        OutlinedButton(
+                            enabled = !state.ocrRunning && !state.saving,
+                            onClick = onRetryOcr,
+                        ) {
                             Text(if (state.ocrRunning) "识别中" else "重新识别")
                         }
                     }
@@ -372,10 +375,14 @@ fun ExpenseEditScreen(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onDone) {
+            OutlinedButton(
+                enabled = !state.saving,
+                onClick = onDone,
+            ) {
                 Text("返回")
             }
             Button(
+                enabled = !state.saving,
                 onClick = {
                     val draft = draftOrMessage() ?: return@Button
                     onSave(draft)
@@ -389,6 +396,7 @@ fun ExpenseEditScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (allowConfirm) {
                     Button(
+                        enabled = !state.saving,
                         onClick = {
                             val draft = draftOrMessage() ?: return@Button
                             if (draft.amountCents == null) {
@@ -403,6 +411,7 @@ fun ExpenseEditScreen(
                 }
                 if (allowReject) {
                     OutlinedButton(
+                        enabled = !state.saving,
                         onClick = { showRejectDialog = true },
                     ) {
                         Text("删除")

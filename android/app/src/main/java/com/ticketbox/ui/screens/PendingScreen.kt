@@ -92,6 +92,7 @@ fun PendingScreen(
                     expense = expense,
                     thumbnail = state.thumbnails[expense.id],
                     showActions = true,
+                    actionsEnabled = expense.id !in state.actionInProgressIds,
                     onEdit = { onEdit(expense) },
                     onConfirm = { onConfirm(expense) },
                     onReject = { onReject(expense) },
