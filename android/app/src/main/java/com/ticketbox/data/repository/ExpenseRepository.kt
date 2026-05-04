@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.ExpenseDao
@@ -37,6 +38,10 @@ class ExpenseRepository(
     private val settingsStore: LocalSettingsStore,
     private val tokenStore: SecureTokenStore,
 ) {
+    private companion object {
+        const val NETWORK_LOG_TAG = "TicketboxNetwork"
+    }
+
     private val errorAdapter = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
@@ -48,15 +53,17 @@ class ExpenseRepository(
         return apiClient.create(serverUrl) { tokenOverride ?: tokenStore.getToken() }
     }
 
-    private suspend fun <T> safeCall(block: suspend () -> T): Result<T> {
+    private suspend fun <T> safeCall(serverUrlHint: String? = null, block: suspend () -> T): Result<T> {
         return try {
             Result.success(block())
         } catch (error: HttpException) {
             Result.failure(RepositoryException(parseHttpError(error)))
         } catch (error: RepositoryException) {
             Result.failure(error)
-        } catch (_: IOException) {
-            Result.failure(RepositoryException("网络不可用，请稍后重试。"))
+        } catch (error: IOException) {
+            val serverUrl = serverUrlHint ?: settingsStore.serverUrl()
+            Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, serverUrl), error)
+            Result.failure(RepositoryException(userNetworkMessage(error, serverUrl)))
         } catch (error: IllegalArgumentException) {
             Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
         } catch (error: Exception) {
@@ -100,21 +107,27 @@ class ExpenseRepository(
     private fun diagnosticErrorMessage(error: Throwable): String {
         return when (error) {
             is HttpException -> parseHttpError(error)
-            is IOException -> "网络不可用，请检查服务器地址、Tunnel 或局域网。"
+            is IOException -> {
+                Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, settingsStore.serverUrl()), error)
+                userNetworkMessage(error, settingsStore.serverUrl())
+            }
             is RepositoryException -> error.message ?: "操作失败。"
             is IllegalArgumentException -> error.message ?: "请求参数不正确。"
             else -> error.message ?: "操作失败。"
         }
     }
 
-    suspend fun bindServer(serverUrl: String, appToken: String): Result<Unit> = safeCall {
+    suspend fun bindServer(serverUrl: String, appToken: String): Result<Unit> {
         val normalized = serverUrl.trim().trimEnd('/')
         require(normalized.isNotBlank()) { "请输入服务器地址。" }
+        require(!isLocalOnlyServerUrl(normalized)) { "请填写公网服务器地址。" }
         require(appToken.isNotBlank()) { "请输入 App Token。" }
-        api(normalized, appToken).checkAuth()
-        settingsStore.saveServerUrl(normalized)
-        tokenStore.saveToken(appToken)
-        settingsStore.markUnlocked()
+        return safeCall(serverUrlHint = normalized) {
+            api(normalized, appToken).checkAuth()
+            settingsStore.saveServerUrl(normalized)
+            tokenStore.saveToken(appToken)
+            settingsStore.markUnlocked()
+        }
     }
 
     suspend fun testConnection(): Result<Unit> = safeCall {

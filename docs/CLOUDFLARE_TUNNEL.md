@@ -63,8 +63,20 @@ Tunnel 配好后，从项目根目录运行：
 
 ```powershell
 cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1
+```
+
+项目默认检查：
+
+```text
+https://api.zen70.cn
+```
+
+也可以显式指定：
+
+```powershell
 powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
-  -ServerUrl https://api.你的域名.com
+  -ServerUrl https://api.zen70.cn
 ```
 
 脚本会：
@@ -163,6 +175,15 @@ Android App 只用 Authorization: Bearer APP_TOKEN。
 确认快捷指令字段名是 file。
 确认图片小于 10MB。
 优先把 HEIC 转成 JPEG 或 PNG。
+```
+
+离开家里 Wi-Fi 后显示网络中断：
+
+```text
+确认 App 或快捷指令使用 https://api.zen70.cn。
+确认 Windows 没有睡眠，cloudflared 和 FastAPI 都在运行。
+在手机 Safari 打开 https://api.zen70.cn/api/health，应看到 {"status":"ok"}。
+在 Windows 运行 scripts\check_cloudflare_endpoint.ps1。
 ```
 
 ## 官方资料
