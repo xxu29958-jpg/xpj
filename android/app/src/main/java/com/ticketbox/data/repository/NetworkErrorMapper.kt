@@ -11,7 +11,7 @@ fun userNetworkMessage(error: IOException, serverUrl: String?): String {
     return if (isLocalOnlyServerUrl(cleanServerUrl)) {
         "请填写公网服务器地址。"
     } else {
-        "连接不上服务器，请稍后再试。"
+        "暂时连不上小票夹，请稍后再试。"
     }
 }
 
@@ -33,7 +33,7 @@ fun validateBindingInput(serverUrl: String, appToken: String): String {
     val normalized = serverUrl.trim().trimEnd('/')
     require(normalized.isNotBlank()) { "请输入服务器地址。" }
     require(!isLocalOnlyServerUrl(normalized)) { "请填写公网服务器地址。" }
-    require(appToken.isNotBlank()) { "请输入 App Token。" }
+    require(appToken.isNotBlank()) { "请输入访问口令。" }
     return normalized
 }
 

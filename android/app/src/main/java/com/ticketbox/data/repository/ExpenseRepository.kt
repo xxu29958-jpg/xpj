@@ -84,7 +84,7 @@ class ExpenseRepository(
                 ?.let { return it }
         }
         return when (statusCode) {
-            401, 403 -> "Token 无效。"
+            401, 403 -> "访问口令不对，请重新检查。"
             404 -> "账单不存在。"
             413 -> "上传文件超过大小限制。"
             else -> "服务器返回错误 $statusCode。"
@@ -171,13 +171,13 @@ class ExpenseRepository(
         record("身份验证", "访问凭证有效") {
             service.checkAuth()
         }
-        record("服务器状态", "状态接口可用") {
+        record("服务器状态", "小票夹服务正常") {
             service.serverSettings()
         }
         record("待确认账单", "可以读取待确认账单") {
             pending = service.pendingExpenses().map { it.toDomain() }
         }
-        record("已确认账本", "可以同步已确认账单") {
+        record("已确认账本", "可以同步账本") {
             service.confirmedExpenses(page = 1, pageSize = 1)
         }
         record("月度统计", "可以读取月度统计") {
@@ -196,11 +196,11 @@ class ExpenseRepository(
             checks += DiagnosticCheck(
                 name = "受保护图片",
                 status = DiagnosticStatus.Warn,
-                detail = "暂无待确认截图，未检查图片接口。",
+                detail = "暂无待确认截图，跳过图片检查。",
                 elapsedMs = 0,
             )
         } else {
-            record("受保护图片", "缩略图接口可用") {
+            record("受保护图片", "截图预览可以打开") {
                 readProtectedImage(service.expenseThumbnail(imageCandidate.id))
             }
         }
