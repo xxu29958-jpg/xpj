@@ -68,6 +68,8 @@
 
 - AndroidX Maven：https://dl.google.com/dl/android/maven2/
 - Maven Central：https://repo1.maven.org/maven2/
+- Maven repository metadata：https://maven.apache.org/repositories/metadata.html
+- PyPI JSON API：https://docs.pypi.org/api/json/
 - Android SDK packages / sdkmanager：https://developer.android.com/tools/sdkmanager
 - Gradle 8.14.4 release notes：https://docs.gradle.org/8.14.4/release-notes.html
 - Room runtime metadata：https://dl.google.com/dl/android/maven2/androidx/room/room-runtime/maven-metadata.xml
