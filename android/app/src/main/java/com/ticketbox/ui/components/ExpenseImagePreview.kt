@@ -32,12 +32,20 @@ fun ExpenseImagePreview(
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
         }
     }
+    val previewAspectRatio = remember(imageBitmap) {
+        val bitmap = imageBitmap
+        if (bitmap == null || bitmap.height == 0) {
+            4f / 5f
+        } else {
+            (bitmap.width.toFloat() / bitmap.height.toFloat()).coerceIn(0.75f, 1.45f)
+        }
+    }
 
     if (imageBitmap == null) {
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
+                .aspectRatio(4f / 5f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
@@ -57,8 +65,9 @@ fun ExpenseImagePreview(
         contentDescription = contentDescription,
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(12.dp)),
-        contentScale = ContentScale.Crop,
+            .aspectRatio(previewAspectRatio)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentScale = ContentScale.Fit,
     )
 }
