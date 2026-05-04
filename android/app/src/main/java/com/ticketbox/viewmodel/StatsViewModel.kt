@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.DailySpend
+import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.LifestyleStats
+import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.monthlySpendingComparison
 import com.ticketbox.domain.model.recentDailySpending
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +21,7 @@ data class StatsUiState(
     val stats: MonthlyStats? = null,
     val lifestyleStats: LifestyleStats? = null,
     val dailyTrend: List<DailySpend> = emptyList(),
+    val monthComparison: MonthComparison? = null,
     val months: List<String> = emptyList(),
     val month: String = YearMonth.now().toString(),
     val loading: Boolean = false,
@@ -29,6 +33,7 @@ class StatsViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
+    private var confirmedCache: List<Expense> = emptyList()
 
     init {
         loadMonths()
@@ -46,13 +51,24 @@ class StatsViewModel(
     private fun observeDailyTrend() {
         viewModelScope.launch {
             repository.observeConfirmed().collect { expenses ->
-                _uiState.update { it.copy(dailyTrend = recentDailySpending(expenses)) }
+                confirmedCache = expenses
+                _uiState.update {
+                    it.copy(
+                        dailyTrend = recentDailySpending(expenses),
+                        monthComparison = monthlySpendingComparison(expenses, it.month),
+                    )
+                }
             }
         }
     }
 
     fun setMonth(value: String) {
-        _uiState.update { it.copy(month = value) }
+        _uiState.update {
+            it.copy(
+                month = value,
+                monthComparison = monthlySpendingComparison(confirmedCache, value),
+            )
+        }
         refresh()
     }
 

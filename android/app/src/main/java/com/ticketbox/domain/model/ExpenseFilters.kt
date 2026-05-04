@@ -3,8 +3,10 @@ package com.ticketbox.domain.model
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 fun filterConfirmedExpenses(
     expenses: List<Expense>,
@@ -48,6 +50,43 @@ fun recentDailySpending(
             amountCents = totals[date] ?: 0L,
         )
     }
+}
+
+fun monthlySpendingComparison(
+    expenses: List<Expense>,
+    month: String,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): MonthComparison? {
+    val currentMonth = runCatching { YearMonth.parse(month.trim()) }.getOrNull() ?: return null
+    val previousMonth = currentMonth.minusMonths(1)
+    var currentAmount = 0L
+    var previousAmount = 0L
+
+    expenses.forEach { expense ->
+        val amount = expense.amountCents ?: return@forEach
+        val expenseMonth = expense.ledgerLocalDate(zoneId)
+            ?.let { YearMonth.from(it) }
+            ?: return@forEach
+        when (expenseMonth) {
+            currentMonth -> currentAmount += amount
+            previousMonth -> previousAmount += amount
+        }
+    }
+
+    val delta = currentAmount - previousAmount
+    val percentChange = if (previousAmount > 0L) {
+        ((delta.toDouble() / previousAmount.toDouble()) * 100).roundToInt()
+    } else {
+        null
+    }
+    return MonthComparison(
+        currentMonth = currentMonth.toString(),
+        previousMonth = previousMonth.toString(),
+        currentAmountCents = currentAmount,
+        previousAmountCents = previousAmount,
+        deltaAmountCents = delta,
+        percentChange = percentChange,
+    )
 }
 
 private fun Expense.ledgerLocalDate(zoneId: ZoneId): LocalDate? {
