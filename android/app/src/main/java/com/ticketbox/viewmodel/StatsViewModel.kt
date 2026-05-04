@@ -41,6 +41,7 @@ class StatsViewModel(
 
     fun setMonth(value: String) {
         _uiState.update { it.copy(month = value) }
+        refresh()
     }
 
     fun refresh() {
