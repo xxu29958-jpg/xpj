@@ -56,6 +56,12 @@ Cloudflare Tunnel 只转发本机服务：
 api.你的域名.com -> http://127.0.0.1:8000
 ```
 
+详细配置见：
+
+```text
+docs\CLOUDFLARE_TUNNEL.md
+```
+
 安全边界：
 
 - 不开放路由器端口。
