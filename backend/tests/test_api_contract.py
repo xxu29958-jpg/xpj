@@ -17,6 +17,18 @@ def upload_png(client: TestClient) -> int:
     return int(payload["id"])
 
 
+def upload_png_as_raw_body(client: TestClient) -> int:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    return int(payload["id"])
+
+
 def test_health_and_auth_contract(client: TestClient) -> None:
     assert client.get("/api/health").json() == {"status": "ok"}
 
@@ -100,6 +112,18 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
     assert stats.status_code == 200
     assert stats.json()["total_amount_cents"] == 3680
+
+
+def test_upload_screenshot_accepts_ios_file_body(client: TestClient) -> None:
+    expense_id = upload_png_as_raw_body(client)
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == expense_id)
+    assert item["status"] == "pending"
+    assert item["image_path"].startswith("uploads/")
+    assert item["image_path"].endswith(".png")
+    assert item["image_hash"]
 
 
 def test_duplicate_and_category_rule_contract(client: TestClient) -> None:
