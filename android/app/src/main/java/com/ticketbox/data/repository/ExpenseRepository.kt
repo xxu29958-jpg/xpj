@@ -118,11 +118,8 @@ class ExpenseRepository(
     }
 
     suspend fun bindServer(serverUrl: String, appToken: String): Result<Unit> {
-        val normalized = serverUrl.trim().trimEnd('/')
-        require(normalized.isNotBlank()) { "请输入服务器地址。" }
-        require(!isLocalOnlyServerUrl(normalized)) { "请填写公网服务器地址。" }
-        require(appToken.isNotBlank()) { "请输入 App Token。" }
-        return safeCall(serverUrlHint = normalized) {
+        return safeCall(serverUrlHint = serverUrl) {
+            val normalized = validateBindingInput(serverUrl, appToken)
             api(normalized, appToken).checkAuth()
             settingsStore.saveServerUrl(normalized)
             tokenStore.saveToken(appToken)
