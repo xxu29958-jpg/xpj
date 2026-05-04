@@ -114,6 +114,34 @@ cd E:\projects\xiaopiaojia\android
 .\install_debug_apk.bat -Serial 设备序列号
 ```
 
+## USB 反向转发联调
+
+真机正式使用建议走 Cloudflare HTTPS 域名。如果手机上的 VPN、代理或 fake-ip DNS 导致 HTTPS 握手失败，可以先用 USB 反向转发验证 App 和 Windows 后端闭环：
+
+```powershell
+$adb = "E:\projects\xiaopiaojia\.toolchains\android-sdk\platform-tools\adb.exe"
+& $adb -s 设备序列号 reverse tcp:8000 tcp:8000
+```
+
+debug APK 支持仅联调用的 intent 绑定入口：
+
+```powershell
+cd E:\projects\xiaopiaojia\android
+.\install_debug_apk.bat -Build -ReverseBackend -ClearData -DebugBind
+```
+
+等价的底层 adb 命令：
+
+```powershell
+$envLines = [System.IO.File]::ReadAllLines("E:\projects\xiaopiaojia\backend\.env", [System.Text.UTF8Encoding]::new($false))
+$appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^APP_TOKEN=", "").Trim()
+& $adb -s 设备序列号 shell am start -n com.ticketbox/.MainActivity `
+  --es ticketbox.debug.server_url "http://127.0.0.1:8000" `
+  --es ticketbox.debug.app_token $appToken
+```
+
+该入口只在 debuggable APK 中生效，不进入 release 构建。正式绑定仍然使用 App 页面输入服务器地址和 `APP_TOKEN`。
+
 安装后首次打开 App：
 
 1. 绑定服务器地址。

@@ -193,7 +193,41 @@ powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1 `
 
 脚本默认从 `backend\.env` 读取 `APP_TOKEN` 和 `UPLOAD_TOKEN`，不会打印 Token。
 
-## 6. App 绑定
+## 6. USB 反向转发联调
+
+如果真机上的 VPN、代理或运营商网络导致 Cloudflare HTTPS 握手失败，可以先用 adb reverse 验证 App 和后端闭环：
+
+```powershell
+$adb = "E:\projects\xiaopiaojia\.toolchains\android-sdk\platform-tools\adb.exe"
+& $adb -s 设备序列号 reverse tcp:8000 tcp:8000
+& $adb -s 设备序列号 reverse --list
+```
+
+debug 包支持仅用于联调的 intent 绑定入口，避免中文输入法改写 URL 或 Token：
+
+```powershell
+cd E:\projects\xiaopiaojia\android
+.\install_debug_apk.bat -Build -ReverseBackend -ClearData -DebugBind
+```
+
+等价的底层 adb 命令如下：
+
+```powershell
+$envLines = [System.IO.File]::ReadAllLines("E:\projects\xiaopiaojia\backend\.env", [System.Text.UTF8Encoding]::new($false))
+$appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^APP_TOKEN=", "").Trim()
+& $adb -s 设备序列号 shell am start -n com.ticketbox/.MainActivity `
+  --es ticketbox.debug.server_url "http://127.0.0.1:8000" `
+  --es ticketbox.debug.app_token $appToken
+```
+
+说明：
+
+- 这个入口只在 debuggable APK 中生效。
+- 不打印 Token，不进入 release 构建。
+- `http://127.0.0.1:8000` 依赖 `adb reverse`，只用于 USB 联调。
+- 正式使用仍然配置 `https://api.你的域名.com`。
+
+## 7. App 绑定
 
 首次打开 Android App：
 
@@ -216,7 +250,7 @@ App Token：backend\.env 里的 APP_TOKEN
 - 重复检测
 - 受保护缩略图接口
 
-## 7. 端到端验收
+## 8. 端到端验收
 
 按顺序验证：
 
@@ -231,7 +265,7 @@ App Token：backend\.env 里的 APP_TOKEN
 9. 统计页本月总额、分类金额、最近 7 天统计更新。
 10. 断开网络后打开账本页，能看到 Room 本地缓存。
 
-## 8. 常见问题
+## 9. 常见问题
 
 `invalid_token`：
 
@@ -258,6 +292,14 @@ Android 无法连接本机：
 ```text
 真机建议用 Cloudflare HTTPS 域名。
 模拟器访问 Windows 本机后端用 http://10.0.2.2:8000。
+USB 联调可用 adb reverse 后填 http://127.0.0.1:8000。
+```
+
+真机访问 Cloudflare 域名时报 `SSLHandshakeException: connection closed`：
+
+```text
+优先检查手机上的 VPN、代理、fake-ip DNS 或安全软件。
+先用 adb reverse 验证 App/后端闭环，再切回 Cloudflare HTTPS 域名。
 ```
 
 ADB 找不到设备：
@@ -276,7 +318,7 @@ HEIC 不能预览：
 iPhone 快捷指令优先转 JPEG 或 PNG。
 ```
 
-## 9. 官方资料
+## 10. 官方资料
 
 - Android 真机运行与调试：https://developer.android.com/studio/run/device
 - Android Debug Bridge：https://developer.android.com/tools/adb

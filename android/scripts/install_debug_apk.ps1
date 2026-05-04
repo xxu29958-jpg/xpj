@@ -1,8 +1,12 @@
 ﻿param(
     [switch]$Build,
     [switch]$Launch,
+    [switch]$ReverseBackend,
+    [switch]$DebugBind,
+    [switch]$ClearData,
     [switch]$ListDevices,
     [string]$Serial = "",
+    [string]$ServerUrl = "http://127.0.0.1:8000",
     [string]$Adb = "",
     [string]$ApkPath = ""
 )
@@ -14,6 +18,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $AndroidRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $ProjectRoot = Resolve-Path (Join-Path $AndroidRoot "..")
 $DefaultApk = Join-Path $AndroidRoot "app\build\outputs\apk\debug\app-debug.apk"
+$BackendEnv = Join-Path $ProjectRoot "backend\.env"
 $PackageName = "com.ticketbox"
 
 function Invoke-Checked {
@@ -146,6 +151,24 @@ function Select-DeviceSerial {
     throw "未发现 Android 设备。请连接手机、打开开发者选项和 USB 调试。"
 }
 
+function Read-AppToken {
+    if (-not (Test-Path -LiteralPath $BackendEnv)) {
+        throw "未找到后端 .env：$BackendEnv"
+    }
+
+    $lines = [System.IO.File]::ReadAllLines($BackendEnv, [System.Text.UTF8Encoding]::new($false))
+    $tokenLine = $lines | Where-Object { $_ -match "^APP_TOKEN=" } | Select-Object -First 1
+    if (-not $tokenLine) {
+        throw "backend\.env 中未找到 APP_TOKEN。"
+    }
+
+    $token = ($tokenLine -replace "^APP_TOKEN=", "").Trim()
+    if ($token.Length -eq 0) {
+        throw "backend\.env 中 APP_TOKEN 为空。"
+    }
+    return $token
+}
+
 Set-Location $AndroidRoot
 Ensure-LocalAndroidEnvironment
 
@@ -170,7 +193,36 @@ Write-Host "设备：$deviceSerial"
 Invoke-Checked -FilePath $adbPath -Arguments @("-s", $deviceSerial, "install", "-r", $resolvedApk)
 Write-Host "安装完成。"
 
-if ($Launch) {
+if ($ReverseBackend) {
+    Invoke-Checked -FilePath $adbPath -Arguments @("-s", $deviceSerial, "reverse", "tcp:8000", "tcp:8000")
+    Write-Host "已建立 adb reverse：设备 tcp:8000 -> Windows tcp:8000。"
+}
+
+if ($ClearData) {
+    Invoke-Checked -FilePath $adbPath -Arguments @("-s", $deviceSerial, "shell", "pm", "clear", $PackageName)
+    Write-Host "已清除 App 本地数据。"
+}
+
+if ($DebugBind) {
+    $appToken = Read-AppToken
+    Invoke-Checked -FilePath $adbPath -Arguments @(
+        "-s",
+        $deviceSerial,
+        "shell",
+        "am",
+        "start",
+        "-n",
+        "$PackageName/.MainActivity",
+        "--es",
+        "ticketbox.debug.server_url",
+        $ServerUrl,
+        "--es",
+        "ticketbox.debug.app_token",
+        $appToken
+    )
+    Write-Host "已用 debug intent 启动并绑定服务器。"
+}
+elseif ($Launch) {
     Invoke-Checked -FilePath $adbPath -Arguments @("-s", $deviceSerial, "shell", "monkey", "-p", $PackageName, "1")
     Write-Host "已尝试启动小票夹。"
 }
