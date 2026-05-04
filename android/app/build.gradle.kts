@@ -1,3 +1,6 @@
+val ticketboxVersionCode = 1
+val ticketboxVersionName = "0.1.0"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -13,8 +16,11 @@ android {
         applicationId = "com.ticketbox"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ticketboxVersionCode
+        versionName = ticketboxVersionName
+
+        resValue("string", "app_version_name", ticketboxVersionName)
+        resValue("integer", "app_version_code", ticketboxVersionCode.toString())
     }
 
     compileOptions {
