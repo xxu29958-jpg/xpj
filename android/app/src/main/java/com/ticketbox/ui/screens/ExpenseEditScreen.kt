@@ -315,7 +315,7 @@ fun ExpenseEditScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("更多记录", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "标签、值不值、后悔指数和 OCR 原文",
+                            text = "标签、值不值、后悔指数和识别原文",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -351,7 +351,7 @@ fun ExpenseEditScreen(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { rawTextExpanded = !rawTextExpanded }) {
-                            Text(if (rawTextExpanded) "收起 OCR 原文" else "查看 OCR 原文")
+                            Text(if (rawTextExpanded) "收起识别原文" else "查看识别原文")
                         }
                         OutlinedButton(
                             enabled = !state.ocrRunning && !state.saving,
@@ -361,7 +361,7 @@ fun ExpenseEditScreen(
                         }
                     }
                     if (rawTextExpanded) {
-                        Text("OCR 原文：$rawTextDisplay", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("识别原文：$rawTextDisplay", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
