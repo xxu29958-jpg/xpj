@@ -3,6 +3,7 @@ package com.ticketbox.domain.model
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 
 class ExpenseFiltersTest {
@@ -29,6 +30,34 @@ class ExpenseFiltersTest {
         val filtered = filterConfirmedExpenses(items, month = "2026-05", category = "")
 
         assertEquals(listOf(1L), filtered.map { it.id })
+    }
+
+    @Test
+    fun filtersLedgerMonthUsingLocalTimezone() {
+        val items = listOf(
+            expense(id = 1, category = "吃饭", expenseTime = "2026-04-30T16:30:00Z"),
+            expense(id = 2, category = "吃饭", expenseTime = "2026-04-30T15:30:00Z"),
+        )
+
+        val filtered = filterConfirmedExpenses(
+            expenses = items,
+            month = "2026-05",
+            category = "",
+            zoneId = ZoneId.of("Asia/Shanghai"),
+        )
+
+        assertEquals(listOf(1L), filtered.map { it.id })
+    }
+
+    @Test
+    fun invalidLedgerMonthMatchesNothing() {
+        val items = listOf(
+            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z"),
+        )
+
+        val filtered = filterConfirmedExpenses(items, month = "2026-13", category = "")
+
+        assertEquals(emptyList(), filtered.map { it.id })
     }
 
     @Test
