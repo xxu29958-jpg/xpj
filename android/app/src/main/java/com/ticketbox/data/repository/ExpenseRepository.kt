@@ -205,6 +205,15 @@ class ExpenseRepository(
         api().updateExpense(id, draft.toRequest()).toDomain()
     }
 
+    suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = safeCall {
+        require(draft.amountCents != null) { "请先填写金额。" }
+        val dto = api().createManualExpense(draft.toRequest())
+        if (dto.status == "confirmed") {
+            expenseDao.upsertByServerId(dto.toEntity())
+        }
+        dto.toDomain()
+    }
+
     suspend fun confirmExpense(id: Long): Result<Expense> = safeCall {
         val dto = api().confirmExpense(id)
         if (dto.status == "confirmed") {

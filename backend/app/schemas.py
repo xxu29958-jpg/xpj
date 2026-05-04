@@ -37,6 +37,17 @@ class UploadCheckResponse(BaseModel):
     recommended_body: str = "file"
 
 
+class ExpenseManualCreateRequest(BaseModel):
+    amount_cents: int | None = Field(default=None, ge=0)
+    merchant: str | None = None
+    category: str | None = None
+    note: str | None = None
+    expense_time: datetime | None = None
+    tags: str | None = None
+    value_score: int | None = Field(default=None, ge=1, le=5)
+    regret_score: int | None = Field(default=None, ge=1, le=5)
+
+
 class ExpenseUpdateRequest(BaseModel):
     amount_cents: int | None = Field(default=None, ge=0)
     merchant: str | None = None

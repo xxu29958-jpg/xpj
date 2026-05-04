@@ -50,6 +50,9 @@ interface ApiService {
         @Query("category") category: String? = null,
     ): Response<ResponseBody>
 
+    @POST("api/expenses/manual")
+    suspend fun createManualExpense(@Body request: ExpenseUpdateRequest): ExpenseDto
+
     @PATCH("api/expenses/{id}")
     suspend fun updateExpense(
         @Path("id") id: Long,

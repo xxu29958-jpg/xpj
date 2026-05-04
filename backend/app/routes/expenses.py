@@ -6,9 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.auth import verify_app_token
 from app.database import get_db
-from app.schemas import CategoriesResponse, ExpenseResponse, ExpenseUpdateRequest, MonthsResponse, PaginatedExpensesResponse
+from app.schemas import (
+    CategoriesResponse,
+    ExpenseManualCreateRequest,
+    ExpenseResponse,
+    ExpenseUpdateRequest,
+    MonthsResponse,
+    PaginatedExpensesResponse,
+)
 from app.services.expense_service import (
     confirm_expense,
+    create_manual_expense,
     ensure_thumbnail_file,
     export_confirmed_csv,
     get_expense,
@@ -34,6 +42,14 @@ router = APIRouter(
 @router.get("/pending", response_model=list[ExpenseResponse])
 def get_pending_expenses(db: Session = Depends(get_db)) -> list[ExpenseResponse]:
     return list_pending(db)
+
+
+@router.post("/manual", response_model=ExpenseResponse)
+def post_manual_expense(
+    payload: ExpenseManualCreateRequest,
+    db: Session = Depends(get_db),
+) -> ExpenseResponse:
+    return create_manual_expense(db, payload)
 
 
 @router.get("/confirmed", response_model=PaginatedExpensesResponse)
