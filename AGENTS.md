@@ -88,3 +88,14 @@ routes -> services -> database/models
 - 临时凑合的弱代码。
 
 新增依赖、框架或架构变更必须先查官方资料或一手元数据，并把依据写进 `docs/REFERENCES.md` 或相关决策文档。
+
+## Windows UTF-8 规则
+
+- 读取中文文档、README、Markdown、Kotlin、Python、YAML 等文本时，Windows PowerShell 5.1 必须显式使用 `-Encoding UTF8`。
+- 禁止用无 `-Encoding UTF8` 的 `Get-Content -Raw` 读取中文文件后再判断内容。
+- `.ps1` 文件必须保存为 UTF-8 with BOM，保证 Windows PowerShell 5.1 可直接运行。
+- 新增或修改文本文件后运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+```

@@ -11,6 +11,7 @@ E:\projects\xiaopiaojia\
   .gitignore
   README.md
   scripts\
+    check_text_encoding.ps1
     real_device_preflight.ps1
     verify_project.ps1
   .github\

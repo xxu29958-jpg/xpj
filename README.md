@@ -131,3 +131,9 @@ $env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 cd E:\projects\xiaopiaojia
 powershell -ExecutionPolicy Bypass -File scripts\verify_project.ps1
 ```
+
+检查中文文本编码：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+```
