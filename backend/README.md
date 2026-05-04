@@ -112,6 +112,12 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall_startup_task.ps1
 
 任务只运行 `scripts\start_backend.ps1`，默认监听 `127.0.0.1:8000`。
 
+查看任务：
+
+```powershell
+Get-ScheduledTask -TaskName TicketboxBackend
+```
+
 ## 数据库备份
 
 手动备份 SQLite 数据库：

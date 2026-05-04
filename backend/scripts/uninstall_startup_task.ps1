@@ -4,5 +4,10 @@
 
 $ErrorActionPreference = "Stop"
 
-schtasks.exe /Delete /TN $TaskName /F | Out-Host
-Write-Host "已删除任务计划：$TaskName"
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    Write-Host "已删除任务计划：$TaskName"
+}
+else {
+    Write-Host "任务计划不存在：$TaskName"
+}

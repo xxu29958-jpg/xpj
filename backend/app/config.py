@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(BACKEND_ROOT / ".env")
+load_dotenv(BACKEND_ROOT / ".env", encoding="utf-8-sig")
 
 
 def _bool_env(name: str, default: bool) -> bool:

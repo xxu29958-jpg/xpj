@@ -6,6 +6,10 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
+class Utf8JSONResponse(JSONResponse):
+    media_type = "application/json; charset=utf-8"
+
+
 ERROR_MESSAGES = {
     "invalid_token": "Token 无效。",
     "file_too_large": "上传文件超过大小限制。",
@@ -29,7 +33,7 @@ class AppError(Exception):
 
 
 def error_response(error: str, message: str | None = None, status_code: int = 400) -> JSONResponse:
-    return JSONResponse(
+    return Utf8JSONResponse(
         status_code=status_code,
         content={
             "error": error,
