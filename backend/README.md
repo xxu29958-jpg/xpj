@@ -93,6 +93,15 @@ http://127.0.0.1:8000/docs
 
 ```text
 backend\logs\backend-YYYYMMDD.log
+backend\logs\ticketbox-backend-YYYYMMDD.out.log
+backend\logs\ticketbox-backend-YYYYMMDD.err.log
+```
+
+查看服务器状态和最近访问日志：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\show_server_status.ps1
 ```
 
 ## Windows 开机自启
