@@ -110,5 +110,6 @@ Upload-Token: 你的_UPLOAD_TOKEN
 - `Upload-Token` 的值只填 token 本身，不要填 `Bearer`、冒号或引号。
 - 后端可以接受 HEIC，但第一版 Android 不保证 HEIC 原图预览；建议快捷指令转换为 JPEG 或 PNG。
 - 如果提示“网络中断”，优先改用上面的“文件”请求正文；表单上传在部分快捷指令配置下容易把图片变成文本字段。
+- 离开家里 Wi-Fi 后仍然使用 `https://api.zen70.cn/api/upload-screenshot`。如果蜂窝网络下提示“网络中断”，先用 Safari 打开 `https://api.zen70.cn/api/health`。
 - 不要开放路由器端口。
 - 不要把 Windows `uploads` 目录公开到公网。

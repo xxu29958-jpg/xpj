@@ -26,7 +26,7 @@ fun BindServerScreen(
     message: String?,
     onBind: (String, String) -> Unit,
 ) {
-    var serverUrl by remember { mutableStateOf("") }
+    var serverUrl by remember { mutableStateOf("https://api.zen70.cn") }
     var token by remember { mutableStateOf("") }
 
     Column(
@@ -47,8 +47,13 @@ fun BindServerScreen(
             onValueChange = { serverUrl = it },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("服务器地址") },
-            placeholder = { Text("https://api.我的域名.com") },
+            placeholder = { Text("https://api.zen70.cn") },
             singleLine = true,
+        )
+        Text(
+            "默认使用你的公网同步地址。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(

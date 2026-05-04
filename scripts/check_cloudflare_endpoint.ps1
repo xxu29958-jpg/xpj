@@ -1,6 +1,6 @@
 ﻿param(
-    [Parameter(Mandatory = $true)]
-    [string]$ServerUrl,
+    [Parameter(Mandatory = $false)]
+    [string]$ServerUrl = "https://api.zen70.cn",
     [string]$AppToken = "",
     [string]$UploadToken = "",
     [switch]$SkipUpload,

@@ -127,6 +127,13 @@ serverId 不存在 -> 插入本地记录
 - 使用 Android Keystore 保存。
 - OkHttp 日志最多 BASIC，不打印 Header 和 Body。
 
+## 错误文案与日志
+
+- App 主流程只显示生活化短文案，例如“连接不上服务器，请稍后再试”。
+- 不在绑定页、弹窗、Toast、Snackbar 中直接暴露 DNS、TLS、Tunnel、localhost、Token 校验、接口名等工程细节。
+- 网络异常的技术原因写入 Android Logcat，统一使用 `TicketboxNetwork` tag。
+- 设置页“连接检测”可以展示简化后的状态，不把内部实现细节作为默认内容。
+
 ## 依赖管理
 
 - Android 依赖版本集中在 `android/gradle/libs.versions.toml`。
