@@ -28,6 +28,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Check PowerShell scripts
+        working-directory: .
+        shell: powershell
+        run: |
+          $files = Get-ChildItem -Path backend/scripts, android/scripts -Filter *.ps1 -Recurse
+          foreach ($file in $files) {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+            if (-not $hasBom) {
+              throw "$($file.FullName) must be UTF-8 with BOM for Windows PowerShell 5.1"
+            }
+            $errors = $null
+            [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw -Encoding UTF8 -LiteralPath $file.FullName), [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              throw "$($file.FullName) syntax error: $($errors[0].Message)"
+            }
+            Write-Host "OK $($file.FullName)"
+          }
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

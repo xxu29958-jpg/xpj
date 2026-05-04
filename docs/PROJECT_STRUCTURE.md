@@ -82,7 +82,10 @@ android\
   build.gradle.kts
   gradlew
   gradlew.bat
+  install_debug_apk.bat
   gradle\wrapper\
+  scripts\
+    install_debug_apk.ps1
   README.md
   app\
     build.gradle.kts
