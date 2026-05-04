@@ -571,6 +571,23 @@ Debug 最多 BASIC
 不得打印 Token
 ```
 
+## 15.1 Android 依赖规范
+
+Android 插件和库版本统一维护在：
+
+```text
+android/gradle/libs.versions.toml
+```
+
+规则：
+
+- `android/build.gradle.kts` 只通过 `libs.plugins.*` 引用插件。
+- `android/app/build.gradle.kts` 只通过 `libs.*` 引用 Android 第三方依赖。
+- 新增 Android 依赖时先写入 Version Catalog，再在模块中引用。
+- 不在模块 `build.gradle.kts` 中散写版本号。
+- 不引入 alpha、beta、停止维护或来源不清的依赖进入主线。
+- 升级依赖必须跑 `:app:testDebugUnitTest`、`:app:assembleDebug` 和 `:app:lintDebug`。
+
 ## 16. UI 规范
 
 整体风格：
