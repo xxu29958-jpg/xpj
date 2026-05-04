@@ -37,17 +37,29 @@ class SavedUpload:
     media_type: str
 
 
-def _extension_for(file: UploadFile) -> str:
-    filename = file.filename or ""
+def _extension_from_metadata(filename: str | None, content_type: str | None) -> str | None:
+    filename = filename or ""
     suffix = Path(filename).suffix.lower().removeprefix(".")
     if suffix in ALLOWED_EXTENSIONS:
         return suffix
 
-    content_type = (file.content_type or "").lower()
+    content_type = (content_type or "").lower()
     if content_type in CONTENT_TYPE_EXTENSION:
         return CONTENT_TYPE_EXTENSION[content_type]
 
-    raise AppError("unsupported_file_type", status_code=400)
+    return None
+
+
+def _extension_from_header(header: bytes) -> str | None:
+    if header.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return "webp"
+    if len(header) >= 12 and header[4:8] == b"ftyp" and header[8:12] in HEIC_BRANDS:
+        return "heic"
+    return None
 
 
 def _looks_like_allowed_image(ext: str, header: bytes) -> bool:
@@ -63,40 +75,55 @@ def _looks_like_allowed_image(ext: str, header: bytes) -> bool:
 
 
 async def save_upload(file: UploadFile) -> SavedUpload:
+    data = bytearray()
+    try:
+        while chunk := await file.read(1024 * 1024):
+            data.extend(chunk)
+            if len(data) > get_settings().max_upload_size_bytes:
+                raise AppError("file_too_large", status_code=413)
+    finally:
+        await file.close()
+
+    return save_upload_bytes(
+        bytes(data),
+        filename=file.filename,
+        content_type=file.content_type,
+    )
+
+
+def save_upload_bytes(
+    data: bytes,
+    *,
+    filename: str | None = None,
+    content_type: str | None = None,
+) -> SavedUpload:
     settings = get_settings()
-    ext = _extension_for(file)
+    if len(data) > settings.max_upload_size_bytes:
+        raise AppError("file_too_large", status_code=413)
+    if not data:
+        raise AppError("unsupported_file_type", status_code=400)
+
+    header = data[:32]
+    header_ext = _extension_from_header(header)
+    metadata_ext = _extension_from_metadata(filename, content_type)
+    ext = header_ext or metadata_ext
+    if ext is None or not _looks_like_allowed_image(ext, header):
+        raise AppError("unsupported_file_type", status_code=400)
+
     now = datetime.now(UTC)
     target_dir = settings.upload_dir / now.strftime("%Y") / now.strftime("%m")
     target_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{secrets.token_hex(16)}.{ext}"
     target_path = target_dir / filename
-    hasher = hashlib.sha256()
-    total_size = 0
-    header = b""
-    image_header_checked = False
+    hasher = hashlib.sha256(data)
 
     try:
         with target_path.open("wb") as output:
-            while chunk := await file.read(1024 * 1024):
-                total_size += len(chunk)
-                if total_size > settings.max_upload_size_bytes:
-                    raise AppError("file_too_large", status_code=413)
-                if not image_header_checked:
-                    header = (header + chunk)[:32]
-                    if len(header) >= 12 or ext in {"jpg", "jpeg", "png"}:
-                        if not _looks_like_allowed_image(ext, header):
-                            raise AppError("unsupported_file_type", status_code=400)
-                        image_header_checked = True
-                hasher.update(chunk)
-                output.write(chunk)
-            if total_size == 0 or not image_header_checked:
-                raise AppError("unsupported_file_type", status_code=400)
+            output.write(data)
     except Exception:
         target_path.unlink(missing_ok=True)
         raise
-    finally:
-        await file.close()
 
     relative_path = target_path.relative_to(BACKEND_ROOT).as_posix()
     return SavedUpload(

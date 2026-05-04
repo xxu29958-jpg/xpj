@@ -191,6 +191,15 @@ curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
   -F "file=@test.png"
 ```
 
+也可以直接上传原始图片请求体，方便对应 iOS 快捷指令的“文件”请求正文：
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
+  -H "Upload-Token: upload-test-token" `
+  -H "Content-Type: image/png" `
+  --data-binary "@test.png"
+```
+
 返回示例：
 
 ```json

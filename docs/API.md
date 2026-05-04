@@ -111,7 +111,14 @@ Android 首次绑定服务器时使用。
 Upload-Token: UPLOAD_TOKEN
 ```
 
-请求体：
+请求体方式一，iOS 快捷指令推荐：
+
+```text
+raw image body
+Content-Type: image/jpeg 或 image/png
+```
+
+请求体方式二，兼容标准表单：
 
 ```text
 multipart/form-data
@@ -121,6 +128,7 @@ file: 图片文件
 规则：
 
 - 支持 `jpg`、`jpeg`、`png`、`webp`、`heic`。
+- 同一个接口同时支持原始图片请求体和 `multipart/form-data` 表单字段 `file`。
 - 最大 10MB，按 `MAX_UPLOAD_SIZE_MB` 配置。
 - 保存为随机文件名。
 - 数据库只保存相对路径。
