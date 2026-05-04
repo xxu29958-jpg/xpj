@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.AppInfo
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -412,7 +413,29 @@ fun SettingsScreen(
         localMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
-        Text("关于小票夹：私人截图确认账本，第一版不做自动入账。")
+        SettingSection(title = "关于") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("小票夹", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "版本 ${AppInfo.versionName} (${AppInfo.versionCode})",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "私人截图确认账本。截图上传后不会自动入账，需要确认后才会记录。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
