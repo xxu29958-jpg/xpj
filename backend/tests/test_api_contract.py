@@ -192,6 +192,45 @@ def test_manual_expense_create_contract(client: TestClient) -> None:
     assert missing_amount.json()["error"] == "amount_required"
 
 
+def test_expense_update_normalizes_user_text(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 990,
+            "merchant": "  便利店  ",
+            "category": "  生活  ",
+            "note": "  夜宵  ",
+            "tags": "  真机联调  ",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["merchant"] == "便利店"
+    assert payload["category"] == "生活"
+    assert payload["note"] == "夜宵"
+    assert payload["tags"] == "真机联调"
+
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "merchant": "   ",
+            "category": "   ",
+            "note": None,
+            "tags": "   ",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["merchant"] is None
+    assert payload["category"] == "其他"
+    assert payload["note"] == ""
+    assert payload["tags"] is None
+
+
 def test_duplicate_and_category_rule_contract(client: TestClient) -> None:
     first_id = upload_png(client)
     second_id = upload_png(client)
