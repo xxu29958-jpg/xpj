@@ -47,6 +47,8 @@ image_not_found
 rule_not_found
 server_error
 invalid_request
+route_not_found
+method_not_allowed
 ```
 
 ## 认证
