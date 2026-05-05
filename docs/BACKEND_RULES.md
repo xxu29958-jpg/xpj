@@ -74,6 +74,17 @@ OCR
 
 第一版可以使用空实现或简单规则，但必须能替换。
 
+OCR provider 当前约束：
+
+- `empty` 是默认空实现。
+- `mock` 只用于测试和联调。
+- `rapidocr` 是本地图片 OCR provider。
+- `local_llm` 是 OpenAI 兼容本地视觉模型 provider。
+- OCR 只生成草稿建议，不自动确认入账。
+- 上传后的自动 OCR 由 `OCR_AUTO_RUN` 控制，失败不得影响 pending 创建。
+- 手动 OCR retry 可以把 provider 错误返回给 App。
+- 规则抽取集中在 `receipt_parse_service.py`。
+
 ## 验收
 
 后端改动完成后至少运行：

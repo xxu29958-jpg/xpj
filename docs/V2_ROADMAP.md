@@ -36,8 +36,11 @@ AI/OCR 只生成草稿和建议，用户确认后才入账。
 
 当前已落地的第二版最小能力：
 
-- OCR retry 可插拔入口，当前仍为空 provider，不自动入账。
-- `OCR_PROVIDER=empty|mock` 配置入口已预留，真实 OCR 后续通过 provider 替换。
+- OCR retry 可插拔入口，不自动入账。
+- `OCR_PROVIDER=empty|mock|rapidocr|local_llm` 配置入口已落地。
+- `receipt_parse_service.py` 已能从 `raw_text` 规则提取金额、商家、消费时间、分类建议。
+- `POST /api/expenses/{id}/recognize-text` 已落地，可用于调试文本识别或接入快捷指令文本。
+- `OCR_AUTO_RUN` 上传后自动识别开关已落地，默认关闭；失败不影响 pending 创建。
 - 自动分类规则表、默认规则、规则增删改接口和 Android 设置页入口。
 - `image_hash` 完全重复检测、疑似重复列表和“仍然保留”操作。
 - 用户填写金额、商家、消费时间后，会按金额一致、商家一致、24 小时内标记疑似重复。
@@ -90,9 +93,11 @@ backend/app/
 
 ```text
 OcrService
-  -> LocalOcrProvider
-  -> CloudOcrProvider
+  -> EmptyOcrProvider
   -> MockOcrProvider
+  -> RapidOcrProvider
+  -> LocalLlmOcrProvider
+  -> FutureCloudOcrProvider
 ```
 
 OCR 输出：

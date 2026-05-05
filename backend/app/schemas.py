@@ -60,6 +60,10 @@ class ExpenseUpdateRequest(BaseModel):
     regret_score: int | None = Field(default=None, ge=1, le=5)
 
 
+class ExpenseRecognizeTextRequest(BaseModel):
+    raw_text: str = Field(min_length=1, max_length=20000)
+
+
 class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -190,6 +194,9 @@ class ServerSettingsResponse(BaseModel):
     delete_image_after_confirm: bool
     delete_image_after_days: int
     ocr_provider: str
+    ocr_auto_run: bool
+    ocr_fallback_provider: str
+    ocr_min_confidence: float
     pending_count: int
     confirmed_count: int
     rejected_count: int

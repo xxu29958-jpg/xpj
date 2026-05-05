@@ -130,6 +130,26 @@ services/
 但不要把 OCR / 分类 / 去重 / 缩略图逻辑写死在 uploads.py
 ```
 
+OCR 已进入可插拔 provider 管线：
+
+```text
+empty      默认空实现，不做识别
+mock       测试和联调假数据
+rapidocr   本地 OCR，把图片转文字
+local_llm  OpenAI 兼容本地视觉模型
+```
+
+OCR 强制边界：
+
+- Provider 只能负责识别或结构化建议，不直接确认入账。
+- Provider 不直接写 HTTP Response。
+- Provider 不直接处理 Token。
+- Provider 失败不能破坏上传截图的 pending 创建。
+- 自动 OCR 默认关闭，由 `OCR_AUTO_RUN` 控制。
+- OCR 结果只能填充空字段，不覆盖用户已经手动编辑的金额、商家、消费时间。
+- OCR 提取规则集中放在 `receipt_parse_service.py`，不要散落在 route 或 Android UI。
+- 本地大模型必须通过配置接入，不允许在代码里写死模型名或服务地址。
+
 ## 4.1 强代码硬规则
 
 以下规则是强制要求：
