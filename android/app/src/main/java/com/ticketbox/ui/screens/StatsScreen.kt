@@ -187,7 +187,7 @@ private fun RecentTrendCard(trend: List<DailySpend>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
         ),
     ) {
         Column(
@@ -455,7 +455,7 @@ private fun LifestyleCard(lifestyle: LifestyleStats) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
         ),
     ) {
         Column(
@@ -510,7 +510,7 @@ private fun FrequentMerchantsCard(merchants: List<FrequentMerchant>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
         ),
     ) {
         Column(
@@ -597,7 +597,7 @@ private fun EmptyStatsCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
         ),
     ) {
         Column(

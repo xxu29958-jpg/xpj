@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.security.SecureTokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ data class AppUiState(
     val unlocked: Boolean = false,
     val binding: Boolean = false,
     val skin: AppSkin = AppSkin.Default,
+    val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val authMessage: String? = null,
 )
 
@@ -33,6 +35,14 @@ class AppViewModel(
         ),
     )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            settingsStore.backgroundSettingsFlow.collect { settings ->
+                _uiState.update { it.copy(backgroundSettings = settings) }
+            }
+        }
+    }
 
     fun bind(serverUrl: String, token: String) {
         viewModelScope.launch {
@@ -75,8 +85,14 @@ class AppViewModel(
 
     fun clearBinding() {
         val currentSkin = _uiState.value.skin
+        val currentBackground = _uiState.value.backgroundSettings
         repository.clearBinding()
         settingsStore.saveAppSkinKey(currentSkin.storageKey)
-        _uiState.update { AppUiState(skin = currentSkin) }
+        _uiState.update {
+            AppUiState(
+                skin = currentSkin,
+                backgroundSettings = currentBackground,
+            )
+        }
     }
 }

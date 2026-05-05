@@ -26,6 +26,7 @@
 - Android UI layer / UDF and state holders：https://developer.android.com/topic/architecture/ui-layer
 - Android data layer：https://developer.android.com/topic/architecture/data-layer
 - Android Photo Picker：https://developer.android.com/training/data-storage/shared/photopicker
+- Android DataStore：https://developer.android.com/topic/libraries/architecture/datastore
 - Android app signing：https://developer.android.com/studio/publish/app-signing
 - Android prepare release：https://developer.android.com/studio/publish/preparing
 - Jetpack Compose state hoisting：https://developer.android.com/develop/ui/compose/state-hoisting
@@ -98,3 +99,4 @@
 - KSP Gradle plugin metadata：https://repo1.maven.org/maven2/com/google/devtools/ksp/com.google.devtools.ksp.gradle.plugin/maven-metadata.xml
 - Retrofit metadata：https://repo1.maven.org/maven2/com/squareup/retrofit2/retrofit/maven-metadata.xml
 - OkHttp metadata：https://repo1.maven.org/maven2/com/squareup/okhttp3/okhttp/maven-metadata.xml
+- AndroidX DataStore preferences metadata：https://dl.google.com/dl/android/maven2/androidx/datastore/datastore-preferences/maven-metadata.xml

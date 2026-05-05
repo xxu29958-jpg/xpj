@@ -472,7 +472,7 @@ private fun ManualExpenseSheet(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
             ),
         ) {
             Column(
@@ -596,7 +596,7 @@ private fun EmptyLedgerState(state: LedgerUiState) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         ),
     ) {
         Column(

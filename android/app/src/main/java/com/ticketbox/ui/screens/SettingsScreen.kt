@@ -33,11 +33,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,9 +58,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
+import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
@@ -87,6 +92,11 @@ fun SettingsScreen(
     onToggleRule: (CategoryRule) -> Unit,
     onDeleteRule: (CategoryRule) -> Unit,
     onSkinChange: (AppSkin) -> Unit,
+    onPickBackgroundImage: () -> Unit,
+    onClearBackgroundImage: () -> Unit,
+    onImmersionModeChange: (ImmersionMode) -> Unit,
+    onParallaxChange: (Boolean) -> Unit,
+    onReduceMotionChange: (Boolean) -> Unit,
     onBindingCleared: () -> Unit,
     showAdvancedTools: Boolean = false,
 ) {
@@ -247,11 +257,22 @@ fun SettingsScreen(
             ThemeInteractionCard(currentSkin = currentSkin)
         }
 
+        SettingSection(title = "背景与沉浸") {
+            BackgroundImmersionCard(
+                settings = state.backgroundSettings,
+                onPickBackgroundImage = onPickBackgroundImage,
+                onClearBackgroundImage = onClearBackgroundImage,
+                onImmersionModeChange = onImmersionModeChange,
+                onParallaxChange = onParallaxChange,
+                onReduceMotionChange = onReduceMotionChange,
+            )
+        }
+
         SettingSection(title = "预算") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
                 ),
             ) {
                 Column(
@@ -320,7 +341,7 @@ fun SettingsScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
                 ),
             ) {
                 Column(
@@ -413,6 +434,142 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun BackgroundImmersionCard(
+    settings: BackgroundSettings,
+    onPickBackgroundImage: () -> Unit,
+    onClearBackgroundImage: () -> Unit,
+    onImmersionModeChange: (ImmersionMode) -> Unit,
+    onParallaxChange: (Boolean) -> Unit,
+    onReduceMotionChange: (Boolean) -> Unit,
+) {
+    val hasCustomImage = settings.source == BackgroundSource.CustomImage &&
+        !settings.customImagePath.isNullOrBlank()
+    SoftPanel(containerAlpha = 0.94f) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("让背景参与氛围", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = "背景只在底层参与情绪，不影响账单阅读和确认。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("当前背景", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text = if (hasCustomImage) "自定义图片" else "跟随主题",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                SkinPill(
+                    text = settings.immersionMode.displayName,
+                    scheme = MaterialTheme.colorScheme,
+                    emphasized = false,
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = onPickBackgroundImage,
+                ) {
+                    Text("选择背景")
+                }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    enabled = hasCustomImage,
+                    onClick = onClearBackgroundImage,
+                ) {
+                    Text("清除背景")
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("沉浸强度", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ImmersionMode.entries.forEach { mode ->
+                        FilterChip(
+                            modifier = Modifier.weight(1f),
+                            selected = settings.immersionMode == mode,
+                            onClick = { onImmersionModeChange(mode) },
+                            label = {
+                                Text(
+                                    text = mode.displayName,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
+                }
+                Text(
+                    text = settings.immersionMode.description,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            BackgroundSwitchLine(
+                title = "视差动效",
+                subtitle = "背景轻微参与层次变化",
+                checked = settings.enableParallax && !settings.reduceMotion,
+                enabled = !settings.reduceMotion,
+                onCheckedChange = onParallaxChange,
+            )
+            BackgroundSwitchLine(
+                title = "减少动效",
+                subtitle = "关闭背景动效，保持录入稳定",
+                checked = settings.reduceMotion,
+                enabled = true,
+                onCheckedChange = onReduceMotionChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BackgroundSwitchLine(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.labelLarge)
+            Text(
+                text = subtitle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange,
+        )
+    }
+}
+
+@Composable
 private fun AccountStatusCard(
     serverSettings: ServerSettings?,
     lastUploadAt: String?,
@@ -500,7 +657,7 @@ private fun AdvancedStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         ),
     ) {
         Column(
@@ -646,7 +803,7 @@ private fun CategoryRulesSheet(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
             ),
         ) {
             Column(
@@ -763,7 +920,7 @@ private fun CategoryRuleCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         ),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -115,14 +115,19 @@ android\
         AppContainer.kt
         data\
         domain\
+          model\BackgroundSettings.kt
           model\DefaultCategories.kt
         security\
         ui\
+          background\BackgroundImageStore.kt
+          background\ImmersiveBackground.kt
         viewmodel\
       res\
     src\test\
       java\com\ticketbox\
+        domain\model\BackgroundSettingsTest.kt
         domain\model\DefaultCategoriesTest.kt
+        ui\background\ImmersiveBackgroundTest.kt
 ```
 
 ## docs
@@ -156,4 +161,4 @@ docs\
 
 ## 当前初始化范围
 
-后端已经包含第一版闭环和灰度版增量 API：多租户隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、受保护图片预览、重复保留、OCR retry、生活化统计、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。
+后端已经包含第一版闭环和灰度版增量 API：多租户隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、自定义背景与沉浸模式、受保护图片预览、重复保留、OCR retry、生活化统计、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。

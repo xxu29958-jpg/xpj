@@ -345,7 +345,7 @@ fun ExpenseEditScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
             ),
         ) {
             Column(
@@ -523,7 +523,7 @@ private fun ExpenseDateField(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         ),
     ) {
         Column(

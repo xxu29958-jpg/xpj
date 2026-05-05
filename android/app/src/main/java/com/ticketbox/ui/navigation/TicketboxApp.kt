@@ -50,9 +50,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.security.BiometricAuthManager
+import com.ticketbox.ui.background.BackgroundImageStore
+import com.ticketbox.ui.background.ImmersiveBackgroundScaffold
+import com.ticketbox.ui.background.SurfaceRole
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.ui.screens.LedgerScreen
@@ -132,28 +136,40 @@ private fun TicketboxContent(
     biometricAuthManager: BiometricAuthManager,
 ) {
     if (!appState.isBound) {
-        BindServerScreen(
-            loading = appState.binding,
-            message = appState.authMessage,
-            onBind = appViewModel::bind,
-        )
+        ImmersiveBackgroundScaffold(
+            backgroundSettings = appState.backgroundSettings,
+            currentSkin = appState.skin,
+            currentSurfaceRole = SurfaceRole.Auth,
+        ) {
+            BindServerScreen(
+                loading = appState.binding,
+                message = appState.authMessage,
+                onBind = appViewModel::bind,
+            )
+        }
         return
     }
 
     if (!appState.unlocked) {
-        LoginScreen(
-            message = appState.authMessage,
-            onUnlock = {
-                if (!biometricAuthManager.canAuthenticate()) {
-                    appViewModel.unlockFailed("请先在系统中设置指纹、面容或锁屏密码。")
-                    return@LoginScreen
-                }
-                biometricAuthManager.authenticate(
-                    onSuccess = appViewModel::unlockSucceeded,
-                    onError = appViewModel::unlockFailed,
-                )
-            },
-        )
+        ImmersiveBackgroundScaffold(
+            backgroundSettings = appState.backgroundSettings,
+            currentSkin = appState.skin,
+            currentSurfaceRole = SurfaceRole.Auth,
+        ) {
+            LoginScreen(
+                message = appState.authMessage,
+                onUnlock = {
+                    if (!biometricAuthManager.canAuthenticate()) {
+                        appViewModel.unlockFailed("请先在系统中设置指纹、面容或锁屏密码。")
+                        return@LoginScreen
+                    }
+                    biometricAuthManager.authenticate(
+                        onSuccess = appViewModel::unlockSucceeded,
+                        onError = appViewModel::unlockFailed,
+                    )
+                },
+            )
+        }
         return
     }
 
@@ -161,6 +177,7 @@ private fun TicketboxContent(
         repository = repository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
+        backgroundSettings = appState.backgroundSettings,
         onSkinChange = appViewModel::selectSkin,
         onBindingCleared = {
             appViewModel.clearBinding()
@@ -173,50 +190,57 @@ private fun MainShell(
     repository: ExpenseRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
+    backgroundSettings: BackgroundSettings,
     onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
     val repositoryFactory = repositoryViewModelFactory(repository)
+    val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
 
-    editingExpense?.let { expense ->
-        val editViewModel: ExpenseEditViewModel = viewModel(
-            key = "expense-edit-${expense.id}",
-            factory = expenseEditViewModelFactory(expense.id, repository),
-        )
-        val editState by editViewModel.uiState.collectAsStateWithLifecycle()
-        ExpenseEditScreen(
-            expense = expense,
-            state = editState,
-            onSave = editViewModel::save,
-            onConfirm = editViewModel::confirm,
-            onReject = editViewModel::reject,
-            onRetryOcr = editViewModel::retryOcr,
-            onLoadFullImage = editViewModel::loadFullImage,
-            onKeepDuplicate = editViewModel::markNotDuplicate,
-            onDone = { editingExpense = null },
-            allowConfirm = expense.status == "pending",
-            allowReject = expense.status == "pending",
-        )
-        return
-    }
-
-    Scaffold(
-        containerColor = Color.Transparent,
-        bottomBar = {
-            TicketboxBottomBar(
-                selectedTab = selectedTab,
-                onSelectTab = { selectedTab = it },
+    ImmersiveBackgroundScaffold(
+        backgroundSettings = backgroundSettings,
+        currentSkin = currentSkin,
+        currentSurfaceRole = currentRole,
+    ) {
+        editingExpense?.let { expense ->
+            val editViewModel: ExpenseEditViewModel = viewModel(
+                key = "expense-edit-${expense.id}",
+                factory = expenseEditViewModelFactory(expense.id, repository),
             )
-        },
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            when (selectedTab) {
+            val editState by editViewModel.uiState.collectAsStateWithLifecycle()
+            ExpenseEditScreen(
+                expense = expense,
+                state = editState,
+                onSave = editViewModel::save,
+                onConfirm = editViewModel::confirm,
+                onReject = editViewModel::reject,
+                onRetryOcr = editViewModel::retryOcr,
+                onLoadFullImage = editViewModel::loadFullImage,
+                onKeepDuplicate = editViewModel::markNotDuplicate,
+                onDone = { editingExpense = null },
+                allowConfirm = expense.status == "pending",
+                allowReject = expense.status == "pending",
+            )
+            return@ImmersiveBackgroundScaffold
+        }
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            bottomBar = {
+                TicketboxBottomBar(
+                    selectedTab = selectedTab,
+                    onSelectTab = { selectedTab = it },
+                )
+            },
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            ) {
+                when (selectedTab) {
                 BottomTab.Pending -> {
                     val pendingViewModel: PendingViewModel = viewModel(factory = repositoryFactory)
                     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
@@ -301,6 +325,20 @@ private fun MainShell(
                         factory = settingsViewModelFactory,
                     )
                     val state by settingsViewModel.uiState.collectAsStateWithLifecycle()
+                    val context = LocalContext.current
+                    val backgroundImageStore = remember(context) { BackgroundImageStore(context) }
+                    val backgroundPickerLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.PickVisualMedia(),
+                    ) { uri ->
+                        if (uri == null) return@rememberLauncherForActivityResult
+                        runCatching {
+                            backgroundImageStore.copyPickedImageToPrivateStorage(uri)
+                        }
+                            .onSuccess { path -> settingsViewModel.saveBackgroundImage(path) }
+                            .onFailure {
+                                settingsViewModel.backgroundImageCopyFailed("背景没有保存成功，请换一张图片再试。")
+                            }
+                    }
                     SettingsScreen(
                         state = state,
                         currentSkin = currentSkin,
@@ -315,6 +353,18 @@ private fun MainShell(
                         onToggleRule = settingsViewModel::toggleCategoryRule,
                         onDeleteRule = settingsViewModel::deleteCategoryRule,
                         onSkinChange = onSkinChange,
+                        onPickBackgroundImage = {
+                            backgroundPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
+                        onClearBackgroundImage = {
+                            backgroundImageStore.deleteCustomBackground(state.backgroundSettings.customImagePath)
+                            settingsViewModel.clearBackgroundImage()
+                        },
+                        onImmersionModeChange = settingsViewModel::setImmersionMode,
+                        onParallaxChange = settingsViewModel::setParallaxEnabled,
+                        onReduceMotionChange = settingsViewModel::setReduceMotion,
                         onBindingCleared = onBindingCleared,
                         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
                     )
@@ -322,6 +372,7 @@ private fun MainShell(
             }
         }
     }
+}
 }
 
 @Composable
@@ -358,6 +409,14 @@ private fun TicketboxBottomBar(
         }
     }
 }
+
+private val BottomTab.surfaceRole: SurfaceRole
+    get() = when (this) {
+        BottomTab.Pending -> SurfaceRole.Home
+        BottomTab.Ledger -> SurfaceRole.Ledger
+        BottomTab.Stats -> SurfaceRole.Stats
+        BottomTab.Settings -> SurfaceRole.Settings
+    }
 
 @Composable
 private fun BottomBarItem(

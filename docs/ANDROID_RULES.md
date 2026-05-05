@@ -152,6 +152,17 @@ serverId 不存在 -> 插入本地记录
 - 依赖升级前先运行 `scripts\check_dependency_versions.ps1`，再查官方 release notes。
 - 依赖调整后必须运行单元测试、debug 构建和 lint。
 
+## 自定义背景与沉浸模式
+
+- 自定义背景是 Android 本地 UI 个性化能力，不改后端接口。
+- 背景选择必须使用 Android Photo Picker，优先不申请 `READ_MEDIA_IMAGES`。
+- Picker 返回的 `Uri` 不长期保存；选中后复制到 `context.filesDir/backgrounds/custom_background.jpg`。
+- 背景路径只进入本机 DataStore，不进入 Room，不上传后端，不写入导出文件。
+- 背景渲染只能放在统一 `ImmersiveBackgroundScaffold` / `TicketboxBackgroundLayer`，不允许散落到每个 Screen。
+- 主题语义色不跟随背景图片随机变化，金额、表单、主按钮、错误/成功/警告反馈必须稳定高对比。
+- 编辑、设置、绑定、生物识别等录入或安全页面必须使用更强遮罩和更实体的卡片。
+- 相册大图解码必须做尺寸采样，避免用原图尺寸直接进入 Compose 背景层。
+
 ## 受保护图片
 
 - Android 不直接访问 `uploads` 路径。

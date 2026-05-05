@@ -33,3 +33,6 @@ local.properties
 # IDE
 .idea/
 *.iml
+
+# Local verification outputs
+artifacts/
