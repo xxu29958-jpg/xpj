@@ -48,6 +48,7 @@ backend\
       stats.py
       uploads.py
     services\
+      category_service.py
       classify_service.py
       cleanup_service.py
       duplicate_service.py
@@ -108,12 +109,14 @@ android\
         AppContainer.kt
         data\
         domain\
+          model\DefaultCategories.kt
         security\
         ui\
         viewmodel\
       res\
     src\test\
       java\com\ticketbox\
+        domain\model\DefaultCategoriesTest.kt
 ```
 
 ## docs

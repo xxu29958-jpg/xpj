@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
@@ -75,7 +76,9 @@ fun ExpenseEditScreen(
         mutableStateOf(formatAmountInput(currentExpense.amountCents))
     }
     var merchant by remember(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
-    var category by remember(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.category) }
+    var category by remember(currentExpense.id, currentExpense.updatedAt) {
+        mutableStateOf(normalizeExpenseCategory(currentExpense.category))
+    }
     var note by remember(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.note.orEmpty()) }
     var expenseTime by remember(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(currentExpense.expenseTime.orEmpty())
@@ -204,7 +207,7 @@ fun ExpenseEditScreen(
         return ExpenseDraft(
             amountCents = cents,
             merchant = merchant.ifBlank { null },
-            category = category.ifBlank { "其他" },
+            category = normalizeExpenseCategory(category),
             note = note,
             expenseTime = expenseTime.ifBlank { null },
             tags = tags.ifBlank { null },

@@ -10,12 +10,12 @@ class ExpenseFiltersTest {
     @Test
     fun filtersByExpenseTimeMonthAndCategory() {
         val items = listOf(
-            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z"),
             expense(id = 2, category = "交通", expenseTime = "2026-05-04T04:20:00Z"),
-            expense(id = 3, category = "吃饭", expenseTime = "2026-06-03T04:20:00Z"),
+            expense(id = 3, category = "餐饮", expenseTime = "2026-06-03T04:20:00Z"),
         )
 
-        val filtered = filterConfirmedExpenses(items, month = "2026-05", category = "吃饭")
+        val filtered = filterConfirmedExpenses(items, month = "2026-05", category = "餐饮")
 
         assertEquals(listOf(1L), filtered.map { it.id })
     }
@@ -35,8 +35,8 @@ class ExpenseFiltersTest {
     @Test
     fun filtersLedgerMonthUsingLocalTimezone() {
         val items = listOf(
-            expense(id = 1, category = "吃饭", expenseTime = "2026-04-30T16:30:00Z"),
-            expense(id = 2, category = "吃饭", expenseTime = "2026-04-30T15:30:00Z"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-04-30T16:30:00Z"),
+            expense(id = 2, category = "餐饮", expenseTime = "2026-04-30T15:30:00Z"),
         )
 
         val filtered = filterConfirmedExpenses(
@@ -52,7 +52,7 @@ class ExpenseFiltersTest {
     @Test
     fun invalidLedgerMonthMatchesNothing() {
         val items = listOf(
-            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z"),
         )
 
         val filtered = filterConfirmedExpenses(items, month = "2026-13", category = "")
@@ -63,7 +63,7 @@ class ExpenseFiltersTest {
     @Test
     fun filtersByMerchantNoteTagsAndSourceQuery() {
         val items = listOf(
-            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z", merchant = "美团外卖"),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", merchant = "美团外卖"),
             expense(id = 2, category = "交通", expenseTime = "2026-05-03T04:20:00Z", note = "地铁通勤"),
             expense(id = 3, category = "购物", expenseTime = "2026-05-03T04:20:00Z", tags = "真香"),
             expense(id = 4, category = "其他", expenseTime = "2026-05-03T04:20:00Z", source = "手动记账"),
@@ -78,7 +78,7 @@ class ExpenseFiltersTest {
     @Test
     fun buildsSevenDayTrendUsingExpenseTimeFallback() {
         val items = listOf(
-            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
             expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
             expense(id = 3, category = "购物", expenseTime = "2026-04-28T04:20:00Z", amountCents = 9900),
         )
@@ -99,7 +99,7 @@ class ExpenseFiltersTest {
     @Test
     fun buildsMonthComparisonUsingLocalCache() {
         val items = listOf(
-            expense(id = 1, category = "吃饭", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
             expense(id = 2, category = "交通", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
             expense(id = 3, category = "购物", expenseTime = "2026-04-28T04:20:00Z", amountCents = 2000),
             expense(id = 4, category = "购物", expenseTime = "2026-03-28T04:20:00Z", amountCents = 9900),
@@ -169,7 +169,7 @@ class ExpenseFiltersTest {
                 totalAmountCents = 10_000,
                 count = 4,
                 byCategory = listOf(
-                    CategoryStats(category = "吃饭", amountCents = 7_000, count = 3),
+                    CategoryStats(category = "餐饮", amountCents = 7_000, count = 3),
                     CategoryStats(category = "交通", amountCents = 3_000, count = 1),
                     CategoryStats(category = "游戏", amountCents = 0, count = 0),
                 ),
@@ -177,7 +177,7 @@ class ExpenseFiltersTest {
         )
 
         checkNotNull(insight)
-        assertEquals("吃饭", insight.topCategory)
+        assertEquals("餐饮", insight.topCategory)
         assertEquals(70, insight.topSharePercent)
         assertEquals(2_500, insight.averagePerExpenseCents)
         assertEquals(2, insight.categoryCount)

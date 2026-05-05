@@ -49,6 +49,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
@@ -277,7 +278,7 @@ private fun ManualExpenseSheet(
 ) {
     var amountText by rememberSaveable { mutableStateOf("") }
     var merchant by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf("其他") }
+    var category by rememberSaveable { mutableStateOf("餐饮") }
     var note by rememberSaveable { mutableStateOf("") }
     var expenseTime by rememberSaveable { mutableStateOf(nowUtcIso()) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
@@ -353,7 +354,7 @@ private fun ManualExpenseSheet(
         return ExpenseDraft(
             amountCents = amountCents,
             merchant = merchant.ifBlank { null },
-            category = category.ifBlank { "其他" },
+            category = normalizeExpenseCategory(category),
             note = note,
             expenseTime = expenseTime.ifBlank { nowUtcIso() },
             tags = null,

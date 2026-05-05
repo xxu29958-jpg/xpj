@@ -249,7 +249,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/expenses/pending -Headers $appHeader
 $body = @{
   amount_cents = 3680
   merchant = "美团外卖"
-  category = "吃饭"
+  category = "餐饮"
   note = "午饭"
   expense_time = "2026-05-03T04:20:00Z"
 } | ConvertTo-Json

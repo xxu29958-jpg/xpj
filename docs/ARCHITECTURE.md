@@ -276,17 +276,22 @@ rejected_at: datetime?，拒绝时间，UTC
 分类默认值：
 
 ```text
-吃饭
-数码
-生活
+餐饮
 交通
-游戏
-AI订阅
 购物
 娱乐
 医疗
+教育
+住房
+通讯
+AI订阅
+数码
+游戏
+生活
 其他
 ```
+
+旧版 `吃饭` 作为兼容别名归一到 `餐饮`。新写入、统计和筛选统一使用归一后的分类。
 
 状态机：
 
@@ -426,7 +431,7 @@ Authorization: Bearer APP_TOKEN
 ### 获取已确认账单
 
 ```http
-GET /api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=吃饭
+GET /api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=餐饮
 Authorization: Bearer APP_TOKEN
 ```
 
@@ -464,7 +469,7 @@ Content-Type: application/json
 {
   "amount_cents": 3680,
   "merchant": "美团外卖",
-  "category": "吃饭",
+  "category": "餐饮",
   "note": "午饭",
   "expense_time": "2026-05-03T04:20:00Z"
 }
@@ -541,7 +546,7 @@ Authorization: Bearer APP_TOKEN
   "count": 30,
   "by_category": [
     {
-      "category": "吃饭",
+      "category": "餐饮",
       "amount_cents": 52050,
       "count": 18
     },

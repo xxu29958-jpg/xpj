@@ -18,6 +18,11 @@ function Test-TicketboxBackendProcess {
     $commandLine = [string]$ProcessInfo.CommandLine
     $executablePath = [string]$ProcessInfo.ExecutablePath
     $backendPath = $BackendRoot.Path
+    $isTicketboxUvicornCommand = (
+        $commandLine.Contains("uvicorn app.main:app") -and
+        $commandLine.Contains("--host 127.0.0.1") -and
+        $commandLine.Contains("--port $Port")
+    )
 
     return (
         $commandLine.Contains("uvicorn app.main:app") -and
@@ -28,6 +33,8 @@ function Test-TicketboxBackendProcess {
     ) -or (
         $executablePath.StartsWith($backendPath, [System.StringComparison]::OrdinalIgnoreCase) -and
         $commandLine.Contains("app.main:app")
+    ) -or (
+        $isTicketboxUvicornCommand
     )
 }
 

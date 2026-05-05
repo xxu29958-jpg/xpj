@@ -5,14 +5,17 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import CategoryRule, Expense
+from app.services.category_service import normalize_category
 from app.services.time_service import now_utc
 
 
 DEFAULT_RULES = [
-    ("美团", "吃饭", 10),
-    ("饿了么", "吃饭", 10),
-    ("KFC", "吃饭", 20),
-    ("麦当劳", "吃饭", 20),
+    ("美团", "餐饮", 10),
+    ("饿了么", "餐饮", 10),
+    ("KFC", "餐饮", 20),
+    ("麦当劳", "餐饮", 20),
+    ("肯德基", "餐饮", 20),
+    ("星巴克", "餐饮", 30),
     ("京东", "购物", 10),
     ("淘宝", "购物", 10),
     ("拼多多", "购物", 10),
@@ -27,6 +30,13 @@ DEFAULT_RULES = [
     ("TapTap", "游戏", 10),
     ("医院", "医疗", 10),
     ("药房", "医疗", 10),
+    ("学校", "教育", 20),
+    ("学费", "教育", 20),
+    ("房租", "住房", 10),
+    ("物业", "住房", 20),
+    ("中国移动", "通讯", 10),
+    ("中国联通", "通讯", 10),
+    ("中国电信", "通讯", 10),
 ]
 
 
@@ -38,7 +48,7 @@ def seed_default_rules(db: Session) -> None:
         db.add(
             CategoryRule(
                 keyword=keyword,
-                category=category,
+                category=normalize_category(category),
                 enabled=True,
                 priority=priority,
                 created_at=now,
@@ -62,7 +72,7 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
     )
     for rule in rules:
         if rule.keyword.lower() in haystack:
-            expense.category = rule.category
+            expense.category = normalize_category(rule.category)
             return expense
     return expense
 
@@ -73,7 +83,7 @@ def list_rules(db: Session) -> list[CategoryRule]:
 
 def create_rule(db: Session, keyword: str, category: str, enabled: bool, priority: int) -> CategoryRule:
     keyword = keyword.strip()
-    category = category.strip()
+    category = normalize_category(category)
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
     now = now_utc()
@@ -106,7 +116,7 @@ def update_rule(
             raise AppError("invalid_request", status_code=422)
         rule.keyword = keyword
     if category is not None:
-        category = category.strip()
+        category = normalize_category(category)
         if not category:
             raise AppError("invalid_request", status_code=422)
         rule.category = category
