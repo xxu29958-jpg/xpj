@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ServerUrl = "https://api.zen70.cn",
     [int]$Port = 8000,
     [int]$Tail = 20,
