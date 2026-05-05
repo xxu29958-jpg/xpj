@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
@@ -240,12 +241,12 @@ fun ExpenseEditScreen(
                 }
                 if (currentExpense.duplicateStatus == "suspected") {
                     OutlinedButton(onClick = onKeepDuplicate) {
-                        Text("仍然保留")
+                        Text("不是重复，保留")
                     }
                 }
             }
-            currentExpense.duplicateReason?.takeIf { it.isNotBlank() }?.let {
-                Text(it, color = MaterialTheme.colorScheme.error)
+            if (currentExpense.duplicateStatus == "suspected") {
+                DuplicateNotice(reason = currentExpense.duplicateReason)
             }
         }
 

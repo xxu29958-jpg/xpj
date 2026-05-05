@@ -139,13 +139,15 @@ Upload-Token: UPLOAD_TOKEN
 
 ```http
 Upload-Token: UPLOAD_TOKEN
+User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
-请求体方式一，iOS 快捷指令推荐：
+请求体方式一，iOS 快捷指令推荐，iOS 26.4 真机验证通过：
 
 ```text
 raw image body
 Content-Type: image/jpeg 或 image/png
+X-Upload-Filename: 可选
 ```
 
 请求体方式二，兼容标准表单：
@@ -159,6 +161,8 @@ file: 图片文件
 
 - 支持 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 同一个接口同时支持原始图片请求体和 `multipart/form-data` 表单字段 `file`。
+- iOS 快捷指令优先使用原始图片请求体，也就是“请求正文：文件”。不要优先使用“请求正文：表单”。
+- Cloudflare 可能拦截没有标准 `User-Agent` 的快捷指令请求，公网部署时建议固定 `User-Agent`。
 - 最大 10MB，按 `MAX_UPLOAD_SIZE_MB` 配置。
 - 保存为随机文件名。
 - 数据库只保存相对路径。

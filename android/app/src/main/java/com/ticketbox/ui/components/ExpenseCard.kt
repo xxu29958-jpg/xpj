@@ -104,7 +104,7 @@ fun ExpenseCard(
                 AssistChip(onClick = {}, label = { Text(expense.category) })
                 AssistChip(onClick = {}, label = { Text(expense.source) })
                 if (expense.duplicateStatus == "suspected") {
-                    AssistChip(onClick = {}, label = { Text("疑似重复") })
+                    AssistChip(onClick = {}, label = { Text("可能重复") })
                 }
             }
 
@@ -125,12 +125,8 @@ fun ExpenseCard(
                 )
             }
 
-            expense.duplicateReason?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
+            if (expense.duplicateStatus == "suspected") {
+                DuplicateNotice(reason = expense.duplicateReason)
             }
 
             expense.tags?.takeIf { it.isNotBlank() }?.let {
@@ -171,7 +167,7 @@ fun ExpenseCard(
                         enabled = actionsEnabled,
                         onClick = onKeepDuplicate,
                     ) {
-                        Text("仍然保留")
+                        Text("不是重复，保留")
                     }
                 }
             }
