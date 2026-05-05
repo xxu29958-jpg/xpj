@@ -54,9 +54,8 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.security.BiometricAuthManager
-import com.ticketbox.ui.background.BackgroundImageStore
-import com.ticketbox.ui.background.ImmersiveBackgroundScaffold
-import com.ticketbox.ui.background.SurfaceRole
+import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
+import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.ui.screens.LedgerScreen
@@ -139,7 +138,7 @@ private fun TicketboxContent(
         ImmersiveBackgroundScaffold(
             backgroundSettings = appState.backgroundSettings,
             currentSkin = appState.skin,
-            currentSurfaceRole = SurfaceRole.Auth,
+            surfaceRole = SurfaceRole.Auth,
         ) {
             BindServerScreen(
                 loading = appState.binding,
@@ -154,7 +153,7 @@ private fun TicketboxContent(
         ImmersiveBackgroundScaffold(
             backgroundSettings = appState.backgroundSettings,
             currentSkin = appState.skin,
-            currentSurfaceRole = SurfaceRole.Auth,
+            surfaceRole = SurfaceRole.Auth,
         ) {
             LoginScreen(
                 message = appState.authMessage,
@@ -202,7 +201,7 @@ private fun MainShell(
     ImmersiveBackgroundScaffold(
         backgroundSettings = backgroundSettings,
         currentSkin = currentSkin,
-        currentSurfaceRole = currentRole,
+        surfaceRole = currentRole,
     ) {
         editingExpense?.let { expense ->
             val editViewModel: ExpenseEditViewModel = viewModel(
@@ -325,20 +324,6 @@ private fun MainShell(
                         factory = settingsViewModelFactory,
                     )
                     val state by settingsViewModel.uiState.collectAsStateWithLifecycle()
-                    val context = LocalContext.current
-                    val backgroundImageStore = remember(context) { BackgroundImageStore(context) }
-                    val backgroundPickerLauncher = rememberLauncherForActivityResult(
-                        contract = ActivityResultContracts.PickVisualMedia(),
-                    ) { uri ->
-                        if (uri == null) return@rememberLauncherForActivityResult
-                        runCatching {
-                            backgroundImageStore.copyPickedImageToPrivateStorage(uri)
-                        }
-                            .onSuccess { path -> settingsViewModel.saveBackgroundImage(path) }
-                            .onFailure {
-                                settingsViewModel.backgroundImageCopyFailed("背景没有保存成功，请换一张图片再试。")
-                            }
-                    }
                     SettingsScreen(
                         state = state,
                         currentSkin = currentSkin,
@@ -353,15 +338,8 @@ private fun MainShell(
                         onToggleRule = settingsViewModel::toggleCategoryRule,
                         onDeleteRule = settingsViewModel::deleteCategoryRule,
                         onSkinChange = onSkinChange,
-                        onPickBackgroundImage = {
-                            backgroundPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                            )
-                        },
-                        onClearBackgroundImage = {
-                            backgroundImageStore.deleteCustomBackground(state.backgroundSettings.customImagePath)
-                            settingsViewModel.clearBackgroundImage()
-                        },
+                        onApplyBackgroundSettings = settingsViewModel::applyBackgroundSettings,
+                        onClearBackgroundImage = settingsViewModel::clearBackgroundImage,
                         onImmersionModeChange = settingsViewModel::setImmersionMode,
                         onParallaxChange = settingsViewModel::setParallaxEnabled,
                         onReduceMotionChange = settingsViewModel::setReduceMotion,
@@ -412,7 +390,7 @@ private fun TicketboxBottomBar(
 
 private val BottomTab.surfaceRole: SurfaceRole
     get() = when (this) {
-        BottomTab.Pending -> SurfaceRole.Home
+        BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
         BottomTab.Stats -> SurfaceRole.Stats
         BottomTab.Settings -> SurfaceRole.Settings

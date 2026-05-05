@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -125,6 +126,7 @@ class SettingsViewModel(
                         it.copy(
                             serverSettings = settings,
                             lastUploadAt = repository.lastUploadAt() ?: settings.latestUploadAt,
+                            message = null,
                             busy = if (showBusy) false else it.busy,
                         )
                     }
@@ -133,7 +135,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             busy = if (showBusy) false else it.busy,
-                            message = error.message ?: "服务概况暂时打不开，请稍后再试。",
+                            message = "账本状态暂时没有同步，稍后再试。",
                         )
                     }
                 }
@@ -255,15 +257,37 @@ class SettingsViewModel(
         }
     }
 
+    fun applyBackgroundSettings(settings: BackgroundSettings) {
+        viewModelScope.launch {
+            runCatching { settingsStore.saveBackgroundSettings(settings) }
+                .onSuccess { _uiState.update { it.copy(message = "背景已应用") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "背景没有保存成功。") } }
+        }
+    }
+
+    fun resetThemeBackground() {
+        viewModelScope.launch {
+            settingsStore.saveBackgroundSettings(_uiState.value.backgroundSettings.withoutBackground())
+            _uiState.update { it.copy(message = "已恢复跟随主题背景") }
+        }
+    }
+
     fun clearBackgroundImage() {
         viewModelScope.launch {
             settingsStore.clearBackgroundImage()
             _uiState.update {
                 it.copy(
-                    backgroundSettings = it.backgroundSettings.withoutCustomImage(),
+                    backgroundSettings = it.backgroundSettings.withoutBackground(),
                     message = "已恢复跟随主题背景",
                 )
             }
+        }
+    }
+
+    fun setBackgroundCropMode(mode: BackgroundCropMode) {
+        viewModelScope.launch {
+            settingsStore.setBackgroundCropMode(mode)
+            _uiState.update { it.copy(message = "构图已切换为${mode.displayName}") }
         }
     }
 

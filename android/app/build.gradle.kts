@@ -124,4 +124,5 @@ dependencies {
     implementation(libs.coroutines.android)
 
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.coroutines.test)
 }

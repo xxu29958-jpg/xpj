@@ -2,15 +2,11 @@ package com.ticketbox.data.local
 
 import android.content.Context
 import androidx.core.content.edit
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.ImmersionMode
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
 private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
     name = "ticketbox_background_settings",
@@ -19,17 +15,9 @@ private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
 class LocalSettingsStore(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("ticketbox_settings", Context.MODE_PRIVATE)
+    private val backgroundStore = BackgroundSettingsDataStore(appContext.ticketboxBackgroundDataStore)
 
-    val backgroundSettingsFlow: Flow<BackgroundSettings> = appContext.ticketboxBackgroundDataStore.data
-        .map { preferences ->
-            BackgroundSettings(
-                source = BackgroundSource.fromStorageKey(preferences[BACKGROUND_SOURCE]),
-                customImagePath = preferences[CUSTOM_BACKGROUND_PATH],
-                immersionMode = ImmersionMode.fromStorageKey(preferences[IMMERSION_MODE]),
-                enableParallax = preferences[BACKGROUND_PARALLAX] ?: true,
-                reduceMotion = preferences[REDUCE_MOTION] ?: false,
-            )
-        }
+    val backgroundSettingsFlow: Flow<BackgroundSettings> = backgroundStore.settingsFlow
 
     fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
@@ -112,41 +100,36 @@ class LocalSettingsStore(context: Context) {
         }
     }
 
+    suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
+        backgroundStore.saveBackgroundSettings(settings)
+    }
+
+    suspend fun clearBackground() {
+        backgroundStore.clearBackground()
+    }
+
     suspend fun saveBackgroundImagePath(path: String) {
-        val cleanPath = path.trim()
-        require(cleanPath.isNotBlank()) { "背景图片路径不能为空。" }
-        appContext.ticketboxBackgroundDataStore.edit { preferences ->
-            preferences[BACKGROUND_SOURCE] = BackgroundSource.CustomImage.storageKey
-            preferences[CUSTOM_BACKGROUND_PATH] = cleanPath
-        }
+        backgroundStore.saveBackgroundImagePath(path)
     }
 
     suspend fun clearBackgroundImage() {
-        appContext.ticketboxBackgroundDataStore.edit { preferences ->
-            preferences[BACKGROUND_SOURCE] = BackgroundSource.ThemeDefault.storageKey
-            preferences.remove(CUSTOM_BACKGROUND_PATH)
-        }
+        clearBackground()
+    }
+
+    suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
+        backgroundStore.setBackgroundCropMode(mode)
     }
 
     suspend fun setImmersionMode(mode: ImmersionMode) {
-        appContext.ticketboxBackgroundDataStore.edit { preferences ->
-            preferences[IMMERSION_MODE] = mode.storageKey
-        }
+        backgroundStore.setImmersionMode(mode)
     }
 
     suspend fun setParallaxEnabled(enabled: Boolean) {
-        appContext.ticketboxBackgroundDataStore.edit { preferences ->
-            preferences[BACKGROUND_PARALLAX] = enabled
-        }
+        backgroundStore.setParallaxEnabled(enabled)
     }
 
     suspend fun setReduceMotion(enabled: Boolean) {
-        appContext.ticketboxBackgroundDataStore.edit { preferences ->
-            preferences[REDUCE_MOTION] = enabled
-            if (enabled) {
-                preferences[BACKGROUND_PARALLAX] = false
-            }
-        }
+        backgroundStore.setReduceMotion(enabled)
     }
 
     private companion object {
@@ -159,10 +142,5 @@ class LocalSettingsStore(context: Context) {
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
         const val NO_BUDGET = -1L
         const val LOCK_AFTER_MS = 5 * 60 * 1000L
-        val BACKGROUND_SOURCE = stringPreferencesKey("background_source")
-        val CUSTOM_BACKGROUND_PATH = stringPreferencesKey("custom_background_path")
-        val IMMERSION_MODE = stringPreferencesKey("immersion_mode")
-        val BACKGROUND_PARALLAX = booleanPreferencesKey("background_parallax")
-        val REDUCE_MOTION = booleanPreferencesKey("reduce_motion")
     }
 }

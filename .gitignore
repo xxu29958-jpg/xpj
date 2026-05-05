@@ -22,6 +22,7 @@ backend/backups/*
 .toolchains/
 build/
 android/.gradle/
+android/.kotlin/
 android/build/
 android/app/build/
 local.properties
