@@ -105,7 +105,7 @@ fun SoftPanel(
     containerAlpha: Float = 0.64f,
     content: @Composable () -> Unit,
 ) {
-    val resolvedAlpha = containerAlpha.coerceIn(0.90f, 1f)
+    val resolvedAlpha = containerAlpha.coerceIn(0.78f, 1f)
     val shape = MaterialTheme.shapes.large
     Box(
         modifier = modifier

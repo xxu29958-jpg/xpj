@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -361,7 +362,8 @@ private fun TicketboxBottomBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 18.dp),
+            .navigationBarsPadding()
+            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 12.dp),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),

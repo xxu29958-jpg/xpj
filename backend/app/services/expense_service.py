@@ -7,9 +7,10 @@ from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, false, func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, ExpenseRecognizeTextRequest, ExpenseUpdateRequest
@@ -25,7 +26,7 @@ from app.services.file_service import SavedUpload, delete_relative_upload
 from app.services.ocr_service import retry_ocr, run_auto_ocr
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
-from app.services.time_service import ensure_utc, now_utc
+from app.services.time_service import ensure_utc, local_month_bounds_utc, local_month_label, now_utc
 
 
 EDITABLE_STATUSES = {"pending", "confirmed"}
@@ -158,6 +159,10 @@ def _stat_time(expense: Expense) -> datetime | None:
     return ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
 
 
+def _stat_month_bounds(month: str) -> tuple[datetime, datetime] | None:
+    return local_month_bounds_utc(month, get_settings().ocr_default_timezone)
+
+
 def _confirmed_query(
     *,
     tenant_id: str,
@@ -168,7 +173,11 @@ def _confirmed_query(
     if category:
         query = query.where(Expense.category == normalize_category(category))
     if month:
-        query = query.where(func.strftime("%Y-%m", _stat_time_expr()) == month)
+        bounds = _stat_month_bounds(month)
+        if bounds is None:
+            return query.where(false())
+        start_utc, end_utc = bounds
+        query = query.where(_stat_time_expr() >= start_utc).where(_stat_time_expr() < end_utc)
     return query
 
 
@@ -217,15 +226,19 @@ def list_categories(db: Session, tenant_id: str) -> list[str]:
 
 
 def list_months(db: Session, tenant_id: str) -> list[str]:
-    months = db.scalars(
-        select(func.strftime("%Y-%m", _stat_time_expr()))
+    timezone_name = get_settings().ocr_default_timezone
+    expenses = db.scalars(
+        select(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
         .where(_stat_time_expr().is_not(None))
-        .distinct()
-        .order_by(func.strftime("%Y-%m", _stat_time_expr()).desc())
     )
-    return [month for month in months if month]
+    months = {
+        label
+        for expense in expenses
+        if (label := local_month_label(_stat_time(expense), timezone_name)) is not None
+    }
+    return sorted(months, reverse=True)
 
 
 def export_confirmed_csv(
@@ -434,6 +447,15 @@ def monthly_stats(db: Session, month: str, tenant_id: str) -> dict:
 
     total_amount_cents = 0
     total_count = 0
+    bounds = _stat_month_bounds(month)
+    if bounds is None:
+        return {
+            "month": month,
+            "total_amount_cents": 0,
+            "count": 0,
+            "by_category": [],
+        }
+    start_utc, end_utc = bounds
     rows = db.execute(
         select(
             Expense.category,
@@ -442,7 +464,8 @@ def monthly_stats(db: Session, month: str, tenant_id: str) -> dict:
         )
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
-        .where(func.strftime("%Y-%m", _stat_time_expr()) == month)
+        .where(_stat_time_expr() >= start_utc)
+        .where(_stat_time_expr() < end_utc)
         .group_by(Expense.category)
     )
     for category_value, amount_value, count_value in rows:

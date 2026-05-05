@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -72,7 +73,7 @@ fun StatsScreen(
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 116.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 128.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -95,7 +96,7 @@ fun StatsScreen(
         }
         val stats = state.stats
         if (stats == null) {
-            item { EmptyStatsCard() }
+            item { EmptyStatsCard(onRefresh = onRefresh) }
         } else {
             item {
                 StatsOverviewCard(
@@ -593,6 +594,7 @@ private fun CategoryShareRow(
 private fun EmptyStatsCard(
     title: String = "还没有统计数据",
     body: String = "确认账单后刷新统计，这里会显示本月总支出、分类占比和高频商家。",
+    onRefresh: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -609,6 +611,14 @@ private fun EmptyStatsCard(
                 text = body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            onRefresh?.let {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = it,
+                ) {
+                    Text("刷新统计")
+                }
+            }
         }
     }
 }

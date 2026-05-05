@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from conftest import (
+    BACKEND_ROOT,
     PNG_BYTES,
     TEST_UPLOAD_DIR,
     admin_headers,
@@ -341,6 +342,222 @@ def test_upload_stores_relative_paths_and_never_confirms(client: TestClient) -> 
     assert "\\" not in expense["image_path"]
     assert ":\\" not in expense["image_path"]
     assert expense["thumbnail_path"] is None or expense["thumbnail_path"].startswith("uploads/")
+
+
+def test_confirm_removes_expense_from_pending_and_adds_confirmed(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1851,
+            "merchant": "中国建设银行",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T08:23:25Z",
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    assert response.status_code == 200
+    assert response.json()["status"] == "confirmed"
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    assert all(item["id"] != expense_id for item in pending.json())
+
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["total"] == 1
+    assert confirmed.json()["items"][0]["id"] == expense_id
+
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert stats.status_code == 200
+    assert stats.json()["total_amount_cents"] == 1851
+
+
+def test_reject_removes_expense_from_pending_without_confirming(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    response = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "rejected"
+    assert payload["confirmed_at"] is None
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    assert all(item["id"] != expense_id for item in pending.json())
+
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["total"] == 0
+
+
+def test_ocr_retry_and_recognize_text_only_update_pending_draft(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    assert retry.status_code == 200
+    assert retry.json()["status"] == "pending"
+    assert retry.json()["confirmed_at"] is None
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["confirmed_at"] is None
+    assert payload["amount_cents"] == 1851
+
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["total"] == 0
+
+
+def test_recognize_text_does_not_overwrite_user_filled_fields(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 9900,
+            "merchant": "用户填写商家",
+            "category": "生活",
+            "expense_time": "2026-05-04T00:00:00Z",
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["amount_cents"] == 9900
+    assert payload["merchant"] == "用户填写商家"
+    assert payload["category"] == "生活"
+    assert payload["expense_time"] == "2026-05-04T00:00:00Z"
+
+
+def test_duplicate_detection_never_rejects_or_confirms(client: TestClient) -> None:
+    first_id = upload_png(client)
+    second_id = upload_png(client)
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    matched = next(item for item in pending.json() if item["id"] == second_id)
+    assert matched["duplicate_status"] == "suspected"
+    assert matched["duplicate_of_id"] == first_id
+    assert matched["status"] == "pending"
+    assert matched["confirmed_at"] is None
+    assert matched["rejected_at"] is None
+
+
+def test_mark_not_duplicate_only_clears_current_detection_type(client: TestClient) -> None:
+    first_id = upload_png(client)
+    second_id = upload_png(client)
+
+    response = client.post(f"/api/expenses/{second_id}/mark-not-duplicate", headers=app_headers())
+    assert response.status_code == 200
+    assert response.json()["duplicate_status"] == "none"
+
+    for expense_id, timestamp in [
+        (first_id, "2026-05-03T04:20:00Z"),
+        (second_id, "2026-05-03T05:20:00Z"),
+    ]:
+        response = client.patch(
+            f"/api/expenses/{expense_id}",
+            headers=app_headers(),
+            json={
+                "amount_cents": 5200,
+                "merchant": "同一家店",
+                "category": "生活",
+                "expense_time": timestamp,
+            },
+        )
+        assert response.status_code == 200
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    matched = next(item for item in pending.json() if item["id"] == second_id)
+    assert matched["status"] == "pending"
+    assert matched["duplicate_status"] == "suspected"
+    assert matched["duplicate_of_id"] == first_id
+
+
+def test_local_timezone_month_filter_matches_android_display_month(client: TestClient) -> None:
+    response = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1851,
+            "merchant": "跨月边界账单",
+            "category": "生活",
+            "expense_time": "2026-04-30T16:30:00Z",
+        },
+    )
+    assert response.status_code == 200
+
+    may_page = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert may_page.status_code == 200
+    assert may_page.json()["total"] == 1
+
+    april_page = client.get("/api/expenses/confirmed?month=2026-04", headers=app_headers())
+    assert april_page.status_code == 200
+    assert april_page.json()["total"] == 0
+
+    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert may_stats.status_code == 200
+    assert may_stats.json()["total_amount_cents"] == 1851
+
+    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=app_headers())
+    assert april_stats.status_code == 200
+    assert april_stats.json()["total_amount_cents"] == 0
+
+    months = client.get("/api/expenses/months", headers=app_headers())
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2026-05"]
+
+
+def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 3680,
+            "merchant": "图片已清理商家",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T08:23:25Z",
+        },
+    )
+    assert response.status_code == 200
+    assert client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers()).status_code == 200
+
+    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    assert detail.status_code == 200
+    for path_key in ["image_path", "thumbnail_path"]:
+        relative_path = detail.json().get(path_key)
+        if relative_path:
+            (BACKEND_ROOT / relative_path).unlink(missing_ok=True)
+
+    detail_after_delete = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    assert detail_after_delete.status_code == 200
+    payload = detail_after_delete.json()
+    assert payload["status"] == "confirmed"
+    assert payload["amount_cents"] == 3680
+    assert payload["merchant"] == "图片已清理商家"
+
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    assert image.status_code == 404
+    assert image.json()["error"] == "image_not_found"
 
 
 def test_android_app_upload_uses_app_token_and_current_tenant(client: TestClient) -> None:

@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
@@ -226,8 +229,10 @@ fun ExpenseEditScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 18.dp),
+            .padding(horizontal = 20.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ScreenHeader(
@@ -418,14 +423,19 @@ fun ExpenseEditScreen(
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             OutlinedButton(
+                modifier = Modifier.weight(1f),
                 enabled = !state.saving,
                 onClick = onDone,
             ) {
                 Text("返回")
             }
             Button(
+                modifier = Modifier.weight(1f),
                 enabled = !state.saving,
                 onClick = {
                     val draft = draftOrMessage() ?: return@Button
@@ -437,9 +447,13 @@ fun ExpenseEditScreen(
         }
 
         if (allowConfirm || allowReject) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 if (allowConfirm) {
                     Button(
+                        modifier = Modifier.weight(1f),
                         enabled = !state.saving,
                         onClick = {
                             val draft = draftOrMessage() ?: return@Button
@@ -455,7 +469,11 @@ fun ExpenseEditScreen(
                 }
                 if (allowReject) {
                     OutlinedButton(
+                        modifier = Modifier.weight(if (allowConfirm) 0.72f else 1f),
                         enabled = !state.saving,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        ),
                         onClick = { showRejectDialog = true },
                     ) {
                         Text("删除")
@@ -463,7 +481,7 @@ fun ExpenseEditScreen(
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(32.dp))
     }
 }
 

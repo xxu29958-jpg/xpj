@@ -67,7 +67,7 @@ fun PendingScreen(
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 116.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 128.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {

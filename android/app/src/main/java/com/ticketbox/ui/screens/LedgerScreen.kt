@@ -121,7 +121,7 @@ fun LedgerScreen(
     RefreshableLazyColumn(
         isRefreshing = state.syncing,
         onRefresh = onSync,
-        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 116.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 128.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -144,7 +144,12 @@ fun LedgerScreen(
         }
         if (state.items.isEmpty()) {
             item {
-                EmptyLedgerState(state)
+                EmptyLedgerState(
+                    state = state,
+                    onClearFilters = onClearFilters,
+                    onSync = onSync,
+                    onManualAdd = { showManualSheet = true },
+                )
             }
         }
         items(state.items, key = { it.id }) { expense ->
@@ -578,9 +583,15 @@ private fun SelectableFilterChip(
 }
 
 @Composable
-private fun EmptyLedgerState(state: LedgerUiState) {
+private fun EmptyLedgerState(
+    state: LedgerUiState,
+    onClearFilters: () -> Unit,
+    onSync: () -> Unit,
+    onManualAdd: () -> Unit,
+) {
     val hasMonth = state.monthFilter.isNotBlank()
     val hasCategory = state.categoryFilter.isNotBlank()
+    val hasActiveFilters = hasMonth || hasCategory || state.query.isNotBlank()
     val title = when {
         hasMonth && hasCategory -> "${displayMonthLabel(state.monthFilter)} 暂无 ${state.categoryFilter} 分类账单"
         hasMonth -> "${displayMonthLabel(state.monthFilter)} 暂无已确认账单"
@@ -615,6 +626,38 @@ private fun EmptyLedgerState(state: LedgerUiState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (hasActiveFilters) {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = onClearFilters,
+                    ) {
+                        Text("重置筛选")
+                    }
+                    QuietOutlinedButton(
+                        text = "同步账本",
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.syncing,
+                        onClick = onSync,
+                    )
+                } else {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = onManualAdd,
+                    ) {
+                        Text("手动记一笔")
+                    }
+                    QuietOutlinedButton(
+                        text = "同步账本",
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.syncing,
+                        onClick = onSync,
+                    )
+                }
+            }
         }
     }
 }
