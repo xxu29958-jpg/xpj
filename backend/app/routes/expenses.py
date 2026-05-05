@@ -9,6 +9,7 @@ from app.database import get_db
 from app.schemas import (
     CategoriesResponse,
     ExpenseManualCreateRequest,
+    ExpenseRecognizeTextRequest,
     ExpenseResponse,
     ExpenseUpdateRequest,
     MonthsResponse,
@@ -26,6 +27,7 @@ from app.services.expense_service import (
     list_pending,
     mark_expense_not_duplicate,
     reject_expense,
+    recognize_expense_text,
     retry_expense_ocr,
     update_expense,
 )
@@ -126,6 +128,15 @@ def post_reject_expense(expense_id: int, db: Session = Depends(get_db)) -> Expen
 @router.post("/{expense_id}/ocr/retry", response_model=ExpenseResponse)
 def post_retry_ocr(expense_id: int, db: Session = Depends(get_db)) -> ExpenseResponse:
     return retry_expense_ocr(db, expense_id)
+
+
+@router.post("/{expense_id}/recognize-text", response_model=ExpenseResponse)
+def post_recognize_text(
+    expense_id: int,
+    payload: ExpenseRecognizeTextRequest,
+    db: Session = Depends(get_db),
+) -> ExpenseResponse:
+    return recognize_expense_text(db, expense_id, payload)
 
 
 @router.post("/{expense_id}/mark-not-duplicate", response_model=ExpenseResponse)

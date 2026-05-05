@@ -1,0 +1,5 @@
+# Optional local OCR dependencies.
+# Install only on the Windows host that should run OCR:
+#   .venv\Scripts\python.exe -m pip install -r requirements-ocr.txt
+rapidocr==3.8.1
+onnxruntime==1.25.1

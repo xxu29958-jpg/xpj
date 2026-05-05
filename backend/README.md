@@ -69,6 +69,13 @@ DELETE_IMAGE_AFTER_CONFIRM=false
 GENERATE_THUMBNAIL=true
 DELETE_IMAGE_AFTER_DAYS=0
 OCR_PROVIDER=empty
+OCR_AUTO_RUN=false
+OCR_FALLBACK_PROVIDER=empty
+OCR_MIN_CONFIDENCE=0.65
+OCR_DEFAULT_TIMEZONE=Asia/Shanghai
+LOCAL_LLM_BASE_URL=http://127.0.0.1:1234/v1
+LOCAL_LLM_MODEL=
+LOCAL_LLM_TIMEOUT_SECONDS=60
 ```
 
 ## 启动
@@ -342,13 +349,49 @@ Invoke-WebRequest `
 
 ### OCR retry 入口
 
-第一版暂不做真实 OCR，这个接口保留可插拔入口。
+OCR 只生成待确认草稿，不会自动入账。当前支持：
+
+```text
+empty      不识别，只保留接口
+mock       本地测试 provider
+rapidocr   本地 RapidOCR，把图片转文字，再用规则提取金额/商家/时间
+local_llm  OpenAI 兼容本地视觉模型服务，例如 http://127.0.0.1:1234/v1
+```
+
+安装本地 OCR 可选依赖：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-ocr.txt
+```
+
+启用本地 OCR：
+
+```env
+OCR_PROVIDER=rapidocr
+OCR_AUTO_RUN=true
+OCR_FALLBACK_PROVIDER=local_llm
+```
+
+如果没有本地模型服务，保持 `OCR_FALLBACK_PROVIDER=empty`。上传接口会优先保证保存成功，自动 OCR 失败不会影响 pending 创建；手动重试会返回错误。
 
 ```powershell
 Invoke-RestMethod `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/expenses/1/ocr/retry `
   -Headers $appHeaders
+```
+
+### 粘贴文本识别
+
+用于调试规则抽取，或以后从快捷指令/其他 OCR 把文本传给后端：
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8000/api/expenses/1/recognize-text `
+  -Headers $appHeaders `
+  -ContentType application/json `
+  -Body '{"raw_text":"中国建设银行\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"}'
 ```
 
 ### 疑似重复账单

@@ -364,6 +364,35 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["id"], expense_id, "ocr retry id")
     print("OK ocr retry")
 
+    recognize_body = json.dumps(
+        {
+            "raw_text": "\n".join(
+                [
+                    "中国建设银行",
+                    "交易提醒",
+                    "交易时间：2026年5月4日 16:23:25",
+                    "交易金额：18.51（人民币）",
+                ]
+            )
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    recognize_upload = upload(base_url, "recognize.png", "image/png", PNG_BYTES)
+    assert_equal(recognize_upload.status, 200, "recognize upload status")
+    recognize_id = int(recognize_upload.json()["id"])
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{recognize_id}/recognize-text",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=recognize_body,
+    )
+    assert_equal(result.status, 200, "recognize text status")
+    recognized = result.json()
+    assert_equal(recognized["amount_cents"], 1851, "recognized amount")
+    assert_equal(recognized["merchant"], "中国建设银行", "recognized merchant")
+    assert_equal(recognized["expense_time"], "2026-05-04T08:23:25Z", "recognized time")
+    print("OK recognize text")
+
     result = request("POST", f"{base_url}/api/expenses/{expense_id}/confirm", headers=app_headers())
     assert_equal(result.status, 200, "confirm status")
     confirmed = result.json()

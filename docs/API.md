@@ -385,7 +385,45 @@ Authorization: Bearer APP_TOKEN
 Authorization: Bearer APP_TOKEN
 ```
 
-第一版使用空 OCR provider，只保留可插拔入口，不做真实 OCR。
+重新运行当前 `OCR_PROVIDER`。OCR 只写入待确认草稿，不会自动入账。
+
+支持的 provider：
+
+```text
+empty
+mock
+rapidocr
+local_llm
+```
+
+写入策略：
+
+- 更新 `raw_text` 和 `confidence`。
+- 仅当 `amount_cents`、`merchant`、`expense_time` 仍为空时才自动填充。
+- 仅当分类仍为 `其他` 时才自动分类。
+- 写入金额、商家或消费时间后，会重新计算疑似重复状态。
+
+### POST /api/expenses/{id}/recognize-text
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
+请求体：
+
+```json
+{
+  "raw_text": "中国建设银行\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
+}
+```
+
+行为：
+
+- 从文本规则中提取 `amount_cents`、`merchant`、`expense_time`、`category` 和 `confidence`。
+- 保存 `raw_text`。
+- 不自动确认入账。
 
 ### POST /api/expenses/{id}/mark-not-duplicate
 
@@ -478,6 +516,9 @@ Authorization: Bearer APP_TOKEN
   "delete_image_after_confirm": false,
   "delete_image_after_days": 0,
   "ocr_provider": "empty",
+  "ocr_auto_run": false,
+  "ocr_fallback_provider": "empty",
+  "ocr_min_confidence": 0.65,
   "pending_count": 1,
   "confirmed_count": 2,
   "rejected_count": 0,

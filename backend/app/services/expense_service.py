@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense
-from app.schemas import ExpenseManualCreateRequest, ExpenseUpdateRequest
+from app.schemas import ExpenseManualCreateRequest, ExpenseRecognizeTextRequest, ExpenseUpdateRequest
 from app.services.category_service import merge_categories, normalize_category
 from app.services.classify_service import classify_expense
 from app.services.cleanup_service import cleanup_after_confirm
@@ -22,7 +22,8 @@ from app.services.duplicate_service import (
     mark_not_duplicate,
 )
 from app.services.file_service import SavedUpload
-from app.services.ocr_service import retry_ocr
+from app.services.ocr_service import retry_ocr, run_auto_ocr
+from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.time_service import ensure_utc, matches_month, now_utc
 
@@ -66,7 +67,11 @@ def create_pending_expense(db: Session, saved_file: SavedUpload) -> Expense:
     )
     db.add(expense)
     db.flush()
+    run_auto_ocr(expense)
+    if expense.category == "其他":
+        classify_expense(db, expense)
     mark_duplicate_status(db, expense)
+    expense.updated_at = now_utc()
     db.commit()
     db.refresh(expense)
     return expense
@@ -332,6 +337,35 @@ def retry_expense_ocr(db: Session, expense_id: int) -> Expense:
     retry_ocr(expense)
     if expense.category == "其他":
         classify_expense(db, expense)
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
+        mark_duplicate_status(db, expense)
+    expense.updated_at = now_utc()
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def recognize_expense_text(db: Session, expense_id: int, payload: ExpenseRecognizeTextRequest) -> Expense:
+    expense = get_expense(db, expense_id)
+    if expense.status == "rejected":
+        raise AppError("expense_not_found", status_code=404)
+
+    raw_text = payload.raw_text.strip()
+    parsed = parse_receipt_text(raw_text)
+    expense.raw_text = raw_text
+    expense.confidence = parsed.confidence
+    if expense.amount_cents is None and parsed.amount_cents is not None:
+        expense.amount_cents = parsed.amount_cents
+    if not (expense.merchant or "").strip() and parsed.merchant:
+        expense.merchant = parsed.merchant
+    if expense.expense_time is None and parsed.expense_time is not None:
+        expense.expense_time = parsed.expense_time
+    if expense.category == "其他" and parsed.category:
+        expense.category = parsed.category
+    if expense.category == "其他":
+        classify_expense(db, expense)
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
+        mark_duplicate_status(db, expense)
     expense.updated_at = now_utc()
     db.commit()
     db.refresh(expense)

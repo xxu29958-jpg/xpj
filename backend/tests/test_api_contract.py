@@ -5,6 +5,8 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from conftest import PNG_BYTES, admin_headers, app_headers, upload_headers
+from app.models import Expense
+from app.services.ocr_service import MockOcrProvider, retry_ocr
 
 
 def upload_png(client: TestClient) -> int:
@@ -156,6 +158,41 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient) -> None:
     assert item["image_path"].startswith("uploads/")
     assert item["image_path"].endswith(".png")
     assert item["image_hash"]
+
+
+def test_recognize_text_extracts_receipt_fields(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "中国建设银行",
+            "交易提醒",
+            "交易时间：2026年5月4日 16:23:25",
+            "交易类型：支出（尾号 0436 账户）",
+            "交易金额：18.51（人民币）",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["raw_text"] == raw_text
+    assert payload["amount_cents"] == 1851
+    assert payload["merchant"] == "中国建设银行"
+    assert payload["category"] == "其他"
+    assert payload["expense_time"] == "2026-05-04T08:23:25Z"
+    assert payload["confidence"] >= 0.8
+
+
+def test_mock_ocr_provider_populates_pending_draft() -> None:
+    expense = Expense(category="其他", raw_text="")
+    retry_ocr(expense, MockOcrProvider())
+    assert expense.amount_cents == 1851
+    assert expense.merchant == "中国建设银行"
+    assert expense.expense_time is not None
+    assert expense.confidence is not None and expense.confidence >= 0.8
 
 
 def test_manual_expense_create_contract(client: TestClient) -> None:
