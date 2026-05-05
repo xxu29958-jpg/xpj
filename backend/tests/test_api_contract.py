@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from conftest import PNG_BYTES, admin_headers, app_headers, gray_app_headers, gray_upload_headers, upload_headers
+from conftest import (
+    PNG_BYTES,
+    TEST_UPLOAD_DIR,
+    admin_headers,
+    app_headers,
+    gray_app_headers,
+    gray_upload_headers,
+    upload_headers,
+)
 from app.models import Expense
 from app.services.ocr_service import MockOcrProvider, retry_ocr
 
@@ -32,6 +41,12 @@ def upload_png_as_raw_body(client: TestClient) -> int:
     payload = response.json()
     assert payload["status"] == "pending"
     return int(payload["id"])
+
+
+def _stored_upload_files() -> list[str]:
+    if not TEST_UPLOAD_DIR.exists():
+        return []
+    return [str(path) for path in TEST_UPLOAD_DIR.rglob("*") if path.is_file()]
 
 
 def test_health_and_auth_contract(client: TestClient) -> None:
@@ -178,6 +193,154 @@ def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> N
     item = next(expense for expense in pending.json() if expense["id"] == expense_id)
     assert item["image_path"].endswith(".png")
     assert item["image_hash"]
+
+
+def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={"Upload-Token": "bad-token", "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+    assert _stored_upload_files() == []
+
+
+def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -> None:
+    from app.routes import uploads as upload_routes
+    from app.services import file_service
+
+    small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
+    monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
+    monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
+    assert _stored_upload_files() == []
+
+
+def test_upload_multipart_uses_same_size_limit(client: TestClient, monkeypatch) -> None:
+    from app.routes import uploads as upload_routes
+    from app.services import file_service
+
+    small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
+    monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
+    monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
+    assert _stored_upload_files() == []
+
+
+def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=b"not really an image",
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+
+def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient, monkeypatch) -> None:
+    from app.main import app
+    from app.routes import uploads as upload_routes
+
+    def fail_create_pending(*args, **kwargs):
+        raise RuntimeError("simulated db failure")
+
+    monkeypatch.setattr(upload_routes, "create_pending_expense", fail_create_pending)
+
+    with TestClient(app, raise_server_exceptions=False) as no_raise_client:
+        response = no_raise_client.post(
+            "/api/upload-screenshot",
+            headers=upload_headers(),
+            files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+        )
+    assert response.status_code == 500
+    assert response.json()["error"] == "server_error"
+    assert _stored_upload_files() == []
+
+
+def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, monkeypatch) -> None:
+    from app.services import expense_service
+
+    def fail_thumbnail(_: str | None) -> str | None:
+        raise RuntimeError("thumbnail backend unavailable")
+
+    monkeypatch.setattr(expense_service, "generate_thumbnail", fail_thumbnail)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["thumbnail_path"] is None
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
+    assert item["status"] == "pending"
+    assert item["thumbnail_path"] is None
+
+
+def test_upload_same_image_marks_suspected_duplicate_without_rejecting(client: TestClient) -> None:
+    first = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("first.png", PNG_BYTES, "image/png")},
+    )
+    assert first.status_code == 200
+    first_payload = first.json()
+    assert first_payload["status"] == "pending"
+
+    second = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("second.png", PNG_BYTES, "image/png")},
+    )
+    assert second.status_code == 200
+    second_payload = second.json()
+    assert second_payload["status"] == "pending"
+    assert second_payload["duplicate_status"] == "suspected"
+    assert second_payload["duplicate_of_id"] == first_payload["id"]
+    assert second_payload["image_hash"] == first_payload["image_hash"]
+
+
+def test_upload_stores_relative_paths_and_never_confirms(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("user-original-name.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+
+    detail = client.get(f"/api/expenses/{payload['id']}", headers=app_headers())
+    assert detail.status_code == 200
+    expense = detail.json()
+    assert expense["status"] == "pending"
+    assert expense["confirmed_at"] is None
+    assert expense["image_path"].startswith("uploads/")
+    assert "user-original-name" not in expense["image_path"]
+    assert "\\" not in expense["image_path"]
+    assert ":\\" not in expense["image_path"]
+    assert expense["thumbnail_path"] is None or expense["thumbnail_path"].startswith("uploads/")
 
 
 def test_android_app_upload_uses_app_token_and_current_tenant(client: TestClient) -> None:

@@ -30,6 +30,10 @@ class UploadResponse(BaseModel):
     public_id: str
     status: str
     message: str
+    image_hash: str
+    thumbnail_path: str | None
+    duplicate_status: str
+    duplicate_of_id: int | None
 
 
 class UploadCheckResponse(BaseModel):

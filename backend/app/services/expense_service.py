@@ -21,7 +21,7 @@ from app.services.duplicate_service import (
     mark_duplicate_status,
     mark_not_duplicate,
 )
-from app.services.file_service import SavedUpload
+from app.services.file_service import SavedUpload, delete_relative_upload
 from app.services.ocr_service import retry_ocr, run_auto_ocr
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
@@ -48,8 +48,16 @@ def _clean_category(value: str | None) -> str:
     return normalize_category(value)
 
 
+def _try_generate_thumbnail(relative_path: str | None) -> str | None:
+    try:
+        return generate_thumbnail(relative_path)
+    except Exception:
+        return None
+
+
 def create_pending_expense(db: Session, saved_file: SavedUpload, tenant_id: str, *, source: str = "iPhone截图") -> Expense:
     now = now_utc()
+    thumbnail_path = _try_generate_thumbnail(saved_file.relative_path)
     expense = Expense(
         tenant_id=tenant_id,
         amount_cents=None,
@@ -58,7 +66,7 @@ def create_pending_expense(db: Session, saved_file: SavedUpload, tenant_id: str,
         note="",
         source=source,
         image_path=saved_file.relative_path,
-        thumbnail_path=generate_thumbnail(saved_file.relative_path),
+        thumbnail_path=thumbnail_path,
         image_hash=saved_file.image_hash,
         raw_text="",
         confidence=None,
@@ -66,16 +74,22 @@ def create_pending_expense(db: Session, saved_file: SavedUpload, tenant_id: str,
         created_at=now,
         updated_at=now,
     )
-    db.add(expense)
-    db.flush()
-    run_auto_ocr(expense)
-    if expense.category == "其他":
-        classify_expense(db, expense)
-    mark_duplicate_status(db, expense)
-    expense.updated_at = now_utc()
-    db.commit()
-    db.refresh(expense)
-    return expense
+    try:
+        db.add(expense)
+        db.flush()
+        run_auto_ocr(expense)
+        if expense.category == "其他":
+            classify_expense(db, expense)
+        mark_duplicate_status(db, expense)
+        expense.updated_at = now_utc()
+        db.commit()
+        db.refresh(expense)
+        return expense
+    except Exception:
+        db.rollback()
+        delete_relative_upload(thumbnail_path)
+        delete_relative_upload(saved_file.relative_path)
+        raise
 
 
 def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, tenant_id: str) -> Expense:

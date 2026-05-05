@@ -133,6 +133,23 @@ def save_upload_bytes(
     )
 
 
+def delete_relative_upload(relative_path: str | None) -> None:
+    if not relative_path:
+        return
+
+    settings = get_settings()
+    candidate = (BACKEND_ROOT / relative_path).resolve()
+    try:
+        candidate.relative_to(settings.upload_dir)
+    except ValueError:
+        return
+    candidate.unlink(missing_ok=True)
+
+
+def delete_saved_upload(saved_upload: SavedUpload) -> None:
+    delete_relative_upload(saved_upload.relative_path)
+
+
 def resolve_protected_image(relative_path: str | None) -> tuple[Path, str]:
     if not relative_path:
         raise AppError("image_not_found", status_code=404)
