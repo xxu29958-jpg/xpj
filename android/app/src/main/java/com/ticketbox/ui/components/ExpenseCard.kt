@@ -1,13 +1,18 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -19,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -74,56 +80,63 @@ fun ExpenseCard(
         )
     }
 
-    SoftPanel(containerAlpha = 0.60f) {
+    SoftPanel(containerAlpha = 0.96f) {
         Column(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(11.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (expense.imagePath != null && previewMode == ExpensePreviewMode.Compact) {
+                if (expense.imagePath != null) {
                     ExpenseImagePreview(
                         image = thumbnail,
                         placeholder = "截图",
                         compact = true,
                     )
+                } else {
+                    CategoryMark(expense.category)
                 }
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        StatusPill(
-                            text = expense.category,
-                            active = false,
-                        )
-                        if (expense.amountCents == null) {
-                            StatusPill(text = "待填写")
-                        } else if ((expense.confidence ?: 1.0) < 0.62) {
-                            StatusPill(text = "请核对")
-                        }
-                    }
                     Text(
                         text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Black,
                     )
                     Text(
-                        text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                        text = "${displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt)} · ${
+                            if (expense.status == "pending") "截图待确认" else "已入账"
+                        }",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Text(
+                        text = expense.amountCents?.let(::formatAmount) ?: "等待你确认金额",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatusPill(
+                            text = expense.category,
+                            active = true,
+                        )
+                        if (expense.amountCents == null) {
+                            StatusPill(text = "待补金额", active = false)
+                        } else if ((expense.confidence ?: 1.0) < 0.62) {
+                            StatusPill(text = "请核对", active = false)
+                        }
+                        if (expense.duplicateStatus == "suspected") {
+                            StatusPill(text = "疑似新账", active = false)
+                        }
+                    }
                 }
-                Text(
-                    text = formatAmount(expense.amountCents),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.End,
-                )
             }
 
             expense.note?.takeIf { it.isNotBlank() }?.let {
@@ -134,24 +147,16 @@ fun ExpenseCard(
                 )
             }
 
-            if (expense.imagePath != null) {
+            if (expense.imagePath != null && previewMode == ExpensePreviewMode.Comfortable) {
                 val imagePlaceholder = if (expense.thumbnailPath != null) {
                     "截图缩略图加载中"
                 } else {
                     "截图已保存，当前格式暂不预览"
                 }
-                if (previewMode == ExpensePreviewMode.Comfortable) {
-                    ExpenseImagePreview(
-                        image = thumbnail,
-                        placeholder = imagePlaceholder,
-                    )
-                } else {
-                    Text(
-                        text = imagePlaceholder,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                ExpenseImagePreview(
+                    image = thumbnail,
+                    placeholder = imagePlaceholder,
+                )
             }
 
             if (expense.duplicateStatus == "suspected") {
@@ -182,6 +187,10 @@ fun ExpenseCard(
                         Button(
                             modifier = Modifier.weight(1f),
                             enabled = actionsEnabled,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
                             onClick = onConfirm,
                         ) {
                             Text("入账")
@@ -207,5 +216,24 @@ fun ExpenseCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CategoryMark(category: String) {
+    Box(
+        modifier = Modifier
+            .size(54.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = category.take(1).ifBlank { "账" },
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+        )
     }
 }

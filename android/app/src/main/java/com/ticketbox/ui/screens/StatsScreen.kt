@@ -35,10 +35,12 @@ import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.ui.components.DeepHeroPanel
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.RefreshableLazyColumn
+import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
@@ -70,20 +72,16 @@ fun StatsScreen(
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 116.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ScreenHeader(
                     title = "统计",
-                    subtitle = "看看这个月的钱花在哪。",
+                    subtitle = "不是财务报表，是生活消费感知",
                 ) {
-                    QuietOutlinedButton(
-                        text = if (state.loading) "刷新中" else "刷新",
-                        enabled = !state.loading,
-                        onClick = onRefresh,
-                    )
+                    SafeBadge()
                 }
                 MonthSelectorButton(
                     selectedMonth = state.month,
@@ -287,44 +285,53 @@ private fun StatsOverviewCard(
     comparison: MonthComparison?,
     budget: BudgetProgress?,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-        ),
-    ) {
+    DeepHeroPanel {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                text = displayMonthLabel(stats.month),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "本月支出",
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
                 style = MaterialTheme.typography.labelLarge,
             )
             Text(
                 text = formatAmount(stats.totalAmountCents),
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onPrimary,
             )
+            Text(
+                text = "${stats.count} 笔 · 最近 7 天 ${
+                    formatAmount(lifestyle?.recent7DaysAmountCents ?: 0L)
+                }",
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.80f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            HeroTrendLine()
             comparison?.let {
                 MonthComparisonPill(it)
             }
             budget?.let {
                 BudgetProgressPanel(it)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricPill(
-                    modifier = Modifier.weight(1f),
-                    label = "账单",
-                    value = "${stats.count} 笔",
-                )
-                MetricPill(
-                    modifier = Modifier.weight(1f),
-                    label = "最近 7 天",
-                    value = formatAmount(lifestyle?.recent7DaysAmountCents ?: 0L),
-                )
-            }
+        }
+    }
+}
+
+@Composable
+private fun HeroTrendLine() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(0.30f, 0.42f, 0.35f, 0.68f, 0.50f, 0.46f, 0.78f, 0.58f, 0.48f, 0.64f).forEachIndexed { index, weight ->
+            Box(
+                modifier = Modifier
+                    .weight(weight)
+                    .height(if (index == 6) 10.dp else 7.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = if (index == 6) 0.95f else 0.46f)),
+            )
         }
     }
 }

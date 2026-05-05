@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,6 +58,7 @@ import com.ticketbox.ui.components.MonthSelectorButton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.ScreenHeader
+import com.ticketbox.ui.components.SectionTitle
 import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
@@ -119,8 +121,8 @@ fun LedgerScreen(
     RefreshableLazyColumn(
         isRefreshing = state.syncing,
         onRefresh = onSync,
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 116.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
             LedgerFilterPanel(
@@ -173,7 +175,7 @@ private fun LedgerFilterPanel(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ScreenHeader(
             title = "账本",
-            subtitle = "按月份和分类看已入账消费。",
+            subtitle = "已确认支出 · 可离线查看本地缓存",
         ) {
             Button(onClick = onManualAdd) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -181,15 +183,24 @@ private fun LedgerFilterPanel(
                 Text("记一笔")
             }
         }
+        LedgerSummaryStrip(state)
         SoftPanel {
             Column(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                MonthSelectorButton(
-                    selectedMonth = state.monthFilter,
-                    onClick = onOpenMonthPicker,
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MonthSelectorButton(
+                        modifier = Modifier.weight(1f),
+                        selectedMonth = state.monthFilter,
+                        onClick = onOpenMonthPicker,
+                    )
+                    QuietOutlinedButton(
+                        text = if (state.exporting) "导出中" else "导出 CSV",
+                        enabled = canExport,
+                        onClick = onExportCsv,
+                    )
+                }
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = onQueryChange,
@@ -208,7 +219,6 @@ private fun LedgerFilterPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                LedgerSummaryStrip(state)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         modifier = Modifier.weight(1f),
@@ -217,13 +227,8 @@ private fun LedgerFilterPanel(
                         Text(if (state.syncing) "同步中" else "同步")
                     }
                     QuietOutlinedButton(
-                        text = if (state.exporting) "导出中" else "导出",
-                        modifier = Modifier.weight(1f),
-                        enabled = canExport,
-                        onClick = onExportCsv,
-                    )
-                    QuietOutlinedButton(
                         text = "清筛选",
+                        modifier = Modifier.weight(1f),
                         onClick = onClearFilters,
                     )
                 }
@@ -242,15 +247,10 @@ private fun LedgerFilterPanel(
 @Composable
 private fun LedgerSummaryStrip(state: LedgerUiState) {
     val total = state.items.sumOf { it.amountCents ?: 0L }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.medium)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)),
-    ) {
+    SoftPanel(containerAlpha = 0.98f) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -262,14 +262,15 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
-                        text = "当前合计",
+                        text = "${displayMonthLabel(state.monthFilter)} 合计",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
                         text = formatAmount(total),
                         color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
                     )
                 }
                 Column(
@@ -286,8 +287,26 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
                     Text(
                         text = "${state.items.size} 笔",
                         color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         textAlign = TextAlign.End,
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val bars = listOf(0.32f, 0.54f, 0.42f, 0.72f, 0.50f, 0.86f, 0.38f, 0.62f, 0.44f)
+                bars.forEachIndexed { index, width ->
+                    Box(
+                        modifier = Modifier
+                            .weight(if (index == 5) 1.15f else width)
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(
+                                if (index == 5) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                },
+                            ),
                     )
                 }
             }

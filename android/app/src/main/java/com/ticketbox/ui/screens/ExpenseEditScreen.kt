@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -48,12 +50,16 @@ import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
+import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.timePickerToUtcIso
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
@@ -221,10 +227,40 @@ fun ExpenseEditScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("编辑账单", style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader(
+            title = "确认账单",
+            subtitle = "识别只是草稿，补全后再正式入账",
+        ) {
+            StatusPill(if (currentExpense.status == "pending") "待确认" else "已入账")
+        }
+
+        SoftPanel(containerAlpha = 0.98f) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("识别草稿", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = currentExpense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = formatAmount(currentExpense.amountCents),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusPill(currentExpense.category)
+                    currentExpense.confidence?.let {
+                        StatusPill("可信度 ${(it * 100).toInt()}%", active = false)
+                    }
+                }
+            }
+        }
 
         if (currentExpense.imagePath != null) {
             ExpenseImagePreview(
@@ -248,6 +284,10 @@ fun ExpenseEditScreen(
             if (currentExpense.duplicateStatus == "suspected") {
                 DuplicateNotice(reason = currentExpense.duplicateReason)
             }
+        }
+
+        AnimatedVisibility(visible = state.ocrRunning) {
+            OcrProgressCard()
         }
 
         OutlinedTextField(
@@ -424,6 +464,27 @@ fun ExpenseEditScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun OcrProgressCard() {
+    SoftPanel(containerAlpha = 0.98f) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "正在重新识别截图",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "识别结果只会更新草稿，仍需要你核对后确认入账。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
     }
 }
 

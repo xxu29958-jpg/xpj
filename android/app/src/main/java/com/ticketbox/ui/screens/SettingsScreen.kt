@@ -67,6 +67,7 @@ import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
 
@@ -221,7 +222,7 @@ fun SettingsScreen(
 
         SettingSection(title = "外观") {
             Text(
-                text = "港湾是默认主题。背景会自动加遮罩，保证金额和账单文字清晰。",
+                text = "港湾是默认主题。五套主题都带小型预览，背景会自动柔化，保证金额和账单文字清晰。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -243,6 +244,7 @@ fun SettingsScreen(
                     }
                 }
             }
+            ThemeInteractionCard(currentSkin = currentSkin)
         }
 
         SettingSection(title = "预算") {
@@ -849,7 +851,7 @@ private fun SkinOptionCard(
                 .padding(10.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            SkinPreview(scheme = scheme)
+            SkinPreview(skin = skin, scheme = scheme)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -865,6 +867,8 @@ private fun SkinOptionCard(
                         SkinPill(text = "当前", scheme = scheme, emphasized = true)
                     } else if (skin == AppSkin.Harbor) {
                         SkinPill(text = "推荐", scheme = scheme, emphasized = false)
+                    } else if (skin == AppSkin.Night) {
+                        SkinPill(text = "夜间", scheme = scheme, emphasized = false)
                     }
                 }
                 Row(
@@ -887,21 +891,13 @@ private fun SkinOptionCard(
 }
 
 @Composable
-private fun SkinPreview(scheme: ColorScheme) {
+private fun SkinPreview(skin: AppSkin, scheme: ColorScheme) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(66.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        scheme.background,
-                        scheme.surfaceVariant,
-                        scheme.surface,
-                    ),
-                ),
-            )
+            .background(backgroundBrushForSkin(skin))
             .padding(8.dp),
     ) {
         Column(
@@ -935,7 +931,7 @@ private fun SkinPreview(scheme: ColorScheme) {
                     .fillMaxWidth()
                     .height(25.dp)
                     .clip(RoundedCornerShape(11.dp))
-                    .background(scheme.surface.copy(alpha = 0.90f))
+                    .background(scheme.surface.copy(alpha = 0.92f))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Row(
@@ -962,6 +958,59 @@ private fun SkinPreview(scheme: ColorScheme) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ThemeInteractionCard(currentSkin: AppSkin) {
+    SoftPanel(containerAlpha = 0.78f) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("背景与反馈", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "当前：${currentSkin.displayName} · ${currentSkin.description}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                SkinSwatches(colorSchemeForSkin(currentSkin))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MiniFeedbackPill("上传有进度", modifier = Modifier.weight(1f))
+                MiniFeedbackPill("识别只填草稿", modifier = Modifier.weight(1f))
+                MiniFeedbackPill("确认才入账", modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniFeedbackPill(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f))
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

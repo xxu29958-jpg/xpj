@@ -1,5 +1,9 @@
 package com.ticketbox.ui.theme
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,85 +12,147 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import android.view.View
+import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.domain.model.AppSkin
 
-private val PineScheme = darkColorScheme(
-    primary = Color(0xFFD7F7D0),
-    onPrimary = Color(0xFF122116),
-    secondary = Color(0xFFFFD6A5),
-    onSecondary = Color(0xFF2D1A00),
-    background = Color(0xFF07120D),
-    onBackground = Color(0xFFE9F2EA),
-    surface = Color(0xFF132019),
-    onSurface = Color(0xFFE8EEE9),
-    surfaceVariant = Color(0xFF26362C),
-    onSurfaceVariant = Color(0xFFC5D0CA),
-    tertiary = Color(0xFFFFB4C8),
-    onTertiary = Color(0xFF3B1020),
+private val PineScheme = lightColorScheme(
+    primary = Color(0xFF0E5C4F),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFDCECE5),
+    onPrimaryContainer = Color(0xFF103D35),
+    secondary = Color(0xFFB1814A),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFEFE1CF),
+    onSecondaryContainer = Color(0xFF4B3118),
+    tertiary = Color(0xFF2D7A80),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFDDEDEF),
+    onTertiaryContainer = Color(0xFF143E42),
+    background = Color(0xFFF1F6F1),
+    onBackground = Color(0xFF192322),
+    surface = Color(0xFFFFFCF7),
+    onSurface = Color(0xFF1D2524),
+    surfaceVariant = Color(0xFFE4EEE8),
+    onSurfaceVariant = Color(0xFF76817E),
+    outline = Color(0xFFD8DCD5),
+    outlineVariant = Color(0xFFE4E7DF),
+    error = Color(0xFF8B3B34),
+    onError = Color(0xFFFFFFFF),
 )
 
-private val PomeloScheme = darkColorScheme(
-    primary = Color(0xFFFFD276),
-    onPrimary = Color(0xFF2A1C00),
-    secondary = Color(0xFFA9EBCB),
-    onSecondary = Color(0xFF062116),
-    tertiary = Color(0xFFFFA6B8),
-    onTertiary = Color(0xFF3A101B),
-    background = Color(0xFF211607),
-    onBackground = Color(0xFFF4EBDD),
-    surface = Color(0xFF2A2112),
-    onSurface = Color(0xFFF0EEE6),
-    surfaceVariant = Color(0xFF43351E),
-    onSurfaceVariant = Color(0xFFD7D0C4),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
+private val PomeloScheme = lightColorScheme(
+    primary = Color(0xFFE6981B),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFFE4B6),
+    onPrimaryContainer = Color(0xFF5C3500),
+    secondary = Color(0xFF8A6A2D),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFF2E4C6),
+    onSecondaryContainer = Color(0xFF473513),
+    tertiary = Color(0xFF2D7A80),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFDDEEEF),
+    onTertiaryContainer = Color(0xFF143E42),
+    background = Color(0xFFFFF6E6),
+    onBackground = Color(0xFF221F19),
+    surface = Color(0xFFFFFCF7),
+    onSurface = Color(0xFF25221C),
+    surfaceVariant = Color(0xFFF6E8D1),
+    onSurfaceVariant = Color(0xFF81786D),
+    outline = Color(0xFFE0D8CA),
+    outlineVariant = Color(0xFFECE4D8),
+    error = Color(0xFF8B3B34),
+    onError = Color(0xFFFFFFFF),
 )
 
-private val HarborScheme = darkColorScheme(
-    primary = Color(0xFF9BE0D9),
-    onPrimary = Color(0xFF062927),
-    secondary = Color(0xFFE7B77B),
-    onSecondary = Color(0xFF2B1B08),
-    tertiary = Color(0xFFC8C6FF),
-    onTertiary = Color(0xFF1D214D),
-    background = Color(0xFF06141A),
-    onBackground = Color(0xFFE7EFF0),
-    surface = Color(0xFF10242D),
-    onSurface = Color(0xFFE9EEEE),
-    surfaceVariant = Color(0xFF1B333B),
-    onSurfaceVariant = Color(0xFFC0CFD0),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
+private val HarborScheme = lightColorScheme(
+    primary = Color(0xFF245D78),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFDDEAF0),
+    onPrimaryContainer = Color(0xFF123648),
+    secondary = Color(0xFF185B4F),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFE0ECE8),
+    onSecondaryContainer = Color(0xFF123B35),
+    tertiary = Color(0xFFD59A4C),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFF2E3CC),
+    onTertiaryContainer = Color(0xFF55360E),
+    background = Color(0xFFF2F6F7),
+    onBackground = Color(0xFF192322),
+    surface = Color(0xFFFFFCF7),
+    onSurface = Color(0xFF1E2524),
+    surfaceVariant = Color(0xFFE3ECEE),
+    onSurfaceVariant = Color(0xFF6C7D82),
+    outline = Color(0xFFD8DDD6),
+    outlineVariant = Color(0xFFE4E8E1),
+    error = Color(0xFF8B3B34),
+    onError = Color(0xFFFFFFFF),
 )
 
 private val TicketboxShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(22.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(34.dp),
 )
 
-private val BerryScheme = darkColorScheme(
-    primary = Color(0xFFFFB3C8),
-    onPrimary = Color(0xFF3D1020),
-    secondary = Color(0xFFBCEBD1),
-    onSecondary = Color(0xFF092116),
-    tertiary = Color(0xFFFFD98D),
-    onTertiary = Color(0xFF2D1D00),
-    background = Color(0xFF25101B),
-    onBackground = Color(0xFFF5E8EF),
-    surface = Color(0xFF311B26),
-    onSurface = Color(0xFFF1E8EC),
-    surfaceVariant = Color(0xFF4A2C3A),
-    onSurfaceVariant = Color(0xFFD8C6CE),
+private val BerryScheme = lightColorScheme(
+    primary = Color(0xFFA83C5A),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFF2D7DF),
+    onPrimaryContainer = Color(0xFF511B2A),
+    secondary = Color(0xFFC96C86),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFF5DCE3),
+    onSecondaryContainer = Color(0xFF5E2637),
+    tertiary = Color(0xFF8B7A65),
+    onTertiary = Color(0xFFFFFFFF),
+    background = Color(0xFFF6EFF2),
+    onBackground = Color(0xFF241D20),
+    surface = Color(0xFFFFFAFC),
+    onSurface = Color(0xFF251F22),
+    surfaceVariant = Color(0xFFF0E4E9),
+    onSurfaceVariant = Color(0xFF83747B),
+    outline = Color(0xFFE0D4DA),
+    outlineVariant = Color(0xFFEDE1E7),
+    error = Color(0xFF8B3B34),
+    onError = Color(0xFFFFFFFF),
+)
+
+private val NightScheme = darkColorScheme(
+    primary = Color(0xFF2BB49A),
+    onPrimary = Color(0xFF062621),
+    primaryContainer = Color(0xFF0A4139),
+    onPrimaryContainer = Color(0xFFC7F2E8),
+    secondary = Color(0xFF84A7B7),
+    onSecondary = Color(0xFF102A35),
+    secondaryContainer = Color(0xFF173744),
+    onSecondaryContainer = Color(0xFFD4E8EF),
+    tertiary = Color(0xFFD2A46E),
+    onTertiary = Color(0xFF3A260D),
+    tertiaryContainer = Color(0xFF4D3617),
+    onTertiaryContainer = Color(0xFFF7E1C1),
+    background = Color(0xFF07151A),
+    onBackground = Color(0xFFE7F1EF),
+    surface = Color(0xFF0D2027),
+    onSurface = Color(0xFFEAF2F0),
+    surfaceVariant = Color(0xFF183039),
+    onSurfaceVariant = Color(0xFFB6C6C8),
+    outline = Color(0xFF31515A),
+    outlineVariant = Color(0xFF1C3B43),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
 )
@@ -97,6 +163,7 @@ fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
         AppSkin.Pomelo -> PomeloScheme
         AppSkin.Harbor -> HarborScheme
         AppSkin.Berry -> BerryScheme
+        AppSkin.Night -> NightScheme
     }
 }
 
@@ -104,31 +171,38 @@ fun backgroundBrushForSkin(skin: AppSkin): Brush {
     return when (skin) {
         AppSkin.Pine -> Brush.verticalGradient(
             listOf(
-                Color(0xFF06100B),
-                Color(0xFF0E1B14),
-                Color(0xFF18251D),
+                Color(0xFFF7F7F1),
+                Color(0xFFEFF6F1),
+                Color(0xFFE5EFEC),
             ),
         )
         AppSkin.Pomelo -> Brush.verticalGradient(
             listOf(
-                Color(0xFF281706),
-                Color(0xFF1D2112),
-                Color(0xFF10241D),
+                Color(0xFFFFF8EA),
+                Color(0xFFF8EFD9),
+                Color(0xFFF2F1E7),
             ),
         )
         AppSkin.Harbor -> Brush.verticalGradient(
             listOf(
-                Color(0xFF041017),
-                Color(0xFF0A1D25),
-                Color(0xFF112D32),
-                Color(0xFF1D2421),
+                Color(0xFFFAF7EF),
+                Color(0xFFF0F5F5),
+                Color(0xFFE5EFF1),
+                Color(0xFFD8E8EC),
             ),
         )
         AppSkin.Berry -> Brush.verticalGradient(
             listOf(
-                Color(0xFF2B1020),
-                Color(0xFF211B33),
-                Color(0xFF10261B),
+                Color(0xFFFFF4F7),
+                Color(0xFFF7ECEF),
+                Color(0xFFF1F2ED),
+            ),
+        )
+        AppSkin.Night -> Brush.verticalGradient(
+            listOf(
+                Color(0xFF041018),
+                Color(0xFF071B20),
+                Color(0xFF0A2529),
             ),
         )
     }
@@ -139,6 +213,14 @@ fun TicketboxTheme(
     skin: AppSkin,
     content: @Composable () -> Unit,
 ) {
+    val view = LocalView.current
+    val lightSystemBars = skin != AppSkin.Night
+    if (!view.isInEditMode) {
+        SideEffect {
+            view.context.findActivity()?.configureTicketboxSystemBars(view, lightSystemBars)
+        }
+    }
+
     MaterialTheme(
         colorScheme = colorSchemeForSkin(skin),
         typography = MaterialTheme.typography,
@@ -153,5 +235,23 @@ fun TicketboxTheme(
                 content()
             }
         }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? {
+    return when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+}
+
+@Suppress("DEPRECATION")
+private fun Activity.configureTicketboxSystemBars(view: View, lightSystemBars: Boolean) {
+    window.statusBarColor = AndroidColor.TRANSPARENT
+    window.navigationBarColor = AndroidColor.TRANSPARENT
+    WindowInsetsControllerCompat(window, view).apply {
+        isAppearanceLightStatusBars = lightSystemBars
+        isAppearanceLightNavigationBars = lightSystemBars
     }
 }
