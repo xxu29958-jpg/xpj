@@ -34,6 +34,7 @@ fun MonthSelectorButton(
     OutlinedButton(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -44,7 +45,7 @@ fun MonthSelectorButton(
                 Text(
                     text = label,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                 )
                 Text(
                     text = selectedMonth.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份",
