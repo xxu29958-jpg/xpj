@@ -157,10 +157,16 @@ multipart/form-data
 file: 图片文件
 ```
 
+表单字段兼容顺序：
+
+```text
+file -> image -> photo -> screenshot -> 表单里的第一个文件字段
+```
+
 规则：
 
 - 支持 `jpg`、`jpeg`、`png`、`webp`、`heic`。
-- 同一个接口同时支持原始图片请求体和 `multipart/form-data` 表单字段 `file`。
+- 同一个接口同时支持原始图片请求体和 `multipart/form-data` 文件字段。
 - iOS 快捷指令优先使用原始图片请求体，也就是“请求正文：文件”。不要优先使用“请求正文：表单”。
 - Cloudflare 可能拦截没有标准 `User-Agent` 的快捷指令请求，公网部署时建议固定 `User-Agent`。
 - 最大 10MB，按 `MAX_UPLOAD_SIZE_MB` 配置。

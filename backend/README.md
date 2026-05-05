@@ -224,6 +224,8 @@ curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
   -F "file=@test.png"
 ```
 
+`multipart/form-data` 会优先读取 `file` 字段，也兼容 `image`、`photo`、`screenshot`，最后会取表单里的第一个文件字段。这样 iOS 快捷指令或其他客户端字段名略有差异时不会直接失败。
+
 也可以直接上传原始图片请求体，方便对应 iOS 快捷指令的“文件”请求正文：
 
 ```powershell
