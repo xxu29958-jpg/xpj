@@ -124,6 +124,28 @@ fun monthlyBudgetProgress(
     )
 }
 
+fun monthlyCategoryInsight(stats: MonthlyStats?): CategoryInsight? {
+    val monthlyStats = stats ?: return null
+    if (monthlyStats.totalAmountCents <= 0L || monthlyStats.count <= 0) {
+        return null
+    }
+    val categories = monthlyStats.byCategory
+        .filter { it.amountCents > 0L && it.count > 0 }
+        .sortedByDescending { it.amountCents }
+    val top = categories.firstOrNull() ?: return null
+    val topShare = ((top.amountCents.toDouble() / monthlyStats.totalAmountCents.toDouble()) * 100)
+        .roundToInt()
+        .coerceIn(0, 100)
+    return CategoryInsight(
+        topCategory = top.category,
+        topAmountCents = top.amountCents,
+        topSharePercent = topShare,
+        averagePerExpenseCents = monthlyStats.totalAmountCents / monthlyStats.count.toLong(),
+        categoryCount = categories.size,
+        isConcentrated = topShare >= 60,
+    )
+}
+
 private fun Expense.ledgerLocalDate(zoneId: ZoneId): LocalDate? {
     val value = expenseTime ?: confirmedAt ?: createdAt
     return runCatching { Instant.parse(value).atZone(zoneId).toLocalDate() }

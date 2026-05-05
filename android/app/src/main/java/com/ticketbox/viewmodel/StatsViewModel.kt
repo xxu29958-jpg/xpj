@@ -6,9 +6,11 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.monthlyCategoryInsight
 import com.ticketbox.domain.model.monthlyBudgetProgress
 import com.ticketbox.domain.model.monthlySpendingComparison
 import com.ticketbox.domain.model.recentDailySpending
@@ -25,6 +27,7 @@ data class StatsUiState(
     val dailyTrend: List<DailySpend> = emptyList(),
     val monthComparison: MonthComparison? = null,
     val budgetProgress: BudgetProgress? = null,
+    val categoryInsight: CategoryInsight? = null,
     val months: List<String> = emptyList(),
     val month: String = YearMonth.now().toString(),
     val loading: Boolean = false,
@@ -90,6 +93,7 @@ class StatsViewModel(
                                     stats = stats,
                                     lifestyleStats = lifestyle,
                                     budgetProgress = monthlyBudgetProgress(stats, budgetCents),
+                                    categoryInsight = monthlyCategoryInsight(stats),
                                     loading = false,
                                 )
                             }
@@ -99,6 +103,7 @@ class StatsViewModel(
                                 it.copy(
                                     stats = stats,
                                     budgetProgress = monthlyBudgetProgress(stats, budgetCents),
+                                    categoryInsight = monthlyCategoryInsight(stats),
                                     loading = false,
                                     message = error.message ?: "生活统计暂时打不开，请稍后再试。",
                                 )

@@ -20,7 +20,7 @@ import com.ticketbox.domain.model.ServerSettings
 
 fun ExpenseDto.toDomain(): Expense = Expense(
     id = id,
-    publicId = publicId,
+    publicId = requiredPublicId(),
     amountCents = amountCents,
     merchant = merchant,
     category = category,
@@ -47,7 +47,7 @@ fun ExpenseDto.toDomain(): Expense = Expense(
 
 fun ExpenseDto.toEntity(): ExpenseEntity = ExpenseEntity(
     serverId = id,
-    publicId = publicId,
+    publicId = requiredPublicId(),
     amountCents = amountCents,
     merchant = merchant,
     category = category,
@@ -68,6 +68,13 @@ fun ExpenseDto.toEntity(): ExpenseEntity = ExpenseEntity(
     confirmedAt = confirmedAt,
     updatedAt = updatedAt,
 )
+
+private fun ExpenseDto.requiredPublicId(): String {
+    return publicId
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: throw RepositoryException("服务器版本过旧，请重启 Windows 后端后再试。")
+}
 
 fun ExpenseEntity.toDomain(): Expense = Expense(
     id = serverId,

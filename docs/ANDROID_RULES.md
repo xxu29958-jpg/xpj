@@ -118,6 +118,7 @@ serverId 不存在 -> 插入本地记录
 - DAO 必须提供按 `serverId` 查询旧记录的能力。
 - `publicId` 来自后端 `public_id`，不得由 Android 为新同步账单伪造。
 - 老版本本地缓存迁移到 `publicId` 时，可以用 `server-<serverId>` 作为兼容占位；后续服务端同步会写入真实 UUID。
+- 如果服务端响应缺少 `public_id`，App 必须显示“服务器版本过旧，请重启 Windows 后端后再试。”，不能把 JSON 字段名或解析异常直接显示给用户。
 - 更新时保留本地自增主键 `id`。
 - 不依赖“看起来像 upsert”的主键冲突行为来替代 `serverId` 唯一同步。
 

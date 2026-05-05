@@ -19,6 +19,7 @@ public_id: UUID
 - Android DTO、Domain、Room Entity 都保存 `publicId`。
 - Room `serverId` 和 `publicId` 都是唯一索引。
 - Room 1 -> 2 迁移使用新表复制并重建索引，避免新增非空列造成 schema 校验失败。
+- 如果后端旧进程缺少 `public_id`，Android 不显示 JSON 解析细节，而提示“服务器版本过旧，请重启 Windows 后端后再试。”。
 
 主题可以演进为 JSON/token 配置，但普通用户界面不直接暴露 JSON。
 
