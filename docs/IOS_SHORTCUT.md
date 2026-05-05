@@ -29,6 +29,7 @@ https://api.我的域名.com/api/upload/check
 
 ```http
 Upload-Token: 你的_UPLOAD_TOKEN
+User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
 5. 后面添加“显示结果”。
@@ -69,6 +70,7 @@ https://api.我的域名.com/api/upload-screenshot
 
 ```http
 Upload-Token: 你的_UPLOAD_TOKEN
+User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
 10. 上传成功后显示“获取 URL 内容”的结果，看到类似下面内容才算成功：
@@ -99,6 +101,7 @@ file
 
 ```http
 Upload-Token: 你的_UPLOAD_TOKEN
+User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
 表单方式里，字段类型必须是文件或图片，不要把图片作为文本字段传。
@@ -108,6 +111,7 @@ Upload-Token: 你的_UPLOAD_TOKEN
 - 不要把 `APP_TOKEN` 或 `ADMIN_TOKEN` 放到 iPhone 快捷指令里。
 - iPhone 只使用 `UPLOAD_TOKEN`。
 - `Upload-Token` 的值只填 token 本身，不要填 `Bearer`、冒号或引号。
+- `User-Agent` 必须一起添加。Cloudflare 可能会把没有标准 `User-Agent` 的快捷指令请求拦截为 `error code: 1010`，手机上会显示成“网络中断”。
 - 后端可以接受 HEIC，但第一版 Android 不保证 HEIC 原图预览；建议快捷指令转换为 JPEG 或 PNG。
 - 如果提示“网络中断”，优先改用上面的“文件”请求正文；表单上传在部分快捷指令配置下容易把图片变成文本字段。
 - 离开家里 Wi-Fi 后仍然使用 `https://api.zen70.cn/api/upload-screenshot`。如果蜂窝网络下提示“网络中断”，先用 Safari 打开 `https://api.zen70.cn/api/health`。
