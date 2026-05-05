@@ -76,6 +76,10 @@ def test_framework_errors_use_uniform_chinese_shape(client: TestClient) -> None:
 def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     expense_id = upload_png(client)
 
+    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    assert detail.status_code == 200
+    assert detail.json()["id"] == expense_id
+
     pending = client.get("/api/expenses/pending", headers=app_headers())
     assert pending.status_code == 200
     item = next(expense for expense in pending.json() if expense["id"] == expense_id)
@@ -315,6 +319,17 @@ def test_duplicate_and_category_rule_contract(client: TestClient) -> None:
     first_id = upload_png(client)
     second_id = upload_png(client)
 
+    duplicates = client.get("/api/duplicates", headers=app_headers())
+    assert duplicates.status_code == 200
+    assert any(item["id"] == second_id for item in duplicates.json())
+
+    response = client.post(f"/api/expenses/{second_id}/reject", headers=app_headers())
+    assert response.status_code == 200
+    duplicates = client.get("/api/duplicates", headers=app_headers())
+    assert duplicates.status_code == 200
+    assert all(item["id"] != second_id for item in duplicates.json())
+
+    second_id = upload_png(client)
     duplicates = client.get("/api/duplicates", headers=app_headers())
     assert duplicates.status_code == 200
     assert any(item["id"] == second_id for item in duplicates.json())

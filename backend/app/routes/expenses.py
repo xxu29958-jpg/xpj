@@ -93,6 +93,11 @@ def get_expenses_csv(
     )
 
 
+@router.get("/{expense_id}", response_model=ExpenseResponse)
+def get_expense_detail(expense_id: int, db: Session = Depends(get_db)) -> ExpenseResponse:
+    return get_expense(db, expense_id)
+
+
 @router.get("/{expense_id}/image")
 def get_expense_image(expense_id: int, db: Session = Depends(get_db)) -> FileResponse:
     expense = get_expense(db, expense_id)

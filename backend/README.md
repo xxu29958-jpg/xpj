@@ -329,6 +329,14 @@ powershell -ExecutionPolicy Bypass -File scripts\export_confirmed.ps1 `
   -OutFile ticketbox-2026-05.csv
 ```
 
+### 获取单条账单详情
+
+```powershell
+Invoke-RestMethod `
+  -Uri http://127.0.0.1:8000/api/expenses/1 `
+  -Headers $appHeaders
+```
+
 ### 获取受保护图片
 
 ```powershell
@@ -395,6 +403,8 @@ Invoke-RestMethod `
 ```
 
 ### 疑似重复账单
+
+只返回仍需处理的疑似重复账单，已拒绝账单不会出现在这里。
 
 ```powershell
 Invoke-RestMethod `

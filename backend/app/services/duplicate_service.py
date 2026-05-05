@@ -121,6 +121,7 @@ def list_suspected_duplicates(db: Session) -> list[Expense]:
         db.scalars(
             select(Expense)
             .where(Expense.duplicate_status == "suspected")
+            .where(Expense.status != "rejected")
             .order_by(Expense.created_at.desc(), Expense.id.desc())
         )
     )
