@@ -21,6 +21,7 @@ iPhone 截图账单
 - [安全说明](docs/SECURITY.md)
 - [iPhone 快捷指令](docs/IOS_SHORTCUT.md)
 - [Cloudflare Tunnel 配置](docs/CLOUDFLARE_TUNNEL.md)
+- [Windows 长期运行 Runbook](docs/WINDOWS_SERVICE_RUNBOOK.md)
 - [实机联调 Runbook](docs/REAL_DEVICE_RUNBOOK.md)
 - [第二版路线](docs/V2_ROADMAP.md)
 - [项目结构](docs/PROJECT_STRUCTURE.md)
@@ -68,6 +69,16 @@ run.bat
 ```text
 http://127.0.0.1:8000
 ```
+
+长期运行和开机自启使用根目录脚本：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
+```
+
+手机离开家里 Wi-Fi 后仍然通过 Cloudflare Tunnel 访问 `https://api.zen70.cn`，不要求和电脑在同一个局域网里。必须保证 Windows 主机在线、没有睡眠，并且 FastAPI 后端和 cloudflared 正在运行。详细流程见 [Windows 长期运行 Runbook](docs/WINDOWS_SERVICE_RUNBOOK.md)。
 
 ## Android 打开
 

@@ -106,7 +106,15 @@ powershell -ExecutionPolicy Bypass -File scripts\show_server_status.ps1
 
 ## Windows 开机自启
 
-使用 Windows 任务计划程序，在当前用户登录时启动后端：
+推荐从项目根目录安装统一自启任务，同时处理后端和 Cloudflare Tunnel：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
+```
+
+只安装后端任务时，也可以使用后端目录脚本：
 
 ```powershell
 cd E:\projects\xiaopiaojia\backend
@@ -126,6 +134,8 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall_startup_task.ps1
 ```powershell
 Get-ScheduledTask -TaskName TicketboxBackend
 ```
+
+长期运行、睡眠设置和外网诊断见 [Windows 长期运行 Runbook](../docs/WINDOWS_SERVICE_RUNBOOK.md)。
 
 ## 数据库备份
 

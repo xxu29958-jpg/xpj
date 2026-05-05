@@ -12,9 +12,14 @@ E:\projects\xiaopiaojia\
   README.md
   scripts\
     check_cloudflare_endpoint.ps1
+    check_service_status.ps1
     check_text_encoding.ps1
     ensure_ticketbox_runtime.ps1
+    install_windows_tasks.ps1
     real_device_preflight.ps1
+    start_backend.ps1
+    stop_backend.ps1
+    uninstall_windows_tasks.ps1
     verify_project.ps1
   .github\
     workflows\
@@ -124,6 +129,7 @@ docs\
   ENGINEERING_RULES.md
   IOS_SHORTCUT.md
   REAL_DEVICE_RUNBOOK.md
+  WINDOWS_SERVICE_RUNBOOK.md
   SECURITY.md
   V2_ROADMAP.md
   PROJECT_STRUCTURE.md
