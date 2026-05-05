@@ -9,6 +9,10 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
 class ApiClient {
+    private companion object {
+        const val USER_AGENT = "TicketBox/1.0 Android"
+    }
+
     fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
@@ -20,6 +24,7 @@ class ApiClient {
             .callTimeout(30, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val requestBuilder = chain.request().newBuilder()
+                    .header("User-Agent", USER_AGENT)
                 tokenProvider()?.takeIf { it.isNotBlank() }?.let { token ->
                     requestBuilder.header("Authorization", "Bearer $token")
                 }
