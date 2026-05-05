@@ -748,6 +748,12 @@ private fun ServerStatusCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Text(
+                text = serverSettings.latestUploadAt?.let { "最近上传：${displayTime(it)}" } ?: "还没有上传过截图",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("单张截图上限：${serverSettings.maxUploadSizeMb} MB")

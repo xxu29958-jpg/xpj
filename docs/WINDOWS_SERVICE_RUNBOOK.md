@@ -110,6 +110,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 - 公网 `/api/auth/check`，Token 从 `backend\.env` 读取但不会打印。
 - 最近后端访问日志。
 
+更适合日常使用的一键诊断：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Strict
+```
+
+它会额外汇总数据库大小、待确认数量、已入账数量、最近上传时间、截图存储占用和上传口令检查。脚本读取本机 `backend\.env`，但不会打印 Token。
+
 ## 出门前保障检查
 
 出门前推荐运行：

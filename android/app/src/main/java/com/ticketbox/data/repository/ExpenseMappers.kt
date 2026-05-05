@@ -163,4 +163,5 @@ fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
     rejectedCount = rejectedCount,
     suspectedDuplicateCount = suspectedDuplicateCount,
     uploadStorageBytes = uploadStorageBytes,
+    latestUploadAt = latestUploadAt,
 )

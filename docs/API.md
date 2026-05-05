@@ -539,7 +539,8 @@ Authorization: Bearer APP_TOKEN
   "confirmed_count": 2,
   "rejected_count": 0,
   "suspected_duplicate_count": 0,
-  "upload_storage_bytes": 123456
+  "upload_storage_bytes": 123456,
+  "latest_upload_at": "2026-05-05T09:20:00Z"
 }
 ```
 

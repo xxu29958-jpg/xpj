@@ -202,3 +202,4 @@ class ServerSettingsResponse(BaseModel):
     rejected_count: int
     suspected_duplicate_count: int
     upload_storage_bytes: int
+    latest_upload_at: str | None

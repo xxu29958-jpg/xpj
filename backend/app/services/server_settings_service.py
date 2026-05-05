@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Expense
+from app.services.time_service import to_iso
 
 
 def _upload_storage_bytes() -> int:
@@ -25,8 +26,9 @@ def _count_expenses(db: Session, *, status: str | None = None, duplicate_status:
     return int(db.scalar(statement) or 0)
 
 
-def server_settings_snapshot(db: Session) -> dict[str, int | bool | str]:
+def server_settings_snapshot(db: Session) -> dict[str, int | bool | str | float | None]:
     settings = get_settings()
+    latest_upload_at = db.scalar(select(func.max(Expense.created_at)))
     return {
         "max_upload_size_mb": settings.max_upload_size_mb,
         "generate_thumbnail": settings.generate_thumbnail,
@@ -41,4 +43,5 @@ def server_settings_snapshot(db: Session) -> dict[str, int | bool | str]:
         "rejected_count": _count_expenses(db, status="rejected"),
         "suspected_duplicate_count": _count_expenses(db, duplicate_status="suspected"),
         "upload_storage_bytes": _upload_storage_bytes(),
+        "latest_upload_at": to_iso(latest_upload_at),
     }

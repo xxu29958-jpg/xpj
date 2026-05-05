@@ -25,10 +25,16 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 
+enum class ExpensePreviewMode {
+    Compact,
+    Comfortable,
+}
+
 @Composable
 fun ExpenseCard(
     expense: Expense,
     thumbnail: ProtectedImage? = null,
+    previewMode: ExpensePreviewMode = ExpensePreviewMode.Comfortable,
     showActions: Boolean,
     showConfirmAction: Boolean = showActions,
     showRejectAction: Boolean = showActions,
@@ -115,14 +121,45 @@ fun ExpenseCard(
             )
 
             if (expense.imagePath != null) {
-                ExpenseImagePreview(
-                    image = thumbnail,
-                    placeholder = if (expense.thumbnailPath != null) {
-                        "截图缩略图加载中"
-                    } else {
-                        "截图已保存，当前格式暂不预览"
-                    },
-                )
+                val imagePlaceholder = if (expense.thumbnailPath != null) {
+                    "截图缩略图加载中"
+                } else {
+                    "截图已保存，当前格式暂不预览"
+                }
+                if (previewMode == ExpensePreviewMode.Compact) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ExpenseImagePreview(
+                            image = thumbnail,
+                            placeholder = "截图",
+                            compact = true,
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                text = imagePlaceholder,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            OutlinedButton(
+                                enabled = actionsEnabled,
+                                onClick = onEdit,
+                            ) {
+                                Text("查看截图")
+                            }
+                        }
+                    }
+                } else {
+                    ExpenseImagePreview(
+                        image = thumbnail,
+                        placeholder = imagePlaceholder,
+                    )
+                }
             }
 
             if (expense.duplicateStatus == "suspected") {

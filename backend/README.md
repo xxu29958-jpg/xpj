@@ -111,6 +111,13 @@ cd E:\projects\xiaopiaojia
 powershell -ExecutionPolicy Bypass -File scripts\show_server_status.ps1
 ```
 
+日常一键诊断：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Strict
+```
+
 ## Windows 开机自启
 
 推荐从项目根目录安装统一自启任务，同时处理后端和 Cloudflare Tunnel：

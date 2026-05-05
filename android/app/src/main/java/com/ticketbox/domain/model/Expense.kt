@@ -125,6 +125,7 @@ data class ServerSettings(
     val rejectedCount: Int,
     val suspectedDuplicateCount: Int,
     val uploadStorageBytes: Long,
+    val latestUploadAt: String?,
 )
 
 class CsvExport(
