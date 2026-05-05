@@ -5,11 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class PendingUiState(
     val items: List<Expense> = emptyList(),
@@ -22,6 +27,10 @@ data class PendingUiState(
 class PendingViewModel(
     private val repository: ExpenseRepository,
 ) : ViewModel() {
+    private companion object {
+        const val THUMBNAIL_CONCURRENCY = 4
+    }
+
     private val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
 
@@ -48,17 +57,35 @@ class PendingViewModel(
         }
     }
 
-    private suspend fun loadThumbnails(expenses: List<Expense>) {
-        expenses
-            .filter { it.imagePath != null && !_uiState.value.thumbnails.containsKey(it.id) }
-            .forEach { expense ->
-                repository.fetchThumbnail(expense.id)
-                    .onSuccess { image ->
-                        _uiState.update { state ->
-                            state.copy(thumbnails = state.thumbnails + (expense.id to image))
-                        }
+    private suspend fun loadThumbnails(expenses: List<Expense>) = coroutineScope {
+        val pendingIds = expenses.map { expense -> expense.id }.toSet()
+        val missing = expenses.filter { expense ->
+            expense.imagePath != null && !_uiState.value.thumbnails.containsKey(expense.id)
+        }
+        if (missing.isEmpty()) return@coroutineScope
+
+        val limiter = Semaphore(THUMBNAIL_CONCURRENCY)
+        val loaded = missing
+            .map { expense ->
+                async {
+                    limiter.withPermit {
+                        repository.fetchThumbnail(expense.id)
+                            .getOrNull()
+                            ?.let { image -> expense.id to image }
                     }
+                }
             }
+            .awaitAll()
+            .filterNotNull()
+            .filter { (id, _) -> id in pendingIds }
+            .toMap()
+
+        if (loaded.isNotEmpty()) {
+            _uiState.update { state ->
+                val activeIds = state.items.map { expense -> expense.id }.toSet()
+                state.copy(thumbnails = state.thumbnails + loaded.filterKeys { id -> id in activeIds })
+            }
+        }
     }
 
     fun confirm(expense: Expense) {

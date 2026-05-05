@@ -53,6 +53,14 @@ routes -> services -> database/models
 
 禁止依赖 routes、schemas 或 HTTP 层。
 
+## 查询性能
+
+- `confirmed` 分页、月份筛选、分类筛选必须在数据库层完成。
+- 月度统计必须在数据库层聚合金额和数量，再在 service 层做分类归一。
+- 常用筛选字段必须有 SQLite 索引迁移，包括 `status`、`category`、`expense_time`、`confirmed_at`、`image_hash`、`duplicate_status`。
+- 不允许把已确认账单整表拉回 Python 后再分页。
+- 不允许让上传、确认、同步这类主路径依赖未来才会运行的离线清理任务。
+
 ## schemas
 
 只定义 Pydantic 请求/响应模型和序列化规则。

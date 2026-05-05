@@ -81,8 +81,36 @@ def migrate_sqlite_schema() -> None:
                 {"public_id": str(uuid4()), "id": row["id"]},
             )
         connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_expenses_public_id ON expenses (public_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_status_created_at ON expenses (status, created_at)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_category_status ON expenses (category, status)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_status_expense_time ON expenses (status, expense_time)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_status_confirmed_at ON expenses (status, confirmed_at)"))
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_status_category_expense_time "
+                "ON expenses (status, category, expense_time)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_status_category_confirmed_at "
+                "ON expenses (status, category, confirmed_at)"
+            )
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_expenses_status_amount_merchant ON expenses (status, amount_cents, merchant)")
+        )
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_duplicate_status ON expenses (duplicate_status)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_duplicate_of_id ON expenses (duplicate_of_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_image_hash ON expenses (image_hash)"))
 
         if "duplicate_ignores" in inspector.get_table_names():
             duplicate_ignore_columns = {column["name"] for column in inspector.get_columns("duplicate_ignores")}
             if "kind" not in duplicate_ignore_columns:
                 connection.execute(text("ALTER TABLE duplicate_ignores ADD COLUMN kind VARCHAR(32) NOT NULL DEFAULT 'manual'"))
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_duplicate_ignore_pair_kind "
+                    "ON duplicate_ignores (expense_id, duplicate_of_id, kind)"
+                )
+            )

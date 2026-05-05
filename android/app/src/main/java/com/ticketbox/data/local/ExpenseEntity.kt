@@ -9,6 +9,9 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["serverId"], unique = true),
         Index(value = ["publicId"], unique = true),
+        Index(value = ["status", "expenseTime"]),
+        Index(value = ["status", "confirmedAt"]),
+        Index(value = ["status", "createdAt"]),
     ],
 )
 data class ExpenseEntity(

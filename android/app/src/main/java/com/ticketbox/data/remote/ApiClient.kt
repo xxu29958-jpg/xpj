@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit
 class ApiClient {
     private companion object {
         const val USER_AGENT = "TicketBox/1.0 Android"
+        val RETRYABLE_GET_STATUS_CODES = setOf(502, 503, 504)
     }
 
     fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
@@ -29,6 +30,16 @@ class ApiClient {
                     requestBuilder.header("Authorization", "Bearer $token")
                 }
                 chain.proceed(requestBuilder.build())
+            }
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val response = chain.proceed(request)
+                if (request.method == "GET" && response.code in RETRYABLE_GET_STATUS_CODES) {
+                    response.close()
+                    chain.proceed(request)
+                } else {
+                    response
+                }
             }
             .addInterceptor(logging)
             .build()

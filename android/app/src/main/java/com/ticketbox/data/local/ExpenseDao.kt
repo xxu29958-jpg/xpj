@@ -24,11 +24,20 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE serverId = :serverId LIMIT 1")
     suspend fun findByServerId(serverId: Long): ExpenseEntity?
 
+    @Query("SELECT * FROM expenses WHERE serverId IN (:serverIds)")
+    suspend fun findByServerIds(serverIds: List<Long>): List<ExpenseEntity>
+
     @Insert
     suspend fun insert(expense: ExpenseEntity): Long
 
+    @Insert
+    suspend fun insertAll(expenses: List<ExpenseEntity>): List<Long>
+
     @Update
     suspend fun update(expense: ExpenseEntity)
+
+    @Update
+    suspend fun updateAll(expenses: List<ExpenseEntity>)
 
     @Transaction
     suspend fun upsertByServerId(expense: ExpenseEntity) {
@@ -42,7 +51,21 @@ interface ExpenseDao {
 
     @Transaction
     suspend fun upsertAllByServerId(expenses: List<ExpenseEntity>) {
-        expenses.forEach { upsertByServerId(it) }
+        if (expenses.isEmpty()) return
+
+        val existingByServerId = findByServerIds(expenses.map { it.serverId }).associateBy { it.serverId }
+        val inserts = mutableListOf<ExpenseEntity>()
+        val updates = mutableListOf<ExpenseEntity>()
+        expenses.forEach { expense ->
+            val existing = existingByServerId[expense.serverId]
+            if (existing == null) {
+                inserts += expense.copy(id = 0)
+            } else {
+                updates += expense.copy(id = existing.id)
+            }
+        }
+        if (inserts.isNotEmpty()) insertAll(inserts)
+        if (updates.isNotEmpty()) updateAll(updates)
     }
 
     @Query("DELETE FROM expenses")

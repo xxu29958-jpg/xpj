@@ -294,6 +294,55 @@ def test_manual_expense_create_contract(client: TestClient) -> None:
     assert missing_amount.json()["error"] == "amount_required"
 
 
+def test_confirmed_pagination_and_month_filters_are_server_side_contract(client: TestClient) -> None:
+    for index, payload in enumerate(
+        [
+            {"amount_cents": 1100, "merchant": "早餐店", "category": "餐饮", "expense_time": "2026-05-01T00:00:00Z"},
+            {"amount_cents": 2200, "merchant": "地铁", "category": "交通", "expense_time": "2026-05-02T00:00:00Z"},
+            {"amount_cents": 3300, "merchant": "晚饭", "category": "餐饮", "expense_time": "2026-05-03T00:00:00Z"},
+            {"amount_cents": 4400, "merchant": "上月", "category": "餐饮", "expense_time": "2026-04-30T00:00:00Z"},
+        ],
+        start=1,
+    ):
+        response = client.post(
+            "/api/expenses/manual",
+            headers=app_headers(),
+            json={**payload, "note": f"分页测试 {index}"},
+        )
+        assert response.status_code == 200
+
+    first_page = client.get("/api/expenses/confirmed?month=2026-05&page=1&page_size=2", headers=app_headers())
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert first_payload["total"] == 3
+    assert [item["merchant"] for item in first_payload["items"]] == ["晚饭", "地铁"]
+
+    second_page = client.get("/api/expenses/confirmed?month=2026-05&page=2&page_size=2", headers=app_headers())
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert second_payload["total"] == 3
+    assert [item["merchant"] for item in second_payload["items"]] == ["早餐店"]
+
+    category_page = client.get(
+        "/api/expenses/confirmed?month=2026-05&category=餐饮&page=1&page_size=50",
+        headers=app_headers(),
+    )
+    assert category_page.status_code == 200
+    category_payload = category_page.json()
+    assert category_payload["total"] == 2
+    assert [item["merchant"] for item in category_payload["items"]] == ["晚饭", "早餐店"]
+
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert stats.status_code == 200
+    stats_payload = stats.json()
+    assert stats_payload["total_amount_cents"] == 6600
+    assert stats_payload["count"] == 3
+
+    months = client.get("/api/expenses/months", headers=app_headers())
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2026-05", "2026-04"]
+
+
 def test_expense_update_normalizes_user_text(client: TestClient) -> None:
     expense_id = upload_png(client)
 

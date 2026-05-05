@@ -7,7 +7,7 @@ from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -25,7 +25,7 @@ from app.services.file_service import SavedUpload
 from app.services.ocr_service import retry_ocr, run_auto_ocr
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
-from app.services.time_service import ensure_utc, matches_month, now_utc
+from app.services.time_service import ensure_utc, now_utc
 
 
 EDITABLE_STATUSES = {"pending", "confirmed"}
@@ -133,8 +133,29 @@ def _base_confirmed_query() -> Select[tuple[Expense]]:
     return select(Expense).where(Expense.status == "confirmed")
 
 
+def _stat_time_expr():
+    return func.coalesce(Expense.expense_time, Expense.confirmed_at)
+
+
 def _stat_time(expense: Expense) -> datetime | None:
     return ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+
+
+def _confirmed_query(
+    *,
+    month: str | None = None,
+    category: str | None = None,
+) -> Select[tuple[Expense]]:
+    query = _base_confirmed_query()
+    if category:
+        query = query.where(Expense.category == normalize_category(category))
+    if month:
+        query = query.where(func.strftime("%Y-%m", _stat_time_expr()) == month)
+    return query
+
+
+def _confirmed_ordered(query: Select[tuple[Expense]]) -> Select[tuple[Expense]]:
+    return query.order_by(_stat_time_expr().desc(), Expense.id.desc())
 
 
 def list_confirmed(
@@ -148,11 +169,16 @@ def list_confirmed(
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
 
-    expenses = _filtered_confirmed(db, month=month, category=category)
-    total = len(expenses)
-    start = (page - 1) * page_size
-    end = start + page_size
-    return expenses[start:end], total
+    query = _confirmed_query(month=month, category=category)
+    total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+    expenses = list(
+        db.scalars(
+            _confirmed_ordered(query)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    )
+    return expenses, total
 
 
 def _filtered_confirmed(
@@ -161,15 +187,7 @@ def _filtered_confirmed(
     month: str | None = None,
     category: str | None = None,
 ) -> list[Expense]:
-    expenses = list(db.scalars(_base_confirmed_query()))
-    if category:
-        normalized_category = normalize_category(category)
-        expenses = [item for item in expenses if normalize_category(item.category) == normalized_category]
-    if month:
-        expenses = [item for item in expenses if matches_month(_stat_time(item), month)]
-
-    expenses.sort(key=lambda item: (_stat_time(item) or item.created_at, item.id), reverse=True)
-    return expenses
+    return list(db.scalars(_confirmed_ordered(_confirmed_query(month=month, category=category))))
 
 
 def list_categories(db: Session) -> list[str]:
@@ -177,12 +195,14 @@ def list_categories(db: Session) -> list[str]:
 
 
 def list_months(db: Session) -> list[str]:
-    months = {
-        stat_time.strftime("%Y-%m")
-        for expense in db.scalars(_base_confirmed_query())
-        if (stat_time := _stat_time(expense)) is not None
-    }
-    return sorted(months, reverse=True)
+    months = db.scalars(
+        select(func.strftime("%Y-%m", _stat_time_expr()))
+        .where(Expense.status == "confirmed")
+        .where(_stat_time_expr().is_not(None))
+        .distinct()
+        .order_by(func.strftime("%Y-%m", _stat_time_expr()).desc())
+    )
+    return [month for month in months if month]
 
 
 def export_confirmed_csv(
@@ -386,23 +406,35 @@ def mark_expense_not_duplicate(db: Session, expense_id: int) -> Expense:
 
 
 def monthly_stats(db: Session, month: str) -> dict:
-    expenses = [item for item in db.scalars(_base_confirmed_query()) if matches_month(_stat_time(item), month)]
     by_category: dict[str, dict[str, int | str]] = defaultdict(lambda: {"category": "", "amount_cents": 0, "count": 0})
 
     total_amount_cents = 0
-    for expense in expenses:
-        amount = expense.amount_cents or 0
+    total_count = 0
+    rows = db.execute(
+        select(
+            Expense.category,
+            func.coalesce(func.sum(Expense.amount_cents), 0),
+            func.count(Expense.id),
+        )
+        .where(Expense.status == "confirmed")
+        .where(func.strftime("%Y-%m", _stat_time_expr()) == month)
+        .group_by(Expense.category)
+    )
+    for category_value, amount_value, count_value in rows:
+        amount = int(amount_value or 0)
+        count = int(count_value or 0)
         total_amount_cents += amount
-        category = normalize_category(expense.category)
+        total_count += count
+        category = normalize_category(category_value)
         bucket = by_category[category]
         bucket["category"] = category
         bucket["amount_cents"] = int(bucket["amount_cents"]) + amount
-        bucket["count"] = int(bucket["count"]) + 1
+        bucket["count"] = int(bucket["count"]) + count
 
     return {
         "month": month,
         "total_amount_cents": total_amount_cents,
-        "count": len(expenses),
+        "count": total_count,
         "by_category": sorted(
             by_category.values(),
             key=lambda item: int(item["amount_cents"]),
@@ -412,8 +444,7 @@ def monthly_stats(db: Session, month: str) -> dict:
 
 
 def lifestyle_stats(db: Session, month: str) -> dict:
-    confirmed = list(db.scalars(_base_confirmed_query()))
-    month_expenses = [item for item in confirmed if matches_month(_stat_time(item), month)]
+    month_expenses = list(db.scalars(_confirmed_query(month=month)))
     recent_start = now_utc() - timedelta(days=7)
 
     ai_subscription_amount_cents = sum(
@@ -423,10 +454,13 @@ def lifestyle_stats(db: Session, month: str) -> dict:
         item.amount_cents or 0 for item in month_expenses if normalize_category(item.category) == "数码"
     )
     max_expense = max(month_expenses, key=lambda item: item.amount_cents or 0, default=None)
-    recent_7_days_amount_cents = sum(
-        item.amount_cents or 0
-        for item in confirmed
-        if (_stat_time(item) is not None and _stat_time(item) >= recent_start)
+    recent_7_days_amount_cents = int(
+        db.scalar(
+            select(func.coalesce(func.sum(Expense.amount_cents), 0))
+            .where(Expense.status == "confirmed")
+            .where(_stat_time_expr() >= recent_start)
+        )
+        or 0
     )
 
     merchant_counts: dict[str, int] = defaultdict(int)
