@@ -92,7 +92,9 @@ fun PendingScreen(
             item { UploadProgressCard() }
         }
 
-        item { UploadFlowCard() }
+        if (state.items.isNotEmpty() || state.uploading) {
+            item { UploadFlowCard() }
+        }
 
         when {
             state.items.isEmpty() && state.loading -> {
