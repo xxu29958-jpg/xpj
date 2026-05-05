@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ExpenseEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -108,6 +108,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val Migration2To3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_status_expenseTime ON expenses (status, expenseTime)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_status_confirmedAt ON expenses (status, confirmedAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_expenses_status_createdAt ON expenses (status, createdAt)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -115,7 +123,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "ticketbox.db",
                 )
-                    .addMigrations(Migration1To2)
+                    .addMigrations(Migration1To2, Migration2To3)
                     .build()
                     .also { instance = it }
             }

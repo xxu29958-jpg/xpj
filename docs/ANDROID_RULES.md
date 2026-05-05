@@ -116,11 +116,13 @@ serverId 不存在 -> 插入本地记录
 实现要求：
 
 - DAO 必须提供按 `serverId` 查询旧记录的能力。
+- 批量同步 confirmed 时必须批量查询已有 `serverId`，再批量 insert/update；不允许回到逐条 SELECT + 写入。
 - `publicId` 来自后端 `public_id`，不得由 Android 为新同步账单伪造。
 - 老版本本地缓存迁移到 `publicId` 时，可以用 `server-<serverId>` 作为兼容占位；后续服务端同步会写入真实 UUID。
 - 如果服务端响应缺少 `public_id`，App 必须显示“服务器版本过旧，请重启 Windows 后端后再试。”，不能把 JSON 字段名或解析异常直接显示给用户。
 - 更新时保留本地自增主键 `id`。
 - 不依赖“看起来像 upsert”的主键冲突行为来替代 `serverId` 唯一同步。
+- 本地账本排序过滤字段必须保留索引迁移，包括 `status + expenseTime`、`status + confirmedAt`、`status + createdAt`。
 
 ## Token 与日志
 
@@ -129,6 +131,8 @@ serverId 不存在 -> 插入本地记录
 - APP_TOKEN 不明文写 SharedPreferences。
 - 使用 Android Keystore 保存。
 - OkHttp 日志最多 BASIC，不打印 Header 和 Body。
+- Repository 应复用绑定后的 ApiService/OkHttpClient，不允许每次接口调用重新创建网络栈。
+- 只允许 GET 对 502、503、504 做一次轻量重试；写操作不能透明重试。
 
 ## 错误文案与日志
 

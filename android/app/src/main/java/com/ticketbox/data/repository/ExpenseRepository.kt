@@ -48,10 +48,26 @@ class ExpenseRepository(
         .build()
         .adapter(ErrorDto::class.java)
 
+    private var cachedServerUrl: String? = null
+    private var cachedApi: ApiService? = null
+
     private fun api(serverUrlOverride: String? = null, tokenOverride: String? = null): ApiService {
         val serverUrl = serverUrlOverride ?: settingsStore.serverUrl()
         require(!serverUrl.isNullOrBlank()) { "服务器地址未绑定" }
-        return apiClient.create(serverUrl) { tokenOverride ?: tokenStore.getToken() }
+        if (serverUrlOverride != null || tokenOverride != null) {
+            return apiClient.create(serverUrl) { tokenOverride ?: tokenStore.getToken() }
+        }
+
+        val cached = cachedApi
+        if (cached != null && cachedServerUrl == serverUrl) {
+            return cached
+        }
+
+        return apiClient.create(serverUrl) { tokenStore.getToken() }
+            .also { service ->
+                cachedServerUrl = serverUrl
+                cachedApi = service
+            }
     }
 
     private suspend fun <T> safeCall(serverUrlHint: String? = null, block: suspend () -> T): Result<T> {
@@ -374,6 +390,8 @@ class ExpenseRepository(
     }
 
     fun clearBinding() {
+        cachedServerUrl = null
+        cachedApi = null
         settingsStore.clear()
         tokenStore.clear()
     }

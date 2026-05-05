@@ -43,6 +43,11 @@ class Expense(Base):
 
 Index("ix_expenses_status_created_at", Expense.status, Expense.created_at)
 Index("ix_expenses_category_status", Expense.category, Expense.status)
+Index("ix_expenses_status_expense_time", Expense.status, Expense.expense_time)
+Index("ix_expenses_status_confirmed_at", Expense.status, Expense.confirmed_at)
+Index("ix_expenses_status_category_expense_time", Expense.status, Expense.category, Expense.expense_time)
+Index("ix_expenses_status_category_confirmed_at", Expense.status, Expense.category, Expense.confirmed_at)
+Index("ix_expenses_status_amount_merchant", Expense.status, Expense.amount_cents, Expense.merchant)
 
 
 class CategoryRule(Base):
