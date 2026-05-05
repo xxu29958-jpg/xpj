@@ -18,14 +18,14 @@ fun userNetworkMessage(error: IOException, serverUrl: String?): String {
 fun networkDiagnosticMessage(error: IOException, serverUrl: String?): String {
     val cleanServerUrl = serverUrl?.trim().orEmpty()
     if (isLocalOnlyServerUrl(cleanServerUrl)) {
-        return "Local-only server URL is not reachable from a phone: $cleanServerUrl"
+        return "Local-only server URL is not reachable from a phone."
     }
     return when (error) {
-        is UnknownHostException -> "DNS lookup failed for server URL: $cleanServerUrl"
-        is SSLHandshakeException -> "TLS handshake failed for server URL: $cleanServerUrl"
-        is SocketTimeoutException -> "Network request timed out for server URL: $cleanServerUrl"
-        is ConnectException -> "Connection refused or unreachable for server URL: $cleanServerUrl"
-        else -> "Network request failed for server URL: $cleanServerUrl (${error::class.java.simpleName})"
+        is UnknownHostException -> "DNS lookup failed for the configured TicketBox service."
+        is SSLHandshakeException -> "TLS handshake failed for the configured TicketBox service."
+        is SocketTimeoutException -> "Network request timed out for the configured TicketBox service."
+        is ConnectException -> "Connection refused or unreachable for the configured TicketBox service."
+        else -> "Network request failed for the configured TicketBox service (${error::class.java.simpleName})"
     }
 }
 

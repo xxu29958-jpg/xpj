@@ -22,6 +22,7 @@ E:\projects\xiaopiaojia\
     start_backend.ps1
     stop_backend.ps1
     uninstall_windows_tasks.ps1
+    accept_gray_release.ps1
     verify_project.ps1
   .github\
     workflows\
@@ -105,6 +106,7 @@ android\
     build.gradle.kts
     build\outputs\apk\gray\debug\app-gray-debug.apk
     build\outputs\apk\internal\debug\app-internal-debug.apk
+    build\outputs\apk\gray\release\app-gray-release.apk
     src\main\
       AndroidManifest.xml
       java\com\ticketbox\
@@ -141,6 +143,7 @@ docs\
   ANDROID_UPLOAD.md
   RELEASE_PACKAGING.md
   GRAY_ACCEPTANCE_CHECKLIST.md
+  LONG_TERM_ROADMAP.md
   IOS_SHORTCUT.md
   REAL_DEVICE_RUNBOOK.md
   WINDOWS_SERVICE_RUNBOOK.md
@@ -153,4 +156,4 @@ docs\
 
 ## 当前初始化范围
 
-后端已经包含第一版闭环和第二版最小增量 API：受保护缩略图、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已包含 Compose 工程、基础界面、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、生活化统计、联调自检、分类规则管理和本地单元测试。
+后端已经包含第一版闭环和灰度版增量 API：多租户隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、受保护图片预览、重复保留、OCR retry、生活化统计、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。

@@ -2,6 +2,7 @@ package com.ticketbox.data.remote
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -18,7 +19,7 @@ class ApiClient {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
-        val client = OkHttpClient.Builder()
+        val clientBuilder = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
@@ -41,8 +42,10 @@ class ApiClient {
                     response
                 }
             }
-            .addInterceptor(logging)
-            .build()
+        if (BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS) {
+            clientBuilder.addInterceptor(logging)
+        }
+        val client = clientBuilder.build()
 
         val moshi = Moshi.Builder()
             .add(KotlinJsonAdapterFactory())

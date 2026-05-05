@@ -51,15 +51,16 @@ Android SDK platform 36
 执行：
 
 ```bash
-./gradlew --no-daemon :app:testDebugUnitTest
-./gradlew --no-daemon :app:assembleDebug
-./gradlew --no-daemon :app:lintDebug
+./gradlew --no-daemon :app:testGrayDebugUnitTest
+./gradlew --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
+./gradlew --no-daemon :app:lintGrayDebug
 ```
 
 成功后上传 artifact：
 
 ```text
-ticketbox-debug-apk
+ticketbox-gray-debug-apk
+ticketbox-internal-debug-apk
 ```
 
 保留 7 天。
@@ -91,8 +92,8 @@ android/app/build/*
 Android：
 
 - SDK 缺失：检查 workflow 的 `sdkmanager` 步骤。
-- Gradle 构建失败：先看 `:app:compileDebugKotlin` 或 `:app:kspDebugKotlin`。
-- Lint 失败：看 `android/app/build/reports/lint-results-debug.html`。
+- Gradle 构建失败：先看 `:app:compileGrayDebugKotlin`、`:app:kspGrayDebugKotlin` 或对应 internal 任务。
+- Lint 失败：看 `android/app/build/reports/lint-results-grayDebug.html`。
 # CI 与灰度版发布底线
 
 灰度版实现期间，CI 仍然是合并和发布底线。任何多租户、Android 上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
@@ -100,6 +101,6 @@ Android：
 灰度版新增要求：
 
 - 后端测试必须覆盖多租户隔离。
-- Android 测试必须覆盖上传入口的非 UI 逻辑和 release/debug 差异。
+- Android 测试必须覆盖上传入口的非 UI 逻辑和 gray/internal 差异。
 - PowerShell 脚本仍必须通过 UTF-8 with BOM 检查。
 - GitHub 发布后必须等待 Actions 绿灯。

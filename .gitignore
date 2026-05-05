@@ -25,6 +25,10 @@ android/.gradle/
 android/build/
 android/app/build/
 local.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
 
 # IDE
 .idea/

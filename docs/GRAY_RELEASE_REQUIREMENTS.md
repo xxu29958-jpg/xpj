@@ -12,6 +12,7 @@
 - `docs/ANDROID_UPLOAD.md`
 - `docs/RELEASE_PACKAGING.md`
 - `docs/GRAY_ACCEPTANCE_CHECKLIST.md`
+- `docs/LONG_TERM_ROADMAP.md`
 
 ## 1. 总目标
 

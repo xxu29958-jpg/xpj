@@ -154,11 +154,8 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
 
 fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
     tenantName = tenantName,
-    maxUploadSizeMb = maxUploadSizeMb,
-    generateThumbnail = generateThumbnail,
-    deleteImageAfterConfirm = deleteImageAfterConfirm,
-    deleteImageAfterDays = deleteImageAfterDays,
-    ocrProvider = ocrProvider,
+    status = status,
+    storageStatus = storageStatus,
     pendingCount = pendingCount,
     confirmedCount = confirmedCount,
     rejectedCount = rejectedCount,

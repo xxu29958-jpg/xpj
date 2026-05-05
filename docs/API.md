@@ -562,14 +562,9 @@ Authorization: Bearer APP_TOKEN
 
 ```json
 {
-  "max_upload_size_mb": 10,
-  "generate_thumbnail": true,
-  "delete_image_after_confirm": false,
-  "delete_image_after_days": 0,
-  "ocr_provider": "empty",
-  "ocr_auto_run": false,
-  "ocr_fallback_provider": "empty",
-  "ocr_min_confidence": 0.65,
+  "tenant_name": "我的小票夹",
+  "status": "ok",
+  "storage_status": "normal",
   "pending_count": 1,
   "confirmed_count": 2,
   "rejected_count": 0,

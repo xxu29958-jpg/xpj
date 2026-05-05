@@ -36,7 +36,7 @@ class NetworkErrorMapperTest {
         )
 
         assertTrue(message.contains("DNS lookup failed"))
-        assertTrue(message.contains("https://api.zen70.cn"))
+        assertTrue(!message.contains("https://api.zen70.cn"))
     }
 
     @Test

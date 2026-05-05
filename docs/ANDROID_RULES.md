@@ -132,7 +132,7 @@ serverId 不存在 -> 插入本地记录
 - APP_TOKEN 不打印日志。
 - APP_TOKEN 不明文写 SharedPreferences。
 - 使用 Android Keystore 保存。
-- OkHttp 日志最多 BASIC，不打印 Header 和 Body。
+- gray 版不启用 OkHttp 网络日志；internalDebug 最多 BASIC，不打印 Header、Body、Token 或完整服务器 URL。
 - Repository 应复用绑定后的 ApiService/OkHttpClient，不允许每次接口调用重新创建网络栈。
 - 只允许 GET 对 502、503、504 做一次轻量重试；写操作不能透明重试。
 
@@ -165,4 +165,4 @@ serverId 不存在 -> 插入本地记录
 - 脚本只允许安装已构建的 debug APK，或先构建再安装。
 - 脚本不读取、不输出、不保存 `APP_TOKEN`。
 - 多设备连接时必须显式指定 `-Serial`。
-- 首次绑定后在设置页运行“联调自检”。
+- 灰度用户首次绑定后只查看账本连接状态；内部联调版可在设置页运行“运行诊断”。

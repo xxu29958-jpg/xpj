@@ -147,16 +147,9 @@ data class FrequentMerchantDto(
 data class ServerSettingsDto(
     @param:Json(name = "tenant_name")
     val tenantName: String,
-    @param:Json(name = "max_upload_size_mb")
-    val maxUploadSizeMb: Int,
-    @param:Json(name = "generate_thumbnail")
-    val generateThumbnail: Boolean,
-    @param:Json(name = "delete_image_after_confirm")
-    val deleteImageAfterConfirm: Boolean,
-    @param:Json(name = "delete_image_after_days")
-    val deleteImageAfterDays: Int,
-    @param:Json(name = "ocr_provider")
-    val ocrProvider: String,
+    val status: String,
+    @param:Json(name = "storage_status")
+    val storageStatus: String,
     @param:Json(name = "pending_count")
     val pendingCount: Int,
     @param:Json(name = "confirmed_count")

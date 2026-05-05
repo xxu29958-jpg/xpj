@@ -619,10 +619,12 @@ APP_TOKEN
 OkHttp 日志：
 
 ```text
-Debug 最多 BASIC
+gray 版不启用网络日志
+internalDebug 最多 BASIC
 不得打印 Header
 不得打印 Body
 不得打印 Token
+不得在日志里写入完整服务器 URL
 ```
 
 ## 15.1 Android 依赖规范
@@ -641,7 +643,7 @@ android/gradle/libs.versions.toml
 - 不在模块 `build.gradle.kts` 中散写版本号。
 - 不引入 alpha、beta、停止维护或来源不清的依赖进入主线。
 - 依赖版本审计统一使用 `scripts\check_dependency_versions.ps1`。
-- 升级依赖必须跑 `:app:testDebugUnitTest`、`:app:assembleDebug` 和 `:app:lintDebug`。
+- 升级依赖必须跑 `:app:testGrayDebugUnitTest`、`:app:assembleGrayDebug`、`:app:assembleInternalDebug` 和 `:app:lintGrayDebug`。
 
 ## 16. UI 规范
 
@@ -808,9 +810,9 @@ Token 错误显示中文错误
 自动化命令：
 
 ```powershell
-.\gradlew.bat --no-daemon :app:testDebugUnitTest
-.\gradlew.bat --no-daemon :app:assembleDebug
-.\gradlew.bat --no-daemon :app:lintDebug
+.\gradlew.bat --no-daemon :app:testGrayDebugUnitTest
+.\gradlew.bat --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
+.\gradlew.bat --no-daemon :app:lintGrayDebug
 ```
 
 ## 21. 文档规范

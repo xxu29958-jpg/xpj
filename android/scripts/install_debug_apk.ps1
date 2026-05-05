@@ -1,4 +1,6 @@
 ﻿param(
+    [ValidateSet("gray", "internal")]
+    [string]$Flavor = "gray",
     [switch]$Build,
     [switch]$Launch,
     [switch]$ReverseBackend,
@@ -17,9 +19,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $AndroidRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $ProjectRoot = Resolve-Path (Join-Path $AndroidRoot "..")
-$DefaultApk = Join-Path $AndroidRoot "app\build\outputs\apk\debug\app-debug.apk"
 $BackendEnv = Join-Path $ProjectRoot "backend\.env"
-$PackageName = "com.ticketbox"
+$PackageName = if ($Flavor -eq "internal") { "com.ticketbox.internal" } else { "com.ticketbox" }
+$DefaultApk = Join-Path $AndroidRoot "app\build\outputs\apk\$Flavor\debug\app-$Flavor-debug.apk"
 
 function Invoke-Checked {
     param(
@@ -71,6 +73,17 @@ function Ensure-LocalAndroidEnvironment {
     $localSdk = Join-Path $ProjectRoot ".toolchains\android-sdk"
     if (-not $env:ANDROID_HOME -and (Test-Path -LiteralPath $localSdk)) {
         $env:ANDROID_HOME = (Resolve-Path -LiteralPath $localSdk).Path
+    }
+
+    $adoptiumRoot = "C:\Program Files\Eclipse Adoptium"
+    if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath $adoptiumRoot)) {
+        $jdk = Get-ChildItem -LiteralPath $adoptiumRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "bin\java.exe") } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+        if ($jdk) {
+            $env:JAVA_HOME = $jdk.FullName
+        }
     }
 
     $localJava = Join-Path $env:LOCALAPPDATA "Programs\Kimi\runtime"
@@ -173,13 +186,15 @@ Set-Location $AndroidRoot
 Ensure-LocalAndroidEnvironment
 
 if ($Build) {
-    Write-Host "开始构建 debug APK..."
-    Invoke-Checked -FilePath (Join-Path $AndroidRoot "gradlew.bat") -Arguments @("--no-daemon", ":app:assembleDebug")
+    $variant = "$($Flavor.Substring(0, 1).ToUpperInvariant())$($Flavor.Substring(1))Debug"
+    Write-Host "开始构建 $Flavor debug APK..."
+    Invoke-Checked -FilePath (Join-Path $AndroidRoot "gradlew.bat") -Arguments @("--no-daemon", ":app:assemble$variant")
 }
 
 $resolvedApk = if ($ApkPath.Trim().Length -gt 0) { $ApkPath } else { $DefaultApk }
 if (-not (Test-Path -LiteralPath $resolvedApk)) {
-    throw "APK 不存在：$resolvedApk。请先运行 .\gradlew.bat --no-daemon :app:assembleDebug，或使用 -Build。"
+    $variant = "$($Flavor.Substring(0, 1).ToUpperInvariant())$($Flavor.Substring(1))Debug"
+    throw "APK 不存在：$resolvedApk。请先运行 .\gradlew.bat --no-daemon :app:assemble$variant，或使用 -Build。"
 }
 $resolvedApk = (Resolve-Path -LiteralPath $resolvedApk).Path
 
@@ -204,6 +219,9 @@ if ($ClearData) {
 }
 
 if ($DebugBind) {
+    if ($Flavor -ne "internal") {
+        throw "DebugBind 只允许用于 internal 调试版，灰度用户版不暴露内部绑定入口。请加 -Flavor internal。"
+    }
     $appToken = Read-AppToken
     Invoke-Checked -FilePath $adbPath -Arguments @(
         "-s",

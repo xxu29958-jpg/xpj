@@ -221,11 +221,11 @@ $adb = "E:\projects\xiaopiaojia\.toolchains\android-sdk\platform-tools\adb.exe"
 & $adb -s 设备序列号 reverse --list
 ```
 
-debug 包支持仅用于联调的 intent 绑定入口，避免中文输入法改写 URL 或 Token：
+internalDebug 包支持仅用于联调的 intent 绑定入口，避免中文输入法改写同步地址或访问口令：
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
-.\install_debug_apk.bat -Build -ReverseBackend -ClearData -DebugBind
+.\install_debug_apk.bat -Flavor internal -Build -ReverseBackend -ClearData -DebugBind
 ```
 
 等价的底层 adb 命令如下：
@@ -233,14 +233,14 @@ cd E:\projects\xiaopiaojia\android
 ```powershell
 $envLines = [System.IO.File]::ReadAllLines("E:\projects\xiaopiaojia\backend\.env", [System.Text.UTF8Encoding]::new($false))
 $appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^APP_TOKEN=", "").Trim()
-& $adb -s 设备序列号 shell am start -n com.ticketbox/.MainActivity `
+& $adb -s 设备序列号 shell am start -n com.ticketbox.internal/.MainActivity `
   --es ticketbox.debug.server_url "http://127.0.0.1:8000" `
   --es ticketbox.debug.app_token $appToken
 ```
 
 说明：
 
-- 这个入口只在 debuggable APK 中生效。
+- 这个入口只在 internal debuggable APK 中生效，灰度用户版不会响应。
 - 不打印 Token，不进入 release 构建。
 - `http://127.0.0.1:8000` 依赖 `adb reverse`，只用于 USB 联调。
 - 正式使用仍然配置 `https://api.你的域名.com`。
@@ -250,11 +250,11 @@ $appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^A
 首次打开 Android App：
 
 ```text
-服务器地址：https://api.你的域名.com
-App Token：backend\.env 里的 APP_TOKEN
+同步地址：服务拥有者提供的 HTTPS 地址
+访问口令：服务拥有者提供的 App 访问口令
 ```
 
-绑定成功后进入 App。进入“设置”页，点击“联调自检”。
+绑定成功后进入 App。灰度用户版设置页只显示账本状态和同步状态；内部联调版设置页才显示“运行诊断”。
 
 灰度用户版设置页只显示：
 

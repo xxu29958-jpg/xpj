@@ -311,9 +311,19 @@ def run_smoke(base_url: str) -> None:
     result = request("GET", f"{base_url}/api/settings/server", headers=app_headers())
     assert_equal(result.status, 200, "server settings status")
     server_settings = result.json()
-    assert_equal(server_settings["max_upload_size_mb"], 10, "server settings max upload")
-    assert_equal(server_settings["ocr_provider"], "empty", "server settings ocr provider")
+    assert_true(bool(server_settings["tenant_name"]), "server settings tenant name")
+    assert_equal(server_settings["status"], "ok", "server settings status value")
+    assert_equal(server_settings["storage_status"], "normal", "server settings storage status")
     assert_true(server_settings["pending_count"] >= 1, "server settings pending count")
+    assert_true(server_settings["confirmed_count"] >= 1, "server settings confirmed count")
+    assert_true(server_settings["upload_storage_bytes"] > 0, "server settings upload storage")
+    assert_true(server_settings["latest_upload_at"].endswith("Z"), "server settings latest upload")
+    assert_true("max_upload_size_mb" not in server_settings, "server settings must not expose upload limit")
+    assert_true("ocr_provider" not in server_settings, "server settings must not expose ocr provider")
+    assert_true(
+        "delete_image_after_confirm" not in server_settings,
+        "server settings must not expose cleanup config",
+    )
     assert_true("token" not in json.dumps(server_settings).lower(), "server settings must not expose token")
     print("OK server settings")
 

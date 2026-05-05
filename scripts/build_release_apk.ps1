@@ -65,7 +65,23 @@ Ensure-JavaHome
 $variant = "$($Flavor.Substring(0, 1).ToUpperInvariant())$($Flavor.Substring(1))Release"
 $task = ":app:assemble$variant"
 
+$gradleFile = Join-Path $AndroidRoot "app\build.gradle.kts"
+$versionName = "unknown"
+$versionCode = "unknown"
+if (Test-Path -LiteralPath $gradleFile) {
+    $gradleText = Get-Content -Encoding UTF8 -Raw -LiteralPath $gradleFile
+    $nameMatch = [regex]::Match($gradleText, 'ticketboxVersionName\s*=\s*"([^"]+)"')
+    $codeMatch = [regex]::Match($gradleText, 'ticketboxVersionCode\s*=\s*([0-9]+)')
+    if ($nameMatch.Success) {
+        $versionName = $nameMatch.Groups[1].Value
+    }
+    if ($codeMatch.Success) {
+        $versionCode = $codeMatch.Groups[1].Value
+    }
+}
+
 Write-Host "正在构建小票夹 $Flavor release APK..."
+Write-Host "版本：$versionName ($versionCode)"
 Push-Location $AndroidRoot
 try {
     & .\gradlew.bat $task --console=plain

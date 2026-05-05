@@ -39,22 +39,16 @@ def _count_expenses(db: Session, *, tenant_id: str, status: str | None = None, d
 
 
 def server_settings_snapshot(db: Session, tenant_id: str, tenant_name: str) -> dict[str, int | bool | str | float | None]:
-    settings = get_settings()
     latest_upload_at = db.scalar(select(func.max(Expense.created_at)).where(Expense.tenant_id == tenant_id))
+    storage_bytes = _upload_storage_bytes(db, tenant_id)
     return {
         "tenant_name": tenant_name,
-        "max_upload_size_mb": settings.max_upload_size_mb,
-        "generate_thumbnail": settings.generate_thumbnail,
-        "delete_image_after_confirm": settings.delete_image_after_confirm,
-        "delete_image_after_days": settings.delete_image_after_days,
-        "ocr_provider": settings.ocr_provider,
-        "ocr_auto_run": settings.ocr_auto_run,
-        "ocr_fallback_provider": settings.ocr_fallback_provider,
-        "ocr_min_confidence": settings.ocr_min_confidence,
+        "status": "ok",
+        "storage_status": "normal",
         "pending_count": _count_expenses(db, tenant_id=tenant_id, status="pending"),
         "confirmed_count": _count_expenses(db, tenant_id=tenant_id, status="confirmed"),
         "rejected_count": _count_expenses(db, tenant_id=tenant_id, status="rejected"),
         "suspected_duplicate_count": _count_expenses(db, tenant_id=tenant_id, duplicate_status="suspected"),
-        "upload_storage_bytes": _upload_storage_bytes(db, tenant_id),
+        "upload_storage_bytes": storage_bytes,
         "latest_upload_at": to_iso(latest_upload_at),
     }

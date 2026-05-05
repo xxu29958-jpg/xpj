@@ -26,7 +26,7 @@ fun BindServerScreen(
     message: String?,
     onBind: (String, String) -> Unit,
 ) {
-    var serverUrl by remember { mutableStateOf("https://api.zen70.cn") }
+    var serverUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
 
     Column(
@@ -37,7 +37,7 @@ fun BindServerScreen(
     ) {
         Text("小票夹", style = MaterialTheme.typography.headlineLarge)
         Text(
-            "绑定你的私人服务器",
+            "绑定你的私人账本",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -46,12 +46,12 @@ fun BindServerScreen(
             value = serverUrl,
             onValueChange = { serverUrl = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("服务器地址") },
-            placeholder = { Text("https://api.zen70.cn") },
+            label = { Text("同步地址") },
+            placeholder = { Text("向服务拥有者获取") },
             singleLine = true,
         )
         Text(
-            "默认使用你的公网同步地址。",
+            "灰度试用时，服务拥有者会给你同步地址和访问口令。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

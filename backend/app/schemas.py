@@ -191,14 +191,8 @@ class MaintenanceCleanupResponse(BaseModel):
 
 class ServerSettingsResponse(BaseModel):
     tenant_name: str
-    max_upload_size_mb: int
-    generate_thumbnail: bool
-    delete_image_after_confirm: bool
-    delete_image_after_days: int
-    ocr_provider: str
-    ocr_auto_run: bool
-    ocr_fallback_provider: str
-    ocr_min_confidence: float
+    status: str
+    storage_status: str
     pending_count: int
     confirmed_count: int
     rejected_count: int

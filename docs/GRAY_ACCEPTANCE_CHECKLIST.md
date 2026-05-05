@@ -148,4 +148,7 @@ cd android
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_project.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.ps1 -UseTemporaryKeystore
 ```
+
+`accept_gray_release.ps1` 会执行可自动化灰度验收；iPhone 真实账单、Android 解锁选图、蜂窝网络离开局域网等仍需要人工确认。

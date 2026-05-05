@@ -94,6 +94,26 @@ function Get-TenantCount {
     }
 }
 
+function Get-DefaultTenantName {
+    $tenantsJson = Read-EnvValue -Name "TENANTS_JSON"
+    if (-not [string]::IsNullOrWhiteSpace($tenantsJson)) {
+        try {
+            $tenants = @($tenantsJson | ConvertFrom-Json)
+            $owner = $tenants | Where-Object { $_.id -eq "owner" } | Select-Object -First 1
+            if ($owner -and -not [string]::IsNullOrWhiteSpace([string]$owner.name)) {
+                return [string]$owner.name
+            }
+            if ($tenants.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$tenants[0].name)) {
+                return [string]$tenants[0].name
+            }
+        }
+        catch {
+            return "owner"
+        }
+    }
+    return "我的小票夹"
+}
+
 Write-Host "小票夹服务诊断"
 Write-Host ""
 
@@ -179,6 +199,7 @@ else {
 }
 
 Add-Row -Target $Summary -Name "租户数量" -Status "OK" -Detail "$(Get-TenantCount) 个"
+Add-Row -Target $Summary -Name "默认租户" -Status "OK" -Detail (Get-DefaultTenantName)
 
 $Summary | Format-Table -AutoSize
 

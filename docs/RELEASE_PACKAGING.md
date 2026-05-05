@@ -100,3 +100,11 @@ android/app/build/outputs/apk/internal/release/app-internal-release.apk
 - 真机可安装。
 - release 版不显示普通用户不该看到的诊断入口。
 - CI 不需要真实 keystore；CI 只检查脚本语法和 debug 构建。
+
+本机完整灰度验收可以使用临时 keystore 验证 release 构建链路：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.ps1 -UseTemporaryKeystore
+```
+
+临时 keystore 只用于本机验收，不能发给灰度用户。

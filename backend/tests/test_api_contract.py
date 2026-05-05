@@ -197,6 +197,95 @@ def test_android_app_upload_uses_app_token_and_current_tenant(client: TestClient
     assert tester_pending.status_code == 200
     assert tester_pending.json() == []
 
+    tester_response = client.post(
+        "/api/app/upload-screenshot",
+        headers=gray_app_headers(),
+        files={"file": ("tester-android-ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert tester_response.status_code == 200
+    tester_id = int(tester_response.json()["id"])
+
+    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    assert tester_pending.status_code == 200
+    assert [item["id"] for item in tester_pending.json()] == [tester_id]
+
+    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert owner_pending.status_code == 200
+    assert [item["id"] for item in owner_pending.json()] == [owner_id]
+
+
+def test_expense_mutation_routes_are_tenant_scoped(client: TestClient) -> None:
+    owner_id = upload_png(client, upload_headers())
+
+    scoped_operations = [
+        client.patch(
+            f"/api/expenses/{owner_id}",
+            headers=gray_app_headers(),
+            json={"amount_cents": 1000, "merchant": "跨租户"},
+        ),
+        client.post(f"/api/expenses/{owner_id}/confirm", headers=gray_app_headers()),
+        client.post(f"/api/expenses/{owner_id}/reject", headers=gray_app_headers()),
+        client.post(f"/api/expenses/{owner_id}/ocr/retry", headers=gray_app_headers()),
+        client.post(
+            f"/api/expenses/{owner_id}/recognize-text",
+            headers=gray_app_headers(),
+            json={"raw_text": "交易金额：18.51"},
+        ),
+        client.post(f"/api/expenses/{owner_id}/mark-not-duplicate", headers=gray_app_headers()),
+    ]
+    for response in scoped_operations:
+        assert response.status_code == 404
+        assert response.json()["error"] == "expense_not_found"
+
+    owner = client.get(f"/api/expenses/{owner_id}", headers=app_headers())
+    assert owner.status_code == 200
+    assert owner.json()["status"] == "pending"
+    assert owner.json()["amount_cents"] is None
+
+
+def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) -> None:
+    owner = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 9900,
+            "merchant": "owner高频商家",
+            "category": "数码",
+            "expense_time": "2026-05-05T01:00:00Z",
+        },
+    )
+    assert owner.status_code == 200
+
+    tester_upload_id = upload_png(client, gray_upload_headers())
+
+    tester_confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=gray_app_headers())
+    assert tester_confirmed.status_code == 200
+    assert tester_confirmed.json()["total"] == 0
+
+    tester_lifestyle = client.get("/api/stats/lifestyle?month=2026-05", headers=gray_app_headers())
+    assert tester_lifestyle.status_code == 200
+    payload = tester_lifestyle.json()
+    assert payload["digital_amount_cents"] == 0
+    assert payload["max_expense"] is None
+    assert payload["frequent_merchants"] == []
+
+    owner_settings = client.get("/api/settings/server", headers=app_headers())
+    tester_settings = client.get("/api/settings/server", headers=gray_app_headers())
+    assert owner_settings.status_code == 200
+    assert tester_settings.status_code == 200
+    owner_payload = owner_settings.json()
+    tester_payload = tester_settings.json()
+    assert owner_payload["tenant_name"] == "我的小票夹"
+    assert owner_payload["confirmed_count"] == 1
+    assert owner_payload["pending_count"] == 0
+    assert tester_payload["tenant_name"] == "灰度用户1"
+    assert tester_payload["confirmed_count"] == 0
+    assert tester_payload["pending_count"] == 1
+    assert tester_payload["latest_upload_at"].endswith("Z")
+    assert "ocr_provider" not in tester_payload
+    assert "delete_image_after_confirm" not in tester_payload
+    assert tester_upload_id in [item["id"] for item in client.get("/api/expenses/pending", headers=gray_app_headers()).json()]
+
 
 def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicates(client: TestClient) -> None:
     owner_id = upload_png(client, upload_headers())
@@ -252,6 +341,38 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
     tester_duplicates = client.get("/api/duplicates", headers=gray_app_headers()).json()
     assert any(item["id"] == second_owner_id for item in owner_duplicates)
     assert all(item["id"] != second_owner_id for item in tester_duplicates)
+
+    same_hash_tester_id = upload_png(client, gray_upload_headers())
+    same_hash_tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers()).json()
+    tester_match = next(item for item in same_hash_tester_pending if item["id"] == same_hash_tester_id)
+    assert tester_match["duplicate_status"] == "suspected"
+    assert tester_match["duplicate_of_id"] == tester_id
+    assert tester_match["duplicate_of_id"] != second_owner_id
+
+
+def test_category_rule_mutations_are_tenant_scoped(client: TestClient) -> None:
+    owner_rule = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "owner专属", "category": "数码", "enabled": True, "priority": 5},
+    )
+    assert owner_rule.status_code == 200
+    rule_id = int(owner_rule.json()["id"])
+
+    patch = client.patch(
+        f"/api/rules/categories/{rule_id}",
+        headers=gray_app_headers(),
+        json={"keyword": "tester不该改", "category": "购物", "priority": 1},
+    )
+    assert patch.status_code == 404
+    assert patch.json()["error"] == "rule_not_found"
+
+    delete = client.delete(f"/api/rules/categories/{rule_id}", headers=gray_app_headers())
+    assert delete.status_code == 404
+    assert delete.json()["error"] == "rule_not_found"
+
+    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    assert any(item["id"] == rule_id and item["keyword"] == "owner专属" for item in owner_rules)
 
 
 def test_upload_screenshot_rejects_multipart_without_image_file(client: TestClient) -> None:
@@ -557,12 +678,14 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(client: TestCl
     assert response.status_code == 200
     payload = response.json()
     assert payload["tenant_name"] == "我的小票夹"
-    assert payload["max_upload_size_mb"] == 10
-    assert payload["generate_thumbnail"] is True
-    assert payload["ocr_provider"] == "empty"
+    assert payload["status"] == "ok"
+    assert payload["storage_status"] == "normal"
     assert payload["pending_count"] == 1
     assert payload["upload_storage_bytes"] > 0
     assert payload["latest_upload_at"].endswith("Z")
+    assert "ocr_provider" not in payload
+    assert "max_upload_size_mb" not in payload
+    assert "delete_image_after_confirm" not in payload
     assert "token" not in str(payload).lower()
     assert "path" not in str(payload).lower()
     assert "E:\\" not in str(payload)
