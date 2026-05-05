@@ -157,3 +157,9 @@ powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
 powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
   -ServerUrl https://api.你的域名.com
 ```
+
+电脑端一键诊断：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Strict
+```

@@ -155,4 +155,6 @@ data class ServerSettingsDto(
     val suspectedDuplicateCount: Int,
     @param:Json(name = "upload_storage_bytes")
     val uploadStorageBytes: Long,
+    @param:Json(name = "latest_upload_at")
+    val latestUploadAt: String?,
 )

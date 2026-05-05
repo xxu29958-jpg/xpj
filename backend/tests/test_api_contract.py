@@ -487,6 +487,7 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(client: TestCl
     assert payload["ocr_provider"] == "empty"
     assert payload["pending_count"] == 1
     assert payload["upload_storage_bytes"] > 0
+    assert payload["latest_upload_at"].endswith("Z")
     assert "token" not in str(payload).lower()
     assert "path" not in str(payload).lower()
     assert "E:\\" not in str(payload)

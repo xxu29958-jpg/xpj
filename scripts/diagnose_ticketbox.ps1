@@ -1,0 +1,174 @@
+﻿param(
+    [string]$ServerUrl = "https://api.zen70.cn",
+    [int]$Port = 8000,
+    [int]$Tail = 20,
+    [switch]$Strict
+)
+
+$ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+$ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$BackendRoot = Join-Path $ProjectRoot "backend"
+$EnvPath = Join-Path $BackendRoot ".env"
+$DbPath = Join-Path $BackendRoot "data\ticketbox.db"
+$LogDir = Join-Path $BackendRoot "logs"
+$BaseUrl = $ServerUrl.TrimEnd("/")
+$Results = New-Object System.Collections.Generic.List[object]
+
+function Add-Result {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    $Results.Add([PSCustomObject]@{
+        Name = $Name
+        Status = $Status
+        Detail = $Detail
+    })
+}
+
+function Read-EnvValue {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    if (-not (Test-Path -LiteralPath $EnvPath)) {
+        return ""
+    }
+    $line = Get-Content -Encoding UTF8 -LiteralPath $EnvPath |
+        Where-Object { $_ -match "^$Name=" } |
+        Select-Object -First 1
+    if (-not $line) {
+        return ""
+    }
+    return ($line -replace "^$Name=", "").Trim()
+}
+
+function Format-Bytes {
+    param([long]$Bytes)
+
+    if ($Bytes -ge 1GB) {
+        return "{0:N2} GB" -f ($Bytes / 1GB)
+    }
+    if ($Bytes -ge 1MB) {
+        return "{0:N2} MB" -f ($Bytes / 1MB)
+    }
+    if ($Bytes -ge 1KB) {
+        return "{0:N2} KB" -f ($Bytes / 1KB)
+    }
+    return "$Bytes B"
+}
+
+function Test-JsonEndpoint {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [hashtable]$Headers = @{}
+    )
+
+    try {
+        $response = Invoke-RestMethod -Uri $Uri -Headers $Headers -TimeoutSec 12
+        Add-Result -Name $Name -Status "OK" -Detail "可访问"
+        return $response
+    }
+    catch {
+        Add-Result -Name $Name -Status "FAIL" -Detail $_.Exception.Message
+        return $null
+    }
+}
+
+Write-Host "小票夹一键诊断"
+Write-Host "本机后端：http://127.0.0.1:$Port"
+Write-Host "公网入口：$BaseUrl"
+Write-Host ""
+
+if (Test-Path -LiteralPath $EnvPath) {
+    Add-Result -Name "后端配置" -Status "OK" -Detail "已找到 backend\.env"
+}
+else {
+    Add-Result -Name "后端配置" -Status "FAIL" -Detail "未找到 backend\.env"
+}
+
+$listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($listener) {
+    $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+    Add-Result -Name "本机端口" -Status "OK" -Detail "127.0.0.1:$Port 正在监听，进程 $($process.ProcessName)($($listener.OwningProcess))"
+}
+else {
+    Add-Result -Name "本机端口" -Status "FAIL" -Detail "127.0.0.1:$Port 未监听"
+}
+
+$cloudflaredProcess = Get-Process -Name "cloudflared*" -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($cloudflaredProcess) {
+    Add-Result -Name "公网隧道" -Status "OK" -Detail "cloudflared 正在运行，进程 $($cloudflaredProcess.Id)"
+}
+else {
+    Add-Result -Name "公网隧道" -Status "WARN" -Detail "未发现 cloudflared 进程"
+}
+
+$tasks = Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel -ErrorAction SilentlyContinue
+if ($tasks) {
+    $taskSummary = ($tasks | ForEach-Object { "$($_.TaskName):$($_.State)" }) -join "，"
+    Add-Result -Name "开机自启" -Status "OK" -Detail $taskSummary
+}
+else {
+    Add-Result -Name "开机自启" -Status "WARN" -Detail "未找到小票夹计划任务"
+}
+
+if (Test-Path -LiteralPath $DbPath) {
+    $dbFile = Get-Item -LiteralPath $DbPath
+    Add-Result -Name "本地数据库" -Status "OK" -Detail "大小 $(Format-Bytes $dbFile.Length)"
+}
+else {
+    Add-Result -Name "本地数据库" -Status "WARN" -Detail "还没有创建 ticketbox.db"
+}
+
+Test-JsonEndpoint -Name "本机健康检查" -Uri "http://127.0.0.1:$Port/api/health" | Out-Null
+Test-JsonEndpoint -Name "公网健康检查" -Uri "$BaseUrl/api/health" | Out-Null
+
+$appToken = Read-EnvValue -Name "APP_TOKEN"
+$uploadToken = Read-EnvValue -Name "UPLOAD_TOKEN"
+
+if ($appToken.Length -gt 0) {
+    Test-JsonEndpoint -Name "App 访问口令" -Uri "$BaseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $appToken" } | Out-Null
+    $settings = Test-JsonEndpoint -Name "服务概况" -Uri "$BaseUrl/api/settings/server" -Headers @{ Authorization = "Bearer $appToken" }
+    if ($settings) {
+        $latestUpload = if ($settings.latest_upload_at) { $settings.latest_upload_at } else { "暂无" }
+        Add-Result -Name "账单数量" -Status "OK" -Detail "待确认 $($settings.pending_count)，已入账 $($settings.confirmed_count)，已忽略 $($settings.rejected_count)"
+        Add-Result -Name "最近上传" -Status "OK" -Detail $latestUpload
+        Add-Result -Name "截图存储" -Status "OK" -Detail (Format-Bytes $settings.upload_storage_bytes)
+    }
+}
+else {
+    Add-Result -Name "App 访问口令" -Status "WARN" -Detail "backend\.env 中没有 APP_TOKEN"
+}
+
+if ($uploadToken.Length -gt 0) {
+    Test-JsonEndpoint -Name "上传口令检查" -Uri "$BaseUrl/api/upload/check" -Headers @{
+        "Upload-Token" = $uploadToken
+        "User-Agent" = "TicketBox/1.0 Windows-Diagnostics"
+    } | Out-Null
+}
+else {
+    Add-Result -Name "上传口令检查" -Status "WARN" -Detail "backend\.env 中没有 UPLOAD_TOKEN"
+}
+
+$Results | Format-Table -AutoSize
+
+$latestLog = Get-ChildItem -LiteralPath $LogDir -Filter "ticketbox-backend-*.out.log" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+if ($latestLog) {
+    Write-Host ""
+    Write-Host "最近后端日志：$($latestLog.FullName)"
+    Get-Content -Encoding UTF8 -LiteralPath $latestLog.FullName -Tail $Tail
+}
+
+$failed = $Results | Where-Object { $_.Status -eq "FAIL" }
+if ($Strict -and $failed) {
+    throw "小票夹诊断失败：$($failed.Name -join '，')"
+}
+
+

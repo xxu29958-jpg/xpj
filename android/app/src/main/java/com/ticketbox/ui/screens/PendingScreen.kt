@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -27,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,8 +36,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.ExpenseCard
+import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.viewmodel.PendingUiState
+
+private enum class PendingDisplayMode {
+    Compact,
+    Comfortable,
+}
 
 @Composable
 fun PendingScreen(
@@ -47,6 +55,7 @@ fun PendingScreen(
     onKeepDuplicate: (Expense) -> Unit,
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
+    var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
 
     RefreshableLazyColumn(
         isRefreshing = state.loading,
@@ -80,6 +89,8 @@ fun PendingScreen(
                 item {
                     PendingHeader(
                         loading = state.loading,
+                        displayMode = displayMode,
+                        onDisplayModeChange = { displayMode = it },
                         onRefresh = onRefresh,
                     )
                 }
@@ -91,6 +102,10 @@ fun PendingScreen(
                 ExpenseCard(
                     expense = expense,
                     thumbnail = state.thumbnails[expense.id],
+                    previewMode = when (displayMode) {
+                        PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
+                        PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
+                    },
                     showActions = true,
                     actionsEnabled = expense.id !in state.actionInProgressIds,
                     onEdit = { onEdit(expense) },
@@ -122,26 +137,46 @@ private fun LoadingPendingState() {
 @Composable
 private fun PendingHeader(
     loading: Boolean,
+    displayMode: PendingDisplayMode,
+    onDisplayModeChange: (PendingDisplayMode) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("待确认", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                text = "下拉刷新，确认后才会进入账本。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        OutlinedButton(
-            enabled = !loading,
-            onClick = onRefresh,
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (loading) "刷新中" else "刷新")
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("待确认", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    text = "下拉刷新，确认后才会进入账本。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OutlinedButton(
+                enabled = !loading,
+                onClick = onRefresh,
+            ) {
+                Text(if (loading) "刷新中" else "刷新")
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = displayMode == PendingDisplayMode.Compact,
+                onClick = { onDisplayModeChange(PendingDisplayMode.Compact) },
+                label = { Text("紧凑") },
+            )
+            FilterChip(
+                selected = displayMode == PendingDisplayMode.Comfortable,
+                onClick = { onDisplayModeChange(PendingDisplayMode.Comfortable) },
+                label = { Text("舒适") },
+            )
         }
     }
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,6 +27,7 @@ fun ExpenseImagePreview(
     modifier: Modifier = Modifier,
     placeholder: String = "截图已上传",
     contentDescription: String = "账单截图",
+    compact: Boolean = false,
 ) {
     val imageBitmap = remember(image) {
         image?.bytes?.let { bytes ->
@@ -44,8 +46,15 @@ fun ExpenseImagePreview(
     if (imageBitmap == null) {
         Box(
             modifier = modifier
-                .fillMaxWidth()
-                .aspectRatio(4f / 5f)
+                .then(
+                    if (compact) {
+                        Modifier.size(width = 96.dp, height = 128.dp)
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(4f / 5f)
+                    },
+                )
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
@@ -64,10 +73,17 @@ fun ExpenseImagePreview(
         bitmap = imageBitmap,
         contentDescription = contentDescription,
         modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(previewAspectRatio)
+            .then(
+                if (compact) {
+                    Modifier.size(width = 96.dp, height = 128.dp)
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(previewAspectRatio)
+                },
+            )
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentScale = ContentScale.Fit,
+        contentScale = if (compact) ContentScale.Crop else ContentScale.Fit,
     )
 }
