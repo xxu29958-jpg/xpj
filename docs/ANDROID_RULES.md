@@ -1,5 +1,7 @@
 # Android 开发规则
 
+灰度版 Android UX/UI 以 `docs/ANDROID_GRAY_UX_SPEC.md` 为准。普通用户主体验不得显示服务器域名、token、接口名、Cloudflare、端口、后端日志或诊断脚本。技术诊断只允许在 debug build 隐藏入口、Windows 运维脚本、运维文档或后续 Web 管理页中出现。
+
 Android 使用轻量 MVVM：
 
 ```text

@@ -189,6 +189,41 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
 }
 ```
 
+### POST /api/app/upload-screenshot
+
+Android App 自带上传入口使用。
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
+请求体：
+
+```text
+multipart/form-data
+file: 图片文件
+```
+
+规则：
+
+- 与 iPhone 上传共用同一套文件校验、随机命名、hash、缩略图和 pending 创建流程。
+- 按当前 `APP_TOKEN` 所属租户写入对应账本。
+- Android 不保存、不发送 `Upload-Token`。
+- 灰度版 UI 只显示“上传截图”，不显示 endpoint、token 或 multipart。
+
+返回：
+
+```json
+{
+  "id": 1,
+  "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
+  "status": "pending",
+  "message": "uploaded"
+}
+```
+
 ## 账单
 
 ### GET /api/expenses/pending

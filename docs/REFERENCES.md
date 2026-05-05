@@ -25,6 +25,9 @@
 - Android app architecture：https://developer.android.com/topic/architecture
 - Android UI layer / UDF and state holders：https://developer.android.com/topic/architecture/ui-layer
 - Android data layer：https://developer.android.com/topic/architecture/data-layer
+- Android Photo Picker：https://developer.android.com/training/data-storage/shared/photopicker
+- Android app signing：https://developer.android.com/studio/publish/app-signing
+- Android prepare release：https://developer.android.com/studio/publish/preparing
 - Jetpack Compose state hoisting：https://developer.android.com/develop/ui/compose/state-hoisting
 - Android `BitmapFactory`：https://developer.android.com/reference/android/graphics/BitmapFactory
 - Room：https://developer.android.com/training/data-storage/room
@@ -62,6 +65,21 @@
 - Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
 - Cloudflare Tunnel 概览：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 - Apple 快捷指令“获取 URL 内容”：https://support.apple.com/guide/shortcuts/use-the-get-contents-of-url-action-apd58d46713f/ios
+
+## UI / UX
+
+- Material Design 3：https://m3.material.io/
+- Material Design 3 navigation bar：https://m3.material.io/components/navigation-bar/overview
+- Material Design 3 cards：https://m3.material.io/components/cards/overview
+- Material Design 3 lists：https://m3.material.io/components/lists/overview
+- Apple Human Interface Guidelines：https://developer.apple.com/design/human-interface-guidelines/
+
+成熟记账和消费类 App 可作为体验参考，但只提炼模式，不照搬视觉、素材、商标或文案。参考方向包括：
+
+- Monarch Money：移动端预算和账户概览的信息层级。
+- YNAB：预算、账本和用户行动提示的表达方式。
+- Splitwise：轻量账单列表、人物友好文案和状态反馈。
+- Money Manager / expense tracker 类产品：按月、分类、商家展示消费概况的常见模式。
 
 ## Android 依赖元数据
 

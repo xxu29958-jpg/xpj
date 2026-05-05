@@ -6,16 +6,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,6 +55,7 @@ fun PendingScreen(
     onConfirm: (Expense) -> Unit,
     onReject: (Expense) -> Unit,
     onKeepDuplicate: (Expense) -> Unit,
+    onUploadScreenshot: () -> Unit,
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
@@ -78,8 +81,10 @@ fun PendingScreen(
             state.items.isEmpty() -> {
                 item {
                     EmptyPendingState(
+                        uploading = state.uploading,
                         showUploadGuide = showUploadGuide,
                         onToggleGuide = { showUploadGuide = !showUploadGuide },
+                        onUploadScreenshot = onUploadScreenshot,
                         onRefresh = onRefresh,
                     )
                 }
@@ -89,8 +94,10 @@ fun PendingScreen(
                 item {
                     PendingHeader(
                         loading = state.loading,
+                        uploading = state.uploading,
                         displayMode = displayMode,
                         onDisplayModeChange = { displayMode = it },
+                        onUploadScreenshot = onUploadScreenshot,
                         onRefresh = onRefresh,
                     )
                 }
@@ -127,7 +134,7 @@ private fun LoadingPendingState() {
         ),
     ) {
         Text(
-            text = "正在加载待确认账单…",
+            text = "正在加载待确认账单...",
             modifier = Modifier.padding(18.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -137,29 +144,49 @@ private fun LoadingPendingState() {
 @Composable
 private fun PendingHeader(
     loading: Boolean,
+    uploading: Boolean,
     displayMode: PendingDisplayMode,
     onDisplayModeChange: (PendingDisplayMode) -> Unit,
+    onUploadScreenshot: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("待确认", style = MaterialTheme.typography.headlineSmall)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text("待确认账单", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    text = "下拉刷新，确认后才会进入账本。",
+                    text = "截图上传后先在这里核对，确认后才会入账。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            OutlinedButton(
-                enabled = !loading,
-                onClick = onRefresh,
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(if (loading) "刷新中" else "刷新")
+                Button(
+                    enabled = !uploading,
+                    onClick = onUploadScreenshot,
+                ) {
+                    Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (uploading) "上传中" else "上传截图")
+                }
+                OutlinedButton(
+                    enabled = !loading,
+                    onClick = onRefresh,
+                ) {
+                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (loading) "刷新中" else "刷新")
+                }
             }
         }
 
@@ -183,8 +210,10 @@ private fun PendingHeader(
 
 @Composable
 private fun EmptyPendingState(
+    uploading: Boolean,
     showUploadGuide: Boolean,
     onToggleGuide: () -> Unit,
+    onUploadScreenshot: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Column(
@@ -208,17 +237,27 @@ private fun EmptyPendingState(
                 Spacer(Modifier.height(2.dp))
                 Text("还没有待确认账单", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    text = "在 iPhone 上分享账单截图到“小票夹”，上传成功后会出现在这里，确认后才会入账。",
+                    text = "截图上传后，会出现在这里等你确认。识别结果只是草稿，不会自动入账。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    onClick = onToggleGuide,
+                    enabled = !uploading,
+                    onClick = onUploadScreenshot,
                 ) {
-                    Text(if (showUploadGuide) "收起上传方法" else "查看上传方法")
+                    Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (uploading) "上传中" else "上传截图")
                 }
                 OutlinedButton(
                     modifier = Modifier.fillMaxWidth(),
+                    onClick = onToggleGuide,
+                ) {
+                    Text(if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令")
+                }
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uploading,
                     onClick = onRefresh,
                 ) {
                     Text("刷新看看")
@@ -236,9 +275,9 @@ private fun EmptyPendingState(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("上传方法", style = MaterialTheme.typography.titleMedium)
-                    Text("1. 在 iPhone 上打开账单截图。")
-                    Text("2. 点分享，选择“上传到小票夹”快捷指令。")
+                    Text("iPhone 上传方法", style = MaterialTheme.typography.titleMedium)
+                    Text("1. 打开账单截图，点分享。")
+                    Text("2. 选择“上传到小票夹”快捷指令。")
                     Text("3. 上传成功后回到这里刷新。")
                 }
             }

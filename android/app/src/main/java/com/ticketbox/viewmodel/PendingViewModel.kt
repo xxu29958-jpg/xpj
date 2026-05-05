@@ -21,6 +21,7 @@ data class PendingUiState(
     val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
     val actionInProgressIds: Set<Long> = emptySet(),
     val loading: Boolean = false,
+    val uploading: Boolean = false,
     val message: String? = null,
 )
 
@@ -54,6 +55,28 @@ class PendingViewModel(
                     loadThumbnails(expenses)
                 }
                 .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "暂时加载不了，请稍后再试。") } }
+        }
+    }
+
+    fun uploadScreenshot(fileName: String, contentType: String?, bytes: ByteArray) {
+        if (_uiState.value.uploading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(uploading = true, message = null) }
+            repository.uploadScreenshot(fileName = fileName, contentType = contentType, bytes = bytes)
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(uploading = false, message = "截图已上传，等你确认。")
+                    }
+                    refresh()
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            uploading = false,
+                            message = error.message ?: "没有上传成功，请稍后再试。",
+                        )
+                    }
+                }
         }
     }
 

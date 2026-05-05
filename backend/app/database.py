@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
+from app.tenants import DEFAULT_TENANT_ID, configured_tenants
 
 
 settings = get_settings()
@@ -42,7 +43,8 @@ def seed_runtime_data() -> None:
 
     with SessionLocal() as db:
         normalize_existing_expense_categories(db)
-        seed_default_rules(db)
+        for tenant in configured_tenants():
+            seed_default_rules(db, tenant.id)
 
 
 def migrate_sqlite_schema() -> None:
@@ -55,6 +57,7 @@ def migrate_sqlite_schema() -> None:
 
     existing_columns = {column["name"] for column in inspector.get_columns("expenses")}
     required_columns = {
+        "tenant_id": f"VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'",
         "public_id": "VARCHAR(36)",
         "thumbnail_path": "VARCHAR(500)",
         "duplicate_status": "VARCHAR(32) NOT NULL DEFAULT 'none'",
@@ -103,14 +106,78 @@ def migrate_sqlite_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_duplicate_status ON expenses (duplicate_status)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_duplicate_of_id ON expenses (duplicate_of_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_image_hash ON expenses (image_hash)"))
+        connection.execute(text("UPDATE expenses SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"), {"tenant_id": DEFAULT_TENANT_ID})
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_created_at ON expenses (tenant_id, status, created_at)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_category_status ON expenses (tenant_id, category, status)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_expense_time ON expenses (tenant_id, status, expense_time)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_confirmed_at ON expenses (tenant_id, status, confirmed_at)"))
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_category_expense_time "
+                "ON expenses (tenant_id, status, category, expense_time)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_category_confirmed_at "
+                "ON expenses (tenant_id, status, category, confirmed_at)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_amount_merchant "
+                "ON expenses (tenant_id, status, amount_cents, merchant)"
+            )
+        )
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_image_hash ON expenses (tenant_id, image_hash)"))
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_duplicate_status ON expenses (tenant_id, duplicate_status)")
+        )
+
+        if "category_rules" in inspector.get_table_names():
+            category_rule_columns = {column["name"] for column in inspector.get_columns("category_rules")}
+            if "tenant_id" not in category_rule_columns:
+                connection.execute(
+                    text(f"ALTER TABLE category_rules ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'")
+                )
+            connection.execute(
+                text("UPDATE category_rules SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
+                {"tenant_id": DEFAULT_TENANT_ID},
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_category_rules_tenant_priority_id "
+                    "ON category_rules (tenant_id, priority, id)"
+                )
+            )
 
         if "duplicate_ignores" in inspector.get_table_names():
             duplicate_ignore_columns = {column["name"] for column in inspector.get_columns("duplicate_ignores")}
+            if "tenant_id" not in duplicate_ignore_columns:
+                connection.execute(
+                    text(f"ALTER TABLE duplicate_ignores ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'")
+                )
             if "kind" not in duplicate_ignore_columns:
                 connection.execute(text("ALTER TABLE duplicate_ignores ADD COLUMN kind VARCHAR(32) NOT NULL DEFAULT 'manual'"))
+            connection.execute(
+                text("UPDATE duplicate_ignores SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
+                {"tenant_id": DEFAULT_TENANT_ID},
+            )
             connection.execute(
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS uq_duplicate_ignore_pair_kind "
                     "ON duplicate_ignores (expense_id, duplicate_of_id, kind)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_duplicate_ignore_tenant_pair_kind "
+                    "ON duplicate_ignores (tenant_id, expense_id, duplicate_of_id, kind)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_duplicate_ignores_tenant_pair_kind "
+                    "ON duplicate_ignores (tenant_id, expense_id, duplicate_of_id, kind)"
                 )
             )

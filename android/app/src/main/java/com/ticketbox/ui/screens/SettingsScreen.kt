@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,7 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,10 +60,9 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.formatStorageSize
-import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -81,19 +84,18 @@ fun SettingsScreen(
     onDeleteRule: (CategoryRule) -> Unit,
     onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
+    showAdvancedTools: Boolean = false,
 ) {
     var budgetInput by remember(state.monthlyBudgetCents) {
         mutableStateOf(formatAmountInput(state.monthlyBudgetCents))
     }
-    val appVersionName = stringResource(R.string.app_version_name)
-    val appVersionCode = integerResource(R.integer.app_version_code)
     var localMessage by remember { mutableStateOf<String?>(null) }
-    var showDiagnosticsDetails by remember { mutableStateOf(false) }
-    var showServerStatusDetails by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearBindingDialog by remember { mutableStateOf(false) }
     var showCategoryRules by remember { mutableStateOf(false) }
-    val serverDisplayName = remember(state.serverUrl) { serverDisplayName(state.serverUrl) }
+    var showDiagnosticsDetails by remember { mutableStateOf(false) }
+    val appVersionName = stringResource(R.string.app_version_name)
+    val appVersionCode = integerResource(R.integer.app_version_code)
 
     if (showCategoryRules) {
         ModalBottomSheet(onDismissRequest = { showCategoryRules = false }) {
@@ -112,9 +114,9 @@ fun SettingsScreen(
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            title = { Text("清除手机缓存？") },
+            title = { Text("清除手机本地数据？") },
             text = {
-                Text("清除后，手机里已同步的账单会被移除。服务器上的账单不会删除，之后可以重新同步。")
+                Text("清除后，手机里已缓存的账单会移除。服务端账单不会删除，之后可以重新同步。")
             },
             confirmButton = {
                 TextButton(
@@ -137,9 +139,9 @@ fun SettingsScreen(
     if (showClearBindingDialog) {
         AlertDialog(
             onDismissRequest = { showClearBindingDialog = false },
-            title = { Text("清除服务器绑定？") },
+            title = { Text("退出当前账本？") },
             text = {
-                Text("清除后需要重新输入服务器地址和访问口令。服务器上的账单不会删除。")
+                Text("退出后需要重新绑定小票夹。手机本地口令会被清除，服务端账单不会删除。")
             },
             confirmButton = {
                 TextButton(
@@ -148,7 +150,7 @@ fun SettingsScreen(
                         onBindingCleared()
                     },
                 ) {
-                    Text("确定清除", color = MaterialTheme.colorScheme.error)
+                    Text("确定退出", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -169,9 +171,51 @@ fun SettingsScreen(
     ) {
         Text("设置", style = MaterialTheme.typography.headlineSmall)
 
+        AccountStatusCard(
+            serverSettings = state.serverSettings,
+            lastUploadAt = state.lastUploadAt,
+            lastSyncAt = state.lastConfirmedSyncAt,
+            busy = state.busy,
+            onCheckConnection = onTestConnection,
+            onSync = onSync,
+            onRefresh = onRefreshServerSettings,
+        )
+
+        if (showAdvancedTools) {
+            SettingSection(title = "内部工具") {
+                Text(
+                    text = "仅内部版显示，用于服务拥有者联调和排障；灰度用户版不会出现这些信息。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.busy,
+                        onClick = onRunDiagnostics,
+                    ) {
+                        Text("运行诊断")
+                    }
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.busy,
+                        onClick = onRefreshServerSettings,
+                    ) {
+                        Text("刷新服务")
+                    }
+                }
+                AdvancedStatusCard(
+                    serverUrl = state.serverUrl,
+                    diagnostics = state.diagnostics,
+                    expanded = showDiagnosticsDetails,
+                    onToggleExpanded = { showDiagnosticsDetails = !showDiagnosticsDetails },
+                )
+            }
+        }
+
         SettingSection(title = "外观") {
             Text(
-                text = "港湾作为默认主题。每套外观都预览真实账单层级，切换后立即生效。",
+                text = "港湾是默认主题。背景会自动加遮罩，保证金额和账单文字清晰。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -192,74 +236,6 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.weight(1f))
                     }
                 }
-            }
-        }
-
-        SettingSection(title = "连接") {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                ),
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("当前连接", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        text = serverDisplayName,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    modifier = Modifier.weight(1f),
-                    onClick = onTestConnection,
-                ) {
-                    Text(if (state.busy) "处理中" else "连接测试")
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = onRunDiagnostics,
-                ) {
-                    Text("检测连接")
-                }
-            }
-        }
-        state.diagnostics?.let { diagnostics ->
-            DiagnosticsCard(
-                diagnostics = diagnostics,
-                expanded = showDiagnosticsDetails,
-                onToggleExpanded = { showDiagnosticsDetails = !showDiagnosticsDetails },
-            )
-        }
-        SettingSection(title = "维护") {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                ),
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("本地账本同步", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        text = state.lastConfirmedSyncAt?.let { "上次同步：${displayTime(it)}" } ?: "还没有成功同步过账本",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onSync,
-            ) {
-                Text("重新同步账本")
             }
         }
 
@@ -332,23 +308,7 @@ fun SettingsScreen(
             }
         }
 
-        SettingSection(title = "服务概况") {
-            state.serverSettings?.let { serverSettings ->
-                ServerStatusCard(
-                    serverSettings = serverSettings,
-                    expanded = showServerStatusDetails,
-                    onToggleExpanded = { showServerStatusDetails = !showServerStatusDetails },
-                )
-            } ?: Text("服务概况暂未加载", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onRefreshServerSettings,
-            ) {
-                Text("刷新")
-            }
-        }
-
-        SettingSection(title = "自动分类") {
+        SettingSection(title = "自动整理") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -365,7 +325,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("商家关键词规则", style = MaterialTheme.typography.titleSmall)
+                            Text("商家分类规则", style = MaterialTheme.typography.titleSmall)
                             Text(
                                 text = categoryRuleSummary(state.categoryRules),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -376,7 +336,7 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        text = "后续识别会参考这些规则推荐分类，第一版仍然需要你确认后才入账。",
+                        text = "自动识别只会填草稿，最终仍然由你确认入账。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -384,9 +344,9 @@ fun SettingsScreen(
             }
         }
 
-        SettingSection(title = "风险操作") {
+        SettingSection(title = "数据与安全") {
             Text(
-                text = "这些操作只影响本机绑定和缓存，不会删除服务器上的账单。",
+                text = "这些操作只影响当前手机，不会删除小票夹服务里的账单。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -398,7 +358,9 @@ fun SettingsScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Text("清缓存")
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("清除数据")
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -407,7 +369,9 @@ fun SettingsScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Text("清绑定")
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("退出账本")
                 }
             }
         }
@@ -418,6 +382,7 @@ fun SettingsScreen(
         localMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
+
         SettingSection(title = "关于") {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -435,12 +400,206 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "私人截图确认账本。截图上传后不会自动入账，需要确认后才会记录。",
+                        text = "私人截图确认账本。截图上传后不会自动入账，需要你确认后才会记录。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AccountStatusCard(
+    serverSettings: ServerSettings?,
+    lastUploadAt: String?,
+    lastSyncAt: String?,
+    busy: Boolean,
+    onCheckConnection: () -> Unit,
+    onSync: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val ledgerName = serverSettings?.tenantName?.takeIf { it.isNotBlank() } ?: "我的小票夹"
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("当前账本", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(ledgerName, style = MaterialTheme.typography.titleLarge)
+                }
+                StatusPill(connected = serverSettings != null)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatusMetric(
+                    modifier = Modifier.weight(1f),
+                    label = "待确认",
+                    value = "${serverSettings?.pendingCount ?: 0} 笔",
+                )
+                StatusMetric(
+                    modifier = Modifier.weight(1f),
+                    label = "已入账",
+                    value = "${serverSettings?.confirmedCount ?: 0} 笔",
+                )
+            }
+            StatusLine(
+                label = "最近上传",
+                value = (lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) } ?: "还没有上传",
+            )
+            StatusLine(
+                label = "最近同步",
+                value = lastSyncAt?.let { displayTime(it) } ?: "还没有同步",
+            )
+            StatusLine(label = "存储状态", value = "正常")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = onCheckConnection,
+                ) {
+                    Text(if (busy) "处理中" else "检查连接")
+                }
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = {
+                        onSync()
+                        onRefresh()
+                    },
+                ) {
+                    Text("同步账本")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdvancedStatusCard(
+    serverUrl: String?,
+    diagnostics: ConnectionDiagnostics?,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+) {
+    val title = diagnostics?.let {
+        when {
+            it.failedCount > 0 -> "发现 ${it.failedCount} 个问题"
+            it.warningCount > 0 -> "可用，有 ${it.warningCount} 个提醒"
+            else -> "连接诊断正常"
+        }
+    } ?: "尚未运行诊断"
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "绑定地址：${serverUrl?.takeIf { it.isNotBlank() } ?: "未绑定"}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            diagnostics?.let { result ->
+                if (expanded) {
+                    result.checks.forEach { check ->
+                        val color = when (check.status) {
+                            DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
+                            DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
+                            DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(check.name, color = color)
+                                Text("${check.elapsedMs} ms", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(check.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onToggleExpanded,
+                ) {
+                    Text(if (expanded) "收起详情" else "查看详情")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(connected: Boolean) {
+    val background = if (connected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant
+    val content = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(background)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.CloudDone,
+            contentDescription = null,
+            tint = content,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            text = if (connected) "已连接" else "连接中",
+            color = content,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun StatusMetric(
+    modifier: Modifier = Modifier,
+    label: String,
+    value: String,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+        Text(value, style = MaterialTheme.typography.titleSmall)
+    }
+}
+
+@Composable
+private fun StatusLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -465,7 +624,7 @@ private fun CategoryRulesSheet(
         AlertDialog(
             onDismissRequest = { deletingRule = null },
             title = { Text("删除这条规则？") },
-            text = { Text("删除后，后续自动分类不会再使用“${rule.keyword}”。") },
+            text = { Text("删除后，后续识别不再参考“${rule.keyword}”。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -486,10 +645,9 @@ private fun CategoryRulesSheet(
 
     Column(
         modifier = Modifier
-            .fillMaxHeight(0.92f)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -498,10 +656,7 @@ private fun CategoryRulesSheet(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("分类规则", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    text = categoryRuleSummary(rules),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(categoryRuleSummary(rules), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = onClose) {
                 Text("完成")
@@ -519,7 +674,7 @@ private fun CategoryRulesSheet(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    text = editingRule?.let { "编辑规则" } ?: "新增规则",
+                    text = if (editingRule == null) "新增规则" else "编辑规则",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 OutlinedTextField(
@@ -595,7 +750,10 @@ private fun CategoryRulesSheet(
         }
 
         if (rules.isEmpty()) {
-            Text("暂无分类规则。添加后，拍照识别会优先参考这些关键词。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = "暂无分类规则。添加后，自动识别会优先参考这些关键词。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         } else {
             rules.forEach { rule ->
                 CategoryRuleCard(
@@ -665,140 +823,23 @@ private fun categoryRuleSummary(rules: List<CategoryRule>): String {
 }
 
 @Composable
-private fun DiagnosticsCard(
-    diagnostics: ConnectionDiagnostics,
-    expanded: Boolean,
-    onToggleExpanded: () -> Unit,
-) {
-    val title = when {
-        diagnostics.failedCount > 0 -> "检测到 ${diagnostics.failedCount} 个需要处理的问题"
-        diagnostics.warningCount > 0 -> "连接可用，${diagnostics.warningCount} 个提醒"
-        else -> "服务连接正常"
-    }
-    val detail = when {
-        diagnostics.failedCount > 0 -> "部分服务不可用，请查看详情。"
-        diagnostics.warningCount > 0 -> "有提醒项，但不影响主要功能。"
-        else -> "上传、同步、统计等服务都可以访问。"
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (expanded) {
-                diagnostics.checks.forEach { check ->
-                    val color = when (check.status) {
-                        DiagnosticStatus.Pass -> MaterialTheme.colorScheme.primary
-                        DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
-                        DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(check.name, color = color)
-                            Text("${check.elapsedMs} ms", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text(check.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onToggleExpanded,
-            ) {
-                Text(if (expanded) "收起详情" else "查看详情")
-            }
-        }
-    }
-}
-
-@Composable
-private fun ServerStatusCard(
-    serverSettings: ServerSettings,
-    expanded: Boolean,
-    onToggleExpanded: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "待确认 ${serverSettings.pendingCount} · 已入账 ${serverSettings.confirmedCount} · 已忽略 ${serverSettings.rejectedCount}",
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                text = "截图占用 ${formatStorageSize(serverSettings.uploadStorageBytes)} · 识别：${recognitionProviderLabel(serverSettings.ocrProvider)}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = serverSettings.latestUploadAt?.let { "最近上传：${displayTime(it)}" } ?: "还没有上传过截图",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (expanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("单张截图上限：${serverSettings.maxUploadSizeMb} MB")
-                    Text("截图预览：${if (serverSettings.generateThumbnail) "已启用" else "未启用"}")
-                    Text("入账后清理原图：${if (serverSettings.deleteImageAfterConfirm) "已启用" else "未启用"}")
-                    Text("自动清理周期：${serverSettings.deleteImageAfterDays} 天")
-                    Text("可能重复的账单：${serverSettings.suspectedDuplicateCount}")
-                }
-            }
-            OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onToggleExpanded,
-            ) {
-                Text(if (expanded) "收起详情" else "查看详情")
-            }
-        }
-    }
-}
-
-private fun recognitionProviderLabel(provider: String): String {
-    val clean = provider.trim()
-    return when (clean.lowercase()) {
-        "", "empty" -> "未开启"
-        "mock" -> "演示模式"
-        else -> clean
-    }
-}
-
-private fun serverDisplayName(serverUrl: String?): String {
-    if (serverUrl.isNullOrBlank()) return "未绑定"
-    val lower = serverUrl.lowercase()
-    return when {
-        "127.0.0.1" in lower || "localhost" in lower -> "本地服务器"
-        "api.zen70.cn" in lower -> "zen70.cn"
-        else -> serverUrl.removePrefix("https://").removePrefix("http://").trimEnd('/')
-    }
-}
-
-@Composable
 private fun SettingSection(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (title == "外观") Icons.Filled.Palette else Icons.Filled.Security,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(title, style = MaterialTheme.typography.titleMedium)
+        }
         content()
     }
 }
@@ -843,17 +884,9 @@ private fun SkinOptionCard(
                         maxLines = 1,
                     )
                     if (selected) {
-                        SkinPill(
-                            text = "当前",
-                            scheme = scheme,
-                            emphasized = true,
-                        )
+                        SkinPill(text = "当前", scheme = scheme, emphasized = true)
                     } else if (skin == AppSkin.Harbor) {
-                        SkinPill(
-                            text = "推荐",
-                            scheme = scheme,
-                            emphasized = false,
-                        )
+                        SkinPill(text = "推荐", scheme = scheme, emphasized = false)
                     }
                 }
                 Row(
@@ -993,11 +1026,7 @@ private fun SkinPill(
                 modifier = Modifier.size(12.dp),
             )
         }
-        Text(
-            text = text,
-            color = content,
-            style = MaterialTheme.typography.labelSmall,
-        )
+        Text(text = text, color = content, style = MaterialTheme.typography.labelSmall)
     }
 }
 

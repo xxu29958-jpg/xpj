@@ -1,5 +1,27 @@
 # 小票夹完整架构
 
+## 灰度版总入口
+
+灰度版要把小票夹从个人联调工程升级为可给他人试用的私人生活账本 App。完整要求见：
+
+```text
+docs/GRAY_RELEASE_REQUIREMENTS.md
+docs/GRAY_RELEASE_PRODUCT_SPEC.md
+docs/MULTI_TENANT_SPEC.md
+docs/ANDROID_GRAY_UX_SPEC.md
+docs/ANDROID_UPLOAD.md
+docs/RELEASE_PACKAGING.md
+docs/GRAY_ACCEPTANCE_CHECKLIST.md
+```
+
+灰度版强制要求：
+
+- 普通用户主体验不显示服务器域名、token、接口名、Cloudflare、端口、日志和诊断脚本。
+- 多租户按 `tenant_id` 隔离账单、图片、统计、分类规则、重复检测和 CSV。
+- iPhone 快捷指令和 Android App 均可上传截图。
+- OCR 只填草稿，不自动入账。
+- Release 包和 Windows 运维诊断分层提供。
+
 ## 1. 项目定位
 
 小票夹是一个私人半自动记账系统，面向个人使用，不做商业云服务。第一版的核心目标是让账单截图从 iPhone 进入 Windows 后端，再由 Android App 人工确认入账。

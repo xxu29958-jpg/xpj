@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import shutil
 from pathlib import Path
@@ -13,6 +14,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 TEST_UPLOAD_TOKEN = "pytest-upload-token"
 TEST_APP_TOKEN = "pytest-app-token"
 TEST_ADMIN_TOKEN = "pytest-admin-token"
+TEST_TENANT_UPLOAD_TOKEN = "pytest-tenant-upload-token"
+TEST_TENANT_APP_TOKEN = "pytest-tenant-app-token"
 TEST_DB_PATH = BACKEND_ROOT / "data" / "pytest_test.db"
 TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / "pytest_test"
 
@@ -28,6 +31,23 @@ os.environ.update(
         "GENERATE_THUMBNAIL": "true",
         "DELETE_IMAGE_AFTER_DAYS": "0",
         "OCR_PROVIDER": "empty",
+        "TENANTS_JSON": json.dumps(
+            [
+                {
+                    "id": "owner",
+                    "name": "我的小票夹",
+                    "upload_token": TEST_UPLOAD_TOKEN,
+                    "app_token": TEST_APP_TOKEN,
+                },
+                {
+                    "id": "tester_1",
+                    "name": "灰度用户1",
+                    "upload_token": TEST_TENANT_UPLOAD_TOKEN,
+                    "app_token": TEST_TENANT_APP_TOKEN,
+                },
+            ],
+            ensure_ascii=False,
+        ),
     },
 )
 
@@ -50,6 +70,14 @@ def upload_headers() -> dict[str, str]:
 
 def admin_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {TEST_ADMIN_TOKEN}"}
+
+
+def gray_app_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {TEST_TENANT_APP_TOKEN}"}
+
+
+def gray_upload_headers() -> dict[str, str]:
+    return {"Upload-Token": TEST_TENANT_UPLOAD_TOKEN}
 
 
 def reset_runtime() -> None:

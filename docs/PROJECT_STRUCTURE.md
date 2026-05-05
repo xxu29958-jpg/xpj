@@ -14,6 +14,8 @@ E:\projects\xiaopiaojia\
     check_cloudflare_endpoint.ps1
     check_service_status.ps1
     check_text_encoding.ps1
+    build_release_apk.ps1
+    diagnose_ticketbox.ps1
     ensure_ticketbox_runtime.ps1
     install_windows_tasks.ps1
     real_device_preflight.ps1
@@ -101,6 +103,8 @@ android\
   README.md
   app\
     build.gradle.kts
+    build\outputs\apk\gray\debug\app-gray-debug.apk
+    build\outputs\apk\internal\debug\app-internal-debug.apk
     src\main\
       AndroidManifest.xml
       java\com\ticketbox\
@@ -130,6 +134,13 @@ docs\
   CI.md
   CLOUDFLARE_TUNNEL.md
   ENGINEERING_RULES.md
+  GRAY_RELEASE_REQUIREMENTS.md
+  GRAY_RELEASE_PRODUCT_SPEC.md
+  ANDROID_GRAY_UX_SPEC.md
+  MULTI_TENANT_SPEC.md
+  ANDROID_UPLOAD.md
+  RELEASE_PACKAGING.md
+  GRAY_ACCEPTANCE_CHECKLIST.md
   IOS_SHORTCUT.md
   REAL_DEVICE_RUNBOOK.md
   WINDOWS_SERVICE_RUNBOOK.md

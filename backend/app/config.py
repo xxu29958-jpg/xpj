@@ -50,6 +50,7 @@ class Settings:
     local_llm_base_url: str
     local_llm_model: str
     local_llm_timeout_seconds: int
+    tenants_json: str
 
     @property
     def max_upload_size_bytes(self) -> int:
@@ -81,4 +82,5 @@ def get_settings() -> Settings:
         local_llm_base_url=os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1").strip().rstrip("/"),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
+        tenants_json=os.getenv("TENANTS_JSON", "").strip(),
     )

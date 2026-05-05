@@ -20,6 +20,54 @@ android {
 
         resValue("string", "app_version_name", ticketboxVersionName)
         resValue("integer", "app_version_code", ticketboxVersionCode.toString())
+        buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "false")
+        manifestPlaceholders["appLabel"] = "小票夹"
+    }
+
+    flavorDimensions += "audience"
+    productFlavors {
+        create("gray") {
+            dimension = "audience"
+            manifestPlaceholders["appLabel"] = "小票夹"
+            buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "false")
+        }
+        create("internal") {
+            dimension = "audience"
+            applicationIdSuffix = ".internal"
+            versionNameSuffix = "-internal"
+            manifestPlaceholders["appLabel"] = "小票夹内部版"
+            buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "true")
+        }
+    }
+
+    signingConfigs {
+        val releaseKeystorePath = System.getenv("TICKETBOX_KEYSTORE_PATH")
+        val releaseKeyAlias = System.getenv("TICKETBOX_KEY_ALIAS")
+        val releaseKeystorePassword = System.getenv("TICKETBOX_KEYSTORE_PASSWORD")
+        val releaseKeyPassword = System.getenv("TICKETBOX_KEY_PASSWORD")
+        if (
+            !releaseKeystorePath.isNullOrBlank() &&
+            !releaseKeyAlias.isNullOrBlank() &&
+            !releaseKeystorePassword.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+        ) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isDebuggable = false
+            isMinifyEnabled = false
+            signingConfigs.findByName("release")?.let { releaseSigning ->
+                signingConfig = releaseSigning
+            }
+        }
     }
 
     compileOptions {
@@ -28,6 +76,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
         resValues = true
     }

@@ -18,6 +18,7 @@ class HealthResponse(BaseModel):
 
 class AuthCheckResponse(BaseModel):
     status: str = "ok"
+    tenant_name: str
 
 
 class StatusResponse(BaseModel):
@@ -189,6 +190,7 @@ class MaintenanceCleanupResponse(BaseModel):
 
 
 class ServerSettingsResponse(BaseModel):
+    tenant_name: str
     max_upload_size_mb: int
     generate_thumbnail: bool
     delete_image_after_confirm: bool

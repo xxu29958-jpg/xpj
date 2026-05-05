@@ -99,7 +99,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
 ```
 
-脚本会检查：
+高级脚本会检查：
 
 - `127.0.0.1:8000` 是否监听。
 - 后端进程是谁。
@@ -117,6 +117,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.p
 ```
 
 它会额外汇总数据库大小、待确认数量、已入账数量、最近上传时间、截图存储占用和上传口令检查。脚本读取本机 `backend\.env`，但不会打印 Token。
+
+默认诊断只输出摘要：
+
+- 本地服务。
+- 外网访问。
+- Cloudflare Tunnel。
+- 最近上传。
+- 待确认和已入账数量。
+- 数据库大小。
+- 图片占用。
+- 租户数量。
+
+只有加 `-Advanced` 才显示端口、URL、cloudflared 进程、计划任务、HTTP 检查和日志尾部：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Advanced
+```
 
 ## 出门前保障检查
 

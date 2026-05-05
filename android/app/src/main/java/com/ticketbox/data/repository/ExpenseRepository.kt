@@ -24,11 +24,14 @@ import com.ticketbox.domain.model.mergeExpenseCategories
 import com.ticketbox.security.SecureTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import retrofit2.HttpException
 import retrofit2.Response
 import java.io.IOException
 import java.time.Instant
 import kotlin.system.measureTimeMillis
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
 
 class RepositoryException(message: String) : RuntimeException(message)
@@ -229,6 +232,20 @@ class ExpenseRepository(
         api().pendingExpenses().map { it.toDomain() }
     }
 
+    suspend fun uploadScreenshot(fileName: String, contentType: String?, bytes: ByteArray): Result<Long> = safeCall {
+        require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
+        val cleanName = fileName
+            .trim()
+            .ifBlank { "ticketbox-screenshot.jpg" }
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val mediaType = (contentType?.takeIf { it.isNotBlank() } ?: "image/jpeg").toMediaTypeOrNull()
+        val body = bytes.toRequestBody(mediaType)
+        val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
+        val response = api().uploadScreenshot(filePart)
+        settingsStore.saveLastUploadAt(Instant.now().toString())
+        response.id
+    }
+
     suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = safeCall {
         val dto = api().updateExpense(id, draft.toRequest())
         if (dto.status == "confirmed") {
@@ -379,6 +396,8 @@ class ExpenseRepository(
     fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()
 
     fun lastConfirmedSyncAt(): String? = settingsStore.lastConfirmedSyncAt()
+
+    fun lastUploadAt(): String? = settingsStore.lastUploadAt()
 
     fun saveMonthlyBudgetCents(amountCents: Long?) {
         settingsStore.saveMonthlyBudgetCents(amountCents)

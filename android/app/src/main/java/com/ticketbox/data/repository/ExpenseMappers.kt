@@ -153,6 +153,7 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
 )
 
 fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
+    tenantName = tenantName,
     maxUploadSizeMb = maxUploadSizeMb,
     generateThumbnail = generateThumbnail,
     deleteImageAfterConfirm = deleteImageAfterConfirm,

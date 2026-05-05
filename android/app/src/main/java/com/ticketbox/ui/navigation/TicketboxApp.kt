@@ -1,9 +1,13 @@
 package com.ticketbox.ui.navigation
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
@@ -37,6 +41,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
@@ -58,6 +63,12 @@ import com.ticketbox.viewmodel.SettingsViewModel
 import com.ticketbox.viewmodel.StatsViewModel
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
 import com.ticketbox.viewmodel.repositoryViewModelFactory
+
+private data class SelectedScreenshot(
+    val fileName: String,
+    val contentType: String?,
+    val bytes: ByteArray,
+)
 
 private enum class BottomTab(
     val label: String,
@@ -218,6 +229,17 @@ private fun MainShell(
                 BottomTab.Pending -> {
                     val pendingViewModel: PendingViewModel = viewModel(factory = repositoryFactory)
                     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
+                    val context = LocalContext.current
+                    val imagePickerLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.PickVisualMedia(),
+                    ) { uri ->
+                        val selected = uri?.let { context.readSelectedScreenshot(it) } ?: return@rememberLauncherForActivityResult
+                        pendingViewModel.uploadScreenshot(
+                            fileName = selected.fileName,
+                            contentType = selected.contentType,
+                            bytes = selected.bytes,
+                        )
+                    }
                     PendingScreen(
                         state = state,
                         onRefresh = pendingViewModel::refresh,
@@ -225,6 +247,11 @@ private fun MainShell(
                         onConfirm = pendingViewModel::confirm,
                         onReject = pendingViewModel::reject,
                         onKeepDuplicate = pendingViewModel::markNotDuplicate,
+                        onUploadScreenshot = {
+                            imagePickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
                     )
                 }
                 BottomTab.Ledger -> {
@@ -298,9 +325,34 @@ private fun MainShell(
                         onDeleteRule = settingsViewModel::deleteCategoryRule,
                         onSkinChange = onSkinChange,
                         onBindingCleared = onBindingCleared,
+                        showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
                     )
                 }
             }
         }
     }
+}
+
+private fun Context.readSelectedScreenshot(uri: Uri): SelectedScreenshot? {
+    val contentType = contentResolver.getType(uri)
+    val fileName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        }
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: defaultScreenshotFileName(contentType)
+    val bytes = contentResolver.openInputStream(uri)?.use { input -> input.readBytes() } ?: return null
+    return SelectedScreenshot(fileName = fileName, contentType = contentType, bytes = bytes)
+}
+
+private fun defaultScreenshotFileName(contentType: String?): String {
+    val extension = when (contentType?.lowercase()) {
+        "image/png" -> "png"
+        "image/webp" -> "webp"
+        "image/heic", "image/heif" -> "heic"
+        else -> "jpg"
+    }
+    return "ticketbox-screenshot.$extension"
 }

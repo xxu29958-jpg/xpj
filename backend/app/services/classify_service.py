@@ -40,13 +40,14 @@ DEFAULT_RULES = [
 ]
 
 
-def seed_default_rules(db: Session) -> None:
-    if db.scalar(select(CategoryRule.id).limit(1)) is not None:
+def seed_default_rules(db: Session, tenant_id: str) -> None:
+    if db.scalar(select(CategoryRule.id).where(CategoryRule.tenant_id == tenant_id).limit(1)) is not None:
         return
     now = now_utc()
     for keyword, category, priority in DEFAULT_RULES:
         db.add(
             CategoryRule(
+                tenant_id=tenant_id,
                 keyword=keyword,
                 category=normalize_category(category),
                 enabled=True,
@@ -67,6 +68,7 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
 
     rules = db.scalars(
         select(CategoryRule)
+        .where(CategoryRule.tenant_id == expense.tenant_id)
         .where(CategoryRule.enabled == True)  # noqa: E712
         .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
     )
@@ -77,17 +79,24 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
     return expense
 
 
-def list_rules(db: Session) -> list[CategoryRule]:
-    return list(db.scalars(select(CategoryRule).order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())))
+def list_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
+    return list(
+        db.scalars(
+            select(CategoryRule)
+            .where(CategoryRule.tenant_id == tenant_id)
+            .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
+        )
+    )
 
 
-def create_rule(db: Session, keyword: str, category: str, enabled: bool, priority: int) -> CategoryRule:
+def create_rule(db: Session, tenant_id: str, keyword: str, category: str, enabled: bool, priority: int) -> CategoryRule:
     keyword = keyword.strip()
     category = normalize_category(category)
     if not keyword or not category:
         raise AppError("invalid_request", status_code=422)
     now = now_utc()
     rule = CategoryRule(
+        tenant_id=tenant_id,
         keyword=keyword,
         category=category,
         enabled=enabled,

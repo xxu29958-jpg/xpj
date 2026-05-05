@@ -4,6 +4,16 @@ import com.squareup.moshi.Json
 
 data class AuthCheckDto(
     val status: String,
+    @param:Json(name = "tenant_name")
+    val tenantName: String? = null,
+)
+
+data class UploadResponseDto(
+    val id: Long,
+    @param:Json(name = "public_id")
+    val publicId: String,
+    val status: String,
+    val message: String,
 )
 
 data class ExpenseDto(
@@ -135,6 +145,8 @@ data class FrequentMerchantDto(
 )
 
 data class ServerSettingsDto(
+    @param:Json(name = "tenant_name")
+    val tenantName: String,
     @param:Json(name = "max_upload_size_mb")
     val maxUploadSizeMb: Int,
     @param:Json(name = "generate_thumbnail")

@@ -4,15 +4,15 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from conftest import PNG_BYTES, admin_headers, app_headers, upload_headers
+from conftest import PNG_BYTES, admin_headers, app_headers, gray_app_headers, gray_upload_headers, upload_headers
 from app.models import Expense
 from app.services.ocr_service import MockOcrProvider, retry_ocr
 
 
-def upload_png(client: TestClient) -> int:
+def upload_png(client: TestClient, headers: dict[str, str] | None = None) -> int:
     response = client.post(
         "/api/upload-screenshot",
-        headers=upload_headers(),
+        headers=headers or upload_headers(),
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )
     assert response.status_code == 200
@@ -39,7 +39,7 @@ def test_health_and_auth_contract(client: TestClient) -> None:
 
     response = client.get("/api/auth/check", headers=app_headers())
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "tenant_name": "我的小票夹"}
 
     response = client.get("/api/auth/check", headers={"Authorization": "Bearer bad"})
     assert response.status_code == 401
@@ -178,6 +178,80 @@ def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> N
     item = next(expense for expense in pending.json() if expense["id"] == expense_id)
     assert item["image_path"].endswith(".png")
     assert item["image_hash"]
+
+
+def test_android_app_upload_uses_app_token_and_current_tenant(client: TestClient) -> None:
+    response = client.post(
+        "/api/app/upload-screenshot",
+        headers=app_headers(),
+        files={"file": ("android-ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    owner_id = int(response.json()["id"])
+
+    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert owner_pending.status_code == 200
+    assert [item["id"] for item in owner_pending.json()] == [owner_id]
+
+    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    assert tester_pending.status_code == 200
+    assert tester_pending.json() == []
+
+
+def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicates(client: TestClient) -> None:
+    owner_id = upload_png(client, upload_headers())
+    tester_id = upload_png(client, gray_upload_headers())
+
+    owner_pending = client.get("/api/expenses/pending", headers=app_headers()).json()
+    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers()).json()
+    assert [item["id"] for item in owner_pending] == [owner_id]
+    assert [item["id"] for item in tester_pending] == [tester_id]
+
+    assert client.get(f"/api/expenses/{owner_id}", headers=gray_app_headers()).status_code == 404
+    assert client.get(f"/api/expenses/{owner_id}/image", headers=gray_app_headers()).status_code == 404
+    assert client.get(f"/api/expenses/{owner_id}/thumbnail", headers=gray_app_headers()).status_code == 404
+
+    owner_patch = client.patch(
+        f"/api/expenses/{owner_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1000,
+            "merchant": "owner商家",
+            "category": "生活",
+            "expense_time": "2026-05-04T00:00:00Z",
+        },
+    )
+    assert owner_patch.status_code == 200
+    assert client.post(f"/api/expenses/{owner_id}/confirm", headers=app_headers()).status_code == 200
+
+    tester_stats = client.get("/api/stats/monthly?month=2026-05", headers=gray_app_headers())
+    assert tester_stats.status_code == 200
+    assert tester_stats.json()["total_amount_cents"] == 0
+
+    owner_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert owner_stats.status_code == 200
+    assert owner_stats.json()["total_amount_cents"] == 1000
+
+    tester_csv = client.get("/api/expenses/export.csv?month=2026-05", headers=gray_app_headers())
+    assert tester_csv.status_code == 200
+    assert "owner商家" not in tester_csv.text
+
+    rule = client.post(
+        "/api/rules/categories",
+        headers=gray_app_headers(),
+        json={"keyword": "只属于tester", "category": "购物", "enabled": True, "priority": 1},
+    )
+    assert rule.status_code == 200
+    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    tester_rules = client.get("/api/rules/categories", headers=gray_app_headers()).json()
+    assert all(item["keyword"] != "只属于tester" for item in owner_rules)
+    assert any(item["keyword"] == "只属于tester" for item in tester_rules)
+
+    second_owner_id = upload_png(client, upload_headers())
+    owner_duplicates = client.get("/api/duplicates", headers=app_headers()).json()
+    tester_duplicates = client.get("/api/duplicates", headers=gray_app_headers()).json()
+    assert any(item["id"] == second_owner_id for item in owner_duplicates)
+    assert all(item["id"] != second_owner_id for item in tester_duplicates)
 
 
 def test_upload_screenshot_rejects_multipart_without_image_file(client: TestClient) -> None:
@@ -482,6 +556,7 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(client: TestCl
     response = client.get("/api/settings/server", headers=app_headers())
     assert response.status_code == 200
     payload = response.json()
+    assert payload["tenant_name"] == "我的小票夹"
     assert payload["max_upload_size_mb"] == 10
     assert payload["generate_thumbnail"] is True
     assert payload["ocr_provider"] == "empty"

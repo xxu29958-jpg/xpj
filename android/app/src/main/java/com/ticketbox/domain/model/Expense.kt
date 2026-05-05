@@ -115,6 +115,7 @@ class ProtectedImage(
 )
 
 data class ServerSettings(
+    val tenantName: String,
     val maxUploadSizeMb: Int,
     val generateThumbnail: Boolean,
     val deleteImageAfterConfirm: Boolean,

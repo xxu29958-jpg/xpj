@@ -19,6 +19,7 @@ data class SettingsUiState(
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
+    val lastUploadAt: String? = null,
     val lastConfirmedSyncAt: String? = null,
     val busy: Boolean = false,
     val message: String? = null,
@@ -32,6 +33,7 @@ class SettingsViewModel(
         SettingsUiState(
             serverUrl = settingsStore.serverUrl(),
             monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
+            lastUploadAt = repository.lastUploadAt(),
             lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
         ),
     )
@@ -108,7 +110,11 @@ class SettingsViewModel(
             repository.serverSettings()
                 .onSuccess { settings ->
                     _uiState.update {
-                        it.copy(serverSettings = settings, busy = if (showBusy) false else it.busy)
+                        it.copy(
+                            serverSettings = settings,
+                            lastUploadAt = repository.lastUploadAt() ?: settings.latestUploadAt,
+                            busy = if (showBusy) false else it.busy,
+                        )
                     }
                 }
                 .onFailure { error ->
