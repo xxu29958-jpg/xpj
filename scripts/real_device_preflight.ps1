@@ -124,6 +124,25 @@ function Invoke-TestUpload {
     }
 }
 
+function Assert-PublicId {
+    param(
+        [Parameter(Mandatory = $true)]$Value,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    $publicId = [string]$Value
+    if ($publicId.Trim().Length -eq 0) {
+        throw "$Context 缺少 public_id。请确认后端已重启并运行最新代码。"
+    }
+
+    try {
+        [Guid]::Parse($publicId) | Out-Null
+    }
+    catch {
+        throw "$Context 的 public_id 不是有效 UUID：$publicId"
+    }
+}
+
 $baseUrl = $ServerUrl.TrimEnd("/")
 $envValues = Read-BackendEnv
 
@@ -143,12 +162,24 @@ if (-not $SkipBackend) {
     }
     Write-Host "App Token 检查通过。"
 
+    $confirmedProbe = Invoke-Json -Uri "$baseUrl/api/expenses/confirmed?page=1&page_size=1" -Headers $appHeaders
+    if ($confirmedProbe.items -and $confirmedProbe.items.Count -gt 0) {
+        Assert-PublicId -Value $confirmedProbe.items[0].public_id -Context "已确认账单接口"
+    }
+    Write-Host "账单 API 契约检查通过。"
+
     if (-not $SkipUpload) {
         $resolvedUploadToken = Resolve-SecretValue -ExplicitValue $UploadToken -Name "UPLOAD_TOKEN" -EnvValues $envValues
         $upload = Invoke-TestUpload -BaseUrl $baseUrl -Token $resolvedUploadToken
+        Assert-PublicId -Value $upload.public_id -Context "上传接口"
         Write-Host "测试截图上传成功，pending id：$($upload.id)"
 
         $pending = @(Invoke-Json -Uri "$baseUrl/api/expenses/pending" -Headers $appHeaders)
+        $uploadedPending = $pending | Where-Object { $_.id -eq $upload.id } | Select-Object -First 1
+        if (-not $uploadedPending) {
+            throw "pending 列表中没有刚上传的账单 id：$($upload.id)"
+        }
+        Assert-PublicId -Value $uploadedPending.public_id -Context "pending 接口"
         Write-Host "当前 pending 数量：$($pending.Count)"
     }
     else {

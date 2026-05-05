@@ -51,4 +51,9 @@ async def upload_screenshot(
         )
 
     expense = create_pending_expense(db, saved_file)
-    return UploadResponse(id=expense.id, status=expense.status, message="uploaded")
+    return UploadResponse(
+        id=expense.id,
+        public_id=expense.public_id,
+        status=expense.status,
+        message="uploaded",
+    )

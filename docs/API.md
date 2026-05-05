@@ -26,6 +26,13 @@ https://api.我的域名.com
 - 单位为分。
 - 不使用 float/double 保存金额。
 
+标识：
+
+- 后端自增 `id` 仍用于当前 API 路径，例如 `/api/expenses/{id}`。
+- `public_id` 是账单公共 UUID，用于导出、跨端同步、排查问题和未来多端合并。
+- Android Room 同时保存 `serverId` 和 `publicId`，二者都必须唯一。
+- 普通 UI 不直接展示 UUID；需要给用户看时使用“账单编号”等生活化文案。
+
 错误：
 
 ```json
@@ -166,6 +173,7 @@ file: 图片文件
 ```json
 {
   "id": 1,
+  "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
   "message": "uploaded"
 }

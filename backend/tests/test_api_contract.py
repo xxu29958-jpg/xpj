@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
 from conftest import PNG_BYTES, admin_headers, app_headers, upload_headers
@@ -14,6 +16,7 @@ def upload_png(client: TestClient) -> int:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "pending"
+    UUID(payload["public_id"])
     return int(payload["id"])
 
 
@@ -75,6 +78,7 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     assert pending.status_code == 200
     item = next(expense for expense in pending.json() if expense["id"] == expense_id)
     assert item["amount_cents"] is None
+    UUID(item["public_id"])
     assert item["category"] == "其他"
     assert item["image_path"].startswith("uploads/")
     assert "\\" not in item["image_path"]
@@ -133,6 +137,7 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     assert exported.status_code == 200
     assert "text/csv" in exported.headers["content-type"]
     assert "美团外卖" in exported.text
+    assert "public_id" in exported.text.splitlines()[0]
     assert "3680" in exported.text
 
     stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
@@ -170,6 +175,7 @@ def test_manual_expense_create_contract(client: TestClient) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "confirmed"
+    UUID(payload["public_id"])
     assert payload["source"] == "手动记账"
     assert payload["amount_cents"] == 1280
     assert payload["image_path"] is None

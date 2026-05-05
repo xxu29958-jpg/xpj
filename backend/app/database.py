@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from uuid import uuid4
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -52,6 +53,7 @@ def migrate_sqlite_schema() -> None:
 
     existing_columns = {column["name"] for column in inspector.get_columns("expenses")}
     required_columns = {
+        "public_id": "VARCHAR(36)",
         "thumbnail_path": "VARCHAR(500)",
         "duplicate_status": "VARCHAR(32) NOT NULL DEFAULT 'none'",
         "duplicate_of_id": "INTEGER",
@@ -67,6 +69,16 @@ def migrate_sqlite_schema() -> None:
         for name, ddl in required_columns.items():
             if name not in existing_columns:
                 connection.execute(text(f"ALTER TABLE expenses ADD COLUMN {name} {ddl}"))
+
+        public_id_rows = connection.execute(
+            text("SELECT id FROM expenses WHERE public_id IS NULL OR public_id = ''")
+        ).mappings()
+        for row in public_id_rows:
+            connection.execute(
+                text("UPDATE expenses SET public_id = :public_id WHERE id = :id"),
+                {"public_id": str(uuid4()), "id": row["id"]},
+            )
+        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_expenses_public_id ON expenses (public_id)"))
 
         if "duplicate_ignores" in inspector.get_table_names():
             duplicate_ignore_columns = {column["name"] for column in inspector.get_columns("duplicate_ignores")}

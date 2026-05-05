@@ -74,7 +74,7 @@ Upload-Token: 你的_UPLOAD_TOKEN
 10. 上传成功后显示“获取 URL 内容”的结果，看到类似下面内容才算成功：
 
 ```json
-{"id":9,"status":"pending","message":"uploaded"}
+{"id":9,"public_id":"018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d","status":"pending","message":"uploaded"}
 ```
 
 11. 确认成功后，可以把显示结果改成：

@@ -4,13 +4,21 @@
 
 ## 决定
 
-后续可以为账单增加内部公共标识：
+账单增加内部公共标识：
 
 ```text
 public_id: UUID
 ```
 
 它用于导出、跨端同步、排查问题和未来多端合并，不替代当前后端自增 `id` 与 Android `serverId` 的第一版闭环。
+
+已落地规则：
+
+- 后端 `Expense.public_id` 为唯一 UUID 字符串。
+- 上传、待确认、已确认、手动记账、统计关联对象和导出都携带 `public_id`。
+- Android DTO、Domain、Room Entity 都保存 `publicId`。
+- Room `serverId` 和 `publicId` 都是唯一索引。
+- Room 1 -> 2 迁移使用新表复制并重建索引，避免新增非空列造成 schema 校验失败。
 
 主题可以演进为 JSON/token 配置，但普通用户界面不直接暴露 JSON。
 

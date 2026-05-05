@@ -221,6 +221,7 @@ curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
 ```json
 {
   "id": 1,
+  "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
   "message": "uploaded"
 }

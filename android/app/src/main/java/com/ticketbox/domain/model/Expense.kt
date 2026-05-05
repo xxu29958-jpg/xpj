@@ -2,6 +2,7 @@ package com.ticketbox.domain.model
 
 data class Expense(
     val id: Long,
+    val publicId: String,
     val amountCents: Long?,
     val merchant: String?,
     val category: String,
