@@ -6,12 +6,16 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "expenses",
-    indices = [Index(value = ["serverId"], unique = true)],
+    indices = [
+        Index(value = ["serverId"], unique = true),
+        Index(value = ["publicId"], unique = true),
+    ],
 )
 data class ExpenseEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val serverId: Long,
+    val publicId: String,
     val amountCents: Long?,
     val merchant: String?,
     val category: String,

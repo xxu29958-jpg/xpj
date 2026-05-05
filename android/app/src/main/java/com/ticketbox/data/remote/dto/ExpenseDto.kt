@@ -8,6 +8,8 @@ data class AuthCheckDto(
 
 data class ExpenseDto(
     val id: Long,
+    @param:Json(name = "public_id")
+    val publicId: String,
     @param:Json(name = "amount_cents")
     val amountCents: Long?,
     val merchant: String?,

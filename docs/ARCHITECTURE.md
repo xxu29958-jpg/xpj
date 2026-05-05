@@ -255,6 +255,7 @@ Android 展示时转本地时区。
 
 ```text
 id: int，自增主键
+public_id: string，公共 UUID，用于导出、同步和排查
 amount_cents: int?，金额，单位分
 merchant: string?，商家
 category: string，默认 其他
@@ -383,6 +384,7 @@ file: 图片文件
 ```json
 {
   "id": 1,
+  "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
   "message": "uploaded"
 }
@@ -401,6 +403,7 @@ Authorization: Bearer APP_TOKEN
 [
   {
     "id": 1,
+    "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
     "amount_cents": null,
     "merchant": null,
     "category": "其他",
@@ -802,6 +805,7 @@ OCR 原文，第一版为空，可折叠
 ```text
 id: Long，本地主键
 serverId: Long，唯一
+publicId: String，唯一
 amountCents: Long?
 merchant: String?
 category: String
@@ -820,7 +824,7 @@ updatedAt: String?
 
 - pending 可以不强制保存，也可以缓存。
 - confirmed 必须保存。
-- `serverId` 必须唯一。
+- `serverId` 和 `publicId` 必须唯一。
 - 同步 confirmed 时，如果 `serverId` 已存在，则更新，不重复插入。
 - 服务器不可用时，账本页展示本地 confirmed。
 

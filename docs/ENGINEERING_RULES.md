@@ -160,6 +160,30 @@ services/
 - 把基础设施细节泄露到 UI。
 - 用过时依赖或不稳定依赖冒充现代化。
 
+## 4.2 账单标识规范
+
+后端账单必须同时保留：
+
+```text
+id: int，自增主键，用于第一版 API 路径和 Android serverId
+public_id: UUID 字符串，用于导出、跨端同步、排查问题和未来多端合并
+```
+
+Android 本地模型必须同时保存：
+
+```text
+serverId: Long，唯一，对应后端 id
+publicId: String，唯一，对应后端 public_id
+```
+
+规则：
+
+- 不把数据库主键迁移成 UUID。
+- 不在普通 UI 暴露 `public_id`、`serverId` 或数据库主键。
+- 对外导出、日志排错和未来多端合并优先使用 `public_id`。
+- Room 修改 Entity 必须同步提交 schema JSON 和显式迁移策略。
+- 老库新增非空列时必须通过可验证迁移处理，不能只写会被 Room schema 校验击穿的临时 DDL。
+
 ## 5. 金额规范
 
 全链路统一使用：

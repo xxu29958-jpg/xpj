@@ -174,6 +174,7 @@ class ExpenseFiltersTest {
     ): Expense {
         return Expense(
             id = id,
+            publicId = "test-$id",
             amountCents = amountCents,
             merchant = merchant,
             category = category,

@@ -26,6 +26,7 @@ class StatusResponse(BaseModel):
 
 class UploadResponse(BaseModel):
     id: int
+    public_id: str
     status: str
     message: str
 
@@ -63,6 +64,7 @@ class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    public_id: str
     amount_cents: int | None
     merchant: str | None
     category: str

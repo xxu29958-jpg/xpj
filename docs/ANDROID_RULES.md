@@ -94,7 +94,7 @@ UI 不能直接使用 DTO 或 Entity。
 
 ## Room 同步
 
-`serverId` 必须唯一。
+`serverId` 和 `publicId` 必须唯一。
 
 Room schema 必须导出到：
 
@@ -116,6 +116,8 @@ serverId 不存在 -> 插入本地记录
 实现要求：
 
 - DAO 必须提供按 `serverId` 查询旧记录的能力。
+- `publicId` 来自后端 `public_id`，不得由 Android 为新同步账单伪造。
+- 老版本本地缓存迁移到 `publicId` 时，可以用 `server-<serverId>` 作为兼容占位；后续服务端同步会写入真实 UUID。
 - 更新时保留本地自增主键 `id`。
 - 不依赖“看起来像 upsert”的主键冲突行为来替代 `serverId` 唯一同步。
 

@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.ServerSettings
 
 fun ExpenseDto.toDomain(): Expense = Expense(
     id = id,
+    publicId = publicId,
     amountCents = amountCents,
     merchant = merchant,
     category = category,
@@ -46,6 +47,7 @@ fun ExpenseDto.toDomain(): Expense = Expense(
 
 fun ExpenseDto.toEntity(): ExpenseEntity = ExpenseEntity(
     serverId = id,
+    publicId = publicId,
     amountCents = amountCents,
     merchant = merchant,
     category = category,
@@ -69,6 +71,7 @@ fun ExpenseDto.toEntity(): ExpenseEntity = ExpenseEntity(
 
 fun ExpenseEntity.toDomain(): Expense = Expense(
     id = serverId,
+    publicId = publicId,
     amountCents = amountCents,
     merchant = merchant,
     category = category,

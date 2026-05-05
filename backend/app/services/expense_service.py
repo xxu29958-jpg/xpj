@@ -193,6 +193,7 @@ def export_confirmed_csv(
     writer.writerow(
         [
             "id",
+            "public_id",
             "amount_cents",
             "amount_yuan",
             "merchant",
@@ -214,6 +215,7 @@ def export_confirmed_csv(
         writer.writerow(
             [
                 expense.id,
+                expense.public_id,
                 amount_cents,
                 str(amount_yuan),
                 expense.merchant or "",
