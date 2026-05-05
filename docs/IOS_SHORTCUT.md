@@ -51,7 +51,7 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 上传到小票夹
 ```
 
-推荐流程：
+推荐流程，已在 iOS 26.4 真机验证通过：
 
 1. 快捷指令设置为“在分享表单中显示”。
 2. 接收类型选择“图像”。
@@ -64,7 +64,7 @@ https://api.我的域名.com/api/upload-screenshot
 ```
 
 6. 方法选择 `POST`。
-7. 请求正文选择 `文件`。
+7. 请求正文选择 `文件`，不要选择 `表单`。
 8. 文件选择“转换后的图像”。
 9. 添加请求头：
 
@@ -85,26 +85,15 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 已上传到小票夹
 ```
 
-## 备用表单流程
+## 不要使用表单模式
 
-如果某个 iOS 版本没有“文件”请求正文，使用表单方式：
+iOS 26.4 实测中，`表单` 模式容易把“转换后的图像”当作普通表单值发送，后端收不到真正的图片文件，会返回：
 
-1. 请求正文选择 `表单`。
-2. 表单字段名填：
-
-```text
-file
+```json
+{"error":"invalid_request","message":"请求参数不正确。"}
 ```
 
-3. 表单值选择“转换后的图像”。
-4. 添加请求头：
-
-```http
-Upload-Token: 你的_UPLOAD_TOKEN
-User-Agent: TicketBox/1.0 iOS-Shortcut
-```
-
-表单方式里，字段类型必须是文件或图片，不要把图片作为文本字段传。
+所以当前推荐只使用 `文件` 请求正文。后端仍兼容标准 `multipart/form-data`，但它主要用于 curl、测试脚本或其他能明确发送文件字段的客户端，不作为 iOS 快捷指令首选配置。
 
 ## 注意事项
 
@@ -113,7 +102,7 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 - `Upload-Token` 的值只填 token 本身，不要填 `Bearer`、冒号或引号。
 - `User-Agent` 必须一起添加。Cloudflare 可能会把没有标准 `User-Agent` 的快捷指令请求拦截为 `error code: 1010`，手机上会显示成“网络中断”。
 - 后端可以接受 HEIC，但第一版 Android 不保证 HEIC 原图预览；建议快捷指令转换为 JPEG 或 PNG。
-- 如果提示“网络中断”，优先改用上面的“文件”请求正文；表单上传在部分快捷指令配置下容易把图片变成文本字段。
+- 如果提示“请求参数不正确”，检查请求正文是否误选为 `表单`；iOS 26.4 应改为 `文件`。
 - 离开家里 Wi-Fi 后仍然使用 `https://api.zen70.cn/api/upload-screenshot`。如果蜂窝网络下提示“网络中断”，先用 Safari 打开 `https://api.zen70.cn/api/health`。
 - 不要开放路由器端口。
 - 不要把 Windows `uploads` 目录公开到公网。

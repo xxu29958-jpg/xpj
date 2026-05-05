@@ -102,17 +102,17 @@ Invoke-RestMethod https://api.你的域名.com/api/auth/check -Headers $headers
 https://api.你的域名.com/api/upload-screenshot
 ```
 
-请求体使用 `multipart/form-data`：
+请求体使用 `文件`，不要使用 `表单`：
 
 ```text
-字段名：file
-字段值：图片文件
+文件：转换后的图像
 ```
 
 请求头：
 
 ```text
 Upload-Token: 你的UPLOAD_TOKEN
+User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
 成功后显示：
@@ -126,6 +126,7 @@ Upload-Token: 你的UPLOAD_TOKEN
 - 后端接受 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 第一版 Android 预览 HEIC 不做强保证，所以快捷指令优先转 JPEG 或 PNG。
 - iPhone 上传只使用 `UPLOAD_TOKEN`，不要使用 `APP_TOKEN`。
+- iOS 26.4 真机已验证：`表单` 模式会导致 `invalid_request` 的概率更高，稳定配置是“请求正文：文件”。
 
 ## 4. Android 真机安装
 

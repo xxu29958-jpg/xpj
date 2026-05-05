@@ -126,16 +126,17 @@ https://api.你的域名.com/api/upload-screenshot
 
 ```text
 Upload-Token: 你的UPLOAD_TOKEN
+User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
 请求体：
 
 ```text
-multipart/form-data
-字段名：file
+文件
+文件值：转换后的图像
 ```
 
-建议在快捷指令里先转换为 JPEG 或 PNG。
+建议在快捷指令里先转换为 JPEG 或 PNG。iOS 26.4 实测应使用“文件”请求正文，不要使用“表单”请求正文。
 
 ## Android 绑定地址
 
@@ -181,7 +182,8 @@ Android App 只用 Authorization: Bearer APP_TOKEN。
 上传失败：
 
 ```text
-确认快捷指令字段名是 file。
+确认快捷指令请求体是 文件，不是 表单。
+确认已添加 User-Agent: TicketBox/1.0 iOS-Shortcut。
 确认图片小于 10MB。
 优先把 HEIC 转成 JPEG 或 PNG。
 ```

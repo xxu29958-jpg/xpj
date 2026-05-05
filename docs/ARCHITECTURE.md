@@ -362,14 +362,17 @@ Android 首次绑定服务器时使用这个接口验证 Token。
 ```http
 POST /api/upload-screenshot
 Upload-Token: UPLOAD_TOKEN
-Content-Type: multipart/form-data
+User-Agent: TicketBox/1.0 iOS-Shortcut
+Content-Type: image/jpeg 或 image/png
 ```
 
-字段：
+请求体：
 
 ```text
-file: 图片文件
+原始图片文件内容
 ```
+
+后端也兼容标准 `multipart/form-data` 字段 `file`，但 iOS 26.4 快捷指令实测首选“请求正文：文件”，不要首选“表单”。
 
 行为：
 
@@ -849,9 +852,9 @@ updatedAt: String?
   -> 建议转换为 JPEG 或 PNG
   -> 使用 获取 URL 内容
   -> 方法 POST
-  -> multipart/form-data
-  -> 字段名 file
-  -> 添加 Upload-Token 请求头
+  -> 请求正文选择 文件
+  -> 文件选择 转换后的图像
+  -> 添加 Upload-Token 和 User-Agent 请求头
   -> 成功后显示 已上传到小票夹
 ```
 
@@ -865,6 +868,7 @@ https://api.我的域名.com/api/upload-screenshot
 
 ```http
 Upload-Token: xxxxxx
+User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
 失败时显示后端返回的中文错误信息。
