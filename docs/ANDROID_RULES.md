@@ -1,6 +1,6 @@
 # Android 开发规则
 
-灰度版 Android UX/UI 以 `docs/ANDROID_GRAY_UX_SPEC.md` 为准。状态流以 `docs/ANDROID_STATE_FLOWS.md` 为准。外观、背景、预览、裁剪和沉浸模式以 `docs/ANDROID_APPEARANCE_BACKGROUND.md` 为准。普通用户主体验不得显示服务器域名、token、接口名、Cloudflare、端口、后端日志或诊断脚本。技术诊断只允许在 debug build 隐藏入口、Windows 运维脚本、运维文档或后续 Web 管理页中出现。
+灰度版 Android UX/UI 以 `docs/ANDROID_GRAY_UX_SPEC.md` 为准。状态流以 `docs/ANDROID_STATE_FLOWS.md` 为准。外观、背景、预览、裁剪和沉浸模式以 `docs/ANDROID_APPEARANCE_BACKGROUND.md` 为准。本阶段落地状态见 `docs/ANDROID_BACKGROUND_IMPLEMENTATION_STATUS.md`。普通用户主体验不得显示服务器域名、token、接口名、Cloudflare、端口、后端日志或诊断脚本。技术诊断只允许在 debug build 隐藏入口、Windows 运维脚本、运维文档或后续 Web 管理页中出现。
 
 Android 使用轻量 MVVM：
 

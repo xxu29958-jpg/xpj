@@ -491,6 +491,7 @@ Cloudflare Tunnel：在线
 - Android 灰度 UX 规格
 - Android 状态流规格
 - Android 外观、背景与沉浸模式规格
+- Android 设置与背景系统实现状态
 - 灰度版产品规格
 
 ## 13. 执行顺序
