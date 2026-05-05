@@ -46,6 +46,7 @@
 ## Windows
 
 - `schtasks create`：https://learn.microsoft.com/windows-server/administration/windows-commands/schtasks-create
+- PowerShell `Register-ScheduledTask`：https://learn.microsoft.com/powershell/module/scheduledtasks/register-scheduledtask
 - PowerShell character encoding：https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding
 
 ## CI

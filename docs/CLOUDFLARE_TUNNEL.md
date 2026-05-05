@@ -89,13 +89,22 @@ powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
 当前 Windows 联调推荐同时启用两个登录自启任务：
 
 ```powershell
-Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel
+cd E:\projects\xiaopiaojia
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1
 ```
 
 其中：
 
 - `TicketboxBackend` 启动本机 FastAPI：`127.0.0.1:8000`。
 - `TicketboxCloudflareTunnel` 启动 Cloudflare Tunnel connector。
+
+查看任务状态：
+
+```powershell
+Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel
+```
+
+更完整的长期运行流程见 [Windows 长期运行 Runbook](WINDOWS_SERVICE_RUNBOOK.md)。
 
 只检查健康和 App Token，不上传测试图：
 
@@ -189,7 +198,7 @@ Android App 只用 Authorization: Bearer APP_TOKEN。
 查看后端和 Tunnel 当前状态、最近访问日志：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\show_server_status.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1
 ```
 
 出门前建议运行一键保障检查。它会尝试启动 FastAPI 后端、启动已安装的 cloudflared 服务或计划任务，并检查公网 health/auth：
