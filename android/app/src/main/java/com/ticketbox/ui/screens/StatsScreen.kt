@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.BudgetProgress
+import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.FrequentMerchant
@@ -105,6 +106,11 @@ fun StatsScreen(
             item {
                 RecentTrendCard(state.dailyTrend)
             }
+            state.categoryInsight?.let { insight ->
+                item {
+                    CategoryInsightCard(insight)
+                }
+            }
             state.lifestyleStats?.let { lifestyle ->
                 item {
                     LifestyleCard(lifestyle)
@@ -115,7 +121,8 @@ fun StatsScreen(
                     }
                 }
             }
-            if (stats.byCategory.isEmpty()) {
+            val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
+            if (visibleCategories.isEmpty()) {
                 item {
                     EmptyStatsCard(
                         title = "${displayMonthLabel(stats.month)} 暂无分类支出",
@@ -126,12 +133,46 @@ fun StatsScreen(
                 item {
                     Text("分类占比", style = MaterialTheme.typography.titleMedium)
                 }
-                items(stats.byCategory, key = { it.category }) { category ->
+                items(visibleCategories, key = { it.category }) { category ->
                     CategoryShareRow(
                         category = category,
                         totalAmountCents = stats.totalAmountCents,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryInsightCard(insight: CategoryInsight) {
+    val concentration = if (insight.isConcentrated) "支出比较集中" else "支出比较分散"
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.46f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("分类洞察", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "主要花在「${insight.topCategory}」，占本月 ${insight.topSharePercent}%。",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MetricPill(
+                    modifier = Modifier.weight(1f),
+                    label = concentration,
+                    value = formatAmount(insight.topAmountCents),
+                )
+                MetricPill(
+                    modifier = Modifier.weight(1f),
+                    label = "${insight.categoryCount} 个分类",
+                    value = "均笔 ${formatAmount(insight.averagePerExpenseCents)}",
+                )
             }
         }
     }

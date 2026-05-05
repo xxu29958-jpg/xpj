@@ -44,6 +44,15 @@ data class CategoryStats(
     val count: Int,
 )
 
+data class CategoryInsight(
+    val topCategory: String,
+    val topAmountCents: Long,
+    val topSharePercent: Int,
+    val averagePerExpenseCents: Long,
+    val categoryCount: Int,
+    val isConcentrated: Boolean,
+)
+
 data class MonthlyStats(
     val month: String,
     val totalAmountCents: Long,

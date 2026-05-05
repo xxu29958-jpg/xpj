@@ -161,6 +161,44 @@ class ExpenseFiltersTest {
         assertEquals(null, monthlyBudgetProgress(stats, 0))
     }
 
+    @Test
+    fun buildsCategoryInsightAndSkipsZeroCategories() {
+        val insight = monthlyCategoryInsight(
+            MonthlyStats(
+                month = "2026-05",
+                totalAmountCents = 10_000,
+                count = 4,
+                byCategory = listOf(
+                    CategoryStats(category = "吃饭", amountCents = 7_000, count = 3),
+                    CategoryStats(category = "交通", amountCents = 3_000, count = 1),
+                    CategoryStats(category = "游戏", amountCents = 0, count = 0),
+                ),
+            ),
+        )
+
+        checkNotNull(insight)
+        assertEquals("吃饭", insight.topCategory)
+        assertEquals(70, insight.topSharePercent)
+        assertEquals(2_500, insight.averagePerExpenseCents)
+        assertEquals(2, insight.categoryCount)
+        assertEquals(true, insight.isConcentrated)
+    }
+
+    @Test
+    fun skipsCategoryInsightWithoutRealSpending() {
+        assertEquals(
+            null,
+            monthlyCategoryInsight(
+                MonthlyStats(
+                    month = "2026-05",
+                    totalAmountCents = 0,
+                    count = 0,
+                    byCategory = listOf(CategoryStats(category = "其他", amountCents = 0, count = 0)),
+                ),
+            ),
+        )
+    }
+
     private fun expense(
         id: Long,
         category: String,
