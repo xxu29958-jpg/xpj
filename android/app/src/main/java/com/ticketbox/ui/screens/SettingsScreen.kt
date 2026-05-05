@@ -163,7 +163,8 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 18.dp),
+            .padding(horizontal = 20.dp)
+            .padding(top = 18.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Text("设置", style = MaterialTheme.typography.headlineSmall)

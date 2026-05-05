@@ -17,7 +17,7 @@ fun RefreshableLazyColumn(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(16.dp),
+    contentPadding: PaddingValues = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(12.dp),
     content: LazyListScope.() -> Unit,
 ) {
