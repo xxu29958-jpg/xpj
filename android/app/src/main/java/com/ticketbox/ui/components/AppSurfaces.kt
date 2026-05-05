@@ -194,6 +194,7 @@ fun QuietOutlinedButton(
     text: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    leadingIcon: ImageVector? = null,
     onClick: () -> Unit,
 ) {
     OutlinedButton(
@@ -209,6 +210,10 @@ fun QuietOutlinedButton(
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
         ),
     ) {
+        leadingIcon?.let {
+            Icon(it, contentDescription = null, modifier = Modifier.size(18.dp))
+            Box(modifier = Modifier.width(8.dp))
+        }
         Text(text)
     }
 }

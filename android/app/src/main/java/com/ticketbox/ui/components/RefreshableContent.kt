@@ -28,6 +28,7 @@ fun RefreshableLazyColumn(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding(),
+        indicator = {},
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

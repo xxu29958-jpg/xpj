@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -67,7 +68,7 @@ fun PendingScreen(
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 128.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 128.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -191,9 +192,16 @@ private fun PendingTop(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PendingHeroMetric("$pendingCount", "待确认")
-                    PendingHeroMetric("$duplicateCount", "疑似重复")
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (pendingCount == 0 && duplicateCount == 0) {
+                        PendingHeroStatusPill()
+                    } else {
+                        PendingHeroMetric("$pendingCount", "待确认")
+                        PendingHeroMetric("$duplicateCount", "疑似重复")
+                    }
                 }
             }
         }
@@ -207,6 +215,31 @@ private fun PendingTop(
             Spacer(Modifier.width(8.dp))
             Text(if (uploading) "正在上传截图" else "上传截图")
         }
+    }
+}
+
+@Composable
+private fun PendingHeroStatusPill() {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.16f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "今日状态",
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.72f),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = "无待确认",
+            color = MaterialTheme.colorScheme.onPrimary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Black,
+        )
     }
 }
 
@@ -372,13 +405,21 @@ private fun EmptyPendingState(
             title = "待处理",
             subtitle = "上传截图后，会出现在这里等你确认",
         )
-        SoftPanel {
+        SoftPanel(containerAlpha = 0.94f) {
             Row(
-                modifier = Modifier.padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ReceiptStub(compact = true)
+                Box(
+                    modifier = Modifier
+                        .size(112.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.26f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ReceiptStub(compact = true)
+                }
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -395,12 +436,13 @@ private fun EmptyPendingState(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             QuietOutlinedButton(
                 text = if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1.25f),
+                leadingIcon = Icons.Filled.Info,
                 onClick = onToggleGuide,
             )
             QuietOutlinedButton(
                 text = "刷新",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(0.75f),
                 enabled = !uploading,
                 onClick = onRefresh,
             )
