@@ -186,6 +186,34 @@ def test_recognize_text_extracts_receipt_fields(client: TestClient) -> None:
     assert payload["confidence"] >= 0.8
 
 
+def test_recognize_text_prefers_transaction_time_over_other_times(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "商品详情：超级咸蛋黄狮子头+泡椒脆笋鸭丝单人套餐",
+            "中国建设银行",
+            "交易提醒",
+            "交易时间：",
+            "2026年5月4日16:23:25",
+            "交易金额：",
+            "18.51(人民币)",
+            "京东快递",
+            "来电时间：",
+            "2026-05-04 06:49:50",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 1851
+    assert payload["merchant"] == "中国建设银行"
+    assert payload["expense_time"] == "2026-05-04T08:23:25Z"
+
+
 def test_mock_ocr_provider_populates_pending_draft() -> None:
     expense = Expense(category="其他", raw_text="")
     retry_ocr(expense, MockOcrProvider())
