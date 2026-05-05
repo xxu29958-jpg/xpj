@@ -8,6 +8,8 @@ Android 灰度版要从“联调工具”改成“普通人能直接使用的私
 
 普通用户不需要知道服务器怎么运行，也不需要看到接口名、token、域名、Cloudflare、端口或日志。
 
+状态流专项要求见 `docs/ANDROID_STATE_FLOWS.md`。外观、背景、预览、裁剪和沉浸模式专项要求见 `docs/ANDROID_APPEARANCE_BACKGROUND.md`。
+
 底部导航保留：
 
 ```text
@@ -207,6 +209,8 @@ Android 灰度版要从“联调工具”改成“普通人能直接使用的私
 ### 7.1 自定义背景与沉浸模式
 
 自定义背景属于主题之下的第三层氛围，不替代松雾、柚光、港湾、莓果、夜幕主题。
+
+详细产品和工程验收以 `docs/ANDROID_APPEARANCE_BACKGROUND.md` 为准。
 
 落地要求：
 

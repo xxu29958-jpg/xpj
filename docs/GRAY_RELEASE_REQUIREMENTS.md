@@ -8,6 +8,8 @@
 
 - `docs/GRAY_RELEASE_PRODUCT_SPEC.md`
 - `docs/ANDROID_GRAY_UX_SPEC.md`
+- `docs/ANDROID_STATE_FLOWS.md`
+- `docs/ANDROID_APPEARANCE_BACKGROUND.md`
 - `docs/MULTI_TENANT_SPEC.md`
 - `docs/ANDROID_UPLOAD.md`
 - `docs/RELEASE_PACKAGING.md`
@@ -487,6 +489,8 @@ Cloudflare Tunnel：在线
 - Android 上传说明
 - 阶段性验收清单
 - Android 灰度 UX 规格
+- Android 状态流规格
+- Android 外观、背景与沉浸模式规格
 - 灰度版产品规格
 
 ## 13. 执行顺序
