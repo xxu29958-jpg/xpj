@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,7 +37,9 @@ import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.RefreshableLazyColumn
+import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.viewmodel.StatsUiState
@@ -69,23 +70,26 @@ fun StatsScreen(
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("统计", style = MaterialTheme.typography.headlineSmall)
+                ScreenHeader(
+                    title = "统计",
+                    subtitle = "看看这个月的钱花在哪。",
+                ) {
+                    QuietOutlinedButton(
+                        text = if (state.loading) "刷新中" else "刷新",
+                        enabled = !state.loading,
+                        onClick = onRefresh,
+                    )
+                }
                 MonthSelectorButton(
                     selectedMonth = state.month,
                     label = "统计月份",
                     onClick = { showMonthPicker = true },
                 )
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onRefresh,
-                ) {
-                    Text(if (state.loading) "刷新中" else "刷新统计")
-                }
             }
         }
         state.message?.let {
@@ -300,7 +304,7 @@ private fun StatsOverviewCard(
             )
             Text(
                 text = formatAmount(stats.totalAmountCents),
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
             comparison?.let {

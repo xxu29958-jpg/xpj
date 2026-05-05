@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 
 private val PineScheme = darkColorScheme(
@@ -47,20 +50,28 @@ private val PomeloScheme = darkColorScheme(
 )
 
 private val HarborScheme = darkColorScheme(
-    primary = Color(0xFF8FE7E0),
-    onPrimary = Color(0xFF003733),
-    secondary = Color(0xFFFFC47D),
-    onSecondary = Color(0xFF2B1B00),
-    tertiary = Color(0xFFB9CAFF),
-    onTertiary = Color(0xFF17254A),
-    background = Color(0xFF05151F),
-    onBackground = Color(0xFFE7F1F3),
-    surface = Color(0xFF102836),
+    primary = Color(0xFF9BE0D9),
+    onPrimary = Color(0xFF062927),
+    secondary = Color(0xFFE7B77B),
+    onSecondary = Color(0xFF2B1B08),
+    tertiary = Color(0xFFC8C6FF),
+    onTertiary = Color(0xFF1D214D),
+    background = Color(0xFF06141A),
+    onBackground = Color(0xFFE7EFF0),
+    surface = Color(0xFF10242D),
     onSurface = Color(0xFFE9EEEE),
-    surfaceVariant = Color(0xFF1B3A49),
-    onSurfaceVariant = Color(0xFFC7D1CF),
+    surfaceVariant = Color(0xFF1B333B),
+    onSurfaceVariant = Color(0xFFC0CFD0),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
+)
+
+private val TicketboxShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
 
 private val BerryScheme = darkColorScheme(
@@ -107,10 +118,10 @@ fun backgroundBrushForSkin(skin: AppSkin): Brush {
         )
         AppSkin.Harbor -> Brush.verticalGradient(
             listOf(
-                Color(0xFF04121D),
-                Color(0xFF0C2A3C),
-                Color(0xFF173D44),
-                Color(0xFF2A2116),
+                Color(0xFF041017),
+                Color(0xFF0A1D25),
+                Color(0xFF112D32),
+                Color(0xFF1D2421),
             ),
         )
         AppSkin.Berry -> Brush.verticalGradient(
@@ -131,6 +142,7 @@ fun TicketboxTheme(
     MaterialTheme(
         colorScheme = colorSchemeForSkin(skin),
         typography = MaterialTheme.typography,
+        shapes = TicketboxShapes,
     ) {
         Box(
             modifier = Modifier

@@ -54,7 +54,10 @@ import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.RefreshableLazyColumn
+import com.ticketbox.ui.components.ScreenHeader
+import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.displayMonthLabel
@@ -116,7 +119,7 @@ fun LedgerScreen(
     RefreshableLazyColumn(
         isRefreshing = state.syncing,
         onRefresh = onSync,
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -168,65 +171,70 @@ private fun LedgerFilterPanel(
     onManualAdd: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        ScreenHeader(
+            title = "账本",
+            subtitle = "按月份和分类看已入账消费。",
         ) {
-            Text("账本", style = MaterialTheme.typography.headlineSmall)
             Button(onClick = onManualAdd) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("记一笔")
             }
         }
-        MonthSelectorButton(
-            selectedMonth = state.monthFilter,
-            onClick = onOpenMonthPicker,
-        )
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("搜索账单") },
-            placeholder = { Text("商家、备注、标签") },
-            singleLine = true,
-        )
-        CategoryFilterRow(
-            categories = state.categories,
-            selectedCategory = state.categoryFilter,
-            onCategoryChange = onCategoryChange,
-        )
-        Text(
-            text = ledgerFilterSummary(state),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        LedgerSummaryStrip(state)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                modifier = Modifier.weight(1f),
-                onClick = onSync,
+        SoftPanel {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(if (state.syncing) "同步中" else "同步账本")
+                MonthSelectorButton(
+                    selectedMonth = state.monthFilter,
+                    onClick = onOpenMonthPicker,
+                )
+                OutlinedTextField(
+                    value = state.query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("搜索账单") },
+                    placeholder = { Text("商家、备注、标签") },
+                    singleLine = true,
+                )
+                CategoryFilterRow(
+                    categories = state.categories,
+                    selectedCategory = state.categoryFilter,
+                    onCategoryChange = onCategoryChange,
+                )
+                Text(
+                    text = ledgerFilterSummary(state),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                LedgerSummaryStrip(state)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = onSync,
+                    ) {
+                        Text(if (state.syncing) "同步中" else "同步")
+                    }
+                    QuietOutlinedButton(
+                        text = if (state.exporting) "导出中" else "导出",
+                        modifier = Modifier.weight(1f),
+                        enabled = canExport,
+                        onClick = onExportCsv,
+                    )
+                    QuietOutlinedButton(
+                        text = "清筛选",
+                        onClick = onClearFilters,
+                    )
+                }
+                if (state.items.isEmpty()) {
+                    Text(
+                        text = "当前没有可导出的已确认账单。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
-            OutlinedButton(
-                modifier = Modifier.weight(1f),
-                enabled = canExport,
-                onClick = onExportCsv,
-            ) {
-                Text(if (state.exporting) "导出中" else "导出账单")
-            }
-            OutlinedButton(onClick = onClearFilters) {
-                Text("清筛选")
-            }
-        }
-        if (state.items.isEmpty()) {
-            Text(
-                text = "当前没有可导出的已确认账单。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
     }
 }
@@ -234,11 +242,11 @@ private fun LedgerFilterPanel(
 @Composable
 private fun LedgerSummaryStrip(state: LedgerUiState) {
     val total = state.items.sumOf { it.amountCents ?: 0L }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
-        ),
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,14 +16,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,7 +34,10 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
+import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.RefreshableLazyColumn
+import com.ticketbox.ui.components.ScreenHeader
+import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.viewmodel.PendingUiState
 
 private enum class PendingDisplayMode {
@@ -127,15 +125,10 @@ fun PendingScreen(
 
 @Composable
 private fun LoadingPendingState() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        ),
-    ) {
+    SoftPanel {
         Text(
-            text = "正在加载待确认账单...",
-            modifier = Modifier.padding(18.dp),
+            text = "正在整理待确认账单...",
+            modifier = Modifier.padding(16.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -151,41 +144,23 @@ private fun PendingHeader(
     onRefresh: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        ScreenHeader(
+            title = "待确认账单",
+            subtitle = "截图先变成草稿，确认后才入账。",
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("待确认账单", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    text = "截图上传后先在这里核对，确认后才会入账。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuietOutlinedButton(
+                    text = if (loading) "刷新中" else "刷新",
+                    enabled = !loading,
+                    onClick = onRefresh,
                 )
-            }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
                 Button(
                     enabled = !uploading,
                     onClick = onUploadScreenshot,
                 ) {
                     Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (uploading) "上传中" else "上传截图")
-                }
-                OutlinedButton(
-                    enabled = !loading,
-                    onClick = onRefresh,
-                ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (loading) "刷新中" else "刷新")
+                    Text(if (uploading) "上传中" else "上传")
                 }
             }
         }
@@ -219,58 +194,57 @@ private fun EmptyPendingState(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-            ),
+        ScreenHeader(
+            title = "待确认账单",
+            subtitle = "0 笔待处理，上传截图后会出现在这里。",
         ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Button(
+                enabled = !uploading,
+                onClick = onUploadScreenshot,
+            ) {
+                Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (uploading) "上传中" else "上传")
+            }
+        }
+        SoftPanel {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 ReceiptEmptyIllustration()
-                Spacer(Modifier.height(2.dp))
-                Text("还没有待确认账单", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    text = "截图上传后，会出现在这里等你确认。识别结果只是草稿，不会自动入账。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uploading,
-                    onClick = onUploadScreenshot,
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (uploading) "上传中" else "上传截图")
-                }
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onToggleGuide,
-                ) {
-                    Text(if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令")
-                }
-                OutlinedButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uploading,
-                    onClick = onRefresh,
-                ) {
-                    Text("刷新看看")
+                    Text("还没有待确认账单", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = "识别结果只是草稿，确认后才会入账。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuietOutlinedButton(
+                text = if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令",
+                modifier = Modifier.weight(1f),
+                onClick = onToggleGuide,
+            )
+            QuietOutlinedButton(
+                text = "刷新",
+                modifier = Modifier.weight(1f),
+                enabled = !uploading,
+                onClick = onRefresh,
+            )
+        }
         if (showUploadGuide) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
-                ),
-            ) {
+            SoftPanel(containerAlpha = 0.52f) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -289,15 +263,15 @@ private fun EmptyPendingState(
 private fun ReceiptEmptyIllustration() {
     Box(
         modifier = Modifier
-            .size(92.dp)
+            .size(68.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(22.dp))
+                .size(48.dp)
+                .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)),
             contentAlignment = Alignment.Center,
         ) {
@@ -305,7 +279,7 @@ private fun ReceiptEmptyIllustration() {
                 imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(28.dp),
             )
         }
     }

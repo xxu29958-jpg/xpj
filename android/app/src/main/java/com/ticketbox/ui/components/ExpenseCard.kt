@@ -3,13 +3,11 @@ package com.ticketbox.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -21,6 +19,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
@@ -74,24 +74,42 @@ fun ExpenseCard(
         )
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.medium,
-    ) {
+    SoftPanel(containerAlpha = 0.60f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (expense.imagePath != null && previewMode == ExpensePreviewMode.Compact) {
+                    ExpenseImagePreview(
+                        image = thumbnail,
+                        placeholder = "截图",
+                        compact = true,
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatusPill(
+                            text = expense.category,
+                            active = false,
+                        )
+                        if (expense.amountCents == null) {
+                            StatusPill(text = "待填写")
+                        } else if ((expense.confidence ?: 1.0) < 0.62) {
+                            StatusPill(text = "请核对")
+                        }
+                    }
                     Text(
                         text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
                         style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
@@ -101,24 +119,20 @@ fun ExpenseCard(
                 }
                 Text(
                     text = formatAmount(expense.amountCents),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.End,
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text(expense.category) })
-                AssistChip(onClick = {}, label = { Text(expense.source) })
-                if (expense.duplicateStatus == "suspected") {
-                    AssistChip(onClick = {}, label = { Text("可能重复") })
-                }
+            expense.note?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-
-            Text(
-                text = expense.note?.takeIf { it.isNotBlank() } ?: "没有备注",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             if (expense.imagePath != null) {
                 val imagePlaceholder = if (expense.thumbnailPath != null) {
@@ -126,38 +140,16 @@ fun ExpenseCard(
                 } else {
                     "截图已保存，当前格式暂不预览"
                 }
-                if (previewMode == ExpensePreviewMode.Compact) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ExpenseImagePreview(
-                            image = thumbnail,
-                            placeholder = "截图",
-                            compact = true,
-                        )
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                text = imagePlaceholder,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            OutlinedButton(
-                                enabled = actionsEnabled,
-                                onClick = onEdit,
-                            ) {
-                                Text("查看截图")
-                            }
-                        }
-                    }
-                } else {
+                if (previewMode == ExpensePreviewMode.Comfortable) {
                     ExpenseImagePreview(
                         image = thumbnail,
                         placeholder = imagePlaceholder,
+                    )
+                } else {
+                    Text(
+                        text = imagePlaceholder,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -175,27 +167,33 @@ fun ExpenseCard(
             }
 
             if (showActions) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    QuietOutlinedButton(
+                        text = "编辑",
+                        modifier = Modifier.weight(1f),
                         enabled = actionsEnabled,
                         onClick = onEdit,
-                    ) {
-                        Text("编辑")
-                    }
+                    )
                     if (showConfirmAction) {
                         Button(
+                            modifier = Modifier.weight(1f),
                             enabled = actionsEnabled,
                             onClick = onConfirm,
                         ) {
-                            Text("确认")
+                            Text("入账")
                         }
                     }
                     if (showRejectAction) {
+                        Spacer(Modifier.weight(0.15f))
                         OutlinedButton(
                             enabled = actionsEnabled,
                             onClick = { showRejectDialog = true },
                         ) {
-                            Text("删除")
+                            Text("忽略")
                         }
                     }
                 }

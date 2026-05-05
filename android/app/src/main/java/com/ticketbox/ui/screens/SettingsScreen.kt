@@ -64,6 +64,9 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.ScreenHeader
+import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
 
@@ -166,10 +169,13 @@ fun SettingsScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = 18.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+            .padding(top = 8.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("设置", style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader(
+            title = "设置",
+            subtitle = "账本状态、外观和本机数据。",
+        )
 
         AccountStatusCard(
             serverSettings = state.serverSettings,
@@ -384,12 +390,7 @@ fun SettingsScreen(
         }
 
         SettingSection(title = "关于") {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                ),
-            ) {
+            SoftPanel {
                 Column(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -420,56 +421,50 @@ private fun AccountStatusCard(
     onRefresh: () -> Unit,
 ) {
     val ledgerName = serverSettings?.tenantName?.takeIf { it.isNotBlank() } ?: "我的小票夹"
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-        ),
-    ) {
+    SoftPanel(containerAlpha = 0.66f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("当前账本", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(ledgerName, style = MaterialTheme.typography.titleLarge)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = "当前账本",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        text = ledgerName,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 StatusPill(connected = serverSettings != null)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatusMetric(
-                    modifier = Modifier.weight(1f),
-                    label = "待确认",
-                    value = "${serverSettings?.pendingCount ?: 0} 笔",
-                )
-                StatusMetric(
-                    modifier = Modifier.weight(1f),
-                    label = "已入账",
-                    value = "${serverSettings?.confirmedCount ?: 0} 笔",
-                )
-            }
-            StatusLine(
-                label = "最近上传",
-                value = (lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) } ?: "还没有上传",
+            AccountInfoLine(
+                text = "最近上传：${(lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) } ?: "还没有上传"}",
             )
-            StatusLine(
-                label = "最近同步",
-                value = lastSyncAt?.let { displayTime(it) } ?: "还没有同步",
+            AccountInfoLine(
+                text = "最近同步：${lastSyncAt?.let { displayTime(it) } ?: "还没有同步"} · 存储正常",
             )
-            StatusLine(label = "存储状态", value = "正常")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(
+            Row(
+                modifier = Modifier.padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                QuietOutlinedButton(
+                    text = if (busy) "处理中" else "检查连接",
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
                     onClick = onCheckConnection,
-                ) {
-                    Text(if (busy) "处理中" else "检查连接")
-                }
+                )
                 Button(
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
@@ -575,32 +570,15 @@ private fun StatusPill(connected: Boolean) {
 }
 
 @Composable
-private fun StatusMetric(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String,
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-        Text(value, style = MaterialTheme.typography.titleSmall)
-    }
-}
-
-@Composable
-private fun StatusLine(label: String, value: String) {
-    Row(
+private fun AccountInfoLine(text: String) {
+    Text(
+        text = text,
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @Composable
@@ -860,7 +838,7 @@ private fun SkinOptionCard(
     val borderColor = if (selected) scheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
 
     Card(
-        modifier = modifier.height(164.dp),
+        modifier = modifier.height(142.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, borderColor),
@@ -868,7 +846,7 @@ private fun SkinOptionCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
+                .padding(10.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             SkinPreview(scheme = scheme)
@@ -913,8 +891,8 @@ private fun SkinPreview(scheme: ColorScheme) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(82.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .height(66.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -924,7 +902,7 @@ private fun SkinPreview(scheme: ColorScheme) {
                     ),
                 ),
             )
-            .padding(9.dp),
+            .padding(8.dp),
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -955,7 +933,7 @@ private fun SkinPreview(scheme: ColorScheme) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(30.dp)
+                    .height(25.dp)
                     .clip(RoundedCornerShape(11.dp))
                     .background(scheme.surface.copy(alpha = 0.90f))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
