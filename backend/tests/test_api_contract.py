@@ -164,6 +164,32 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient) -> None:
     assert item["image_hash"]
 
 
+def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"image": ("shortcut-image.jpeg", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    expense_id = int(response.json()["id"])
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == expense_id)
+    assert item["image_path"].endswith(".png")
+    assert item["image_hash"]
+
+
+def test_upload_screenshot_rejects_multipart_without_image_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"note": (None, "not an image")},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"error": "invalid_request", "message": "表单里没有找到图片文件。"}
+
+
 def test_recognize_text_extracts_receipt_fields(client: TestClient) -> None:
     expense_id = upload_png(client)
     raw_text = "\n".join(
