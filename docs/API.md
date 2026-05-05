@@ -332,6 +332,16 @@ Content-Type: application/json
 
 只能修改 `pending` 或 `confirmed`。
 
+### GET /api/expenses/{id}
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
+返回单条账单详情，响应结构同 `ExpenseResponse`。找不到返回 `expense_not_found`。
+
 ### POST /api/expenses/{id}/confirm
 
 请求头：
@@ -445,7 +455,7 @@ Authorization: Bearer APP_TOKEN
 Authorization: Bearer APP_TOKEN
 ```
 
-返回 `duplicate_status = suspected` 的账单列表。
+返回 `duplicate_status = suspected` 且未被拒绝的账单列表。
 
 第一版已支持两类提示：
 
