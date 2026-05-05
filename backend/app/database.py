@@ -37,9 +37,11 @@ def init_db() -> None:
 
 
 def seed_runtime_data() -> None:
+    from app.services.category_service import normalize_existing_expense_categories
     from app.services.classify_service import seed_default_rules
 
     with SessionLocal() as db:
+        normalize_existing_expense_categories(db)
         seed_default_rules(db)
 
 

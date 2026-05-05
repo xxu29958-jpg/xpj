@@ -106,7 +106,7 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
         json={
             "amount_cents": 3680,
             "merchant": "美团外卖",
-            "category": "吃饭",
+            "category": "餐饮",
             "note": "午饭",
             "expense_time": "2026-05-03T04:20:00Z",
         },
@@ -119,7 +119,7 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     assert response.json()["status"] == "confirmed"
 
     confirmed = client.get(
-        "/api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=吃饭",
+        "/api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=餐饮",
         headers=app_headers(),
     )
     assert confirmed.status_code == 200
@@ -127,13 +127,14 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
 
     categories = client.get("/api/expenses/categories", headers=app_headers())
     assert categories.status_code == 200
-    assert "吃饭" in categories.json()["items"]
+    assert "餐饮" in categories.json()["items"]
+    assert "吃饭" not in categories.json()["items"]
 
     months = client.get("/api/expenses/months", headers=app_headers())
     assert months.status_code == 200
     assert "2026-05" in months.json()["items"]
 
-    exported = client.get("/api/expenses/export.csv?month=2026-05&category=吃饭", headers=app_headers())
+    exported = client.get("/api/expenses/export.csv?month=2026-05&category=餐饮", headers=app_headers())
     assert exported.status_code == 200
     assert "text/csv" in exported.headers["content-type"]
     assert "美团外卖" in exported.text
@@ -164,7 +165,7 @@ def test_manual_expense_create_contract(client: TestClient) -> None:
         json={
             "amount_cents": 1280,
             "merchant": "手动早餐",
-            "category": "吃饭",
+            "category": "餐饮",
             "note": "上班路上",
             "expense_time": "2026-05-04T00:30:00Z",
             "tags": "手动",
@@ -181,7 +182,7 @@ def test_manual_expense_create_contract(client: TestClient) -> None:
     assert payload["image_path"] is None
     assert payload["confirmed_at"].endswith("Z")
 
-    confirmed = client.get("/api/expenses/confirmed?month=2026-05&category=吃饭", headers=app_headers())
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05&category=餐饮", headers=app_headers())
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 1
 
@@ -218,6 +219,14 @@ def test_expense_update_normalizes_user_text(client: TestClient) -> None:
     assert payload["category"] == "生活"
     assert payload["note"] == "夜宵"
     assert payload["tags"] == "真机联调"
+
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={"category": "吃饭"},
+    )
+    assert response.status_code == 200
+    assert response.json()["category"] == "餐饮"
 
     response = client.patch(
         f"/api/expenses/{expense_id}",

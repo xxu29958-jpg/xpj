@@ -22,13 +22,23 @@ class ExpenseMappersTest {
         assertEquals("服务器版本过旧，请重启 Windows 后端后再试。", error.message)
     }
 
-    private fun expenseDto(publicId: String?): ExpenseDto {
+    @Test
+    fun normalizesLegacyCategoryFromServer() {
+        val expense = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            category = "吃饭",
+        ).toDomain()
+
+        assertEquals("餐饮", expense.category)
+    }
+
+    private fun expenseDto(publicId: String?, category: String = "其他"): ExpenseDto {
         return ExpenseDto(
             id = 1,
             publicId = publicId,
             amountCents = 3680,
             merchant = "测试商家",
-            category = "其他",
+            category = category,
             note = "",
             source = "iPhone截图",
             imagePath = null,

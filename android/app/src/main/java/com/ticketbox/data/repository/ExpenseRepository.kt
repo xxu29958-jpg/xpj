@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.mergeExpenseCategories
 import com.ticketbox.security.SecureTokenStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -278,7 +279,7 @@ class ExpenseRepository(
     }
 
     suspend fun categories(): Result<List<String>> = safeCall {
-        api().categories().items
+        mergeExpenseCategories(api().categories().items)
     }
 
     suspend fun months(): Result<List<String>> = safeCall {

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, ExpenseUpdateRequest
+from app.services.category_service import merge_categories, normalize_category
 from app.services.classify_service import classify_expense
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.duplicate_service import (
@@ -26,7 +27,6 @@ from app.services.thumb_service import generate_thumbnail, resolve_protected_thu
 from app.services.time_service import ensure_utc, matches_month, now_utc
 
 
-DEFAULT_CATEGORIES = ["吃饭", "数码", "生活", "交通", "游戏", "AI订阅", "购物", "娱乐", "医疗", "其他"]
 EDITABLE_STATUSES = {"pending", "confirmed"}
 
 
@@ -44,7 +44,7 @@ def _clean_text(value: str | None) -> str:
 
 
 def _clean_category(value: str | None) -> str:
-    return (value or "其他").strip() or "其他"
+    return normalize_category(value)
 
 
 def create_pending_expense(db: Session, saved_file: SavedUpload) -> Expense:
@@ -158,7 +158,8 @@ def _filtered_confirmed(
 ) -> list[Expense]:
     expenses = list(db.scalars(_base_confirmed_query()))
     if category:
-        expenses = [item for item in expenses if item.category == category]
+        normalized_category = normalize_category(category)
+        expenses = [item for item in expenses if normalize_category(item.category) == normalized_category]
     if month:
         expenses = [item for item in expenses if matches_month(_stat_time(item), month)]
 
@@ -167,9 +168,7 @@ def _filtered_confirmed(
 
 
 def list_categories(db: Session) -> list[str]:
-    categories = set(DEFAULT_CATEGORIES)
-    categories.update(item for item in db.scalars(select(Expense.category).distinct()) if item)
-    return sorted(categories, key=lambda item: (item not in DEFAULT_CATEGORIES, DEFAULT_CATEGORIES.index(item) if item in DEFAULT_CATEGORIES else item))
+    return merge_categories(list(db.scalars(select(Expense.category).distinct())))
 
 
 def list_months(db: Session) -> list[str]:
@@ -360,8 +359,9 @@ def monthly_stats(db: Session, month: str) -> dict:
     for expense in expenses:
         amount = expense.amount_cents or 0
         total_amount_cents += amount
-        bucket = by_category[expense.category]
-        bucket["category"] = expense.category
+        category = normalize_category(expense.category)
+        bucket = by_category[category]
+        bucket["category"] = category
         bucket["amount_cents"] = int(bucket["amount_cents"]) + amount
         bucket["count"] = int(bucket["count"]) + 1
 
@@ -383,9 +383,11 @@ def lifestyle_stats(db: Session, month: str) -> dict:
     recent_start = now_utc() - timedelta(days=7)
 
     ai_subscription_amount_cents = sum(
-        item.amount_cents or 0 for item in month_expenses if item.category == "AI订阅"
+        item.amount_cents or 0 for item in month_expenses if normalize_category(item.category) == "AI订阅"
     )
-    digital_amount_cents = sum(item.amount_cents or 0 for item in month_expenses if item.category == "数码")
+    digital_amount_cents = sum(
+        item.amount_cents or 0 for item in month_expenses if normalize_category(item.category) == "数码"
+    )
     max_expense = max(month_expenses, key=lambda item: item.amount_cents or 0, default=None)
     recent_7_days_amount_cents = sum(
         item.amount_cents or 0

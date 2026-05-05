@@ -17,13 +17,14 @@ import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.normalizeExpenseCategory
 
 fun ExpenseDto.toDomain(): Expense = Expense(
     id = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,
     merchant = merchant,
-    category = category,
+    category = normalizeExpenseCategory(category),
     note = note,
     source = source,
     imagePath = imagePath,
@@ -50,7 +51,7 @@ fun ExpenseDto.toEntity(): ExpenseEntity = ExpenseEntity(
     publicId = requiredPublicId(),
     amountCents = amountCents,
     merchant = merchant,
-    category = category,
+    category = normalizeExpenseCategory(category),
     note = note,
     source = source,
     thumbnailPath = thumbnailPath,
@@ -81,7 +82,7 @@ fun ExpenseEntity.toDomain(): Expense = Expense(
     publicId = publicId,
     amountCents = amountCents,
     merchant = merchant,
-    category = category,
+    category = normalizeExpenseCategory(category),
     note = note,
     source = source,
     imagePath = null,
@@ -106,7 +107,7 @@ fun ExpenseEntity.toDomain(): Expense = Expense(
 fun ExpenseDraft.toRequest(): ExpenseUpdateRequest = ExpenseUpdateRequest(
     amountCents = amountCents,
     merchant = merchant,
-    category = category,
+    category = normalizeExpenseCategory(category),
     note = note,
     expenseTime = expenseTime,
     tags = tags,
@@ -122,7 +123,7 @@ fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(
 )
 
 fun CategoryStatsDto.toDomain(): CategoryStats = CategoryStats(
-    category = category,
+    category = normalizeExpenseCategory(category),
     amountCents = amountCents,
     count = count,
 )
@@ -144,7 +145,7 @@ fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(
 fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
     id = id,
     keyword = keyword,
-    category = category,
+    category = normalizeExpenseCategory(category),
     enabled = enabled,
     priority = priority,
     createdAt = createdAt,

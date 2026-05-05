@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.CsvExport
+import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.filterConfirmedExpenses
@@ -16,7 +17,7 @@ import java.time.YearMonth
 
 data class LedgerUiState(
     val items: List<Expense> = emptyList(),
-    val categories: List<String> = emptyList(),
+    val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
     val months: List<String> = emptyList(),
     val exportFile: CsvExport? = null,
     val monthFilter: String = YearMonth.now().toString(),
@@ -52,6 +53,7 @@ class LedgerViewModel(
         viewModelScope.launch {
             repository.categories()
                 .onSuccess { categories -> _uiState.update { it.copy(categories = categories) } }
+                .onFailure { _uiState.update { it.copy(categories = DEFAULT_EXPENSE_CATEGORIES) } }
         }
     }
 

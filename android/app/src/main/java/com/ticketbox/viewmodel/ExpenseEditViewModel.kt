@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
@@ -16,7 +17,7 @@ data class ExpenseEditUiState(
     val expense: Expense? = null,
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
-    val categories: List<String> = emptyList(),
+    val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
     val imageLoading: Boolean = false,
     val ocrRunning: Boolean = false,
     val saving: Boolean = false,
@@ -40,6 +41,7 @@ class ExpenseEditViewModel(
         viewModelScope.launch {
             repository.categories()
                 .onSuccess { categories -> _uiState.update { it.copy(categories = categories) } }
+                .onFailure { _uiState.update { it.copy(categories = DEFAULT_EXPENSE_CATEGORIES) } }
         }
     }
 

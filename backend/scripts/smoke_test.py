@@ -296,6 +296,7 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.status, 200, "manual create status")
     manual_expense = result.json()
     assert_equal(manual_expense["status"], "confirmed", "manual create confirmed")
+    assert_equal(manual_expense["category"], "餐饮", "manual create category alias")
     assert_equal(manual_expense["source"], "手动记账", "manual create source")
     assert_true(manual_expense["confirmed_at"].endswith("Z"), "manual confirmed_at should be ISO UTC")
     result = request(
@@ -338,7 +339,7 @@ def run_smoke(base_url: str) -> None:
         {
             "amount_cents": 3680,
             "merchant": "美团外卖",
-            "category": "吃饭",
+            "category": "餐饮",
             "note": "午饭",
             "expense_time": "2026-05-03T04:20:00Z",
         },
@@ -354,6 +355,7 @@ def run_smoke(base_url: str) -> None:
     patched = result.json()
     assert_equal(patched["amount_cents"], 3680, "patched amount")
     assert_equal(patched["merchant"], "美团外卖", "patched merchant")
+    assert_equal(patched["category"], "餐饮", "patched category")
     assert_true(patched["expense_time"].endswith("Z"), "expense time should be ISO UTC")
     print("OK patch expense")
 
@@ -384,7 +386,8 @@ def run_smoke(base_url: str) -> None:
 
     result = request("GET", f"{base_url}/api/expenses/categories", headers=app_headers())
     assert_equal(result.status, 200, "categories status")
-    assert_true("吃饭" in result.json()["items"], "categories include default")
+    assert_true("餐饮" in result.json()["items"], "categories include default")
+    assert_true("吃饭" not in result.json()["items"], "categories hide legacy alias")
     print("OK categories")
 
     result = request("GET", f"{base_url}/api/expenses/months", headers=app_headers())
@@ -407,7 +410,7 @@ def run_smoke(base_url: str) -> None:
     stats = result.json()
     assert_equal(stats["total_amount_cents"], 4960, "stats total")
     assert_equal(stats["count"], 2, "stats count")
-    assert_equal(stats["by_category"][0]["category"], "吃饭", "stats category")
+    assert_equal(stats["by_category"][0]["category"], "餐饮", "stats category")
     print("OK monthly stats")
 
     result = request("GET", f"{base_url}/api/rules/categories", headers=app_headers())

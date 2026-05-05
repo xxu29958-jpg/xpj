@@ -257,13 +257,13 @@ category: 分类，可选
 Authorization: Bearer APP_TOKEN
 ```
 
-返回默认分类和数据库中已有分类。
+返回标准默认分类和数据库中已有分类。旧版 `吃饭` 会兼容归一到 `餐饮`。
 
 返回：
 
 ```json
 {
-  "items": ["吃饭", "数码", "生活", "交通", "游戏", "AI订阅", "购物", "娱乐", "医疗", "其他"]
+  "items": ["餐饮", "交通", "购物", "娱乐", "医疗", "教育", "住房", "通讯", "AI订阅", "数码", "游戏", "生活", "其他"]
 }
 ```
 
@@ -317,7 +317,7 @@ Content-Type: application/json
 {
   "amount_cents": 3680,
   "merchant": "美团外卖",
-  "category": "吃饭",
+  "category": "餐饮",
   "note": "午饭",
   "expense_time": "2026-05-03T04:20:00Z",
   "tags": "真香",
@@ -501,7 +501,7 @@ month=2026-05
   "count": 30,
   "by_category": [
     {
-      "category": "吃饭",
+      "category": "餐饮",
       "amount_cents": 52050,
       "count": 18
     }
