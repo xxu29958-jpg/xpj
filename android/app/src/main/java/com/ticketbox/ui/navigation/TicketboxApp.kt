@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,6 +65,8 @@ import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.screens.PendingScreen
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.ui.screens.StatsScreen
+import com.ticketbox.ui.theme.AppElevation
+import com.ticketbox.ui.theme.AppRadius
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
@@ -367,10 +370,10 @@ private fun TicketboxBottomBar(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = RoundedCornerShape(AppRadius.bottomBar),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
             tonalElevation = 0.dp,
-            shadowElevation = 16.dp,
+            shadowElevation = AppElevation.floatingBottomBarShadow,
         ) {
             Row(
                 modifier = Modifier
@@ -415,7 +418,7 @@ private fun BottomBarItem(
     if (selected) {
         Row(
             modifier = Modifier
-                .clip(MaterialTheme.shapes.large)
+                .clip(RoundedCornerShape(AppRadius.large))
                 .clickable(onClick = onClick)
                 .background(background)
                 .padding(horizontal = 16.dp, vertical = 13.dp),
@@ -438,7 +441,7 @@ private fun BottomBarItem(
     } else {
         Column(
             modifier = Modifier
-                .clip(MaterialTheme.shapes.large)
+                .clip(RoundedCornerShape(AppRadius.large))
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,

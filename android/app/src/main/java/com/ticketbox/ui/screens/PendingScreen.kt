@@ -33,11 +33,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.DeepHeroPanel
+import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.AppHeroCard
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.QuietOutlinedButton
@@ -47,7 +50,9 @@ import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SectionTitle
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.theme.AppRadius
+import com.ticketbox.ui.theme.AppSpacing
+import com.ticketbox.ui.theme.LocalThemeVisuals
 import com.ticketbox.viewmodel.PendingUiState
 
 private enum class PendingDisplayMode {
@@ -70,14 +75,20 @@ fun PendingScreen(
     val duplicateCount = state.items.count { it.duplicateStatus == "suspected" }
     val density = LocalDensity.current
     val contentTopPadding = 4.dp
-    val bottomContentPadding = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() } + 24.dp
+    val bottomContentPadding = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() } +
+        AppSpacing.bottomContentPadding
 
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
         modifier = Modifier.offset(y = (-8).dp),
-        contentPadding = PaddingValues(start = 20.dp, top = contentTopPadding, end = 20.dp, bottom = bottomContentPadding),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(
+            start = AppSpacing.screenHorizontal,
+            top = contentTopPadding,
+            end = AppSpacing.screenHorizontal,
+            bottom = bottomContentPadding,
+        ),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         item {
             PendingTop(
@@ -153,7 +164,7 @@ fun PendingScreen(
 
 @Composable
 private fun PendingMessageCard(message: String) {
-    SoftPanel(containerAlpha = 0.96f) {
+    AppGlassCard(containerAlpha = 0.94f) {
         Row(
             modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -191,7 +202,7 @@ private fun PendingTop(
     uploading: Boolean,
     onUploadScreenshot: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
         ScreenHeader(
             title = if (pendingCount > 0) {
                 "今天有 $pendingCount 张截图待确认"
@@ -203,10 +214,10 @@ private fun PendingTop(
             SafeBadge()
         }
 
-        DeepHeroPanel {
+        AppHeroCard {
             Row(
-                modifier = Modifier.padding(18.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(AppSpacing.cardPadding),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
@@ -258,12 +269,12 @@ private fun PendingTop(
 private fun PendingHeroStatusPill() {
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f))
+            .clip(RoundedCornerShape(AppRadius.medium))
+            .background(Color.White.copy(alpha = 0.18f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f),
-                shape = RoundedCornerShape(18.dp),
+                color = Color.White.copy(alpha = 0.24f),
+                shape = RoundedCornerShape(AppRadius.medium),
             )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -288,12 +299,12 @@ private fun PendingHeroStatusPill() {
 private fun PendingHeroMetric(value: String, label: String) {
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.86f))
+            .clip(RoundedCornerShape(AppRadius.medium))
+            .background(Color.White.copy(alpha = 0.88f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.32f),
-                shape = RoundedCornerShape(18.dp),
+                color = Color.White.copy(alpha = 0.46f),
+                shape = RoundedCornerShape(AppRadius.medium),
             )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -315,7 +326,7 @@ private fun PendingHeroMetric(value: String, label: String) {
 
 @Composable
 private fun UploadFlowCard() {
-    SoftPanel(containerAlpha = 0.96f) {
+    AppGlassCard(containerAlpha = 0.92f) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -332,7 +343,7 @@ private fun UploadFlowCard() {
 
 @Composable
 private fun UploadProgressCard() {
-    SoftPanel(containerAlpha = 0.98f) {
+    AppGlassCard(containerAlpha = 0.96f) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -385,7 +396,7 @@ private fun FlowStep(
 
 @Composable
 private fun LoadingPendingState() {
-    SoftPanel {
+    AppGlassCard(containerAlpha = 0.94f) {
         Text(
             text = "正在整理待确认账单...",
             modifier = Modifier.padding(16.dp),
@@ -451,33 +462,13 @@ private fun EmptyPendingState(
             title = "待处理",
             subtitle = "上传截图后，会出现在这里等你确认",
         )
-        SoftPanel(containerAlpha = 0.98f) {
+        AppEmptyStateCard {
             Row(
-                modifier = Modifier.padding(18.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(AppSpacing.cardPadding),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(118.dp)
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(
-                            Brush.radialGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
-                                ),
-                            ),
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f),
-                            shape = RoundedCornerShape(32.dp),
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ReceiptStub(compact = true)
-                }
+                PendingReceiptArt()
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -506,7 +497,7 @@ private fun EmptyPendingState(
             )
         }
         if (showUploadGuide) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.94f) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -517,6 +508,45 @@ private fun EmptyPendingState(
                     Text("3. 上传成功后回到这里刷新。")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PendingReceiptArt() {
+    val visuals = LocalThemeVisuals.current
+    Box(
+        modifier = Modifier
+            .size(124.dp)
+            .clip(RoundedCornerShape(34.dp))
+            .background(
+                Brush.radialGradient(
+                    listOf(
+                        visuals.illustrationTint.copy(alpha = 0.38f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                    ),
+                ),
+            )
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.70f),
+                shape = RoundedCornerShape(34.dp),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(92.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
+                .border(
+                    width = 1.dp,
+                    color = visuals.illustrationTint.copy(alpha = 0.32f),
+                    shape = RoundedCornerShape(28.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            ReceiptStub(compact = true)
         }
     }
 }

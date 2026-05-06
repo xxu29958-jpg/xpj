@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.theme.AppElevation
+import com.ticketbox.ui.theme.AppRadius
+import com.ticketbox.ui.theme.LocalThemeVisuals
 
 @Composable
 fun ScreenHeader(
@@ -133,32 +137,37 @@ fun SoftPanel(
 }
 
 @Composable
-fun DeepHeroPanel(
+fun AppGlassCard(
     modifier: Modifier = Modifier,
+    containerAlpha: Float = 0.90f,
+    radius: RoundedCornerShape = RoundedCornerShape(AppRadius.large),
     content: @Composable () -> Unit,
 ) {
-    val shape = MaterialTheme.shapes.extraLarge
-    val primary = MaterialTheme.colorScheme.primary
-    val background = MaterialTheme.colorScheme.background
+    val visuals = LocalThemeVisuals.current
+    val resolvedAlpha = containerAlpha.coerceIn(0.72f, 1f)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = 22.dp, shape = shape, clip = false)
-            .clip(shape)
+            .shadow(
+                elevation = AppElevation.softCardShadow,
+                shape = radius,
+                clip = false,
+                ambientColor = visuals.shadowTint.copy(alpha = 0.16f),
+                spotColor = visuals.shadowTint.copy(alpha = 0.12f),
+            )
+            .clip(radius)
             .background(
-                Brush.linearGradient(
+                Brush.verticalGradient(
                     listOf(
-                        primary.copy(alpha = 0.98f),
-                        primary.blendTowards(background, 0.20f).copy(alpha = 0.98f),
-                        primary.tonalDarken(0.76f).copy(alpha = 0.96f),
-                        primary.tonalDarken(0.64f).copy(alpha = 0.94f),
+                        visuals.glassTint.copy(alpha = resolvedAlpha),
+                        MaterialTheme.colorScheme.surface.copy(alpha = (resolvedAlpha * 0.96f).coerceIn(0.74f, 1f)),
                     ),
                 ),
             )
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f),
-                shape = shape,
+                color = Color.White.copy(alpha = if (MaterialTheme.colorScheme.background.luminance() > 0.5f) 0.66f else 0.14f),
+                shape = radius,
             ),
     ) {
         content()
@@ -166,37 +175,144 @@ fun DeepHeroPanel(
 }
 
 @Composable
-fun PrimaryCtaButton(
+fun AppSolidCard(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    AppGlassCard(
+        modifier = modifier,
+        containerAlpha = 0.98f,
+        radius = RoundedCornerShape(AppRadius.large),
+        content = content,
+    )
+}
+
+@Composable
+fun AppEmptyStateCard(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    AppGlassCard(
+        modifier = modifier,
+        containerAlpha = 0.94f,
+        radius = RoundedCornerShape(AppRadius.large),
+        content = content,
+    )
+}
+
+@Composable
+fun AppHeroCard(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val visuals = LocalThemeVisuals.current
+    val shape = RoundedCornerShape(AppRadius.hero)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = AppElevation.heroShadow,
+                shape = shape,
+                clip = false,
+                ambientColor = visuals.shadowTint.copy(alpha = 0.22f),
+                spotColor = visuals.shadowTint.copy(alpha = 0.16f),
+            )
+            .clip(shape)
+            .background(Brush.linearGradient(visuals.heroGradient))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.20f),
+                shape = shape,
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.18f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.08f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.10f),
+                        ),
+                    ),
+                ),
+        )
+        content()
+    }
+}
+
+@Composable
+fun DeepHeroPanel(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    AppHeroCard(modifier = modifier, content = content)
+}
+
+@Composable
+fun AppPrimaryButton(
     text: String,
     icon: ImageVector,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val visuals = LocalThemeVisuals.current
     val shape = RoundedCornerShape(999.dp)
-    val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
-            .height(58.dp)
-            .shadow(elevation = if (enabled) 14.dp else 0.dp, shape = shape, clip = false)
+            .height(60.dp)
+            .shadow(
+                elevation = if (enabled) 16.dp else 0.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = visuals.shadowTint.copy(alpha = 0.22f),
+                spotColor = visuals.shadowTint.copy(alpha = 0.16f),
+            )
             .clip(shape)
             .background(
                 Brush.horizontalGradient(
                     listOf(
-                        primary.copy(alpha = 0.98f),
-                        primary.tonalDarken(0.78f).copy(alpha = 0.98f),
+                        visuals.primary.copy(alpha = 0.98f),
+                        visuals.primaryDark.copy(alpha = 0.98f),
                     ),
                 ),
             )
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.24f),
+                color = Color.White.copy(alpha = 0.26f),
                 shape = shape,
             )
             .alpha(if (enabled) 1f else 0.58f)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.16f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.08f),
+                        ),
+                    ),
+                ),
+        )
         Row(
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -215,6 +331,17 @@ fun PrimaryCtaButton(
             )
         }
     }
+}
+
+@Composable
+fun PrimaryCtaButton(
+    text: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    AppPrimaryButton(text = text, icon = icon, modifier = modifier, enabled = enabled, onClick = onClick)
 }
 
 private fun Color.tonalDarken(multiplier: Float): Color {
@@ -399,4 +526,8 @@ fun ReceiptStub(
                 .background(Color(0xFFE0D5C4)),
         )
     }
+}
+
+private fun Color.luminance(): Float {
+    return red * 0.299f + green * 0.587f + blue * 0.114f
 }

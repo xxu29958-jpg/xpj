@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,8 +24,10 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import android.view.View
@@ -173,41 +176,42 @@ fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
 }
 
 fun backgroundBrushForSkin(skin: AppSkin): Brush {
+    val visuals = themeVisualsForSkin(skin)
     return when (skin) {
         AppSkin.Pine -> Brush.verticalGradient(
             listOf(
-                Color(0xFFF7F7F1),
-                Color(0xFFEFF6F1),
-                Color(0xFFE5EFEC),
+                visuals.backgroundTop,
+                Color(0xFFF0F5EF),
+                visuals.backgroundBottom,
             ),
         )
         AppSkin.Pomelo -> Brush.verticalGradient(
             listOf(
-                Color(0xFFFFF8EA),
+                visuals.backgroundTop,
                 Color(0xFFF8EFD9),
-                Color(0xFFF2F1E7),
+                visuals.backgroundBottom,
             ),
         )
         AppSkin.Harbor -> Brush.verticalGradient(
             listOf(
-                Color(0xFFFAF7EF),
+                visuals.backgroundTop,
                 Color(0xFFF0F5F5),
                 Color(0xFFE5EFF1),
-                Color(0xFFD8E8EC),
+                visuals.backgroundBottom,
             ),
         )
         AppSkin.Berry -> Brush.verticalGradient(
             listOf(
-                Color(0xFFFFF4F7),
+                visuals.backgroundTop,
                 Color(0xFFF7ECEF),
-                Color(0xFFF1F2ED),
+                visuals.backgroundBottom,
             ),
         )
         AppSkin.Night -> Brush.verticalGradient(
             listOf(
-                Color(0xFF041018),
+                visuals.backgroundTop,
                 Color(0xFF071B20),
-                Color(0xFF0A2529),
+                visuals.backgroundBottom,
             ),
         )
     }
@@ -232,7 +236,10 @@ fun TicketboxTheme(
         shapes = TicketboxShapes,
     ) {
         TicketboxAtmosphereBackground(skin = skin) {
-            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+            CompositionLocalProvider(
+                LocalContentColor provides MaterialTheme.colorScheme.onBackground,
+                LocalThemeVisuals provides themeVisualsForSkin(skin),
+            ) {
                 content()
             }
         }
@@ -245,20 +252,41 @@ fun TicketboxAtmosphereBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit = {},
 ) {
+    val visuals = themeVisualsForSkin(skin)
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(backgroundBrushForSkin(skin)),
     ) {
+        AtmosphereWash(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = (-120).dp, y = (-120).dp)
+                .size(520.dp),
+            colors = listOf(
+                visuals.warmMist.copy(alpha = if (skin == AppSkin.Night) 0.18f else 0.32f),
+                Color.Transparent,
+            ),
+        )
+        AtmosphereWash(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .offset(x = 160.dp, y = (-30).dp)
+                .size(560.dp),
+            colors = listOf(
+                visuals.coolMist.copy(alpha = if (skin == AppSkin.Night) 0.22f else 0.26f),
+                Color.Transparent,
+            ),
+        )
         when (skin) {
             AppSkin.Pine -> {
-                AtmosphereBlob(
+                AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = 84.dp, y = (-44).dp)
-                        .size(300.dp),
+                        .offset(x = 96.dp, y = (-34).dp)
+                        .size(420.dp),
                     colors = listOf(
-                        Color(0xFF7EAD9F).copy(alpha = 0.34f),
+                        Color(0xFF7EAD9F).copy(alpha = 0.26f),
                         Color.Transparent,
                     ),
                 )
@@ -275,7 +303,7 @@ fun TicketboxAtmosphereBackground(
                 )
             }
             AppSkin.Harbor -> {
-                AtmosphereBlob(
+                AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 76.dp, y = (-36).dp)
@@ -285,7 +313,7 @@ fun TicketboxAtmosphereBackground(
                         Color.Transparent,
                     ),
                 )
-                AtmosphereBlob(
+                AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .offset(x = 104.dp)
@@ -308,7 +336,7 @@ fun TicketboxAtmosphereBackground(
                 )
             }
             AppSkin.Night -> {
-                AtmosphereBlob(
+                AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 74.dp, y = (-36).dp)
@@ -318,7 +346,7 @@ fun TicketboxAtmosphereBackground(
                         Color.Transparent,
                     ),
                 )
-                AtmosphereBlob(
+                AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .offset(x = (-88).dp, y = 88.dp)
@@ -330,7 +358,7 @@ fun TicketboxAtmosphereBackground(
                 )
             }
             AppSkin.Pomelo -> {
-                AtmosphereBlob(
+                AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset(x = (-88).dp, y = (-42).dp)
@@ -352,7 +380,7 @@ fun TicketboxAtmosphereBackground(
                 )
             }
             AppSkin.Berry -> {
-                AtmosphereBlob(
+                AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 64.dp, y = (-48).dp)
@@ -374,16 +402,38 @@ fun TicketboxAtmosphereBackground(
                 )
             }
         }
+        MistTextureOverlay(skin = skin, visuals = visuals)
         content()
     }
 }
 
 @Composable
-private fun AtmosphereBlob(
+private fun AtmosphereWash(
     modifier: Modifier,
     colors: List<Color>,
 ) {
     Box(modifier = modifier.background(Brush.radialGradient(colors)))
+}
+
+@Composable
+private fun MistTextureOverlay(
+    skin: AppSkin,
+    visuals: ThemeVisuals,
+) {
+    val lineAlpha = if (skin == AppSkin.Night) 0.08f else 0.10f
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val lineColor = visuals.coolMist.copy(alpha = lineAlpha)
+        repeat(10) { index ->
+            val y = size.height * (0.12f + index * 0.085f)
+            drawLine(
+                color = lineColor,
+                start = Offset(x = size.width * -0.10f, y = y),
+                end = Offset(x = size.width * 1.10f, y = y + size.height * 0.035f),
+                strokeWidth = 1.1f,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
 }
 
 @Composable
