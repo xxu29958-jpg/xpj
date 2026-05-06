@@ -41,6 +41,23 @@ cd E:\projects\xiaopiaojia\android
 
 All three commands passed for the current `grayDebug` variant before this acceptance record was written.
 
+Full project verification was also run after the screenshot pass:
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_project.ps1
+```
+
+Result:
+
+- Backend `compileall`: passed.
+- Backend `ruff check app scripts tests`: passed.
+- Backend `pytest`: 38 passed.
+- Backend `scripts\smoke_test.py`: passed.
+- Android `:app:testGrayDebugUnitTest`: passed.
+- Android `:app:assembleGrayDebug :app:assembleInternalDebug`: passed.
+- Android `:app:lintGrayDebug`: passed.
+
 ## Acceptance Notes
 
 - Page scaffold and bottom-bar avoidance are active on Pending, Ledger, Stats, Settings, Appearance, Background Gallery/Preview, and Expense Edit.
