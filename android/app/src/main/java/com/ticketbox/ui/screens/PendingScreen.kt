@@ -50,8 +50,8 @@ import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SectionTitle
-import com.ticketbox.ui.theme.AppRadius
-import com.ticketbox.ui.theme.AppSpacing
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.theme.LocalThemeVisuals
 import com.ticketbox.viewmodel.PendingUiState
 

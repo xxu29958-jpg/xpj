@@ -2,31 +2,7 @@ package com.ticketbox.ui.theme
 
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
-
-object AppSpacing {
-    val screenHorizontal: Dp = 24.dp
-    val cardPadding: Dp = 20.dp
-    val sectionGap: Dp = 24.dp
-    val cardGap: Dp = 16.dp
-    val bottomContentPadding: Dp = 120.dp
-}
-
-object AppRadius {
-    val small: Dp = 12.dp
-    val medium: Dp = 20.dp
-    val large: Dp = 28.dp
-    val hero: Dp = 36.dp
-    val bottomBar: Dp = 40.dp
-}
-
-object AppElevation {
-    val softCardShadow: Dp = 14.dp
-    val heroShadow: Dp = 24.dp
-    val floatingBottomBarShadow: Dp = 18.dp
-}
 
 data class ThemeVisuals(
     val primary: Color,

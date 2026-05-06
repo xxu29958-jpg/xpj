@@ -34,8 +34,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ticketbox.ui.theme.AppElevation
-import com.ticketbox.ui.theme.AppRadius
+import com.ticketbox.ui.design.AppElevation
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.theme.LocalThemeVisuals
 
 @Composable

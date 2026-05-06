@@ -65,8 +65,8 @@ import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.screens.PendingScreen
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.ui.screens.StatsScreen
-import com.ticketbox.ui.theme.AppElevation
-import com.ticketbox.ui.theme.AppRadius
+import com.ticketbox.ui.design.AppElevation
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
