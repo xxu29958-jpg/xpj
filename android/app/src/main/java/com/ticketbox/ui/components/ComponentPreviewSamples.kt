@@ -63,6 +63,25 @@ private fun AppVisualComponentsPreview() {
                     }
                 }
             }
+            AppEmptyStateCard {
+                Row(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    ReceiptIllustration(compact = true)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "还没有待确认账单",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                        )
+                        Text(
+                            text = "截图上传后不会自动入账，你确认后才会记录。",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             AppSolidCard {
                 Column(
                     modifier = Modifier.padding(20.dp),
