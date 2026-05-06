@@ -10,5 +10,5 @@ object AppSpacing {
     val cardGap: Dp = 16.dp
     val cardPadding: Dp = 20.dp
     val chipGap: Dp = 8.dp
-    val bottomContentPadding: Dp = 120.dp
+    val bottomContentPadding: Dp = 24.dp
 }
