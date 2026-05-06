@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +24,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.ProtectedImage
 import java.nio.ByteBuffer
@@ -34,6 +37,8 @@ fun ExpenseImagePreview(
     placeholder: String = "截图已上传",
     contentDescription: String = "账单截图",
     compact: Boolean = false,
+    compactSize: DpSize = DpSize(width = 96.dp, height = 128.dp),
+    displayHeight: Dp? = null,
 ) {
     val imageBitmap = remember(image) {
         decodeProtectedImage(image)
@@ -52,7 +57,11 @@ fun ExpenseImagePreview(
             modifier = modifier
                 .then(
                     if (compact) {
-                        Modifier.size(width = 96.dp, height = 128.dp)
+                        Modifier.size(compactSize)
+                    } else if (displayHeight != null) {
+                        Modifier
+                            .fillMaxWidth()
+                            .height(displayHeight)
                     } else {
                         Modifier
                             .fillMaxWidth()
@@ -79,7 +88,11 @@ fun ExpenseImagePreview(
         modifier = modifier
             .then(
                 if (compact) {
-                    Modifier.size(width = 96.dp, height = 128.dp)
+                    Modifier.size(compactSize)
+                } else if (displayHeight != null) {
+                    Modifier
+                        .fillMaxWidth()
+                        .height(displayHeight)
                 } else {
                     Modifier
                         .fillMaxWidth()

@@ -3,9 +3,11 @@ package com.ticketbox.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -40,10 +42,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpSize
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
@@ -104,6 +110,7 @@ fun ExpenseEditScreen(
     var showDatePicker by remember(currentExpense.id) { mutableStateOf(false) }
     var showTimePicker by remember(currentExpense.id) { mutableStateOf(false) }
     var showRejectDialog by remember(currentExpense.id) { mutableStateOf(false) }
+    var showLargeImage by remember(currentExpense.id) { mutableStateOf(false) }
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() } ?: "第一版为空"
     val previewImage = state.fullImage ?: state.thumbnail
 
@@ -245,52 +252,37 @@ fun ExpenseEditScreen(
                 StatusPill(if (currentExpense.status == "pending") "待确认" else "已入账")
             }
 
-        SoftPanel(containerAlpha = 0.98f) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("识别草稿", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    text = currentExpense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = formatAmount(currentExpense.amountCents),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatusPill(currentExpense.category)
-                    currentExpense.confidence?.let {
-                        StatusPill("可信度 ${(it * 100).toInt()}%", active = false)
-                    }
+        EditDraftPreviewCard(
+            expense = currentExpense,
+            previewImage = previewImage,
+            imageLoading = state.imageLoading,
+            ocrRunning = state.ocrRunning,
+            showLargeImage = showLargeImage,
+            onToggleLargeImage = {
+                if (!showLargeImage && state.fullImage == null) {
+                    onLoadFullImage()
                 }
-            }
+                showLargeImage = !showLargeImage
+            },
+            onRetryOcr = onRetryOcr,
+        )
+
+        if (showLargeImage && currentExpense.imagePath != null) {
+            ExpenseImagePreview(
+                image = state.fullImage ?: previewImage,
+                placeholder = if (state.imageLoading) {
+                    "原图加载中"
+                } else {
+                    "原图暂时加载失败，截图已保存"
+                },
+                displayHeight = 420.dp,
+            )
         }
 
-        if (currentExpense.imagePath != null) {
-            ExpenseImagePreview(
-                image = previewImage,
-                placeholder = if (state.imageLoading) {
-                    "截图加载中"
-                } else {
-                    "预览暂时加载失败，原图已保存"
-                },
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onLoadFullImage) {
-                    Text(if (state.imageLoading) "加载中" else "查看原图")
-                }
-                if (currentExpense.duplicateStatus == "suspected") {
-                    OutlinedButton(onClick = onKeepDuplicate) {
-                        Text("不是重复，保留")
-                    }
-                }
-            }
-            if (currentExpense.duplicateStatus == "suspected") {
-                DuplicateNotice(reason = currentExpense.duplicateReason)
+        if (currentExpense.duplicateStatus == "suspected") {
+            DuplicateNotice(reason = currentExpense.duplicateReason)
+            OutlinedButton(onClick = onKeepDuplicate) {
+                Text("不是重复，保留")
             }
         }
 
@@ -488,6 +480,102 @@ fun ExpenseEditScreen(
 }
 }
 
+
+@Composable
+private fun EditDraftPreviewCard(
+    expense: Expense,
+    previewImage: ProtectedImage?,
+    imageLoading: Boolean,
+    ocrRunning: Boolean,
+    showLargeImage: Boolean,
+    onToggleLargeImage: () -> Unit,
+    onRetryOcr: () -> Unit,
+) {
+    SoftPanel(containerAlpha = 0.98f) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            if (expense.imagePath != null) {
+                ExpenseImagePreview(
+                    image = previewImage,
+                    placeholder = if (imageLoading) "截图加载中" else "截图已保存",
+                    compact = true,
+                    compactSize = DpSize(width = 118.dp, height = 158.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                Text(
+                    text = "识别草稿",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = formatAmount(expense.amountCents),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusPill(expense.category)
+                    expense.confidence?.let {
+                        StatusPill("可信度 ${(it * 100).toInt()}%", active = false)
+                    }
+                }
+                if (expense.imagePath != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            modifier = Modifier
+                                .weight(0.82f)
+                                .height(44.dp),
+                            enabled = !imageLoading,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            onClick = onToggleLargeImage,
+                        ) {
+                            Text(
+                                when {
+                                    imageLoading -> "加载中"
+                                    showLargeImage -> "收起截图"
+                                    else -> "看原图"
+                                },
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        OutlinedButton(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            enabled = !ocrRunning,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            onClick = onRetryOcr,
+                        ) {
+                            Text(
+                                if (ocrRunning) "识别中" else "重新识别",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun OcrProgressCard() {
