@@ -76,7 +76,7 @@ fun TicketboxBackgroundLayer(
             when (surfaceRole) {
                 SurfaceRole.Pending -> 1.05f
                 SurfaceRole.Stats -> 1.045f
-                SurfaceRole.Ledger -> 1.03f
+                SurfaceRole.Ledger -> 1.015f
                 SurfaceRole.Edit -> 1.015f
                 SurfaceRole.Settings -> 1.01f
                 SurfaceRole.Auth -> 1.02f
@@ -201,7 +201,7 @@ fun resolveBackgroundAlpha(
     val roleFactor = when (role) {
         SurfaceRole.Pending -> 1.00f
         SurfaceRole.Stats -> 0.92f
-        SurfaceRole.Ledger -> 0.68f
+        SurfaceRole.Ledger -> 0.52f
         SurfaceRole.Edit -> 0.42f
         SurfaceRole.Settings -> 0.36f
         SurfaceRole.Auth -> 0.45f
@@ -221,7 +221,7 @@ fun resolveScrimAlpha(
     val roleExtra = when (role) {
         SurfaceRole.Pending -> 0.00f
         SurfaceRole.Stats -> 0.04f
-        SurfaceRole.Ledger -> 0.10f
+        SurfaceRole.Ledger -> 0.16f
         SurfaceRole.Edit -> 0.18f
         SurfaceRole.Settings -> 0.20f
         SurfaceRole.Auth -> 0.14f
@@ -245,9 +245,9 @@ fun resolveCardContainerAlpha(
             ImmersionMode.Focus -> 0.92f
         }
         SurfaceRole.Ledger -> when (mode) {
-            ImmersionMode.Atmosphere -> 0.84f
-            ImmersionMode.Balanced -> 0.90f
-            ImmersionMode.Focus -> 0.96f
+            ImmersionMode.Atmosphere -> 0.90f
+            ImmersionMode.Balanced -> 0.95f
+            ImmersionMode.Focus -> 0.98f
         }
         SurfaceRole.Edit,
         SurfaceRole.Settings,
@@ -276,7 +276,7 @@ fun resolveGlobalScrim(
         when (role) {
             SurfaceRole.Pending -> 0.02f
             SurfaceRole.Stats -> 0.04f
-            SurfaceRole.Ledger -> 0.08f
+            SurfaceRole.Ledger -> 0.14f
             SurfaceRole.Edit -> 0.12f
             SurfaceRole.Settings -> 0.12f
             SurfaceRole.Auth -> 0.10f
