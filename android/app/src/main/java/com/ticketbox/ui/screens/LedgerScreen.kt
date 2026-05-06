@@ -176,8 +176,8 @@ private fun LedgerFilterPanel(
         LedgerSummaryStrip(state)
         SoftPanel(containerAlpha = 0.99f) {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(
@@ -223,7 +223,7 @@ private fun LedgerFilterPanel(
                     onValueChange = onQueryChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(48.dp),
                     placeholder = { Text("搜索备注") },
                     singleLine = true,
                 )
@@ -268,7 +268,7 @@ private fun LedgerInlineButton(
     onClick: () -> Unit,
 ) {
     OutlinedButton(
-        modifier = modifier.heightIn(min = 48.dp),
+        modifier = modifier.heightIn(min = 44.dp),
         enabled = enabled,
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
@@ -329,7 +329,7 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
     val total = state.items.sumOf { it.amountCents ?: 0L }
     SoftPanel(containerAlpha = 0.98f) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
@@ -668,7 +668,7 @@ private fun CategoryFilterRow(
     selectedCategory: String,
     onCategoryChange: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = "分类",
             color = MaterialTheme.colorScheme.onSurfaceVariant,

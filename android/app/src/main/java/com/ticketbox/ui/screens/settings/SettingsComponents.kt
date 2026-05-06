@@ -94,6 +94,7 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScaffold
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.SettingsEntryCard
 import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
@@ -112,44 +113,12 @@ fun SettingsEntryRow(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
+    SettingsEntryCard(
+        title = title,
+        subtitle = subtitle,
+        icon = icon,
         onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.46f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text("进入", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-        }
-    }
+    )
 }
 
 @Composable
