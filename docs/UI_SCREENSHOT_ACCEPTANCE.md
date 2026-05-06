@@ -202,3 +202,17 @@ Observed result:
 - The summary strip, filter panel, and bill rows were lightly compressed without sacrificing amount, merchant, date, or category readability.
 - A too-small search field attempt was rejected during the real-device pass because it clipped placeholder text; the final screenshot uses a readable search height.
 - No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, or persistence behavior changed.
+
+## Stats Density Polish - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/stats_density_polish_final.png`
+
+Observed result:
+
+- Stats keeps the same month selection, refresh, category insight, trend, lifestyle, and merchant data flow, but the overview hero no longer consumes most of the first viewport.
+- Month comparison and budget context were reduced from two embedded mini cards to one light hero status line, keeping the information without turning the hero into a report panel.
+- The recent 7-day trend chart is shorter and still readable, so the classification insight begins in the first viewport.
+- The floating bottom navigation remains unchanged; scrollable content keeps bottom-bar-aware padding so lower stats cards can scroll fully above the navigation.
+- No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, or persistence behavior changed.

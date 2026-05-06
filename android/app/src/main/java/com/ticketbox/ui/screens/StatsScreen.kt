@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.CategoryInsight
@@ -216,7 +217,7 @@ private fun RecentTrendCard(trend: List<DailySpend>) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(132.dp),
+                        .height(108.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     trend.forEach { day ->
@@ -244,7 +245,7 @@ private fun DailyTrendBar(
         0f
     }
     val barHeight = if (day.amountCents > 0L) {
-        (16 + 76 * progress).dp
+        (14 + 58 * progress).dp
     } else {
         8.dp
     }
@@ -261,7 +262,7 @@ private fun DailyTrendBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(92.dp),
+                .height(72.dp),
             contentAlignment = androidx.compose.ui.Alignment.BottomCenter,
         ) {
             Box(
@@ -289,8 +290,8 @@ private fun StatsOverviewCard(
 ) {
     DeepHeroPanel {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
                 text = "本月支出",
@@ -308,11 +309,14 @@ private fun StatsOverviewCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
             HeroTrendLine()
-            comparison?.let {
-                MonthComparisonPill(it)
-            }
-            budget?.let {
-                BudgetProgressPanel(it)
+            statsHeroContextLine(comparison = comparison, budget = budget)?.let { contextLine ->
+                Text(
+                    text = contextLine,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.76f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -336,81 +340,6 @@ private fun HeroTrendLine() {
     }
 }
 
-@Composable
-private fun BudgetProgressPanel(budget: BudgetProgress) {
-    val remainingText = if (budget.overBudget) {
-        "已超 ${formatAmount(kotlin.math.abs(budget.remainingCents))}"
-    } else {
-        "剩余 ${formatAmount(budget.remainingCents)}"
-    }
-    val progressColor = if (budget.overBudget) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = "月预算",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                Text(
-                    text = "$remainingText · 预算 ${formatAmount(budget.budgetCents)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            Text(
-                text = "${budget.percent}%",
-                color = progressColor,
-                style = MaterialTheme.typography.titleSmall,
-            )
-        }
-        LinearProgressIndicator(
-            progress = { budget.progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(999.dp)),
-            color = progressColor,
-            trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        )
-    }
-}
-
-@Composable
-private fun MonthComparisonPill(comparison: MonthComparison) {
-    val text = monthComparisonText(comparison)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.48f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text(
-            text = "月环比",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        Text(text, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
 private fun monthComparisonText(comparison: MonthComparison): String {
     if (comparison.previousAmountCents == 0L) {
         return if (comparison.currentAmountCents == 0L) {
@@ -426,6 +355,24 @@ private fun monthComparisonText(comparison: MonthComparison): String {
         ?.let { value -> " · ${if (value > 0) "+" else ""}$value%" }
         .orEmpty()
     return "比上月$direction ${formatAmount(kotlin.math.abs(delta))}$percent"
+}
+
+private fun statsHeroContextLine(
+    comparison: MonthComparison?,
+    budget: BudgetProgress?,
+): String? {
+    val parts = buildList {
+        comparison?.let { add(monthComparisonText(it)) }
+        budget?.let {
+            val remaining = if (it.overBudget) {
+                "预算超 ${formatAmount(kotlin.math.abs(it.remainingCents))}"
+            } else {
+                "预算余 ${formatAmount(it.remainingCents)}"
+            }
+            add("$remaining · ${it.percent}%")
+        }
+    }
+    return parts.joinToString(" · ").takeIf { it.isNotBlank() }
 }
 
 @Composable
