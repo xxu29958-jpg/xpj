@@ -13,22 +13,24 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 | Target | Artifact | Status | Notes |
 | --- | --- | --- | --- |
 | Pending empty | `artifacts/pending_empty.png` | Captured | Pending benchmark empty state with hero, upload CTA, upload flow, and empty card. |
+| Pending with items | `artifacts/pending_with_items.png` | Captured | Real pending items captured after upload; upload flow guide is hidden in item mode so the first bill appears earlier. |
 | Pending offline | `artifacts/pending_offline.png` | Captured | Shows network fallback as a light product state; title is not covered by loading. |
 | Ledger with items | `artifacts/ledger_items.png` | Captured | Ledger remains readable with compact filter area and visible list. |
 | Ledger search empty | `artifacts/ledger_search_empty.png` | Captured | Search empty state captured with a nonsense query. |
 | Stats empty | `artifacts/stats_empty.png` and `artifacts/stats_current.png` | Captured | Empty state includes lightweight skeleton placeholders and primary refresh CTA. |
+| Stats with data | `artifacts/stats_with_data.png` | Captured | Real monthly totals, trend card, and local ledger-backed statistics captured after refreshing the stats page. |
 | Settings root | `artifacts/settings_root.png` | Captured | Settings uses secondary-page entry structure and unified entry card styling. |
 | Appearance | `artifacts/appearance.png` | Captured | Theme grid and appearance structure captured. |
 | Background gallery | `artifacts/background_gallery.png` | Captured | Built-in background catalog and categories captured. |
 | Background preview | `artifacts/background_preview.png` | Captured | Preview confirms page-effect preview before applying. |
 | Expense edit | `artifacts/expense_edit.png` | Captured | Edit screen remains compact and readable. |
 
-## Not Captured In This Run
+## Current Follow-Up Notes
 
-| Target | Reason | Required Follow-Up |
+| Target | Note | Required Follow-Up |
 | --- | --- | --- |
-| Pending with items | Current device state has `0` pending bills. Do not fabricate pending data just for a visual screenshot. | Capture after iPhone or Android uploads a real screenshot and before confirmation. |
-| Stats with data | Current stats response/page state is empty on the real device. Ledger data exists locally, but this acceptance pass did not change stats data flow. | Capture after the backend monthly stats endpoint returns confirmed monthly data, or after a later business pass explicitly adds offline stats fallback. |
+| Pending with items | Captured from the current real device state with 3 pending expenses. A Xiaomi floating system control overlaps part of the lower card in the screenshot; it is not App UI. | Re-capture after disabling the phone floating control if a clean marketing/PR screenshot is needed. |
+| Stats with data | Captured after tapping refresh on the stats page. | If stats appears empty on first entry again, investigate initial refresh timing separately from visual polish. |
 
 ## Commands Used
 
@@ -76,6 +78,7 @@ Result:
 ## Acceptance Notes
 
 - Page scaffold and bottom-bar avoidance are active on Pending, Ledger, Stats, Settings, Appearance, Background Gallery/Preview, and Expense Edit.
+- Pending item mode now prioritizes real bills over the upload-flow guide; the guide remains available for empty state.
 - Pending remains the benchmark page; the current screenshot is suitable for human review.
 - Ledger and Expense Edit are kept more solid and compact than Pending/Stats, preserving readability over immersion.
 - Background and theme flows are captured as local UI customization only; no background image is uploaded to the backend.
