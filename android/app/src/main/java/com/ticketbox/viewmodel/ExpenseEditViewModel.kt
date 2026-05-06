@@ -50,7 +50,15 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(imageLoading = true) }
             repository.fetchThumbnail(expenseId)
                 .onSuccess { image -> _uiState.update { it.copy(thumbnail = image, imageLoading = false) } }
-                .onFailure { _uiState.update { it.copy(imageLoading = false) } }
+                .onFailure {
+                    repository.fetchImage(expenseId)
+                        .onSuccess { image ->
+                            _uiState.update { it.copy(fullImage = image, imageLoading = false) }
+                        }
+                        .onFailure {
+                            _uiState.update { it.copy(imageLoading = false) }
+                        }
+                }
         }
     }
 

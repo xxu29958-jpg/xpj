@@ -276,7 +276,7 @@ fun ExpenseEditScreen(
                 placeholder = if (state.imageLoading) {
                     "截图加载中"
                 } else {
-                    "截图已保存，当前格式暂不预览"
+                    "预览暂时加载失败，原图已保存"
                 },
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

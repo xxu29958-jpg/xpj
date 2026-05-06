@@ -151,7 +151,7 @@ fun ExpenseCard(
                 val imagePlaceholder = if (expense.thumbnailPath != null) {
                     "截图缩略图加载中"
                 } else {
-                    "截图已保存，当前格式暂不预览"
+                    "截图已保存，点开后可查看"
                 }
                 ExpenseImagePreview(
                     image = thumbnail,
