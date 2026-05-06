@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -92,9 +90,11 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.rememberAppPageLayout
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -159,15 +159,15 @@ internal fun SettingsPageFrame(
     onBack: (() -> Unit)?,
     content: @Composable () -> Unit,
 ) {
+    val layout = rememberAppPageLayout(role = AppPageRole.Settings)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 136.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = layout.horizontalPadding)
+            .padding(top = layout.topPadding, bottom = layout.bottomPadding),
+        verticalArrangement = Arrangement.spacedBy(layout.contentGap),
     ) {
         onBack?.let {
             TextButton(onClick = it) {

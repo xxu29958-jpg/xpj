@@ -4,14 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -49,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
@@ -63,6 +60,7 @@ import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.StatusPill
+import com.ticketbox.ui.components.rememberAppPageLayout
 import com.ticketbox.ui.components.timePickerToUtcIso
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
@@ -196,6 +194,13 @@ fun ExpenseEditScreen(
         if (state.done) onDone()
     }
 
+    val layout = rememberAppPageLayout(
+        role = AppPageRole.Edit,
+        hasBottomBar = false,
+        horizontalPadding = 20.dp,
+        includeStatusBarPadding = true,
+    )
+
     fun parseScore(raw: String, label: String): Int? {
         if (raw.isBlank()) return null
         val score = raw.toIntOrNull()
@@ -229,11 +234,10 @@ fun ExpenseEditScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = layout.horizontalPadding)
+            .padding(top = layout.topPadding, bottom = layout.bottomPadding),
+        verticalArrangement = Arrangement.spacedBy(layout.contentGap),
     ) {
         ScreenHeader(
             title = "确认账单",
@@ -481,7 +485,6 @@ fun ExpenseEditScreen(
                 }
             }
         }
-        Spacer(Modifier.height(32.dp))
     }
 }
 

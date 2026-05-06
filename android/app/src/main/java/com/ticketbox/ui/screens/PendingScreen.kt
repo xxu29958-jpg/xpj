@@ -5,12 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
@@ -32,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
@@ -40,13 +35,14 @@ import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppHeroCard
+import com.ticketbox.ui.components.AppPageLazyColumn
+import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.ReceiptIllustration
-import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.design.AppRadius
@@ -71,21 +67,11 @@ fun PendingScreen(
     var showUploadGuide by remember { mutableStateOf(false) }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
     val duplicateCount = state.items.count { it.duplicateStatus == "suspected" }
-    val density = LocalDensity.current
-    val contentTopPadding = 4.dp
-    val bottomContentPadding = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() } +
-        AppSpacing.bottomContentPadding
 
-    RefreshableLazyColumn(
+    AppPageLazyColumn(
+        role = AppPageRole.Pending,
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        modifier = Modifier.offset(y = (-8).dp),
-        contentPadding = PaddingValues(
-            start = AppSpacing.screenHorizontal,
-            top = contentTopPadding,
-            end = AppSpacing.screenHorizontal,
-            bottom = bottomContentPadding,
-        ),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         item {

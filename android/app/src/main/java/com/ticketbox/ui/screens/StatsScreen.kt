@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,11 +35,12 @@ import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.ui.components.AppPageLazyColumn
+import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.DeepHeroPanel
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
 import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.displayMonthLabel
@@ -70,10 +70,10 @@ fun StatsScreen(
         }
     }
 
-    RefreshableLazyColumn(
+    AppPageLazyColumn(
+        role = AppPageRole.Stats,
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 160.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {

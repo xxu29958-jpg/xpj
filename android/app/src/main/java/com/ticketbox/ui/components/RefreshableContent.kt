@@ -3,7 +3,6 @@ package com.ticketbox.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,8 +25,7 @@ fun RefreshableLazyColumn(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
         modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding(),
+            .fillMaxSize(),
         indicator = {},
     ) {
         LazyColumn(
