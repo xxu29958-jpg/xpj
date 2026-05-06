@@ -58,6 +58,21 @@ Result:
 - Android `:app:assembleGrayDebug :app:assembleInternalDebug`: passed.
 - Android `:app:lintGrayDebug`: passed.
 
+Gray release acceptance was then run with a temporary local keystore:
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.ps1 -SkipProjectVerify -UseTemporaryKeystore -Serial c16cd054 -Adb E:\projects\xiaopiaojia\.toolchains\android-sdk\platform-tools\adb.exe
+```
+
+Result:
+
+- Script exited successfully.
+- Public upload acceptance used the configured tokens, created test pending records through both iOS and Android upload endpoints, and cleaned them up via `reject`.
+- Windows diagnosis, public endpoint checks, and release build checks passed.
+- `android/app/build/outputs/apk/gray/release/app-gray-release.apk` was generated.
+- Latest `grayDebug` was installed and launched on the attached device.
+
 ## Acceptance Notes
 
 - Page scaffold and bottom-bar avoidance are active on Pending, Ledger, Stats, Settings, Appearance, Background Gallery/Preview, and Expense Edit.
