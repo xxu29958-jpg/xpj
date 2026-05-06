@@ -243,52 +243,53 @@ fun ExpenseEditScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = layout.horizontalPadding)
                 .padding(top = layout.topPadding, bottom = layout.bottomPadding),
-            verticalArrangement = Arrangement.spacedBy(layout.contentGap),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AppPageHeader(
                 title = "确认账单",
                 subtitle = "识别只是草稿，补全后再正式入账",
+                eyebrow = "",
             ) {
                 StatusPill(if (currentExpense.status == "pending") "待确认" else "已入账")
             }
 
-        EditDraftPreviewCard(
-            expense = currentExpense,
-            previewImage = previewImage,
-            imageLoading = state.imageLoading,
-            ocrRunning = state.ocrRunning,
-            showLargeImage = showLargeImage,
-            onToggleLargeImage = {
-                if (!showLargeImage && state.fullImage == null) {
-                    onLoadFullImage()
-                }
-                showLargeImage = !showLargeImage
-            },
-            onRetryOcr = onRetryOcr,
-        )
-
-        if (showLargeImage && currentExpense.imagePath != null) {
-            ExpenseImagePreview(
-                image = state.fullImage ?: previewImage,
-                placeholder = if (state.imageLoading) {
-                    "原图加载中"
-                } else {
-                    "原图暂时加载失败，截图已保存"
+            EditDraftPreviewCard(
+                expense = currentExpense,
+                previewImage = previewImage,
+                imageLoading = state.imageLoading,
+                ocrRunning = state.ocrRunning,
+                showLargeImage = showLargeImage,
+                onToggleLargeImage = {
+                    if (!showLargeImage && state.fullImage == null) {
+                        onLoadFullImage()
+                    }
+                    showLargeImage = !showLargeImage
                 },
-                displayHeight = 420.dp,
+                onRetryOcr = onRetryOcr,
             )
-        }
 
-        if (currentExpense.duplicateStatus == "suspected") {
-            DuplicateNotice(reason = currentExpense.duplicateReason)
-            OutlinedButton(onClick = onKeepDuplicate) {
-                Text("不是重复，保留")
+            if (showLargeImage && currentExpense.imagePath != null) {
+                ExpenseImagePreview(
+                    image = state.fullImage ?: previewImage,
+                    placeholder = if (state.imageLoading) {
+                        "原图加载中"
+                    } else {
+                        "原图暂时加载失败，截图已保存"
+                    },
+                    displayHeight = 420.dp,
+                )
             }
-        }
 
-        AnimatedVisibility(visible = state.ocrRunning) {
-            OcrProgressCard()
-        }
+            if (currentExpense.duplicateStatus == "suspected") {
+                DuplicateNotice(reason = currentExpense.duplicateReason)
+                OutlinedButton(onClick = onKeepDuplicate) {
+                    Text("不是重复，保留")
+                }
+            }
+
+            AnimatedVisibility(visible = state.ocrRunning) {
+                OcrProgressCard()
+            }
 
         OutlinedTextField(
             value = amountText,
@@ -349,8 +350,8 @@ fun ExpenseEditScreen(
             ),
         ) {
             Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -493,8 +494,8 @@ private fun EditDraftPreviewCard(
 ) {
     SoftPanel(containerAlpha = 0.98f) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         ) {
             if (expense.imagePath != null) {
@@ -502,12 +503,12 @@ private fun EditDraftPreviewCard(
                     image = previewImage,
                     placeholder = if (imageLoading) "截图加载中" else "截图已保存",
                     compact = true,
-                    compactSize = DpSize(width = 118.dp, height = 158.dp),
+                    compactSize = DpSize(width = 104.dp, height = 136.dp),
                 )
             }
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(9.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 Text(
                     text = "识别草稿",
@@ -516,12 +517,12 @@ private fun EditDraftPreviewCard(
                 )
                 Text(
                     text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = formatAmount(expense.amountCents),
-                    style = MaterialTheme.typography.headlineLarge,
+                    style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -535,7 +536,7 @@ private fun EditDraftPreviewCard(
                         OutlinedButton(
                             modifier = Modifier
                                 .weight(0.82f)
-                                .height(44.dp),
+                                .height(40.dp),
                             enabled = !imageLoading,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             onClick = onToggleLargeImage,
@@ -556,7 +557,7 @@ private fun EditDraftPreviewCard(
                         OutlinedButton(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp),
+                                .height(40.dp),
                             enabled = !ocrRunning,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             onClick = onRetryOcr,
@@ -637,8 +638,8 @@ private fun ExpenseDateField(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

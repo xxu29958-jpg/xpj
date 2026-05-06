@@ -216,3 +216,18 @@ Observed result:
 - The recent 7-day trend chart is shorter and still readable, so the classification insight begins in the first viewport.
 - The floating bottom navigation remains unchanged; scrollable content keeps bottom-bar-aware padding so lower stats cards can scroll fully above the navigation.
 - No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, or persistence behavior changed.
+
+## Expense Edit Density Polish - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/expense_edit_density_polish_final.png`
+- `artifacts/expense_edit_density_polish_final_loaded.png`
+
+Observed result:
+
+- Expense Edit now uses the shared header without the global `小票夹` eyebrow, making the confirmation task feel more like a focused edit flow instead of another overview page.
+- The OCR draft preview card is smaller and still keeps merchant, amount, category, confidence, screenshot preview, original-image action, and OCR retry visible.
+- Form spacing was tightened so amount, merchant, category, category chips, note, and consume-time controls appear earlier without changing validation or submit behavior.
+- The final loaded screenshot confirms protected screenshot preview still renders after the compact pass; loading fallback remains available while the image request is in flight.
+- No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or save behavior changed.
