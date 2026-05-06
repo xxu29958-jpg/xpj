@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -179,8 +180,8 @@ private fun LedgerFilterPanel(
         LedgerSummaryStrip(state)
         SoftPanel(containerAlpha = 0.99f) {
             Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(
@@ -224,7 +225,9 @@ private fun LedgerFilterPanel(
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = onQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
                     placeholder = { Text("搜索备注") },
                     singleLine = true,
                 )
@@ -234,16 +237,11 @@ private fun LedgerFilterPanel(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = ledgerStatusLine(state),
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        text = ledgerFilterSummary(state),
+                        text = ledgerCombinedStatusLine(state),
                         modifier = Modifier.weight(1f),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -274,7 +272,7 @@ private fun LedgerInlineButton(
     onClick: () -> Unit,
 ) {
     OutlinedButton(
-        modifier = modifier.heightIn(min = 52.dp),
+        modifier = modifier.heightIn(min = 48.dp),
         enabled = enabled,
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
@@ -290,7 +288,7 @@ private fun LedgerInlineButton(
 
 @Composable
 private fun LedgerHeader(onManualAdd: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = "小票夹",
             style = MaterialTheme.typography.titleMedium,
@@ -831,6 +829,18 @@ private fun LedgerEmptyIllustration() {
             )
         }
     }
+}
+
+private fun ledgerCombinedStatusLine(state: LedgerUiState): String {
+    val syncText = when {
+        state.syncing -> "同步中"
+        state.lastSyncAt != null -> "同步完成 · ${ledgerSyncClock(state.lastSyncAt)}"
+        else -> "离线缓存"
+    }
+    val month = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
+    val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
+    val query = state.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
+    return "$syncText · 当前查看：$month · $category$query"
 }
 
 private fun ledgerFilterSummary(state: LedgerUiState): String {

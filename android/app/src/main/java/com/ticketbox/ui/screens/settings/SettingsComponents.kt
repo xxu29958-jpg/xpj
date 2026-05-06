@@ -166,7 +166,7 @@ internal fun SettingsPageFrame(
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = 112.dp),
+            .padding(top = 12.dp, bottom = 136.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         onBack?.let {

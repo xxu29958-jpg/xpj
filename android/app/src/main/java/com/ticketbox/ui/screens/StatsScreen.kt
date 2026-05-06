@@ -73,7 +73,7 @@ fun StatsScreen(
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 128.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 160.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -604,13 +604,14 @@ private fun EmptyStatsCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(
                 text = body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            StatsSkeletonPlaceholder()
             onRefresh?.let {
                 Button(
                     modifier = Modifier.fillMaxWidth(),
@@ -620,5 +621,42 @@ private fun EmptyStatsCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StatsSkeletonPlaceholder() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SkeletonBlock(title = "本月总支出", widthFraction = 0.72f)
+        SkeletonBlock(title = "分类占比", widthFraction = 0.88f)
+        SkeletonBlock(title = "高频商家", widthFraction = 0.64f)
+    }
+}
+
+@Composable
+private fun SkeletonBlock(
+    title: String,
+    widthFraction: Float,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
+            style = MaterialTheme.typography.labelMedium,
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(widthFraction)
+                .height(10.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)),
+        )
     }
 }
