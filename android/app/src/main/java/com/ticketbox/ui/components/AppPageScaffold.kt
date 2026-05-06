@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -174,6 +176,7 @@ fun AppScrollableContent(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = false,
@@ -195,6 +198,7 @@ fun AppScrollableContent(
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
+                state = listState,
                 contentPadding = layout.contentPadding(),
                 verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
                 content = content,
@@ -209,6 +213,7 @@ fun AppPageLazyColumn(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = false,
@@ -220,6 +225,7 @@ fun AppPageLazyColumn(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
         modifier = modifier,
+        listState = listState,
         hasBottomBar = hasBottomBar,
         horizontalPadding = horizontalPadding,
         includeStatusBarPadding = includeStatusBarPadding,

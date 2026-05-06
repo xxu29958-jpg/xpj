@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -19,6 +20,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,12 +68,22 @@ fun PendingScreen(
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
+    var wasLoading by remember { mutableStateOf(state.loading) }
+    val listState = rememberLazyListState()
     val duplicateCount = state.items.count { it.duplicateStatus == "suspected" }
+
+    LaunchedEffect(state.loading) {
+        if (wasLoading && !state.loading) {
+            listState.scrollToItem(0)
+        }
+        wasLoading = state.loading
+    }
 
     AppScrollableContent(
         role = AppPageRole.Pending,
         isRefreshing = state.loading,
         onRefresh = onRefresh,
+        listState = listState,
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         item {
@@ -83,6 +95,8 @@ fun PendingScreen(
             )
         }
 
+        item { UploadFlowCard() }
+
         state.message?.let { message ->
             item {
                 PendingMessageCard(message = message)
@@ -91,10 +105,6 @@ fun PendingScreen(
 
         if (state.uploading) {
             item { UploadProgressCard() }
-        }
-
-        if (state.items.isNotEmpty() || state.uploading) {
-            item { UploadFlowCard() }
         }
 
         when {
@@ -312,7 +322,7 @@ private fun PendingHeroMetric(value: String, label: String) {
 private fun UploadFlowCard() {
     AppGlassCard(containerAlpha = 0.92f) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -357,12 +367,12 @@ private fun FlowStep(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .size(38.dp)
+                .clip(RoundedCornerShape(13.dp))
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center,
         ) {
@@ -381,11 +391,46 @@ private fun FlowStep(
 @Composable
 private fun LoadingPendingState() {
     AppGlassCard(containerAlpha = 0.94f) {
-        Text(
-            text = "正在整理待确认账单...",
+        Column(
             modifier = Modifier.padding(16.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            verticalArrangement = Arrangement.spacedBy(11.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = "正在整理待确认账单",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        text = "截图上传后会出现在这里，确认后才会入账。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
     }
 }
 

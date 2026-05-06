@@ -274,7 +274,7 @@ fun AppPrimaryButton(
     val shape = RoundedCornerShape(999.dp)
     Box(
         modifier = modifier
-            .height(60.dp)
+            .height(56.dp)
             .shadow(
                 elevation = if (enabled) 16.dp else 0.dp,
                 shape = shape,
