@@ -3,6 +3,7 @@ package com.ticketbox.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,9 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -24,8 +24,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -110,12 +112,19 @@ fun SoftPanel(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = 10.dp, shape = shape, clip = false)
+            .shadow(elevation = 14.dp, shape = shape, clip = false)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = resolvedAlpha))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.surface.copy(alpha = resolvedAlpha),
+                        MaterialTheme.colorScheme.surface.copy(alpha = (resolvedAlpha * 0.94f).coerceIn(0.78f, 1f)),
+                    ),
+                ),
+            )
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f),
                 shape = shape,
             ),
     ) {
@@ -128,12 +137,102 @@ fun DeepHeroPanel(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-        elevation = CardDefaults.cardElevation(defaultElevation = 14.dp),
-        content = { content() },
+    val shape = MaterialTheme.shapes.extraLarge
+    val primary = MaterialTheme.colorScheme.primary
+    val background = MaterialTheme.colorScheme.background
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 22.dp, shape = shape, clip = false)
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        primary.copy(alpha = 0.98f),
+                        primary.blendTowards(background, 0.20f).copy(alpha = 0.98f),
+                        primary.tonalDarken(0.76f).copy(alpha = 0.96f),
+                        primary.tonalDarken(0.64f).copy(alpha = 0.94f),
+                    ),
+                ),
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f),
+                shape = shape,
+            ),
+    ) {
+        content()
+    }
+}
+
+@Composable
+fun PrimaryCtaButton(
+    text: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(999.dp)
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .height(58.dp)
+            .shadow(elevation = if (enabled) 14.dp else 0.dp, shape = shape, clip = false)
+            .clip(shape)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        primary.copy(alpha = 0.98f),
+                        primary.tonalDarken(0.78f).copy(alpha = 0.98f),
+                    ),
+                ),
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.24f),
+                shape = shape,
+            )
+            .alpha(if (enabled) 1f else 0.58f)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+private fun Color.tonalDarken(multiplier: Float): Color {
+    return Color(
+        red = (red * multiplier).coerceIn(0f, 1f),
+        green = (green * multiplier).coerceIn(0f, 1f),
+        blue = (blue * multiplier).coerceIn(0f, 1f),
+        alpha = alpha,
+    )
+}
+
+private fun Color.blendTowards(target: Color, amount: Float): Color {
+    val clamped = amount.coerceIn(0f, 1f)
+    return Color(
+        red = red + (target.red - red) * clamped,
+        green = green + (target.green - green) * clamped,
+        blue = blue + (target.blue - blue) * clamped,
+        alpha = alpha + (target.alpha - alpha) * clamped,
     )
 }
 
@@ -269,7 +368,15 @@ fun ReceiptStub(
         modifier = modifier
             .size(width = width, height = height)
             .clip(MaterialTheme.shapes.medium)
-            .background(Color(0xFFF4F0E7))
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFFFFBF3),
+                        Color(0xFFF1E9DB),
+                    ),
+                ),
+            )
+            .border(1.dp, Color(0xFFE2D8C8), MaterialTheme.shapes.medium)
             .padding(horizontal = 14.dp, vertical = 14.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 11.dp)) {

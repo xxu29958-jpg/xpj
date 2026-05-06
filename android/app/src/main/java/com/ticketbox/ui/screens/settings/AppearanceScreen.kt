@@ -148,6 +148,10 @@ fun AppearanceScreen(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    ThemeMoodPreview(
+                        settings = state.backgroundSettings,
+                        skin = currentSkin,
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -223,4 +227,3 @@ fun AppearanceScreen(
         }
     }
 }
-

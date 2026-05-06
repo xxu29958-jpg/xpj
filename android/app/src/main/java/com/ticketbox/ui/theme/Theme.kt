@@ -7,6 +7,10 @@ import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import android.view.View
@@ -226,16 +231,167 @@ fun TicketboxTheme(
         typography = MaterialTheme.typography,
         shapes = TicketboxShapes,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(backgroundBrushForSkin(skin)),
-        ) {
+        TicketboxAtmosphereBackground(skin = skin) {
             CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
                 content()
             }
         }
     }
+}
+
+@Composable
+fun TicketboxAtmosphereBackground(
+    skin: AppSkin,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit = {},
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(backgroundBrushForSkin(skin)),
+    ) {
+        when (skin) {
+            AppSkin.Pine -> {
+                AtmosphereBlob(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 84.dp, y = (-44).dp)
+                        .size(300.dp),
+                    colors = listOf(
+                        Color(0xFF7EAD9F).copy(alpha = 0.34f),
+                        Color.Transparent,
+                    ),
+                )
+                MistBand(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(260.dp),
+                    colors = listOf(
+                        Color.Transparent,
+                        Color(0xFFA6C2B1).copy(alpha = 0.22f),
+                        Color(0xFF6C927C).copy(alpha = 0.16f),
+                    ),
+                )
+            }
+            AppSkin.Harbor -> {
+                AtmosphereBlob(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 76.dp, y = (-36).dp)
+                        .size(330.dp),
+                    colors = listOf(
+                        Color(0xFF7FA7BF).copy(alpha = 0.36f),
+                        Color.Transparent,
+                    ),
+                )
+                AtmosphereBlob(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 104.dp)
+                        .size(280.dp),
+                    colors = listOf(
+                        Color(0xFF9FC9D8).copy(alpha = 0.28f),
+                        Color.Transparent,
+                    ),
+                )
+                MistBand(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(260.dp),
+                    colors = listOf(
+                        Color.Transparent,
+                        Color(0xFFB7D4DC).copy(alpha = 0.24f),
+                        Color(0xFF7EA7BF).copy(alpha = 0.18f),
+                    ),
+                )
+            }
+            AppSkin.Night -> {
+                AtmosphereBlob(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 74.dp, y = (-36).dp)
+                        .size(310.dp),
+                    colors = listOf(
+                        Color(0xFF2BB49A).copy(alpha = 0.22f),
+                        Color.Transparent,
+                    ),
+                )
+                AtmosphereBlob(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = (-88).dp, y = 88.dp)
+                        .size(360.dp),
+                    colors = listOf(
+                        Color(0xFF245D78).copy(alpha = 0.26f),
+                        Color.Transparent,
+                    ),
+                )
+            }
+            AppSkin.Pomelo -> {
+                AtmosphereBlob(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-88).dp, y = (-42).dp)
+                        .size(310.dp),
+                    colors = listOf(
+                        Color(0xFFFFCF7B).copy(alpha = 0.26f),
+                        Color.Transparent,
+                    ),
+                )
+                MistBand(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(240.dp),
+                    colors = listOf(
+                        Color.Transparent,
+                        Color(0xFFE7D1A8).copy(alpha = 0.22f),
+                    ),
+                )
+            }
+            AppSkin.Berry -> {
+                AtmosphereBlob(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 64.dp, y = (-48).dp)
+                        .size(300.dp),
+                    colors = listOf(
+                        Color(0xFFEAA2B5).copy(alpha = 0.26f),
+                        Color.Transparent,
+                    ),
+                )
+                MistBand(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(230.dp),
+                    colors = listOf(
+                        Color.Transparent,
+                        Color(0xFFE5D8DC).copy(alpha = 0.20f),
+                    ),
+                )
+            }
+        }
+        content()
+    }
+}
+
+@Composable
+private fun AtmosphereBlob(
+    modifier: Modifier,
+    colors: List<Color>,
+) {
+    Box(modifier = modifier.background(Brush.radialGradient(colors)))
+}
+
+@Composable
+private fun MistBand(
+    modifier: Modifier,
+    colors: List<Color>,
+) {
+    Box(modifier = modifier.background(Brush.verticalGradient(colors)))
 }
 
 private tailrec fun Context.findActivity(): Activity? {

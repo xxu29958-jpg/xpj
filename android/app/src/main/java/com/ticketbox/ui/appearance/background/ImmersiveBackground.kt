@@ -29,7 +29,7 @@ import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.shouldUseCustomBackground
 import com.ticketbox.ui.appearance.BackgroundCatalog
-import com.ticketbox.ui.theme.backgroundBrushForSkin
+import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -89,10 +89,9 @@ fun TicketboxBackgroundLayer(
     )
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundBrushForSkin(skin)),
+        modifier = Modifier.fillMaxSize(),
     ) {
+        TicketboxAtmosphereBackground(skin = skin)
         when (settings.source) {
             BackgroundSource.ThemeDefault -> Unit
             BackgroundSource.BuiltIn -> {

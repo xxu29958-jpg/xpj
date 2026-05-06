@@ -363,7 +363,7 @@ private fun TicketboxBottomBar(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 12.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),

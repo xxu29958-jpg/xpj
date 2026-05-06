@@ -1,22 +1,23 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -31,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
@@ -38,6 +41,7 @@ import com.ticketbox.ui.components.DeepHeroPanel
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.ReceiptStub
 import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.SafeBadge
@@ -64,11 +68,15 @@ fun PendingScreen(
     var showUploadGuide by remember { mutableStateOf(false) }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
     val duplicateCount = state.items.count { it.duplicateStatus == "suspected" }
+    val density = LocalDensity.current
+    val contentTopPadding = 4.dp
+    val bottomContentPadding = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() } + 24.dp
 
     RefreshableLazyColumn(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 128.dp),
+        modifier = Modifier.offset(y = (-8).dp),
+        contentPadding = PaddingValues(start = 20.dp, top = contentTopPadding, end = 20.dp, bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
@@ -82,10 +90,7 @@ fun PendingScreen(
 
         state.message?.let { message ->
             item {
-                Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
+                PendingMessageCard(message = message)
             }
         }
 
@@ -142,6 +147,39 @@ fun PendingScreen(
                     onKeepDuplicate = { onKeepDuplicate(expense) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun PendingMessageCard(message: String) {
+    SoftPanel(containerAlpha = 0.96f) {
+        Row(
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }
@@ -206,15 +244,13 @@ private fun PendingTop(
             }
         }
 
-        Button(
+        PrimaryCtaButton(
             modifier = Modifier.fillMaxWidth(),
             enabled = !uploading,
+            icon = Icons.Filled.AddPhotoAlternate,
+            text = if (uploading) "正在上传截图" else "上传截图",
             onClick = onUploadScreenshot,
-        ) {
-            Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (uploading) "正在上传截图" else "上传截图")
-        }
+        )
     }
 }
 
@@ -223,7 +259,12 @@ private fun PendingHeroStatusPill() {
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.16f))
+            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(18.dp),
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -248,7 +289,12 @@ private fun PendingHeroMetric(value: String, label: String) {
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.92f))
+            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.86f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.32f),
+                shape = RoundedCornerShape(18.dp),
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -405,17 +451,29 @@ private fun EmptyPendingState(
             title = "待处理",
             subtitle = "上传截图后，会出现在这里等你确认",
         )
-        SoftPanel(containerAlpha = 0.94f) {
+        SoftPanel(containerAlpha = 0.98f) {
             Row(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(18.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(112.dp)
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.26f)),
+                        .size(118.dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+                                ),
+                            ),
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f),
+                            shape = RoundedCornerShape(32.dp),
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     ReceiptStub(compact = true)

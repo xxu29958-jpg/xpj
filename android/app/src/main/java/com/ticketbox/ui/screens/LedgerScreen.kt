@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -139,7 +140,14 @@ fun LedgerScreen(
         }
         state.message?.let {
             item {
-                Text(it, color = MaterialTheme.colorScheme.secondary)
+                SoftPanel(containerAlpha = 0.92f) {
+                    Text(
+                        text = it,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
         if (state.items.isEmpty()) {
@@ -177,6 +185,7 @@ private fun LedgerFilterPanel(
     onExportCsv: () -> Unit,
     onManualAdd: () -> Unit,
 ) {
+    val hasUserFilters = state.categoryFilter.isNotBlank() || state.query.isNotBlank()
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ScreenHeader(
             title = "账本",
@@ -189,61 +198,67 @@ private fun LedgerFilterPanel(
             }
         }
         LedgerSummaryStrip(state)
-        SoftPanel {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = true,
+                    onClick = onOpenMonthPicker,
+                    label = { Text(state.monthFilter.takeIf { it.isNotBlank() } ?: "全部月份") },
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.ExpandMore,
+                            contentDescription = "选择月份",
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    },
+                )
+                QuietOutlinedButton(
+                    text = if (state.exporting) "导出中" else "导出 CSV",
+                    enabled = canExport,
+                    onClick = onExportCsv,
+                )
+                QuietOutlinedButton(
+                    text = if (state.syncing) "同步中" else "同步",
+                    enabled = !state.syncing,
+                    onClick = onSync,
+                )
+            }
+            CategoryFilterRow(
+                categories = state.categories,
+                selectedCategory = state.categoryFilter,
+                onCategoryChange = onCategoryChange,
+            )
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("搜索备注") },
+                singleLine = true,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    MonthSelectorButton(
-                        modifier = Modifier.weight(1f),
-                        selectedMonth = state.monthFilter,
-                        onClick = onOpenMonthPicker,
-                    )
-                    QuietOutlinedButton(
-                        text = if (state.exporting) "导出中" else "导出 CSV",
-                        enabled = canExport,
-                        onClick = onExportCsv,
-                    )
-                }
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("搜索账单") },
-                    placeholder = { Text("商家、备注、标签") },
-                    singleLine = true,
-                )
-                CategoryFilterRow(
-                    categories = state.categories,
-                    selectedCategory = state.categoryFilter,
-                    onCategoryChange = onCategoryChange,
-                )
                 Text(
-                    text = ledgerFilterSummary(state),
+                    text = if (state.syncing) "正在同步账本" else ledgerFilterSummary(state),
+                    modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = onSync,
-                    ) {
-                        Text(if (state.syncing) "同步中" else "同步")
-                    }
+                if (hasUserFilters) {
                     QuietOutlinedButton(
                         text = "清筛选",
-                        modifier = Modifier.weight(1f),
                         onClick = onClearFilters,
                     )
                 }
-                if (state.items.isEmpty()) {
-                    Text(
-                        text = "当前没有可导出的已确认账单。",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+            }
+            if (state.items.isEmpty()) {
+                Text(
+                    text = "当前没有可导出的已确认账单。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }

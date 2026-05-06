@@ -99,7 +99,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.theme.backgroundBrushForSkin
+import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
 import kotlinx.coroutines.Dispatchers
@@ -358,7 +358,7 @@ internal fun BuiltInBackgroundCard(
     onClick: () -> Unit,
 ) {
     Card(
-        modifier = modifier.height(164.dp),
+        modifier = modifier.height(180.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = if (selected) {
@@ -382,7 +382,7 @@ internal fun BuiltInBackgroundCard(
                 colors = background.gradientColors,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(84.dp),
+                    .height(98.dp),
             )
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
@@ -415,17 +415,38 @@ internal fun GradientPreview(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Brush.verticalGradient(colors.map { Color(it) }))
+            .background(Brush.linearGradient(colors.map { Color(it) }))
             .padding(10.dp),
     ) {
         Box(
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth(0.70f)
-                .height(28.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.White.copy(alpha = 0.62f)),
+                .align(Alignment.TopEnd)
+                .size(82.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.34f), Color.Transparent),
+                    ),
+                ),
         )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(0.74f)
+                .height(34.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.66f))
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+        ) {
+            PreviewBar(width = 42.dp, color = Color(0xFF244640).copy(alpha = 0.38f))
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .width(24.dp)
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color.White.copy(alpha = 0.74f)),
+            )
+        }
     }
 }
 
@@ -488,6 +509,76 @@ internal fun BackgroundSwitchLine(
             enabled = enabled,
             onCheckedChange = onCheckedChange,
         )
+    }
+}
+
+@Composable
+internal fun ThemeMoodPreview(
+    settings: BackgroundSettings,
+    skin: AppSkin,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(132.dp)
+            .clip(RoundedCornerShape(24.dp)),
+    ) {
+        TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = SurfaceRole.Pending)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(resolveGlobalScrim(settings, skin, SurfaceRole.Pending)),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(0.88f)
+                .height(88.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.96f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.88f),
+                        ),
+                    ),
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.20f),
+                    shape = RoundedCornerShape(22.dp),
+                )
+                .padding(14.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    text = "背景只参与氛围",
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = skin.displayName,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = settings.immersionMode.displayName,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
     }
 }
 
@@ -673,7 +764,7 @@ internal fun SkinOptionCard(
     val borderColor = if (selected) scheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
 
     Card(
-        modifier = modifier.height(142.dp),
+        modifier = modifier.height(168.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, borderColor),
@@ -719,43 +810,51 @@ internal fun SkinPreview(skin: AppSkin, scheme: ColorScheme) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(66.dp)
+            .height(92.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(backgroundBrushForSkin(skin))
-            .padding(8.dp),
+            .background(scheme.background),
     ) {
+        TicketboxAtmosphereBackground(skin = skin)
         Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                scheme.primary.copy(alpha = 0.96f),
+                                scheme.secondary.copy(alpha = 0.86f),
+                            ),
+                        ),
+                    )
+                    .padding(8.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    PreviewBar(width = 48.dp, color = scheme.onBackground.copy(alpha = 0.76f))
-                    PreviewBar(width = 34.dp, color = scheme.onSurfaceVariant.copy(alpha = 0.64f))
+                    PreviewBar(width = 42.dp, color = scheme.onPrimary.copy(alpha = 0.80f))
+                    PreviewBar(width = 64.dp, color = scheme.onPrimary.copy(alpha = 0.96f))
                 }
                 Box(
                     modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .width(36.dp)
+                        .height(18.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(scheme.primary)
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                ) {
-                    Text(
-                        text = "¥36.80",
-                        color = scheme.onPrimary,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
+                        .background(scheme.onPrimary.copy(alpha = 0.84f)),
+                )
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(25.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(scheme.surface.copy(alpha = 0.92f))
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(scheme.surface.copy(alpha = 0.88f))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             )
         }
