@@ -35,8 +35,9 @@ import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppHeroCard
-import com.ticketbox.ui.components.AppPageLazyColumn
+import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.ExpenseCard
@@ -44,7 +45,6 @@ import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.ReceiptIllustration
 import com.ticketbox.ui.components.SafeBadge
-import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.PendingUiState
@@ -68,7 +68,7 @@ fun PendingScreen(
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
     val duplicateCount = state.items.count { it.duplicateStatus == "suspected" }
 
-    AppPageLazyColumn(
+    AppScrollableContent(
         role = AppPageRole.Pending,
         isRefreshing = state.loading,
         onRefresh = onRefresh,
@@ -187,7 +187,7 @@ private fun PendingTop(
     onUploadScreenshot: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
-        ScreenHeader(
+        AppPageHeader(
             title = if (pendingCount > 0) {
                 "今天有 $pendingCount 张截图待确认"
             } else {

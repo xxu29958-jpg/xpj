@@ -90,11 +90,11 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPageScaffold
 import com.ticketbox.ui.components.QuietOutlinedButton
-import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
-import com.ticketbox.ui.components.rememberAppPageLayout
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -159,25 +159,25 @@ internal fun SettingsPageFrame(
     onBack: (() -> Unit)?,
     content: @Composable () -> Unit,
 ) {
-    val layout = rememberAppPageLayout(role = AppPageRole.Settings)
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = layout.horizontalPadding)
-            .padding(top = layout.topPadding, bottom = layout.bottomPadding),
-        verticalArrangement = Arrangement.spacedBy(layout.contentGap),
-    ) {
-        onBack?.let {
-            TextButton(onClick = it) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("返回设置")
+    AppPageScaffold(role = AppPageRole.Settings) { layout ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = layout.horizontalPadding)
+                .padding(top = layout.topPadding, bottom = layout.bottomPadding),
+            verticalArrangement = Arrangement.spacedBy(layout.contentGap),
+        ) {
+            onBack?.let {
+                TextButton(onClick = it) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("返回设置")
+                }
             }
+            AppPageHeader(title = title, subtitle = subtitle)
+            content()
         }
-        ScreenHeader(title = title, subtitle = subtitle)
-        content()
     }
 }
 

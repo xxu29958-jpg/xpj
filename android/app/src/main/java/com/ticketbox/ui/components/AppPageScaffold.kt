@@ -14,9 +14,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppSpacing
+
+enum class PageDensity {
+    Compact,
+    Comfortable,
+}
 
 enum class AppPageRole {
     Pending,
@@ -27,39 +33,39 @@ enum class AppPageRole {
     Auth,
 }
 
+typealias PageRole = AppPageRole
+
+val PageRole.density: PageDensity
+    get() = when (this) {
+        PageRole.Ledger,
+        PageRole.Edit -> PageDensity.Compact
+
+        PageRole.Pending,
+        PageRole.Stats,
+        PageRole.Settings,
+        PageRole.Auth -> PageDensity.Comfortable
+    }
+
 object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
     val MaxStatusBarPadding: Dp = 24.dp
-    val BottomNavAvoidance: Dp = AppSpacing.bottomContentPadding
+    val BottomBarHeight: Dp = 96.dp
+    val BottomContentExtraPadding: Dp = 24.dp
+    val CardGap: Dp = AppSpacing.cardGap
 
-    fun topContentPadding(role: AppPageRole): Dp = when (role) {
-        AppPageRole.Pending,
-        AppPageRole.Stats,
-        AppPageRole.Settings,
-        AppPageRole.Auth -> 24.dp
-
-        AppPageRole.Ledger -> 20.dp
-        AppPageRole.Edit -> 18.dp
+    fun topContentPadding(density: PageDensity): Dp = when (density) {
+        PageDensity.Compact -> 16.dp
+        PageDensity.Comfortable -> 24.dp
     }
 
-    fun headerToContentGap(role: AppPageRole): Dp = when (role) {
-        AppPageRole.Pending,
-        AppPageRole.Stats -> 24.dp
-
-        AppPageRole.Settings -> 22.dp
-        AppPageRole.Ledger -> 18.dp
-        AppPageRole.Edit,
-        AppPageRole.Auth -> 16.dp
+    fun headerToContentGap(density: PageDensity): Dp = when (density) {
+        PageDensity.Compact -> 16.dp
+        PageDensity.Comfortable -> 22.dp
     }
 
-    fun contentGap(role: AppPageRole): Dp = when (role) {
-        AppPageRole.Pending,
-        AppPageRole.Stats,
-        AppPageRole.Settings -> AppSpacing.cardGap
-
-        AppPageRole.Ledger -> 14.dp
-        AppPageRole.Edit,
-        AppPageRole.Auth -> 14.dp
+    fun sectionGap(density: PageDensity): Dp = when (density) {
+        PageDensity.Compact -> 18.dp
+        PageDensity.Comfortable -> 24.dp
     }
 }
 
@@ -79,16 +85,29 @@ data class AppPageLayoutValues(
     )
 }
 
+object BottomBarAwarePadding {
+    @Composable
+    fun bottom(hasBottomBar: Boolean): Dp {
+        val density = LocalDensity.current
+        val navigationBottom = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
+        return if (hasBottomBar) {
+            // Current floating bottom bar measured visually near this height; keep named until measured layout is available.
+            AppPageDefaults.BottomBarHeight + navigationBottom + AppPageDefaults.BottomContentExtraPadding
+        } else {
+            navigationBottom + AppPageDefaults.BottomContentExtraPadding
+        }
+    }
+}
+
 @Composable
 fun rememberAppPageLayout(
-    role: AppPageRole,
+    role: PageRole,
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
     includeStatusBarPadding: Boolean = false,
 ): AppPageLayoutValues {
     val density = LocalDensity.current
     val statusTop = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
-    val navigationBottom = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     val safeTop = if (includeStatusBarPadding) {
         if (statusTop > AppPageDefaults.MaxStatusBarPadding) {
             AppPageDefaults.MaxStatusBarPadding
@@ -98,25 +117,60 @@ fun rememberAppPageLayout(
     } else {
         0.dp
     }
-    val bottomPadding = if (hasBottomBar) {
-        AppPageDefaults.BottomNavAvoidance
-    } else {
-        navigationBottom + 32.dp
-    }
+    val bottomPadding = BottomBarAwarePadding.bottom(hasBottomBar = hasBottomBar)
+    val pageDensity = role.density
 
     return AppPageLayoutValues(
         horizontalPadding = horizontalPadding,
-        topPadding = safeTop + AppPageDefaults.topContentPadding(role),
+        topPadding = safeTop + AppPageDefaults.topContentPadding(pageDensity),
         bottomPadding = bottomPadding,
-        headerToContentGap = AppPageDefaults.headerToContentGap(role),
-        contentGap = AppPageDefaults.contentGap(role),
+        headerToContentGap = AppPageDefaults.headerToContentGap(pageDensity),
+        contentGap = AppPageDefaults.sectionGap(pageDensity),
+    )
+}
+
+@Composable
+fun AppPageScaffold(
+    role: PageRole,
+    modifier: Modifier = Modifier,
+    hasBottomBar: Boolean = true,
+    horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
+    includeStatusBarPadding: Boolean = false,
+    content: @Composable (AppPageLayoutValues) -> Unit,
+) {
+    val layout = rememberAppPageLayout(
+        role = role,
+        hasBottomBar = hasBottomBar,
+        horizontalPadding = horizontalPadding,
+        includeStatusBarPadding = includeStatusBarPadding,
+    )
+
+    androidx.compose.foundation.layout.Box(modifier = modifier.fillMaxSize()) {
+        content(layout)
+    }
+}
+
+@Composable
+fun AppPageHeader(
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    eyebrow: String = "小票夹",
+    action: (@Composable RowScope.() -> Unit)? = null,
+) {
+    ScreenHeader(
+        title = title,
+        subtitle = subtitle,
+        modifier = modifier,
+        eyebrow = eyebrow,
+        action = action,
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppPageLazyColumn(
-    role: AppPageRole,
+fun AppScrollableContent(
+    role: PageRole,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
@@ -126,24 +180,50 @@ fun AppPageLazyColumn(
     verticalArrangement: Arrangement.Vertical? = null,
     content: LazyListScope.() -> Unit,
 ) {
-    val layout = rememberAppPageLayout(
+    AppPageScaffold(
         role = role,
         hasBottomBar = hasBottomBar,
         horizontalPadding = horizontalPadding,
         includeStatusBarPadding = includeStatusBarPadding,
-    )
+        modifier = modifier.fillMaxSize(),
+    ) { layout ->
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.fillMaxSize(),
+            indicator = {},
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = layout.contentPadding(),
+                verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+                content = content,
+            )
+        }
+    }
+}
 
-    PullToRefreshBox(
+@Composable
+fun AppPageLazyColumn(
+    role: PageRole,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    hasBottomBar: Boolean = true,
+    horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
+    includeStatusBarPadding: Boolean = false,
+    verticalArrangement: Arrangement.Vertical? = null,
+    content: LazyListScope.() -> Unit,
+) {
+    AppScrollableContent(
+        role = role,
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
-        modifier = modifier.fillMaxSize(),
-        indicator = {},
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = layout.contentPadding(),
-            verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
-            content = content,
-        )
-    }
+        modifier = modifier,
+        hasBottomBar = hasBottomBar,
+        horizontalPadding = horizontalPadding,
+        includeStatusBarPadding = includeStatusBarPadding,
+        verticalArrangement = verticalArrangement,
+        content = content,
+    )
 }

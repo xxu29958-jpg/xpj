@@ -57,8 +57,8 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
-import com.ticketbox.ui.components.AppPageLazyColumn
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SoftPanel
@@ -120,7 +120,7 @@ fun LedgerScreen(
         }
     }
 
-    AppPageLazyColumn(
+    AppScrollableContent(
         role = AppPageRole.Ledger,
         isRefreshing = state.syncing,
         onRefresh = onSync,

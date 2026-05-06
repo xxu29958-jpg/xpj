@@ -45,7 +45,9 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPageScaffold
 import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
@@ -54,13 +56,11 @@ import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.rememberAppPageLayout
 import com.ticketbox.ui.components.timePickerToUtcIso
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
@@ -194,13 +194,6 @@ fun ExpenseEditScreen(
         if (state.done) onDone()
     }
 
-    val layout = rememberAppPageLayout(
-        role = AppPageRole.Edit,
-        hasBottomBar = false,
-        horizontalPadding = 20.dp,
-        includeStatusBarPadding = true,
-    )
-
     fun parseScore(raw: String, label: String): Int? {
         if (raw.isBlank()) return null
         val score = raw.toIntOrNull()
@@ -231,20 +224,26 @@ fun ExpenseEditScreen(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = layout.horizontalPadding)
-            .padding(top = layout.topPadding, bottom = layout.bottomPadding),
-        verticalArrangement = Arrangement.spacedBy(layout.contentGap),
-    ) {
-        ScreenHeader(
-            title = "确认账单",
-            subtitle = "识别只是草稿，补全后再正式入账",
+    AppPageScaffold(
+        role = AppPageRole.Edit,
+        hasBottomBar = false,
+        horizontalPadding = 20.dp,
+        includeStatusBarPadding = true,
+    ) { layout ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = layout.horizontalPadding)
+                .padding(top = layout.topPadding, bottom = layout.bottomPadding),
+            verticalArrangement = Arrangement.spacedBy(layout.contentGap),
         ) {
-            StatusPill(if (currentExpense.status == "pending") "待确认" else "已入账")
-        }
+            AppPageHeader(
+                title = "确认账单",
+                subtitle = "识别只是草稿，补全后再正式入账",
+            ) {
+                StatusPill(if (currentExpense.status == "pending") "待确认" else "已入账")
+            }
 
         SoftPanel(containerAlpha = 0.98f) {
             Column(
@@ -487,6 +486,8 @@ fun ExpenseEditScreen(
         }
     }
 }
+}
+
 
 @Composable
 private fun OcrProgressCard() {

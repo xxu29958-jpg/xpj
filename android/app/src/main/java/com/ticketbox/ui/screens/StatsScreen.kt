@@ -35,14 +35,14 @@ import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.ui.components.AppPageLazyColumn
+import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.DeepHeroPanel
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.MonthSelectorButton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SafeBadge
-import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.viewmodel.StatsUiState
@@ -70,7 +70,7 @@ fun StatsScreen(
         }
     }
 
-    AppPageLazyColumn(
+    AppScrollableContent(
         role = AppPageRole.Stats,
         isRefreshing = state.loading,
         onRefresh = onRefresh,
@@ -78,7 +78,7 @@ fun StatsScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ScreenHeader(
+                AppPageHeader(
                     title = "统计",
                     subtitle = "不是财务报表，是生活消费感知",
                 ) {
