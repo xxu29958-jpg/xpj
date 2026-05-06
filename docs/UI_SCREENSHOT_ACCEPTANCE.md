@@ -139,3 +139,18 @@ Observed result:
 - The preview cards read more like miniature App surfaces: atmosphere layer, hero strip, glass summary strip, and small accent markers.
 - Harbor remains visibly recommended/current without turning the whole settings page into a high-contrast demo.
 - The background and theme flow remains local UI customization only; no business, backend, token, Room, OCR, duplicate, CSV, or upload flow changed.
+
+## Background Gallery Visuals - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/background_gallery_theme_visuals.png`
+- copied to `artifacts/background_gallery.png`
+
+Observed result:
+
+- Built-in background cards now use the preferred skin's `ThemeVisuals` for card tint, selected/recommended markers, border, shadow, hero strip, glass strip, and glow.
+- The gallery previews read as miniature App surfaces rather than plain gradient swatches, while still keeping the built-in background gradient visible.
+- Category chips use the shared `AppFilterChip` and a horizontally scrollable row, preventing the `插画` label from wrapping vertically on the real device.
+- The custom actions use shared App buttons, so `从相册选择` and `主题默认` match the rest of the visual system.
+- The background and theme flow remains local UI customization only; no business, backend, token, Room, OCR, duplicate, CSV, or upload flow changed.

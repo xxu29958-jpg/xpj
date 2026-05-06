@@ -8,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.LocalThemeVisuals
 
@@ -28,6 +29,8 @@ fun AppFilterChip(
             Text(
                 text = label,
                 fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         },
         modifier = modifier,

@@ -338,20 +338,36 @@ internal fun BuiltInBackgroundCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val skin = background.preferredSkin ?: AppSkin.Default
+    val scheme = colorSchemeForSkin(skin)
+    val visuals = themeVisualsForSkin(skin)
+    val cardShape = RoundedCornerShape(AppRadius.large)
+    val containerColor = if (selected) {
+        visuals.glassTint.copy(alpha = 0.88f)
+    } else {
+        visuals.solidCard.copy(alpha = 0.94f)
+    }
+    val borderColor = if (selected) {
+        visuals.primary.copy(alpha = 0.72f)
+    } else {
+        Color.White.copy(alpha = 0.54f)
+    }
+
     Card(
-        modifier = modifier.height(180.dp),
+        modifier = modifier
+            .height(184.dp)
+            .shadow(
+                elevation = if (selected) AppElevation.softCardShadow else 7.dp,
+                shape = cardShape,
+                clip = false,
+                ambientColor = visuals.shadowTint.copy(alpha = if (selected) 0.18f else 0.08f),
+                spotColor = visuals.shadowTint.copy(alpha = if (selected) 0.14f else 0.06f),
+            ),
         onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
-            },
-        ),
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f),
-        ),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(width = 1.dp, color = borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier
@@ -361,9 +377,11 @@ internal fun BuiltInBackgroundCard(
         ) {
             GradientPreview(
                 colors = background.gradientColors,
+                scheme = scheme,
+                visuals = visuals,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(98.dp),
+                    .height(100.dp),
             )
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
@@ -371,13 +389,19 @@ internal fun BuiltInBackgroundCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(background.name, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = background.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                    )
                     if (selected) {
-                        Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        SkinPill(text = "当前", scheme = scheme, visuals = visuals, emphasized = true)
+                    } else if (skin == AppSkin.Harbor) {
+                        SkinPill(text = "推荐", scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
                 Text(
-                    text = "${background.category.displayName} · ${background.preferredSkin?.displayName ?: "通用"}",
+                    text = "${background.category.displayName} · ${skin.displayName} · ${background.description}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -391,6 +415,8 @@ internal fun BuiltInBackgroundCard(
 @Composable
 internal fun GradientPreview(
     colors: List<Long>,
+    scheme: ColorScheme,
+    visuals: ThemeVisuals,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -405,27 +431,81 @@ internal fun GradientPreview(
                 .size(82.dp)
                 .background(
                     Brush.radialGradient(
-                        listOf(Color.White.copy(alpha = 0.34f), Color.Transparent),
+                        listOf(visuals.heroGlow.copy(alpha = 0.42f), Color.Transparent),
                     ),
                 ),
         )
         Box(
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth(0.74f)
-                .height(34.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.White.copy(alpha = 0.66f))
-                .padding(horizontal = 8.dp, vertical = 7.dp),
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(42.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            visuals.coolMist.copy(alpha = 0.24f),
+                            Color.White.copy(alpha = 0.34f),
+                        ),
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth(0.78f)
+                .height(48.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            visuals.heroGradientStart.copy(alpha = 0.92f),
+                            visuals.heroGradientEnd.copy(alpha = 0.88f),
+                        ),
+                    ),
+                )
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.24f),
+                    shape = RoundedCornerShape(14.dp),
+                )
+                .padding(horizontal = 9.dp, vertical = 8.dp),
         ) {
-            PreviewBar(width = 42.dp, color = Color(0xFF244640).copy(alpha = 0.38f))
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                PreviewBar(width = 36.dp, color = scheme.onPrimary.copy(alpha = 0.70f))
+                PreviewBar(width = 58.dp, color = scheme.onPrimary.copy(alpha = 0.90f))
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .width(28.dp)
+                    .height(11.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color.White.copy(alpha = 0.78f)),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(0.70f)
+                .height(30.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(visuals.glassTint.copy(alpha = 0.70f))
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.32f),
+                    shape = RoundedCornerShape(12.dp),
+                )
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        ) {
+            PreviewBar(width = 42.dp, color = visuals.primaryDark.copy(alpha = 0.38f))
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .width(24.dp)
                     .height(8.dp)
                     .clip(RoundedCornerShape(999.dp))
-                    .background(Color.White.copy(alpha = 0.74f)),
+                    .background(visuals.chipSelected.copy(alpha = 0.86f)),
             )
         }
     }
@@ -498,6 +578,8 @@ internal fun ThemeMoodPreview(
     settings: BackgroundSettings,
     skin: AppSkin,
 ) {
+    val scheme = colorSchemeForSkin(skin)
+    val visuals = themeVisualsForSkin(skin)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -518,15 +600,12 @@ internal fun ThemeMoodPreview(
                 .clip(RoundedCornerShape(22.dp))
                 .background(
                     Brush.linearGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.96f),
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.88f),
-                        ),
+                        visuals.heroGradient,
                     ),
                 )
                 .border(
                     width = 1.dp,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.20f),
+                    color = scheme.onPrimary.copy(alpha = 0.22f),
                     shape = RoundedCornerShape(22.dp),
                 )
                 .padding(14.dp),
@@ -534,13 +613,13 @@ internal fun ThemeMoodPreview(
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
                     text = "背景只参与氛围",
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+                    color = scheme.onPrimary.copy(alpha = 0.78f),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = skin.displayName,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = scheme.onPrimary,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                 )
@@ -549,12 +628,12 @@ internal fun ThemeMoodPreview(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f))
+                    .background(visuals.glassTint.copy(alpha = 0.84f))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 Text(
                     text = settings.immersionMode.displayName,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = visuals.primary,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Black,
                 )

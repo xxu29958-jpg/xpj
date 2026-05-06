@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,6 +91,9 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
@@ -119,19 +123,21 @@ fun BackgroundGalleryScreen(
         onBack = onBack,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FilterChip(
+            AppFilterChip(
+                label = "推荐",
                 selected = selectedCategory == null,
                 onClick = { selectedCategory = null },
-                label = { Text("推荐") },
             )
             BuiltInBackgroundCategory.entries.forEach { category ->
-                FilterChip(
+                AppFilterChip(
+                    label = category.displayName,
                     selected = selectedCategory == category,
                     onClick = { selectedCategory = category },
-                    label = { Text(category.displayName) },
                 )
             }
         }
@@ -155,20 +161,19 @@ fun BackgroundGalleryScreen(
         }
         SettingsSection(title = "自定义", icon = Icons.Filled.PhotoLibrary) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
+                AppPrimaryButton(
+                    text = "从相册选择",
+                    icon = Icons.Filled.PhotoLibrary,
                     modifier = Modifier.weight(1f),
                     onClick = onPickCustomImage,
-                ) {
-                    Text("从相册选择")
-                }
-                OutlinedButton(
+                )
+                AppSecondaryButton(
+                    text = "主题默认",
                     modifier = Modifier.weight(1f),
+                    leadingIcon = Icons.Filled.RestartAlt,
                     onClick = onPreviewThemeDefault,
-                ) {
-                    Text("主题默认")
-                }
+                )
             }
         }
     }
 }
-
