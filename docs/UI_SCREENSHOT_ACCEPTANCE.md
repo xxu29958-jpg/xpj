@@ -18,7 +18,7 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 | Ledger with items | `artifacts/ledger_items.png` | Captured | Ledger remains readable with compact filter area and visible list. |
 | Ledger search empty | `artifacts/ledger_search_empty.png` | Captured | Search empty state captured with a nonsense query. |
 | Stats empty | `artifacts/stats_empty.png` and `artifacts/stats_current.png` | Captured | Empty state includes lightweight skeleton placeholders and primary refresh CTA. |
-| Stats with data | `artifacts/stats_with_data.png` | Captured | Real monthly totals, trend card, and local ledger-backed statistics captured after refreshing the stats page. |
+| Stats with data | `artifacts/stats_with_data.png` | Captured | Real monthly totals and trend card captured on first entry with local ledger-backed fallback, then refreshed by remote stats when available. |
 | Settings root | `artifacts/settings_root.png` | Captured | Settings uses secondary-page entry structure and unified entry card styling. |
 | Appearance | `artifacts/appearance.png` | Captured | Theme grid and appearance structure captured. |
 | Background gallery | `artifacts/background_gallery.png` | Captured | Built-in background catalog and categories captured. |
@@ -30,7 +30,7 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 | Target | Note | Required Follow-Up |
 | --- | --- | --- |
 | Pending with items | Captured from the current real device state with 3 pending expenses. A Xiaomi floating system control overlaps part of the lower card in the screenshot; it is not App UI. | Re-capture after disabling the phone floating control if a clean marketing/PR screenshot is needed. |
-| Stats with data | Captured after tapping refresh on the stats page. | If stats appears empty on first entry again, investigate initial refresh timing separately from visual polish. |
+| Stats with data | Captured from the current local confirmed cache on first entry; remote stats can still refresh over it. | If local and remote totals diverge, investigate sync freshness rather than visual layout. |
 
 ## Commands Used
 

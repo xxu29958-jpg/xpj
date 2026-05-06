@@ -101,7 +101,8 @@ fun StatsScreen(
             item {
                 StatsOverviewCard(
                     stats = stats,
-                    lifestyle = state.lifestyleStats,
+                    recent7DaysAmountCents = state.lifestyleStats?.recent7DaysAmountCents
+                        ?: state.dailyTrend.sumOf { it.amountCents },
                     comparison = state.monthComparison,
                     budget = state.budgetProgress,
                 )
@@ -282,7 +283,7 @@ private fun DailyTrendBar(
 @Composable
 private fun StatsOverviewCard(
     stats: MonthlyStats,
-    lifestyle: LifestyleStats?,
+    recent7DaysAmountCents: Long,
     comparison: MonthComparison?,
     budget: BudgetProgress?,
 ) {
@@ -302,9 +303,7 @@ private fun StatsOverviewCard(
                 color = MaterialTheme.colorScheme.onPrimary,
             )
             Text(
-                text = "${stats.count} 笔 · 最近 7 天 ${
-                    formatAmount(lifestyle?.recent7DaysAmountCents ?: 0L)
-                }",
+                text = "${stats.count} 笔 · 最近 7 天 ${formatAmount(recent7DaysAmountCents)}",
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.80f),
                 style = MaterialTheme.typography.bodyMedium,
             )

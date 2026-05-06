@@ -115,7 +115,7 @@ Captured real-device screenshots under `artifacts/`:
 Current screenshot notes:
 
 - `pending_with_items.png` now uses the current real-device state with 3 pending expenses.
-- `stats_with_data.png` was captured after refreshing the stats page and shows the real monthly total.
+- `stats_with_data.png` was captured on first entry using the local confirmed-cache fallback and shows the real monthly total.
 - A Xiaomi floating system control appears in some screenshots; it is not App UI and should be disabled before clean marketing captures.
 
 ## Manual Checks Still Required
@@ -127,7 +127,7 @@ These are intentionally left as manual because they depend on real devices, real
 - Android user edits amount, merchant, category, note, and expense time.
 - Confirming the bill moves it from pending to confirmed.
 - Ledger shows the confirmed bill.
-- Stats changes after the confirmed bill is included by the backend stats endpoint. Current device stats can show real data after refresh.
+- Stats changes after the confirmed bill is included by confirmed cache / backend stats. Current device stats can show real data immediately from local cache and refresh remote data when available.
 - Android photo picker upload creates a pending expense.
 - Cellular network access works away from the local Wi-Fi / PC LAN.
 - Release APK is signed with the production gray keystore, not the temporary local acceptance keystore.
