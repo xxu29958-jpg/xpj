@@ -124,7 +124,7 @@ fun LedgerScreen(
         role = AppPageRole.Ledger,
         isRefreshing = state.syncing,
         onRefresh = onSync,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
             LedgerFilterPanel(
@@ -171,13 +171,13 @@ private fun LedgerFilterPanel(
     onManualAdd: () -> Unit,
 ) {
     val hasUserFilters = state.categoryFilter.isNotBlank() || state.query.isNotBlank()
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         LedgerHeader(onManualAdd = onManualAdd)
         LedgerSummaryStrip(state)
         SoftPanel(containerAlpha = 0.99f) {
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(
@@ -268,7 +268,7 @@ private fun LedgerInlineButton(
     onClick: () -> Unit,
 ) {
     OutlinedButton(
-        modifier = modifier.heightIn(min = 44.dp),
+        modifier = modifier.heightIn(min = 40.dp),
         enabled = enabled,
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
@@ -284,7 +284,7 @@ private fun LedgerInlineButton(
 
 @Composable
 private fun LedgerHeader(onManualAdd: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
         Text(
             text = "小票夹",
             style = MaterialTheme.typography.titleMedium,
@@ -302,7 +302,7 @@ private fun LedgerHeader(onManualAdd: () -> Unit) {
             ) {
                 Text(
                     text = "账本",
-                    style = MaterialTheme.typography.headlineLarge,
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
@@ -315,7 +315,11 @@ private fun LedgerHeader(onManualAdd: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Button(onClick = onManualAdd) {
+            Button(
+                modifier = Modifier.heightIn(min = 44.dp),
+                onClick = onManualAdd,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+            ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("记一笔")
@@ -330,7 +334,7 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
     SoftPanel(containerAlpha = 0.98f) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -349,7 +353,7 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
                     Text(
                         text = formatAmount(total),
                         color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Black,
                     )
                 }
@@ -367,7 +371,7 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
                     Text(
                         text = "${state.items.size} 笔",
                         color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         textAlign = TextAlign.End,
                     )
                 }
@@ -386,14 +390,14 @@ private fun LedgerExpenseCard(
         containerAlpha = 0.995f,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LedgerCategoryMark(category = expense.category)
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
@@ -421,12 +425,12 @@ private fun LedgerExpenseCard(
             }
             Column(
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
                     text = expense.amountCents?.let(::formatAmount) ?: "待填写",
                     color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                 )
@@ -450,8 +454,8 @@ private fun LedgerExpenseCard(
 private fun LedgerCategoryMark(category: String) {
     Box(
         modifier = Modifier
-            .size(46.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .size(42.dp)
+            .clip(RoundedCornerShape(15.dp))
             .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f)),
         contentAlignment = Alignment.Center,
     ) {

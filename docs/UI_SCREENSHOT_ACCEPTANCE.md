@@ -188,3 +188,17 @@ Observed result:
 - Compact pages now use tighter top padding, while comfortable pages retain a small amount of breathing room.
 - The floating bottom navigation remains independent of content layout. Scrollable screens keep bottom-bar-aware padding through the shared page scaffold.
 - This pass only changed global layout rhythm and the scaffold spacing test. It did not change business logic, ViewModel, Repository, backend API, Room, OCR, duplicate, CSV, upload, or token flow.
+
+## Ledger Density Polish - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/ledger_density_polish_final.png`
+
+Observed result:
+
+- Ledger keeps the same month, category, search, sync, export, and manual-entry behavior, but the screen now exposes more bills in the first viewport.
+- The ledger title is less oversized, matching the design reference's reading-first posture more closely.
+- The summary strip, filter panel, and bill rows were lightly compressed without sacrificing amount, merchant, date, or category readability.
+- A too-small search field attempt was rejected during the real-device pass because it clipped placeholder text; the final screenshot uses a readable search height.
+- No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, or persistence behavior changed.
