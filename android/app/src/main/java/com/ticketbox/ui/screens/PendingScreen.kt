@@ -212,13 +212,13 @@ private fun PendingTop(
 
         AppHeroCard {
             Row(
-                modifier = Modifier.padding(AppSpacing.cardPadding),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(horizontal = AppSpacing.cardPadding, vertical = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(0.92f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
                         text = "等待你确认",
@@ -237,15 +237,21 @@ private fun PendingTop(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (pendingCount == 0 && duplicateCount == 0) {
+                if (pendingCount == 0 && duplicateCount == 0) {
+                    Box(
+                        modifier = Modifier.weight(0.82f),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
                         PendingHeroStatusPill()
-                    } else {
-                        PendingHeroMetric("$pendingCount", "待确认")
-                        PendingHeroMetric("$duplicateCount", "疑似重复")
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.weight(0.98f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PendingHeroMetric("$pendingCount", "待确认", modifier = Modifier.weight(1f))
+                        PendingHeroMetric("$duplicateCount", "疑似重复", modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -292,9 +298,9 @@ private fun PendingHeroStatusPill() {
 }
 
 @Composable
-private fun PendingHeroMetric(value: String, label: String) {
+private fun PendingHeroMetric(value: String, label: String, modifier: Modifier = Modifier) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(AppRadius.medium))
             .background(Color.White.copy(alpha = 0.88f))
             .border(
@@ -302,14 +308,14 @@ private fun PendingHeroMetric(value: String, label: String) {
                 color = Color.White.copy(alpha = 0.46f),
                 shape = RoundedCornerShape(AppRadius.medium),
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text(
             text = value,
             color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Black,
         )
         Text(

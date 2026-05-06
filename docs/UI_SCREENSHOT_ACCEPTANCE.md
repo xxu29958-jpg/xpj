@@ -110,3 +110,18 @@ Result:
 - Ledger and Expense Edit are kept more solid and compact than Pending/Stats, preserving readability over immersion.
 - Background and theme flows are captured as local UI customization only; no background image is uploaded to the backend.
 - No backend API, repository, Room, OCR, duplicate, CSV, upload, or token flow was changed during this acceptance pass.
+
+## Pending Hero Polish - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/pending_hero_polish_v2.png`
+- copied to `artifacts/current_pending_check.png`
+
+Observed result:
+
+- Pending hero status changed from tall stacked tiles to two horizontal glass metrics for real values: pending count and suspected duplicate count.
+- The failed three-tile attempt was rejected because Chinese labels wrapped vertically on the real device.
+- Hero height is lower than the previous stacked version, so the first pending bill and its actions remain visible above the floating bottom navigation.
+- Upload remains the primary CTA, and the product boundary copy remains unchanged: screenshots and OCR drafts do not auto-enter the ledger.
+- No ViewModel, Repository, backend API, Room, OCR, duplicate, CSV, upload, or token flow changed in this polish.
