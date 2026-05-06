@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -32,27 +31,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppHeroCard
+import com.ticketbox.ui.components.AppSectionHeader
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.PrimaryCtaButton
-import com.ticketbox.ui.components.ReceiptStub
+import com.ticketbox.ui.components.ReceiptIllustration
 import com.ticketbox.ui.components.RefreshableLazyColumn
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.SectionTitle
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.theme.LocalThemeVisuals
 import com.ticketbox.viewmodel.PendingUiState
 
 private enum class PendingDisplayMode {
@@ -418,12 +416,12 @@ private fun PendingHeader(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SectionTitle(
+            AppSectionHeader(
                 title = "待处理",
                 subtitle = "点进截图后补金额、商家和分类",
                 modifier = Modifier.weight(1f),
             )
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = if (loading) "刷新中" else "刷新",
                 enabled = !loading,
                 onClick = onRefresh,
@@ -433,15 +431,15 @@ private fun PendingHeader(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FilterChip(
+            AppFilterChip(
                 selected = displayMode == PendingDisplayMode.Compact,
                 onClick = { onDisplayModeChange(PendingDisplayMode.Compact) },
-                label = { Text("紧凑") },
+                label = "紧凑",
             )
-            FilterChip(
+            AppFilterChip(
                 selected = displayMode == PendingDisplayMode.Comfortable,
                 onClick = { onDisplayModeChange(PendingDisplayMode.Comfortable) },
-                label = { Text("舒适") },
+                label = "舒适",
             )
         }
     }
@@ -458,7 +456,7 @@ private fun EmptyPendingState(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SectionTitle(
+        AppSectionHeader(
             title = "待处理",
             subtitle = "上传截图后，会出现在这里等你确认",
         )
@@ -468,7 +466,7 @@ private fun EmptyPendingState(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PendingReceiptArt()
+                ReceiptIllustration(compact = true)
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -483,13 +481,13 @@ private fun EmptyPendingState(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令",
                 modifier = Modifier.weight(1.25f),
                 leadingIcon = Icons.Filled.Info,
                 onClick = onToggleGuide,
             )
-            QuietOutlinedButton(
+            AppSecondaryButton(
                 text = "刷新",
                 modifier = Modifier.weight(0.75f),
                 enabled = !uploading,
@@ -508,45 +506,6 @@ private fun EmptyPendingState(
                     Text("3. 上传成功后回到这里刷新。")
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PendingReceiptArt() {
-    val visuals = LocalThemeVisuals.current
-    Box(
-        modifier = Modifier
-            .size(124.dp)
-            .clip(RoundedCornerShape(34.dp))
-            .background(
-                Brush.radialGradient(
-                    listOf(
-                        visuals.illustrationTint.copy(alpha = 0.38f),
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-                    ),
-                ),
-            )
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.70f),
-                shape = RoundedCornerShape(34.dp),
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(92.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
-                .border(
-                    width = 1.dp,
-                    color = visuals.illustrationTint.copy(alpha = 0.32f),
-                    shape = RoundedCornerShape(28.dp),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            ReceiptStub(compact = true)
         }
     }
 }
