@@ -124,13 +124,97 @@ function Invoke-TestUpload {
     }
 }
 
+function Invoke-RejectExpense {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][hashtable]$Headers,
+        [Parameter(Mandatory = $true)]$Id
+    )
+
+    try {
+        Invoke-RestMethod `
+            -Method Post `
+            -Uri "$BaseUrl/api/expenses/$Id/reject" `
+            -Headers $Headers | Out-Null
+        Write-Host "测试 pending 已清理：$Id"
+    }
+    catch {
+        Write-Warning "测试 pending 清理失败：$Id。$($_.Exception.Message)"
+    }
+}
+
+function Get-FirstScalar {
+    param(
+        $Value
+    )
+
+    if ($null -eq $Value) {
+        return $null
+    }
+    if ($Value -is [System.Array]) {
+        if ($Value.Count -eq 0) {
+            return $null
+        }
+        return Get-FirstScalar -Value $Value[0]
+    }
+    return $Value
+}
+
+function Add-FlatItems {
+    param(
+        [AllowEmptyCollection()][System.Collections.Generic.List[object]]$Target,
+        $Items
+    )
+
+    foreach ($item in @($Items)) {
+        if ($item -is [System.Array]) {
+            Add-FlatItems -Target $Target -Items $item
+        }
+        elseif ($null -ne $item) {
+            $Target.Add($item) | Out-Null
+        }
+    }
+}
+
+function Get-FlatItems {
+    param($Items)
+
+    $flat = New-Object System.Collections.Generic.List[object]
+    Add-FlatItems -Target $flat -Items $Items
+    return $flat.ToArray()
+}
+
+function Find-ExpenseById {
+    param(
+        $Items,
+        [Parameter(Mandatory = $true)]$Id
+    )
+
+    $targetId = [int64](Get-FirstScalar -Value $Id)
+    foreach ($item in @($Items)) {
+        if ($item -is [System.Array]) {
+            $found = Find-ExpenseById -Items $item -Id $targetId
+            if ($found) {
+                return $found
+            }
+            continue
+        }
+
+        $itemId = Get-FirstScalar -Value $item.id
+        if ($null -ne $itemId -and [int64]$itemId -eq $targetId) {
+            return $item
+        }
+    }
+    return $null
+}
+
 function Assert-PublicId {
     param(
         [Parameter(Mandatory = $true)]$Value,
         [Parameter(Mandatory = $true)][string]$Context
     )
 
-    $publicId = [string]$Value
+    $publicId = [string](Get-FirstScalar -Value $Value)
     if ($publicId.Trim().Length -eq 0) {
         throw "$Context 缺少 public_id。请确认后端已重启并运行最新代码。"
     }
@@ -170,17 +254,26 @@ if (-not $SkipBackend) {
 
     if (-not $SkipUpload) {
         $resolvedUploadToken = Resolve-SecretValue -ExplicitValue $UploadToken -Name "UPLOAD_TOKEN" -EnvValues $envValues
-        $upload = Invoke-TestUpload -BaseUrl $baseUrl -Token $resolvedUploadToken
-        Assert-PublicId -Value $upload.public_id -Context "上传接口"
-        Write-Host "测试截图上传成功，pending id：$($upload.id)"
+        $uploadedId = $null
+        try {
+            $upload = Invoke-TestUpload -BaseUrl $baseUrl -Token $resolvedUploadToken
+            $uploadedId = Get-FirstScalar -Value $upload.id
+            Assert-PublicId -Value $upload.public_id -Context "上传接口"
+            Write-Host "测试截图上传成功，pending id：$uploadedId"
 
-        $pending = @(Invoke-Json -Uri "$baseUrl/api/expenses/pending" -Headers $appHeaders)
-        $uploadedPending = $pending | Where-Object { $_.id -eq $upload.id } | Select-Object -First 1
-        if (-not $uploadedPending) {
-            throw "pending 列表中没有刚上传的账单 id：$($upload.id)"
+            $pending = Get-FlatItems -Items (Invoke-Json -Uri "$baseUrl/api/expenses/pending" -Headers $appHeaders)
+            $uploadedPending = Find-ExpenseById -Items $pending -Id $uploadedId
+            if (-not $uploadedPending) {
+                throw "pending 列表中没有刚上传的账单 id：$uploadedId"
+            }
+            Assert-PublicId -Value $uploadedPending.public_id -Context "pending 接口"
+            Write-Host "当前 pending 数量：$($pending.Count)"
         }
-        Assert-PublicId -Value $uploadedPending.public_id -Context "pending 接口"
-        Write-Host "当前 pending 数量：$($pending.Count)"
+        finally {
+            if ($null -ne $uploadedId) {
+                Invoke-RejectExpense -BaseUrl $baseUrl -Headers $appHeaders -Id $uploadedId
+            }
+        }
     }
     else {
         Write-Host "已跳过测试上传。"
