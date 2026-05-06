@@ -36,7 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
-import com.ticketbox.ui.theme.LocalThemeVisuals
+import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 fun ScreenHeader(

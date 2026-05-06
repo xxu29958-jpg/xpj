@@ -13,7 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.ticketbox.ui.theme.LocalThemeVisuals
+import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 fun ReceiptIllustration(

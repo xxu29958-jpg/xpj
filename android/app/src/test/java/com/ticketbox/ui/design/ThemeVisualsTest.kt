@@ -1,7 +1,6 @@
 package com.ticketbox.ui.design
 
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.ui.theme.themeVisualsForSkin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

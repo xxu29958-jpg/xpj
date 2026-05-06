@@ -9,7 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.ticketbox.ui.theme.LocalThemeVisuals
+import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 fun AppFilterChip(
