@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
@@ -22,8 +23,10 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.mergeExpenseCategories
 import com.ticketbox.security.SecureTokenStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import retrofit2.HttpException
@@ -75,7 +78,7 @@ class ExpenseRepository(
 
     private suspend fun <T> safeCall(serverUrlHint: String? = null, block: suspend () -> T): Result<T> {
         return try {
-            Result.success(block())
+            Result.success(withContext(Dispatchers.IO) { block() })
         } catch (error: HttpException) {
             Result.failure(RepositoryException(parseHttpError(error)))
         } catch (error: RepositoryException) {
@@ -85,8 +88,14 @@ class ExpenseRepository(
             Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, serverUrl), error)
             Result.failure(RepositoryException(userNetworkMessage(error, serverUrl)))
         } catch (error: IllegalArgumentException) {
+            if (BuildConfig.DEBUG) {
+                Log.w(NETWORK_LOG_TAG, "Repository request argument error: ${error.message}", error)
+            }
             Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
         } catch (error: Exception) {
+            if (BuildConfig.DEBUG) {
+                Log.w(NETWORK_LOG_TAG, "Repository request failed: ${error::class.java.name}: ${error.message}", error)
+            }
             Result.failure(RepositoryException(error.message ?: "操作失败。"))
         }
     }
@@ -113,13 +122,20 @@ class ExpenseRepository(
 
     private fun readProtectedImage(response: Response<ResponseBody>): ProtectedImage {
         if (!response.isSuccessful) {
-            throw RepositoryException(parseErrorMessage(response.code(), response.errorBody()?.string()))
+            val errorBody = response.errorBody()?.string()
+            if (BuildConfig.DEBUG) {
+                Log.w(NETWORK_LOG_TAG, "Protected image request failed: code=${response.code()} body=${errorBody?.take(160)}")
+            }
+            throw RepositoryException(parseErrorMessage(response.code(), errorBody))
         }
         val body = response.body() ?: throw RepositoryException("图片为空。")
         val contentType = body.contentType()?.toString()
         val bytes = body.use { it.bytes() }
         if (bytes.isEmpty()) {
             throw RepositoryException("图片为空。")
+        }
+        if (BuildConfig.DEBUG) {
+            Log.d(NETWORK_LOG_TAG, "Protected image loaded: contentType=$contentType bytes=${bytes.size}")
         }
         return ProtectedImage(bytes = bytes, contentType = contentType)
     }

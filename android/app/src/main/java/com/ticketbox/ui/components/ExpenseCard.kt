@@ -1,6 +1,7 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -80,7 +81,10 @@ fun ExpenseCard(
         )
     }
 
-    SoftPanel(containerAlpha = 0.96f) {
+    SoftPanel(
+        modifier = Modifier.clickable(enabled = actionsEnabled, onClick = onEdit),
+        containerAlpha = 0.96f,
+    ) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
