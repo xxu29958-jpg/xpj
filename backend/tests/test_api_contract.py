@@ -819,6 +819,45 @@ def test_recognize_text_prefers_transaction_time_over_other_times(client: TestCl
     assert payload["expense_time"] == "2026-05-04T08:23:25Z"
 
 
+def test_recognize_text_prefers_alipay_primary_amount_and_title_merchant(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-17.89",
+            "交易成功",
+            "订单金额",
+            "18.00",
+            "碰一下立减",
+            "-0.11",
+            "支付时间",
+            "2026-05-0521:38:13",
+            "付款方式",
+            "花呗",
+            "商品说明",
+            "重庆巴南区珠江城店",
+            "收单机构",
+            "招商银行股份有限公司",
+            "清算机构",
+            "中国银联股份有限公司",
+            "收款方全称",
+            "巴南区财进宁食品经营部（个体工商户）",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 1789
+    assert payload["merchant"] == "好想来零食乐园"
+    assert payload["category"] == "餐饮"
+    assert payload["expense_time"] == "2026-05-05T13:38:13Z"
+
+
 def test_mock_ocr_provider_populates_pending_draft() -> None:
     expense = Expense(category="其他", raw_text="")
     retry_ocr(expense, MockOcrProvider())

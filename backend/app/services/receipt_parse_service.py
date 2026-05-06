@@ -22,6 +22,14 @@ AMOUNT_PATTERNS = [
     re.compile(r"([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元|人民币)"),
 ]
 
+PRIMARY_AMOUNT_LINE_PATTERN = re.compile(
+    r"^(?P<sign>[-−﹣－])?\s*(?:人民币|RMB|CNY|¥|￥)?\s*(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元|人民币)?$",
+    re.IGNORECASE,
+)
+
+TRANSACTION_SUCCESS_KEYWORDS = ["交易成功", "支付成功", "付款成功"]
+DISCOUNT_AMOUNT_LABELS = ["优惠", "立减", "红包", "券", "奖励", "抵扣"]
+
 TIME_PATTERNS = [
     re.compile(
         r"(?:交易时间|支付时间|付款时间|消费时间|下单时间|订单时间)"
@@ -61,8 +69,36 @@ MERCHANT_KEYWORDS = [
     "TapTap",
 ]
 
+BANK_KEYWORDS = [
+    "中国建设银行",
+    "招商银行",
+    "工商银行",
+    "农业银行",
+    "中国银行",
+    "交通银行",
+    "邮储银行",
+]
+
+MERCHANT_IGNORED_LINES = {
+    "账单详情",
+    "全部账单",
+    "交易成功",
+    "支付成功",
+    "付款成功",
+    "订单金额",
+    "支付时间",
+    "付款方式",
+    "商品说明",
+    "支付奖励",
+    "收单机构",
+    "清算机构",
+    "收款方全称",
+    "订单号",
+    "商家订单号",
+}
+
 MERCHANT_LABEL_PATTERN = re.compile(
-    r"(?:商家|收款方|付款给|对方户名|交易对象|店铺|门店|平台|应用|来源)\s*[:：]\s*([^\n\r，,。；;]{2,40})"
+    r"(?:商家|收款方全称|收款方|付款给|对方户名|交易对象|店铺|门店|平台|应用|来源)\s*[:：]?\s*([^\n\r，,。；;]{2,60})"
 )
 
 
@@ -105,6 +141,10 @@ def _normalize_text(raw_text: str) -> str:
 
 
 def _extract_amount_cents(text: str) -> int | None:
+    primary_amount = _extract_primary_transaction_amount_cents(text)
+    if primary_amount is not None:
+        return primary_amount
+
     candidates: list[int] = []
     for pattern in AMOUNT_PATTERNS:
         for match in pattern.finditer(text):
@@ -113,6 +153,33 @@ def _extract_amount_cents(text: str) -> int | None:
                 candidates.append(cents)
         if candidates:
             return candidates[0]
+    return None
+
+
+def _extract_primary_transaction_amount_cents(text: str) -> int | None:
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        match = PRIMARY_AMOUNT_LINE_PATTERN.match(line.strip())
+        if not match:
+            continue
+
+        # In Alipay detail pages the real paid amount is often the large signed
+        # amount immediately above "交易成功". Labeled amounts like "订单金额"
+        # include discounts and should be a fallback only.
+        if not match.group("sign"):
+            continue
+
+        nearby = "\n".join(lines[max(0, index - 2) : min(len(lines), index + 3)])
+        if not any(keyword in nearby for keyword in TRANSACTION_SUCCESS_KEYWORDS):
+            continue
+
+        previous = lines[index - 1] if index > 0 else ""
+        if any(label in previous for label in DISCOUNT_AMOUNT_LABELS):
+            continue
+
+        cents = _money_to_cents(match.group("amount"))
+        if cents is not None and 0 < cents < 10_000_000_00:
+            return cents
     return None
 
 
@@ -126,11 +193,17 @@ def _money_to_cents(value: str) -> int | None:
 
 
 def _extract_merchant(text: str) -> str | None:
+    title_merchant = _extract_transaction_title_merchant(text)
+    if title_merchant:
+        return title_merchant
+
     labeled = MERCHANT_LABEL_PATTERN.search(text)
     if labeled:
         return _clean_merchant(labeled.group(1))
 
     for keyword in MERCHANT_KEYWORDS:
+        if keyword in BANK_KEYWORDS and _looks_like_payment_institution_context(text, keyword):
+            continue
         if keyword.lower() in text.lower():
             return keyword
 
@@ -138,6 +211,41 @@ def _extract_merchant(text: str) -> str | None:
     if 2 <= len(first_line) <= 30 and not any(ch.isdigit() for ch in first_line):
         return _clean_merchant(first_line)
     return None
+
+
+def _extract_transaction_title_merchant(text: str) -> str | None:
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if not any(keyword in line for keyword in TRANSACTION_SUCCESS_KEYWORDS):
+            continue
+
+        for candidate in reversed(lines[max(0, index - 5) : index]):
+            cleaned = _clean_merchant(candidate)
+            if _is_title_merchant_candidate(cleaned):
+                return cleaned
+    return None
+
+
+def _is_title_merchant_candidate(value: str | None) -> bool:
+    if not value:
+        return False
+    if value in MERCHANT_IGNORED_LINES:
+        return False
+    if PRIMARY_AMOUNT_LINE_PATTERN.match(value):
+        return False
+    if len(value) < 2 or len(value) > 30:
+        return False
+    if any(label in value for label in ["金额", "时间", "方式", "订单", "机构", "奖励"]):
+        return False
+    return True
+
+
+def _looks_like_payment_institution_context(text: str, keyword: str) -> bool:
+    if keyword not in text:
+        return False
+    if "交易提醒" in text and text.splitlines()[0].strip() == keyword:
+        return False
+    return any(label in text for label in ["收单机构", "清算机构", "收款方全称"])
 
 
 def _clean_merchant(value: str) -> str | None:
@@ -177,7 +285,7 @@ def _default_timezone() -> ZoneInfo:
 def _suggest_category(text: str, merchant: str | None) -> str | None:
     haystack = f"{merchant or ''}\n{text}".lower()
     category_rules = [
-        ("餐饮", ["美团", "饿了么", "kfc", "肯德基", "麦当劳", "餐", "外卖"]),
+        ("餐饮", ["美团", "饿了么", "kfc", "肯德基", "麦当劳", "餐", "外卖", "好想来", "零食", "小吃", "奶茶"]),
         ("购物", ["京东", "淘宝", "天猫", "拼多多", "购物"]),
         ("交通", ["滴滴", "高德", "地铁", "公交", "打车"]),
         ("AI订阅", ["openai", "claude", "gemini", "kimi", "chatgpt"]),
