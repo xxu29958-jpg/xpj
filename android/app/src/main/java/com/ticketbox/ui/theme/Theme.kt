@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import android.view.View
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.design.backgroundVisualsForSkin
 
 private val PineScheme = lightColorScheme(
     primary = Color(0xFF0E5C4F),
@@ -176,45 +177,7 @@ fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
 }
 
 fun backgroundBrushForSkin(skin: AppSkin): Brush {
-    val visuals = themeVisualsForSkin(skin)
-    return when (skin) {
-        AppSkin.Pine -> Brush.verticalGradient(
-            listOf(
-                visuals.backgroundTop,
-                Color(0xFFF0F5EF),
-                visuals.backgroundBottom,
-            ),
-        )
-        AppSkin.Pomelo -> Brush.verticalGradient(
-            listOf(
-                visuals.backgroundTop,
-                Color(0xFFF8EFD9),
-                visuals.backgroundBottom,
-            ),
-        )
-        AppSkin.Harbor -> Brush.verticalGradient(
-            listOf(
-                visuals.backgroundTop,
-                Color(0xFFF0F5F5),
-                Color(0xFFE5EFF1),
-                visuals.backgroundBottom,
-            ),
-        )
-        AppSkin.Berry -> Brush.verticalGradient(
-            listOf(
-                visuals.backgroundTop,
-                Color(0xFFF7ECEF),
-                visuals.backgroundBottom,
-            ),
-        )
-        AppSkin.Night -> Brush.verticalGradient(
-            listOf(
-                visuals.backgroundTop,
-                Color(0xFF071B20),
-                visuals.backgroundBottom,
-            ),
-        )
-    }
+    return Brush.verticalGradient(backgroundVisualsForSkin(skin).baseGradient)
 }
 
 @Composable
@@ -253,6 +216,7 @@ fun TicketboxAtmosphereBackground(
     content: @Composable () -> Unit = {},
 ) {
     val visuals = themeVisualsForSkin(skin)
+    val backgroundVisuals = backgroundVisualsForSkin(skin)
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -264,7 +228,7 @@ fun TicketboxAtmosphereBackground(
                 .offset(x = (-120).dp, y = (-120).dp)
                 .size(520.dp),
             colors = listOf(
-                visuals.warmMist.copy(alpha = if (skin == AppSkin.Night) 0.18f else 0.32f),
+                backgroundVisuals.topGlow.copy(alpha = backgroundVisuals.topGlowAlpha),
                 Color.Transparent,
             ),
         )
@@ -274,7 +238,7 @@ fun TicketboxAtmosphereBackground(
                 .offset(x = 160.dp, y = (-30).dp)
                 .size(560.dp),
             colors = listOf(
-                visuals.coolMist.copy(alpha = if (skin == AppSkin.Night) 0.22f else 0.26f),
+                backgroundVisuals.sideGlow.copy(alpha = backgroundVisuals.sideGlowAlpha),
                 Color.Transparent,
             ),
         )
@@ -402,6 +366,13 @@ fun TicketboxAtmosphereBackground(
                 )
             }
         }
+        MistBand(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(210.dp),
+            colors = backgroundVisuals.bottomMist,
+        )
         MistTextureOverlay(skin = skin, visuals = visuals)
         content()
     }
