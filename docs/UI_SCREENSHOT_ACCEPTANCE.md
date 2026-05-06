@@ -20,7 +20,7 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 | Stats empty | `artifacts/stats_empty.png` and `artifacts/stats_current.png` | Captured | Empty state includes lightweight skeleton placeholders and primary refresh CTA. |
 | Stats with data | `artifacts/stats_with_data.png` | Captured | Real monthly totals and trend card captured on first entry with local ledger-backed fallback, then refreshed by remote stats when available. |
 | Settings root | `artifacts/settings_root.png` | Captured | Settings uses secondary-page entry structure and unified entry card styling. |
-| Appearance | `artifacts/appearance.png` | Captured | Theme grid and appearance structure captured. |
+| Appearance | `artifacts/appearance.png` | Captured | Theme grid and appearance structure captured; secondary-page back/header spacing is tightened so the page title no longer feels pushed down. |
 | Background gallery | `artifacts/background_gallery.png` | Captured | Built-in background catalog and categories captured. |
 | Background preview | `artifacts/background_preview.png` | Captured | Preview confirms page-effect preview before applying. |
 | Expense edit | `artifacts/expense_edit.png` | Captured | Edit screen remains compact and readable. |
@@ -31,6 +31,7 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 | --- | --- | --- |
 | Pending with items | Captured from the current real device state with 3 pending expenses. A Xiaomi floating system control overlaps part of the lower card in the screenshot; it is not App UI. | Re-capture after disabling the phone floating control if a clean marketing/PR screenshot is needed. |
 | Stats with data | Captured from the current local confirmed cache on first entry; remote stats can still refresh over it. | If local and remote totals diverge, investigate sync freshness rather than visual layout. |
+| Expense edit | Image preview can show a short loading placeholder before the protected screenshot appears. | Current real-device wait capture confirms the screenshot resolves and remains opt-in for full-size viewing. |
 
 ## Commands Used
 
@@ -78,6 +79,7 @@ Result:
 ## Acceptance Notes
 
 - Page scaffold and bottom-bar avoidance are active on Pending, Ledger, Stats, Settings, Appearance, Background Gallery/Preview, and Expense Edit.
+- Settings secondary pages now group the back action and page header more tightly, reducing the visible top gap without changing any settings behavior.
 - Pending item mode now prioritizes real bills over the upload-flow guide; the guide remains available for empty state.
 - Pending remains the benchmark page; the current screenshot is suitable for human review.
 - Ledger and Expense Edit are kept more solid and compact than Pending/Stats, preserving readability over immersion.

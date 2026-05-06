@@ -129,22 +129,29 @@ internal fun SettingsPageFrame(
     content: @Composable () -> Unit,
 ) {
     AppPageScaffold(role = AppPageRole.Settings) { layout ->
+        val isSecondaryPage = onBack != null
+        val topPadding = if (isSecondaryPage) layout.topPadding - 8.dp else layout.topPadding
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = layout.horizontalPadding)
-                .padding(top = layout.topPadding, bottom = layout.bottomPadding),
+                .padding(top = topPadding, bottom = layout.bottomPadding),
             verticalArrangement = Arrangement.spacedBy(layout.contentGap),
         ) {
-            onBack?.let {
-                TextButton(onClick = it) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("返回设置")
+            Column(
+                verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) 8.dp else 0.dp),
+            ) {
+                onBack?.let {
+                    TextButton(onClick = it) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("返回设置")
+                    }
                 }
+                AppPageHeader(title = title, subtitle = subtitle)
             }
-            AppPageHeader(title = title, subtitle = subtitle)
             content()
         }
     }

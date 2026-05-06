@@ -116,6 +116,8 @@ Current screenshot notes:
 
 - `pending_with_items.png` now uses the current real-device state with 3 pending expenses.
 - `stats_with_data.png` was captured on first entry using the local confirmed-cache fallback and shows the real monthly total.
+- `appearance.png` was refreshed after tightening secondary settings page back/header spacing.
+- `expense_edit.png` was refreshed after waiting for the protected screenshot preview to resolve from its loading placeholder.
 - A Xiaomi floating system control appears in some screenshots; it is not App UI and should be disabled before clean marketing captures.
 
 ## Manual Checks Still Required
