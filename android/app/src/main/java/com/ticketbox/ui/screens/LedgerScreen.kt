@@ -308,7 +308,7 @@ private fun LedgerHeader(onManualAdd: () -> Unit) {
                     maxLines = 1,
                 )
                 Text(
-                    text = "已确认支出 · 可离线查看本地缓存",
+                    text = "已确认支出 · 可离线查看",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,

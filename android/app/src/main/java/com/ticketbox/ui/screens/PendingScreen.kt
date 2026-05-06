@@ -95,7 +95,9 @@ fun PendingScreen(
             )
         }
 
-        item { UploadFlowCard() }
+        if (state.items.isEmpty()) {
+            item { UploadFlowCard() }
+        }
 
         state.message?.let { message ->
             item {
