@@ -12,7 +12,7 @@ class AppContainer(context: Context) {
     val settingsStore = LocalSettingsStore(appContext)
     val tokenStore = SecureTokenStore(appContext)
     private val database = AppDatabase.getDatabase(appContext)
-    private val apiClient = ApiClient()
+    private val apiClient = ApiClient(appContext)
 
     val expenseRepository = ExpenseRepository(
         expenseDao = database.expenseDao(),

@@ -1,11 +1,13 @@
 package com.ticketbox.data.repository
 
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.io.InterruptedIOException
+import javax.net.ssl.SSLHandshakeException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
 
 class NetworkErrorMapperTest {
     @Test
@@ -19,13 +21,35 @@ class NetworkErrorMapperTest {
     }
 
     @Test
+    fun explainsTlsFailuresAsPossibleNetworkOrVpnInterception() {
+        val message = userNetworkMessage(
+            error = SSLHandshakeException("connection closed"),
+            serverUrl = "https://api.zen70.cn",
+        )
+
+        assertTrue(message.contains("VPN"))
+        assertTrue(message.contains("切换网络"))
+    }
+
+    @Test
     fun keepsDomainResolutionMessageUserFriendly() {
         val message = userNetworkMessage(
             error = UnknownHostException(),
             serverUrl = "https://api.zen70.cn",
         )
 
-        assertEquals("暂时连不上小票夹，请稍后再试。", message)
+        assertEquals("当前网络解析不到小票夹服务，请切换网络后重试。", message)
+    }
+
+    @Test
+    fun explainsInterruptedTimeoutAsWeakNetworkOrVpn() {
+        val message = userNetworkMessage(
+            error = InterruptedIOException("timeout"),
+            serverUrl = "https://api.zen70.cn",
+        )
+
+        assertTrue(message.contains("VPN"))
+        assertTrue(message.contains("超时"))
     }
 
     @Test
