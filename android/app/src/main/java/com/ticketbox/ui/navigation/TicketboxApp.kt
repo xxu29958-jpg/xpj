@@ -3,18 +3,9 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,11 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -36,13 +23,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
@@ -58,6 +41,8 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
+import com.ticketbox.ui.components.AppBottomNav
+import com.ticketbox.ui.components.AppBottomNavItem
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.ui.screens.LedgerScreen
@@ -65,8 +50,6 @@ import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.screens.PendingScreen
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.ui.screens.StatsScreen
-import com.ticketbox.ui.design.AppElevation
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
@@ -85,13 +68,14 @@ private data class SelectedScreenshot(
 )
 
 private enum class BottomTab(
+    val key: String,
     val label: String,
     val icon: ImageVector,
 ) {
-    Pending("待确认", Icons.Default.CheckCircle),
-    Ledger("账本", Icons.AutoMirrored.Filled.ReceiptLong),
-    Stats("统计", Icons.Default.BarChart),
-    Settings("设置", Icons.Default.Settings),
+    Pending("pending", "待确认", Icons.Default.CheckCircle),
+    Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
+    Stats("stats", "统计", Icons.Default.BarChart),
+    Settings("settings", "设置", Icons.Default.Settings),
 }
 
 @Composable
@@ -232,9 +216,12 @@ private fun MainShell(
         Scaffold(
             containerColor = Color.Transparent,
             bottomBar = {
-                TicketboxBottomBar(
-                    selectedTab = selectedTab,
-                    onSelectTab = { selectedTab = it },
+                AppBottomNav(
+                    items = BottomTab.entries.map { it.toBottomNavItem() },
+                    selectedKey = selectedTab.key,
+                    onSelect = { item ->
+                        BottomTab.entries.firstOrNull { it.key == item.key }?.let { selectedTab = it }
+                    },
                 )
             },
         ) { padding ->
@@ -357,42 +344,6 @@ private fun MainShell(
 }
 }
 
-@Composable
-private fun TicketboxBottomBar(
-    selectedTab: BottomTab,
-    onSelectTab: (BottomTab) -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(AppRadius.bottomBar),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-            tonalElevation = 0.dp,
-            shadowElevation = AppElevation.floatingBottomBarShadow,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                BottomTab.entries.forEach { tab ->
-                    BottomBarItem(
-                        tab = tab,
-                        selected = selectedTab == tab,
-                        onClick = { onSelectTab(tab) },
-                    )
-                }
-            }
-        }
-    }
-}
-
 private val BottomTab.surfaceRole: SurfaceRole
     get() = when (this) {
         BottomTab.Pending -> SurfaceRole.Pending
@@ -401,67 +352,11 @@ private val BottomTab.surfaceRole: SurfaceRole
         BottomTab.Settings -> SurfaceRole.Settings
     }
 
-@Composable
-private fun BottomBarItem(
-    tab: BottomTab,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val background by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-        label = "bottomTabBackground",
-    )
-    val content by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        label = "bottomTabContent",
-    )
-    if (selected) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(AppRadius.large))
-                .clickable(onClick = onClick)
-                .background(background)
-                .padding(horizontal = 16.dp, vertical = 13.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = tab.icon,
-                contentDescription = tab.label,
-                tint = content,
-                modifier = Modifier.size(19.dp),
-            )
-            Text(
-                text = tab.label,
-                color = content,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Black,
-            )
-        }
-    } else {
-        Column(
-            modifier = Modifier
-                .clip(RoundedCornerShape(AppRadius.large))
-                .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Icon(
-                imageVector = tab.icon,
-                contentDescription = tab.label,
-                tint = content,
-                modifier = Modifier.size(19.dp),
-            )
-            Text(
-                text = tab.label,
-                color = content,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
+private fun BottomTab.toBottomNavItem(): AppBottomNavItem = AppBottomNavItem(
+    key = key,
+    label = label,
+    icon = icon,
+)
 
 private fun Context.readSelectedScreenshot(uri: Uri): SelectedScreenshot? {
     val contentType = contentResolver.getType(uri)
