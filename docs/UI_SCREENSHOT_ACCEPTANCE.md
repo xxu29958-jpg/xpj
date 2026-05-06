@@ -125,3 +125,17 @@ Observed result:
 - Hero height is lower than the previous stacked version, so the first pending bill and its actions remain visible above the floating bottom navigation.
 - Upload remains the primary CTA, and the product boundary copy remains unchanged: screenshots and OCR drafts do not auto-enter the ledger.
 - No ViewModel, Repository, backend API, Room, OCR, duplicate, CSV, upload, or token flow changed in this polish.
+
+## Appearance Theme Visuals - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/appearance_theme_visuals.png`
+- copied to `artifacts/appearance.png`
+
+Observed result:
+
+- Theme cards now use `ThemeVisuals` for container tint, selected border/shadow, preview hero gradient, and chip accents instead of only the Material `ColorScheme`.
+- The preview cards read more like miniature App surfaces: atmosphere layer, hero strip, glass summary strip, and small accent markers.
+- Harbor remains visibly recommended/current without turning the whole settings page into a high-contrast demo.
+- The background and theme flow remains local UI customization only; no business, backend, token, Room, OCR, duplicate, CSV, or upload flow changed.

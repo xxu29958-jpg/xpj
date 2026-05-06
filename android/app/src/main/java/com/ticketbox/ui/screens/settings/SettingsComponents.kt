@@ -62,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -100,6 +101,10 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.AppElevation
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.ThemeVisuals
+import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -732,18 +737,30 @@ internal fun SkinOptionCard(
     onClick: () -> Unit,
 ) {
     val scheme = colorSchemeForSkin(skin)
+    val visuals = themeVisualsForSkin(skin)
     val containerColor = if (selected) {
-        scheme.primary.copy(alpha = 0.22f)
+        visuals.glassTint.copy(alpha = 0.86f)
     } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+        visuals.solidCard.copy(alpha = 0.94f)
     }
-    val borderColor = if (selected) scheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    val borderColor = if (selected) visuals.primary else Color.White.copy(alpha = 0.58f)
+    val cardShape = RoundedCornerShape(AppRadius.large)
 
     Card(
-        modifier = modifier.height(168.dp),
+        modifier = modifier
+            .height(168.dp)
+            .shadow(
+                elevation = if (selected) AppElevation.softCardShadow else 6.dp,
+                shape = cardShape,
+                clip = false,
+                ambientColor = visuals.shadowTint.copy(alpha = if (selected) 0.18f else 0.08f),
+                spotColor = visuals.shadowTint.copy(alpha = if (selected) 0.14f else 0.06f),
+            ),
         onClick = onClick,
+        shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier
@@ -751,7 +768,7 @@ internal fun SkinOptionCard(
                 .padding(10.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            SkinPreview(skin = skin, scheme = scheme)
+            SkinPreview(skin = skin, scheme = scheme, visuals = visuals)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -764,9 +781,9 @@ internal fun SkinOptionCard(
                         maxLines = 1,
                     )
                     if (selected) {
-                        SkinPill(text = "当前", scheme = scheme, emphasized = true)
+                        SkinPill(text = "当前", scheme = scheme, visuals = visuals, emphasized = true)
                     } else if (skin == AppSkin.Harbor) {
-                        SkinPill(text = "推荐", scheme = scheme, emphasized = false)
+                        SkinPill(text = "推荐", scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
                 Text(
@@ -782,7 +799,7 @@ internal fun SkinOptionCard(
 }
 
 @Composable
-internal fun SkinPreview(skin: AppSkin, scheme: ColorScheme) {
+internal fun SkinPreview(skin: AppSkin, scheme: ColorScheme, visuals: ThemeVisuals) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -804,10 +821,7 @@ internal fun SkinPreview(skin: AppSkin, scheme: ColorScheme) {
                     .clip(RoundedCornerShape(15.dp))
                     .background(
                         Brush.linearGradient(
-                            listOf(
-                                scheme.primary.copy(alpha = 0.96f),
-                                scheme.secondary.copy(alpha = 0.86f),
-                            ),
+                            visuals.heroGradient,
                         ),
                     )
                     .padding(8.dp),
@@ -822,7 +836,7 @@ internal fun SkinPreview(skin: AppSkin, scheme: ColorScheme) {
                         .width(36.dp)
                         .height(18.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(scheme.onPrimary.copy(alpha = 0.84f)),
+                        .background(Color.White.copy(alpha = 0.82f)),
                 )
             }
             Box(
@@ -830,9 +844,14 @@ internal fun SkinPreview(skin: AppSkin, scheme: ColorScheme) {
                     .fillMaxWidth()
                     .height(24.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(scheme.surface.copy(alpha = 0.88f))
+                    .background(visuals.glassTint.copy(alpha = 0.88f))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
-            )
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    PreviewBar(width = 34.dp, color = visuals.primary.copy(alpha = 0.28f))
+                    PreviewBar(width = 24.dp, color = visuals.accent.copy(alpha = 0.22f))
+                }
+            }
         }
     }
 }
@@ -855,9 +874,10 @@ internal fun PreviewBar(
 internal fun SkinPill(
     text: String,
     scheme: ColorScheme,
+    visuals: ThemeVisuals,
     emphasized: Boolean,
 ) {
-    val background = if (emphasized) scheme.primary else scheme.surfaceVariant.copy(alpha = 0.80f)
+    val background = if (emphasized) visuals.primary else visuals.chipSelected.copy(alpha = 0.86f)
     val content = if (emphasized) scheme.onPrimary else scheme.onSurfaceVariant
     Row(
         modifier = Modifier

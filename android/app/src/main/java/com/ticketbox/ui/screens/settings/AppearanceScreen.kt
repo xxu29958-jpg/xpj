@@ -97,6 +97,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -167,6 +168,7 @@ fun AppearanceScreen(
                         SkinPill(
                             text = state.backgroundSettings.immersionMode.displayName,
                             scheme = MaterialTheme.colorScheme,
+                            visuals = themeVisualsForSkin(currentSkin),
                             emphasized = false,
                         )
                     }
