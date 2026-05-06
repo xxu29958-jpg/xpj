@@ -51,7 +51,8 @@ val PageRole.density: PageDensity
 object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
     val MaxStatusBarPadding: Dp = 24.dp
-    val BottomBarHeight: Dp = 96.dp
+    // Estimated floating bottom bar height. Keep named so it can be replaced by measured layout height later.
+    val BottomBarHeight: Dp = 72.dp
     val BottomContentExtraPadding: Dp = 24.dp
     val CardGap: Dp = AppSpacing.cardGap
 

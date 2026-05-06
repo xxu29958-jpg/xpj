@@ -115,10 +115,17 @@ Captured real-device screenshots under `artifacts/`:
 Current screenshot notes:
 
 - `pending_with_items.png` now uses the current real-device state with 3 pending expenses.
+- Pending compact bill cards were tightened after the Page Scaffold gate so the first bill actions remain visible above the floating bottom navigation.
 - `stats_with_data.png` was captured on first entry using the local confirmed-cache fallback and shows the real monthly total.
 - `appearance.png` was refreshed after tightening secondary settings page back/header spacing.
 - `expense_edit.png` was refreshed after waiting for the protected screenshot preview to resolve from its loading placeholder.
 - A Xiaomi floating system control appears in some screenshots; it is not App UI and should be disabled before clean marketing captures.
+
+## Page Scaffold Gate
+
+- Recorded in `docs/UI_IMPLEMENTATION_PLAN.md`.
+- `AppPageDefaults.BottomBarHeight` is the named scaffold estimate (`72.dp`) used by the common bottom-padding formula.
+- This gate is limited to layout skeleton, safe areas, scrolling padding, and bottom-bar avoidance; it does not change theme visuals or business logic.
 
 ## Manual Checks Still Required
 

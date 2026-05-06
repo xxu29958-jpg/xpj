@@ -29,15 +29,16 @@
 按以下顺序提交，不能混阶段：
 
 1. `docs only`：设计参考、目标文档、实施计划、缩略图。
-2. `tokens only`：新增/迁移 design tokens，不改页面。
-3. `components only`：新增 reusable components、preview/sample 和兼容 wrappers，不批量改业务屏幕。
-4. `theme/background only`：ThemeVisuals、BackgroundVisuals、AppThemeBackground。
-5. `PendingScreen only`：Pending 标杆页。
-6. `LedgerScreen only`：账本视觉接入，保持扫读。
-7. `StatsScreen only`：统计视觉和空状态。
-8. `Settings / Appearance only`：设置和外观页统一。
-9. `ExpenseEdit only`：编辑确认页视觉接入。
-10. `UX states only`：loading / success / error / empty / offline / duplicate / OCR / CSV 状态。
+2. `page scaffold only`：统一页面骨架、安全区、滚动 padding 和底部避让，不做视觉还原。
+3. `tokens only`：新增/迁移 design tokens，不改页面。
+4. `components only`：新增 reusable components、preview/sample 和兼容 wrappers，不批量改业务屏幕。
+5. `theme/background only`：ThemeVisuals、BackgroundVisuals、AppThemeBackground。
+6. `PendingScreen only`：Pending 标杆页。
+7. `LedgerScreen only`：账本视觉接入，保持扫读。
+8. `StatsScreen only`：统计视觉和空状态。
+9. `Settings / Appearance only`：设置和外观页统一。
+10. `ExpenseEdit only`：编辑确认页视觉接入。
+11. `UX states only`：loading / success / error / empty / offline / duplicate / OCR / CSV 状态。
 
 ## Definition of Done Per Commit
 
@@ -56,6 +57,85 @@
 组件阶段只新增组件、preview/sample 或兼容 wrapper。
 不批量改业务页面。
 只有进入 Pending benchmark 阶段后，才开始替换业务页面 UI。
+
+## Page Scaffold Gate
+
+`page scaffold only` 是设计包工程化的强制前置阶段。它先修全局页面骨架，不碰视觉还原、不改业务逻辑。
+
+必须整理并真实接入：
+
+- `AppPageScaffold`
+- `AppPageHeader`
+- `AppScrollableContent`
+- `BottomBarAwarePadding`
+- `PageRole`
+- `PageDensity`
+
+真实页面至少接入：
+
+- Pending
+- Ledger
+- Stats
+- Settings
+- Edit
+
+页面密度固定：
+
+- `Pending = comfortable`
+- `Stats = comfortable`
+- `Settings = comfortable`
+- `Ledger = compact`
+- `Edit = compact`
+
+默认 spacing 固定：
+
+- `horizontalPadding = 24.dp`
+- `compact.topContentPadding = 16.dp`
+- `comfortable.topContentPadding = 24.dp`
+- `compact.headerToContentGap = 16.dp`
+- `comfortable.headerToContentGap = 22.dp`
+- `compact.sectionGap = 18.dp`
+- `comfortable.sectionGap = 24.dp`
+- `cardGap = 16.dp`
+- `bottomContentExtraPadding = 24.dp`
+
+底部避让公式：
+
+```text
+scrollContentBottomPadding = bottomBarHeight + navigationBarsPadding + bottomContentExtraPadding
+```
+
+如果底栏高度暂时不能实测，必须使用命名常量 `AppPageDefaults.BottomBarHeight = 72.dp`，并在代码注释中标明后续可替换为实测布局值。禁止各页面写随机 `120.dp / 160.dp / 220.dp`。
+
+Page scaffold 阶段只允许：
+
+- 调整布局骨架。
+- 统一安全区。
+- 统一滚动内容 padding。
+- 删除或替换大 `Spacer`。
+- 替换重复的 per-screen top/bottom padding。
+
+Page scaffold 阶段禁止：
+
+- 重做卡片样式。
+- 重做按钮样式。
+- 重做背景样式。
+- 重做 Hero 样式。
+- 改主题视觉。
+- 改 ViewModel / Repository / API 调用。
+- 改上传、pending、confirmed、OCR、重复检测、Room、CSV、服务器绑定、分类规则数据流。
+
+验收必须确认：
+
+- 标题不裁切。
+- 顶部不过空。
+- 页面内容不整体下沉。
+- 底部内容不被导航遮挡。
+- 最后一项能完整滚到导航栏上方。
+- 底部导航不跟随内容上移。
+- Ledger / Edit 可读性不下降。
+
+Page scaffold 通过后，才继续 `components only`、`theme/background only` 和 `PendingScreen only`。
 
 ## Pending Benchmark Gate
 
@@ -113,6 +193,41 @@ Ledger 和 Edit 不追求最高沉浸。它们的优先级是：
 - 是否金额不清楚
 - 是否背景抢内容
 - 是否还像普通 Material 默认 UI
+
+## Post-Acceptance Polish Loop
+
+视觉验收后允许继续小幅打磨，但必须按“发现一个真实问题、修一个可验证问题”的方式推进。
+
+允许修：
+
+- 顶部安全区、标题裁切、标题过低。
+- 底部导航遮挡内容。
+- 列表最后一项无法完整滚出。
+- 账单卡片过高导致首屏信息不足。
+- 表单页字段可读性不足。
+- 空状态、离线状态、loading 状态遮挡主标题。
+- 二级设置页返回按钮和页面标题间距异常。
+
+禁止借 polish 名义继续做：
+
+- 新业务功能。
+- 新后端接口。
+- 新数据库字段。
+- 新 OCR 能力。
+- 新同步策略。
+- 大范围重写页面。
+- 重做主题体系。
+- 牺牲 Ledger / Edit 可读性的沉浸效果。
+
+每轮 polish 必须：
+
+1. 先用真机截图或 UI tree 确认问题。
+2. 只改对应页面或通用骨架的最小范围。
+3. 保留原 ViewModel / Repository / API 调用逻辑。
+4. 刷新对应 `artifacts/*.png` 验收截图。
+5. 更新 `docs/UI_SCREENSHOT_ACCEPTANCE.md` 或灰度状态文档。
+6. 跑当前 gray 变体的测试、构建、lint。
+7. 单独提交，不和新功能混在一起。
 
 ## Gradle Variant Fallback
 

@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
@@ -53,6 +54,11 @@ fun ExpenseCard(
     onKeepDuplicate: () -> Unit = {},
 ) {
     var showRejectDialog by remember(expense.id) { mutableStateOf(false) }
+    val isCompact = previewMode == ExpensePreviewMode.Compact
+    val cardPadding = if (isCompact) 10.dp else 14.dp
+    val contentGap = if (isCompact) 8.dp else 12.dp
+    val rowGap = if (isCompact) 10.dp else 12.dp
+    val imageSize = if (isCompact) DpSize(width = 82.dp, height = 110.dp) else DpSize(width = 96.dp, height = 128.dp)
 
     if (showRejectDialog) {
         AlertDialog(
@@ -86,12 +92,12 @@ fun ExpenseCard(
         containerAlpha = 0.96f,
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(cardPadding),
+            verticalArrangement = Arrangement.spacedBy(contentGap),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(rowGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (expense.imagePath != null) {
@@ -99,13 +105,14 @@ fun ExpenseCard(
                         image = thumbnail,
                         placeholder = "截图",
                         compact = true,
+                        compactSize = imageSize,
                     )
                 } else {
                     CategoryMark(expense.category)
                 }
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (isCompact) 4.dp else 6.dp),
                 ) {
                     Text(
                         text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",

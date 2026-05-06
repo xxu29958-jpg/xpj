@@ -13,7 +13,7 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 | Target | Artifact | Status | Notes |
 | --- | --- | --- | --- |
 | Pending empty | `artifacts/pending_empty.png` | Captured | Pending benchmark empty state with hero, upload CTA, upload flow, and empty card. |
-| Pending with items | `artifacts/pending_with_items.png` | Captured | Real pending items captured after upload; upload flow guide is hidden in item mode so the first bill appears earlier. |
+| Pending with items | `artifacts/pending_with_items.png` | Captured | Real pending items captured after upload; upload flow guide is hidden in item mode, compact bill cards keep the first bill actions visible above the floating bottom nav. |
 | Pending offline | `artifacts/pending_offline.png` | Captured | Shows network fallback as a light product state; title is not covered by loading. |
 | Ledger with items | `artifacts/ledger_items.png` | Captured | Ledger remains readable with compact filter area and visible list. |
 | Ledger search empty | `artifacts/ledger_search_empty.png` | Captured | Search empty state captured with a nonsense query. |
@@ -32,6 +32,13 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 | Pending with items | Captured from the current real device state with 3 pending expenses. A Xiaomi floating system control overlaps part of the lower card in the screenshot; it is not App UI. | Re-capture after disabling the phone floating control if a clean marketing/PR screenshot is needed. |
 | Stats with data | Captured from the current local confirmed cache on first entry; remote stats can still refresh over it. | If local and remote totals diverge, investigate sync freshness rather than visual layout. |
 | Expense edit | Image preview can show a short loading placeholder before the protected screenshot appears. | Current real-device wait capture confirms the screenshot resolves and remains opt-in for full-size viewing. |
+
+## Page Scaffold Follow-Up - 2026-05-06
+
+- `AppPageDefaults.BottomBarHeight` is now the named scaffold constant from the Page Scaffold Gate (`72.dp`) instead of a per-screen bottom-padding guess.
+- Pending item cards were tightened only in compact preview mode so the edit / confirm / ignore actions remain visible above the floating bottom bar.
+- Latest real-device check: `artifacts/pending_compact_card_polish.png`, copied to `artifacts/pending_with_items.png` for the current acceptance set.
+- No ViewModel, Repository, backend API, Room, OCR, duplicate, CSV, upload, or token flow changed in this scaffold polish.
 
 ## Commands Used
 
