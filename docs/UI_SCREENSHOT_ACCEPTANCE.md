@@ -40,6 +40,24 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 - Latest real-device check: `artifacts/pending_compact_card_polish.png`, copied to `artifacts/pending_with_items.png` for the current acceptance set.
 - No ViewModel, Repository, backend API, Room, OCR, duplicate, CSV, upload, or token flow changed in this scaffold polish.
 
+## Scaffold Recheck - 2026-05-06 21:38
+
+Real-device check artifacts:
+
+- `artifacts/current_pending_check.png`
+- `artifacts/current_ledger_check.png`
+- `artifacts/current_stats_check.png`
+- `artifacts/current_settings_check.png`
+- `artifacts/current_expense_edit_check.png`
+
+Observed result:
+
+- Pending: title area is not covered, compact item actions remain above the floating bottom navigation.
+- Ledger: compact density keeps the title, summary, filters, and first list items readable without status-bar clipping.
+- Stats: title and month selector are safe, overview content scrolls behind the floating bottom bar as intended.
+- Settings: root entries keep enough bottom clearance for the floating bottom navigation.
+- Expense Edit: compact task layout keeps amount, merchant, category, and primary work area readable.
+
 ## Commands Used
 
 ```powershell
