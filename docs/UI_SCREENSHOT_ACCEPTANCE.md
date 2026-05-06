@@ -154,3 +154,19 @@ Observed result:
 - Category chips use the shared `AppFilterChip` and a horizontally scrollable row, preventing the `插画` label from wrapping vertically on the real device.
 - The custom actions use shared App buttons, so `从相册选择` and `主题默认` match the rest of the visual system.
 - The background and theme flow remains local UI customization only; no business, backend, token, Room, OCR, duplicate, CSV, or upload flow changed.
+
+## Background Preview Visuals - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/background_preview_theme_visuals.png`
+- copied to `artifacts/background_preview.png`
+- `artifacts/background_preview_actions_final.png`
+
+Observed result:
+
+- Preview cards now use the selected skin's `ThemeVisuals` for glass/solid content layers, border, shadow, and readable card hierarchy.
+- Pending and Stats preview roles retain more atmosphere, while Ledger and Edit preview roles use more solid surfaces for scan and form readability.
+- The preview's `确认入账` sample and final `应用背景` action use shared App primary buttons, keeping the apply step visually consistent with the rest of the app.
+- The final action area remains visible above the floating bottom navigation after scrolling; cancel remains a secondary action and does not overpower apply.
+- The background preview flow still saves nothing until `应用背景` is tapped; no business, backend, token, Room, OCR, duplicate, CSV, or upload flow changed.

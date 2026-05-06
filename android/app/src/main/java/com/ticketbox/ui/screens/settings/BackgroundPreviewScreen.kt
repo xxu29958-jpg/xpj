@@ -90,6 +90,8 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppPrimaryButton
+import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
@@ -155,24 +157,26 @@ fun BackgroundPreviewScreen(
             skin = currentSkin,
         ) {
             PreviewReceipt("金额", "¥36.80", "商家 美团外卖 · 分类 餐饮")
-            Button(modifier = Modifier.fillMaxWidth(), onClick = {}) {
-                Text("确认入账")
-            }
+            AppPrimaryButton(
+                text = "确认入账",
+                icon = Icons.Filled.Check,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {},
+            )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(
+            AppSecondaryButton(
+                text = "取消预览",
                 modifier = Modifier.weight(1f),
+                leadingIcon = Icons.AutoMirrored.Filled.ArrowBack,
                 onClick = onBack,
-            ) {
-                Text("取消预览")
-            }
-            Button(
+            )
+            AppPrimaryButton(
+                text = "应用背景",
+                icon = Icons.Filled.Check,
                 modifier = Modifier.weight(1f),
                 onClick = { onApply(previewSettings) },
-            ) {
-                Text("应用背景")
-            }
+            )
         }
     }
 }
-

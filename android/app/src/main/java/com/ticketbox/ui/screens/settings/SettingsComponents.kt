@@ -687,13 +687,42 @@ internal fun PreviewRoleCard(
     skin: AppSkin,
     content: @Composable () -> Unit,
 ) {
+    val visuals = themeVisualsForSkin(skin)
+    val outerShape = RoundedCornerShape(AppRadius.large)
+    val innerShape = RoundedCornerShape(AppRadius.medium)
+    val contentAlpha = resolveCardContainerAlpha(settings.immersionMode, role)
+    val contentContainerColor = when (role) {
+        SurfaceRole.Pending,
+        SurfaceRole.Stats -> visuals.glassTint.copy(alpha = contentAlpha)
+        SurfaceRole.Ledger,
+        SurfaceRole.Edit,
+        SurfaceRole.Settings,
+        SurfaceRole.Auth -> visuals.solidCard.copy(alpha = contentAlpha)
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+        )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(178.dp)
-                .clip(RoundedCornerShape(24.dp)),
+                .shadow(
+                    elevation = 8.dp,
+                    shape = outerShape,
+                    clip = false,
+                    ambientColor = visuals.shadowTint.copy(alpha = 0.08f),
+                    spotColor = visuals.shadowTint.copy(alpha = 0.06f),
+                )
+                .clip(outerShape)
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.30f),
+                    shape = outerShape,
+                ),
         ) {
             TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = role)
             Box(
@@ -709,11 +738,13 @@ internal fun PreviewRoleCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(
-                            MaterialTheme.colorScheme.surface.copy(
-                                alpha = resolveCardContainerAlpha(settings.immersionMode, role),
-                            ),
+                        .fillMaxWidth()
+                        .clip(innerShape)
+                        .background(contentContainerColor)
+                        .border(
+                            width = 1.dp,
+                            color = Color.White.copy(alpha = 0.32f),
+                            shape = innerShape,
                         )
                         .padding(10.dp),
                 ) {
