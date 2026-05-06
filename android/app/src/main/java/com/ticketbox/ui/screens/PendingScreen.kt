@@ -198,7 +198,7 @@ private fun PendingTop(
     uploading: Boolean,
     onUploadScreenshot: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AppPageHeader(
             title = if (pendingCount > 0) {
                 "今天有 $pendingCount 张截图待确认"
@@ -212,29 +212,29 @@ private fun PendingTop(
 
         AppHeroCard {
             Row(
-                modifier = Modifier.padding(horizontal = AppSpacing.cardPadding, vertical = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
-                    modifier = Modifier.weight(0.92f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
                         text = "等待你确认",
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.labelLarge,
                     )
                     Text(
                         text = "$pendingCount 张",
                         color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Black,
                     )
                     Text(
                         text = "识别结果只是草稿",
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 if (pendingCount == 0 && duplicateCount == 0) {
@@ -246,7 +246,7 @@ private fun PendingTop(
                     }
                 } else {
                     Row(
-                        modifier = Modifier.weight(0.98f),
+                        modifier = Modifier.weight(0.92f),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -308,14 +308,14 @@ private fun PendingHeroMetric(value: String, label: String, modifier: Modifier =
                 color = Color.White.copy(alpha = 0.46f),
                 shape = RoundedCornerShape(AppRadius.medium),
             )
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             text = value,
             color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Black,
         )
         Text(

@@ -231,3 +231,17 @@ Observed result:
 - Form spacing was tightened so amount, merchant, category, category chips, note, and consume-time controls appear earlier without changing validation or submit behavior.
 - The final loaded screenshot confirms protected screenshot preview still renders after the compact pass; loading fallback remains available while the image request is in flight.
 - No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or save behavior changed.
+
+## Pending Benchmark Density Polish - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/pending_benchmark_density_final.png`
+
+Observed result:
+
+- Pending remains the benchmark page and still keeps upload as the primary CTA, but the hero card is slightly shorter and less oversized than the previous screenshot.
+- The pending and suspected-duplicate glass metrics were tightened so the first bill card begins higher in the first viewport.
+- The page still preserves the product boundary copy: screenshots and recognition drafts do not auto-enter the ledger.
+- The floating bottom navigation remains unchanged; pending bill cards keep bottom-bar-aware scroll padding.
+- No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior changed.
