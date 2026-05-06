@@ -57,8 +57,8 @@ object AppPageDefaults {
     val CardGap: Dp = AppSpacing.cardGap
 
     fun topContentPadding(density: PageDensity): Dp = when (density) {
-        PageDensity.Compact -> 16.dp
-        PageDensity.Comfortable -> 24.dp
+        PageDensity.Compact -> 10.dp
+        PageDensity.Comfortable -> 16.dp
     }
 
     fun headerToContentGap(density: PageDensity): Dp = when (density) {
@@ -107,7 +107,7 @@ fun rememberAppPageLayout(
     role: PageRole,
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = false,
+    includeStatusBarPadding: Boolean = true,
 ): AppPageLayoutValues {
     val density = LocalDensity.current
     val statusTop = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
@@ -138,7 +138,7 @@ fun AppPageScaffold(
     modifier: Modifier = Modifier,
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = false,
+    includeStatusBarPadding: Boolean = true,
     content: @Composable (AppPageLayoutValues) -> Unit,
 ) {
     val layout = rememberAppPageLayout(
@@ -180,7 +180,7 @@ fun AppScrollableContent(
     listState: LazyListState = rememberLazyListState(),
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = false,
+    includeStatusBarPadding: Boolean = true,
     verticalArrangement: Arrangement.Vertical? = null,
     content: LazyListScope.() -> Unit,
 ) {
@@ -217,7 +217,7 @@ fun AppPageLazyColumn(
     listState: LazyListState = rememberLazyListState(),
     hasBottomBar: Boolean = true,
     horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
-    includeStatusBarPadding: Boolean = false,
+    includeStatusBarPadding: Boolean = true,
     verticalArrangement: Arrangement.Vertical? = null,
     content: LazyListScope.() -> Unit,
 ) {

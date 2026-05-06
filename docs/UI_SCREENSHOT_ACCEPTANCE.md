@@ -170,3 +170,21 @@ Observed result:
 - The preview's `确认入账` sample and final `应用背景` action use shared App primary buttons, keeping the apply step visually consistent with the rest of the app.
 - The final action area remains visible above the floating bottom navigation after scrolling; cancel remains a secondary action and does not overpower apply.
 - The background preview flow still saves nothing until `应用背景` is tapped; no business, backend, token, Room, OCR, duplicate, CSV, or upload flow changed.
+
+## Page Scaffold Recheck - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/pending_scaffold_after.png`
+- `artifacts/ledger_scaffold_after.png`
+- `artifacts/stats_scaffold_after.png`
+- `artifacts/settings_scaffold_after.png`
+
+Observed result:
+
+- The design reference thumbnails in `docs/design_reference/thumbnails/` were opened and compared against the current real-device screenshots before making this pass.
+- The main shell no longer applies extra Material Scaffold system-bar padding on top of the page scaffold. `AppPageScaffold` is now the owner of status-bar and bottom-bar spacing.
+- Pending, Ledger, Stats, and Settings all start closer to the status bar without title clipping, reducing the "content pushed down" effect seen in the previous screenshots.
+- Compact pages now use tighter top padding, while comfortable pages retain a small amount of breathing room.
+- The floating bottom navigation remains independent of content layout. Scrollable screens keep bottom-bar-aware padding through the shared page scaffold.
+- This pass only changed global layout rhythm and the scaffold spacing test. It did not change business logic, ViewModel, Repository, backend API, Room, OCR, duplicate, CSV, upload, or token flow.
