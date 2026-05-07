@@ -108,3 +108,37 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.
 ```
 
 临时 keystore 只用于本机验收，不能发给灰度用户。
+
+## 8. 发布产物校验
+
+`scripts/build_release_apk.ps1` 构建成功后会同时输出三类文件：
+
+```text
+android/app/build/outputs/apk/gray/release/app-gray-release.apk
+android/app/build/outputs/apk/gray/release/app-gray-release.apk.sha256
+android/app/build/outputs/apk/gray/release/app-gray-release.manifest.json
+```
+
+`sha256` 文件用于校验 APK 是否被传错或损坏。
+
+`manifest.json` 记录：
+
+- flavor
+- build type
+- versionName
+- versionCode
+- APK 文件名
+- APK 大小
+- SHA256
+- 构建 UTC 时间
+- Git commit 信息
+
+manifest 不写入 keystore、密码、服务器 token 或用户数据。
+
+灰度验收脚本会校验 APK、SHA256 文件和 manifest 是否一致：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.ps1 -UseTemporaryKeystore
+```
+
+如果三者不一致，脚本会直接失败，不能把该包发给灰度用户。

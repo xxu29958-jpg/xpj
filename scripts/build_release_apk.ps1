@@ -1,6 +1,7 @@
 ﻿param(
     [ValidateSet("gray", "internal")]
-    [string]$Flavor = "gray"
+    [string]$Flavor = "gray",
+    [switch]$SkipManifest
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +10,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $AndroidRoot = Join-Path $ProjectRoot "android"
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Require-Env {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -52,6 +54,22 @@ function Ensure-JavaHome {
     throw "未找到 JDK 17。请安装 Eclipse Temurin 17 JDK 后重试。"
 }
 
+function Get-GitValue {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+    try {
+        $lines = @(& git -C $ProjectRoot @Arguments 2>$null)
+        $value = ($lines -join "`n").Trim()
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($value)) {
+            return $value
+        }
+    }
+    catch {
+        return ""
+    }
+    return ""
+}
+
 $keystorePath = Require-Env "TICKETBOX_KEYSTORE_PATH"
 Require-Env "TICKETBOX_KEY_ALIAS" | Out-Null
 Require-Env "TICKETBOX_KEYSTORE_PASSWORD" | Out-Null
@@ -84,7 +102,7 @@ Write-Host "正在构建小票夹 $Flavor release APK..."
 Write-Host "版本：$versionName ($versionCode)"
 Push-Location $AndroidRoot
 try {
-    & .\gradlew.bat $task --console=plain
+    & .\gradlew.bat --no-daemon $task --console=plain
     if ($LASTEXITCODE -ne 0) {
         throw "Gradle 构建失败，退出码 $LASTEXITCODE"
     }
@@ -98,4 +116,53 @@ if (-not (Test-Path -LiteralPath $apkPath)) {
     throw "未找到输出 APK：$apkPath"
 }
 
+$apkFile = Get-Item -LiteralPath $apkPath
+$sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apkPath).Hash.ToLowerInvariant()
+$shaPath = "$apkPath.sha256"
+$manifestPath = Join-Path $apkFile.Directory.FullName "$($apkFile.BaseName).manifest.json"
+$outputRelativePath = "android/app/build/outputs/apk/$Flavor/release/$($apkFile.Name)"
+
+[System.IO.File]::WriteAllText($shaPath, "$sha256  $($apkFile.Name)`n", $Utf8NoBom)
+
+if (-not $SkipManifest) {
+    $gitCommit = Get-GitValue -Arguments @("rev-parse", "HEAD")
+    $gitShortCommit = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
+    $gitBranch = Get-GitValue -Arguments @("rev-parse", "--abbrev-ref", "HEAD")
+    $gitDirty = $false
+    $gitStatus = Get-GitValue -Arguments @("status", "--porcelain")
+    if (-not [string]::IsNullOrWhiteSpace($gitStatus)) {
+        $gitDirty = $true
+    }
+
+    $manifest = [ordered]@{
+        app = "ticketbox"
+        flavor = $Flavor
+        build_type = "release"
+        version_name = $versionName
+        version_code = $versionCode
+        apk_file_name = $apkFile.Name
+        apk_relative_path = $outputRelativePath
+        apk_size_bytes = $apkFile.Length
+        sha256 = $sha256
+        built_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
+        git = [ordered]@{
+            branch = $gitBranch
+            commit = $gitCommit
+            short_commit = $gitShortCommit
+            dirty = $gitDirty
+        }
+        notes = @(
+            "Release 密钥和密码不写入 manifest。",
+            "manifest 只用于灰度发包核验，不包含 token。"
+        )
+    }
+
+    [System.IO.File]::WriteAllText($manifestPath, (($manifest | ConvertTo-Json -Depth 5) + "`n"), $Utf8NoBom)
+}
+
 Write-Host "Release APK 已生成：$apkPath"
+Write-Host "SHA256：$sha256"
+Write-Host "SHA256 文件：$shaPath"
+if (-not $SkipManifest) {
+    Write-Host "发布 manifest：$manifestPath"
+}

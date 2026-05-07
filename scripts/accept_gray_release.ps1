@@ -211,6 +211,37 @@ function New-TemporaryReleaseKey {
     Write-Host "OK   已生成临时 release keystore，仅用于本机验收，不要发布给灰度用户。"
 }
 
+function Assert-ReleaseArtifact {
+    param([Parameter(Mandatory = $true)][string]$ApkPath)
+
+    $shaPath = "$ApkPath.sha256"
+    $apkFile = Get-Item -LiteralPath $ApkPath
+    $manifestPath = Join-Path $apkFile.Directory.FullName "$($apkFile.BaseName).manifest.json"
+
+    if (-not (Test-Path -LiteralPath $shaPath)) {
+        throw "缺少 release SHA256 文件：$shaPath"
+    }
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        throw "缺少 release manifest：$manifestPath"
+    }
+
+    $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $ApkPath).Hash.ToLowerInvariant()
+    $shaText = (Get-Content -Encoding UTF8 -Raw -LiteralPath $shaPath).Trim()
+    if (-not $shaText.StartsWith($actualSha, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "release SHA256 文件与 APK 不一致。"
+    }
+
+    $manifest = Get-Content -Encoding UTF8 -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    if ($manifest.sha256 -ne $actualSha) {
+        throw "release manifest 中的 sha256 与 APK 不一致。"
+    }
+    if ($manifest.flavor -ne "gray" -or $manifest.build_type -ne "release") {
+        throw "release manifest 不是 gray release 产物。"
+    }
+
+    Write-Host "OK   release 产物校验通过：APK / SHA256 / manifest 一致。"
+}
+
 Write-Host "小票夹灰度版验收"
 Write-Host "项目目录：$ProjectRoot"
 Write-Host "公网地址：$BaseUrl"
@@ -284,6 +315,7 @@ if (-not $SkipRelease) {
     if (-not (Test-Path -LiteralPath $releaseApk)) {
         throw "release APK 不存在：$releaseApk"
     }
+    Assert-ReleaseArtifact -ApkPath $releaseApk
     Write-Host "OK   release APK 已生成：$releaseApk"
 }
 else {
