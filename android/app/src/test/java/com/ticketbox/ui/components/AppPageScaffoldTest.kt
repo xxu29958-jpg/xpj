@@ -32,7 +32,7 @@ class AppPageScaffoldTest {
 
     @Test
     fun bottomPaddingUsesNamedBottomBarConstant() {
-        assertEquals(72f, AppPageDefaults.BottomBarHeight.value)
+        assertEquals(96f, AppPageDefaults.BottomBarHeight.value)
         assertEquals(24f, AppPageDefaults.BottomContentExtraPadding.value)
     }
 

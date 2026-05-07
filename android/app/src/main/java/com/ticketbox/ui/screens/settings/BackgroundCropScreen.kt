@@ -42,10 +42,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -90,6 +87,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
@@ -97,6 +95,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -110,6 +109,7 @@ fun BackgroundCropScreen(
     onComplete: (BackgroundCropMode) -> Unit,
 ) {
     var cropMode by remember { mutableStateOf(BackgroundCropMode.Center) }
+    val visuals = LocalThemeVisuals.current
     SettingsPageFrame(
         title = "调整背景",
         subtitle = "避开顶部标题和底部导航区域，保证账单内容清晰可读。",
@@ -120,7 +120,7 @@ fun BackgroundCropScreen(
                 .fillMaxWidth()
                 .aspectRatio(9f / 16f)
                 .clip(RoundedCornerShape(28.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(visuals.solidCard.copy(alpha = 0.92f)),
         ) {
             val bitmap = rememberLocalImage(sourcePath)
             if (bitmap != null) {
@@ -141,11 +141,11 @@ fun BackgroundCropScreen(
         SettingsSection(title = "构图位置", icon = Icons.Filled.Tune) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BackgroundCropMode.entries.forEach { mode ->
-                    FilterChip(
+                    AppFilterChip(
                         modifier = Modifier.weight(1f),
                         selected = cropMode == mode,
                         onClick = { cropMode = mode },
-                        label = { Text(mode.displayName) },
+                        label = mode.displayName,
                     )
                 }
             }
@@ -171,4 +171,3 @@ fun BackgroundCropScreen(
         }
     }
 }
-

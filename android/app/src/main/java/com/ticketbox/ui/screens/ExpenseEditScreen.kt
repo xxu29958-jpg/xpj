@@ -18,12 +18,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -49,6 +46,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
@@ -333,12 +331,7 @@ fun ExpenseEditScreen(
             Text("识别置信度：${(it * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-            ),
-        ) {
+        SoftPanel(containerAlpha = 0.98f) {
             Column(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -594,10 +587,10 @@ private fun SelectableCategoryChip(
     label: String,
     onClick: () -> Unit,
 ) {
-    FilterChip(
+    AppFilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
+        label = label,
         leadingIcon = if (selected) {
             {
                 Icon(
@@ -620,12 +613,7 @@ private fun ExpenseDateField(
     onUseNow: () -> Unit,
     onClear: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        ),
-    ) {
+    SoftPanel(containerAlpha = 0.98f) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),

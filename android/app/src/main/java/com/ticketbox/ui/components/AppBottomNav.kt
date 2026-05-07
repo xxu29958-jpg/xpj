@@ -41,6 +41,7 @@ fun AppBottomNav(
     onSelect: (AppBottomNavItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val visuals = LocalThemeVisuals.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -50,9 +51,9 @@ fun AppBottomNav(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(AppRadius.bottomBar),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+            color = visuals.solidCard.copy(alpha = 0.995f),
             tonalElevation = 0.dp,
-            shadowElevation = 8.dp,
+            shadowElevation = 0.dp,
         ) {
             Row(
                 modifier = Modifier

@@ -57,7 +57,7 @@ object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
     // Estimated floating bottom bar height including the surface and vertical margins.
     // Keep named so it can be replaced by measured layout height later.
-    val BottomBarHeight: Dp = 72.dp
+    val BottomBarHeight: Dp = 96.dp
     val BottomContentExtraPadding: Dp = 24.dp
     val CardGap: Dp = AppSpacing.cardGap
 

@@ -289,6 +289,7 @@ Observed result:
 - Settings secondary pages no longer apply an extra top reduction outside the shared scaffold.
 - Expense Edit no longer overrides the shared horizontal page padding.
 - The attached-device Pending screenshot confirms the title and primary content sit below the system status bar instead of overlapping time, VPN, 5G, or battery indicators.
+- The shared `AppPageDefaults.BottomBarHeight` is now calibrated to the actual floating nav footprint so scroll content is clipped above the nav instead of showing partial card arcs behind it.
 - This was a page-scaffold-only correction. It did not change card styling, button styling, theme visuals, backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
 
 ## Stats Theme Fit Polish - 2026-05-07
@@ -318,3 +319,20 @@ Observed result:
 - `AppFilterChip` now supports optional leading and trailing icons, so pages can keep compact controls while still using theme package colors.
 - This reduces per-screen chip color drift across Pine, Harbor, Pomelo, Berry, and Night themes.
 - This was a shared component unification pass. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
+
+## Shared Surface Cleanup - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/stats_shared_surface_cleanup.png`
+- `artifacts/settings_shared_surface_cleanup.png`
+- `artifacts/settings_bottom_bar_height_calibrated.png`
+
+Observed result:
+
+- Stats child cards now use shared `AppGlassCard` / `AppEmptyStateCard` instead of local `CardDefaults`, and their trend/category tracks use `ThemeVisuals`.
+- Pending and Ledger status chips, category marks, and empty illustrations now use `ThemeVisuals.chipSelected` / `ThemeVisuals.primary` instead of page-local Material container colors.
+- Expense Edit category chips now use shared `AppFilterChip`, and its date / extended-record panels use shared `SoftPanel`.
+- Settings and Appearance shared components no longer contain direct `Card`, `CardDefaults`, or `FilterChip` styling; theme, background, rule, diagnostic, and skin cards route through shared surfaces or theme-aware boxes.
+- The floating bottom navigation uses the current theme's solid surface and no extra Material surface shadow. A previous bottom-shield approach was rejected because it overpainted the page background and made the nav feel like a large block instead of a floating control.
+- The cleanup reduces per-screen visual drift across Pine, Harbor, Pomelo, Berry, and Night without changing backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.

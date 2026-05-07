@@ -52,6 +52,7 @@ import com.ticketbox.ui.components.ReceiptIllustration
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.PendingUiState
 
 private enum class PendingDisplayMode {
@@ -176,6 +177,7 @@ fun PendingScreen(
 
 @Composable
 private fun PendingMessageCard(message: String) {
+    val visuals = LocalThemeVisuals.current
     AppGlassCard(containerAlpha = 0.94f) {
         Row(
             modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
@@ -186,7 +188,7 @@ private fun PendingMessageCard(message: String) {
                 modifier = Modifier
                     .size(34.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f)),
+                    .background(visuals.chipSelected.copy(alpha = 0.82f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -388,6 +390,7 @@ private fun FlowStep(
     subtitle: String,
     modifier: Modifier = Modifier,
 ) {
+    val visuals = LocalThemeVisuals.current
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -397,7 +400,7 @@ private fun FlowStep(
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(13.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(visuals.chipSelected),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -414,6 +417,7 @@ private fun FlowStep(
 
 @Composable
 private fun LoadingPendingState() {
+    val visuals = LocalThemeVisuals.current
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -427,7 +431,7 @@ private fun LoadingPendingState() {
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)),
+                        .background(visuals.chipSelected.copy(alpha = 0.72f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(

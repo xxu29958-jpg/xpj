@@ -1,10 +1,10 @@
 package com.ticketbox.ui.screens.settings
 
 import android.graphics.BitmapFactory
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,10 +40,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -89,6 +86,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
@@ -101,6 +99,7 @@ import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
@@ -235,12 +234,7 @@ internal fun AdvancedStatusCard(
         }
     } ?: "尚未运行诊断"
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        ),
-    ) {
+    SoftPanel(containerAlpha = 0.98f) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -285,8 +279,9 @@ internal fun AdvancedStatusCard(
 
 @Composable
 internal fun StatusPill(connected: Boolean) {
-    val background = if (connected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant
-    val content = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val visuals = LocalThemeVisuals.current
+    val background = if (connected) visuals.chipSelected.copy(alpha = 0.78f) else visuals.chipUnselected.copy(alpha = 0.86f)
+    val content = if (connected) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
@@ -343,7 +338,7 @@ internal fun BuiltInBackgroundCard(
         Color.White.copy(alpha = 0.54f)
     }
 
-    Card(
+    Box(
         modifier = modifier
             .height(184.dp)
             .shadow(
@@ -352,12 +347,11 @@ internal fun BuiltInBackgroundCard(
                 clip = false,
                 ambientColor = visuals.shadowTint.copy(alpha = if (selected) 0.18f else 0.08f),
                 spotColor = visuals.shadowTint.copy(alpha = if (selected) 0.14f else 0.06f),
-            ),
-        onClick = onClick,
-        shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(width = 1.dp, color = borderColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            )
+            .clip(cardShape)
+            .background(containerColor)
+            .border(width = 1.dp, color = borderColor, shape = cardShape)
+            .clickable(onClick = onClick),
     ) {
         Column(
             modifier = Modifier
@@ -509,17 +503,11 @@ internal fun ImmersionModePicker(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ImmersionMode.entries.forEach { mode ->
-                FilterChip(
+                AppFilterChip(
                     modifier = Modifier.weight(1f),
                     selected = selected == mode,
                     onClick = { onSelect(mode) },
-                    label = {
-                        Text(
-                            text = mode.displayName,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
+                    label = mode.displayName,
                 )
             }
         }
@@ -787,12 +775,7 @@ internal fun CategoryRuleCard(
     onEditRule: () -> Unit,
     onDeleteRule: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        ),
-    ) {
+    SoftPanel(containerAlpha = 0.98f) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -846,7 +829,7 @@ internal fun SkinOptionCard(
     val borderColor = if (selected) visuals.primary else Color.White.copy(alpha = 0.58f)
     val cardShape = RoundedCornerShape(AppRadius.large)
 
-    Card(
+    Box(
         modifier = modifier
             .height(168.dp)
             .shadow(
@@ -855,12 +838,11 @@ internal fun SkinOptionCard(
                 clip = false,
                 ambientColor = visuals.shadowTint.copy(alpha = if (selected) 0.18f else 0.08f),
                 spotColor = visuals.shadowTint.copy(alpha = if (selected) 0.14f else 0.06f),
-            ),
-        onClick = onClick,
-        shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(1.dp, borderColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            )
+            .clip(cardShape)
+            .background(containerColor)
+            .border(width = 1.dp, color = borderColor, shape = cardShape)
+            .clickable(onClick = onClick),
     ) {
         Column(
             modifier = Modifier

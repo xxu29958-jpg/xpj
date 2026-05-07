@@ -26,8 +26,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
@@ -73,6 +72,7 @@ import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.timePickerToUtcIso
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -450,6 +450,7 @@ private fun LedgerExpenseCard(
     expense: Expense,
     onEdit: () -> Unit,
 ) {
+    val visuals = LocalThemeVisuals.current
     SoftPanel(
         modifier = Modifier.clickable(onClick = onEdit),
         containerAlpha = 0.995f,
@@ -503,9 +504,9 @@ private fun LedgerExpenseCard(
                     text = expense.category,
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f))
+                        .background(visuals.chipSelected.copy(alpha = 0.72f))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = visuals.primary,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -517,16 +518,17 @@ private fun LedgerExpenseCard(
 
 @Composable
 private fun LedgerCategoryMark(category: String) {
+    val visuals = LocalThemeVisuals.current
     Box(
         modifier = Modifier
             .size(42.dp)
             .clip(RoundedCornerShape(15.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f)),
+            .background(visuals.chipSelected.copy(alpha = 0.78f)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = category.take(1).ifBlank { "账" },
-            color = MaterialTheme.colorScheme.primary,
+            color = visuals.primary,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
@@ -682,12 +684,7 @@ private fun ManualExpenseSheet(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("备注") },
         )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
-            ),
-        ) {
+        SoftPanel(containerAlpha = 0.96f) {
             Column(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -809,12 +806,7 @@ private fun EmptyLedgerState(
         "在待确认页确认几笔账单后，账本会在这里显示。"
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        ),
-    ) {
+    AppEmptyStateCard {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -869,18 +861,19 @@ private fun EmptyLedgerState(
 
 @Composable
 private fun LedgerEmptyIllustration() {
+    val visuals = LocalThemeVisuals.current
     Box(
         modifier = Modifier
             .size(76.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            .background(visuals.primary.copy(alpha = 0.14f)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
                 .size(52.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f)),
+                .background(visuals.chipSelected.copy(alpha = 0.66f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

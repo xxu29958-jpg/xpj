@@ -1,7 +1,6 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,8 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -38,6 +35,8 @@ import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
@@ -154,18 +153,8 @@ fun StatsScreen(
 
 @Composable
 private fun CategoryInsightCard(insight: CategoryInsight) {
-    val visuals = LocalThemeVisuals.current
     val concentration = if (insight.isConcentrated) "支出比较集中" else "支出比较分散"
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = visuals.solidCard.copy(alpha = 0.92f),
-        ),
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f),
-        ),
-    ) {
+    AppGlassCard(containerAlpha = 0.96f) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -201,12 +190,7 @@ private fun CategoryInsightCard(insight: CategoryInsight) {
 private fun RecentTrendCard(trend: List<DailySpend>) {
     val maxAmount = trend.maxOfOrNull { it.amountCents } ?: 0L
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-        ),
-    ) {
+    AppGlassCard(containerAlpha = 0.92f) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -253,6 +237,7 @@ private fun DailyTrendBar(
     day: DailySpend,
     maxAmount: Long,
 ) {
+    val visuals = LocalThemeVisuals.current
     val progress = if (maxAmount > 0) {
         (day.amountCents.toFloat() / maxAmount.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -264,9 +249,9 @@ private fun DailyTrendBar(
         8.dp
     }
     val barColor = if (day.amountCents > 0L) {
-        MaterialTheme.colorScheme.primary
+        visuals.primary
     } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+        visuals.chipUnselected.copy(alpha = 0.72f)
     }
 
     Column(
@@ -419,12 +404,7 @@ private fun MetricPill(
 
 @Composable
 private fun LifestyleCard(lifestyle: LifestyleStats) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-        ),
-    ) {
+    AppGlassCard(containerAlpha = 0.92f) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -474,12 +454,8 @@ private fun LifestyleRow(
 
 @Composable
 private fun FrequentMerchantsCard(merchants: List<FrequentMerchant>) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-        ),
-    ) {
+    val visuals = LocalThemeVisuals.current
+    AppGlassCard(containerAlpha = 0.92f) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -487,7 +463,7 @@ private fun FrequentMerchantsCard(merchants: List<FrequentMerchant>) {
             Text("高频商家", style = MaterialTheme.typography.titleMedium)
             merchants.take(5).forEachIndexed { index, merchant ->
                 if (index > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+                    HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -512,6 +488,7 @@ private fun CategoryShareRow(
     category: CategoryStats,
     totalAmountCents: Long,
 ) {
+    val visuals = LocalThemeVisuals.current
     val progress = if (totalAmountCents > 0) {
         (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -522,7 +499,7 @@ private fun CategoryShareRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.68f))
+            .background(visuals.solidCard.copy(alpha = 0.86f))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
@@ -550,8 +527,8 @@ private fun CategoryShareRow(
                 .fillMaxWidth()
                 .height(8.dp)
                 .clip(RoundedCornerShape(999.dp)),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+            color = visuals.primary,
+            trackColor = visuals.chipUnselected.copy(alpha = 0.72f),
         )
     }
 }
@@ -562,12 +539,7 @@ private fun EmptyStatsCard(
     body: String = "确认账单后刷新统计，这里会显示本月总支出、分类占比和高频商家。",
     onRefresh: (() -> Unit)? = null,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
-        ),
-    ) {
+    AppEmptyStateCard {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -592,11 +564,12 @@ private fun EmptyStatsCard(
 
 @Composable
 private fun StatsSkeletonPlaceholder() {
+    val visuals = LocalThemeVisuals.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f))
+            .background(visuals.chipUnselected.copy(alpha = 0.48f))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
