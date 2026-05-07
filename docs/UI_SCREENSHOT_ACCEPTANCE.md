@@ -275,3 +275,18 @@ Observed result:
 - The main page no longer shows both density chips and refresh as always-visible controls above the first bill.
 - A UTF-8/mojibake scan was run over Android source and Markdown docs after this pass; no suspicious mojibake markers were found.
 - This was a Pending-only information-hierarchy pass. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
+
+## Page Scaffold Rule Re-lock - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/pending_scaffold_after.png`
+
+Observed result:
+
+- Shared page scaffold spacing was returned to the documented gate values: compact pages start at 16dp after the status inset, comfortable pages start at 24dp.
+- The floating bottom bar height is again represented by the named `AppPageDefaults.BottomBarHeight = 72.dp` constant instead of a screenshot-specific larger value.
+- Settings secondary pages no longer apply an extra top reduction outside the shared scaffold.
+- Expense Edit no longer overrides the shared horizontal page padding.
+- The attached-device Pending screenshot confirms the title and primary content sit below the system status bar instead of overlapping time, VPN, 5G, or battery indicators.
+- This was a page-scaffold-only correction. It did not change card styling, button styling, theme visuals, backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.

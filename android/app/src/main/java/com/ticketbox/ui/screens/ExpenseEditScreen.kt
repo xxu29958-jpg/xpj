@@ -232,7 +232,6 @@ fun ExpenseEditScreen(
     AppPageScrollableColumn(
         role = AppPageRole.Edit,
         hasBottomBar = false,
-        horizontalPadding = 20.dp,
         includeStatusBarPadding = true,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

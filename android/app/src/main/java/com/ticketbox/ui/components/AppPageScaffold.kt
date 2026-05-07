@@ -57,13 +57,13 @@ object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
     // Estimated floating bottom bar height including the surface and vertical margins.
     // Keep named so it can be replaced by measured layout height later.
-    val BottomBarHeight: Dp = 104.dp
+    val BottomBarHeight: Dp = 72.dp
     val BottomContentExtraPadding: Dp = 24.dp
     val CardGap: Dp = AppSpacing.cardGap
 
     fun topContentPadding(density: PageDensity): Dp = when (density) {
-        PageDensity.Compact -> 10.dp
-        PageDensity.Comfortable -> 16.dp
+        PageDensity.Compact -> 16.dp
+        PageDensity.Comfortable -> 24.dp
     }
 
     fun headerToContentGap(density: PageDensity): Dp = when (density) {

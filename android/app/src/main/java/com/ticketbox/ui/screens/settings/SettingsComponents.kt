@@ -135,7 +135,6 @@ internal fun SettingsPageFrame(
 
     AppPageScrollableColumn(
         role = AppPageRole.Settings,
-        contentTopReduction = if (isSecondaryPage) 8.dp else 0.dp,
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) 8.dp else 0.dp),
