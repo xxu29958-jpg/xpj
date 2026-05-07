@@ -627,9 +627,9 @@ private fun HeroTrendLine() {
 private fun monthComparisonText(comparison: MonthComparison): String {
     if (comparison.previousAmountCents == 0L) {
         return if (comparison.currentAmountCents == 0L) {
-            "本月和上月暂无本地账单"
+            "暂无可对比记录"
         } else {
-            "上月暂无记录 · 本月 ${formatAmount(comparison.currentAmountCents)}"
+            "上月暂无可比"
         }
     }
     val delta = comparison.deltaAmountCents
@@ -645,18 +645,14 @@ private fun statsHeroContextLine(
     comparison: MonthComparison?,
     budget: BudgetProgress?,
 ): String? {
-    val parts = buildList {
-        comparison?.let { add(monthComparisonText(it)) }
-        budget?.let {
-            val remaining = if (it.overBudget) {
-                "预算超 ${formatAmount(kotlin.math.abs(it.remainingCents))}"
-            } else {
-                "预算余 ${formatAmount(it.remainingCents)}"
-            }
-            add("$remaining · ${it.percent}%")
+    comparison?.let { return monthComparisonText(it) }
+    return budget?.let {
+        if (it.overBudget) {
+            "预算已超 ${formatAmount(kotlin.math.abs(it.remainingCents))}"
+        } else {
+            "预算余 ${formatAmount(it.remainingCents)}"
         }
     }
-    return parts.joinToString(" · ").takeIf { it.isNotBlank() }
 }
 
 @Composable
