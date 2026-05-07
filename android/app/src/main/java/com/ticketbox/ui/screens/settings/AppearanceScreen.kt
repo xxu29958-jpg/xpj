@@ -198,6 +198,11 @@ fun AppearanceScreen(
                             Text("清除自定义图")
                         }
                     }
+                    Text(
+                        text = "自定义背景会应用到整个 App；点“恢复主题默认”可随时切回当前主题包背景。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }

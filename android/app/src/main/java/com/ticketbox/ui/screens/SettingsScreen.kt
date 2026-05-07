@@ -84,10 +84,8 @@ fun SettingsScreen(
     }
 
     fun previewThemeDefault() {
-        route = SettingsRoute.BackgroundPreview(
-            settings = state.backgroundSettings.withoutBackground(),
-            title = "主题默认背景",
-        )
+        localMessage = "已恢复主题默认背景"
+        onApplyBackgroundSettings(state.backgroundSettings.withoutBackground())
     }
 
     when (val currentRoute = route) {
