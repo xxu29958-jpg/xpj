@@ -23,7 +23,7 @@ from app.services.duplicate_service import (
     mark_not_duplicate,
 )
 from app.services.file_service import SavedUpload, delete_relative_upload
-from app.services.ocr_service import retry_ocr, run_auto_ocr
+from app.services.ocr_service import apply_ocr_result, collect_auto_ocr_results, retry_ocr, run_auto_ocr
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.time_service import ensure_utc, local_month_bounds_utc, local_month_label, now_utc
@@ -56,9 +56,26 @@ def _try_generate_thumbnail(relative_path: str | None) -> str | None:
         return None
 
 
-def create_pending_expense(db: Session, saved_file: SavedUpload, tenant_id: str, *, source: str = "iPhone截图") -> Expense:
+def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
+    if not expense.thumbnail_path:
+        expense.thumbnail_path = _try_generate_thumbnail(expense.image_path)
+    run_auto_ocr(expense)
+    if expense.category == "其他":
+        classify_expense(db, expense)
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
+        mark_duplicate_status(db, expense)
+
+
+def create_pending_expense(
+    db: Session,
+    saved_file: SavedUpload,
+    tenant_id: str,
+    *,
+    source: str = "iPhone截图",
+    run_enrichment: bool = True,
+) -> Expense:
     now = now_utc()
-    thumbnail_path = _try_generate_thumbnail(saved_file.relative_path)
+    thumbnail_path = _try_generate_thumbnail(saved_file.relative_path) if run_enrichment else None
     expense = Expense(
         tenant_id=tenant_id,
         amount_cents=None,
@@ -78,10 +95,9 @@ def create_pending_expense(db: Session, saved_file: SavedUpload, tenant_id: str,
     try:
         db.add(expense)
         db.flush()
-        run_auto_ocr(expense)
-        if expense.category == "其他":
-            classify_expense(db, expense)
         mark_duplicate_status(db, expense)
+        if run_enrichment:
+            _apply_pending_enrichment(db, expense)
         expense.updated_at = now_utc()
         db.commit()
         db.refresh(expense)
@@ -91,6 +107,36 @@ def create_pending_expense(db: Session, saved_file: SavedUpload, tenant_id: str,
         delete_relative_upload(thumbnail_path)
         delete_relative_upload(saved_file.relative_path)
         raise
+
+
+def enrich_pending_expense(expense_id: int, tenant_id: str) -> None:
+    """Fill OCR/category draft fields after the upload response has been sent."""
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        expense = db.scalar(
+            select(Expense)
+            .where(Expense.id == expense_id)
+            .where(Expense.tenant_id == tenant_id)
+        )
+        if expense is None or expense.status != "pending":
+            return
+
+        ocr_results = collect_auto_ocr_results(expense)
+        try:
+            db.refresh(expense)
+            if expense.status != "pending":
+                return
+            for result in ocr_results:
+                apply_ocr_result(expense, result)
+            if expense.category == "其他":
+                classify_expense(db, expense)
+            if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
+                mark_duplicate_status(db, expense)
+            expense.updated_at = now_utc()
+            db.commit()
+        except Exception:
+            db.rollback()
 
 
 def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, tenant_id: str) -> Expense:

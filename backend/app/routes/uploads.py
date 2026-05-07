@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -11,7 +11,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import UploadCheckResponse, UploadResponse
-from app.services.expense_service import create_pending_expense
+from app.services.expense_service import create_pending_expense, enrich_pending_expense
 from app.services.file_service import ALLOWED_EXTENSIONS, SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
 from app.tenants import Tenant
 
@@ -85,7 +85,7 @@ def _upload_response(expense: Expense) -> UploadResponse:
 
 def _create_pending_or_cleanup(db: Session, saved_file: SavedUpload, tenant: Tenant, *, source: str) -> Expense:
     try:
-        return create_pending_expense(db, saved_file, tenant.id, source=source)
+        return create_pending_expense(db, saved_file, tenant.id, source=source, run_enrichment=False)
     except Exception:
         delete_saved_upload(saved_file)
         raise
@@ -109,11 +109,13 @@ def upload_check(_: Tenant = Depends(get_current_upload_tenant)) -> UploadCheckR
 )
 async def upload_screenshot(
     request: Request,
+    background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_upload_tenant),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     saved_file = await _save_request_upload(request)
     expense = _create_pending_or_cleanup(db, saved_file, tenant, source="iPhone截图")
+    background_tasks.add_task(enrich_pending_expense, expense.id, tenant.id)
     return _upload_response(expense)
 
 
@@ -123,9 +125,11 @@ async def upload_screenshot(
 )
 async def app_upload_screenshot(
     request: Request,
+    background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_app_tenant),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     saved_file = await _save_request_upload(request)
     expense = _create_pending_or_cleanup(db, saved_file, tenant, source="Android截图")
+    background_tasks.add_task(enrich_pending_expense, expense.id, tenant.id)
     return _upload_response(expense)

@@ -167,25 +167,43 @@ def get_ocr_provider(provider_name: str | None = None) -> OcrProvider:
 def retry_ocr(expense: Expense, provider: OcrProvider | None = None) -> Expense:
     active_provider = provider or get_ocr_provider()
     result = active_provider.extract(expense)
-    _apply_ocr_result(expense, result)
+    apply_ocr_result(expense, result)
     return expense
 
 
-def run_auto_ocr(expense: Expense) -> None:
+def collect_auto_ocr_results(expense: Expense) -> list[OcrResult]:
+    """Run configured OCR providers and return draft results without mutating the expense."""
     settings = get_settings()
     if not settings.ocr_auto_run:
-        return
+        return []
 
     try:
-        retry_ocr(expense, get_ocr_provider(settings.ocr_provider))
-        if _needs_fallback(expense) and settings.ocr_fallback_provider not in {"", "empty", settings.ocr_provider}:
-            retry_ocr(expense, get_ocr_provider(settings.ocr_fallback_provider))
+        primary_result = get_ocr_provider(settings.ocr_provider).extract(expense)
+        results = [primary_result]
+
+        draft = Expense(
+            amount_cents=expense.amount_cents,
+            merchant=expense.merchant,
+            category=expense.category,
+            raw_text=expense.raw_text,
+            confidence=expense.confidence,
+            expense_time=expense.expense_time,
+        )
+        apply_ocr_result(draft, primary_result)
+        if _needs_fallback(draft) and settings.ocr_fallback_provider not in {"", "empty", settings.ocr_provider}:
+            results.append(get_ocr_provider(settings.ocr_fallback_provider).extract(expense))
+        return results
     except Exception:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
-        return
+        return []
 
 
-def _apply_ocr_result(expense: Expense, result: OcrResult) -> None:
+def run_auto_ocr(expense: Expense) -> None:
+    for result in collect_auto_ocr_results(expense):
+        apply_ocr_result(expense, result)
+
+
+def apply_ocr_result(expense: Expense, result: OcrResult) -> None:
     parsed = parse_receipt_text(result.raw_text)
     merged = _merge_result_with_text_parse(result, parsed_confidence=parsed.confidence)
 

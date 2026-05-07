@@ -1,8 +1,5 @@
 package com.ticketbox.ui.navigation
 
-import android.content.Context
-import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -53,6 +50,7 @@ import com.ticketbox.ui.screens.PendingScreen
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
 import com.ticketbox.viewmodel.ExpenseEditViewModel
@@ -62,12 +60,6 @@ import com.ticketbox.viewmodel.SettingsViewModel
 import com.ticketbox.viewmodel.StatsViewModel
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
 import com.ticketbox.viewmodel.repositoryViewModelFactory
-
-private data class SelectedScreenshot(
-    val fileName: String,
-    val contentType: String?,
-    val bytes: ByteArray,
-)
 
 private enum class BottomTab(
     val key: String,
@@ -241,7 +233,7 @@ private fun MainShell(
                     val imagePickerLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.PickVisualMedia(),
                     ) { uri ->
-                        val selected = uri?.let { context.readSelectedScreenshot(it) } ?: return@rememberLauncherForActivityResult
+                        val selected = uri?.let { context.prepareScreenshotUpload(it) } ?: return@rememberLauncherForActivityResult
                         pendingViewModel.uploadScreenshot(
                             fileName = selected.fileName,
                             contentType = selected.contentType,
@@ -360,27 +352,3 @@ private fun BottomTab.toBottomNavItem(): AppBottomNavItem = AppBottomNavItem(
     label = label,
     icon = icon,
 )
-
-private fun Context.readSelectedScreenshot(uri: Uri): SelectedScreenshot? {
-    val contentType = contentResolver.getType(uri)
-    val fileName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-        ?.use { cursor ->
-            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
-        }
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-        ?: defaultScreenshotFileName(contentType)
-    val bytes = contentResolver.openInputStream(uri)?.use { input -> input.readBytes() } ?: return null
-    return SelectedScreenshot(fileName = fileName, contentType = contentType, bytes = bytes)
-}
-
-private fun defaultScreenshotFileName(contentType: String?): String {
-    val extension = when (contentType?.lowercase()) {
-        "image/png" -> "png"
-        "image/webp" -> "webp"
-        "image/heic", "image/heif" -> "heic"
-        else -> "jpg"
-    }
-    return "ticketbox-screenshot.$extension"
-}
