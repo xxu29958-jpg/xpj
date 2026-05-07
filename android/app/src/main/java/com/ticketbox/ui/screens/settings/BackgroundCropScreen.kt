@@ -59,12 +59,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,6 +112,8 @@ fun BackgroundCropScreen(
 ) {
     var cropMode by remember { mutableStateOf(BackgroundCropMode.Center) }
     val visuals = LocalThemeVisuals.current
+    val density = LocalDensity.current
+    val previewOffsetPx = with(density) { cropMode.previewOffsetDp.toPx() }
     SettingsPageFrame(
         title = "调整背景",
         subtitle = "避开顶部标题和底部导航区域，保证账单内容清晰可读。",
@@ -127,7 +131,13 @@ fun BackgroundCropScreen(
                 Image(
                     bitmap = bitmap,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = 1.06f
+                            scaleY = 1.06f
+                            translationY = previewOffsetPx
+                        },
                     contentScale = ContentScale.Crop,
                     alignment = when (cropMode) {
                         BackgroundCropMode.Top -> Alignment.TopCenter
@@ -137,6 +147,12 @@ fun BackgroundCropScreen(
                 )
             }
             CropSafeZones()
+            CropSelectionBadge(
+                cropMode = cropMode,
+                modifier = Modifier
+                    .align(cropMode.previewBadgeAlignment)
+                    .padding(14.dp),
+            )
         }
         SettingsSection(title = "构图位置", icon = Icons.Filled.Tune) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -169,5 +185,39 @@ fun BackgroundCropScreen(
                 Text("完成，去预览")
             }
         }
+    }
+}
+
+private val BackgroundCropMode.previewOffsetDp
+    get() = when (this) {
+        BackgroundCropMode.Top -> 18.dp
+        BackgroundCropMode.Center -> 0.dp
+        BackgroundCropMode.Bottom -> (-18).dp
+    }
+
+private val BackgroundCropMode.previewBadgeAlignment: Alignment
+    get() = when (this) {
+        BackgroundCropMode.Top -> Alignment.TopCenter
+        BackgroundCropMode.Center -> Alignment.Center
+        BackgroundCropMode.Bottom -> Alignment.BottomCenter
+    }
+
+@Composable
+private fun CropSelectionBadge(
+    cropMode: BackgroundCropMode,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.82f))
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Text(
+            text = "当前保留：${cropMode.displayName}",
+            color = MaterialTheme.colorScheme.onPrimary,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Black,
+        )
     }
 }

@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -131,6 +132,9 @@ internal fun SettingsPageFrame(
     content: @Composable () -> Unit,
 ) {
     val isSecondaryPage = onBack != null
+    BackHandler(enabled = onBack != null) {
+        onBack?.invoke()
+    }
 
     AppPageScrollableColumn(
         role = AppPageRole.Settings,

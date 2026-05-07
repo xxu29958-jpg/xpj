@@ -139,10 +139,10 @@ fun DataExportScreen(
 
     SettingsPageFrame(
         title = "数据与导出",
-        subtitle = "本地缓存只保存在手机，CSV 导出在账本页发起。",
+        subtitle = "预算用于统计页提醒，缓存和导出只处理已入账账单。",
         onBack = onBack,
     ) {
-        SettingsSection(title = "月度预算", icon = Icons.Filled.FileDownload) {
+        SettingsSection(title = "统计页月度预算", icon = Icons.Filled.FileDownload) {
             SoftPanel(containerAlpha = 0.96f) {
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -151,6 +151,11 @@ fun DataExportScreen(
                     Text(
                         text = state.monthlyBudgetCents?.let { "当前预算 ${formatAmount(it)}" } ?: "未设置预算",
                         style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = "保存后会显示在统计页“本月支出”的预算提示里，只做消费提醒，不影响账单金额和入账流程。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedTextField(
                         value = budgetInput,

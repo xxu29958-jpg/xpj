@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -81,6 +82,12 @@ fun ExpenseEditScreen(
     allowConfirm: Boolean = true,
     allowReject: Boolean = true,
 ) {
+    BackHandler {
+        if (!state.saving) {
+            onDone()
+        }
+    }
+
     val currentExpense = state.expense ?: expense
     var amountText by remember(currentExpense.id, currentExpense.updatedAt) {
         mutableStateOf(formatAmountInput(currentExpense.amountCents))

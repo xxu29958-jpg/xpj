@@ -6,7 +6,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +25,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -29,6 +33,7 @@ import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.shouldUseCustomBackground
 import com.ticketbox.ui.appearance.BackgroundCatalog
+import com.ticketbox.ui.design.themeVisualsForSkin
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -61,8 +66,56 @@ fun ImmersiveBackgroundScaffold(
                 .fillMaxSize()
                 .background(resolveGlobalScrim(backgroundSettings, currentSkin, surfaceRole)),
         )
+        BottomReadabilityScrim(
+            settings = backgroundSettings,
+            skin = currentSkin,
+            role = surfaceRole,
+        )
         content()
     }
+}
+
+@Composable
+private fun BoxScope.BottomReadabilityScrim(
+    settings: BackgroundSettings,
+    skin: AppSkin,
+    role: SurfaceRole,
+) {
+    val visuals = themeVisualsForSkin(skin)
+    val backgroundVisible = when (settings.source) {
+        BackgroundSource.ThemeDefault -> false
+        BackgroundSource.BuiltIn -> BackgroundCatalog.find(settings.builtInBackgroundId) != null
+        BackgroundSource.CustomImage -> shouldUseCustomBackground(settings) { path -> File(path).isFile }
+    }
+    val roleAlpha = when (role) {
+        SurfaceRole.Pending -> 0.80f
+        SurfaceRole.Stats -> 0.78f
+        SurfaceRole.Ledger -> 0.86f
+        SurfaceRole.Edit -> 0.90f
+        SurfaceRole.Settings -> 0.88f
+        SurfaceRole.Auth -> 0.84f
+    }
+    val alpha = if (backgroundVisible) roleAlpha else roleAlpha * 0.42f
+    val bottomColor = if (skin == AppSkin.Night) {
+        Color(0xFF061015).copy(alpha = alpha)
+    } else {
+        visuals.backgroundBottom.copy(alpha = alpha)
+    }
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(260.dp)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        bottomColor.copy(alpha = alpha * 0.48f),
+                        bottomColor,
+                    ),
+                ),
+            ),
+    )
 }
 
 @Composable

@@ -645,14 +645,14 @@ private fun statsHeroContextLine(
     comparison: MonthComparison?,
     budget: BudgetProgress?,
 ): String? {
-    comparison?.let { return monthComparisonText(it) }
-    return budget?.let {
+    budget?.let {
         if (it.overBudget) {
-            "预算已超 ${formatAmount(kotlin.math.abs(it.remainingCents))}"
+            return "预算已超 ${formatAmount(kotlin.math.abs(it.remainingCents))}"
         } else {
-            "预算余 ${formatAmount(it.remainingCents)}"
+            return "预算余 ${formatAmount(it.remainingCents)}"
         }
     }
+    return comparison?.let { monthComparisonText(it) }
 }
 
 @Composable
