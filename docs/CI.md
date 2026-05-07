@@ -38,6 +38,14 @@ UTF-8 with BOM
 Windows PowerShell 语法
 ```
 
+本地完整验证入口 `scripts\verify_project.ps1` 会先运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+```
+
+该检查会验证仓库文本文件可按 UTF-8 严格解码，并拦截常见 mojibake 片段，避免 Windows 默认编码把中文文案写坏。
+
 ## Android Job
 
 运行环境：

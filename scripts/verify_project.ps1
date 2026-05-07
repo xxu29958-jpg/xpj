@@ -87,6 +87,16 @@ function Ensure-LocalAndroidEnvironment {
 }
 
 if (-not $SkipBackend) {
+    Invoke-Checked -FilePath "powershell.exe" -Arguments @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        (Join-Path $PSScriptRoot "check_text_encoding.ps1"),
+        "-Root",
+        $ProjectRoot.Path
+    ) -WorkingDirectory $ProjectRoot.Path
+
     $tools = Ensure-BackendTools
     Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "compileall", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
     if (-not $SkipLint) {
