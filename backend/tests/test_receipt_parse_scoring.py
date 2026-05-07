@@ -67,6 +67,30 @@ def test_scoring_does_not_let_ad_keywords_steal_category() -> None:
     assert parsed.category == "餐饮"
 
 
+def test_scoring_uses_repeated_amount_as_cross_evidence() -> None:
+    raw_text = "\n".join(
+        [
+            "支付成功",
+            "￥21.82",
+            "获得森林能量",
+            "20g",
+            "乐尔乐特价批发超市",
+            "￥21.82",
+            "订单金额",
+            "22.00",
+            "碰一下立减",
+            "-￥0.18",
+            "本店特价限时抢购",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+
+    assert parsed.amount_cents == 2182
+    assert parsed.merchant == "乐尔乐特价批发超市"
+    assert parsed.category == "购物"
+
+
 def test_scoring_prefers_business_time_over_generic_time() -> None:
     raw_text = "\n".join(
         [

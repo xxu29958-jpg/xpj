@@ -44,12 +44,28 @@ class ParsedReceipt:
 
 
 @dataclass(frozen=True)
+class _ScoreDimensions:
+    source: int = 0
+    label: int = 0
+    context: int = 0
+    proximity: int = 0
+    consistency: int = 0
+    noise: int = 0
+    evidence: tuple[str, ...] = ()
+
+    @property
+    def total(self) -> int:
+        return max(0, min(120, self.source + self.label + self.context + self.proximity + self.consistency + self.noise))
+
+
+@dataclass(frozen=True)
 class _AmountCandidate:
     amount_cents: int
     score: int
     line_index: int
     source: str
     evidence: tuple[str, ...] = ()
+    dimensions: _ScoreDimensions | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +75,7 @@ class _MerchantCandidate:
     line_index: int
     source: str
     evidence: tuple[str, ...] = ()
+    dimensions: _ScoreDimensions | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +85,7 @@ class _TimeCandidate:
     line_index: int
     source: str
     evidence: tuple[str, ...] = ()
+    dimensions: _ScoreDimensions | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +95,7 @@ class _CategoryCandidate:
     line_index: int
     source: str
     evidence: tuple[str, ...] = ()
+    dimensions: _ScoreDimensions | None = None
 
 
 class _RankedCandidate(Protocol):
@@ -146,21 +165,34 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
                 has_nearby_success = _has_nearby_success(lines, index)
                 if not (has_money_marker or has_nearby_success or match.group("sign")):
                     continue
-                score = 32 if has_money_marker else 24
                 evidence = [f"line:{line_text}"]
                 if has_money_marker:
                     evidence.append("money_marker")
-                if has_nearby_success:
-                    score = 90
-                    evidence.append("near_transaction_success")
                 if match.group("sign"):
-                    score += 12
                     evidence.append("signed_primary_amount")
-                if _has_discount_context(lines, index):
-                    score -= 50
+                has_discount_context = _has_discount_context(lines, index)
+                if has_discount_context:
                     evidence.append("discount_context:-50")
+                dimensions = _ScoreDimensions(
+                    source=28 if has_money_marker else 24,
+                    context=62 if has_nearby_success else 0,
+                    label=12 if match.group("sign") else 0,
+                    consistency=_amount_plausibility_score(cents),
+                    noise=-50 if has_discount_context else 0,
+                    evidence=tuple(evidence),
+                )
+                score = dimensions.total
                 if score > 0:
-                    candidates.append(_AmountCandidate(cents, score, index, "line", tuple(evidence)))
+                    candidates.append(
+                        _AmountCandidate(
+                            amount_cents=cents,
+                            score=score,
+                            line_index=index,
+                            source="line",
+                            evidence=dimensions.evidence,
+                            dimensions=dimensions,
+                        )
+                    )
 
     for match in LABELED_AMOUNT_PATTERN.finditer(text):
         cents = _money_to_cents(match.group("amount"))
@@ -168,12 +200,30 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
             continue
         label = match.group("label")
         index = _line_index_for_offset(text, match.start())
-        score = AMOUNT_LABEL_SCORES.get(label, 35)
         evidence = [f"label:{label}"]
-        if _has_discount_context(lines, index):
-            score -= 45
+        has_discount_context = _has_discount_context(lines, index)
+        has_nearby_success = _has_nearby_success(lines, index)
+        if has_discount_context:
             evidence.append("discount_context:-45")
-        candidates.append(_AmountCandidate(cents, score, index, f"label:{label}", tuple(evidence)))
+        if has_nearby_success:
+            evidence.append("near_transaction_success:+10")
+        dimensions = _ScoreDimensions(
+            label=AMOUNT_LABEL_SCORES.get(label, 35),
+            context=10 if has_nearby_success else 0,
+            consistency=_amount_plausibility_score(cents),
+            noise=-45 if has_discount_context else 0,
+            evidence=tuple(evidence),
+        )
+        candidates.append(
+            _AmountCandidate(
+                amount_cents=cents,
+                score=dimensions.total,
+                line_index=index,
+                source=f"label:{label}",
+                evidence=dimensions.evidence,
+                dimensions=dimensions,
+            )
+        )
 
     for pattern, source, base_score in INLINE_AMOUNT_PATTERNS:
         for match in pattern.finditer(text):
@@ -182,17 +232,65 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
                 continue
             index = _line_index_for_offset(text, match.start())
             has_nearby_success = _has_nearby_success(lines, index)
-            score = base_score + (42 if has_nearby_success else 0)
             evidence = [source]
             if has_nearby_success:
                 evidence.append("near_transaction_success:+42")
-            if _has_discount_context(lines, index):
-                score -= 45
+            has_discount_context = _has_discount_context(lines, index)
+            if has_discount_context:
                 evidence.append("discount_context:-45")
+            dimensions = _ScoreDimensions(
+                source=base_score,
+                context=42 if has_nearby_success else 0,
+                consistency=_amount_plausibility_score(cents),
+                noise=-45 if has_discount_context else 0,
+                evidence=tuple(evidence),
+            )
+            score = dimensions.total
             if score > 0:
-                candidates.append(_AmountCandidate(cents, score, index, source, tuple(evidence)))
+                candidates.append(_AmountCandidate(cents, score, index, source, dimensions.evidence, dimensions))
 
-    return candidates
+    return _apply_amount_cross_evidence(candidates)
+
+
+def _amount_plausibility_score(cents: int) -> int:
+    if cents < 50:
+        return -8
+    if cents <= 200_000:
+        return 8
+    if cents <= 1_000_000:
+        return 2
+    return -4
+
+
+def _apply_amount_cross_evidence(candidates: list[_AmountCandidate]) -> list[_AmountCandidate]:
+    counts: dict[int, int] = {}
+    sources: dict[int, set[str]] = {}
+    for candidate in candidates:
+        counts[candidate.amount_cents] = counts.get(candidate.amount_cents, 0) + 1
+        sources.setdefault(candidate.amount_cents, set()).add(candidate.source)
+
+    boosted: list[_AmountCandidate] = []
+    for candidate in candidates:
+        support = min(16, max(0, counts[candidate.amount_cents] - 1) * 6 + max(0, len(sources[candidate.amount_cents]) - 1) * 4)
+        if support <= 0:
+            boosted.append(candidate)
+            continue
+        dimensions = _merge_dimensions(
+            candidate.dimensions,
+            consistency=support,
+            evidence=(f"same_amount_support:+{support}",),
+        )
+        boosted.append(
+            _AmountCandidate(
+                amount_cents=candidate.amount_cents,
+                score=dimensions.total,
+                line_index=candidate.line_index,
+                source=candidate.source,
+                evidence=dimensions.evidence,
+                dimensions=dimensions,
+            )
+        )
+    return boosted
 
 
 def _line_index_for_offset(text: str, offset: int) -> int:
@@ -346,21 +444,67 @@ def _score_merchant_candidate(
 
     score = base_score
     evidence = [source, f"base:{base_score}"]
+    noise = 0
     if source != "keyword" and any(keyword in value for keyword in SUCCESS_PAGE_AD_KEYWORDS):
-        score -= 60
+        noise -= 60
         evidence.append("success_page_ad:-60")
     if value in SUCCESS_PAGE_SKIP_LINES:
-        score -= 70
+        noise -= 70
         evidence.append("success_page_skip:-70")
     if value in BANK_KEYWORDS and _looks_like_payment_institution_context(text, value):
-        score -= 65
+        noise -= 65
         evidence.append("payment_institution_context:-65")
     if len(value) > 24 and source == "success_body":
-        score -= 45
+        noise -= 45
         evidence.append("long_success_body:-45")
+    dimensions = _ScoreDimensions(
+        source=_merchant_source_score(source, base_score),
+        proximity=_merchant_proximity_score(source, base_score),
+        consistency=_merchant_consistency_score(text, value, source),
+        noise=noise,
+        evidence=tuple(evidence),
+    )
+    score = dimensions.total
     if score < 25:
         return None
-    return _MerchantCandidate(value=value, score=score, line_index=line_index, source=source, evidence=tuple(evidence))
+    return _MerchantCandidate(value=value, score=score, line_index=line_index, source=source, evidence=dimensions.evidence, dimensions=dimensions)
+
+
+def _merchant_source_score(source: str, base_score: int) -> int:
+    if source == "success_title":
+        return 72
+    if source == "success_body":
+        return 58
+    if source == "payment_method_previous_line":
+        return 54
+    if source.startswith("label:"):
+        return min(base_score, 64)
+    if source == "keyword":
+        return min(base_score, 52)
+    if source == "first_line":
+        return 28
+    return min(base_score, 45)
+
+
+def _merchant_proximity_score(source: str, base_score: int) -> int:
+    if source in {"success_title", "success_body", "payment_method_previous_line"}:
+        return max(0, min(24, base_score - _merchant_source_score(source, base_score)))
+    return 0
+
+
+def _merchant_consistency_score(text: str, value: str, source: str) -> int:
+    score = 0
+    lower_text = text.lower()
+    lower_value = value.lower()
+    if lower_value in lower_text:
+        score += 6
+    if value in MERCHANT_KEYWORDS:
+        score += 8
+    if source == "keyword" and _looks_like_bank_reminder(text, value):
+        score += 18
+    if any(keyword.lower() in lower_value for keyword in ["超市", "便利店", "外卖", "零食", "小吃", "餐", "打车"]):
+        score += 6
+    return min(score, 28)
 
 
 def _is_title_merchant_candidate(value: str | None) -> bool:
@@ -422,28 +566,35 @@ def _time_candidates(text: str) -> list[_TimeCandidate]:
                 continue
 
             match_text = match.group(0)
+            dimensions = _score_time_dimensions(match_text, pattern_index)
             candidates.append(
                 _TimeCandidate(
                     value=ensure_utc(local_value),
-                    score=_score_time_match(match_text, pattern_index),
+                    score=dimensions.total,
                     line_index=_line_index_for_offset(text, match.start()),
                     source=f"time_pattern:{pattern_index}",
-                    evidence=(match_text,),
+                    evidence=dimensions.evidence,
+                    dimensions=dimensions,
                 )
             )
     return candidates
 
 
 def _score_time_match(match_text: str, pattern_index: int) -> int:
+    return _score_time_dimensions(match_text, pattern_index).total
+
+
+def _score_time_dimensions(match_text: str, pattern_index: int) -> _ScoreDimensions:
+    evidence = [match_text]
     if any(label in match_text for label in ["交易时间", "支付时间", "付款时间", "消费时间"]):
-        return 96
+        return _ScoreDimensions(label=78, context=18, evidence=tuple(evidence + ["business_time"]))
     if any(label in match_text for label in ["下单时间", "订单时间"]):
-        return 76
+        return _ScoreDimensions(label=62, context=12, evidence=tuple(evidence + ["order_time"]))
     if any(label in match_text for label in ["创建时间", "来电时间"]):
-        return 42
+        return _ScoreDimensions(label=34, context=6, evidence=tuple(evidence + ["generic_event_time"]))
     if "时间" in match_text:
-        return 50
-    return 38 - pattern_index * 4
+        return _ScoreDimensions(label=42, context=8, evidence=tuple(evidence + ["generic_time"]))
+    return _ScoreDimensions(source=max(18, 38 - pattern_index * 4), evidence=tuple(evidence + ["plain_datetime"]))
 
 
 def _default_timezone() -> ZoneInfo:
@@ -465,23 +616,37 @@ def _category_candidates(text: str, merchant: str | None) -> list[_CategoryCandi
 
     def add_candidate(rule_index: int, category: str, score: int, source: str, evidence: str) -> None:
         normalized = normalize_category(category)
+        dimensions = _ScoreDimensions(
+            source=score if source == "merchant_keyword" else 0,
+            context=score if source == "text_keyword" else 0,
+            consistency=10 if merchant_text and evidence.startswith("merchant:") else 0,
+            evidence=(evidence,),
+        )
         previous = buckets.get(normalized)
         if previous is None:
             buckets[normalized] = _CategoryCandidate(
                 category=normalized,
-                score=score,
+                score=dimensions.total,
                 line_index=rule_index,
                 source=source,
-                evidence=(evidence,),
+                evidence=dimensions.evidence,
+                dimensions=dimensions,
             )
             return
 
+        merged = _merge_dimensions(
+            previous.dimensions,
+            context=4 if source == "text_keyword" else 0,
+            consistency=8 if source == "merchant_keyword" else 3,
+            evidence=(evidence,),
+        )
         buckets[normalized] = _CategoryCandidate(
             category=normalized,
-            score=min(100, previous.score + min(8, max(3, score // 12))),
+            score=merged.total,
             line_index=min(previous.line_index, rule_index),
             source=previous.source,
-            evidence=previous.evidence + (evidence,),
+            evidence=merged.evidence,
+            dimensions=merged,
         )
 
     for rule_index, rule in enumerate(CATEGORY_HINT_RULES):
@@ -519,3 +684,26 @@ def _estimate_confidence(
 
 def _score_ratio(score: int) -> float:
     return max(0.0, min(score / 100, 1.0))
+
+
+def _merge_dimensions(
+    dimensions: _ScoreDimensions | None,
+    *,
+    source: int = 0,
+    label: int = 0,
+    context: int = 0,
+    proximity: int = 0,
+    consistency: int = 0,
+    noise: int = 0,
+    evidence: tuple[str, ...] = (),
+) -> _ScoreDimensions:
+    base = dimensions or _ScoreDimensions()
+    return _ScoreDimensions(
+        source=base.source + source,
+        label=base.label + label,
+        context=base.context + context,
+        proximity=base.proximity + proximity,
+        consistency=base.consistency + consistency,
+        noise=base.noise + noise,
+        evidence=base.evidence + evidence,
+    )
