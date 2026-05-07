@@ -858,6 +858,145 @@ def test_recognize_text_prefers_alipay_primary_amount_and_title_merchant(client:
     assert payload["expense_time"] == "2026-05-05T13:38:13Z"
 
 
+def test_recognize_text_ignores_alipay_success_page_ads_for_merchant(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "支付成功",
+            "￥7.50",
+            "获得森林能量",
+            "20g",
+            "罗森便利店",
+            "￥ 7.50",
+            "交易方式",
+            "花呗",
+            "抢到下笔立减0.18元红包",
+            "去查看",
+            "立即领取",
+            "高德",
+            "写真实评价，领10元打车红包",
+            "评价本店>",
+            "扫街榜",
+            "券后￥0.01",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 750
+    assert payload["merchant"] == "罗森便利店"
+    assert payload["category"] == "餐饮"
+
+
+def test_recognize_text_alipay_success_body_ignores_navigation_title(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "07:55",
+            "l 4G 13",
+            "支",
+            "回首页",
+            "支付成功",
+            "￥ 21.82",
+            "获得森林能量",
+            "20g",
+            "乐尔乐特价批发超市",
+            "￥ 22.00",
+            "碰一下立减",
+            "-￥ 0.18",
+            "交易方式",
+            "花呗",
+            "本店特价限时抢购",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 2182
+    assert payload["merchant"] == "乐尔乐特价批发超市"
+    assert payload["category"] == "购物"
+
+
+def test_recognize_text_wechat_payment_line_merchant_candidate(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "微信支付",
+            "Q",
+            "Jack",
+            "使用建设银行储蓄卡支付",
+            "¥5.00",
+            "交易状态",
+            "支付成功，对方已收款",
+            "查看账单详情",
+            "商家名片",
+            "星期二07:19",
+            "松针小笼包",
+            "使用建设银行储蓄卡(0436)支付",
+            "¥10.00",
+            "账单详情>",
+            "我的账单",
+            "支付服务",
+            "摇优惠",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 500
+    assert payload["merchant"] == "Jack"
+    assert payload["category"] == "其他"
+
+
+def test_recognize_text_ignores_status_bar_numbers_and_destination_text(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "花溪工业园区",
+            "高德地图",
+            "21:15",
+            ".·5G",
+            "91",
+            "好想来零食乐园（重庆巴南区珠江城店）",
+            "订单支付",
+            "鲸志出行-经济型|余师傅·渝AA77599",
+            "物品遗失打电话",
+            "11.73元",
+            "费用说明）",
+            "起步价",
+            "11.73元",
+            "高德打车",
+            "高德打车聚合平台由北京易行出行旅游有限公司运营并提供服务",
+            "已开启免密支付，将于05月06日21:17自动扣款",
+            "11.73元",
+            "共计",
+            "确认支付",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 1173
+    assert payload["merchant"] == "高德"
+    assert payload["category"] == "交通"
+
+
 def test_mock_ocr_provider_populates_pending_draft() -> None:
     expense = Expense(category="其他", raw_text="")
     retry_ocr(expense, MockOcrProvider())
