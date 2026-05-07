@@ -66,10 +66,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_ta
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_tasks.ps1 -SkipBackup
 ```
 
+## 从备份恢复
+
+恢复前请先停止后端，避免运行中的 SQLite 文件被覆盖：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop_backend.ps1
+```
+
+恢复指定备份：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath "backend\backups\ticketbox-20260508-033000.db"
+```
+
+恢复脚本会：
+
+1. 校验备份文件必须是 `.db`。
+2. 执行 SQLite `PRAGMA integrity_check`。
+3. 如果当前数据库存在，先创建 `pre-restore-*.db`。
+4. 再覆盖 `backend/data/ticketbox.db`。
+5. 覆盖后再次校验数据库。
+
+如果确认要在后端运行时强制恢复，可以传入 `-ForceWhileRunning`，但日常不建议这样做。
+
 边界：
 
 - 不提交 `backend/backups/`。
 - 不把真实 Token 写进备份文档、日志或 Git。
 - 备份只复制 SQLite 文件，不上传云端。
 - 默认只保留最近 30 天的 `ticketbox-*.db` 备份。
+- 恢复脚本只恢复 SQLite 数据库，不删除 uploads 图片。
 - 清理图片不影响 confirmed 账本数据。
