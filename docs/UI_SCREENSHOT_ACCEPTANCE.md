@@ -245,3 +245,18 @@ Observed result:
 - The page still preserves the product boundary copy: screenshots and recognition drafts do not auto-enter the ledger.
 - The floating bottom navigation remains unchanged; pending bill cards keep bottom-bar-aware scroll padding.
 - No backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior changed.
+
+## Ledger Tools Sheet Polish - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/ledger_tools_main.png`
+- `artifacts/ledger_tools_sheet.png`
+
+Observed result:
+
+- Ledger now keeps the main page focused on the month, current filter summary, total amount, and bill list.
+- Category chips, note search, CSV export, and manual sync moved into a bottom tools sheet opened from `筛选`.
+- The main filter panel no longer exposes every control at once, reducing first-viewport crowding while keeping all existing actions reachable.
+- The tools sheet was captured on the attached Xiaomi 15 Pro; it stays below the status bar and does not overlap the page title.
+- This was a Ledger-only information-hierarchy pass. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.

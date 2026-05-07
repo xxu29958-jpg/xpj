@@ -90,6 +90,7 @@ fun LedgerScreen(
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
+    var showLedgerTools by rememberSaveable { mutableStateOf(false) }
     val canExport = state.items.isNotEmpty() && !state.exporting
 
     if (showMonthPicker) {
@@ -120,6 +121,21 @@ fun LedgerScreen(
         }
     }
 
+    if (showLedgerTools) {
+        ModalBottomSheet(onDismissRequest = { showLedgerTools = false }) {
+            LedgerToolsSheet(
+                state = state,
+                canExport = canExport,
+                onCategoryChange = onCategoryChange,
+                onQueryChange = onQueryChange,
+                onClearFilters = onClearFilters,
+                onSync = onSync,
+                onExportCsv = onExportCsv,
+                onDismiss = { showLedgerTools = false },
+            )
+        }
+    }
+
     AppScrollableContent(
         role = AppPageRole.Ledger,
         isRefreshing = state.syncing,
@@ -129,13 +145,8 @@ fun LedgerScreen(
         item {
             LedgerFilterPanel(
                 state = state,
-                canExport = canExport,
                 onOpenMonthPicker = { showMonthPicker = true },
-                onCategoryChange = onCategoryChange,
-                onQueryChange = onQueryChange,
-                onClearFilters = onClearFilters,
-                onSync = onSync,
-                onExportCsv = onExportCsv,
+                onOpenTools = { showLedgerTools = true },
                 onManualAdd = { showManualSheet = true },
             )
         }
@@ -161,13 +172,8 @@ fun LedgerScreen(
 @Composable
 private fun LedgerFilterPanel(
     state: LedgerUiState,
-    canExport: Boolean,
     onOpenMonthPicker: () -> Unit,
-    onCategoryChange: (String) -> Unit,
-    onQueryChange: (String) -> Unit,
-    onClearFilters: () -> Unit,
-    onSync: () -> Unit,
-    onExportCsv: () -> Unit,
+    onOpenTools: () -> Unit,
     onManualAdd: () -> Unit,
 ) {
     val hasUserFilters = state.categoryFilter.isNotBlank() || state.query.isNotBlank()
@@ -176,12 +182,12 @@ private fun LedgerFilterPanel(
         LedgerSummaryStrip(state)
         SoftPanel(containerAlpha = 0.99f) {
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(
-                        modifier = Modifier.weight(1.50f),
+                        modifier = Modifier.weight(1.25f),
                         selected = true,
                         onClick = onOpenMonthPicker,
                         label = {
@@ -200,33 +206,30 @@ private fun LedgerFilterPanel(
                             )
                         },
                     )
-                    LedgerInlineButton(
-                        text = if (state.exporting) "导出中" else "导出 CSV",
-                        modifier = Modifier.weight(0.86f),
-                        enabled = canExport,
-                        onClick = onExportCsv,
-                    )
-                    LedgerInlineButton(
-                        text = if (state.syncing) "同步中" else "同步",
-                        modifier = Modifier.weight(0.64f),
-                        enabled = !state.syncing,
-                        onClick = onSync,
+                    FilterChip(
+                        modifier = Modifier.weight(1f),
+                        selected = hasUserFilters,
+                        onClick = onOpenTools,
+                        label = {
+                            Text(
+                                text = ledgerToolsLabel(state),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        leadingIcon = if (hasUserFilters) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(FilterChipDefaults.IconSize),
+                                )
+                            }
+                        } else {
+                            null
+                        },
                     )
                 }
-                CategoryFilterRow(
-                    categories = state.categories,
-                    selectedCategory = state.categoryFilter,
-                    onCategoryChange = onCategoryChange,
-                )
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    placeholder = { Text("搜索备注") },
-                    singleLine = true,
-                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -241,21 +244,95 @@ private fun LedgerFilterPanel(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (hasUserFilters) {
-                        QuietOutlinedButton(
-                            text = "清筛选",
-                            onClick = onClearFilters,
-                        )
+                    TextButton(
+                        onClick = onOpenTools,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text(if (hasUserFilters) "调整" else "筛选")
                     }
                 }
-                if (state.items.isEmpty()) {
-                    Text(
-                        text = "当前没有可导出的已确认账单。",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
             }
+        }
+    }
+}
+
+@Composable
+private fun LedgerToolsSheet(
+    state: LedgerUiState,
+    canExport: Boolean,
+    onCategoryChange: (String) -> Unit,
+    onQueryChange: (String) -> Unit,
+    onClearFilters: () -> Unit,
+    onSync: () -> Unit,
+    onExportCsv: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val hasUserFilters = state.categoryFilter.isNotBlank() || state.query.isNotBlank()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("筛选与同步", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(
+                text = ledgerCombinedStatusLine(state),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        CategoryFilterRow(
+            categories = state.categories,
+            selectedCategory = state.categoryFilter,
+            onCategoryChange = onCategoryChange,
+        )
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            placeholder = { Text("搜索备注") },
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LedgerInlineButton(
+                text = if (state.exporting) "导出中" else "导出 CSV",
+                modifier = Modifier.weight(1f),
+                enabled = canExport,
+                onClick = onExportCsv,
+            )
+            LedgerInlineButton(
+                text = if (state.syncing) "同步中" else "同步账本",
+                modifier = Modifier.weight(1f),
+                enabled = !state.syncing,
+                onClick = onSync,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (hasUserFilters) {
+                QuietOutlinedButton(
+                    text = "清除筛选",
+                    modifier = Modifier.weight(1f),
+                    onClick = onClearFilters,
+                )
+            }
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = onDismiss,
+            ) {
+                Text("完成")
+            }
+        }
+        if (state.items.isEmpty()) {
+            Text(
+                text = "当前没有可导出的已确认账单。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -841,6 +918,12 @@ private fun ledgerCombinedStatusLine(state: LedgerUiState): String {
     val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
     val query = state.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
     return "$syncText · 当前查看：$month · $category$query"
+}
+
+private fun ledgerToolsLabel(state: LedgerUiState): String {
+    val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
+    val query = state.query.takeIf { it.isNotBlank() }?.let { " · 已搜索" }.orEmpty()
+    return "$category$query"
 }
 
 private fun ledgerFilterSummary(state: LedgerUiState): String {
