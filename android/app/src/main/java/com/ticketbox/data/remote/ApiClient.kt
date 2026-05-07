@@ -48,8 +48,8 @@ class ApiClient(context: Context? = null) {
             .protocols(listOf(Protocol.HTTP_1_1))
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
-            .writeTimeout(20, TimeUnit.SECONDS)
-            .callTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val requestBuilder = chain.request().newBuilder()
                     .header("User-Agent", USER_AGENT)
@@ -161,8 +161,8 @@ internal class NonVpnGetFallbackInterceptor(
                 .protocols(listOf(Protocol.HTTP_1_1))
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
-                .writeTimeout(20, TimeUnit.SECONDS)
-                .callTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(45, TimeUnit.SECONDS)
+                .callTimeout(60, TimeUnit.SECONDS)
                 .build()
             return try {
                 fallbackClient.newCall(request).execute()

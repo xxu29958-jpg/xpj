@@ -83,6 +83,28 @@ class _ReceiptContext:
     text: str
     lines: tuple[str, ...]
     profile: str
+    signals: "_ReceiptSignals"
+
+
+@dataclass(frozen=True)
+class _ReceiptSignals:
+    line_count: int = 0
+    transaction_success_count: int = 0
+    amount_label_count: int = 0
+    merchant_label_count: int = 0
+    time_label_count: int = 0
+    discount_marker_count: int = 0
+    payment_sheet_marker_count: int = 0
+
+    @property
+    def structured_signal_count(self) -> int:
+        return (
+            self.transaction_success_count
+            + self.amount_label_count
+            + self.merchant_label_count
+            + self.time_label_count
+            + self.payment_sheet_marker_count
+        )
 
 
 @dataclass(frozen=True)
@@ -148,6 +170,7 @@ def parse_receipt_text(raw_text: str) -> ParsedReceipt:
     category_candidate = _best_candidate(_calibrate_category_candidates(_category_candidates(text, merchant), context, merchant_candidate))
     category = category_candidate.category if category_candidate else None
     confidence = _estimate_confidence(
+        context=context,
         amount_candidate=amount_candidate,
         merchant_candidate=merchant_candidate,
         time_candidate=time_candidate,
@@ -170,7 +193,30 @@ def _normalize_text(raw_text: str) -> str:
 
 def _build_receipt_context(text: str) -> _ReceiptContext:
     lines = tuple(text.splitlines())
-    return _ReceiptContext(text=text, lines=lines, profile=_detect_receipt_profile(text, lines))
+    return _ReceiptContext(
+        text=text,
+        lines=lines,
+        profile=_detect_receipt_profile(text, lines),
+        signals=_build_receipt_signals(text, lines),
+    )
+
+
+def _build_receipt_signals(text: str, lines: tuple[str, ...]) -> _ReceiptSignals:
+    return _ReceiptSignals(
+        line_count=len(lines),
+        transaction_success_count=sum(1 for keyword in TRANSACTION_SUCCESS_KEYWORDS if keyword in text),
+        amount_label_count=len(LABELED_AMOUNT_PATTERN.findall(text)),
+        merchant_label_count=len(MERCHANT_LABEL_PATTERN.findall(text)),
+        time_label_count=sum(len(pattern.findall(text)) for pattern in TIME_PATTERNS),
+        discount_marker_count=sum(1 for marker in DISCOUNT_AMOUNT_LABELS if marker in text),
+        payment_sheet_marker_count=sum(
+            1
+            for marker in PAYMENT_SHEET_MERCHANT_MARKERS
+            + PAYMENT_SHEET_ACTION_MARKERS
+            + PAYMENT_SHEET_PAYMENT_METHOD_MARKERS
+            if marker in text
+        ),
+    )
 
 
 def _detect_receipt_profile(text: str, lines: tuple[str, ...]) -> str:
@@ -1000,6 +1046,7 @@ def _calibrate_category_candidates(
 
 def _estimate_confidence(
     *,
+    context: _ReceiptContext,
     amount_candidate: _AmountCandidate | None,
     merchant_candidate: _MerchantCandidate | None,
     time_candidate: _TimeCandidate | None,
@@ -1016,8 +1063,40 @@ def _estimate_confidence(
     if category_candidate is not None:
         score += 0.06 * _score_ratio(category_candidate.score)
     if len(raw_text) >= 20:
-        score += 0.1
+        score += 0.06
+    score += _context_quality_bonus(
+        context=context,
+        amount_candidate=amount_candidate,
+        merchant_candidate=merchant_candidate,
+        time_candidate=time_candidate,
+    )
     return round(min(score, 0.95), 4)
+
+
+def _context_quality_bonus(
+    *,
+    context: _ReceiptContext,
+    amount_candidate: _AmountCandidate | None,
+    merchant_candidate: _MerchantCandidate | None,
+    time_candidate: _TimeCandidate | None,
+) -> float:
+    signals = context.signals
+    bonus = 0.0
+    if context.profile != "generic":
+        bonus += 0.03
+    if signals.structured_signal_count >= 3:
+        bonus += 0.03
+    if signals.structured_signal_count >= 5:
+        bonus += 0.02
+    if amount_candidate is not None and merchant_candidate is not None:
+        bonus += 0.03
+    if amount_candidate is not None and time_candidate is not None:
+        bonus += 0.02
+    if signals.discount_marker_count and context.profile == "alipay_bill_detail":
+        bonus += 0.01
+    if signals.line_count < 3:
+        bonus -= 0.04
+    return max(-0.08, min(bonus, 0.11))
 
 
 def _score_ratio(score: int) -> float:

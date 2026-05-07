@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.services.receipt_parse_service import parse_receipt_text
+from app.services.receipt_parse_service import _ReceiptContext, _ReceiptSignals, _context_quality_bonus, parse_receipt_text
 from app.services.time_service import ensure_utc
 
 
@@ -45,6 +45,31 @@ def test_scoring_prefers_alipay_primary_amount_merchant_and_time() -> None:
     assert parsed.expense_time is not None
     assert _utc_iso(parsed.expense_time) == "2026-05-05T13:38:13Z"
     assert parsed.confidence is not None and parsed.confidence >= 0.8
+
+
+def test_context_quality_bonus_rewards_structured_profile_evidence() -> None:
+    context = _ReceiptContext(
+        text="structured receipt",
+        lines=("title", "amount", "merchant", "time", "success"),
+        profile="alipay_bill_detail",
+        signals=_ReceiptSignals(
+            line_count=5,
+            transaction_success_count=1,
+            amount_label_count=1,
+            merchant_label_count=1,
+            time_label_count=1,
+            discount_marker_count=1,
+        ),
+    )
+
+    bonus = _context_quality_bonus(
+        context=context,
+        amount_candidate=None,
+        merchant_candidate=None,
+        time_candidate=None,
+    )
+
+    assert bonus > 0.06
 
 
 def test_profile_calibration_demotes_alipay_order_amount() -> None:

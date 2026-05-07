@@ -144,7 +144,7 @@ else {
     Add-Row -Target $Summary -Name "Cloudflare Tunnel" -Status "WARN" -Detail "未发现进程"
 }
 
-$tasks = Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel -ErrorAction SilentlyContinue
+$tasks = Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel,TicketboxBackup -ErrorAction SilentlyContinue
 if ($tasks) {
     $taskSummary = ($tasks | ForEach-Object { "$($_.TaskName):$($_.State)" }) -join "，"
     Add-Row -Target $Details -Name "开机自启" -Status "OK" -Detail $taskSummary

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+from time import perf_counter
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
@@ -17,6 +20,7 @@ from app.tenants import Tenant
 
 
 router = APIRouter(prefix="/api", tags=["uploads"])
+logger = logging.getLogger("ticketbox.upload")
 
 IOS_SHORTCUT_FILE_FIELDS = ("file", "image", "photo", "screenshot")
 
@@ -70,7 +74,7 @@ async def _save_request_upload(request: Request) -> SavedUpload:
     )
 
 
-def _upload_response(expense: Expense) -> UploadResponse:
+def _upload_response(expense: Expense, saved_file: SavedUpload, duration_ms: int) -> UploadResponse:
     return UploadResponse(
         id=expense.id,
         public_id=expense.public_id,
@@ -80,6 +84,8 @@ def _upload_response(expense: Expense) -> UploadResponse:
         thumbnail_path=expense.thumbnail_path,
         duplicate_status=expense.duplicate_status,
         duplicate_of_id=expense.duplicate_of_id,
+        upload_size_bytes=saved_file.size_bytes,
+        duration_ms=duration_ms,
     )
 
 
@@ -89,6 +95,33 @@ def _create_pending_or_cleanup(db: Session, saved_file: SavedUpload, tenant: Ten
     except Exception:
         delete_saved_upload(saved_file)
         raise
+
+
+async def _handle_upload(
+    *,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    tenant: Tenant,
+    db: Session,
+    source: str,
+    endpoint: str,
+) -> UploadResponse:
+    started_at = perf_counter()
+    saved_file = await _save_request_upload(request)
+    expense = _create_pending_or_cleanup(db, saved_file, tenant, source=source)
+    duration_ms = max(0, int((perf_counter() - started_at) * 1000))
+    logger.info(
+        "upload accepted endpoint=%s tenant=%s expense_id=%s bytes=%s media_type=%s duration_ms=%s duplicate=%s",
+        endpoint,
+        tenant.id,
+        expense.id,
+        saved_file.size_bytes,
+        saved_file.media_type,
+        duration_ms,
+        expense.duplicate_status,
+    )
+    background_tasks.add_task(enrich_pending_expense, expense.id, tenant.id)
+    return _upload_response(expense, saved_file, duration_ms)
 
 
 @router.get(
@@ -113,10 +146,14 @@ async def upload_screenshot(
     tenant: Tenant = Depends(get_current_upload_tenant),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
-    saved_file = await _save_request_upload(request)
-    expense = _create_pending_or_cleanup(db, saved_file, tenant, source="iPhone截图")
-    background_tasks.add_task(enrich_pending_expense, expense.id, tenant.id)
-    return _upload_response(expense)
+    return await _handle_upload(
+        request=request,
+        background_tasks=background_tasks,
+        tenant=tenant,
+        db=db,
+        source="iPhone截图",
+        endpoint="ios_shortcut",
+    )
 
 
 @router.post(
@@ -129,7 +166,11 @@ async def app_upload_screenshot(
     tenant: Tenant = Depends(get_current_app_tenant),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
-    saved_file = await _save_request_upload(request)
-    expense = _create_pending_or_cleanup(db, saved_file, tenant, source="Android截图")
-    background_tasks.add_task(enrich_pending_expense, expense.id, tenant.id)
-    return _upload_response(expense)
+    return await _handle_upload(
+        request=request,
+        background_tasks=background_tasks,
+        tenant=tenant,
+        db=db,
+        source="Android截图",
+        endpoint="android_app",
+    )

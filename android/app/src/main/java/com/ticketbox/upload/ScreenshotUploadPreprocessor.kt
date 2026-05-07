@@ -15,9 +15,9 @@ data class PreparedUploadImage(
     val bytes: ByteArray,
 )
 
-private const val MAX_UPLOAD_LONG_SIDE = 1800
-private const val JPEG_QUALITY = 88
-private const val KEEP_ORIGINAL_MAX_BYTES = 700_000L
+private const val MAX_UPLOAD_LONG_SIDE = 1600
+private const val JPEG_QUALITY = 84
+private const val KEEP_ORIGINAL_MAX_BYTES = 450_000L
 
 fun Context.prepareScreenshotUpload(uri: Uri): PreparedUploadImage? {
     val metadata = readUploadMetadata(uri)

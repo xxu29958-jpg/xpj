@@ -2,9 +2,12 @@
     [int]$Port = 8000,
     [string]$BackendTaskName = "TicketboxBackend",
     [string]$TunnelTaskName = "TicketboxCloudflareTunnel",
+    [string]$BackupTaskName = "TicketboxBackup",
+    [string]$BackupTime = "03:30",
     [string]$CloudflaredPath = "",
     [string]$CloudflaredArguments = "",
     [switch]$SkipTunnel,
+    [switch]$SkipBackup,
     [switch]$ForceTunnelTask,
     [switch]$NoStart
 )
@@ -15,6 +18,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $StartBackendScript = Join-Path $ProjectRoot "scripts\start_backend.ps1"
+$MaintenanceScript = Join-Path $ProjectRoot "scripts\maintenance_ticketbox.ps1"
 
 function New-TaskSettings {
     New-ScheduledTaskSettingsSet `
@@ -43,6 +47,36 @@ function Register-LogonTask {
         -Description $Description `
         -Force | Out-Null
     Write-Host "OK   已创建任务计划：$TaskName"
+}
+
+function Register-DailyTask {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskName,
+        [Parameter(Mandatory = $true)][string]$Execute,
+        [Parameter(Mandatory = $true)][string]$Argument,
+        [Parameter(Mandatory = $true)][datetime]$At,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    $action = New-ScheduledTaskAction -Execute $Execute -Argument $Argument
+    $trigger = New-ScheduledTaskTrigger -Daily -At $At
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings (New-TaskSettings) `
+        -Description $Description `
+        -Force | Out-Null
+    Write-Host "OK   已创建每日任务：$TaskName ($($At.ToString('HH:mm')))"
+}
+
+function Resolve-BackupTime {
+    try {
+        return [datetime]::ParseExact($BackupTime, "HH:mm", [Globalization.CultureInfo]::InvariantCulture)
+    }
+    catch {
+        throw "备份时间格式不正确：$BackupTime。请使用 HH:mm，例如 03:30。"
+    }
 }
 
 function Resolve-CloudflaredExecutable {
@@ -109,6 +143,9 @@ function Resolve-CloudflaredArguments {
 if (-not (Test-Path -LiteralPath $StartBackendScript)) {
     throw "未找到后端统一启动脚本：$StartBackendScript"
 }
+if (-not (Test-Path -LiteralPath $MaintenanceScript)) {
+    throw "未找到维护脚本：$MaintenanceScript"
+}
 
 Write-Host "安装小票夹 Windows 登录自启任务"
 Write-Host "项目目录：$ProjectRoot"
@@ -159,6 +196,18 @@ if (-not $SkipTunnel) {
 }
 else {
     Write-Host "SKIP Tunnel 任务：已指定 -SkipTunnel。"
+}
+
+if (-not $SkipBackup) {
+    Register-DailyTask `
+        -TaskName $BackupTaskName `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$MaintenanceScript`" -Backup" `
+        -At (Resolve-BackupTime) `
+        -Description "Daily SQLite backup for 小票夹"
+}
+else {
+    Write-Host "SKIP 备份任务：已指定 -SkipBackup。"
 }
 
 if (-not $NoStart) {

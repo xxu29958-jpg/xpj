@@ -41,6 +41,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 
 ```text
 TicketboxBackend
+TicketboxBackup
 ```
 
 如果本机已经安装了 `cloudflared` Windows 服务，脚本会复用服务，不重复创建 Tunnel 计划任务。
@@ -65,6 +66,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -SkipTunnel
+```
+
+只安装后端和 Tunnel，不创建每日 SQLite 备份任务：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -SkipBackup
 ```
 
 ## 启动和停止后端
@@ -105,6 +112,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 - 后端进程是谁。
 - cloudflared 进程或服务是否存在。
 - `TicketboxBackend` / `TicketboxCloudflareTunnel` 计划任务状态。
+- `TicketboxBackup` 每日 SQLite 备份任务状态。
 - 本机 `/api/health`。
 - 公网 `/api/health`。
 - 公网 `/api/auth/check`，Token 从 `backend\.env` 读取但不会打印。

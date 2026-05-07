@@ -1,8 +1,10 @@
 ﻿param(
     [string]$BackendTaskName = "TicketboxBackend",
     [string]$TunnelTaskName = "TicketboxCloudflareTunnel",
+    [string]$BackupTaskName = "TicketboxBackup",
     [switch]$SkipBackend,
     [switch]$SkipTunnel,
+    [switch]$SkipBackup,
     [switch]$StopRunning
 )
 
@@ -31,4 +33,7 @@ if (-not $SkipBackend) {
 }
 if (-not $SkipTunnel) {
     Remove-TaskIfExists -TaskName $TunnelTaskName
+}
+if (-not $SkipBackup) {
+    Remove-TaskIfExists -TaskName $BackupTaskName
 }

@@ -35,6 +35,7 @@ class SavedUpload:
     relative_path: str
     image_hash: str
     media_type: str
+    size_bytes: int
 
 
 def _extension_from_metadata(filename: str | None, content_type: str | None) -> str | None:
@@ -130,6 +131,7 @@ def save_upload_bytes(
         relative_path=relative_path,
         image_hash=hasher.hexdigest(),
         media_type=MEDIA_TYPES.get(target_path.suffix.lower(), "application/octet-stream"),
+        size_bytes=len(data),
     )
 
 

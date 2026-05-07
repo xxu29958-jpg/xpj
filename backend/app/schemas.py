@@ -34,6 +34,8 @@ class UploadResponse(BaseModel):
     thumbnail_path: str | None
     duplicate_status: str
     duplicate_of_id: int | None
+    upload_size_bytes: int
+    duration_ms: int
 
 
 class UploadCheckResponse(BaseModel):
