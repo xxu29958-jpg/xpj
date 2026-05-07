@@ -31,7 +31,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
@@ -186,18 +186,12 @@ private fun LedgerFilterPanel(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(
+                    AppFilterChip(
                         modifier = Modifier.weight(1.25f),
                         selected = true,
                         onClick = onOpenMonthPicker,
-                        label = {
-                            Text(
-                                text = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
-                                    ?: "全部月份",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
+                        label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                            ?: "全部月份",
                         trailingIcon = {
                             Icon(
                                 imageVector = Icons.Filled.ExpandMore,
@@ -206,17 +200,11 @@ private fun LedgerFilterPanel(
                             )
                         },
                     )
-                    FilterChip(
+                    AppFilterChip(
                         modifier = Modifier.weight(1f),
                         selected = hasUserFilters,
                         onClick = onOpenTools,
-                        label = {
-                            Text(
-                                text = ledgerToolsLabel(state),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
+                        label = ledgerToolsLabel(state),
                         leadingIcon = if (hasUserFilters) {
                             {
                                 Icon(
@@ -780,10 +768,10 @@ private fun SelectableFilterChip(
     label: String,
     onClick: () -> Unit,
 ) {
-    FilterChip(
+    AppFilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
+        label = label,
         leadingIcon = if (selected) {
             {
                 Icon(
@@ -795,10 +783,7 @@ private fun SelectableFilterChip(
         } else {
             null
         },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
-        ),
+        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
     )
 }
 

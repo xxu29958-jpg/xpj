@@ -305,3 +305,16 @@ Observed result:
 - The category insight card now uses `ThemeVisuals.solidCard` and its metric pills use `ThemeVisuals.chipSelected`, improving readability and matching the theme package surface language.
 - The recent trend card and category insight card were lightly compressed so the category insight can be read above the floating bottom bar on the attached Xiaomi 15 Pro.
 - This was a shared visual-system polish. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
+
+## Ledger Filter Chip Unification - 2026-05-07
+
+Real-device check artifact:
+
+- `artifacts/ledger_filter_chip_unified.png`
+
+Observed result:
+
+- Ledger month, filter summary, category, and manual-entry category chips now use the shared `AppFilterChip` instead of direct Material `FilterChip` styling.
+- `AppFilterChip` now supports optional leading and trailing icons, so pages can keep compact controls while still using theme package colors.
+- This reduces per-screen chip color drift across Pine, Harbor, Pomelo, Berry, and Night themes.
+- This was a shared component unification pass. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.

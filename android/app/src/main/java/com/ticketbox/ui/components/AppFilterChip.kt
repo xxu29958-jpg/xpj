@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -19,6 +20,9 @@ fun AppFilterChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    selectedContainerColor: Color? = null,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
 ) {
     val visuals = LocalThemeVisuals.current
     FilterChip(
@@ -34,8 +38,10 @@ fun AppFilterChip(
             )
         },
         modifier = modifier,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
         colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = visuals.chipSelected,
+            selectedContainerColor = selectedContainerColor ?: visuals.chipSelected,
             selectedLabelColor = MaterialTheme.colorScheme.primary,
             containerColor = visuals.chipUnselected.copy(alpha = 0.86f),
             labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
