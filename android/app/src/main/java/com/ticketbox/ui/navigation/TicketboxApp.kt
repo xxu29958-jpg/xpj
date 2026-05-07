@@ -38,6 +38,7 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.security.BiometricAuthManager
@@ -126,7 +127,7 @@ private fun TicketboxContent(
 ) {
     if (!appState.isBound) {
         ImmersiveBackgroundScaffold(
-            backgroundSettings = appState.backgroundSettings,
+            backgroundSettings = appState.backgroundSettings.forSurfaceRole(SurfaceRole.Auth),
             currentSkin = appState.skin,
             surfaceRole = SurfaceRole.Auth,
         ) {
@@ -141,7 +142,7 @@ private fun TicketboxContent(
 
     if (!appState.unlocked) {
         ImmersiveBackgroundScaffold(
-            backgroundSettings = appState.backgroundSettings,
+            backgroundSettings = appState.backgroundSettings.forSurfaceRole(SurfaceRole.Auth),
             currentSkin = appState.skin,
             surfaceRole = SurfaceRole.Auth,
         ) {
@@ -187,9 +188,10 @@ private fun MainShell(
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
     val repositoryFactory = repositoryViewModelFactory(repository)
     val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
+    val visibleBackgroundSettings = backgroundSettings.forSurfaceRole(currentRole)
 
     ImmersiveBackgroundScaffold(
-        backgroundSettings = backgroundSettings,
+        backgroundSettings = visibleBackgroundSettings,
         currentSkin = currentSkin,
         surfaceRole = currentRole,
     ) {
@@ -360,6 +362,19 @@ private fun BottomTab.toBottomNavItem(): AppBottomNavItem = AppBottomNavItem(
     label = label,
     icon = icon,
 )
+
+private fun BackgroundSettings.forSurfaceRole(role: SurfaceRole): BackgroundSettings {
+    if (source != BackgroundSource.CustomImage) return this
+    return when (role) {
+        SurfaceRole.Pending,
+        SurfaceRole.Stats -> this
+
+        SurfaceRole.Ledger,
+        SurfaceRole.Edit,
+        SurfaceRole.Settings,
+        SurfaceRole.Auth -> withoutBackground()
+    }
+}
 
 private fun Context.readSelectedScreenshot(uri: Uri): SelectedScreenshot? {
     val contentType = contentResolver.getType(uri)
