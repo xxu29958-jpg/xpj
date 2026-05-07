@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
+from typing import Protocol, TypeVar
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
@@ -48,6 +49,7 @@ class _AmountCandidate:
     score: int
     line_index: int
     source: str
+    evidence: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,33 @@ class _MerchantCandidate:
     score: int
     line_index: int
     source: str
+    evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _TimeCandidate:
+    value: datetime
+    score: int
+    line_index: int
+    source: str
+    evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _CategoryCandidate:
+    category: str
+    score: int
+    line_index: int
+    source: str
+    evidence: tuple[str, ...] = ()
+
+
+class _RankedCandidate(Protocol):
+    score: int
+    line_index: int
+
+
+_CandidateT = TypeVar("_CandidateT", bound=_RankedCandidate)
 
 
 def parse_receipt_text(raw_text: str) -> ParsedReceipt:
@@ -63,14 +92,19 @@ def parse_receipt_text(raw_text: str) -> ParsedReceipt:
     if not text:
         return ParsedReceipt()
 
-    amount_cents = _extract_amount_cents(text)
-    merchant = _extract_merchant(text)
-    expense_time = _extract_expense_time(text)
-    category = _suggest_category(text, merchant)
+    amount_candidate = _best_candidate(_amount_candidates(text))
+    merchant_candidate = _best_candidate(_merchant_candidates(text))
+    time_candidate = _best_candidate(_time_candidates(text))
+    amount_cents = amount_candidate.amount_cents if amount_candidate else None
+    merchant = merchant_candidate.value if merchant_candidate else None
+    expense_time = time_candidate.value if time_candidate else None
+    category_candidate = _best_candidate(_category_candidates(text, merchant))
+    category = category_candidate.category if category_candidate else None
     confidence = _estimate_confidence(
-        amount_cents=amount_cents,
-        merchant=merchant,
-        expense_time=expense_time,
+        amount_candidate=amount_candidate,
+        merchant_candidate=merchant_candidate,
+        time_candidate=time_candidate,
+        category_candidate=category_candidate,
         raw_text=text,
     )
 
@@ -88,10 +122,14 @@ def _normalize_text(raw_text: str) -> str:
 
 
 def _extract_amount_cents(text: str) -> int | None:
-    candidates = _amount_candidates(text)
+    candidate = _best_candidate(_amount_candidates(text))
+    return candidate.amount_cents if candidate else None
+
+
+def _best_candidate(candidates: list[_CandidateT]) -> _CandidateT | None:
     if not candidates:
         return None
-    return max(candidates, key=lambda candidate: (candidate.score, -candidate.line_index)).amount_cents
+    return max(candidates, key=lambda candidate: (candidate.score, -candidate.line_index))
 
 
 def _amount_candidates(text: str) -> list[_AmountCandidate]:
@@ -109,14 +147,20 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
                 if not (has_money_marker or has_nearby_success or match.group("sign")):
                     continue
                 score = 32 if has_money_marker else 24
+                evidence = [f"line:{line_text}"]
+                if has_money_marker:
+                    evidence.append("money_marker")
                 if has_nearby_success:
                     score = 90
+                    evidence.append("near_transaction_success")
                 if match.group("sign"):
                     score += 12
+                    evidence.append("signed_primary_amount")
                 if _has_discount_context(lines, index):
                     score -= 50
+                    evidence.append("discount_context:-50")
                 if score > 0:
-                    candidates.append(_AmountCandidate(cents, score, index, "line"))
+                    candidates.append(_AmountCandidate(cents, score, index, "line", tuple(evidence)))
 
     for match in LABELED_AMOUNT_PATTERN.finditer(text):
         cents = _money_to_cents(match.group("amount"))
@@ -125,9 +169,11 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
         label = match.group("label")
         index = _line_index_for_offset(text, match.start())
         score = AMOUNT_LABEL_SCORES.get(label, 35)
+        evidence = [f"label:{label}"]
         if _has_discount_context(lines, index):
             score -= 45
-        candidates.append(_AmountCandidate(cents, score, index, f"label:{label}"))
+            evidence.append("discount_context:-45")
+        candidates.append(_AmountCandidate(cents, score, index, f"label:{label}", tuple(evidence)))
 
     for pattern, source, base_score in INLINE_AMOUNT_PATTERNS:
         for match in pattern.finditer(text):
@@ -135,11 +181,16 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
             if cents is None or not 0 < cents < 10_000_000_00:
                 continue
             index = _line_index_for_offset(text, match.start())
-            score = base_score + (42 if _has_nearby_success(lines, index) else 0)
+            has_nearby_success = _has_nearby_success(lines, index)
+            score = base_score + (42 if has_nearby_success else 0)
+            evidence = [source]
+            if has_nearby_success:
+                evidence.append("near_transaction_success:+42")
             if _has_discount_context(lines, index):
                 score -= 45
+                evidence.append("discount_context:-45")
             if score > 0:
-                candidates.append(_AmountCandidate(cents, score, index, source))
+                candidates.append(_AmountCandidate(cents, score, index, source, tuple(evidence)))
 
     return candidates
 
@@ -173,10 +224,8 @@ def _money_to_cents(value: str) -> int | None:
 
 
 def _extract_merchant(text: str) -> str | None:
-    candidates = _merchant_candidates(text)
-    if not candidates:
-        return None
-    return max(candidates, key=lambda candidate: (candidate.score, -candidate.line_index)).value
+    candidate = _best_candidate(_merchant_candidates(text))
+    return candidate.value if candidate else None
 
 
 def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
@@ -189,49 +238,49 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
 
         for candidate_index in range(index - 1, max(-1, index - 6), -1):
             cleaned = _clean_merchant(lines[candidate_index])
+            distance = index - candidate_index
             candidate = _score_merchant_candidate(
                 text=text,
                 value=cleaned,
-                base_score=100,
+                base_score=104 - distance * 4,
                 line_index=candidate_index,
                 source="success_title",
                 require_no_digits=False,
             )
             if candidate:
                 candidates.append(candidate)
-                break
 
         if line.strip() == "支付成功":
             for candidate_index in range(index + 1, min(len(lines), index + 10)):
                 cleaned = _clean_merchant(lines[candidate_index])
+                distance = candidate_index - index
                 candidate = _score_merchant_candidate(
                     text=text,
                     value=cleaned,
-                    base_score=90,
+                    base_score=94 - distance * 3,
                     line_index=candidate_index,
                     source="success_body",
                     require_no_digits=True,
                 )
                 if candidate:
                     candidates.append(candidate)
-                    break
 
     for index, line in enumerate(lines):
         if not PAYMENT_METHOD_LINE_PATTERN.match(line.strip()):
             continue
         for candidate_index in range(index - 1, max(-1, index - 4), -1):
             cleaned = _clean_merchant(lines[candidate_index])
+            distance = index - candidate_index
             candidate = _score_merchant_candidate(
                 text=text,
                 value=cleaned,
-                base_score=86,
+                base_score=90 - distance * 4,
                 line_index=candidate_index,
                 source="payment_method_previous_line",
                 require_no_digits=False,
             )
             if candidate:
                 candidates.append(candidate)
-                break
 
     for match in MERCHANT_LABEL_PATTERN.finditer(text):
         cleaned = _clean_merchant(match.group("value"))
@@ -296,17 +345,22 @@ def _score_merchant_candidate(
         return None
 
     score = base_score
+    evidence = [source, f"base:{base_score}"]
     if source != "keyword" and any(keyword in value for keyword in SUCCESS_PAGE_AD_KEYWORDS):
         score -= 60
+        evidence.append("success_page_ad:-60")
     if value in SUCCESS_PAGE_SKIP_LINES:
         score -= 70
+        evidence.append("success_page_skip:-70")
     if value in BANK_KEYWORDS and _looks_like_payment_institution_context(text, value):
         score -= 65
+        evidence.append("payment_institution_context:-65")
     if len(value) > 24 and source == "success_body":
         score -= 45
+        evidence.append("long_success_body:-45")
     if score < 25:
         return None
-    return _MerchantCandidate(value=value, score=score, line_index=line_index, source=source)
+    return _MerchantCandidate(value=value, score=score, line_index=line_index, source=source, evidence=tuple(evidence))
 
 
 def _is_title_merchant_candidate(value: str | None) -> bool:
@@ -345,25 +399,51 @@ def _clean_merchant(value: str) -> str | None:
 
 
 def _extract_expense_time(text: str) -> datetime | None:
-    for pattern in TIME_PATTERNS:
-        match = pattern.search(text)
-        if not match:
-            continue
-        year, month, day, hour, minute, second = match.groups()
-        try:
-            local_value = datetime(
-                int(year),
-                int(month),
-                int(day),
-                int(hour),
-                int(minute),
-                int(second or 0),
-                tzinfo=_default_timezone(),
+    candidate = _best_candidate(_time_candidates(text))
+    return candidate.value if candidate else None
+
+
+def _time_candidates(text: str) -> list[_TimeCandidate]:
+    candidates: list[_TimeCandidate] = []
+    for pattern_index, pattern in enumerate(TIME_PATTERNS):
+        for match in pattern.finditer(text):
+            year, month, day, hour, minute, second = match.groups()
+            try:
+                local_value = datetime(
+                    int(year),
+                    int(month),
+                    int(day),
+                    int(hour),
+                    int(minute),
+                    int(second or 0),
+                    tzinfo=_default_timezone(),
+                )
+            except ValueError:
+                continue
+
+            match_text = match.group(0)
+            candidates.append(
+                _TimeCandidate(
+                    value=ensure_utc(local_value),
+                    score=_score_time_match(match_text, pattern_index),
+                    line_index=_line_index_for_offset(text, match.start()),
+                    source=f"time_pattern:{pattern_index}",
+                    evidence=(match_text,),
+                )
             )
-        except ValueError:
-            continue
-        return ensure_utc(local_value)
-    return None
+    return candidates
+
+
+def _score_time_match(match_text: str, pattern_index: int) -> int:
+    if any(label in match_text for label in ["交易时间", "支付时间", "付款时间", "消费时间"]):
+        return 96
+    if any(label in match_text for label in ["下单时间", "订单时间"]):
+        return 76
+    if any(label in match_text for label in ["创建时间", "来电时间"]):
+        return 42
+    if "时间" in match_text:
+        return 50
+    return 38 - pattern_index * 4
 
 
 def _default_timezone() -> ZoneInfo:
@@ -374,31 +454,68 @@ def _default_timezone() -> ZoneInfo:
 
 
 def _suggest_category(text: str, merchant: str | None) -> str | None:
+    candidate = _best_candidate(_category_candidates(text, merchant))
+    return candidate.category if candidate else None
+
+
+def _category_candidates(text: str, merchant: str | None) -> list[_CategoryCandidate]:
     merchant_text = (merchant or "").lower()
     full_text = f"{merchant or ''}\n{text}".lower()
-    for rule in CATEGORY_HINT_RULES:
-        if merchant_text and any(keyword.lower() in merchant_text for keyword in rule.keywords):
-            return normalize_category(rule.category)
-    for rule in CATEGORY_HINT_RULES:
-        if any(keyword.lower() in full_text for keyword in rule.keywords):
-            return normalize_category(rule.category)
-    return None
+    buckets: dict[str, _CategoryCandidate] = {}
+
+    def add_candidate(rule_index: int, category: str, score: int, source: str, evidence: str) -> None:
+        normalized = normalize_category(category)
+        previous = buckets.get(normalized)
+        if previous is None:
+            buckets[normalized] = _CategoryCandidate(
+                category=normalized,
+                score=score,
+                line_index=rule_index,
+                source=source,
+                evidence=(evidence,),
+            )
+            return
+
+        buckets[normalized] = _CategoryCandidate(
+            category=normalized,
+            score=min(100, previous.score + min(8, max(3, score // 12))),
+            line_index=min(previous.line_index, rule_index),
+            source=previous.source,
+            evidence=previous.evidence + (evidence,),
+        )
+
+    for rule_index, rule in enumerate(CATEGORY_HINT_RULES):
+        for keyword in rule.keywords:
+            lowered = keyword.lower()
+            if merchant_text and lowered in merchant_text:
+                add_candidate(rule_index, rule.category, 88, "merchant_keyword", f"merchant:{keyword}")
+            elif lowered in full_text:
+                add_candidate(rule_index, rule.category, 42, "text_keyword", f"text:{keyword}")
+
+    return list(buckets.values())
 
 
 def _estimate_confidence(
     *,
-    amount_cents: int | None,
-    merchant: str | None,
-    expense_time: datetime | None,
+    amount_candidate: _AmountCandidate | None,
+    merchant_candidate: _MerchantCandidate | None,
+    time_candidate: _TimeCandidate | None,
+    category_candidate: _CategoryCandidate | None,
     raw_text: str,
 ) -> float:
-    score = 0.15
-    if amount_cents is not None:
-        score += 0.35
-    if merchant:
-        score += 0.2
-    if expense_time is not None:
-        score += 0.2
+    score = 0.12
+    if amount_candidate is not None:
+        score += 0.35 * _score_ratio(amount_candidate.score)
+    if merchant_candidate is not None:
+        score += 0.22 * _score_ratio(merchant_candidate.score)
+    if time_candidate is not None:
+        score += 0.2 * _score_ratio(time_candidate.score)
+    if category_candidate is not None:
+        score += 0.06 * _score_ratio(category_candidate.score)
     if len(raw_text) >= 20:
         score += 0.1
-    return min(score, 0.95)
+    return round(min(score, 0.95), 4)
+
+
+def _score_ratio(score: int) -> float:
+    return max(0.0, min(score / 100, 1.0))
