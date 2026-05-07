@@ -15,7 +15,7 @@ TicketboxBackup
 默认执行时间为每天 `03:30`，实际运行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -Backup
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -Backup -BackupRetentionDays 30
 ```
 
 备份文件写入：
@@ -28,6 +28,24 @@ backend/backups/
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -BackupTime "02:10"
+```
+
+调整自动保留天数：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -BackupRetentionDays 14
+```
+
+手动清理超过保留天数的旧备份：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -PruneBackups -BackupRetentionDays 30
+```
+
+如果只想手动备份但暂时不清理旧备份：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbox.ps1 -Backup -SkipBackupPrune
 ```
 
 只安装后端和 Tunnel，不创建自动备份：
@@ -53,4 +71,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall_windows_ta
 - 不提交 `backend/backups/`。
 - 不把真实 Token 写进备份文档、日志或 Git。
 - 备份只复制 SQLite 文件，不上传云端。
+- 默认只保留最近 30 天的 `ticketbox-*.db` 备份。
 - 清理图片不影响 confirmed 账本数据。

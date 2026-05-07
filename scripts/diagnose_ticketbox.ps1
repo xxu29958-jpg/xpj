@@ -14,6 +14,7 @@ $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $EnvPath = Join-Path $BackendRoot ".env"
 $DbPath = Join-Path $BackendRoot "data\ticketbox.db"
+$BackupDir = Join-Path $BackendRoot "backups"
 $LogDir = Join-Path $BackendRoot "logs"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 $Summary = New-Object System.Collections.Generic.List[object]
@@ -159,6 +160,19 @@ if (Test-Path -LiteralPath $DbPath) {
 }
 else {
     Add-Row -Target $Summary -Name "数据库大小" -Status "WARN" -Detail "还没有创建 ticketbox.db"
+}
+
+$backupFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.db" -File -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending)
+if ($backupFiles.Count -gt 0) {
+    $latestBackup = $backupFiles[0]
+    $backupBytes = ($backupFiles | Measure-Object -Property Length -Sum).Sum
+    Add-Row -Target $Summary -Name "最近备份" -Status "OK" -Detail "$($latestBackup.LastWriteTime.ToString('yyyy-MM-dd HH:mm')) · $(Format-Bytes $latestBackup.Length)"
+    Add-Row -Target $Summary -Name "备份占用" -Status "OK" -Detail "$(Format-Bytes $backupBytes)"
+    Add-Row -Target $Details -Name "备份数量" -Status "OK" -Detail "$($backupFiles.Count) 个"
+}
+else {
+    Add-Row -Target $Summary -Name "最近备份" -Status "WARN" -Detail "暂无 SQLite 备份"
 }
 
 Invoke-JsonCheck -Name "本机健康检查" -Uri "http://127.0.0.1:$Port/api/health" -Target $Details | Out-Null

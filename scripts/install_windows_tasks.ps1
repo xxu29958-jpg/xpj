@@ -4,6 +4,7 @@
     [string]$TunnelTaskName = "TicketboxCloudflareTunnel",
     [string]$BackupTaskName = "TicketboxBackup",
     [string]$BackupTime = "03:30",
+    [int]$BackupRetentionDays = 30,
     [string]$CloudflaredPath = "",
     [string]$CloudflaredArguments = "",
     [switch]$SkipTunnel,
@@ -202,9 +203,9 @@ if (-not $SkipBackup) {
     Register-DailyTask `
         -TaskName $BackupTaskName `
         -Execute "powershell.exe" `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$MaintenanceScript`" -Backup" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$MaintenanceScript`" -Backup -BackupRetentionDays $BackupRetentionDays" `
         -At (Resolve-BackupTime) `
-        -Description "Daily SQLite backup for 小票夹"
+        -Description "Daily SQLite backup for 小票夹, keep $BackupRetentionDays days"
 }
 else {
     Write-Host "SKIP 备份任务：已指定 -SkipBackup。"

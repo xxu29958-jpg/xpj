@@ -1,7 +1,10 @@
 ﻿param(
     [string]$ServerUrl = "http://127.0.0.1:8000",
     [string]$AdminToken = "",
+    [int]$BackupRetentionDays = 30,
     [switch]$Backup,
+    [switch]$PruneBackups,
+    [switch]$SkipBackupPrune,
     [switch]$CleanupConfirmedImages,
     [switch]$CleanupRejectedImages,
     [switch]$CleanupOrphans,
@@ -73,6 +76,32 @@ function Backup-Database {
     Write-Host "数据库备份完成：$target ($(Format-Bytes $size))"
 }
 
+function Prune-OldBackups {
+    if ($BackupRetentionDays -le 0) {
+        Write-Host "备份保留清理已禁用：BackupRetentionDays=$BackupRetentionDays"
+        return
+    }
+    if (-not (Test-Path -LiteralPath $BackupDir)) {
+        Write-Host "备份目录不存在，跳过清理：$BackupDir"
+        return
+    }
+
+    $cutoff = (Get-Date).AddDays(-$BackupRetentionDays)
+    $oldFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.db" -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -lt $cutoff })
+    if ($oldFiles.Count -eq 0) {
+        Write-Host "备份保留清理完成：没有超过 $BackupRetentionDays 天的备份。"
+        return
+    }
+
+    $deletedBytes = 0L
+    foreach ($file in $oldFiles) {
+        $deletedBytes += $file.Length
+        Remove-Item -LiteralPath $file.FullName -Force
+    }
+    Write-Host "备份保留清理完成：删除 $($oldFiles.Count) 个旧备份，释放 $(Format-Bytes $deletedBytes)。"
+}
+
 function Vacuum-Database {
     if (-not (Test-Path -LiteralPath $DbPath)) {
         Write-Host "数据库不存在，跳过 VACUUM：$DbPath"
@@ -92,11 +121,12 @@ if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     $AdminToken = Read-EnvValue -Name "ADMIN_TOKEN"
 }
 
-$hasAction = $Backup -or $CleanupConfirmedImages -or $CleanupRejectedImages -or $CleanupOrphans -or $Vacuum
+$hasAction = $Backup -or $PruneBackups -or $CleanupConfirmedImages -or $CleanupRejectedImages -or $CleanupOrphans -or $Vacuum
 if (-not $hasAction) {
     Write-Host "小票夹维护脚本"
     Write-Host "常用："
     Write-Host "  -Backup"
+    Write-Host "  -PruneBackups [-BackupRetentionDays 30]"
     Write-Host "  -CleanupConfirmedImages"
     Write-Host "  -CleanupRejectedImages"
     Write-Host "  -CleanupOrphans [-DeleteOrphans]"
@@ -108,6 +138,13 @@ if (-not $hasAction) {
 
 if ($Backup) {
     Backup-Database
+    if (-not $SkipBackupPrune) {
+        Prune-OldBackups
+    }
+}
+
+if ($PruneBackups) {
+    Prune-OldBackups
 }
 
 if ($CleanupConfirmedImages) {

@@ -74,6 +74,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -SkipBackup
 ```
 
+每日备份默认保留 30 天。调整保留天数：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -BackupRetentionDays 14
+```
+
 ## 启动和停止后端
 
 启动后端：
