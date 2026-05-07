@@ -8,117 +8,29 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
 from app.services.category_service import normalize_category
+from app.services.receipt_parse_rules import (
+    AMOUNT_LABEL_SCORES,
+    BANK_KEYWORDS,
+    CATEGORY_HINT_RULES,
+    CLOCK_LINE_PATTERN,
+    DISCOUNT_AMOUNT_LABELS,
+    INLINE_AMOUNT_PATTERNS,
+    LABELED_AMOUNT_PATTERN,
+    MERCHANT_IGNORED_LINES,
+    MERCHANT_KEYWORDS,
+    MERCHANT_LABEL_PATTERN,
+    MERCHANT_LABEL_SCORES,
+    MERCHANT_REJECT_SUBSTRINGS,
+    MONEY_MARKERS,
+    PAYMENT_METHOD_LINE_PATTERN,
+    PRIMARY_AMOUNT_LINE_PATTERN,
+    SUCCESS_PAGE_AD_KEYWORDS,
+    SUCCESS_PAGE_SKIP_LINES,
+    TIME_PATTERNS,
+    TRANSACTION_SUCCESS_KEYWORDS,
+    UPPER_MONEY_MARKERS,
+)
 from app.services.time_service import ensure_utc
-
-
-PRIMARY_AMOUNT_LINE_PATTERN = re.compile(
-    r"^(?P<sign>[-−﹣－])?\s*(?:人民币|RMB|CNY|¥|￥)?\s*(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元|人民币)?$",
-    re.IGNORECASE,
-)
-LABELED_AMOUNT_PATTERN = re.compile(
-    r"(?P<label>交易金额|支付金额|实付金额|订单金额|消费金额|付款金额|支出金额|金额|实付|合计|总计)"
-    r"\s*[:：]?\s*(?:人民币|RMB|CNY|¥|￥)?\s*(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)",
-    re.IGNORECASE,
-)
-CURRENCY_AMOUNT_PATTERN = re.compile(r"(?:¥|￥)\s*(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)")
-YUAN_AMOUNT_PATTERN = re.compile(r"(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元|人民币)")
-CLOCK_LINE_PATTERN = re.compile(r"^\d{1,2}:\d{2}$")
-
-TRANSACTION_SUCCESS_KEYWORDS = ["交易成功", "支付成功", "付款成功"]
-DISCOUNT_AMOUNT_LABELS = ["优惠", "立减", "红包", "券", "奖励", "抵扣"]
-SUCCESS_PAGE_SKIP_LINES = {
-    "获得森林能量",
-    "交易方式",
-    "付款方式",
-    "花呗",
-    "去查看",
-    "立即领取",
-    "待领取",
-    "完成",
-    "回首页",
-}
-SUCCESS_PAGE_AD_KEYWORDS = ["评价", "红包", "扫街榜", "限时", "打车", "高德", "领取", "优惠", "奖励"]
-PAYMENT_METHOD_LINE_PATTERN = re.compile(r"^使用.+支付$")
-
-TIME_PATTERNS = [
-    re.compile(
-        r"(?:交易时间|支付时间|付款时间|消费时间|下单时间|订单时间)"
-        r"\s*[:：]?\s*(\d{4})[年/\-.](\d{1,2})[月/\-.](\d{1,2})日?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?"
-    ),
-    re.compile(
-        r"(?:创建时间|来电时间|时间)"
-        r"\s*[:：]?\s*(\d{4})[年/\-.](\d{1,2})[月/\-.](\d{1,2})日?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?"
-    ),
-    re.compile(r"(\d{4})[年/\-.](\d{1,2})[月/\-.](\d{1,2})日?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?"),
-]
-
-MERCHANT_KEYWORDS = [
-    "中国建设银行",
-    "招商银行",
-    "工商银行",
-    "农业银行",
-    "中国银行",
-    "交通银行",
-    "邮储银行",
-    "支付宝",
-    "微信支付",
-    "美团",
-    "饿了么",
-    "京东",
-    "京东快递",
-    "淘宝",
-    "天猫",
-    "拼多多",
-    "滴滴",
-    "高德",
-    "OpenAI",
-    "Claude",
-    "Gemini",
-    "Kimi",
-    "Steam",
-    "TapTap",
-]
-
-BANK_KEYWORDS = [
-    "中国建设银行",
-    "招商银行",
-    "工商银行",
-    "农业银行",
-    "中国银行",
-    "交通银行",
-    "邮储银行",
-]
-
-MERCHANT_IGNORED_LINES = {
-    "账单详情",
-    "账单详情>",
-    "全部账单",
-    "交易成功",
-    "支付成功",
-    "付款成功",
-    "交易状态",
-    "查看账单详情",
-    "商家名片",
-    "我的账单",
-    "支付服务",
-    "摇优惠",
-    "回首页",
-    "订单金额",
-    "支付时间",
-    "付款方式",
-    "商品说明",
-    "支付奖励",
-    "收单机构",
-    "清算机构",
-    "收款方全称",
-    "订单号",
-    "商家订单号",
-}
-
-MERCHANT_LABEL_PATTERN = re.compile(
-    r"(?:^|\n)(?P<label>商家|收款方全称|收款方|付款给|对方户名|交易对象|店铺|门店|平台|应用|来源)"
-    r"\s*[:：]?\s*(?P<value>[^\n\r，,。；;]{2,60})"
-)
 
 
 @dataclass(frozen=True)
@@ -212,27 +124,12 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
             continue
         label = match.group("label")
         index = _line_index_for_offset(text, match.start())
-        score = {
-            "交易金额": 78,
-            "支付金额": 76,
-            "实付金额": 82,
-            "付款金额": 76,
-            "支出金额": 76,
-            "消费金额": 72,
-            "实付": 76,
-            "合计": 45,
-            "总计": 45,
-            "订单金额": 40,
-            "金额": 35,
-        }.get(label, 35)
+        score = AMOUNT_LABEL_SCORES.get(label, 35)
         if _has_discount_context(lines, index):
             score -= 45
         candidates.append(_AmountCandidate(cents, score, index, f"label:{label}"))
 
-    for pattern, source, base_score in [
-        (CURRENCY_AMOUNT_PATTERN, "currency", 28),
-        (YUAN_AMOUNT_PATTERN, "yuan", 22),
-    ]:
+    for pattern, source, base_score in INLINE_AMOUNT_PATTERNS:
         for match in pattern.finditer(text):
             cents = _money_to_cents(match.group("amount"))
             if cents is None or not 0 < cents < 10_000_000_00:
@@ -263,9 +160,7 @@ def _has_discount_context(lines: list[str], index: int) -> bool:
 
 def _has_money_marker(value: str) -> bool:
     upper_value = value.upper()
-    return any(marker in value for marker in ["¥", "￥", "元", "人民币"]) or any(
-        marker in upper_value for marker in ["RMB", "CNY"]
-    )
+    return any(marker in value for marker in MONEY_MARKERS) or any(marker in upper_value for marker in UPPER_MONEY_MARKERS)
 
 
 def _money_to_cents(value: str) -> int | None:
@@ -342,18 +237,7 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
         cleaned = _clean_merchant(match.group("value"))
         label = match.group("label")
         index = _line_index_for_offset(text, match.start())
-        base_score = {
-            "商家": 88,
-            "店铺": 84,
-            "门店": 84,
-            "交易对象": 82,
-            "付款给": 82,
-            "收款方": 72,
-            "收款方全称": 58,
-            "平台": 45,
-            "应用": 45,
-            "来源": 42,
-        }.get(label, 50)
+        base_score = MERCHANT_LABEL_SCORES.get(label, 50)
         candidate = _score_merchant_candidate(
             text=text,
             value=cleaned,
@@ -437,7 +321,7 @@ def _is_title_merchant_candidate(value: str | None) -> bool:
     upper_value = value.upper()
     if CLOCK_LINE_PATTERN.match(value) or "4G" in upper_value or "5G" in upper_value or "WIFI" in upper_value:
         return False
-    if any(label in value for label in ["金额", "时间", "方式", "订单", "机构", "奖励", "支付"]):
+    if any(label in value for label in MERCHANT_REJECT_SUBSTRINGS):
         return False
     return True
 
@@ -492,21 +376,12 @@ def _default_timezone() -> ZoneInfo:
 def _suggest_category(text: str, merchant: str | None) -> str | None:
     merchant_text = (merchant or "").lower()
     full_text = f"{merchant or ''}\n{text}".lower()
-    category_rules = [
-        ("餐饮", ["美团", "饿了么", "kfc", "肯德基", "麦当劳", "餐", "外卖", "好想来", "零食", "小吃", "奶茶", "罗森", "便利店"]),
-        ("购物", ["京东", "淘宝", "天猫", "拼多多", "购物", "超市", "批发", "商超"]),
-        ("交通", ["滴滴", "高德", "地铁", "公交", "打车"]),
-        ("AI订阅", ["openai", "claude", "gemini", "kimi", "chatgpt"]),
-        ("游戏", ["steam", "taptap", "playstation", "任天堂"]),
-        ("医疗", ["医院", "药房", "买药"]),
-        ("通讯", ["中国移动", "中国联通", "中国电信", "话费"]),
-    ]
-    for category, keywords in category_rules:
-        if merchant_text and any(keyword.lower() in merchant_text for keyword in keywords):
-            return normalize_category(category)
-    for category, keywords in category_rules:
-        if any(keyword.lower() in full_text for keyword in keywords):
-            return normalize_category(category)
+    for rule in CATEGORY_HINT_RULES:
+        if merchant_text and any(keyword.lower() in merchant_text for keyword in rule.keywords):
+            return normalize_category(rule.category)
+    for rule in CATEGORY_HINT_RULES:
+        if any(keyword.lower() in full_text for keyword in rule.keywords):
+            return normalize_category(rule.category)
     return None
 
 
