@@ -1,15 +1,20 @@
 package com.ticketbox.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -50,9 +55,9 @@ val PageRole.density: PageDensity
 
 object AppPageDefaults {
     val HorizontalPadding: Dp = AppSpacing.screenHorizontal
-    val MaxStatusBarPadding: Dp = 24.dp
-    // Estimated floating bottom bar height. Keep named so it can be replaced by measured layout height later.
-    val BottomBarHeight: Dp = 72.dp
+    // Estimated floating bottom bar height including the surface and vertical margins.
+    // Keep named so it can be replaced by measured layout height later.
+    val BottomBarHeight: Dp = 104.dp
     val BottomContentExtraPadding: Dp = 24.dp
     val CardGap: Dp = AppSpacing.cardGap
 
@@ -75,6 +80,10 @@ object AppPageDefaults {
 @Immutable
 data class AppPageLayoutValues(
     val horizontalPadding: Dp,
+    val statusPadding: Dp,
+    val contentTopPadding: Dp,
+    val bottomViewportPadding: Dp,
+    val bottomContentExtraPadding: Dp,
     val topPadding: Dp,
     val bottomPadding: Dp,
     val headerToContentGap: Dp,
@@ -86,20 +95,29 @@ data class AppPageLayoutValues(
         end = horizontalPadding,
         bottom = bottomPadding,
     )
+
+    fun scrollContentPadding(): PaddingValues = PaddingValues(
+        start = horizontalPadding,
+        top = contentTopPadding,
+        end = horizontalPadding,
+        bottom = bottomContentExtraPadding,
+    )
 }
 
 object BottomBarAwarePadding {
     @Composable
-    fun bottom(hasBottomBar: Boolean): Dp {
+    fun viewport(hasBottomBar: Boolean): Dp {
         val density = LocalDensity.current
         val navigationBottom = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
         return if (hasBottomBar) {
-            // Current floating bottom bar measured visually near this height; keep named until measured layout is available.
-            AppPageDefaults.BottomBarHeight + navigationBottom + AppPageDefaults.BottomContentExtraPadding
+            AppPageDefaults.BottomBarHeight + navigationBottom
         } else {
-            navigationBottom + AppPageDefaults.BottomContentExtraPadding
+            navigationBottom
         }
     }
+
+    @Composable
+    fun bottom(hasBottomBar: Boolean): Dp = viewport(hasBottomBar) + AppPageDefaults.BottomContentExtraPadding
 }
 
 @Composable
@@ -112,20 +130,22 @@ fun rememberAppPageLayout(
     val density = LocalDensity.current
     val statusTop = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
     val safeTop = if (includeStatusBarPadding) {
-        if (statusTop > AppPageDefaults.MaxStatusBarPadding) {
-            AppPageDefaults.MaxStatusBarPadding
-        } else {
-            statusTop
-        }
+        statusTop
     } else {
         0.dp
     }
-    val bottomPadding = BottomBarAwarePadding.bottom(hasBottomBar = hasBottomBar)
+    val bottomViewportPadding = BottomBarAwarePadding.viewport(hasBottomBar = hasBottomBar)
+    val bottomPadding = bottomViewportPadding + AppPageDefaults.BottomContentExtraPadding
     val pageDensity = role.density
+    val contentTopPadding = AppPageDefaults.topContentPadding(pageDensity)
 
     return AppPageLayoutValues(
         horizontalPadding = horizontalPadding,
-        topPadding = safeTop + AppPageDefaults.topContentPadding(pageDensity),
+        statusPadding = safeTop,
+        contentTopPadding = contentTopPadding,
+        bottomViewportPadding = bottomViewportPadding,
+        bottomContentExtraPadding = AppPageDefaults.BottomContentExtraPadding,
+        topPadding = safeTop + contentTopPadding,
         bottomPadding = bottomPadding,
         headerToContentGap = AppPageDefaults.headerToContentGap(pageDensity),
         contentGap = AppPageDefaults.sectionGap(pageDensity),
@@ -150,6 +170,46 @@ fun AppPageScaffold(
 
     androidx.compose.foundation.layout.Box(modifier = modifier.fillMaxSize()) {
         content(layout)
+    }
+}
+
+@Composable
+fun AppPageScrollableColumn(
+    role: PageRole,
+    modifier: Modifier = Modifier,
+    hasBottomBar: Boolean = true,
+    horizontalPadding: Dp = AppPageDefaults.HorizontalPadding,
+    includeStatusBarPadding: Boolean = true,
+    contentTopReduction: Dp = 0.dp,
+    verticalArrangement: Arrangement.Vertical? = null,
+    content: @Composable ColumnScope.(AppPageLayoutValues) -> Unit,
+) {
+    AppPageScaffold(
+        role = role,
+        hasBottomBar = hasBottomBar,
+        horizontalPadding = horizontalPadding,
+        includeStatusBarPadding = includeStatusBarPadding,
+        modifier = modifier.fillMaxSize(),
+    ) { layout ->
+        val adjustedContentTopPadding = (layout.contentTopPadding - contentTopReduction).coerceAtLeast(0.dp)
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    top = layout.statusPadding,
+                    bottom = layout.bottomViewportPadding,
+                )
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = layout.horizontalPadding)
+                .padding(
+                    top = adjustedContentTopPadding,
+                    bottom = layout.bottomContentExtraPadding,
+                ),
+            verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
+        ) {
+            content(layout)
+        }
     }
 }
 
@@ -198,9 +258,14 @@ fun AppScrollableContent(
             indicator = {},
         ) {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = layout.statusPadding,
+                        bottom = layout.bottomViewportPadding,
+                    ),
                 state = listState,
-                contentPadding = layout.contentPadding(),
+                contentPadding = layout.scrollContentPadding(),
                 verticalArrangement = verticalArrangement ?: Arrangement.spacedBy(layout.contentGap),
                 content = content,
             )

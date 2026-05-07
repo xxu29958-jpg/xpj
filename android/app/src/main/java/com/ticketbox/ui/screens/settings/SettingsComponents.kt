@@ -18,11 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -93,7 +91,7 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppPageScaffold
+import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
 import com.ticketbox.ui.components.SoftPanel
@@ -133,32 +131,25 @@ internal fun SettingsPageFrame(
     onBack: (() -> Unit)?,
     content: @Composable () -> Unit,
 ) {
-    AppPageScaffold(role = AppPageRole.Settings) { layout ->
-        val isSecondaryPage = onBack != null
-        val topPadding = if (isSecondaryPage) layout.topPadding - 8.dp else layout.topPadding
+    val isSecondaryPage = onBack != null
 
+    AppPageScrollableColumn(
+        role = AppPageRole.Settings,
+        contentTopReduction = if (isSecondaryPage) 8.dp else 0.dp,
+    ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = layout.horizontalPadding)
-                .padding(top = topPadding, bottom = layout.bottomPadding),
-            verticalArrangement = Arrangement.spacedBy(layout.contentGap),
+            verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) 8.dp else 0.dp),
         ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) 8.dp else 0.dp),
-            ) {
-                onBack?.let {
-                    TextButton(onClick = it) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("返回设置")
-                    }
+            onBack?.let {
+                TextButton(onClick = it) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("返回设置")
                 }
-                AppPageHeader(title = title, subtitle = subtitle)
             }
-            content()
+            AppPageHeader(title = title, subtitle = subtitle)
         }
+        content()
     }
 }
 

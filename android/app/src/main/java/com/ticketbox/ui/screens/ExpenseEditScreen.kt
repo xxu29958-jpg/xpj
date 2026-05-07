@@ -12,9 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
@@ -53,7 +51,7 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppPageScaffold
+import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.DuplicateNotice
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
@@ -231,20 +229,13 @@ fun ExpenseEditScreen(
         )
     }
 
-    AppPageScaffold(
+    AppPageScrollableColumn(
         role = AppPageRole.Edit,
         hasBottomBar = false,
         horizontalPadding = 20.dp,
         includeStatusBarPadding = true,
-    ) { layout ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = layout.horizontalPadding)
-                .padding(top = layout.topPadding, bottom = layout.bottomPadding),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
             AppPageHeader(
                 title = "确认账单",
                 subtitle = "识别只是草稿，补全后再正式入账",
@@ -478,7 +469,6 @@ fun ExpenseEditScreen(
             }
         }
     }
-}
 }
 
 
