@@ -17,6 +17,7 @@ E:\projects\xiaopiaojia\
     build_release_apk.ps1
     diagnose_ticketbox.ps1
     ensure_ticketbox_runtime.ps1
+    maintenance_ticketbox.ps1
     install_windows_tasks.ps1
     real_device_preflight.ps1
     start_backend.ps1
@@ -140,6 +141,7 @@ docs\
   BACKEND_RULES.md
   CI.md
   CLOUDFLARE_TUNNEL.md
+  DATA_RETENTION.md
   ENGINEERING_RULES.md
   GRAY_RELEASE_REQUIREMENTS.md
   GRAY_RELEASE_PRODUCT_SPEC.md

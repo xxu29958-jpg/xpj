@@ -655,3 +655,63 @@ Authorization: Bearer ADMIN_TOKEN
   "deleted_thumbnails": 0
 }
 ```
+
+### POST /api/maintenance/cleanup-rejected
+
+请求头：
+
+```http
+Authorization: Bearer ADMIN_TOKEN
+```
+
+规则：
+
+- 只按 `DELETE_REJECTED_AFTER_DAYS` 配置清理 rejected 账单图片。
+- 只清理图片和缩略图，不删除 rejected 数据库行。
+- `DELETE_REJECTED_AFTER_DAYS <= 0` 时只返回未启用，不执行删除。
+
+返回：
+
+```json
+{
+  "enabled": false,
+  "delete_after_days": 0,
+  "scanned": 0,
+  "deleted_images": 0,
+  "deleted_thumbnails": 0
+}
+```
+
+### POST /api/maintenance/cleanup-orphans
+
+请求头：
+
+```http
+Authorization: Bearer ADMIN_TOKEN
+```
+
+查询参数：
+
+- `dry_run=true`：只扫描，不删除，默认值。
+- `dry_run=false`：删除超过保护窗口的孤儿 uploads 文件。
+
+规则：
+
+- 只扫描 `UPLOAD_DIR` 内支持的图片文件。
+- 只处理数据库没有引用的文件。
+- 使用 `ORPHAN_UPLOAD_GRACE_HOURS` 保护最近上传文件。
+- 不接收任意文件路径。
+
+返回：
+
+```json
+{
+  "dry_run": true,
+  "grace_hours": 24,
+  "scanned_files": 10,
+  "orphan_files": 1,
+  "deleted_files": 0,
+  "orphan_bytes": 12345,
+  "deleted_bytes": 0
+}
+```

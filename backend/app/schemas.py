@@ -193,6 +193,16 @@ class MaintenanceCleanupResponse(BaseModel):
     deleted_thumbnails: int
 
 
+class MaintenanceOrphanCleanupResponse(BaseModel):
+    dry_run: bool
+    grace_hours: int
+    scanned_files: int
+    orphan_files: int
+    deleted_files: int
+    orphan_bytes: int
+    deleted_bytes: int
+
+
 class ServerSettingsResponse(BaseModel):
     tenant_name: str
     status: str
