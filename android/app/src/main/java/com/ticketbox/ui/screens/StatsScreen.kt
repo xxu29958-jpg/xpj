@@ -113,7 +113,6 @@ fun StatsScreen(
                     recent7DaysAmountCents = state.lifestyleStats?.recent7DaysAmountCents
                         ?: state.dailyTrend.sumOf { it.amountCents },
                     comparison = state.monthComparison,
-                    budget = state.budgetProgress,
                 )
             }
             item {
@@ -121,6 +120,7 @@ fun StatsScreen(
                     stats = stats,
                     lifestyle = state.lifestyleStats,
                     insight = state.categoryInsight,
+                    budget = state.budgetProgress,
                 )
             }
             val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
@@ -186,6 +186,7 @@ private fun StatsMetricGrid(
     stats: MonthlyStats,
     lifestyle: LifestyleStats?,
     insight: CategoryInsight?,
+    budget: BudgetProgress?,
 ) {
     val aiCategoryAmount = stats.byCategory
         .firstOrNull { it.category == "AI订阅" || it.category == "AI 订阅" }
@@ -223,6 +224,60 @@ private fun StatsMetricGrid(
                 value = insight?.topCategory ?: "${stats.byCategory.count { it.amountCents > 0L }} 个分类",
                 caption = insight?.let { "占本月 ${it.topSharePercent}%" },
                 accent = 3,
+            )
+        }
+        budget?.let { BudgetProgressCard(it) }
+    }
+}
+
+@Composable
+private fun BudgetProgressCard(budget: BudgetProgress) {
+    val visuals = LocalThemeVisuals.current
+    val progress = budget.progress.coerceIn(0f, 1f)
+    AppGlassCard(containerAlpha = 0.94f) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("月度预算", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = if (budget.overBudget) "已超过预算" else "还可花 ${formatAmount(budget.remainingCents)}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(7.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (budget.overBudget) visuals.warningTint else visuals.primary),
+                )
+            }
+            Text(
+                text = "可在设置 > 数据与导出里调整，只用于提醒。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -570,7 +625,6 @@ private fun StatsOverviewCard(
     stats: MonthlyStats,
     recent7DaysAmountCents: Long,
     comparison: MonthComparison?,
-    budget: BudgetProgress?,
 ) {
     DeepHeroPanel {
         Column(
@@ -593,7 +647,7 @@ private fun StatsOverviewCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
             HeroTrendLine()
-            statsHeroContextLine(comparison = comparison, budget = budget)?.let { contextLine ->
+            comparison?.let(::monthComparisonText)?.let { contextLine ->
                 Text(
                     text = contextLine,
                     color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.76f),
@@ -639,20 +693,6 @@ private fun monthComparisonText(comparison: MonthComparison): String {
         ?.let { value -> " · ${if (value > 0) "+" else ""}$value%" }
         .orEmpty()
     return "比上月$direction ${formatAmount(kotlin.math.abs(delta))}$percent"
-}
-
-private fun statsHeroContextLine(
-    comparison: MonthComparison?,
-    budget: BudgetProgress?,
-): String? {
-    budget?.let {
-        if (it.overBudget) {
-            return "预算已超 ${formatAmount(kotlin.math.abs(it.remainingCents))}"
-        } else {
-            return "预算余 ${formatAmount(it.remainingCents)}"
-        }
-    }
-    return comparison?.let { monthComparisonText(it) }
 }
 
 @Composable

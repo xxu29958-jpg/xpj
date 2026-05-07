@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
@@ -188,18 +189,19 @@ fun AppearanceScreen(
                             modifier = Modifier.weight(1f),
                             onClick = onPreviewThemeDefault,
                         ) {
-                            Text("恢复主题默认")
+                            Text("跟随主题包")
                         }
                         OutlinedButton(
                             modifier = Modifier.weight(1f),
-                            enabled = state.backgroundSettings.customImagePath != null,
+                            enabled = state.backgroundSettings.source == BackgroundSource.CustomImage &&
+                                state.backgroundSettings.customImagePath != null,
                             onClick = onClearBackgroundImage,
                         ) {
-                            Text("清除自定义图")
+                            Text("移除自定义图")
                         }
                     }
                     Text(
-                        text = "自定义背景会应用到整个 App；点“恢复主题默认”可随时切回当前主题包背景。",
+                        text = "自定义图只存在本机。想重新使用松雾、港湾等主题氛围时，点“跟随主题包”即可切回。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )

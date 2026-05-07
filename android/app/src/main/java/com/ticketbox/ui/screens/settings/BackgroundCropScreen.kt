@@ -134,8 +134,8 @@ fun BackgroundCropScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            scaleX = 1.06f
-                            scaleY = 1.06f
+                            scaleX = 1.14f
+                            scaleY = 1.14f
                             translationY = previewOffsetPx
                         },
                     contentScale = ContentScale.Crop,
@@ -190,9 +190,9 @@ fun BackgroundCropScreen(
 
 private val BackgroundCropMode.previewOffsetDp
     get() = when (this) {
-        BackgroundCropMode.Top -> 18.dp
+        BackgroundCropMode.Top -> 42.dp
         BackgroundCropMode.Center -> 0.dp
-        BackgroundCropMode.Bottom -> (-18).dp
+        BackgroundCropMode.Bottom -> (-42).dp
     }
 
 private val BackgroundCropMode.previewBadgeAlignment: Alignment

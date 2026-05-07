@@ -95,7 +95,12 @@ private fun BoxScope.BottomReadabilityScrim(
         SurfaceRole.Settings -> 0.88f
         SurfaceRole.Auth -> 0.84f
     }
-    val alpha = if (backgroundVisible) roleAlpha else roleAlpha * 0.42f
+    val alpha = when {
+        settings.source == BackgroundSource.CustomImage && backgroundVisible -> (roleAlpha + 0.10f).coerceAtMost(0.96f)
+        backgroundVisible -> roleAlpha
+        else -> roleAlpha * 0.42f
+    }
+    val scrimHeight = if (settings.source == BackgroundSource.CustomImage && backgroundVisible) 360.dp else 260.dp
     val bottomColor = if (skin == AppSkin.Night) {
         Color(0xFF061015).copy(alpha = alpha)
     } else {
@@ -105,7 +110,7 @@ private fun BoxScope.BottomReadabilityScrim(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
-            .height(260.dp)
+            .height(scrimHeight)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(

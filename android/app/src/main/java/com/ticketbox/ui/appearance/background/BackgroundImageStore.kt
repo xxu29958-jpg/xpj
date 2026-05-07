@@ -115,8 +115,8 @@ class BackgroundImageStore(
             maxCropHeight = (sourceWidth / targetRatio).roundToInt().coerceAtMost(sourceHeight)
         }
 
-        // Leave a little composition slack even for exact 9:16 phone screenshots,
-        // otherwise Top / Center / Bottom would produce identical backgrounds.
+        // Keep enough composition slack even for exact 9:16 phone screenshots,
+        // otherwise Top / Center / Bottom feel identical on device.
         val cropWidth = (maxCropWidth * COMPOSITION_ZOOM_FACTOR)
             .roundToInt()
             .coerceIn(1, maxCropWidth)
@@ -149,6 +149,6 @@ class BackgroundImageStore(
         const val MAX_WORKING_SIDE = 2400
         const val TARGET_WIDTH_RATIO = 9f
         const val TARGET_HEIGHT_RATIO = 16f
-        const val COMPOSITION_ZOOM_FACTOR = 0.94f
+        const val COMPOSITION_ZOOM_FACTOR = 0.84f
     }
 }

@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -86,6 +87,16 @@ fun SettingsScreen(
     fun previewThemeDefault() {
         localMessage = "已恢复主题默认背景"
         onApplyBackgroundSettings(state.backgroundSettings.withoutBackground())
+    }
+
+    BackHandler(enabled = route != SettingsRoute.Root) {
+        route = when (route) {
+            SettingsRoute.BackgroundGallery,
+            is SettingsRoute.BackgroundCrop,
+            is SettingsRoute.BackgroundPreview
+            -> SettingsRoute.Appearance
+            else -> SettingsRoute.Root
+        }
     }
 
     when (val currentRoute = route) {
