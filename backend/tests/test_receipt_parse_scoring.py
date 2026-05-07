@@ -43,6 +43,27 @@ def test_scoring_prefers_alipay_primary_amount_merchant_and_time() -> None:
     assert parsed.confidence is not None and parsed.confidence >= 0.8
 
 
+def test_profile_calibration_demotes_alipay_order_amount() -> None:
+    raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-17.89",
+            "交易成功",
+            "订单金额 18.00",
+            "碰一下立减 -0.11",
+            "支付时间 2026-05-05 21:38:13",
+            "收款方全称 巴南区财进宁食品经营部",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+
+    assert parsed.amount_cents == 1789
+    assert parsed.merchant == "好想来零食乐园"
+    assert parsed.category == "餐饮"
+
+
 def test_scoring_does_not_let_ad_keywords_steal_category() -> None:
     raw_text = "\n".join(
         [
@@ -109,3 +130,29 @@ def test_scoring_prefers_business_time_over_generic_time() -> None:
     assert parsed.merchant == "中国建设银行"
     assert parsed.expense_time is not None
     assert _utc_iso(parsed.expense_time) == "2026-05-04T08:23:25Z"
+
+
+def test_profile_calibration_keeps_mobility_provider_over_destination_text() -> None:
+    raw_text = "\n".join(
+        [
+            "花溪工业园区",
+            "高德地图",
+            "21:15",
+            "好想来零食乐园（重庆巴南区珠江城店）",
+            "订单支付",
+            "鲸志出行-经济型|余师傅·渝AA77599",
+            "11.73元",
+            "费用说明）",
+            "起步价",
+            "11.73元",
+            "高德打车",
+            "已开启免密支付，将于05月06日21:17自动扣款",
+            "确认支付",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+
+    assert parsed.amount_cents == 1173
+    assert parsed.merchant == "高德"
+    assert parsed.category == "交通"

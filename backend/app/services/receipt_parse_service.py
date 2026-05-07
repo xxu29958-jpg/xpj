@@ -49,13 +49,35 @@ class _ScoreDimensions:
     label: int = 0
     context: int = 0
     proximity: int = 0
+    profile: int = 0
+    structure: int = 0
     consistency: int = 0
     noise: int = 0
     evidence: tuple[str, ...] = ()
 
     @property
     def total(self) -> int:
-        return max(0, min(120, self.source + self.label + self.context + self.proximity + self.consistency + self.noise))
+        return max(
+            0,
+            min(
+                120,
+                self.source
+                + self.label
+                + self.context
+                + self.proximity
+                + self.profile
+                + self.structure
+                + self.consistency
+                + self.noise,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class _ReceiptContext:
+    text: str
+    lines: tuple[str, ...]
+    profile: str
 
 
 @dataclass(frozen=True)
@@ -111,13 +133,14 @@ def parse_receipt_text(raw_text: str) -> ParsedReceipt:
     if not text:
         return ParsedReceipt()
 
-    amount_candidate = _best_candidate(_amount_candidates(text))
-    merchant_candidate = _best_candidate(_merchant_candidates(text))
-    time_candidate = _best_candidate(_time_candidates(text))
+    context = _build_receipt_context(text)
+    amount_candidate = _best_candidate(_calibrate_amount_candidates(_amount_candidates(text), context))
+    merchant_candidate = _best_candidate(_calibrate_merchant_candidates(_merchant_candidates(text), context))
+    time_candidate = _best_candidate(_calibrate_time_candidates(_time_candidates(text), context))
     amount_cents = amount_candidate.amount_cents if amount_candidate else None
     merchant = merchant_candidate.value if merchant_candidate else None
     expense_time = time_candidate.value if time_candidate else None
-    category_candidate = _best_candidate(_category_candidates(text, merchant))
+    category_candidate = _best_candidate(_calibrate_category_candidates(_category_candidates(text, merchant), context, merchant_candidate))
     category = category_candidate.category if category_candidate else None
     confidence = _estimate_confidence(
         amount_candidate=amount_candidate,
@@ -140,8 +163,29 @@ def _normalize_text(raw_text: str) -> str:
     return "\n".join(line.strip() for line in raw_text.replace("\r", "\n").splitlines() if line.strip())
 
 
+def _build_receipt_context(text: str) -> _ReceiptContext:
+    lines = tuple(text.splitlines())
+    return _ReceiptContext(text=text, lines=lines, profile=_detect_receipt_profile(text, lines))
+
+
+def _detect_receipt_profile(text: str, lines: tuple[str, ...]) -> str:
+    first_line = lines[0].strip() if lines else ""
+    if first_line in BANK_KEYWORDS and "交易提醒" in text:
+        return "bank_reminder"
+    if "账单详情" in text and "交易成功" in text and any(label in text for label in ["订单金额", "支付时间", "付款方式"]):
+        return "alipay_bill_detail"
+    if "支付成功" in text and ("获得森林能量" in text or "交易方式" in text or "花呗" in text):
+        return "alipay_success_page"
+    if "微信支付" in text and any(label in text for label in ["交易状态", "账单详情", "使用"]):
+        return "wechat_payment_detail"
+    if "高德" in text and any(label in text for label in ["打车", "费用说明", "确认支付"]):
+        return "mobility_payment"
+    return "generic"
+
+
 def _extract_amount_cents(text: str) -> int | None:
-    candidate = _best_candidate(_amount_candidates(text))
+    context = _build_receipt_context(text)
+    candidate = _best_candidate(_calibrate_amount_candidates(_amount_candidates(text), context))
     return candidate.amount_cents if candidate else None
 
 
@@ -252,6 +296,59 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
     return _apply_amount_cross_evidence(candidates)
 
 
+def _calibrate_amount_candidates(candidates: list[_AmountCandidate], context: _ReceiptContext) -> list[_AmountCandidate]:
+    has_signed_primary_near_success = any(
+        candidate.source == "line"
+        and any("signed_primary_amount" in evidence for evidence in candidate.evidence)
+        and any("near_transaction_success" in evidence for evidence in candidate.evidence)
+        for candidate in candidates
+    )
+
+    calibrated: list[_AmountCandidate] = []
+    for candidate in candidates:
+        profile = 0
+        structure = 0
+        noise = 0
+        evidence: list[str] = []
+
+        if context.profile == "alipay_bill_detail":
+            if candidate.source == "line" and any("signed_primary_amount" in item for item in candidate.evidence):
+                profile += 14
+                evidence.append("profile_alipay_detail_primary:+14")
+            if candidate.source == "label:订单金额" and has_signed_primary_near_success:
+                noise -= 28
+                evidence.append("profile_alipay_detail_order_amount:-28")
+        elif context.profile == "alipay_success_page":
+            if candidate.source in {"line", "currency"} and any("near_transaction_success" in item for item in candidate.evidence):
+                profile += 10
+                evidence.append("profile_alipay_success_amount:+10")
+        elif context.profile == "bank_reminder":
+            if candidate.source.startswith("label:交易金额"):
+                profile += 12
+                evidence.append("profile_bank_transaction_amount:+12")
+        elif context.profile == "mobility_payment":
+            if candidate.source in {"yuan", "currency"}:
+                structure += 8
+                evidence.append("profile_mobility_inline_amount:+8")
+
+        if profile == 0 and structure == 0 and noise == 0:
+            calibrated.append(candidate)
+            continue
+
+        dimensions = _merge_dimensions(candidate.dimensions, profile=profile, structure=structure, noise=noise, evidence=tuple(evidence))
+        calibrated.append(
+            _AmountCandidate(
+                amount_cents=candidate.amount_cents,
+                score=dimensions.total,
+                line_index=candidate.line_index,
+                source=candidate.source,
+                evidence=dimensions.evidence,
+                dimensions=dimensions,
+            )
+        )
+    return calibrated
+
+
 def _amount_plausibility_score(cents: int) -> int:
     if cents < 50:
         return -8
@@ -322,7 +419,8 @@ def _money_to_cents(value: str) -> int | None:
 
 
 def _extract_merchant(text: str) -> str | None:
-    candidate = _best_candidate(_merchant_candidates(text))
+    context = _build_receipt_context(text)
+    candidate = _best_candidate(_calibrate_merchant_candidates(_merchant_candidates(text), context))
     return candidate.value if candidate else None
 
 
@@ -425,6 +523,68 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
         candidates.append(candidate)
 
     return candidates
+
+
+def _calibrate_merchant_candidates(candidates: list[_MerchantCandidate], context: _ReceiptContext) -> list[_MerchantCandidate]:
+    calibrated: list[_MerchantCandidate] = []
+    for candidate in candidates:
+        profile = 0
+        structure = 0
+        noise = 0
+        evidence: list[str] = []
+
+        if context.profile == "bank_reminder":
+            if candidate.value in BANK_KEYWORDS and candidate.source in {"keyword", "first_line"}:
+                profile += 22
+                evidence.append("profile_bank_first_party:+22")
+        elif context.profile == "alipay_bill_detail":
+            if candidate.source == "success_title":
+                profile += 16
+                evidence.append("profile_alipay_detail_success_title:+16")
+            if candidate.source.startswith("label:收款方") or (
+                candidate.source in {"keyword", "first_line"} and candidate.value in BANK_KEYWORDS
+            ):
+                noise -= 28
+                evidence.append("profile_alipay_detail_institution_noise:-28")
+        elif context.profile == "alipay_success_page":
+            if candidate.source == "success_body":
+                profile += 18
+                evidence.append("profile_alipay_success_body:+18")
+            if candidate.value in {"高德", "支付宝"}:
+                noise -= 20
+                evidence.append("profile_alipay_success_ad_platform:-20")
+        elif context.profile == "wechat_payment_detail":
+            if candidate.source == "payment_method_previous_line":
+                profile += 16
+                evidence.append("profile_wechat_payment_previous_line:+16")
+            if candidate.value in {"微信支付", "支付服务"}:
+                noise -= 28
+                evidence.append("profile_wechat_platform_noise:-28")
+        elif context.profile == "mobility_payment":
+            if candidate.value == "高德" or "打车" in candidate.value:
+                profile += 18
+                evidence.append("profile_mobility_provider:+18")
+
+        if any(keyword.lower() in candidate.value.lower() for keyword in ["收单机构", "清算机构", "收款方全称"]):
+            noise -= 18
+            evidence.append("institution_label_noise:-18")
+
+        if profile == 0 and structure == 0 and noise == 0:
+            calibrated.append(candidate)
+            continue
+
+        dimensions = _merge_dimensions(candidate.dimensions, profile=profile, structure=structure, noise=noise, evidence=tuple(evidence))
+        calibrated.append(
+            _MerchantCandidate(
+                value=candidate.value,
+                score=dimensions.total,
+                line_index=candidate.line_index,
+                source=candidate.source,
+                evidence=dimensions.evidence,
+                dimensions=dimensions,
+            )
+        )
+    return calibrated
 
 
 def _score_merchant_candidate(
@@ -543,7 +703,8 @@ def _clean_merchant(value: str) -> str | None:
 
 
 def _extract_expense_time(text: str) -> datetime | None:
-    candidate = _best_candidate(_time_candidates(text))
+    context = _build_receipt_context(text)
+    candidate = _best_candidate(_calibrate_time_candidates(_time_candidates(text), context))
     return candidate.value if candidate else None
 
 
@@ -597,6 +758,38 @@ def _score_time_dimensions(match_text: str, pattern_index: int) -> _ScoreDimensi
     return _ScoreDimensions(source=max(18, 38 - pattern_index * 4), evidence=tuple(evidence + ["plain_datetime"]))
 
 
+def _calibrate_time_candidates(candidates: list[_TimeCandidate], context: _ReceiptContext) -> list[_TimeCandidate]:
+    calibrated: list[_TimeCandidate] = []
+    for candidate in candidates:
+        profile = 0
+        noise = 0
+        evidence: list[str] = []
+        evidence_text = "\n".join(candidate.evidence)
+        if context.profile in {"alipay_bill_detail", "bank_reminder"} and any(label in evidence_text for label in ["交易时间", "支付时间", "付款时间"]):
+            profile += 10
+            evidence.append(f"profile_{context.profile}_business_time:+10")
+        if context.profile != "mobility_payment" and any(label in evidence_text for label in ["创建时间", "来电时间"]):
+            noise -= 10
+            evidence.append("non_business_time_noise:-10")
+
+        if profile == 0 and noise == 0:
+            calibrated.append(candidate)
+            continue
+
+        dimensions = _merge_dimensions(candidate.dimensions, profile=profile, noise=noise, evidence=tuple(evidence))
+        calibrated.append(
+            _TimeCandidate(
+                value=candidate.value,
+                score=dimensions.total,
+                line_index=candidate.line_index,
+                source=candidate.source,
+                evidence=dimensions.evidence,
+                dimensions=dimensions,
+            )
+        )
+    return calibrated
+
+
 def _default_timezone() -> ZoneInfo:
     try:
         return ZoneInfo(get_settings().ocr_default_timezone)
@@ -605,7 +798,9 @@ def _default_timezone() -> ZoneInfo:
 
 
 def _suggest_category(text: str, merchant: str | None) -> str | None:
-    candidate = _best_candidate(_category_candidates(text, merchant))
+    context = _build_receipt_context(text)
+    merchant_candidate = _best_candidate(_calibrate_merchant_candidates(_merchant_candidates(text), context))
+    candidate = _best_candidate(_calibrate_category_candidates(_category_candidates(text, merchant), context, merchant_candidate))
     return candidate.category if candidate else None
 
 
@@ -660,6 +855,47 @@ def _category_candidates(text: str, merchant: str | None) -> list[_CategoryCandi
     return list(buckets.values())
 
 
+def _calibrate_category_candidates(
+    candidates: list[_CategoryCandidate],
+    context: _ReceiptContext,
+    merchant_candidate: _MerchantCandidate | None,
+) -> list[_CategoryCandidate]:
+    calibrated: list[_CategoryCandidate] = []
+    merchant_value = merchant_candidate.value if merchant_candidate else ""
+    for candidate in candidates:
+        profile = 0
+        consistency = 0
+        noise = 0
+        evidence: list[str] = []
+
+        if merchant_value and any(item.startswith("merchant:") for item in candidate.evidence):
+            consistency += 10
+            evidence.append("merchant_category_alignment:+10")
+        if context.profile == "mobility_payment" and candidate.category == "交通":
+            profile += 16
+            evidence.append("profile_mobility_transport:+16")
+        if context.profile == "alipay_success_page" and candidate.category == "交通" and merchant_value != "高德":
+            noise -= 20
+            evidence.append("profile_alipay_ad_transport_noise:-20")
+
+        if profile == 0 and consistency == 0 and noise == 0:
+            calibrated.append(candidate)
+            continue
+
+        dimensions = _merge_dimensions(candidate.dimensions, profile=profile, consistency=consistency, noise=noise, evidence=tuple(evidence))
+        calibrated.append(
+            _CategoryCandidate(
+                category=candidate.category,
+                score=dimensions.total,
+                line_index=candidate.line_index,
+                source=candidate.source,
+                evidence=dimensions.evidence,
+                dimensions=dimensions,
+            )
+        )
+    return calibrated
+
+
 def _estimate_confidence(
     *,
     amount_candidate: _AmountCandidate | None,
@@ -693,6 +929,8 @@ def _merge_dimensions(
     label: int = 0,
     context: int = 0,
     proximity: int = 0,
+    profile: int = 0,
+    structure: int = 0,
     consistency: int = 0,
     noise: int = 0,
     evidence: tuple[str, ...] = (),
@@ -703,6 +941,8 @@ def _merge_dimensions(
         label=base.label + label,
         context=base.context + context,
         proximity=base.proximity + proximity,
+        profile=base.profile + profile,
+        structure=base.structure + structure,
         consistency=base.consistency + consistency,
         noise=base.noise + noise,
         evidence=base.evidence + evidence,
