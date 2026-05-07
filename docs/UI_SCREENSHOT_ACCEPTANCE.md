@@ -260,3 +260,18 @@ Observed result:
 - The main filter panel no longer exposes every control at once, reducing first-viewport crowding while keeping all existing actions reachable.
 - The tools sheet was captured on the attached Xiaomi 15 Pro; it stays below the status bar and does not overlap the page title.
 - This was a Ledger-only information-hierarchy pass. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
+
+## Pending Tools Sheet Polish - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/pending_tools_loaded.png`
+- `artifacts/pending_tools_sheet.png`
+
+Observed result:
+
+- Pending keeps upload, pending count, duplicate reminder count, and the bill list on the main page.
+- Display density and refresh moved into a `待处理设置` bottom sheet opened from the compact/comfortable pill.
+- The main page no longer shows both density chips and refresh as always-visible controls above the first bill.
+- A UTF-8/mojibake scan was run over Android source and Markdown docs after this pass; no suspicious mojibake markers were found.
+- This was a Pending-only information-hierarchy pass. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.

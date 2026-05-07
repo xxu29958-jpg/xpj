@@ -15,9 +15,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,6 +60,7 @@ private enum class PendingDisplayMode {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun PendingScreen(
     state: PendingUiState,
     onRefresh: () -> Unit,
@@ -67,6 +71,7 @@ fun PendingScreen(
     onUploadScreenshot: () -> Unit,
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
+    var showPendingTools by rememberSaveable { mutableStateOf(false) }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
     var wasLoading by remember { mutableStateOf(state.loading) }
     val listState = rememberLazyListState()
@@ -77,6 +82,18 @@ fun PendingScreen(
             listState.scrollToItem(0)
         }
         wasLoading = state.loading
+    }
+
+    if (showPendingTools) {
+        ModalBottomSheet(onDismissRequest = { showPendingTools = false }) {
+            PendingToolsSheet(
+                loading = state.loading,
+                displayMode = displayMode,
+                onDisplayModeChange = { displayMode = it },
+                onRefresh = onRefresh,
+                onDismiss = { showPendingTools = false },
+            )
+        }
     }
 
     AppScrollableContent(
@@ -130,8 +147,7 @@ fun PendingScreen(
                     PendingHeader(
                         loading = state.loading,
                         displayMode = displayMode,
-                        onDisplayModeChange = { displayMode = it },
-                        onRefresh = onRefresh,
+                        onOpenTools = { showPendingTools = true },
                     )
                 }
             }
@@ -446,28 +462,53 @@ private fun LoadingPendingState() {
 private fun PendingHeader(
     loading: Boolean,
     displayMode: PendingDisplayMode,
+    onOpenTools: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppSectionHeader(
+            title = "待处理",
+            subtitle = "点进截图后补金额、商家和分类",
+            modifier = Modifier.weight(1f),
+        )
+        AppSecondaryButton(
+            text = if (loading) "刷新中" else pendingDisplayModeLabel(displayMode),
+            enabled = !loading,
+            onClick = onOpenTools,
+        )
+    }
+}
+
+@Composable
+private fun PendingToolsSheet(
+    loading: Boolean,
+    displayMode: PendingDisplayMode,
     onDisplayModeChange: (PendingDisplayMode) -> Unit,
     onRefresh: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppSectionHeader(
-                title = "待处理",
-                subtitle = "点进截图后补金额、商家和分类",
-                modifier = Modifier.weight(1f),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "待处理设置",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black,
             )
-            AppSecondaryButton(
-                text = if (loading) "刷新中" else "刷新",
-                enabled = !loading,
-                onClick = onRefresh,
+            Text(
+                text = "调整列表密度，或重新整理待确认截图。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AppFilterChip(
@@ -481,6 +522,27 @@ private fun PendingHeader(
                 label = "舒适",
             )
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AppSecondaryButton(
+                text = if (loading) "刷新中" else "刷新待确认",
+                modifier = Modifier.weight(1f),
+                enabled = !loading,
+                onClick = onRefresh,
+            )
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = onDismiss,
+            ) {
+                Text("完成")
+            }
+        }
+    }
+}
+
+private fun pendingDisplayModeLabel(displayMode: PendingDisplayMode): String {
+    return when (displayMode) {
+        PendingDisplayMode.Compact -> "紧凑"
+        PendingDisplayMode.Comfortable -> "舒适"
     }
 }
 
