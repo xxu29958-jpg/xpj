@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.BudgetProgress
@@ -46,6 +48,7 @@ import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.StatsUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,21 +154,32 @@ fun StatsScreen(
 
 @Composable
 private fun CategoryInsightCard(insight: CategoryInsight) {
+    val visuals = LocalThemeVisuals.current
     val concentration = if (insight.isConcentrated) "支出比较集中" else "支出比较分散"
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.46f),
+            containerColor = visuals.solidCard.copy(alpha = 0.92f),
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f),
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("分类洞察", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "分类洞察",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Black,
+            )
             Text(
                 text = "主要花在「${insight.topCategory}」，占本月 ${insight.topSharePercent}%。",
-                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricPill(
@@ -194,8 +208,8 @@ private fun RecentTrendCard(trend: List<DailySpend>) {
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -217,7 +231,7 @@ private fun RecentTrendCard(trend: List<DailySpend>) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(108.dp),
+                        .height(92.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     trend.forEach { day ->
@@ -245,7 +259,7 @@ private fun DailyTrendBar(
         0f
     }
     val barHeight = if (day.amountCents > 0L) {
-        (14 + 58 * progress).dp
+        (12 + 46 * progress).dp
     } else {
         8.dp
     }
@@ -262,7 +276,7 @@ private fun DailyTrendBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp),
+                .height(60.dp),
             contentAlignment = androidx.compose.ui.Alignment.BottomCenter,
         ) {
             Box(
@@ -381,19 +395,25 @@ private fun MetricPill(
     label: String,
     value: String,
 ) {
+    val visuals = LocalThemeVisuals.current
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+            .background(visuals.chipSelected.copy(alpha = 0.58f))
+            .padding(horizontal = 11.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f),
+            style = MaterialTheme.typography.labelSmall,
         )
-        Text(value, style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = value,
+            color = visuals.primary,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

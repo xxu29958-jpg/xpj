@@ -25,8 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.LocalThemeVisuals
 
 data class AppBottomNavItem(
     val key: String,
@@ -50,14 +50,14 @@ fun AppBottomNav(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(AppRadius.bottomBar),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
             tonalElevation = 0.dp,
-            shadowElevation = AppElevation.floatingBottomBarShadow,
+            shadowElevation = 8.dp,
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 items.forEach { item ->
@@ -78,8 +78,9 @@ private fun AppBottomNavItemView(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val visuals = LocalThemeVisuals.current
     val background by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        targetValue = if (selected) visuals.primary.copy(alpha = 0.96f) else Color.Transparent,
         label = "appBottomNavBackground",
     )
     val content by animateColorAsState(
@@ -92,15 +93,15 @@ private fun AppBottomNavItemView(
                 .clip(RoundedCornerShape(AppRadius.large))
                 .clickable(onClick = onClick)
                 .background(background)
-                .padding(horizontal = 16.dp, vertical = 13.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 13.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = item.icon,
                 contentDescription = item.label,
                 tint = content,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(17.dp),
             )
             Text(
                 text = item.label,
@@ -114,7 +115,7 @@ private fun AppBottomNavItemView(
             modifier = Modifier
                 .clip(RoundedCornerShape(AppRadius.large))
                 .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {

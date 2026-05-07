@@ -290,3 +290,18 @@ Observed result:
 - Expense Edit no longer overrides the shared horizontal page padding.
 - The attached-device Pending screenshot confirms the title and primary content sit below the system status bar instead of overlapping time, VPN, 5G, or battery indicators.
 - This was a page-scaffold-only correction. It did not change card styling, button styling, theme visuals, backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
+
+## Stats Theme Fit Polish - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/stats_theme_fit_final.png`
+- `artifacts/stats_theme_fit_compact.png`
+
+Observed result:
+
+- The floating bottom navigation selected capsule now uses `ThemeVisuals.primary`, so Pine, Harbor, Pomelo, Berry, and Night follow their theme package primary color instead of a fixed blue-green.
+- The selected capsule height and shadow were reduced to make the bottom bar less visually protrusive while keeping the current tab readable.
+- The category insight card now uses `ThemeVisuals.solidCard` and its metric pills use `ThemeVisuals.chipSelected`, improving readability and matching the theme package surface language.
+- The recent trend card and category insight card were lightly compressed so the category insight can be read above the floating bottom bar on the attached Xiaomi 15 Pro.
+- This was a shared visual-system polish. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
