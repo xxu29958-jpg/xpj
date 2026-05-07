@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,12 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -22,8 +26,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,14 +44,13 @@ import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.DeepHeroPanel
 import com.ticketbox.ui.components.MonthPickerSheet
-import com.ticketbox.ui.components.MonthSelectorButton
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
@@ -87,9 +94,8 @@ fun StatsScreen(
                 ) {
                     SafeBadge()
                 }
-                MonthSelectorButton(
+                StatsMonthChip(
                     selectedMonth = state.month,
-                    label = "统计月份",
                     onClick = { showMonthPicker = true },
                 )
             }
@@ -111,22 +117,11 @@ fun StatsScreen(
                 )
             }
             item {
-                RecentTrendCard(state.dailyTrend)
-            }
-            state.categoryInsight?.let { insight ->
-                item {
-                    CategoryInsightCard(insight)
-                }
-            }
-            state.lifestyleStats?.let { lifestyle ->
-                item {
-                    LifestyleCard(lifestyle)
-                }
-                if (lifestyle.frequentMerchants.isNotEmpty()) {
-                    item {
-                        FrequentMerchantsCard(lifestyle.frequentMerchants)
-                    }
-                }
+                StatsMetricGrid(
+                    stats = stats,
+                    lifestyle = state.lifestyleStats,
+                    insight = state.categoryInsight,
+                )
             }
             val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
             if (visibleCategories.isEmpty()) {
@@ -138,12 +133,224 @@ fun StatsScreen(
                 }
             } else {
                 item {
-                    Text("分类占比", style = MaterialTheme.typography.titleMedium)
-                }
-                items(visibleCategories, key = { it.category }) { category ->
-                    CategoryShareRow(
-                        category = category,
+                    CategoryStructureCard(
+                        categories = visibleCategories,
                         totalAmountCents = stats.totalAmountCents,
+                        insight = state.categoryInsight,
+                    )
+                }
+            }
+            item {
+                RecentTrendCard(state.dailyTrend)
+            }
+            state.lifestyleStats?.let { lifestyle ->
+                item {
+                    LifestyleCard(lifestyle)
+                }
+                if (lifestyle.frequentMerchants.isNotEmpty()) {
+                    item {
+                        FrequentMerchantsCard(lifestyle.frequentMerchants)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatsMonthChip(
+    selectedMonth: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start,
+    ) {
+        AppFilterChip(
+            selected = true,
+            onClick = onClick,
+            label = selectedMonth.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份",
+            trailingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.ExpandMore,
+                    contentDescription = "选择统计月份",
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun StatsMetricGrid(
+    stats: MonthlyStats,
+    lifestyle: LifestyleStats?,
+    insight: CategoryInsight?,
+) {
+    val aiCategoryAmount = stats.byCategory
+        .firstOrNull { it.category == "AI订阅" || it.category == "AI 订阅" }
+        ?.amountCents
+        ?.takeIf { it > 0L }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatsMetricCard(
+                modifier = Modifier.weight(1f),
+                label = "AI 订阅",
+                value = lifestyle?.aiSubscriptionAmountCents?.takeIf { it > 0L }?.let(::formatAmount)
+                    ?: aiCategoryAmount?.let(::formatAmount)
+                    ?: "暂无记录",
+                accent = 0,
+            )
+            StatsMetricCard(
+                modifier = Modifier.weight(1f),
+                label = "最大一笔",
+                value = lifestyle?.maxExpense?.amountCents?.let(::formatAmount) ?: "暂无记录",
+                caption = lifestyle?.maxExpense?.merchant?.takeIf { it.isNotBlank() },
+                accent = 1,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatsMetricCard(
+                modifier = Modifier.weight(1f),
+                label = "常去商家",
+                value = lifestyle?.frequentMerchants?.firstOrNull()?.merchant ?: "暂无记录",
+                caption = lifestyle?.frequentMerchants?.firstOrNull()?.let { "${it.count} 笔" },
+                accent = 2,
+            )
+            StatsMetricCard(
+                modifier = Modifier.weight(1f),
+                label = "分类集中度",
+                value = insight?.topCategory ?: "${stats.byCategory.count { it.amountCents > 0L }} 个分类",
+                caption = insight?.let { "占本月 ${it.topSharePercent}%" },
+                accent = 3,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatsMetricCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    caption: String? = null,
+    accent: Int = 0,
+) {
+    val visuals = LocalThemeVisuals.current
+    val isEmptyValue = value == "暂无记录"
+    val accentColors = listOf(
+        visuals.chipSelected,
+        visuals.warningTint.copy(alpha = 0.28f),
+        visuals.glassTint.copy(alpha = 0.88f),
+        visuals.shadowTint.copy(alpha = 0.12f),
+    )
+    AppGlassCard(modifier = modifier, containerAlpha = 0.96f) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accentColors[accent % accentColors.size]),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(visuals.primary),
+                    )
+                }
+                Text(
+                    text = label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                text = value,
+                color = if (isEmptyValue) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                style = if (isEmptyValue) {
+                    MaterialTheme.typography.titleSmall
+                } else {
+                    MaterialTheme.typography.titleMedium
+                },
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            caption?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryStructureCard(
+    categories: List<CategoryStats>,
+    totalAmountCents: Long,
+    insight: CategoryInsight?,
+) {
+    val topCategories = categories.sortedByDescending { it.amountCents }.take(5)
+    val topCategory = topCategories.firstOrNull()
+    AppGlassCard(containerAlpha = 0.96f) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CategoryDonut(
+                    categories = topCategories,
+                    totalAmountCents = totalAmountCents,
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("分类结构", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        text = topCategory?.let { "主要花在「${it.category}」" } ?: "还没有分类支出",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = insight?.let { "占本月 ${it.topSharePercent}% · ${it.categoryCount} 个分类" }
+                            ?: "${categories.size} 个分类",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                topCategories.forEachIndexed { index, category ->
+                    CategoryStructureBarRow(
+                        category = category,
+                        totalAmountCents = totalAmountCents,
+                        index = index,
                     )
                 }
             }
@@ -152,38 +359,116 @@ fun StatsScreen(
 }
 
 @Composable
-private fun CategoryInsightCard(insight: CategoryInsight) {
-    val concentration = if (insight.isConcentrated) "支出比较集中" else "支出比较分散"
-    AppGlassCard(containerAlpha = 0.96f) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+private fun CategoryStructureBarRow(
+    category: CategoryStats,
+    totalAmountCents: Long,
+    index: Int,
+) {
+    val colors = statsCategoryColors()
+    val percent = if (totalAmountCents > 0L) {
+        (category.amountCents * 100 / totalAmountCents).toInt()
+    } else {
+        0
+    }
+    val progress = if (totalAmountCents > 0L) {
+        (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "分类洞察",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Black,
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(colors[index % colors.size]),
             )
             Text(
-                text = "主要花在「${insight.topCategory}」，占本月 ${insight.topSharePercent}%。",
-                color = MaterialTheme.colorScheme.onSurface,
+                text = category.category,
+                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricPill(
-                    modifier = Modifier.weight(1f),
-                    label = concentration,
-                    value = formatAmount(insight.topAmountCents),
-                )
-                MetricPill(
-                    modifier = Modifier.weight(1f),
-                    label = "${insight.categoryCount} 个分类",
-                    value = "均笔 ${formatAmount(insight.averagePerExpenseCents)}",
-                )
-            }
+            Text(
+                text = formatAmount(category.amountCents),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "$percent%",
+                modifier = Modifier.width(38.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(7.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(colors[index % colors.size]),
+            )
         }
     }
+}
+
+@Composable
+private fun CategoryDonut(
+    categories: List<CategoryStats>,
+    totalAmountCents: Long,
+) {
+    val colors = statsCategoryColors()
+    Canvas(modifier = Modifier.size(92.dp)) {
+        val stroke = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
+        if (totalAmountCents <= 0L || categories.isEmpty()) {
+            drawArc(
+                color = Color.LightGray.copy(alpha = 0.28f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = stroke,
+            )
+            return@Canvas
+        }
+        var startAngle = -90f
+        categories.forEachIndexed { index, category ->
+            val sweep = 360f * (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+            drawArc(
+                color = colors[index % colors.size],
+                startAngle = startAngle,
+                sweepAngle = sweep,
+                useCenter = false,
+                style = stroke,
+            )
+            startAngle += sweep
+        }
+    }
+}
+
+@Composable
+private fun statsCategoryColors(): List<Color> {
+    val visuals = LocalThemeVisuals.current
+    return listOf(
+        visuals.primary,
+        visuals.accent,
+        visuals.warningTint,
+        visuals.primaryDark.copy(alpha = 0.70f),
+        visuals.shadowTint.copy(alpha = 0.55f),
+    )
 }
 
 @Composable
@@ -375,34 +660,6 @@ private fun statsHeroContextLine(
 }
 
 @Composable
-private fun MetricPill(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String,
-) {
-    val visuals = LocalThemeVisuals.current
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(visuals.chipSelected.copy(alpha = 0.58f))
-            .padding(horizontal = 11.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f),
-            style = MaterialTheme.typography.labelSmall,
-        )
-        Text(
-            text = value,
-            color = visuals.primary,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-@Composable
 private fun LifestyleCard(lifestyle: LifestyleStats) {
     AppGlassCard(containerAlpha = 0.92f) {
         Column(
@@ -480,56 +737,6 @@ private fun FrequentMerchantsCard(merchants: List<FrequentMerchant>) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CategoryShareRow(
-    category: CategoryStats,
-    totalAmountCents: Long,
-) {
-    val visuals = LocalThemeVisuals.current
-    val progress = if (totalAmountCents > 0) {
-        (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(visuals.solidCard.copy(alpha = 0.86f))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(category.category, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    text = "${category.count} 笔",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Text(
-                text = formatAmount(category.amountCents),
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(999.dp)),
-            color = visuals.primary,
-            trackColor = visuals.chipUnselected.copy(alpha = 0.72f),
-        )
     }
 }
 

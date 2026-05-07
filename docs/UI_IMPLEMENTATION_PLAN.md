@@ -105,7 +105,7 @@
 scrollContentBottomPadding = bottomBarHeight + navigationBarsPadding + bottomContentExtraPadding
 ```
 
-如果底栏高度暂时不能实测，必须使用命名常量 `AppPageDefaults.BottomBarHeight = 72.dp`，并在代码注释中标明后续可替换为实测布局值。禁止各页面写随机 `120.dp / 160.dp / 220.dp`。
+如果底栏高度暂时不能实测，必须使用命名常量 `AppPageDefaults.BottomBarHeight = 96.dp`，并在代码注释中标明后续可替换为实测布局值。禁止各页面写随机 `120.dp / 160.dp / 220.dp`。
 
 Page scaffold 阶段只允许：
 

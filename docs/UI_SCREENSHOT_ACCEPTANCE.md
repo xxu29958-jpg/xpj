@@ -35,7 +35,7 @@ Scope: design-system / page-scaffold / visual polish acceptance. This document r
 
 ## Page Scaffold Follow-Up - 2026-05-06
 
-- `AppPageDefaults.BottomBarHeight` is now the named scaffold constant from the Page Scaffold Gate (`72.dp`) instead of a per-screen bottom-padding guess.
+- `AppPageDefaults.BottomBarHeight` is now the named scaffold constant from the Page Scaffold Gate (`96.dp`) instead of a per-screen bottom-padding guess.
 - Pending item cards were tightened only in compact preview mode so the edit / confirm / ignore actions remain visible above the floating bottom bar.
 - Latest real-device check: `artifacts/pending_compact_card_polish.png`, copied to `artifacts/pending_with_items.png` for the current acceptance set.
 - No ViewModel, Repository, backend API, Room, OCR, duplicate, CSV, upload, or token flow changed in this scaffold polish.
@@ -285,7 +285,7 @@ Real-device check artifact:
 Observed result:
 
 - Shared page scaffold spacing was returned to the documented gate values: compact pages start at 16dp after the status inset, comfortable pages start at 24dp.
-- The floating bottom bar height is again represented by the named `AppPageDefaults.BottomBarHeight = 72.dp` constant instead of a screenshot-specific larger value.
+- The floating bottom bar height is represented by the named `AppPageDefaults.BottomBarHeight = 96.dp` constant instead of per-screen bottom-padding guesses.
 - Settings secondary pages no longer apply an extra top reduction outside the shared scaffold.
 - Expense Edit no longer overrides the shared horizontal page padding.
 - The attached-device Pending screenshot confirms the title and primary content sit below the system status bar instead of overlapping time, VPN, 5G, or battery indicators.
@@ -336,3 +336,22 @@ Observed result:
 - Settings and Appearance shared components no longer contain direct `Card`, `CardDefaults`, or `FilterChip` styling; theme, background, rule, diagnostic, and skin cards route through shared surfaces or theme-aware boxes.
 - The floating bottom navigation uses the current theme's solid surface and no extra Material surface shadow. A previous bottom-shield approach was rejected because it overpainted the page background and made the nav feel like a large block instead of a floating control.
 - The cleanup reduces per-screen visual drift across Pine, Harbor, Pomelo, Berry, and Night without changing backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.
+
+## Main Page Layout Alignment - 2026-05-07
+
+Real-device check artifacts:
+
+- `artifacts/current_pending_layout_align.png`
+- `artifacts/current_ledger_layout_align.png`
+- `artifacts/current_stats_layout_align.png`
+- `artifacts/current_settings_layout_align.png`
+
+Observed result:
+
+- Pending, Ledger, Stats, and Settings were checked on the attached Xiaomi 15 Pro after rebuilding and reinstalling the gray APK.
+- Ledger now follows the design reference more closely without reopening the large filter panel on the main page: month, primary category, and quick category chips stay inline, while note search, CSV export, sync, and overflow categories remain in the bottom tools sheet.
+- Ledger confirmed bills are grouped by local ledger date (`今天`, `昨天`, or `M月d日 E`), improving scan rhythm while preserving the existing remote / Room data flow.
+- Stats now shows a compact month chip, hero overview, four lightweight metric cards, and a readable category structure card with a donut summary plus full-width category bars.
+- The bottom navigation selected capsule was reduced slightly and continues to use the active theme primary color instead of a fixed palette.
+- Settings keeps the secondary menu architecture and uses the shared page scaffold / bottom-bar clearance.
+- This pass only changed Android visual layout and shared UI components. It did not change backend API, ViewModel, Repository, Room, OCR, duplicate, CSV, upload, token, confirm, reject, or persistence behavior.

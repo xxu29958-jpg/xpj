@@ -32,6 +32,7 @@ fun AppFilterChip(
         label = {
             Text(
                 text = label,
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

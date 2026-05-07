@@ -46,7 +46,7 @@ fun AppBottomNav(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -81,7 +81,7 @@ private fun AppBottomNavItemView(
 ) {
     val visuals = LocalThemeVisuals.current
     val background by animateColorAsState(
-        targetValue = if (selected) visuals.primary.copy(alpha = 0.96f) else Color.Transparent,
+        targetValue = if (selected) visuals.primary.copy(alpha = 0.90f) else Color.Transparent,
         label = "appBottomNavBackground",
     )
     val content by animateColorAsState(
@@ -94,7 +94,7 @@ private fun AppBottomNavItemView(
                 .clip(RoundedCornerShape(AppRadius.large))
                 .clickable(onClick = onClick)
                 .background(background)
-                .padding(horizontal = 13.dp, vertical = 8.dp),
+                .padding(horizontal = 11.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -102,7 +102,7 @@ private fun AppBottomNavItemView(
                 imageVector = item.icon,
                 contentDescription = item.label,
                 tint = content,
-                modifier = Modifier.size(17.dp),
+                modifier = Modifier.size(16.dp),
             )
             Text(
                 text = item.label,
@@ -116,7 +116,7 @@ private fun AppBottomNavItemView(
             modifier = Modifier
                 .clip(RoundedCornerShape(AppRadius.large))
                 .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .padding(horizontal = 13.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
@@ -124,7 +124,7 @@ private fun AppBottomNavItemView(
                 imageVector = item.icon,
                 contentDescription = item.label,
                 tint = content,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(18.dp),
             )
             Text(
                 text = item.label,
