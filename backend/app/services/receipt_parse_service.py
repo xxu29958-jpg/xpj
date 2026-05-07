@@ -21,10 +21,15 @@ from app.services.receipt_parse_rules import (
     MERCHANT_KEYWORDS,
     MERCHANT_LABEL_PATTERN,
     MERCHANT_LABEL_SCORES,
+    MERCHANT_NOISE_SUBSTRINGS,
     MERCHANT_REJECT_SUBSTRINGS,
     MONEY_MARKERS,
     PAYMENT_METHOD_LINE_PATTERN,
+    PAYMENT_SHEET_ACTION_MARKERS,
+    PAYMENT_SHEET_MERCHANT_MARKERS,
+    PAYMENT_SHEET_PAYMENT_METHOD_MARKERS,
     PRIMARY_AMOUNT_LINE_PATTERN,
+    RELATIVE_TIME_PATTERNS,
     SUCCESS_PAGE_AD_KEYWORDS,
     SUCCESS_PAGE_SKIP_LINES,
     TIME_PATTERNS,
@@ -170,8 +175,15 @@ def _build_receipt_context(text: str) -> _ReceiptContext:
 
 def _detect_receipt_profile(text: str, lines: tuple[str, ...]) -> str:
     first_line = lines[0].strip() if lines else ""
-    if first_line in BANK_KEYWORDS and "交易提醒" in text:
+    if (
+        (first_line in BANK_KEYWORDS and "交易提醒" in text)
+        or ("动账提醒" in text and any(marker in text for marker in ["支出人民币", "储蓄账户", "尾号"]))
+    ):
         return "bank_reminder"
+    if any(marker in text for marker in PAYMENT_SHEET_MERCHANT_MARKERS) and any(
+        marker in text for marker in PAYMENT_SHEET_ACTION_MARKERS
+    ):
+        return "taobao_flash_payment"
     if "账单详情" in text and "交易成功" in text and any(label in text for label in ["订单金额", "支付时间", "付款方式"]):
         return "alipay_bill_detail"
     if "支付成功" in text and ("获得森林能量" in text or "交易方式" in text or "花呗" in text):
@@ -275,8 +287,9 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
             if cents is None or not 0 < cents < 10_000_000_00:
                 continue
             index = _line_index_for_offset(text, match.start())
+            line_text = lines[index].strip() if 0 <= index < len(lines) else ""
             has_nearby_success = _has_nearby_success(lines, index)
-            evidence = [source]
+            evidence = [source, f"line:{line_text}"]
             if has_nearby_success:
                 evidence.append("near_transaction_success:+42")
             has_discount_context = _has_discount_context(lines, index)
@@ -307,6 +320,7 @@ def _calibrate_amount_candidates(candidates: list[_AmountCandidate], context: _R
     calibrated: list[_AmountCandidate] = []
     for candidate in candidates:
         profile = 0
+        context_score = 0
         structure = 0
         noise = 0
         evidence: list[str] = []
@@ -323,19 +337,38 @@ def _calibrate_amount_candidates(candidates: list[_AmountCandidate], context: _R
                 profile += 10
                 evidence.append("profile_alipay_success_amount:+10")
         elif context.profile == "bank_reminder":
-            if candidate.source.startswith("label:交易金额"):
+            nearby_text = _nearby_text(context.lines, candidate.line_index, before=1, after=1)
+            if candidate.source.startswith("label:交易金额") or any(marker in nearby_text for marker in ["支出人民币", "动账提醒"]):
                 profile += 12
                 evidence.append("profile_bank_transaction_amount:+12")
+                if "支出人民币" in nearby_text:
+                    context_score += 18
+                    evidence.append("bank_spend_sentence:+18")
+        elif context.profile == "taobao_flash_payment":
+            if _is_payment_sheet_amount(context, candidate):
+                profile += 18
+                structure += 58
+                evidence.append("payment_sheet_primary_amount:+76")
+            elif _is_before_payment_sheet(context, candidate.line_index):
+                noise -= 18
+                evidence.append("payment_sheet_product_area_amount:-18")
         elif context.profile == "mobility_payment":
             if candidate.source in {"yuan", "currency"}:
                 structure += 8
                 evidence.append("profile_mobility_inline_amount:+8")
 
-        if profile == 0 and structure == 0 and noise == 0:
+        if profile == 0 and context_score == 0 and structure == 0 and noise == 0:
             calibrated.append(candidate)
             continue
 
-        dimensions = _merge_dimensions(candidate.dimensions, profile=profile, structure=structure, noise=noise, evidence=tuple(evidence))
+        dimensions = _merge_dimensions(
+            candidate.dimensions,
+            context=context_score,
+            profile=profile,
+            structure=structure,
+            noise=noise,
+            evidence=tuple(evidence),
+        )
         calibrated.append(
             _AmountCandidate(
                 amount_cents=candidate.amount_cents,
@@ -478,6 +511,20 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
             if candidate:
                 candidates.append(candidate)
 
+    for index, line in enumerate(lines):
+        if not any(marker in line for marker in PAYMENT_SHEET_MERCHANT_MARKERS):
+            continue
+        candidate = _score_merchant_candidate(
+            text=text,
+            value=_clean_merchant(line),
+            base_score=102,
+            line_index=index,
+            source="payment_sheet_title",
+            require_no_digits=False,
+        )
+        if candidate:
+            candidates.append(candidate)
+
     for match in MERCHANT_LABEL_PATTERN.finditer(text):
         cleaned = _clean_merchant(match.group("value"))
         label = match.group("label")
@@ -564,6 +611,14 @@ def _calibrate_merchant_candidates(candidates: list[_MerchantCandidate], context
             if candidate.value == "高德" or "打车" in candidate.value:
                 profile += 18
                 evidence.append("profile_mobility_provider:+18")
+        elif context.profile == "taobao_flash_payment":
+            if candidate.source == "payment_sheet_title":
+                profile += 24
+                structure += 18
+                evidence.append("profile_payment_sheet_title:+42")
+            if candidate.source.startswith("label:店铺") and any(noise_word in candidate.value for noise_word in MERCHANT_NOISE_SUBSTRINGS):
+                noise -= 70
+                evidence.append("profile_payment_sheet_store_activity_noise:-70")
 
         if any(keyword.lower() in candidate.value.lower() for keyword in ["收单机构", "清算机构", "收款方全称"]):
             noise -= 18
@@ -637,6 +692,8 @@ def _merchant_source_score(source: str, base_score: int) -> int:
         return 58
     if source == "payment_method_previous_line":
         return 54
+    if source == "payment_sheet_title":
+        return 66
     if source.startswith("label:"):
         return min(base_score, 64)
     if source == "keyword":
@@ -662,7 +719,7 @@ def _merchant_consistency_score(text: str, value: str, source: str) -> int:
         score += 8
     if source == "keyword" and _looks_like_bank_reminder(text, value):
         score += 18
-    if any(keyword.lower() in lower_value for keyword in ["超市", "便利店", "外卖", "零食", "小吃", "餐", "打车"]):
+    if any(keyword.lower() in lower_value for keyword in ["超市", "便利店", "外卖", "零食", "小吃", "餐", "打车", "闪购", "商户"]):
         score += 6
     return min(score, 28)
 
@@ -738,6 +795,34 @@ def _time_candidates(text: str) -> list[_TimeCandidate]:
                     dimensions=dimensions,
                 )
             )
+    for pattern_index, pattern in enumerate(RELATIVE_TIME_PATTERNS):
+        for match in pattern.finditer(text):
+            month, day, hour, minute, second = match.groups()
+            try:
+                local_value = datetime(
+                    _default_local_year(),
+                    int(month),
+                    int(day),
+                    int(hour),
+                    int(minute),
+                    int(second or 0),
+                    tzinfo=_default_timezone(),
+                )
+            except ValueError:
+                continue
+
+            match_text = match.group(0)
+            dimensions = _score_relative_time_dimensions(text, match.start(), match_text, pattern_index)
+            candidates.append(
+                _TimeCandidate(
+                    value=ensure_utc(local_value),
+                    score=dimensions.total,
+                    line_index=_line_index_for_offset(text, match.start()),
+                    source=f"relative_time_pattern:{pattern_index}",
+                    evidence=dimensions.evidence,
+                    dimensions=dimensions,
+                )
+            )
     return candidates
 
 
@@ -758,6 +843,16 @@ def _score_time_dimensions(match_text: str, pattern_index: int) -> _ScoreDimensi
     return _ScoreDimensions(source=max(18, 38 - pattern_index * 4), evidence=tuple(evidence + ["plain_datetime"]))
 
 
+def _score_relative_time_dimensions(text: str, offset: int, match_text: str, pattern_index: int) -> _ScoreDimensions:
+    line_index = _line_index_for_offset(text, offset)
+    lines = text.splitlines()
+    nearby = _nearby_text(tuple(lines), line_index, before=1, after=1)
+    evidence = [match_text, "relative_year_from_runtime"]
+    if any(marker in nearby for marker in ["支出", "交易", "支付", "付款", "扣款", "动账提醒"]):
+        return _ScoreDimensions(source=44, context=28, structure=12, evidence=tuple(evidence + ["near_business_event"]))
+    return _ScoreDimensions(source=max(18, 28 - pattern_index * 4), evidence=tuple(evidence + ["plain_relative_datetime"]))
+
+
 def _calibrate_time_candidates(candidates: list[_TimeCandidate], context: _ReceiptContext) -> list[_TimeCandidate]:
     calibrated: list[_TimeCandidate] = []
     for candidate in candidates:
@@ -768,6 +863,9 @@ def _calibrate_time_candidates(candidates: list[_TimeCandidate], context: _Recei
         if context.profile in {"alipay_bill_detail", "bank_reminder"} and any(label in evidence_text for label in ["交易时间", "支付时间", "付款时间"]):
             profile += 10
             evidence.append(f"profile_{context.profile}_business_time:+10")
+        if context.profile == "bank_reminder" and candidate.source.startswith("relative_time_pattern"):
+            profile += 24
+            evidence.append("profile_bank_relative_business_time:+24")
         if context.profile != "mobility_payment" and any(label in evidence_text for label in ["创建时间", "来电时间"]):
             noise -= 10
             evidence.append("non_business_time_noise:-10")
@@ -795,6 +893,10 @@ def _default_timezone() -> ZoneInfo:
         return ZoneInfo(get_settings().ocr_default_timezone)
     except ZoneInfoNotFoundError:
         return ZoneInfo("Asia/Shanghai")
+
+
+def _default_local_year() -> int:
+    return datetime.now(_default_timezone()).year
 
 
 def _suggest_category(text: str, merchant: str | None) -> str | None:
@@ -947,3 +1049,34 @@ def _merge_dimensions(
         noise=base.noise + noise,
         evidence=base.evidence + evidence,
     )
+
+
+def _nearby_text(lines: tuple[str, ...], index: int, *, before: int, after: int) -> str:
+    return "\n".join(lines[max(0, index - before) : min(len(lines), index + after + 1)])
+
+
+def _first_marker_index(lines: tuple[str, ...], markers: tuple[str, ...]) -> int | None:
+    for index, line in enumerate(lines):
+        if any(marker in line for marker in markers):
+            return index
+    return None
+
+
+def _is_before_payment_sheet(context: _ReceiptContext, line_index: int) -> bool:
+    merchant_index = _first_marker_index(context.lines, PAYMENT_SHEET_MERCHANT_MARKERS)
+    return merchant_index is not None and line_index < merchant_index
+
+
+def _is_payment_sheet_amount(context: _ReceiptContext, candidate: _AmountCandidate) -> bool:
+    merchant_index = _first_marker_index(context.lines, PAYMENT_SHEET_MERCHANT_MARKERS)
+    action_index = _first_marker_index(context.lines, PAYMENT_SHEET_ACTION_MARKERS)
+    if merchant_index is None:
+        return False
+
+    lower_bound = merchant_index
+    upper_bound = action_index if action_index is not None else min(len(context.lines), merchant_index + 5)
+    if lower_bound <= candidate.line_index <= upper_bound:
+        return True
+
+    nearby = _nearby_text(context.lines, candidate.line_index, before=2, after=2)
+    return any(marker in nearby for marker in PAYMENT_SHEET_MERCHANT_MARKERS + PAYMENT_SHEET_PAYMENT_METHOD_MARKERS)

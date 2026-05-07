@@ -35,6 +35,9 @@ TIME_PATTERNS = [
     ),
     re.compile(r"(\d{4})[年/\-.](\d{1,2})[月/\-.](\d{1,2})日?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?"),
 ]
+RELATIVE_TIME_PATTERNS = [
+    re.compile(r"(?<![年/\-.0-9])(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[时:：](\d{2})(?:分(?:(\d{2})秒?)?)?"),
+]
 
 MERCHANT_LABEL_PATTERN = re.compile(
     r"(?:^|\n)(?P<label>商家|收款方全称|收款方|付款给|对方户名|交易对象|店铺|门店|平台|应用|来源)"
@@ -77,6 +80,7 @@ MERCHANT_LABEL_SCORES = {
     "来源": 42,
 }
 MERCHANT_REJECT_SUBSTRINGS = ("金额", "时间", "方式", "订单", "机构", "奖励", "支付")
+MERCHANT_NOISE_SUBSTRINGS = ("活动", "红包", "优惠", "奖励", "立减", "抵扣")
 
 SUCCESS_PAGE_SKIP_LINES = {
     "获得森林能量",
@@ -150,10 +154,34 @@ MERCHANT_IGNORED_LINES = {
     "收款方全称",
     "订单号",
     "商家订单号",
+    "活动/券",
+    "店铺活动/券",
+    "平台红包",
 }
 
+PAYMENT_SHEET_MERCHANT_MARKERS = (
+    "淘宝闪购商户",
+    "美团外卖商户",
+    "饿了么商户",
+)
+PAYMENT_SHEET_ACTION_MARKERS = (
+    "正在付款中",
+    "正在支付中",
+    "付款中",
+    "支付中",
+    "确认支付",
+)
+PAYMENT_SHEET_PAYMENT_METHOD_MARKERS = (
+    "储蓄卡",
+    "信用卡",
+    "花呗",
+    "银行卡",
+    "微信支付",
+    "支付宝",
+)
+
 CATEGORY_HINT_RULES = (
-    CategoryHintRule("餐饮", ("美团", "饿了么", "kfc", "肯德基", "麦当劳", "餐", "外卖", "好想来", "零食", "小吃", "奶茶", "罗森", "便利店")),
+    CategoryHintRule("餐饮", ("美团", "饿了么", "淘宝闪购", "kfc", "肯德基", "麦当劳", "餐", "外卖", "好想来", "零食", "小吃", "奶茶", "罗森", "便利店", "牛肉", "牛腩", "打包费", "配送费")),
     CategoryHintRule("购物", ("京东", "淘宝", "天猫", "拼多多", "购物", "超市", "批发", "商超")),
     CategoryHintRule("交通", ("滴滴", "高德", "地铁", "公交", "打车")),
     CategoryHintRule("AI订阅", ("openai", "claude", "gemini", "kimi", "chatgpt")),

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from app.services.receipt_parse_service import parse_receipt_text
+from app.services.time_service import ensure_utc
 
 
 def _utc_iso(value) -> str:
@@ -156,3 +160,59 @@ def test_profile_calibration_keeps_mobility_provider_over_destination_text() -> 
     assert parsed.amount_cents == 1173
     assert parsed.merchant == "高德"
     assert parsed.category == "交通"
+
+
+def test_bank_push_reminder_extracts_inline_spend_time() -> None:
+    raw_text = "\n".join(
+        [
+            "15:30",
+            "骑士",
+            "已接单",
+            "动账提醒",
+            "现在",
+            "您尾号0436的储蓄账户5月7日15时29分",
+            "支出人民币1754.79元。点击查看>>",
+            "可用额度(元)",
+            "50,000.00",
+            "开始借款",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+    current_year = datetime.now(ZoneInfo("Asia/Shanghai")).year
+    expected_time = ensure_utc(datetime(current_year, 5, 7, 15, 29, tzinfo=ZoneInfo("Asia/Shanghai")))
+
+    assert parsed.amount_cents == 175479
+    assert parsed.expense_time == expected_time
+    assert parsed.confidence is not None and parsed.confidence >= 0.6
+
+
+def test_taobao_flash_payment_sheet_prefers_bottom_amount_and_merchant() -> None:
+    raw_text = "\n".join(
+        [
+            "15:17",
+            "4G",
+            "送至：华陶家园8幢二单元二杠二；17384071884",
+            "【收藏福利】潮汕牛肉丸2颗",
+            "￥2",
+            "精品牛腩拒绝黑餐，以清淡口为主",
+            "￥0",
+            "打包费?",
+            "配送费",
+            "惊喜减3.3元￥3.4￥0.1",
+            "店铺活动/券",
+            "-￥2",
+            "拭目以待",
+            "平台红包",
+            "淘宝闪购商户",
+            "￥25.68",
+            "厦门银行储蓄卡（7350）",
+            "正在付款中...",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+
+    assert parsed.amount_cents == 2568
+    assert parsed.merchant == "淘宝闪购商户"
+    assert parsed.category == "餐饮"
