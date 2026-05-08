@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import mimetypes
 from typing import Any, Protocol
@@ -30,6 +30,10 @@ class OcrResult:
 class OcrProvider(Protocol):
     def extract(self, expense: Expense) -> OcrResult:
         ...
+
+
+OCR_DRAFT_FIELDS = frozenset({"amount_cents", "merchant", "category", "expense_time"})
+LEGACY_AUTO_OCR_WINDOW = timedelta(minutes=5)
 
 
 class EmptyOcrProvider:
@@ -65,7 +69,7 @@ class RapidOcrProvider:
                 status_code=500,
             ) from exc
 
-        image_path, _ = resolve_protected_image(expense.image_path)
+        image_path, _ = resolve_protected_image(expense.image_path, expense.tenant_id)
         try:
             result = RapidOCR()(str(image_path))
         except Exception as exc:
@@ -80,7 +84,7 @@ class RapidOcrProvider:
 
 class LocalLlmOcrProvider:
     def extract(self, expense: Expense) -> OcrResult:
-        image_path, media_type = resolve_protected_image(expense.image_path)
+        image_path, media_type = resolve_protected_image(expense.image_path, expense.tenant_id)
         image_bytes = image_path.read_bytes()
         media_type = media_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
         encoded = base64.b64encode(image_bytes).decode("ascii")
@@ -167,38 +171,126 @@ def get_ocr_provider(provider_name: str | None = None) -> OcrProvider:
 def retry_ocr(expense: Expense, provider: OcrProvider | None = None) -> Expense:
     active_provider = provider or get_ocr_provider()
     result = active_provider.extract(expense)
-    _apply_ocr_result(expense, result)
+    apply_ocr_result(expense, result)
     return expense
 
 
-def run_auto_ocr(expense: Expense) -> None:
+def ocr_draft_fields(expense: Expense) -> set[str]:
+    payload = expense.ocr_draft_fields
+    if not payload:
+        return _legacy_pending_ocr_draft_fields(expense)
+    try:
+        decoded = json.loads(payload)
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(decoded, list):
+        return set()
+    return {str(item) for item in decoded if str(item) in OCR_DRAFT_FIELDS}
+
+
+def clear_ocr_draft_fields(expense: Expense, fields: set[str] | list[str] | tuple[str, ...]) -> None:
+    current = ocr_draft_fields(expense)
+    updated = current.difference(fields)
+    _write_ocr_draft_fields(expense, updated)
+
+
+def collect_auto_ocr_results(expense: Expense) -> list[OcrResult]:
+    """Run configured OCR providers and return draft results without mutating the expense."""
     settings = get_settings()
     if not settings.ocr_auto_run:
-        return
+        return []
 
     try:
-        retry_ocr(expense, get_ocr_provider(settings.ocr_provider))
-        if _needs_fallback(expense) and settings.ocr_fallback_provider not in {"", "empty", settings.ocr_provider}:
-            retry_ocr(expense, get_ocr_provider(settings.ocr_fallback_provider))
+        primary_result = get_ocr_provider(settings.ocr_provider).extract(expense)
+        results = [primary_result]
+
+        draft = Expense(
+            amount_cents=expense.amount_cents,
+            merchant=expense.merchant,
+            category=expense.category,
+            raw_text=expense.raw_text,
+            confidence=expense.confidence,
+            expense_time=expense.expense_time,
+            ocr_draft_fields=expense.ocr_draft_fields,
+        )
+        apply_ocr_result(draft, primary_result)
+        if _needs_fallback(draft) and settings.ocr_fallback_provider not in {"", "empty", settings.ocr_provider}:
+            results.append(get_ocr_provider(settings.ocr_fallback_provider).extract(expense))
+        return results
     except Exception:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
-        return
+        return []
 
 
-def _apply_ocr_result(expense: Expense, result: OcrResult) -> None:
+def run_auto_ocr(expense: Expense) -> None:
+    for result in collect_auto_ocr_results(expense):
+        apply_ocr_result(expense, result)
+
+
+def apply_ocr_result(expense: Expense, result: OcrResult) -> None:
     parsed = parse_receipt_text(result.raw_text)
     merged = _merge_result_with_text_parse(result, parsed_confidence=parsed.confidence)
+    draft_fields = ocr_draft_fields(expense)
+    applied_fields: set[str] = set()
 
     expense.raw_text = merged.raw_text
     expense.confidence = _best_confidence(merged.confidence, parsed.confidence, expense.confidence)
-    if expense.amount_cents is None and merged.amount_cents is not None:
+    if (
+        _can_apply_ocr_field("amount_cents", draft_fields, expense.amount_cents is None)
+        and merged.amount_cents is not None
+    ):
         expense.amount_cents = merged.amount_cents
-    if not (expense.merchant or "").strip() and merged.merchant:
+        applied_fields.add("amount_cents")
+    if _can_apply_ocr_field("merchant", draft_fields, not (expense.merchant or "").strip()) and merged.merchant:
         expense.merchant = merged.merchant
-    if expense.expense_time is None and merged.expense_time is not None:
+        applied_fields.add("merchant")
+    if (
+        _can_apply_ocr_field("expense_time", draft_fields, expense.expense_time is None)
+        and merged.expense_time is not None
+    ):
         expense.expense_time = ensure_utc(merged.expense_time)
-    if normalize_category(expense.category) == "其他" and merged.category:
+        applied_fields.add("expense_time")
+    if (
+        _can_apply_ocr_field("category", draft_fields, normalize_category(expense.category) == "其他")
+        and merged.category
+    ):
         expense.category = normalize_category(merged.category)
+        applied_fields.add("category")
+    if applied_fields:
+        _write_ocr_draft_fields(expense, draft_fields.union(applied_fields))
+
+
+def _can_apply_ocr_field(field: str, draft_fields: set[str], is_empty_or_default: bool) -> bool:
+    return is_empty_or_default or field in draft_fields
+
+
+def _legacy_pending_ocr_draft_fields(expense: Expense) -> set[str]:
+    if expense.status != "pending":
+        return set()
+    if not (expense.raw_text or "").strip() or expense.confidence is None:
+        return set()
+    created_at = ensure_utc(expense.created_at)
+    updated_at = ensure_utc(expense.updated_at)
+    if created_at is None or updated_at is None:
+        return set()
+    if updated_at - created_at > LEGACY_AUTO_OCR_WINDOW:
+        return set()
+
+    fields: set[str] = set()
+    if expense.amount_cents is not None:
+        fields.add("amount_cents")
+    if (expense.merchant or "").strip():
+        fields.add("merchant")
+    if normalize_category(expense.category) != "其他":
+        fields.add("category")
+    if expense.expense_time is not None:
+        fields.add("expense_time")
+    return fields
+
+
+def _write_ocr_draft_fields(expense: Expense, fields: set[str]) -> None:
+    normalized = sorted(field for field in fields if field in OCR_DRAFT_FIELDS)
+    expense.ocr_draft_fields = json.dumps(normalized, ensure_ascii=False)
 
 
 def _merge_result_with_text_parse(result: OcrResult, *, parsed_confidence: float | None) -> OcrResult:

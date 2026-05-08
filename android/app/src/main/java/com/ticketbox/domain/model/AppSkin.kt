@@ -8,7 +8,7 @@ enum class AppSkin(
     Pine(
         storageKey = "pine",
         displayName = "松雾",
-        description = "深绿夜色",
+        description = "雾青暖白",
     ),
     Pomelo(
         storageKey = "pomelo",
@@ -24,6 +24,11 @@ enum class AppSkin(
         storageKey = "berry",
         displayName = "莓果",
         description = "莓粉柔光",
+    ),
+    Night(
+        storageKey = "night",
+        displayName = "夜幕",
+        description = "松林月色",
     );
 
     companion object {

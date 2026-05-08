@@ -11,12 +11,16 @@ import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
+import com.ticketbox.data.remote.dto.UploadResponseDto
+import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
+import retrofit2.http.Part
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -52,6 +56,10 @@ interface ApiService {
 
     @POST("api/expenses/manual")
     suspend fun createManualExpense(@Body request: ExpenseUpdateRequest): ExpenseDto
+
+    @Multipart
+    @POST("api/app/upload-screenshot")
+    suspend fun uploadScreenshot(@Part file: MultipartBody.Part): UploadResponseDto
 
     @PATCH("api/expenses/{id}")
     suspend fun updateExpense(

@@ -127,6 +127,52 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun buildsMonthlyStatsFromLocalConfirmedCache() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
+            expense(id = 2, category = "餐饮", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
+            expense(id = 3, category = "购物", expenseTime = "2026-05-05T04:20:00Z", amountCents = 9900),
+            expense(id = 4, category = "交通", expenseTime = "2026-04-30T04:20:00Z", amountCents = 400),
+        )
+
+        val stats = monthlyStatsFromConfirmedExpenses(
+            expenses = items,
+            month = "2026-05",
+            zoneId = ZoneOffset.UTC,
+        )
+
+        checkNotNull(stats)
+        assertEquals("2026-05", stats.month)
+        assertEquals(13_400, stats.totalAmountCents)
+        assertEquals(3, stats.count)
+        assertEquals(
+            listOf(
+                CategoryStats(category = "购物", amountCents = 9_900, count = 1),
+                CategoryStats(category = "餐饮", amountCents = 3_500, count = 2),
+            ),
+            stats.byCategory,
+        )
+    }
+
+    @Test
+    fun skipsMonthlyStatsFallbackWhenNoLocalSpending() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = "2026-04-03T04:20:00Z", amountCents = 1200),
+            expense(id = 2, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = null),
+        )
+
+        assertEquals(
+            null,
+            monthlyStatsFromConfirmedExpenses(
+                expenses = items,
+                month = "2026-05",
+                zoneId = ZoneOffset.UTC,
+            ),
+        )
+        assertEquals(null, monthlyStatsFromConfirmedExpenses(items, month = "not-a-month"))
+    }
+
+    @Test
     fun buildsBudgetProgressAndCapsProgressBar() {
         val progress = monthlyBudgetProgress(
             stats = MonthlyStats(

@@ -104,18 +104,26 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Test
-        run: ./gradlew --no-daemon :app:testDebugUnitTest
+        run: ./gradlew --no-daemon :app:testGrayDebugUnitTest
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Build gray and internal debug APKs
+        run: ./gradlew --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
 
       - name: Lint
-        run: ./gradlew --no-daemon :app:lintDebug
+        run: ./gradlew --no-daemon :app:lintGrayDebug
 
-      - name: Upload debug APK
+      - name: Upload gray debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: ticketbox-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: ticketbox-gray-debug-apk
+          path: android/app/build/outputs/apk/gray/debug/app-gray-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload internal debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: ticketbox-internal-debug-apk
+          path: android/app/build/outputs/apk/internal/debug/app-internal-debug.apk
           if-no-files-found: error
           retention-days: 7

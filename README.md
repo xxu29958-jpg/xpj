@@ -44,7 +44,7 @@ docs/      架构、API、安全、部署和后续规划文档
 当前已经实现：
 
 - `backend/`：FastAPI、SQLite、SQLAlchemy、Token 校验、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、服务器状态、可插拔 OCR 入口和图片清理维护接口。
-- `android/`：Android Studio 可打开的 Kotlin/Compose 工程，包含绑定服务器、指纹解锁、待确认、编辑、账本、手动记一笔、统计、设置、Room、Retrofit、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、CSV 导出、联调自检和分类规则管理。
+- `android/`：Android Studio 可打开的 Kotlin/Compose 工程，包含灰度用户版和内部联调版、绑定账本、指纹解锁、待确认、Android 上传截图、编辑、账本、手动记一笔、统计、设置、Room、Retrofit、Keystore、BiometricPrompt、受保护图片预览、重复保留、OCR retry、CSV 导出和分类规则管理。内部版保留连接诊断，灰度用户版不显示开发面板。
 - `docs/`：架构、API、安全、工程规范、第二版路线和关键决策。
 
 ## 第一版优先级
@@ -100,7 +100,7 @@ https://api.我的域名.com
 http://10.0.2.2:8000
 ```
 
-真机安装 debug APK：
+真机安装灰度 debug APK：
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
@@ -133,9 +133,9 @@ cd E:\projects\xiaopiaojia\android
 $env:JAVA_HOME="$env:LOCALAPPDATA\Programs\Kimi\runtime"
 $env:ANDROID_HOME=(Resolve-Path "..\.toolchains\android-sdk").Path
 $env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
-.\gradlew.bat --no-daemon :app:testDebugUnitTest
-.\gradlew.bat --no-daemon :app:assembleDebug
-.\gradlew.bat --no-daemon :app:lintDebug
+.\gradlew.bat --no-daemon :app:testGrayDebugUnitTest
+.\gradlew.bat --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
+.\gradlew.bat --no-daemon :app:lintGrayDebug
 ```
 
 一键跑完整本地验证：

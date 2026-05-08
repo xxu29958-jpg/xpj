@@ -5,15 +5,32 @@ from pathlib import Path
 from app.config import BACKEND_ROOT, get_settings
 
 
-def generate_thumbnail(relative_path: str | None, *, size: tuple[int, int] = (512, 512)) -> str | None:
+def _tenant_upload_dir(tenant_id: str) -> Path:
+    return (get_settings().upload_dir / tenant_id).resolve()
+
+
+def _is_under_path(candidate: Path, root: Path) -> bool:
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def generate_thumbnail(
+    relative_path: str | None,
+    *,
+    tenant_id: str | None = None,
+    size: tuple[int, int] = (512, 512),
+) -> str | None:
     settings = get_settings()
     if not settings.generate_thumbnail or not relative_path:
         return None
 
     source = (BACKEND_ROOT / relative_path).resolve()
-    try:
-        source.relative_to(settings.upload_dir)
-    except ValueError:
+    if not _is_under_path(source, settings.upload_dir):
+        return None
+    if tenant_id is not None and not _is_under_path(source, _tenant_upload_dir(tenant_id)):
         return None
     if not source.is_file() or source.suffix.lower() == ".heic":
         return None
@@ -38,14 +55,14 @@ def generate_thumbnail(relative_path: str | None, *, size: tuple[int, int] = (51
     return thumbnail_path.relative_to(BACKEND_ROOT).as_posix()
 
 
-def resolve_protected_thumbnail(relative_path: str | None) -> tuple[Path, str] | None:
+def resolve_protected_thumbnail(relative_path: str | None, tenant_id: str) -> tuple[Path, str] | None:
     if not relative_path:
         return None
     candidate = (BACKEND_ROOT / relative_path).resolve()
     settings = get_settings()
-    try:
-        candidate.relative_to(settings.upload_dir)
-    except ValueError:
+    if not _is_under_path(candidate, settings.upload_dir):
+        return None
+    if not _is_under_path(candidate, _tenant_upload_dir(tenant_id)):
         return None
     if not candidate.is_file():
         return None

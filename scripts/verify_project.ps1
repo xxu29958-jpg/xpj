@@ -60,6 +60,16 @@ function Ensure-LocalAndroidEnvironment {
         $env:ANDROID_HOME = (Resolve-Path -LiteralPath $localSdk).Path
     }
 
+    $adoptiumRoot = "C:\Program Files\Eclipse Adoptium"
+    if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath $adoptiumRoot)) {
+        $jdk = Get-ChildItem -LiteralPath $adoptiumRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "bin\java.exe") } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+        if ($jdk) {
+            $env:JAVA_HOME = $jdk.FullName
+        }
+    }
     $localJava = Join-Path $env:LOCALAPPDATA "Programs\Kimi\runtime"
     if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $localJava "bin\java.exe"))) {
         $env:JAVA_HOME = $localJava
@@ -76,7 +86,48 @@ function Ensure-LocalAndroidEnvironment {
     }
 }
 
+function Get-AndroidVerifyPlan {
+    $gradleFile = Join-Path $AndroidRoot "app\build.gradle.kts"
+    $hasGrayFlavor = $false
+    $hasInternalFlavor = $false
+    if (Test-Path -LiteralPath $gradleFile) {
+        $gradleText = Get-Content -Encoding UTF8 -Raw -LiteralPath $gradleFile
+        $hasGrayFlavor = $gradleText -match 'create\("gray"\)'
+        $hasInternalFlavor = $gradleText -match 'create\("internal"\)'
+    }
+
+    if ($hasGrayFlavor) {
+        $assembleTasks = @(":app:assembleGrayDebug")
+        if ($hasInternalFlavor) {
+            $assembleTasks += ":app:assembleInternalDebug"
+        }
+        return @{
+            Label = "gray"
+            Test = ":app:testGrayDebugUnitTest"
+            Assemble = $assembleTasks
+            Lint = ":app:lintGrayDebug"
+        }
+    }
+
+    return @{
+        Label = "debug"
+        Test = ":app:testDebugUnitTest"
+        Assemble = @(":app:assembleDebug")
+        Lint = ":app:lintDebug"
+    }
+}
+
 if (-not $SkipBackend) {
+    Invoke-Checked -FilePath "powershell.exe" -Arguments @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        (Join-Path $PSScriptRoot "check_text_encoding.ps1"),
+        "-Root",
+        $ProjectRoot.Path
+    ) -WorkingDirectory $ProjectRoot.Path
+
     $tools = Ensure-BackendTools
     Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "compileall", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
     if (-not $SkipLint) {
@@ -98,10 +149,12 @@ if (-not $SkipAndroid) {
         throw "未找到 Android Gradle Wrapper：$gradle"
     }
 
-    Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", ":app:testDebugUnitTest") -WorkingDirectory $AndroidRoot
-    Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", ":app:assembleDebug") -WorkingDirectory $AndroidRoot
+    $androidPlan = Get-AndroidVerifyPlan
+    Write-Host "Android 验证变体：$($androidPlan.Label)"
+    Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", $androidPlan.Test) -WorkingDirectory $AndroidRoot
+    Invoke-Checked -FilePath $gradle -Arguments (@("--no-daemon") + $androidPlan.Assemble) -WorkingDirectory $AndroidRoot
     if (-not $SkipLint) {
-        Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", ":app:lintDebug") -WorkingDirectory $AndroidRoot
+        Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", $androidPlan.Lint) -WorkingDirectory $AndroidRoot
     }
 }
 else {

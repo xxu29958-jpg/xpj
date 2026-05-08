@@ -38,12 +38,13 @@ def _find_same_image(db: Session, expense: Expense) -> Expense | None:
     candidates = db.scalars(
         select(Expense)
         .where(Expense.id != expense.id)
+        .where(Expense.tenant_id == expense.tenant_id)
         .where(Expense.status != "rejected")
         .where(Expense.image_hash == expense.image_hash)
         .order_by(Expense.created_at.asc())
     )
     for candidate in candidates:
-        if not _is_duplicate_ignored(db, expense.id, candidate.id, "image_hash"):
+        if not _is_duplicate_ignored(db, expense.tenant_id, expense.id, candidate.id, "image_hash"):
             return candidate
     return None
 
@@ -58,13 +59,14 @@ def _find_similar_expense(db: Session, expense: Expense) -> Expense | None:
     candidates = db.scalars(
         select(Expense)
         .where(Expense.id != expense.id)
+        .where(Expense.tenant_id == expense.tenant_id)
         .where(Expense.status != "rejected")
         .where(Expense.amount_cents == expense.amount_cents)
         .where(Expense.merchant == expense.merchant)
         .order_by(Expense.created_at.asc())
     )
     for candidate in candidates:
-        if _is_duplicate_ignored(db, expense.id, candidate.id, "similar"):
+        if _is_duplicate_ignored(db, expense.tenant_id, expense.id, candidate.id, "similar"):
             continue
         candidate_time = ensure_utc(candidate.expense_time) or ensure_utc(candidate.confirmed_at)
         if candidate_time is None:
@@ -74,11 +76,12 @@ def _find_similar_expense(db: Session, expense: Expense) -> Expense | None:
     return None
 
 
-def _is_duplicate_ignored(db: Session, expense_id: int, duplicate_of_id: int, kind: str) -> bool:
+def _is_duplicate_ignored(db: Session, tenant_id: str, expense_id: int, duplicate_of_id: int, kind: str) -> bool:
     left_id, right_id = _normalize_pair(expense_id, duplicate_of_id)
     return (
         db.scalar(
             select(DuplicateIgnore)
+            .where(DuplicateIgnore.tenant_id == tenant_id)
             .where(DuplicateIgnore.expense_id == left_id)
             .where(DuplicateIgnore.duplicate_of_id == right_id)
             .where(DuplicateIgnore.kind == kind)
@@ -88,10 +91,11 @@ def _is_duplicate_ignored(db: Session, expense_id: int, duplicate_of_id: int, ki
     )
 
 
-def _remember_duplicate_ignore(db: Session, expense_id: int, duplicate_of_id: int, kind: str) -> None:
+def _remember_duplicate_ignore(db: Session, tenant_id: str, expense_id: int, duplicate_of_id: int, kind: str) -> None:
     left_id, right_id = _normalize_pair(expense_id, duplicate_of_id)
     exists = db.scalar(
         select(DuplicateIgnore)
+        .where(DuplicateIgnore.tenant_id == tenant_id)
         .where(
             or_(
                 and_(
@@ -109,17 +113,18 @@ def _remember_duplicate_ignore(db: Session, expense_id: int, duplicate_of_id: in
         .limit(1)
     )
     if exists is None:
-        db.add(DuplicateIgnore(expense_id=left_id, duplicate_of_id=right_id, kind=kind))
+        db.add(DuplicateIgnore(tenant_id=tenant_id, expense_id=left_id, duplicate_of_id=right_id, kind=kind))
 
 
 def _normalize_pair(expense_id: int, duplicate_of_id: int) -> tuple[int, int]:
     return (expense_id, duplicate_of_id) if expense_id < duplicate_of_id else (duplicate_of_id, expense_id)
 
 
-def list_suspected_duplicates(db: Session) -> list[Expense]:
+def list_suspected_duplicates(db: Session, tenant_id: str) -> list[Expense]:
     return list(
         db.scalars(
             select(Expense)
+            .where(Expense.tenant_id == tenant_id)
             .where(Expense.duplicate_status == "suspected")
             .where(Expense.status != "rejected")
             .order_by(Expense.created_at.desc(), Expense.id.desc())
@@ -129,7 +134,7 @@ def list_suspected_duplicates(db: Session) -> list[Expense]:
 
 def mark_not_duplicate(db: Session, expense: Expense) -> Expense:
     if expense.duplicate_of_id is not None:
-        _remember_duplicate_ignore(db, expense.id, expense.duplicate_of_id, _duplicate_kind(expense))
+        _remember_duplicate_ignore(db, expense.tenant_id, expense.id, expense.duplicate_of_id, _duplicate_kind(expense))
     expense.duplicate_status = "none"
     expense.duplicate_of_id = None
     expense.duplicate_reason = None

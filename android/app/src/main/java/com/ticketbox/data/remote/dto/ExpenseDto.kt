@@ -4,6 +4,22 @@ import com.squareup.moshi.Json
 
 data class AuthCheckDto(
     val status: String,
+    @param:Json(name = "tenant_name")
+    val tenantName: String? = null,
+)
+
+data class UploadResponseDto(
+    val id: Long,
+    @param:Json(name = "public_id")
+    val publicId: String,
+    val status: String,
+    val message: String,
+    @param:Json(name = "upload_size_bytes")
+    val uploadSizeBytes: Long? = null,
+    @param:Json(name = "duration_ms")
+    val durationMs: Long? = null,
+    @param:Json(name = "timing_ms")
+    val timingMs: Map<String, Long>? = null,
 )
 
 data class ExpenseDto(
@@ -135,16 +151,11 @@ data class FrequentMerchantDto(
 )
 
 data class ServerSettingsDto(
-    @param:Json(name = "max_upload_size_mb")
-    val maxUploadSizeMb: Int,
-    @param:Json(name = "generate_thumbnail")
-    val generateThumbnail: Boolean,
-    @param:Json(name = "delete_image_after_confirm")
-    val deleteImageAfterConfirm: Boolean,
-    @param:Json(name = "delete_image_after_days")
-    val deleteImageAfterDays: Int,
-    @param:Json(name = "ocr_provider")
-    val ocrProvider: String,
+    @param:Json(name = "tenant_name")
+    val tenantName: String,
+    val status: String,
+    @param:Json(name = "storage_status")
+    val storageStatus: String,
     @param:Json(name = "pending_count")
     val pendingCount: Int,
     @param:Json(name = "confirmed_count")

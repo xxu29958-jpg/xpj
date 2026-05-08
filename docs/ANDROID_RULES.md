@@ -1,5 +1,7 @@
 # Android 开发规则
 
+灰度版 Android UX/UI 以 `docs/ANDROID_GRAY_UX_SPEC.md` 为准。状态流以 `docs/ANDROID_STATE_FLOWS.md` 为准。外观、背景、预览、裁剪和沉浸模式以 `docs/ANDROID_APPEARANCE_BACKGROUND.md` 为准。本阶段落地状态见 `docs/ANDROID_BACKGROUND_IMPLEMENTATION_STATUS.md`。普通用户主体验不得显示服务器域名、token、接口名、Cloudflare、端口、后端日志或诊断脚本。技术诊断只允许在 debug build 隐藏入口、Windows 运维脚本、运维文档或后续 Web 管理页中出现。
+
 Android 使用轻量 MVVM：
 
 ```text
@@ -130,7 +132,7 @@ serverId 不存在 -> 插入本地记录
 - APP_TOKEN 不打印日志。
 - APP_TOKEN 不明文写 SharedPreferences。
 - 使用 Android Keystore 保存。
-- OkHttp 日志最多 BASIC，不打印 Header 和 Body。
+- gray 版不启用 OkHttp 网络日志；internalDebug 最多 BASIC，不打印 Header、Body、Token 或完整服务器 URL。
 - Repository 应复用绑定后的 ApiService/OkHttpClient，不允许每次接口调用重新创建网络栈。
 - 只允许 GET 对 502、503、504 做一次轻量重试；写操作不能透明重试。
 
@@ -150,6 +152,17 @@ serverId 不存在 -> 插入本地记录
 - 依赖升级前先运行 `scripts\check_dependency_versions.ps1`，再查官方 release notes。
 - 依赖调整后必须运行单元测试、debug 构建和 lint。
 
+## 自定义背景与沉浸模式
+
+- 自定义背景是 Android 本地 UI 个性化能力，不改后端接口。
+- 背景选择必须使用 Android Photo Picker，优先不申请 `READ_MEDIA_IMAGES`。
+- Picker 返回的 `Uri` 不长期保存；选中后复制到 `context.filesDir/backgrounds/custom_background.jpg`。
+- 背景路径只进入本机 DataStore，不进入 Room，不上传后端，不写入导出文件。
+- 背景渲染只能放在统一 `ImmersiveBackgroundScaffold` / `TicketboxBackgroundLayer`，不允许散落到每个 Screen。
+- 主题语义色不跟随背景图片随机变化，金额、表单、主按钮、错误/成功/警告反馈必须稳定高对比。
+- 编辑、设置、绑定、生物识别等录入或安全页面必须使用更强遮罩和更实体的卡片。
+- 相册大图解码必须做尺寸采样，避免用原图尺寸直接进入 Compose 背景层。
+
 ## 受保护图片
 
 - Android 不直接访问 `uploads` 路径。
@@ -163,4 +176,4 @@ serverId 不存在 -> 插入本地记录
 - 脚本只允许安装已构建的 debug APK，或先构建再安装。
 - 脚本不读取、不输出、不保存 `APP_TOKEN`。
 - 多设备连接时必须显式指定 `-Serial`。
-- 首次绑定后在设置页运行“联调自检”。
+- 灰度用户首次绑定后只查看账本连接状态；内部联调版可在设置页运行“运行诊断”。

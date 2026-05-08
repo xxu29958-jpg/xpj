@@ -7,9 +7,10 @@ from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, false, func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, ExpenseRecognizeTextRequest, ExpenseUpdateRequest
@@ -21,11 +22,17 @@ from app.services.duplicate_service import (
     mark_duplicate_status,
     mark_not_duplicate,
 )
-from app.services.file_service import SavedUpload
-from app.services.ocr_service import retry_ocr, run_auto_ocr
-from app.services.receipt_parse_service import parse_receipt_text
+from app.services.file_service import SavedUpload, delete_relative_upload
+from app.services.ocr_service import (
+    OcrResult,
+    apply_ocr_result,
+    clear_ocr_draft_fields,
+    collect_auto_ocr_results,
+    retry_ocr,
+    run_auto_ocr,
+)
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
-from app.services.time_service import ensure_utc, now_utc
+from app.services.time_service import ensure_utc, local_month_bounds_utc, local_month_label, now_utc
 
 
 EDITABLE_STATUSES = {"pending", "confirmed"}
@@ -48,16 +55,42 @@ def _clean_category(value: str | None) -> str:
     return normalize_category(value)
 
 
-def create_pending_expense(db: Session, saved_file: SavedUpload) -> Expense:
+def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | None:
+    try:
+        return generate_thumbnail(relative_path, tenant_id=tenant_id)
+    except Exception:
+        return None
+
+
+def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
+    if not expense.thumbnail_path:
+        expense.thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
+    run_auto_ocr(expense)
+    if expense.category == "其他":
+        classify_expense(db, expense)
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
+        mark_duplicate_status(db, expense)
+
+
+def create_pending_expense(
+    db: Session,
+    saved_file: SavedUpload,
+    tenant_id: str,
+    *,
+    source: str = "iPhone截图",
+    run_enrichment: bool = True,
+) -> Expense:
     now = now_utc()
+    thumbnail_path = _try_generate_thumbnail(saved_file.relative_path, tenant_id) if run_enrichment else None
     expense = Expense(
+        tenant_id=tenant_id,
         amount_cents=None,
         merchant=None,
         category="其他",
         note="",
-        source="iPhone截图",
+        source=source,
         image_path=saved_file.relative_path,
-        thumbnail_path=generate_thumbnail(saved_file.relative_path),
+        thumbnail_path=thumbnail_path,
         image_hash=saved_file.image_hash,
         raw_text="",
         confidence=None,
@@ -65,24 +98,60 @@ def create_pending_expense(db: Session, saved_file: SavedUpload) -> Expense:
         created_at=now,
         updated_at=now,
     )
-    db.add(expense)
-    db.flush()
-    run_auto_ocr(expense)
-    if expense.category == "其他":
-        classify_expense(db, expense)
-    mark_duplicate_status(db, expense)
-    expense.updated_at = now_utc()
-    db.commit()
-    db.refresh(expense)
-    return expense
+    try:
+        db.add(expense)
+        db.flush()
+        mark_duplicate_status(db, expense)
+        if run_enrichment:
+            _apply_pending_enrichment(db, expense)
+        expense.updated_at = now_utc()
+        db.commit()
+        db.refresh(expense)
+        return expense
+    except Exception:
+        db.rollback()
+        delete_relative_upload(thumbnail_path)
+        delete_relative_upload(saved_file.relative_path)
+        raise
 
 
-def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest) -> Expense:
+def enrich_pending_expense(expense_id: int, tenant_id: str) -> None:
+    """Fill OCR/category draft fields after the upload response has been sent."""
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        expense = db.scalar(
+            select(Expense)
+            .where(Expense.id == expense_id)
+            .where(Expense.tenant_id == tenant_id)
+        )
+        if expense is None or expense.status != "pending":
+            return
+
+        ocr_results = collect_auto_ocr_results(expense)
+        try:
+            db.refresh(expense)
+            if expense.status != "pending":
+                return
+            for result in ocr_results:
+                apply_ocr_result(expense, result)
+            if expense.category == "其他":
+                classify_expense(db, expense)
+            if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
+                mark_duplicate_status(db, expense)
+            expense.updated_at = now_utc()
+            db.commit()
+        except Exception:
+            db.rollback()
+
+
+def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, tenant_id: str) -> Expense:
     if payload.amount_cents is None:
         raise AppError("amount_required", status_code=400)
 
     now = now_utc()
     expense = Expense(
+        tenant_id=tenant_id,
         amount_cents=payload.amount_cents,
         merchant=_clean_optional_text(payload.merchant),
         category=_clean_category(payload.category),
@@ -112,25 +181,26 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest) -> E
     return expense
 
 
-def get_expense(db: Session, expense_id: int) -> Expense:
-    expense = db.get(Expense, expense_id)
+def get_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
+    expense = db.scalar(select(Expense).where(Expense.id == expense_id).where(Expense.tenant_id == tenant_id))
     if expense is None:
         raise AppError("expense_not_found", status_code=404)
     return expense
 
 
-def list_pending(db: Session) -> list[Expense]:
+def list_pending(db: Session, tenant_id: str) -> list[Expense]:
     return list(
         db.scalars(
             select(Expense)
+            .where(Expense.tenant_id == tenant_id)
             .where(Expense.status == "pending")
             .order_by(Expense.created_at.desc(), Expense.id.desc())
         )
     )
 
 
-def _base_confirmed_query() -> Select[tuple[Expense]]:
-    return select(Expense).where(Expense.status == "confirmed")
+def _base_confirmed_query(tenant_id: str) -> Select[tuple[Expense]]:
+    return select(Expense).where(Expense.tenant_id == tenant_id).where(Expense.status == "confirmed")
 
 
 def _stat_time_expr():
@@ -141,16 +211,25 @@ def _stat_time(expense: Expense) -> datetime | None:
     return ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
 
 
+def _stat_month_bounds(month: str) -> tuple[datetime, datetime] | None:
+    return local_month_bounds_utc(month, get_settings().ocr_default_timezone)
+
+
 def _confirmed_query(
     *,
+    tenant_id: str,
     month: str | None = None,
     category: str | None = None,
 ) -> Select[tuple[Expense]]:
-    query = _base_confirmed_query()
+    query = _base_confirmed_query(tenant_id)
     if category:
         query = query.where(Expense.category == normalize_category(category))
     if month:
-        query = query.where(func.strftime("%Y-%m", _stat_time_expr()) == month)
+        bounds = _stat_month_bounds(month)
+        if bounds is None:
+            return query.where(false())
+        start_utc, end_utc = bounds
+        query = query.where(_stat_time_expr() >= start_utc).where(_stat_time_expr() < end_utc)
     return query
 
 
@@ -161,6 +240,7 @@ def _confirmed_ordered(query: Select[tuple[Expense]]) -> Select[tuple[Expense]]:
 def list_confirmed(
     db: Session,
     *,
+    tenant_id: str,
     page: int = 1,
     page_size: int = 50,
     month: str | None = None,
@@ -169,7 +249,7 @@ def list_confirmed(
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
 
-    query = _confirmed_query(month=month, category=category)
+    query = _confirmed_query(tenant_id=tenant_id, month=month, category=category)
     total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
     expenses = list(
         db.scalars(
@@ -184,34 +264,43 @@ def list_confirmed(
 def _filtered_confirmed(
     db: Session,
     *,
+    tenant_id: str,
     month: str | None = None,
     category: str | None = None,
 ) -> list[Expense]:
-    return list(db.scalars(_confirmed_ordered(_confirmed_query(month=month, category=category))))
+    return list(db.scalars(_confirmed_ordered(_confirmed_query(tenant_id=tenant_id, month=month, category=category))))
 
 
-def list_categories(db: Session) -> list[str]:
-    return merge_categories(list(db.scalars(select(Expense.category).distinct())))
+def list_categories(db: Session, tenant_id: str) -> list[str]:
+    return merge_categories(
+        list(db.scalars(select(Expense.category).where(Expense.tenant_id == tenant_id).distinct()))
+    )
 
 
-def list_months(db: Session) -> list[str]:
-    months = db.scalars(
-        select(func.strftime("%Y-%m", _stat_time_expr()))
+def list_months(db: Session, tenant_id: str) -> list[str]:
+    timezone_name = get_settings().ocr_default_timezone
+    expenses = db.scalars(
+        select(Expense)
+        .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
         .where(_stat_time_expr().is_not(None))
-        .distinct()
-        .order_by(func.strftime("%Y-%m", _stat_time_expr()).desc())
     )
-    return [month for month in months if month]
+    months = {
+        label
+        for expense in expenses
+        if (label := local_month_label(_stat_time(expense), timezone_name)) is not None
+    }
+    return sorted(months, reverse=True)
 
 
 def export_confirmed_csv(
     db: Session,
     *,
+    tenant_id: str,
     month: str | None = None,
     category: str | None = None,
 ) -> str:
-    expenses = _filtered_confirmed(db, month=month, category=category)
+    expenses = _filtered_confirmed(db, tenant_id=tenant_id, month=month, category=category)
     output = StringIO()
     writer = csv.writer(output, lineterminator="\n")
     writer.writerow(
@@ -256,8 +345,8 @@ def export_confirmed_csv(
     return output.getvalue()
 
 
-def update_expense(db: Session, expense_id: int, payload: ExpenseUpdateRequest) -> Expense:
-    expense = get_expense(db, expense_id)
+def update_expense(db: Session, expense_id: int, tenant_id: str, payload: ExpenseUpdateRequest) -> Expense:
+    expense = get_expense(db, expense_id, tenant_id)
     if expense.status not in EDITABLE_STATUSES:
         raise AppError("expense_not_found", status_code=404)
 
@@ -279,6 +368,8 @@ def update_expense(db: Session, expense_id: int, payload: ExpenseUpdateRequest) 
     if "regret_score" in updates:
         expense.regret_score = updates["regret_score"]
 
+    clear_ocr_draft_fields(expense, list(updates.keys()))
+
     should_auto_classify = (
         "category" not in updates
         and expense.category == "其他"
@@ -296,8 +387,8 @@ def update_expense(db: Session, expense_id: int, payload: ExpenseUpdateRequest) 
     return expense
 
 
-def confirm_expense(db: Session, expense_id: int) -> Expense:
-    expense = get_expense(db, expense_id)
+def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
+    expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "rejected":
         raise AppError("expense_not_found", status_code=404)
     if expense.amount_cents is None:
@@ -315,8 +406,8 @@ def confirm_expense(db: Session, expense_id: int) -> Expense:
     return expense
 
 
-def reject_expense(db: Session, expense_id: int) -> Expense:
-    expense = get_expense(db, expense_id)
+def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
+    expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
 
@@ -329,13 +420,13 @@ def reject_expense(db: Session, expense_id: int) -> Expense:
     return expense
 
 
-def ensure_thumbnail_file(db: Session, expense_id: int) -> tuple[Path, str]:
-    expense = get_expense(db, expense_id)
-    resolved = resolve_protected_thumbnail(expense.thumbnail_path)
+def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple[Path, str]:
+    expense = get_expense(db, expense_id, tenant_id)
+    resolved = resolve_protected_thumbnail(expense.thumbnail_path, tenant_id)
     if resolved is not None:
         return resolved
 
-    thumbnail_path = generate_thumbnail(expense.image_path)
+    thumbnail_path = generate_thumbnail(expense.image_path, tenant_id=tenant_id)
     if thumbnail_path is not None:
         expense.thumbnail_path = thumbnail_path
         expense.thumbnail_deleted_at = None
@@ -343,14 +434,14 @@ def ensure_thumbnail_file(db: Session, expense_id: int) -> tuple[Path, str]:
         db.commit()
         db.refresh(expense)
 
-    resolved = resolve_protected_thumbnail(expense.thumbnail_path)
+    resolved = resolve_protected_thumbnail(expense.thumbnail_path, tenant_id)
     if resolved is None:
         raise AppError("image_not_found", status_code=404)
     return resolved
 
 
-def retry_expense_ocr(db: Session, expense_id: int) -> Expense:
-    expense = get_expense(db, expense_id)
+def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
+    expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "rejected":
         raise AppError("expense_not_found", status_code=404)
 
@@ -365,23 +456,13 @@ def retry_expense_ocr(db: Session, expense_id: int) -> Expense:
     return expense
 
 
-def recognize_expense_text(db: Session, expense_id: int, payload: ExpenseRecognizeTextRequest) -> Expense:
-    expense = get_expense(db, expense_id)
+def recognize_expense_text(db: Session, expense_id: int, tenant_id: str, payload: ExpenseRecognizeTextRequest) -> Expense:
+    expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "rejected":
         raise AppError("expense_not_found", status_code=404)
 
     raw_text = payload.raw_text.strip()
-    parsed = parse_receipt_text(raw_text)
-    expense.raw_text = raw_text
-    expense.confidence = parsed.confidence
-    if expense.amount_cents is None and parsed.amount_cents is not None:
-        expense.amount_cents = parsed.amount_cents
-    if not (expense.merchant or "").strip() and parsed.merchant:
-        expense.merchant = parsed.merchant
-    if expense.expense_time is None and parsed.expense_time is not None:
-        expense.expense_time = parsed.expense_time
-    if expense.category == "其他" and parsed.category:
-        expense.category = parsed.category
+    apply_ocr_result(expense, OcrResult(raw_text=raw_text, confidence=None))
     if expense.category == "其他":
         classify_expense(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
@@ -392,12 +473,12 @@ def recognize_expense_text(db: Session, expense_id: int, payload: ExpenseRecogni
     return expense
 
 
-def list_duplicate_expenses(db: Session) -> list[Expense]:
-    return list_suspected_duplicates(db)
+def list_duplicate_expenses(db: Session, tenant_id: str) -> list[Expense]:
+    return list_suspected_duplicates(db, tenant_id)
 
 
-def mark_expense_not_duplicate(db: Session, expense_id: int) -> Expense:
-    expense = get_expense(db, expense_id)
+def mark_expense_not_duplicate(db: Session, expense_id: int, tenant_id: str) -> Expense:
+    expense = get_expense(db, expense_id, tenant_id)
     mark_not_duplicate(db, expense)
     expense.updated_at = now_utc()
     db.commit()
@@ -405,19 +486,30 @@ def mark_expense_not_duplicate(db: Session, expense_id: int) -> Expense:
     return expense
 
 
-def monthly_stats(db: Session, month: str) -> dict:
+def monthly_stats(db: Session, month: str, tenant_id: str) -> dict:
     by_category: dict[str, dict[str, int | str]] = defaultdict(lambda: {"category": "", "amount_cents": 0, "count": 0})
 
     total_amount_cents = 0
     total_count = 0
+    bounds = _stat_month_bounds(month)
+    if bounds is None:
+        return {
+            "month": month,
+            "total_amount_cents": 0,
+            "count": 0,
+            "by_category": [],
+        }
+    start_utc, end_utc = bounds
     rows = db.execute(
         select(
             Expense.category,
             func.coalesce(func.sum(Expense.amount_cents), 0),
             func.count(Expense.id),
         )
+        .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
-        .where(func.strftime("%Y-%m", _stat_time_expr()) == month)
+        .where(_stat_time_expr() >= start_utc)
+        .where(_stat_time_expr() < end_utc)
         .group_by(Expense.category)
     )
     for category_value, amount_value, count_value in rows:
@@ -443,8 +535,8 @@ def monthly_stats(db: Session, month: str) -> dict:
     }
 
 
-def lifestyle_stats(db: Session, month: str) -> dict:
-    month_expenses = list(db.scalars(_confirmed_query(month=month)))
+def lifestyle_stats(db: Session, month: str, tenant_id: str) -> dict:
+    month_expenses = list(db.scalars(_confirmed_query(tenant_id=tenant_id, month=month)))
     recent_start = now_utc() - timedelta(days=7)
 
     ai_subscription_amount_cents = sum(
@@ -457,6 +549,7 @@ def lifestyle_stats(db: Session, month: str) -> dict:
     recent_7_days_amount_cents = int(
         db.scalar(
             select(func.coalesce(func.sum(Expense.amount_cents), 0))
+            .where(Expense.tenant_id == tenant_id)
             .where(Expense.status == "confirmed")
             .where(_stat_time_expr() >= recent_start)
         )

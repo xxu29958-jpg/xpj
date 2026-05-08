@@ -10,8 +10,9 @@ import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
-import com.ticketbox.domain.model.monthlyCategoryInsight
 import com.ticketbox.domain.model.monthlyBudgetProgress
+import com.ticketbox.domain.model.monthlyCategoryInsight
+import com.ticketbox.domain.model.monthlyStatsFromConfirmedExpenses
 import com.ticketbox.domain.model.monthlySpendingComparison
 import com.ticketbox.domain.model.recentDailySpending
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,9 +60,14 @@ class StatsViewModel(
             repository.observeConfirmed().collect { expenses ->
                 confirmedCache = expenses
                 _uiState.update {
+                    val localStats = monthlyStatsFromConfirmedExpenses(expenses, it.month)
+                    val visibleStats = it.stats ?: localStats
                     it.copy(
+                        stats = visibleStats,
                         dailyTrend = recentDailySpending(expenses),
                         monthComparison = monthlySpendingComparison(expenses, it.month),
+                        budgetProgress = monthlyBudgetProgress(visibleStats, repository.monthlyBudgetCents()),
+                        categoryInsight = monthlyCategoryInsight(visibleStats),
                     )
                 }
             }
@@ -70,9 +76,13 @@ class StatsViewModel(
 
     fun setMonth(value: String) {
         _uiState.update {
+            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, value)
             it.copy(
                 month = value,
+                stats = localStats,
                 monthComparison = monthlySpendingComparison(confirmedCache, value),
+                budgetProgress = monthlyBudgetProgress(localStats, repository.monthlyBudgetCents()),
+                categoryInsight = monthlyCategoryInsight(localStats),
             )
         }
         refresh()
@@ -110,7 +120,25 @@ class StatsViewModel(
                             }
                         }
                 }
-                .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "统计暂时打不开，请稍后再试。") } }
+                .onFailure { error ->
+                    _uiState.update {
+                        val fallbackStats = month?.let { value ->
+                            monthlyStatsFromConfirmedExpenses(confirmedCache, value)
+                        }
+                        val visibleStats = fallbackStats ?: it.stats
+                        it.copy(
+                            stats = visibleStats,
+                            budgetProgress = monthlyBudgetProgress(visibleStats, budgetCents),
+                            categoryInsight = monthlyCategoryInsight(visibleStats),
+                            loading = false,
+                            message = if (fallbackStats != null) {
+                                "已显示本机账本统计，联网后会自动更新。"
+                            } else {
+                                error.message ?: "统计暂时打不开，请稍后再试。"
+                            },
+                        )
+                    }
+                }
         }
     }
 }

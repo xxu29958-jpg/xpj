@@ -1,35 +1,31 @@
 package com.ticketbox.ui.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
@@ -37,10 +33,16 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.security.BiometricAuthManager
+import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
+import com.ticketbox.ui.appearance.background.SurfaceRole
+import com.ticketbox.ui.components.AppBottomNav
+import com.ticketbox.ui.components.AppBottomNavItem
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.ui.screens.LedgerScreen
@@ -49,6 +51,7 @@ import com.ticketbox.ui.screens.PendingScreen
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
 import com.ticketbox.viewmodel.ExpenseEditViewModel
@@ -58,15 +61,19 @@ import com.ticketbox.viewmodel.SettingsViewModel
 import com.ticketbox.viewmodel.StatsViewModel
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
 import com.ticketbox.viewmodel.repositoryViewModelFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class BottomTab(
+    val key: String,
     val label: String,
     val icon: ImageVector,
 ) {
-    Pending("待确认", Icons.Default.CheckCircle),
-    Ledger("账本", Icons.AutoMirrored.Filled.ReceiptLong),
-    Stats("统计", Icons.Default.BarChart),
-    Settings("设置", Icons.Default.Settings),
+    Pending("pending", "待确认", Icons.Default.CheckCircle),
+    Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
+    Stats("stats", "统计", Icons.Default.BarChart),
+    Settings("settings", "设置", Icons.Default.Settings),
 }
 
 @Composable
@@ -114,28 +121,42 @@ private fun TicketboxContent(
     biometricAuthManager: BiometricAuthManager,
 ) {
     if (!appState.isBound) {
-        BindServerScreen(
-            loading = appState.binding,
-            message = appState.authMessage,
-            onBind = appViewModel::bind,
-        )
+        ImmersiveBackgroundScaffold(
+            backgroundSettings = appState.backgroundSettings,
+            currentSkin = appState.skin,
+            surfaceRole = SurfaceRole.Auth,
+        ) {
+            BindServerScreen(
+                loading = appState.binding,
+                message = appState.authMessage,
+                defaultServerUrl = BuildConfig.DEFAULT_SERVER_URL,
+                showServerUrlInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
+                onBind = appViewModel::bind,
+            )
+        }
         return
     }
 
     if (!appState.unlocked) {
-        LoginScreen(
-            message = appState.authMessage,
-            onUnlock = {
-                if (!biometricAuthManager.canAuthenticate()) {
-                    appViewModel.unlockFailed("请先在系统中设置指纹、面容或锁屏密码。")
-                    return@LoginScreen
-                }
-                biometricAuthManager.authenticate(
-                    onSuccess = appViewModel::unlockSucceeded,
-                    onError = appViewModel::unlockFailed,
-                )
-            },
-        )
+        ImmersiveBackgroundScaffold(
+            backgroundSettings = appState.backgroundSettings,
+            currentSkin = appState.skin,
+            surfaceRole = SurfaceRole.Auth,
+        ) {
+            LoginScreen(
+                message = appState.authMessage,
+                onUnlock = {
+                    if (!biometricAuthManager.canAuthenticate()) {
+                        appViewModel.unlockFailed("请先在系统中设置指纹、面容或锁屏密码。")
+                        return@LoginScreen
+                    }
+                    biometricAuthManager.authenticate(
+                        onSuccess = appViewModel::unlockSucceeded,
+                        onError = appViewModel::unlockFailed,
+                    )
+                },
+            )
+        }
         return
     }
 
@@ -143,6 +164,7 @@ private fun TicketboxContent(
         repository = repository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
+        backgroundSettings = appState.backgroundSettings,
         onSkinChange = appViewModel::selectSkin,
         onBindingCleared = {
             appViewModel.clearBinding()
@@ -150,74 +172,94 @@ private fun TicketboxContent(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainShell(
     repository: ExpenseRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
+    backgroundSettings: BackgroundSettings,
     onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
     val repositoryFactory = repositoryViewModelFactory(repository)
+    val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
 
-    editingExpense?.let { expense ->
-        val editViewModel: ExpenseEditViewModel = viewModel(
-            key = "expense-edit-${expense.id}",
-            factory = expenseEditViewModelFactory(expense.id, repository),
-        )
-        val editState by editViewModel.uiState.collectAsStateWithLifecycle()
-        ExpenseEditScreen(
-            expense = expense,
-            state = editState,
-            onSave = editViewModel::save,
-            onConfirm = editViewModel::confirm,
-            onReject = editViewModel::reject,
-            onRetryOcr = editViewModel::retryOcr,
-            onLoadFullImage = editViewModel::loadFullImage,
-            onKeepDuplicate = editViewModel::markNotDuplicate,
-            onDone = { editingExpense = null },
-            allowConfirm = expense.status == "pending",
-            allowReject = expense.status == "pending",
-        )
-        return
-    }
-
-    Scaffold(
-        containerColor = Color.Transparent,
-        topBar = {
-            TopAppBar(
-                title = { Text("小票夹") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                ),
+    ImmersiveBackgroundScaffold(
+        backgroundSettings = backgroundSettings,
+        currentSkin = currentSkin,
+        surfaceRole = currentRole,
+    ) {
+        editingExpense?.let { expense ->
+            val editViewModel: ExpenseEditViewModel = viewModel(
+                key = "expense-edit-${expense.id}",
+                factory = expenseEditViewModelFactory(expense.id, repository),
             )
-        },
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)) {
-                BottomTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                    )
-                }
-            }
-        },
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            when (selectedTab) {
+            val editState by editViewModel.uiState.collectAsStateWithLifecycle()
+            ExpenseEditScreen(
+                expense = expense,
+                state = editState,
+                onSave = editViewModel::save,
+                onConfirm = editViewModel::confirm,
+                onReject = editViewModel::reject,
+                onRetryOcr = editViewModel::retryOcr,
+                onLoadFullImage = editViewModel::loadFullImage,
+                onKeepDuplicate = editViewModel::markNotDuplicate,
+                onDone = { editingExpense = null },
+                allowConfirm = expense.status == "pending",
+                allowReject = expense.status == "pending",
+            )
+            return@ImmersiveBackgroundScaffold
+        }
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0.dp),
+            bottomBar = {
+                AppBottomNav(
+                    items = BottomTab.entries.map { it.toBottomNavItem() },
+                    selectedKey = selectedTab.key,
+                    onSelect = { item ->
+                        BottomTab.entries.firstOrNull { it.key == item.key }?.let { selectedTab = it }
+                    },
+                )
+            },
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .consumeWindowInsets(innerPadding),
+            ) {
+                when (selectedTab) {
                 BottomTab.Pending -> {
                     val pendingViewModel: PendingViewModel = viewModel(factory = repositoryFactory)
                     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
+                    val context = LocalContext.current
+                    val uploadScope = rememberCoroutineScope()
+                    val imagePickerLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.PickVisualMedia(),
+                    ) { uri ->
+                        if (uri == null) return@rememberLauncherForActivityResult
+                        if (!pendingViewModel.markUploadPreparing()) return@rememberLauncherForActivityResult
+                        uploadScope.launch {
+                            val selected = withContext(Dispatchers.IO) {
+                                context.prepareScreenshotUpload(uri)
+                            }
+                            if (selected == null) {
+                                pendingViewModel.uploadPreparationFailed()
+                                return@launch
+                            }
+                            pendingViewModel.uploadScreenshot(
+                                fileName = selected.fileName,
+                                contentType = selected.contentType,
+                                bytes = selected.bytes,
+                                preparationDurationMs = selected.preparationDurationMs,
+                                sourceSizeBytes = selected.sourceSizeBytes,
+                                uploadAlreadyStarted = true,
+                            )
+                        }
+                    }
                     PendingScreen(
                         state = state,
                         onRefresh = pendingViewModel::refresh,
@@ -225,6 +267,11 @@ private fun MainShell(
                         onConfirm = pendingViewModel::confirm,
                         onReject = pendingViewModel::reject,
                         onKeepDuplicate = pendingViewModel::markNotDuplicate,
+                        onUploadScreenshot = {
+                            imagePickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
                     )
                 }
                 BottomTab.Ledger -> {
@@ -297,10 +344,32 @@ private fun MainShell(
                         onToggleRule = settingsViewModel::toggleCategoryRule,
                         onDeleteRule = settingsViewModel::deleteCategoryRule,
                         onSkinChange = onSkinChange,
+                        onApplyBackgroundSettings = settingsViewModel::applyBackgroundSettings,
+                        onClearBackgroundImage = settingsViewModel::clearBackgroundImage,
+                        onBackgroundImageError = settingsViewModel::backgroundImageCopyFailed,
+                        onImmersionModeChange = settingsViewModel::setImmersionMode,
+                        onParallaxChange = settingsViewModel::setParallaxEnabled,
+                        onReduceMotionChange = settingsViewModel::setReduceMotion,
                         onBindingCleared = onBindingCleared,
+                        showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
                     )
                 }
             }
         }
     }
 }
+}
+
+private val BottomTab.surfaceRole: SurfaceRole
+    get() = when (this) {
+        BottomTab.Pending -> SurfaceRole.Pending
+        BottomTab.Ledger -> SurfaceRole.Ledger
+        BottomTab.Stats -> SurfaceRole.Stats
+        BottomTab.Settings -> SurfaceRole.Settings
+    }
+
+private fun BottomTab.toBottomNavItem(): AppBottomNavItem = AppBottomNavItem(
+    key = key,
+    label = label,
+    icon = icon,
+)

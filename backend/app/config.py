@@ -42,6 +42,8 @@ class Settings:
     delete_image_after_confirm: bool
     generate_thumbnail: bool
     delete_image_after_days: int
+    delete_rejected_after_days: int
+    orphan_upload_grace_hours: int
     ocr_provider: str
     ocr_auto_run: bool
     ocr_fallback_provider: str
@@ -50,6 +52,7 @@ class Settings:
     local_llm_base_url: str
     local_llm_model: str
     local_llm_timeout_seconds: int
+    tenants_json: str
 
     @property
     def max_upload_size_bytes(self) -> int:
@@ -73,6 +76,8 @@ def get_settings() -> Settings:
         delete_image_after_confirm=_bool_env("DELETE_IMAGE_AFTER_CONFIRM", False),
         generate_thumbnail=_bool_env("GENERATE_THUMBNAIL", True),
         delete_image_after_days=int(os.getenv("DELETE_IMAGE_AFTER_DAYS", "0")),
+        delete_rejected_after_days=int(os.getenv("DELETE_REJECTED_AFTER_DAYS", "0")),
+        orphan_upload_grace_hours=int(os.getenv("ORPHAN_UPLOAD_GRACE_HOURS", "24")),
         ocr_provider=os.getenv("OCR_PROVIDER", "empty").strip().lower(),
         ocr_auto_run=_bool_env("OCR_AUTO_RUN", False),
         ocr_fallback_provider=os.getenv("OCR_FALLBACK_PROVIDER", "empty").strip().lower(),
@@ -81,4 +86,5 @@ def get_settings() -> Settings:
         local_llm_base_url=os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1").strip().rstrip("/"),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
+        tenants_json=os.getenv("TENANTS_JSON", "").strip(),
     )

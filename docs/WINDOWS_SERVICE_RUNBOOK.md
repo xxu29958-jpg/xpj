@@ -41,6 +41,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 
 ```text
 TicketboxBackend
+TicketboxBackup
 ```
 
 如果本机已经安装了 `cloudflared` Windows 服务，脚本会复用服务，不重复创建 Tunnel 计划任务。
@@ -65,6 +66,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -SkipTunnel
+```
+
+只安装后端和 Tunnel，不创建每日 SQLite 备份任务：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -SkipBackup
+```
+
+每日备份默认保留 30 天。调整保留天数：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -BackupRetentionDays 14
 ```
 
 ## 启动和停止后端
@@ -99,12 +112,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
 ```
 
-脚本会检查：
+高级脚本会检查：
 
 - `127.0.0.1:8000` 是否监听。
 - 后端进程是谁。
 - cloudflared 进程或服务是否存在。
 - `TicketboxBackend` / `TicketboxCloudflareTunnel` 计划任务状态。
+- `TicketboxBackup` 每日 SQLite 备份任务状态。
 - 本机 `/api/health`。
 - 公网 `/api/health`。
 - 公网 `/api/auth/check`，Token 从 `backend\.env` 读取但不会打印。
@@ -117,6 +131,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.p
 ```
 
 它会额外汇总数据库大小、待确认数量、已入账数量、最近上传时间、截图存储占用和上传口令检查。脚本读取本机 `backend\.env`，但不会打印 Token。
+
+默认诊断只输出摘要：
+
+- 本地服务。
+- 外网访问。
+- Cloudflare Tunnel。
+- 最近上传。
+- 待确认和已入账数量。
+- 数据库大小。
+- 图片占用。
+- 租户数量。
+
+只有加 `-Advanced` 才显示端口、URL、cloudflared 进程、计划任务、HTTP 检查和日志尾部：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Advanced
+```
 
 ## 出门前保障检查
 

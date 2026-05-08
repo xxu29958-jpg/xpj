@@ -27,12 +27,13 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun MonthSelectorButton(
+    modifier: Modifier = Modifier,
     selectedMonth: String,
     label: String = "月份",
     onClick: () -> Unit,
 ) {
     OutlinedButton(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
     ) {

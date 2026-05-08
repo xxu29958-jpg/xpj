@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,14 +23,12 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,21 +41,27 @@ import androidx.compose.material3.TimeInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
-import com.ticketbox.ui.components.ExpenseCard
+import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
-import com.ticketbox.ui.components.MonthSelectorButton
-import com.ticketbox.ui.components.RefreshableLazyColumn
+import com.ticketbox.ui.components.QuietOutlinedButton
+import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.displayMonthLabel
@@ -66,7 +73,14 @@ import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.timePickerToUtcIso
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
+import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +97,7 @@ fun LedgerScreen(
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
+    var showLedgerTools by rememberSaveable { mutableStateOf(false) }
     val canExport = state.items.isNotEmpty() && !state.exporting
 
     if (showMonthPicker) {
@@ -113,44 +128,58 @@ fun LedgerScreen(
         }
     }
 
-    RefreshableLazyColumn(
-        isRefreshing = state.syncing,
-        onRefresh = onSync,
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            LedgerFilterPanel(
+    if (showLedgerTools) {
+        ModalBottomSheet(onDismissRequest = { showLedgerTools = false }) {
+            LedgerToolsSheet(
                 state = state,
                 canExport = canExport,
-                onOpenMonthPicker = { showMonthPicker = true },
                 onCategoryChange = onCategoryChange,
                 onQueryChange = onQueryChange,
                 onClearFilters = onClearFilters,
                 onSync = onSync,
                 onExportCsv = onExportCsv,
-                onManualAdd = { showManualSheet = true },
+                onDismiss = { showLedgerTools = false },
             )
         }
-        state.message?.let {
-            item {
-                Text(it, color = MaterialTheme.colorScheme.secondary)
-            }
+    }
+
+    val groupedItems = remember(state.items) { groupLedgerExpenses(state.items) }
+
+    AppScrollableContent(
+        role = AppPageRole.Ledger,
+        isRefreshing = state.syncing,
+        onRefresh = onSync,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            LedgerFilterPanel(
+                state = state,
+                onOpenMonthPicker = { showMonthPicker = true },
+                onOpenTools = { showLedgerTools = true },
+                onManualAdd = { showManualSheet = true },
+                onCategoryChange = onCategoryChange,
+            )
         }
         if (state.items.isEmpty()) {
             item {
-                EmptyLedgerState(state)
+                EmptyLedgerState(
+                    state = state,
+                    onClearFilters = onClearFilters,
+                    onSync = onSync,
+                    onManualAdd = { showManualSheet = true },
+                )
             }
         }
-        items(state.items, key = { it.id }) { expense ->
-            ExpenseCard(
-                expense = expense,
-                showActions = true,
-                showConfirmAction = false,
-                showRejectAction = false,
-                showDuplicateAction = false,
-                onEdit = { onEdit(expense) },
-            )
+        groupedItems.forEach { group ->
+            item(key = "ledger-day-${group.key}") {
+                LedgerDayHeader(group.label)
+            }
+            items(group.items, key = { it.id }) { expense ->
+                LedgerExpenseCard(
+                    expense = expense,
+                    onEdit = { onEdit(expense) },
+                )
+            }
         }
     }
 }
@@ -158,67 +187,167 @@ fun LedgerScreen(
 @Composable
 private fun LedgerFilterPanel(
     state: LedgerUiState,
-    canExport: Boolean,
     onOpenMonthPicker: () -> Unit,
+    onOpenTools: () -> Unit,
+    onManualAdd: () -> Unit,
+    onCategoryChange: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LedgerHeader(onManualAdd = onManualAdd)
+        LedgerSummaryStrip(state)
+        LedgerInlineFilters(
+            state = state,
+            onOpenMonthPicker = onOpenMonthPicker,
+            onOpenTools = onOpenTools,
+            onCategoryChange = onCategoryChange,
+        )
+        Text(
+            text = ledgerCombinedStatusLine(state),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun LedgerInlineFilters(
+    state: LedgerUiState,
+    onOpenMonthPicker: () -> Unit,
+    onOpenTools: () -> Unit,
+    onCategoryChange: (String) -> Unit,
+) {
+    val hasQuery = state.query.isNotBlank()
+    val quickCategories = remember(state.categories) { state.categories.take(2) }
+    val selectedOutsideQuick = state.categoryFilter.isNotBlank() && state.categoryFilter !in quickCategories
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            AppFilterChip(
+                selected = true,
+                onClick = onOpenMonthPicker,
+                label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() } ?: "全部月份",
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.ExpandMore,
+                        contentDescription = "选择月份",
+                        modifier = Modifier.size(FilterChipDefaults.IconSize),
+                    )
+                },
+            )
+        }
+        item {
+            SelectableFilterChip(
+                selected = state.categoryFilter.isBlank(),
+                label = "全部分类",
+                onClick = { onCategoryChange("") },
+            )
+        }
+        items(quickCategories, key = { it }) { category ->
+            SelectableFilterChip(
+                selected = state.categoryFilter == category,
+                label = category,
+                onClick = { onCategoryChange(category) },
+            )
+        }
+        item {
+            AppFilterChip(
+                selected = hasQuery,
+                onClick = onOpenTools,
+                label = if (hasQuery) "已搜索" else "搜索备注",
+                leadingIcon = if (hasQuery) {
+                    {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    }
+                } else {
+                    null
+                },
+            )
+        }
+        item {
+            AppFilterChip(
+                selected = selectedOutsideQuick,
+                onClick = onOpenTools,
+                label = if (selectedOutsideQuick) state.categoryFilter else "更多",
+            )
+        }
+    }
+}
+
+@Composable
+private fun LedgerToolsSheet(
+    state: LedgerUiState,
+    canExport: Boolean,
     onCategoryChange: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     onClearFilters: () -> Unit,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
-    onManualAdd: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("账本", style = MaterialTheme.typography.headlineSmall)
-            Button(onClick = onManualAdd) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("记一笔")
-            }
+    val hasUserFilters = state.categoryFilter.isNotBlank() || state.query.isNotBlank()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("筛选与同步", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(
+                text = ledgerCombinedStatusLine(state),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        MonthSelectorButton(
-            selectedMonth = state.monthFilter,
-            onClick = onOpenMonthPicker,
-        )
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("搜索账单") },
-            placeholder = { Text("商家、备注、标签") },
-            singleLine = true,
-        )
         CategoryFilterRow(
             categories = state.categories,
             selectedCategory = state.categoryFilter,
             onCategoryChange = onCategoryChange,
         )
-        Text(
-            text = ledgerFilterSummary(state),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            placeholder = { Text("搜索备注") },
+            singleLine = true,
         )
-        LedgerSummaryStrip(state)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                modifier = Modifier.weight(1f),
-                onClick = onSync,
-            ) {
-                Text(if (state.syncing) "同步中" else "同步账本")
-            }
-            OutlinedButton(
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LedgerInlineButton(
+                text = if (state.exporting) "导出中" else "导出 CSV",
                 modifier = Modifier.weight(1f),
                 enabled = canExport,
                 onClick = onExportCsv,
-            ) {
-                Text(if (state.exporting) "导出中" else "导出账单")
+            )
+            LedgerInlineButton(
+                text = if (state.syncing) "同步中" else "同步账本",
+                modifier = Modifier.weight(1f),
+                enabled = !state.syncing,
+                onClick = onSync,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (hasUserFilters) {
+                QuietOutlinedButton(
+                    text = "清除筛选",
+                    modifier = Modifier.weight(1f),
+                    onClick = onClearFilters,
+                )
             }
-            OutlinedButton(onClick = onClearFilters) {
-                Text("清筛选")
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = onDismiss,
+            ) {
+                Text("完成")
             }
         }
         if (state.items.isEmpty()) {
@@ -232,16 +361,79 @@ private fun LedgerFilterPanel(
 }
 
 @Composable
+private fun LedgerInlineButton(
+    text: String,
+    modifier: Modifier,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        modifier = modifier.heightIn(min = 40.dp),
+        enabled = enabled,
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+    ) {
+        Text(
+            text = text,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun LedgerHeader(onManualAdd: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Text(
+            text = "小票夹",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Black,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "账本",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "已确认支出 · 可离线查看",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Button(
+                modifier = Modifier.heightIn(min = 44.dp),
+                onClick = onManualAdd,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("记一笔")
+            }
+        }
+    }
+}
+
+@Composable
 private fun LedgerSummaryStrip(state: LedgerUiState) {
     val total = state.items.sumOf { it.amountCents ?: 0L }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
-        ),
-    ) {
+    SoftPanel(containerAlpha = 0.98f) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
@@ -254,14 +446,15 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
-                        text = "当前合计",
+                        text = "${displayMonthLabel(state.monthFilter)} 合计",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
                         text = formatAmount(total),
                         color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Black,
                     )
                 }
                 Column(
@@ -283,14 +476,148 @@ private fun LedgerSummaryStrip(state: LedgerUiState) {
                     )
                 }
             }
-            state.lastSyncAt?.let {
+            LedgerSummaryTrendDots(state.items)
+        }
+    }
+}
+
+@Composable
+private fun LedgerSummaryTrendDots(items: List<Expense>) {
+    val visuals = LocalThemeVisuals.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val amounts = items.take(10).map { it.amountCents ?: 0L }
+        val maxAmount = amounts.maxOrNull()?.takeIf { it > 0L } ?: 1L
+        val sample = if (amounts.isEmpty()) {
+            List(10) { 0L }
+        } else {
+            amounts + List((10 - amounts.size).coerceAtLeast(0)) { 0L }
+        }
+        sample.take(10).forEach { amount ->
+            val width = if (amount > 0L) {
+                (18 + 18 * (amount.toFloat() / maxAmount.toFloat()).coerceIn(0f, 1f)).dp
+            } else {
+                18.dp
+            }
+            Box(
+                modifier = Modifier
+                    .width(width)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        if (amount > 0L) {
+                            visuals.primary.copy(alpha = 0.72f)
+                        } else {
+                            visuals.chipUnselected.copy(alpha = 0.70f)
+                        },
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LedgerDayHeader(label: String) {
+    Text(
+        text = label,
+        color = MaterialTheme.colorScheme.onBackground,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Black,
+        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun LedgerExpenseCard(
+    expense: Expense,
+    onEdit: () -> Unit,
+) {
+    val visuals = LocalThemeVisuals.current
+    SoftPanel(
+        modifier = Modifier.clickable(onClick = onEdit),
+        containerAlpha = 0.995f,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LedgerCategoryMark(category = expense.category)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
-                    text = "最近同步：${displayTime(it)}",
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                )
+                expense.note?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    text = expense.amountCents?.let(::formatAmount) ?: "待填写",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                )
+                Text(
+                    text = expense.category,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(visuals.chipSelected.copy(alpha = 0.72f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    color = visuals.primary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LedgerCategoryMark(category: String) {
+    val visuals = LocalThemeVisuals.current
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(15.dp))
+            .background(visuals.chipSelected.copy(alpha = 0.78f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = category.take(1).ifBlank { "账" },
+            color = visuals.primary,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -442,12 +769,7 @@ private fun ManualExpenseSheet(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("备注") },
         )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
-            ),
-        ) {
+        SoftPanel(containerAlpha = 0.96f) {
             Column(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -497,7 +819,7 @@ private fun CategoryFilterRow(
     selectedCategory: String,
     onCategoryChange: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = "分类",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -528,10 +850,10 @@ private fun SelectableFilterChip(
     label: String,
     onClick: () -> Unit,
 ) {
-    FilterChip(
+    AppFilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
+        label = label,
         leadingIcon = if (selected) {
             {
                 Icon(
@@ -543,17 +865,20 @@ private fun SelectableFilterChip(
         } else {
             null
         },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
-        ),
+        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
     )
 }
 
 @Composable
-private fun EmptyLedgerState(state: LedgerUiState) {
+private fun EmptyLedgerState(
+    state: LedgerUiState,
+    onClearFilters: () -> Unit,
+    onSync: () -> Unit,
+    onManualAdd: () -> Unit,
+) {
     val hasMonth = state.monthFilter.isNotBlank()
     val hasCategory = state.categoryFilter.isNotBlank()
+    val hasActiveFilters = hasMonth || hasCategory || state.query.isNotBlank()
     val title = when {
         hasMonth && hasCategory -> "${displayMonthLabel(state.monthFilter)} 暂无 ${state.categoryFilter} 分类账单"
         hasMonth -> "${displayMonthLabel(state.monthFilter)} 暂无已确认账单"
@@ -566,12 +891,7 @@ private fun EmptyLedgerState(state: LedgerUiState) {
         "在待确认页确认几笔账单后，账本会在这里显示。"
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        ),
-    ) {
+    AppEmptyStateCard {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -588,24 +908,57 @@ private fun EmptyLedgerState(state: LedgerUiState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (hasActiveFilters) {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = onClearFilters,
+                    ) {
+                        Text("重置筛选")
+                    }
+                    QuietOutlinedButton(
+                        text = "同步账本",
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.syncing,
+                        onClick = onSync,
+                    )
+                } else {
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = onManualAdd,
+                    ) {
+                        Text("手动记一笔")
+                    }
+                    QuietOutlinedButton(
+                        text = "同步账本",
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.syncing,
+                        onClick = onSync,
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun LedgerEmptyIllustration() {
+    val visuals = LocalThemeVisuals.current
     Box(
         modifier = Modifier
             .size(76.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            .background(visuals.primary.copy(alpha = 0.14f)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
                 .size(52.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f)),
+                .background(visuals.chipSelected.copy(alpha = 0.66f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -618,9 +971,87 @@ private fun LedgerEmptyIllustration() {
     }
 }
 
+private fun ledgerCombinedStatusLine(state: LedgerUiState): String {
+    val syncText = when {
+        state.syncing -> "同步中"
+        state.lastSyncAt != null -> "同步完成 · ${ledgerSyncClock(state.lastSyncAt)}"
+        else -> "离线缓存"
+    }
+    val month = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
+    val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
+    val query = state.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
+    return "$syncText · 当前查看：$month · $category$query"
+}
+
 private fun ledgerFilterSummary(state: LedgerUiState): String {
     val month = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
     val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
     val query = state.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
     return "当前查看：$month · $category$query"
+}
+
+private fun ledgerStatusLine(state: LedgerUiState): String {
+    return when {
+        state.syncing -> "同步中"
+        state.message?.contains("同步", ignoreCase = true) == true -> {
+            val syncedAt = state.lastSyncAt?.let(::ledgerSyncClock)
+            if (syncedAt == null) {
+                "✓ ${state.message}"
+            } else {
+                "✓ ${state.message} · $syncedAt"
+            }
+        }
+        state.lastSyncAt != null -> "✓ 同步完成 · ${ledgerSyncClock(state.lastSyncAt)}"
+        else -> "离线可看本地缓存"
+    }
+}
+
+private fun ledgerSyncClock(value: String): String {
+    val label = displayTime(value)
+    return label.substringAfterLast(" ").takeIf { it.isNotBlank() } ?: label
+}
+
+private data class LedgerExpenseGroup(
+    val key: String,
+    val label: String,
+    val items: List<Expense>,
+)
+
+private fun groupLedgerExpenses(items: List<Expense>): List<LedgerExpenseGroup> {
+    return items
+        .groupBy { expense ->
+            val date = expenseLedgerDate(expense)
+            date?.toString() ?: "unknown"
+        }
+        .map { (key, expenses) ->
+            val date = expenses.firstOrNull()?.let(::expenseLedgerDate)
+            LedgerExpenseGroup(
+                key = key,
+                label = ledgerDayLabel(date),
+                items = expenses,
+            )
+        }
+}
+
+private fun expenseLedgerDate(expense: Expense): LocalDate? {
+    val value = expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt
+    return value.toLocalDateOrNull()
+}
+
+private fun String?.toLocalDateOrNull(): LocalDate? {
+    if (this.isNullOrBlank()) return null
+    val zone = ZoneId.systemDefault()
+    return runCatching { Instant.parse(this).atZone(zone).toLocalDate() }
+        .recoverCatching { OffsetDateTime.parse(this).toInstant().atZone(zone).toLocalDate() }
+        .getOrNull()
+}
+
+private fun ledgerDayLabel(date: LocalDate?): String {
+    if (date == null) return "未设置日期"
+    val today = LocalDate.now()
+    return when (date) {
+        today -> "今天"
+        today.minusDays(1) -> "昨天"
+        else -> date.format(DateTimeFormatter.ofPattern("M月d日 E", Locale.CHINA))
+    }
 }

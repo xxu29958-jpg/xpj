@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import android.util.Log
+import com.ticketbox.BuildConfig
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
@@ -29,6 +31,10 @@ class ExpenseEditViewModel(
     private val expenseId: Long,
     private val repository: ExpenseRepository,
 ) : ViewModel() {
+    private companion object {
+        const val IMAGE_LOG_TAG = "TicketboxImage"
+    }
+
     private val _uiState = MutableStateFlow(ExpenseEditUiState())
     val uiState: StateFlow<ExpenseEditUiState> = _uiState.asStateFlow()
 
@@ -50,7 +56,21 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(imageLoading = true) }
             repository.fetchThumbnail(expenseId)
                 .onSuccess { image -> _uiState.update { it.copy(thumbnail = image, imageLoading = false) } }
-                .onFailure { _uiState.update { it.copy(imageLoading = false) } }
+                .onFailure { thumbnailError ->
+                    if (BuildConfig.DEBUG) {
+                        Log.w(IMAGE_LOG_TAG, "Thumbnail preview failed for expense=$expenseId: ${thumbnailError.message}")
+                    }
+                    repository.fetchImage(expenseId)
+                        .onSuccess { image ->
+                            _uiState.update { it.copy(fullImage = image, imageLoading = false) }
+                        }
+                        .onFailure { imageError ->
+                            if (BuildConfig.DEBUG) {
+                                Log.w(IMAGE_LOG_TAG, "Full image fallback failed for expense=$expenseId: ${imageError.message}")
+                            }
+                            _uiState.update { it.copy(imageLoading = false) }
+                        }
+                }
         }
     }
 

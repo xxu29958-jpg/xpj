@@ -115,11 +115,9 @@ class ProtectedImage(
 )
 
 data class ServerSettings(
-    val maxUploadSizeMb: Int,
-    val generateThumbnail: Boolean,
-    val deleteImageAfterConfirm: Boolean,
-    val deleteImageAfterDays: Int,
-    val ocrProvider: String,
+    val tenantName: String,
+    val status: String,
+    val storageStatus: String,
     val pendingCount: Int,
     val confirmedCount: Int,
     val rejectedCount: Int,

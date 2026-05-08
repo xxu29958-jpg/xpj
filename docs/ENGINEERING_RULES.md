@@ -4,6 +4,8 @@
 
 小票夹第一版以稳定闭环为最高优先级。
 
+灰度版以 `docs/GRAY_RELEASE_REQUIREMENTS.md` 为总入口。后续实现不得跳过该文档中的产品边界、多租户隔离、Android 上传、UI 去开发味、release 包、诊断分层和验收要求。
+
 优先级：
 
 1. 数据正确。
@@ -166,6 +168,10 @@ OCR 强制边界：
 - 禁止 UI 层、route 层、数据库层互相穿透。
 - 关键技术决策必须写进 `docs/DECISIONS/`。
 - 新增依赖必须先查 `docs/REFERENCES.md` 所列官方文档或 Maven/包管理元数据。
+- 普通用户主体验不得暴露服务器域名、token、接口名、Cloudflare、端口、日志、计划任务或诊断脚本。
+- 多租户灰度功能不得用前端过滤代替后端 `tenant_id` 隔离。
+- Android release 版不得显示开发诊断入口。
+- 外部产品只允许作为体验模式参考，不得照搬 UI、素材、商标或专有文案。
 
 允许：
 
@@ -613,10 +619,12 @@ APP_TOKEN
 OkHttp 日志：
 
 ```text
-Debug 最多 BASIC
+gray 版不启用网络日志
+internalDebug 最多 BASIC
 不得打印 Header
 不得打印 Body
 不得打印 Token
+不得在日志里写入完整服务器 URL
 ```
 
 ## 15.1 Android 依赖规范
@@ -635,7 +643,7 @@ android/gradle/libs.versions.toml
 - 不在模块 `build.gradle.kts` 中散写版本号。
 - 不引入 alpha、beta、停止维护或来源不清的依赖进入主线。
 - 依赖版本审计统一使用 `scripts\check_dependency_versions.ps1`。
-- 升级依赖必须跑 `:app:testDebugUnitTest`、`:app:assembleDebug` 和 `:app:lintDebug`。
+- 升级依赖必须跑 `:app:testGrayDebugUnitTest`、`:app:assembleGrayDebug`、`:app:assembleInternalDebug` 和 `:app:lintGrayDebug`。
 
 ## 16. UI 规范
 
@@ -802,9 +810,9 @@ Token 错误显示中文错误
 自动化命令：
 
 ```powershell
-.\gradlew.bat --no-daemon :app:testDebugUnitTest
-.\gradlew.bat --no-daemon :app:assembleDebug
-.\gradlew.bat --no-daemon :app:lintDebug
+.\gradlew.bat --no-daemon :app:testGrayDebugUnitTest
+.\gradlew.bat --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
+.\gradlew.bat --no-daemon :app:lintGrayDebug
 ```
 
 ## 21. 文档规范

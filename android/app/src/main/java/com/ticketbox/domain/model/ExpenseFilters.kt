@@ -105,6 +105,49 @@ fun monthlySpendingComparison(
     )
 }
 
+fun monthlyStatsFromConfirmedExpenses(
+    expenses: List<Expense>,
+    month: String,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): MonthlyStats? {
+    val targetMonth = runCatching { YearMonth.parse(month.trim()) }.getOrNull() ?: return null
+    val matched = filterConfirmedExpenses(
+        expenses = expenses,
+        month = targetMonth.toString(),
+        category = "",
+        zoneId = zoneId,
+    ).filter { it.amountCents != null }
+
+    if (matched.isEmpty()) {
+        return null
+    }
+
+    val byCategory = matched
+        .groupBy { it.category }
+        .map { (category, items) ->
+            CategoryStats(
+                category = category,
+                amountCents = items.sumOf { it.amountCents ?: 0L },
+                count = items.size,
+            )
+        }
+        .filter { it.amountCents > 0L && it.count > 0 }
+        .sortedByDescending { it.amountCents }
+
+    val total = byCategory.sumOf { it.amountCents }
+    val count = byCategory.sumOf { it.count }
+    if (total <= 0L || count <= 0) {
+        return null
+    }
+
+    return MonthlyStats(
+        month = targetMonth.toString(),
+        totalAmountCents = total,
+        count = count,
+        byCategory = byCategory,
+    )
+}
+
 fun monthlyBudgetProgress(
     stats: MonthlyStats?,
     budgetCents: Long?,

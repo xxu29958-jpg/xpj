@@ -1,0 +1,21 @@
+package com.ticketbox.ui.screens.settings
+
+import com.ticketbox.domain.model.BackgroundSettings
+
+sealed class SettingsRoute {
+    data object Root : SettingsRoute()
+    data object Server : SettingsRoute()
+    data object Appearance : SettingsRoute()
+    data object BackgroundGallery : SettingsRoute()
+    data class BackgroundPreview(
+        val settings: BackgroundSettings,
+        val title: String,
+    ) : SettingsRoute()
+    data class BackgroundCrop(
+        val sourcePath: String,
+    ) : SettingsRoute()
+    data object CategoryRules : SettingsRoute()
+    data object DataExport : SettingsRoute()
+    data object SecurityPrivacy : SettingsRoute()
+    data object About : SettingsRoute()
+}

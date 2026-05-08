@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.domain.model.BackgroundCropMode
+import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
+import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.ServerSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +22,9 @@ data class SettingsUiState(
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
+    val lastUploadAt: String? = null,
     val lastConfirmedSyncAt: String? = null,
+    val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val busy: Boolean = false,
     val message: String? = null,
 )
@@ -32,6 +37,7 @@ class SettingsViewModel(
         SettingsUiState(
             serverUrl = settingsStore.serverUrl(),
             monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
+            lastUploadAt = repository.lastUploadAt(),
             lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
         ),
     )
@@ -40,6 +46,15 @@ class SettingsViewModel(
     init {
         loadCategoryRules()
         loadServerSettings()
+        observeBackgroundSettings()
+    }
+
+    private fun observeBackgroundSettings() {
+        viewModelScope.launch {
+            settingsStore.backgroundSettingsFlow.collect { settings ->
+                _uiState.update { it.copy(backgroundSettings = settings) }
+            }
+        }
     }
 
     fun testConnection() {
@@ -108,14 +123,19 @@ class SettingsViewModel(
             repository.serverSettings()
                 .onSuccess { settings ->
                     _uiState.update {
-                        it.copy(serverSettings = settings, busy = if (showBusy) false else it.busy)
+                        it.copy(
+                            serverSettings = settings,
+                            lastUploadAt = repository.lastUploadAt() ?: settings.latestUploadAt,
+                            message = null,
+                            busy = if (showBusy) false else it.busy,
+                        )
                     }
                 }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
                             busy = if (showBusy) false else it.busy,
-                            message = error.message ?: "服务概况暂时打不开，请稍后再试。",
+                            message = "账本状态暂时没有同步，稍后再试。",
                         )
                     }
                 }
@@ -227,5 +247,72 @@ class SettingsViewModel(
                 }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
         }
+    }
+
+    fun saveBackgroundImage(path: String) {
+        viewModelScope.launch {
+            runCatching { settingsStore.saveBackgroundImagePath(path) }
+                .onSuccess { _uiState.update { it.copy(message = "背景已更新") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "背景没有保存成功。") } }
+        }
+    }
+
+    fun applyBackgroundSettings(settings: BackgroundSettings) {
+        viewModelScope.launch {
+            runCatching { settingsStore.saveBackgroundSettings(settings) }
+                .onSuccess { _uiState.update { it.copy(message = "背景已应用") } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "背景没有保存成功。") } }
+        }
+    }
+
+    fun resetThemeBackground() {
+        viewModelScope.launch {
+            settingsStore.saveBackgroundSettings(_uiState.value.backgroundSettings.withoutBackground())
+            _uiState.update { it.copy(message = "已恢复跟随主题背景") }
+        }
+    }
+
+    fun clearBackgroundImage() {
+        viewModelScope.launch {
+            settingsStore.clearBackgroundImage()
+            _uiState.update {
+                it.copy(
+                    backgroundSettings = it.backgroundSettings.withoutBackground(),
+                    message = "已恢复跟随主题背景",
+                )
+            }
+        }
+    }
+
+    fun setBackgroundCropMode(mode: BackgroundCropMode) {
+        viewModelScope.launch {
+            settingsStore.setBackgroundCropMode(mode)
+            _uiState.update { it.copy(message = "构图已切换为${mode.displayName}") }
+        }
+    }
+
+    fun setImmersionMode(mode: ImmersionMode) {
+        viewModelScope.launch {
+            settingsStore.setImmersionMode(mode)
+            _uiState.update { it.copy(message = "已切换为${mode.displayName}模式") }
+        }
+    }
+
+    fun setParallaxEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.setParallaxEnabled(enabled)
+            _uiState.update { it.copy(message = if (enabled) "视差动效已开启" else "视差动效已关闭") }
+        }
+    }
+
+    fun setReduceMotion(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.setReduceMotion(enabled)
+            _uiState.update { it.copy(message = if (enabled) "已减少背景动效" else "已恢复轻微动效") }
+        }
+    }
+
+    fun backgroundImageCopyFailed(message: String) {
+        _uiState.update { it.copy(message = message) }
     }
 }

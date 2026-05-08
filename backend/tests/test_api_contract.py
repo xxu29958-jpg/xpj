@@ -1,24 +1,49 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from conftest import PNG_BYTES, admin_headers, app_headers, upload_headers
+from conftest import (
+    BACKEND_ROOT,
+    PNG_BYTES,
+    TEST_ADMIN_TOKEN,
+    TEST_APP_TOKEN,
+    TEST_TENANT_APP_TOKEN,
+    TEST_TENANT_UPLOAD_TOKEN,
+    TEST_UPLOAD_TOKEN,
+    TEST_UPLOAD_DIR,
+    admin_headers,
+    app_headers,
+    gray_app_headers,
+    gray_upload_headers,
+    upload_headers,
+)
+from app.auth import verify_admin_token, verify_app_token, verify_upload_token
+from app.database import SessionLocal, migrate_upload_paths_to_tenant_dirs
 from app.models import Expense
 from app.services.ocr_service import MockOcrProvider, retry_ocr
+from app.tenants import AuthContext
 
 
-def upload_png(client: TestClient) -> int:
+def upload_png(client: TestClient, headers: dict[str, str] | None = None) -> int:
     response = client.post(
         "/api/upload-screenshot",
-        headers=upload_headers(),
+        headers=headers or upload_headers(),
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "pending"
     UUID(payload["public_id"])
+    assert payload["upload_size_bytes"] == len(PNG_BYTES)
+    assert payload["duration_ms"] >= 0
+    assert payload["timing_ms"]["total_ms"] >= 0
+    assert payload["timing_ms"]["form_parse_ms"] >= 0
+    assert payload["timing_ms"]["file_save_ms"] >= 0
+    assert payload["timing_ms"]["db_create_ms"] >= 0
     return int(payload["id"])
 
 
@@ -31,7 +56,19 @@ def upload_png_as_raw_body(client: TestClient) -> int:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "pending"
+    assert payload["upload_size_bytes"] == len(PNG_BYTES)
+    assert payload["duration_ms"] >= 0
+    assert payload["timing_ms"]["total_ms"] >= 0
+    assert payload["timing_ms"]["body_read_ms"] >= 0
+    assert payload["timing_ms"]["file_save_ms"] >= 0
+    assert payload["timing_ms"]["db_create_ms"] >= 0
     return int(payload["id"])
+
+
+def _stored_upload_files() -> list[str]:
+    if not TEST_UPLOAD_DIR.exists():
+        return []
+    return [str(path) for path in TEST_UPLOAD_DIR.rglob("*") if path.is_file()]
 
 
 def test_health_and_auth_contract(client: TestClient) -> None:
@@ -39,12 +76,27 @@ def test_health_and_auth_contract(client: TestClient) -> None:
 
     response = client.get("/api/auth/check", headers=app_headers())
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "tenant_name": "我的小票夹"}
 
     response = client.get("/api/auth/check", headers={"Authorization": "Bearer bad"})
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
     assert response.json()["message"]
+
+
+def test_token_verifiers_return_auth_context(client: TestClient) -> None:
+    owner_app = verify_app_token(f"Bearer {TEST_APP_TOKEN}")
+    tester_app = verify_app_token(f"Bearer {TEST_TENANT_APP_TOKEN}")
+    owner_upload = verify_upload_token(TEST_UPLOAD_TOKEN)
+    tester_upload = verify_upload_token(TEST_TENANT_UPLOAD_TOKEN)
+    admin = verify_admin_token(f"Bearer {TEST_ADMIN_TOKEN}")
+
+    assert owner_app == AuthContext(tenant_id="owner", tenant_name="我的小票夹", token_type="app")
+    assert tester_app == AuthContext(tenant_id="tester_1", tenant_name="灰度用户1", token_type="app")
+    assert owner_upload == AuthContext(tenant_id="owner", tenant_name="我的小票夹", token_type="upload")
+    assert tester_upload == AuthContext(tenant_id="tester_1", tenant_name="灰度用户1", token_type="upload")
+    assert admin.tenant_id == "owner"
+    assert admin.token_type == "admin"
 
 
 def test_upload_check_contract(client: TestClient) -> None:
@@ -180,6 +232,941 @@ def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> N
     assert item["image_hash"]
 
 
+def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={"Upload-Token": "bad-token", "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+    assert _stored_upload_files() == []
+
+
+def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -> None:
+    from app.routes import uploads as upload_routes
+    from app.services import file_service
+
+    small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
+    monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
+    monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
+    assert _stored_upload_files() == []
+
+
+def test_upload_multipart_uses_same_size_limit(client: TestClient, monkeypatch) -> None:
+    from app.routes import uploads as upload_routes
+    from app.services import file_service
+
+    small_settings = replace(file_service.get_settings(), max_upload_size_mb=0)
+    monkeypatch.setattr(file_service, "get_settings", lambda: small_settings)
+    monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
+    assert _stored_upload_files() == []
+
+
+def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=b"not really an image",
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+
+def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient, monkeypatch) -> None:
+    from app.main import app
+    from app.routes import uploads as upload_routes
+
+    def fail_create_pending(*args, **kwargs):
+        raise RuntimeError("simulated db failure")
+
+    monkeypatch.setattr(upload_routes, "create_pending_expense", fail_create_pending)
+
+    with TestClient(app, raise_server_exceptions=False) as no_raise_client:
+        response = no_raise_client.post(
+            "/api/upload-screenshot",
+            headers=upload_headers(),
+            files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+        )
+    assert response.status_code == 500
+    assert response.json()["error"] == "server_error"
+    assert _stored_upload_files() == []
+
+
+def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, monkeypatch) -> None:
+    from app.services import expense_service
+
+    def fail_thumbnail(_: str | None) -> str | None:
+        raise RuntimeError("thumbnail backend unavailable")
+
+    monkeypatch.setattr(expense_service, "generate_thumbnail", fail_thumbnail)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["thumbnail_path"] is None
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
+    assert item["status"] == "pending"
+    assert item["thumbnail_path"] is None
+
+
+def test_upload_same_image_marks_suspected_duplicate_without_rejecting(client: TestClient) -> None:
+    first = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("first.png", PNG_BYTES, "image/png")},
+    )
+    assert first.status_code == 200
+    first_payload = first.json()
+    assert first_payload["status"] == "pending"
+
+    second = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("second.png", PNG_BYTES, "image/png")},
+    )
+    assert second.status_code == 200
+    second_payload = second.json()
+    assert second_payload["status"] == "pending"
+    assert second_payload["duplicate_status"] == "suspected"
+    assert second_payload["duplicate_of_id"] == first_payload["id"]
+    assert second_payload["image_hash"] == first_payload["image_hash"]
+
+
+def test_upload_stores_relative_paths_and_never_confirms(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("user-original-name.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+
+    detail = client.get(f"/api/expenses/{payload['id']}", headers=app_headers())
+    assert detail.status_code == 200
+    expense = detail.json()
+    assert expense["status"] == "pending"
+    assert expense["confirmed_at"] is None
+    assert expense["image_path"].startswith("uploads/")
+    assert "user-original-name" not in expense["image_path"]
+    assert "\\" not in expense["image_path"]
+    assert ":\\" not in expense["image_path"]
+    assert expense["thumbnail_path"] is None or expense["thumbnail_path"].startswith("uploads/")
+
+
+def test_confirm_removes_expense_from_pending_and_adds_confirmed(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1851,
+            "merchant": "中国建设银行",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T08:23:25Z",
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    assert response.status_code == 200
+    assert response.json()["status"] == "confirmed"
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    assert all(item["id"] != expense_id for item in pending.json())
+
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["total"] == 1
+    assert confirmed.json()["items"][0]["id"] == expense_id
+
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert stats.status_code == 200
+    assert stats.json()["total_amount_cents"] == 1851
+
+
+def test_reject_removes_expense_from_pending_without_confirming(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    response = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "rejected"
+    assert payload["confirmed_at"] is None
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    assert all(item["id"] != expense_id for item in pending.json())
+
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["total"] == 0
+
+
+def test_ocr_retry_and_recognize_text_only_update_pending_draft(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    assert retry.status_code == 200
+    assert retry.json()["status"] == "pending"
+    assert retry.json()["confirmed_at"] is None
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["confirmed_at"] is None
+    assert payload["amount_cents"] == 1851
+
+    confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert confirmed.status_code == 200
+    assert confirmed.json()["total"] == 0
+
+
+def test_recognize_text_does_not_overwrite_user_filled_fields(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 9900,
+            "merchant": "用户填写商家",
+            "category": "生活",
+            "expense_time": "2026-05-04T00:00:00Z",
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["amount_cents"] == 9900
+    assert payload["merchant"] == "用户填写商家"
+    assert payload["category"] == "生活"
+    assert payload["expense_time"] == "2026-05-04T00:00:00Z"
+
+
+def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    first_raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-72.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-05 21:38:13",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": first_raw_text},
+    )
+    assert response.status_code == 200
+    assert response.json()["amount_cents"] == 7200
+    assert response.json()["merchant"] == "好想来零食乐园"
+
+    corrected_raw_text = "\n".join(
+        [
+            "账单详情",
+            "巴南区卢记牛肉面",
+            "-19.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-07 08:30:00",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": corrected_raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["confirmed_at"] is None
+    assert payload["amount_cents"] == 1900
+    assert payload["merchant"] == "巴南区卢记牛肉面"
+
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={"merchant": "用户手动确认商家"},
+    )
+    assert response.status_code == 200
+
+    newer_raw_text = "\n".join(
+        [
+            "账单详情",
+            "淘宝闪购",
+            "-25.68",
+            "交易成功",
+            "支付时间",
+            "2026-05-07 15:17:09",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": newer_raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 2568
+    assert payload["merchant"] == "用户手动确认商家"
+    assert payload["status"] == "pending"
+
+
+def test_legacy_recent_ocr_draft_can_be_corrected(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    first_raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-72.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-05 21:38:13",
+        ]
+    )
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.raw_text = first_raw_text
+        expense.confidence = 0.9
+        expense.amount_cents = 7200
+        expense.merchant = "好想来零食乐园"
+        expense.category = "餐饮"
+        expense.updated_at = expense.created_at + timedelta(seconds=3)
+        expense.ocr_draft_fields = None
+        db.commit()
+
+    corrected_raw_text = "\n".join(
+        [
+            "账单详情",
+            "巴南区卢记牛肉面",
+            "-19.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-07 08:30:00",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": corrected_raw_text},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 1900
+    assert payload["merchant"] == "巴南区卢记牛肉面"
+    assert payload["status"] == "pending"
+    assert payload["confirmed_at"] is None
+
+
+def test_legacy_stale_or_manual_pending_fields_are_not_overwritten(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    first_raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-72.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-05 21:38:13",
+        ]
+    )
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.raw_text = first_raw_text
+        expense.confidence = 0.9
+        expense.amount_cents = 7200
+        expense.merchant = "用户手动确认商家"
+        expense.category = "餐饮"
+        expense.updated_at = expense.created_at + timedelta(minutes=30)
+        expense.ocr_draft_fields = None
+        db.commit()
+
+    corrected_raw_text = "\n".join(
+        [
+            "账单详情",
+            "巴南区卢记牛肉面",
+            "-19.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-07 08:30:00",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": corrected_raw_text},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 7200
+    assert payload["merchant"] == "用户手动确认商家"
+    assert payload["status"] == "pending"
+
+
+def test_duplicate_detection_never_rejects_or_confirms(client: TestClient) -> None:
+    first_id = upload_png(client)
+    second_id = upload_png(client)
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    matched = next(item for item in pending.json() if item["id"] == second_id)
+    assert matched["duplicate_status"] == "suspected"
+    assert matched["duplicate_of_id"] == first_id
+    assert matched["status"] == "pending"
+    assert matched["confirmed_at"] is None
+    assert matched["rejected_at"] is None
+
+
+def test_mark_not_duplicate_only_clears_current_detection_type(client: TestClient) -> None:
+    first_id = upload_png(client)
+    second_id = upload_png(client)
+
+    response = client.post(f"/api/expenses/{second_id}/mark-not-duplicate", headers=app_headers())
+    assert response.status_code == 200
+    assert response.json()["duplicate_status"] == "none"
+
+    for expense_id, timestamp in [
+        (first_id, "2026-05-03T04:20:00Z"),
+        (second_id, "2026-05-03T05:20:00Z"),
+    ]:
+        response = client.patch(
+            f"/api/expenses/{expense_id}",
+            headers=app_headers(),
+            json={
+                "amount_cents": 5200,
+                "merchant": "同一家店",
+                "category": "生活",
+                "expense_time": timestamp,
+            },
+        )
+        assert response.status_code == 200
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    matched = next(item for item in pending.json() if item["id"] == second_id)
+    assert matched["status"] == "pending"
+    assert matched["duplicate_status"] == "suspected"
+    assert matched["duplicate_of_id"] == first_id
+
+
+def test_local_timezone_month_filter_matches_android_display_month(client: TestClient) -> None:
+    response = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1851,
+            "merchant": "跨月边界账单",
+            "category": "生活",
+            "expense_time": "2026-04-30T16:30:00Z",
+        },
+    )
+    assert response.status_code == 200
+
+    may_page = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    assert may_page.status_code == 200
+    assert may_page.json()["total"] == 1
+
+    april_page = client.get("/api/expenses/confirmed?month=2026-04", headers=app_headers())
+    assert april_page.status_code == 200
+    assert april_page.json()["total"] == 0
+
+    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert may_stats.status_code == 200
+    assert may_stats.json()["total_amount_cents"] == 1851
+
+    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=app_headers())
+    assert april_stats.status_code == 200
+    assert april_stats.json()["total_amount_cents"] == 0
+
+    months = client.get("/api/expenses/months", headers=app_headers())
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2026-05"]
+
+
+def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 3680,
+            "merchant": "图片已清理商家",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T08:23:25Z",
+        },
+    )
+    assert response.status_code == 200
+    assert client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers()).status_code == 200
+
+    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    assert detail.status_code == 200
+    for path_key in ["image_path", "thumbnail_path"]:
+        relative_path = detail.json().get(path_key)
+        if relative_path:
+            (BACKEND_ROOT / relative_path).unlink(missing_ok=True)
+
+    detail_after_delete = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    assert detail_after_delete.status_code == 200
+    payload = detail_after_delete.json()
+    assert payload["status"] == "confirmed"
+    assert payload["amount_cents"] == 3680
+    assert payload["merchant"] == "图片已清理商家"
+
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    assert image.status_code == 404
+    assert image.json()["error"] == "image_not_found"
+
+
+def test_android_app_upload_uses_app_token_and_current_tenant(client: TestClient) -> None:
+    response = client.post(
+        "/api/app/upload-screenshot",
+        headers=app_headers(),
+        files={"file": ("android-ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    owner_id = int(response.json()["id"])
+
+    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert owner_pending.status_code == 200
+    assert [item["id"] for item in owner_pending.json()] == [owner_id]
+    assert owner_pending.json()[0]["image_path"].startswith("uploads/pytest_test/owner/")
+
+    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    assert tester_pending.status_code == 200
+    assert tester_pending.json() == []
+
+    tester_response = client.post(
+        "/api/app/upload-screenshot",
+        headers=gray_app_headers(),
+        files={"file": ("tester-android-ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert tester_response.status_code == 200
+    tester_id = int(tester_response.json()["id"])
+
+    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    assert tester_pending.status_code == 200
+    assert [item["id"] for item in tester_pending.json()] == [tester_id]
+    assert tester_pending.json()[0]["image_path"].startswith("uploads/pytest_test/tester_1/")
+
+    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert owner_pending.status_code == 200
+    assert [item["id"] for item in owner_pending.json()] == [owner_id]
+
+
+def test_legacy_upload_paths_migrate_into_current_tenant_dir(client: TestClient) -> None:
+    legacy_dir = TEST_UPLOAD_DIR / "2026" / "05"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    legacy_image = legacy_dir / "legacy.png"
+    legacy_image.write_bytes(PNG_BYTES)
+    legacy_thumb_dir = legacy_dir / "thumbs"
+    legacy_thumb_dir.mkdir(parents=True, exist_ok=True)
+    legacy_thumb = legacy_thumb_dir / "legacy.jpg"
+    legacy_thumb.write_bytes(PNG_BYTES)
+
+    legacy_image_path = legacy_image.relative_to(BACKEND_ROOT).as_posix()
+    legacy_thumb_path = legacy_thumb.relative_to(BACKEND_ROOT).as_posix()
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            image_path=legacy_image_path,
+            thumbnail_path=legacy_thumb_path,
+            image_hash="legacy-test-hash",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        expense_id = expense.id
+
+    migrate_upload_paths_to_tenant_dirs()
+
+    with SessionLocal() as db:
+        migrated = db.get(Expense, expense_id)
+        assert migrated is not None
+        assert migrated.image_path.startswith("uploads/pytest_test/owner/2026/05/")
+        assert migrated.thumbnail_path.startswith("uploads/pytest_test/owner/2026/05/thumbs/")
+        migrated_image_path = BACKEND_ROOT / migrated.image_path
+        migrated_thumb_path = BACKEND_ROOT / migrated.thumbnail_path
+
+    assert not legacy_image.exists()
+    assert not legacy_thumb.exists()
+    assert migrated_image_path.is_file()
+    assert migrated_thumb_path.is_file()
+    assert client.get(f"/api/expenses/{expense_id}/image", headers=app_headers()).status_code == 200
+    assert client.get(f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()).status_code == 200
+
+
+def test_expense_mutation_routes_are_tenant_scoped(client: TestClient) -> None:
+    owner_id = upload_png(client, upload_headers())
+
+    scoped_operations = [
+        client.patch(
+            f"/api/expenses/{owner_id}",
+            headers=gray_app_headers(),
+            json={"amount_cents": 1000, "merchant": "跨租户"},
+        ),
+        client.post(f"/api/expenses/{owner_id}/confirm", headers=gray_app_headers()),
+        client.post(f"/api/expenses/{owner_id}/reject", headers=gray_app_headers()),
+        client.post(f"/api/expenses/{owner_id}/ocr/retry", headers=gray_app_headers()),
+        client.post(
+            f"/api/expenses/{owner_id}/recognize-text",
+            headers=gray_app_headers(),
+            json={"raw_text": "交易金额：18.51"},
+        ),
+        client.post(f"/api/expenses/{owner_id}/mark-not-duplicate", headers=gray_app_headers()),
+    ]
+    for response in scoped_operations:
+        assert response.status_code == 404
+        assert response.json()["error"] == "expense_not_found"
+
+    owner = client.get(f"/api/expenses/{owner_id}", headers=app_headers())
+    assert owner.status_code == 200
+    assert owner.json()["status"] == "pending"
+    assert owner.json()["amount_cents"] is None
+
+
+def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) -> None:
+    owner = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 9900,
+            "merchant": "owner高频商家",
+            "category": "数码",
+            "expense_time": "2026-05-05T01:00:00Z",
+        },
+    )
+    assert owner.status_code == 200
+
+    tester_upload_id = upload_png(client, gray_upload_headers())
+
+    tester_confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=gray_app_headers())
+    assert tester_confirmed.status_code == 200
+    assert tester_confirmed.json()["total"] == 0
+
+    tester_lifestyle = client.get("/api/stats/lifestyle?month=2026-05", headers=gray_app_headers())
+    assert tester_lifestyle.status_code == 200
+    payload = tester_lifestyle.json()
+    assert payload["digital_amount_cents"] == 0
+    assert payload["max_expense"] is None
+    assert payload["frequent_merchants"] == []
+
+    owner_settings = client.get("/api/settings/server", headers=app_headers())
+    tester_settings = client.get("/api/settings/server", headers=gray_app_headers())
+    assert owner_settings.status_code == 200
+    assert tester_settings.status_code == 200
+    owner_payload = owner_settings.json()
+    tester_payload = tester_settings.json()
+    assert owner_payload["tenant_name"] == "我的小票夹"
+    assert owner_payload["confirmed_count"] == 1
+    assert owner_payload["pending_count"] == 0
+    assert tester_payload["tenant_name"] == "灰度用户1"
+    assert tester_payload["confirmed_count"] == 0
+    assert tester_payload["pending_count"] == 1
+    assert tester_payload["latest_upload_at"].endswith("Z")
+    assert "ocr_provider" not in tester_payload
+    assert "delete_image_after_confirm" not in tester_payload
+    assert tester_upload_id in [item["id"] for item in client.get("/api/expenses/pending", headers=gray_app_headers()).json()]
+
+
+def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicates(client: TestClient) -> None:
+    owner_id = upload_png(client, upload_headers())
+    tester_id = upload_png(client, gray_upload_headers())
+
+    owner_pending = client.get("/api/expenses/pending", headers=app_headers()).json()
+    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers()).json()
+    assert [item["id"] for item in owner_pending] == [owner_id]
+    assert [item["id"] for item in tester_pending] == [tester_id]
+
+    assert client.get(f"/api/expenses/{owner_id}", headers=gray_app_headers()).status_code == 404
+    assert client.get(f"/api/expenses/{owner_id}/image", headers=gray_app_headers()).status_code == 404
+    assert client.get(f"/api/expenses/{owner_id}/thumbnail", headers=gray_app_headers()).status_code == 404
+
+    owner_patch = client.patch(
+        f"/api/expenses/{owner_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1000,
+            "merchant": "owner商家",
+            "category": "生活",
+            "expense_time": "2026-05-04T00:00:00Z",
+        },
+    )
+    assert owner_patch.status_code == 200
+    assert client.post(f"/api/expenses/{owner_id}/confirm", headers=app_headers()).status_code == 200
+
+    tester_stats = client.get("/api/stats/monthly?month=2026-05", headers=gray_app_headers())
+    assert tester_stats.status_code == 200
+    assert tester_stats.json()["total_amount_cents"] == 0
+
+    owner_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert owner_stats.status_code == 200
+    assert owner_stats.json()["total_amount_cents"] == 1000
+
+    tester_csv = client.get("/api/expenses/export.csv?month=2026-05", headers=gray_app_headers())
+    assert tester_csv.status_code == 200
+    assert "owner商家" not in tester_csv.text
+
+    rule = client.post(
+        "/api/rules/categories",
+        headers=gray_app_headers(),
+        json={"keyword": "只属于tester", "category": "购物", "enabled": True, "priority": 1},
+    )
+    assert rule.status_code == 200
+    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    tester_rules = client.get("/api/rules/categories", headers=gray_app_headers()).json()
+    assert all(item["keyword"] != "只属于tester" for item in owner_rules)
+    assert any(item["keyword"] == "只属于tester" for item in tester_rules)
+
+    second_owner_id = upload_png(client, upload_headers())
+    owner_duplicates = client.get("/api/duplicates", headers=app_headers()).json()
+    tester_duplicates = client.get("/api/duplicates", headers=gray_app_headers()).json()
+    assert any(item["id"] == second_owner_id for item in owner_duplicates)
+    assert all(item["id"] != second_owner_id for item in tester_duplicates)
+
+    same_hash_tester_id = upload_png(client, gray_upload_headers())
+    same_hash_tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers()).json()
+    tester_match = next(item for item in same_hash_tester_pending if item["id"] == same_hash_tester_id)
+    assert tester_match["duplicate_status"] == "suspected"
+    assert tester_match["duplicate_of_id"] == tester_id
+    assert tester_match["duplicate_of_id"] != second_owner_id
+
+
+def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(client: TestClient) -> None:
+    owner_id = upload_png(client, upload_headers())
+    tester_id = upload_png(client, gray_upload_headers())
+
+    owner_detail = client.get(f"/api/expenses/{owner_id}", headers=app_headers()).json()
+    tester_detail = client.get(f"/api/expenses/{tester_id}", headers=gray_app_headers()).json()
+    assert owner_detail["image_path"].startswith("uploads/pytest_test/owner/")
+    assert tester_detail["image_path"].startswith("uploads/pytest_test/tester_1/")
+    if owner_detail["thumbnail_path"]:
+        assert owner_detail["thumbnail_path"].startswith("uploads/pytest_test/owner/")
+    if tester_detail["thumbnail_path"]:
+        assert tester_detail["thumbnail_path"].startswith("uploads/pytest_test/tester_1/")
+
+    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
+    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    assert owner_pending.status_code == 200
+    assert tester_pending.status_code == 200
+    assert [item["id"] for item in owner_pending.json()] == [owner_id]
+    assert [item["id"] for item in tester_pending.json()] == [tester_id]
+
+    cross_mutations = [
+        client.patch(
+            f"/api/expenses/{tester_id}",
+            headers=app_headers(),
+            json={"amount_cents": 1, "merchant": "owner不该改tester"},
+        ),
+        client.post(f"/api/expenses/{tester_id}/confirm", headers=app_headers()),
+        client.post(f"/api/expenses/{tester_id}/reject", headers=app_headers()),
+        client.patch(
+            f"/api/expenses/{owner_id}",
+            headers=gray_app_headers(),
+            json={"amount_cents": 1, "merchant": "tester不该改owner"},
+        ),
+        client.post(f"/api/expenses/{owner_id}/confirm", headers=gray_app_headers()),
+        client.post(f"/api/expenses/{owner_id}/reject", headers=gray_app_headers()),
+    ]
+    for response in cross_mutations:
+        assert response.status_code == 404
+        assert response.json()["error"] == "expense_not_found"
+
+    for path in [
+        f"/api/expenses/{owner_id}",
+        f"/api/expenses/{owner_id}/image",
+        f"/api/expenses/{owner_id}/thumbnail",
+    ]:
+        assert client.get(path, headers=gray_app_headers()).status_code == 404
+    for path in [
+        f"/api/expenses/{tester_id}",
+        f"/api/expenses/{tester_id}/image",
+        f"/api/expenses/{tester_id}/thumbnail",
+    ]:
+        assert client.get(path, headers=app_headers()).status_code == 404
+
+    owner_patch = client.patch(
+        f"/api/expenses/{owner_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1111,
+            "merchant": "owner隔离商家",
+            "category": "Owner自定义类",
+            "expense_time": "2026-05-04T01:00:00Z",
+        },
+    )
+    tester_patch = client.patch(
+        f"/api/expenses/{tester_id}",
+        headers=gray_app_headers(),
+        json={
+            "amount_cents": 2222,
+            "merchant": "tester隔离商家",
+            "category": "Tester自定义类",
+            "expense_time": "2026-05-04T02:00:00Z",
+        },
+    )
+    assert owner_patch.status_code == 200
+    assert tester_patch.status_code == 200
+    assert client.post(f"/api/expenses/{owner_id}/confirm", headers=app_headers()).status_code == 200
+    assert client.post(f"/api/expenses/{tester_id}/confirm", headers=gray_app_headers()).status_code == 200
+
+    owner_confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=app_headers())
+    tester_confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=gray_app_headers())
+    assert owner_confirmed.status_code == 200
+    assert tester_confirmed.status_code == 200
+    assert [item["id"] for item in owner_confirmed.json()["items"]] == [owner_id]
+    assert [item["id"] for item in tester_confirmed.json()["items"]] == [tester_id]
+
+    owner_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    tester_stats = client.get("/api/stats/monthly?month=2026-05", headers=gray_app_headers())
+    assert owner_stats.status_code == 200
+    assert tester_stats.status_code == 200
+    assert owner_stats.json()["total_amount_cents"] == 1111
+    assert tester_stats.json()["total_amount_cents"] == 2222
+    assert owner_stats.json()["count"] == 1
+    assert tester_stats.json()["count"] == 1
+
+    owner_lifestyle = client.get("/api/stats/lifestyle?month=2026-05", headers=app_headers())
+    tester_lifestyle = client.get("/api/stats/lifestyle?month=2026-05", headers=gray_app_headers())
+    assert owner_lifestyle.status_code == 200
+    assert tester_lifestyle.status_code == 200
+    assert owner_lifestyle.json()["max_expense"]["id"] == owner_id
+    assert tester_lifestyle.json()["max_expense"]["id"] == tester_id
+    assert owner_lifestyle.json()["max_expense"]["merchant"] == "owner隔离商家"
+    assert tester_lifestyle.json()["max_expense"]["merchant"] == "tester隔离商家"
+
+    owner_export = client.get("/api/expenses/export.csv?month=2026-05", headers=app_headers())
+    tester_export = client.get("/api/expenses/export.csv?month=2026-05", headers=gray_app_headers())
+    assert owner_export.status_code == 200
+    assert tester_export.status_code == 200
+    assert "owner隔离商家" in owner_export.text
+    assert "tester隔离商家" not in owner_export.text
+    assert "tester隔离商家" in tester_export.text
+    assert "owner隔离商家" not in tester_export.text
+
+    owner_categories = client.get("/api/expenses/categories", headers=app_headers()).json()["items"]
+    tester_categories = client.get("/api/expenses/categories", headers=gray_app_headers()).json()["items"]
+    assert "Owner自定义类" in owner_categories
+    assert "Tester自定义类" not in owner_categories
+    assert "Tester自定义类" in tester_categories
+    assert "Owner自定义类" not in tester_categories
+
+    owner_rule = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "owner规则", "category": "Owner自定义类", "enabled": True, "priority": 1},
+    )
+    tester_rule = client.post(
+        "/api/rules/categories",
+        headers=gray_app_headers(),
+        json={"keyword": "tester规则", "category": "Tester自定义类", "enabled": True, "priority": 1},
+    )
+    assert owner_rule.status_code == 200
+    assert tester_rule.status_code == 200
+    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    tester_rules = client.get("/api/rules/categories", headers=gray_app_headers()).json()
+    assert any(item["keyword"] == "owner规则" for item in owner_rules)
+    assert all(item["keyword"] != "tester规则" for item in owner_rules)
+    assert any(item["keyword"] == "tester规则" for item in tester_rules)
+    assert all(item["keyword"] != "owner规则" for item in tester_rules)
+
+    owner_settings = client.get("/api/settings/server", headers=app_headers()).json()
+    tester_settings = client.get("/api/settings/server", headers=gray_app_headers()).json()
+    assert owner_settings["tenant_name"] == "我的小票夹"
+    assert tester_settings["tenant_name"] == "灰度用户1"
+    assert owner_settings["confirmed_count"] == 1
+    assert tester_settings["confirmed_count"] == 1
+    assert owner_settings["pending_count"] == 0
+    assert tester_settings["pending_count"] == 0
+    assert owner_settings["rejected_count"] == 0
+    assert tester_settings["rejected_count"] == 0
+    assert owner_settings["upload_storage_bytes"] > 0
+    assert tester_settings["upload_storage_bytes"] > 0
+    assert owner_settings["latest_upload_at"].endswith("Z")
+    assert tester_settings["latest_upload_at"].endswith("Z")
+
+    owner_duplicate_id = upload_png(client, upload_headers())
+    tester_duplicate_id = upload_png(client, gray_upload_headers())
+    owner_duplicates = client.get("/api/duplicates", headers=app_headers()).json()
+    tester_duplicates = client.get("/api/duplicates", headers=gray_app_headers()).json()
+    assert any(item["id"] == owner_duplicate_id and item["duplicate_of_id"] == owner_id for item in owner_duplicates)
+    assert all(item["id"] != tester_duplicate_id for item in owner_duplicates)
+    assert any(item["id"] == tester_duplicate_id and item["duplicate_of_id"] == tester_id for item in tester_duplicates)
+    assert all(item["id"] != owner_duplicate_id for item in tester_duplicates)
+
+
+def test_category_rule_mutations_are_tenant_scoped(client: TestClient) -> None:
+    owner_rule = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "owner专属", "category": "数码", "enabled": True, "priority": 5},
+    )
+    assert owner_rule.status_code == 200
+    rule_id = int(owner_rule.json()["id"])
+
+    patch = client.patch(
+        f"/api/rules/categories/{rule_id}",
+        headers=gray_app_headers(),
+        json={"keyword": "tester不该改", "category": "购物", "priority": 1},
+    )
+    assert patch.status_code == 404
+    assert patch.json()["error"] == "rule_not_found"
+
+    delete = client.delete(f"/api/rules/categories/{rule_id}", headers=gray_app_headers())
+    assert delete.status_code == 404
+    assert delete.json()["error"] == "rule_not_found"
+
+    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    assert any(item["id"] == rule_id and item["keyword"] == "owner专属" for item in owner_rules)
+
+
 def test_upload_screenshot_rejects_multipart_without_image_file(client: TestClient) -> None:
     response = client.post(
         "/api/upload-screenshot",
@@ -242,6 +1229,184 @@ def test_recognize_text_prefers_transaction_time_over_other_times(client: TestCl
     assert payload["amount_cents"] == 1851
     assert payload["merchant"] == "中国建设银行"
     assert payload["expense_time"] == "2026-05-04T08:23:25Z"
+
+
+def test_recognize_text_prefers_alipay_primary_amount_and_title_merchant(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-17.89",
+            "交易成功",
+            "订单金额",
+            "18.00",
+            "碰一下立减",
+            "-0.11",
+            "支付时间",
+            "2026-05-0521:38:13",
+            "付款方式",
+            "花呗",
+            "商品说明",
+            "重庆巴南区珠江城店",
+            "收单机构",
+            "招商银行股份有限公司",
+            "清算机构",
+            "中国银联股份有限公司",
+            "收款方全称",
+            "巴南区财进宁食品经营部（个体工商户）",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 1789
+    assert payload["merchant"] == "好想来零食乐园"
+    assert payload["category"] == "餐饮"
+    assert payload["expense_time"] == "2026-05-05T13:38:13Z"
+
+
+def test_recognize_text_ignores_alipay_success_page_ads_for_merchant(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "支付成功",
+            "￥7.50",
+            "获得森林能量",
+            "20g",
+            "罗森便利店",
+            "￥ 7.50",
+            "交易方式",
+            "花呗",
+            "抢到下笔立减0.18元红包",
+            "去查看",
+            "立即领取",
+            "高德",
+            "写真实评价，领10元打车红包",
+            "评价本店>",
+            "扫街榜",
+            "券后￥0.01",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 750
+    assert payload["merchant"] == "罗森便利店"
+    assert payload["category"] == "餐饮"
+
+
+def test_recognize_text_alipay_success_body_ignores_navigation_title(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "07:55",
+            "l 4G 13",
+            "支",
+            "回首页",
+            "支付成功",
+            "￥ 21.82",
+            "获得森林能量",
+            "20g",
+            "乐尔乐特价批发超市",
+            "￥ 22.00",
+            "碰一下立减",
+            "-￥ 0.18",
+            "交易方式",
+            "花呗",
+            "本店特价限时抢购",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 2182
+    assert payload["merchant"] == "乐尔乐特价批发超市"
+    assert payload["category"] == "购物"
+
+
+def test_recognize_text_wechat_payment_line_merchant_candidate(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "微信支付",
+            "Q",
+            "Jack",
+            "使用建设银行储蓄卡支付",
+            "¥5.00",
+            "交易状态",
+            "支付成功，对方已收款",
+            "查看账单详情",
+            "商家名片",
+            "星期二07:19",
+            "松针小笼包",
+            "使用建设银行储蓄卡(0436)支付",
+            "¥10.00",
+            "账单详情>",
+            "我的账单",
+            "支付服务",
+            "摇优惠",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 500
+    assert payload["merchant"] == "Jack"
+    assert payload["category"] == "其他"
+
+
+def test_recognize_text_ignores_status_bar_numbers_and_destination_text(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "花溪工业园区",
+            "高德地图",
+            "21:15",
+            ".·5G",
+            "91",
+            "好想来零食乐园（重庆巴南区珠江城店）",
+            "订单支付",
+            "鲸志出行-经济型|余师傅·渝AA77599",
+            "物品遗失打电话",
+            "11.73元",
+            "费用说明）",
+            "起步价",
+            "11.73元",
+            "高德打车",
+            "高德打车聚合平台由北京易行出行旅游有限公司运营并提供服务",
+            "已开启免密支付，将于05月06日21:17自动扣款",
+            "11.73元",
+            "共计",
+            "确认支付",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 1173
+    assert payload["merchant"] == "高德"
+    assert payload["category"] == "交通"
 
 
 def test_mock_ocr_provider_populates_pending_draft() -> None:
@@ -482,12 +1647,15 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(client: TestCl
     response = client.get("/api/settings/server", headers=app_headers())
     assert response.status_code == 200
     payload = response.json()
-    assert payload["max_upload_size_mb"] == 10
-    assert payload["generate_thumbnail"] is True
-    assert payload["ocr_provider"] == "empty"
+    assert payload["tenant_name"] == "我的小票夹"
+    assert payload["status"] == "ok"
+    assert payload["storage_status"] == "normal"
     assert payload["pending_count"] == 1
     assert payload["upload_storage_bytes"] > 0
     assert payload["latest_upload_at"].endswith("Z")
+    assert "ocr_provider" not in payload
+    assert "max_upload_size_mb" not in payload
+    assert "delete_image_after_confirm" not in payload
     assert "token" not in str(payload).lower()
     assert "path" not in str(payload).lower()
     assert "E:\\" not in str(payload)

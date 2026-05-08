@@ -34,6 +34,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun bindFromDebugIntentIfPresent(container: AppContainer) {
+        if (!BuildConfig.SHOW_ADVANCED_TOOLS) return
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
         val serverUrl = intent.getStringExtra(DEBUG_SERVER_URL_EXTRA)?.trim()?.trimEnd('/')
         val appToken = intent.getStringExtra(DEBUG_APP_TOKEN_EXTRA)?.trim()

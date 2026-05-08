@@ -35,6 +35,7 @@ class SavedUpload:
     relative_path: str
     image_hash: str
     media_type: str
+    size_bytes: int
 
 
 def _extension_from_metadata(filename: str | None, content_type: str | None) -> str | None:
@@ -74,7 +75,7 @@ def _looks_like_allowed_image(ext: str, header: bytes) -> bool:
     return False
 
 
-async def save_upload(file: UploadFile) -> SavedUpload:
+async def save_upload(file: UploadFile, tenant_id: str) -> SavedUpload:
     data = bytearray()
     try:
         while chunk := await file.read(1024 * 1024):
@@ -86,6 +87,7 @@ async def save_upload(file: UploadFile) -> SavedUpload:
 
     return save_upload_bytes(
         bytes(data),
+        tenant_id=tenant_id,
         filename=file.filename,
         content_type=file.content_type,
     )
@@ -94,6 +96,7 @@ async def save_upload(file: UploadFile) -> SavedUpload:
 def save_upload_bytes(
     data: bytes,
     *,
+    tenant_id: str,
     filename: str | None = None,
     content_type: str | None = None,
 ) -> SavedUpload:
@@ -111,7 +114,7 @@ def save_upload_bytes(
         raise AppError("unsupported_file_type", status_code=400)
 
     now = datetime.now(UTC)
-    target_dir = settings.upload_dir / now.strftime("%Y") / now.strftime("%m")
+    target_dir = settings.upload_dir / tenant_id / now.strftime("%Y") / now.strftime("%m")
     target_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{secrets.token_hex(16)}.{ext}"
@@ -130,19 +133,47 @@ def save_upload_bytes(
         relative_path=relative_path,
         image_hash=hasher.hexdigest(),
         media_type=MEDIA_TYPES.get(target_path.suffix.lower(), "application/octet-stream"),
+        size_bytes=len(data),
     )
 
 
-def resolve_protected_image(relative_path: str | None) -> tuple[Path, str]:
+def delete_relative_upload(relative_path: str | None) -> None:
     if not relative_path:
-        raise AppError("image_not_found", status_code=404)
+        return
 
     settings = get_settings()
     candidate = (BACKEND_ROOT / relative_path).resolve()
     try:
         candidate.relative_to(settings.upload_dir)
-    except ValueError as exc:
-        raise AppError("image_not_found", status_code=404) from exc
+    except ValueError:
+        return
+    candidate.unlink(missing_ok=True)
+
+
+def delete_saved_upload(saved_upload: SavedUpload) -> None:
+    delete_relative_upload(saved_upload.relative_path)
+
+
+def _tenant_upload_dir(tenant_id: str) -> Path:
+    return (get_settings().upload_dir / tenant_id).resolve()
+
+
+def _is_under_path(candidate: Path, root: Path) -> bool:
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[Path, str]:
+    if not relative_path:
+        raise AppError("image_not_found", status_code=404)
+
+    settings = get_settings()
+    candidate = (BACKEND_ROOT / relative_path).resolve()
+    if not _is_under_path(candidate, settings.upload_dir) or not _is_under_path(candidate, _tenant_upload_dir(tenant_id)):
+        raise AppError("image_not_found", status_code=404)
 
     if not candidate.is_file():
         raise AppError("image_not_found", status_code=404)

@@ -185,7 +185,60 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
   "id": 1,
   "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
-  "message": "uploaded"
+  "message": "uploaded",
+  "upload_size_bytes": 348120,
+  "duration_ms": 86,
+  "timing_ms": {
+    "body_read_ms": 12,
+    "file_save_ms": 18,
+    "db_create_ms": 24,
+    "total_ms": 86
+  }
+}
+```
+
+`timing_ms` 用于运维排查上传慢的问题。原始图片请求体通常包含 `body_read_ms`，表单上传通常包含 `form_parse_ms`。普通 App 不需要展示这些字段。
+
+### POST /api/app/upload-screenshot
+
+Android App 自带上传入口使用。
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
+请求体：
+
+```text
+multipart/form-data
+file: 图片文件
+```
+
+规则：
+
+- 与 iPhone 上传共用同一套文件校验、随机命名、hash、缩略图和 pending 创建流程。
+- 按当前 `APP_TOKEN` 所属租户写入对应账本。
+- Android 不保存、不发送 `Upload-Token`。
+- 灰度版 UI 只显示“上传截图”，不显示 endpoint、token 或 multipart。
+
+返回：
+
+```json
+{
+  "id": 1,
+  "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
+  "status": "pending",
+  "message": "uploaded",
+  "upload_size_bytes": 348120,
+  "duration_ms": 86,
+  "timing_ms": {
+    "form_parse_ms": 8,
+    "file_save_ms": 18,
+    "db_create_ms": 24,
+    "total_ms": 86
+  }
 }
 ```
 
@@ -527,14 +580,9 @@ Authorization: Bearer APP_TOKEN
 
 ```json
 {
-  "max_upload_size_mb": 10,
-  "generate_thumbnail": true,
-  "delete_image_after_confirm": false,
-  "delete_image_after_days": 0,
-  "ocr_provider": "empty",
-  "ocr_auto_run": false,
-  "ocr_fallback_provider": "empty",
-  "ocr_min_confidence": 0.65,
+  "tenant_name": "我的小票夹",
+  "status": "ok",
+  "storage_status": "normal",
   "pending_count": 1,
   "confirmed_count": 2,
   "rejected_count": 0,
@@ -623,5 +671,65 @@ Authorization: Bearer ADMIN_TOKEN
   "scanned": 0,
   "deleted_images": 0,
   "deleted_thumbnails": 0
+}
+```
+
+### POST /api/maintenance/cleanup-rejected
+
+请求头：
+
+```http
+Authorization: Bearer ADMIN_TOKEN
+```
+
+规则：
+
+- 只按 `DELETE_REJECTED_AFTER_DAYS` 配置清理 rejected 账单图片。
+- 只清理图片和缩略图，不删除 rejected 数据库行。
+- `DELETE_REJECTED_AFTER_DAYS <= 0` 时只返回未启用，不执行删除。
+
+返回：
+
+```json
+{
+  "enabled": false,
+  "delete_after_days": 0,
+  "scanned": 0,
+  "deleted_images": 0,
+  "deleted_thumbnails": 0
+}
+```
+
+### POST /api/maintenance/cleanup-orphans
+
+请求头：
+
+```http
+Authorization: Bearer ADMIN_TOKEN
+```
+
+查询参数：
+
+- `dry_run=true`：只扫描，不删除，默认值。
+- `dry_run=false`：删除超过保护窗口的孤儿 uploads 文件。
+
+规则：
+
+- 只扫描当前 `ADMIN_TOKEN` 对应租户目录内支持的图片文件。
+- 只处理数据库没有引用的文件。
+- 使用 `ORPHAN_UPLOAD_GRACE_HOURS` 保护最近上传文件。
+- 不接收任意文件路径。
+
+返回：
+
+```json
+{
+  "dry_run": true,
+  "grace_hours": 24,
+  "scanned_files": 10,
+  "orphan_files": 1,
+  "deleted_files": 0,
+  "orphan_bytes": 12345,
+  "deleted_bytes": 0
 }
 ```

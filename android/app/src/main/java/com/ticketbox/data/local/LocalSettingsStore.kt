@@ -2,9 +2,22 @@ package com.ticketbox.data.local
 
 import android.content.Context
 import androidx.core.content.edit
+import androidx.datastore.preferences.preferencesDataStore
+import com.ticketbox.domain.model.BackgroundCropMode
+import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.ImmersionMode
+import kotlinx.coroutines.flow.Flow
+
+private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
+    name = "ticketbox_background_settings",
+)
 
 class LocalSettingsStore(context: Context) {
-    private val prefs = context.getSharedPreferences("ticketbox_settings", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("ticketbox_settings", Context.MODE_PRIVATE)
+    private val backgroundStore = BackgroundSettingsDataStore(appContext.ticketboxBackgroundDataStore)
+
+    val backgroundSettingsFlow: Flow<BackgroundSettings> = backgroundStore.settingsFlow
 
     fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
@@ -36,6 +49,14 @@ class LocalSettingsStore(context: Context) {
     fun clearLastConfirmedSyncAt() {
         prefs.edit {
             remove(KEY_LAST_CONFIRMED_SYNC_AT)
+        }
+    }
+
+    fun lastUploadAt(): String? = prefs.getString(KEY_LAST_UPLOAD_AT, null)
+
+    fun saveLastUploadAt(value: String) {
+        prefs.edit {
+            putString(KEY_LAST_UPLOAD_AT, value)
         }
     }
 
@@ -79,11 +100,44 @@ class LocalSettingsStore(context: Context) {
         }
     }
 
+    suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
+        backgroundStore.saveBackgroundSettings(settings)
+    }
+
+    suspend fun clearBackground() {
+        backgroundStore.clearBackground()
+    }
+
+    suspend fun saveBackgroundImagePath(path: String) {
+        backgroundStore.saveBackgroundImagePath(path)
+    }
+
+    suspend fun clearBackgroundImage() {
+        clearBackground()
+    }
+
+    suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
+        backgroundStore.setBackgroundCropMode(mode)
+    }
+
+    suspend fun setImmersionMode(mode: ImmersionMode) {
+        backgroundStore.setImmersionMode(mode)
+    }
+
+    suspend fun setParallaxEnabled(enabled: Boolean) {
+        backgroundStore.setParallaxEnabled(enabled)
+    }
+
+    suspend fun setReduceMotion(enabled: Boolean) {
+        backgroundStore.setReduceMotion(enabled)
+    }
+
     private companion object {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_APP_SKIN = "app_skin"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
+        const val KEY_LAST_UPLOAD_AT = "last_upload_at"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
         const val NO_BUDGET = -1L

@@ -137,30 +137,47 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 3. 用数据线连接 Windows。
 4. 在手机弹窗中允许这台电脑调试。
 
-列出设备：
+本机如果没有 adb，可安装 Android Platform Tools。当前推荐使用官方 platform-tools：
+
+```powershell
+$adb = "E:\tools\android\platform-tools\adb.exe"
+& $adb devices
+```
+
+构建灰度用户版：
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
-.\install_debug_apk.bat -ListDevices
+$env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot"
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+.\gradlew.bat :app:assembleGrayDebug --console=plain
 ```
 
-构建、安装并启动：
+安装并启动灰度用户版：
 
 ```powershell
-.\install_debug_apk.bat -Build -Launch
+cd E:\projects\xiaopiaojia
+$adb = "E:\tools\android\platform-tools\adb.exe"
+& $adb -s 设备序列号 install -r android\app\build\outputs\apk\gray\debug\app-gray-debug.apk
+& $adb -s 设备序列号 shell am start -n com.ticketbox/.MainActivity
 ```
 
-如果同时连了多台设备：
+内部联调版：
 
 ```powershell
-.\install_debug_apk.bat -ListDevices
-.\install_debug_apk.bat -Serial 设备序列号 -Build -Launch
+cd E:\projects\xiaopiaojia\android
+.\gradlew.bat :app:assembleInternalDebug --console=plain
+cd E:\projects\xiaopiaojia
+$adb = "E:\tools\android\platform-tools\adb.exe"
+& $adb -s 设备序列号 install -r android\app\build\outputs\apk\internal\debug\app-internal-debug.apk
+& $adb -s 设备序列号 shell am start -n com.ticketbox.internal/.MainActivity
 ```
 
 APK 位置：
 
 ```text
-E:\projects\xiaopiaojia\android\app\build\outputs\apk\debug\app-debug.apk
+E:\projects\xiaopiaojia\android\app\build\outputs\apk\gray\debug\app-gray-debug.apk
+E:\projects\xiaopiaojia\android\app\build\outputs\apk\internal\debug\app-internal-debug.apk
 ```
 
 ## 5. 一键预检
@@ -204,11 +221,11 @@ $adb = "E:\projects\xiaopiaojia\.toolchains\android-sdk\platform-tools\adb.exe"
 & $adb -s 设备序列号 reverse --list
 ```
 
-debug 包支持仅用于联调的 intent 绑定入口，避免中文输入法改写 URL 或 Token：
+internalDebug 包支持仅用于联调的 intent 绑定入口，避免中文输入法改写同步地址或访问口令：
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
-.\install_debug_apk.bat -Build -ReverseBackend -ClearData -DebugBind
+.\install_debug_apk.bat -Flavor internal -Build -ReverseBackend -ClearData -DebugBind
 ```
 
 等价的底层 adb 命令如下：
@@ -216,14 +233,14 @@ cd E:\projects\xiaopiaojia\android
 ```powershell
 $envLines = [System.IO.File]::ReadAllLines("E:\projects\xiaopiaojia\backend\.env", [System.Text.UTF8Encoding]::new($false))
 $appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^APP_TOKEN=", "").Trim()
-& $adb -s 设备序列号 shell am start -n com.ticketbox/.MainActivity `
+& $adb -s 设备序列号 shell am start -n com.ticketbox.internal/.MainActivity `
   --es ticketbox.debug.server_url "http://127.0.0.1:8000" `
   --es ticketbox.debug.app_token $appToken
 ```
 
 说明：
 
-- 这个入口只在 debuggable APK 中生效。
+- 这个入口只在 internal debuggable APK 中生效，灰度用户版不会响应。
 - 不打印 Token，不进入 release 构建。
 - `http://127.0.0.1:8000` 依赖 `adb reverse`，只用于 USB 联调。
 - 正式使用仍然配置 `https://api.你的域名.com`。
@@ -233,23 +250,28 @@ $appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^A
 首次打开 Android App：
 
 ```text
-服务器地址：https://api.你的域名.com
-App Token：backend\.env 里的 APP_TOKEN
+同步地址：服务拥有者提供的 HTTPS 地址
+访问口令：服务拥有者提供的 App 访问口令
 ```
 
-绑定成功后进入 App。进入“设置”页，点击“联调自检”。
+绑定成功后进入 App。灰度用户版设置页只显示账本状态和同步状态；内部联调版设置页才显示“运行诊断”。
 
-自检会检查：
+灰度用户版设置页只显示：
 
-- `/api/auth/check`
-- 服务器非敏感状态
-- pending 列表
-- confirmed 分页
-- 月度统计
-- 分类列表
-- 月份列表
-- 重复检测
-- 受保护缩略图接口
+- 当前账本
+- 连接状态
+- 最近上传
+- 最近同步
+- 存储状态
+- 外观
+- 数据与安全
+
+内部联调版才显示诊断入口。诊断会检查：
+
+- 访问凭证是否有效。
+- 服务概况是否可读。
+- 待确认、账本、统计、分类、重复检测是否可访问。
+- 有待确认截图时，受保护缩略图是否可打开。
 
 ## 8. 端到端验收
 

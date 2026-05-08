@@ -18,6 +18,7 @@ class HealthResponse(BaseModel):
 
 class AuthCheckResponse(BaseModel):
     status: str = "ok"
+    tenant_name: str
 
 
 class StatusResponse(BaseModel):
@@ -29,6 +30,13 @@ class UploadResponse(BaseModel):
     public_id: str
     status: str
     message: str
+    image_hash: str
+    thumbnail_path: str | None
+    duplicate_status: str
+    duplicate_of_id: int | None
+    upload_size_bytes: int
+    duration_ms: int
+    timing_ms: dict[str, int] = Field(default_factory=dict)
 
 
 class UploadCheckResponse(BaseModel):
@@ -188,15 +196,20 @@ class MaintenanceCleanupResponse(BaseModel):
     deleted_thumbnails: int
 
 
+class MaintenanceOrphanCleanupResponse(BaseModel):
+    dry_run: bool
+    grace_hours: int
+    scanned_files: int
+    orphan_files: int
+    deleted_files: int
+    orphan_bytes: int
+    deleted_bytes: int
+
+
 class ServerSettingsResponse(BaseModel):
-    max_upload_size_mb: int
-    generate_thumbnail: bool
-    delete_image_after_confirm: bool
-    delete_image_after_days: int
-    ocr_provider: str
-    ocr_auto_run: bool
-    ocr_fallback_provider: str
-    ocr_min_confidence: float
+    tenant_name: str
+    status: str
+    storage_status: str
     pending_count: int
     confirmed_count: int
     rejected_count: int
