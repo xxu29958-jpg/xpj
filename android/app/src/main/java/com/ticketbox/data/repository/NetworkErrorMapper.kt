@@ -15,6 +15,7 @@ fun userNetworkMessage(error: IOException, serverUrl: String?): String {
         error is SocketTimeoutException -> "网络响应有点慢，请稍后重试。"
         error is InterruptedIOException -> "当前网络连接超时，可能是 VPN 或弱网影响，请稍后重试。"
         error is UnknownHostException -> "当前网络解析不到小票夹服务，请切换网络后重试。"
+        error is ConnectException -> "小票夹服务暂时没有响应，请稍后再试；如果一直失败，请联系服务拥有者。"
         else -> "暂时连不上小票夹，请稍后再试。"
     }
 }

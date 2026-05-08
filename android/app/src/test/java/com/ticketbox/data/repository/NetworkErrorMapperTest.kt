@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.io.InterruptedIOException
@@ -39,6 +40,20 @@ class NetworkErrorMapperTest {
         )
 
         assertEquals("当前网络解析不到小票夹服务，请切换网络后重试。", message)
+    }
+
+    @Test
+    fun explainsServiceUnreachableWithoutTechnicalDetails() {
+        val message = userNetworkMessage(
+            error = ConnectException("failed to connect"),
+            serverUrl = "https://api.zen70.cn",
+        )
+
+        assertTrue(message.contains("服务暂时没有响应"))
+        assertTrue(message.contains("服务拥有者"))
+        assertTrue(!message.contains("127.0.0.1"))
+        assertTrue(!message.contains("Tunnel"))
+        assertTrue(!message.contains("端口"))
     }
 
     @Test
