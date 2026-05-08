@@ -3,6 +3,7 @@ package com.ticketbox.upload
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.ByteArrayOutputStream
@@ -94,7 +95,7 @@ private fun Context.readImageBounds(uri: Uri): ImageBounds? {
         BitmapFactory.decodeStream(input, null, options)
     }
     if (options.outWidth <= 0 || options.outHeight <= 0) {
-        return null
+        return readImageBoundsWithImageDecoder(uri)
     }
     return ImageBounds(width = options.outWidth, height = options.outHeight)
 }
@@ -104,9 +105,42 @@ private fun Context.decodeSampledBitmap(uri: Uri, bounds: ImageBounds): Bitmap? 
         inSampleSize = calculateSampleSize(bounds)
         inPreferredConfig = Bitmap.Config.ARGB_8888
     }
-    return contentResolver.openInputStream(uri)?.use { input ->
+    val decoded = contentResolver.openInputStream(uri)?.use { input ->
         BitmapFactory.decodeStream(input, null, options)
     }
+    return decoded ?: decodeBitmapWithImageDecoder(uri, targetLongSide = MAX_UPLOAD_LONG_SIDE)
+}
+
+private fun Context.readImageBoundsWithImageDecoder(uri: Uri): ImageBounds? {
+    var bounds: ImageBounds? = null
+    runCatching {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            bounds = ImageBounds(width = info.size.width, height = info.size.height)
+            decoder.setTargetSize(1, 1)
+        }
+    }.getOrNull()?.recycle()
+    return bounds
+}
+
+private fun Context.decodeBitmapWithImageDecoder(uri: Uri, targetLongSide: Int? = null): Bitmap? {
+    return runCatching {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            targetLongSide?.let { maxLongSide ->
+                val sourceWidth = info.size.width
+                val sourceHeight = info.size.height
+                val sourceLongSide = max(sourceWidth, sourceHeight)
+                if (sourceLongSide > maxLongSide) {
+                    val scale = maxLongSide.toFloat() / sourceLongSide.toFloat()
+                    decoder.setTargetSize(
+                        (sourceWidth * scale).roundToInt().coerceAtLeast(1),
+                        (sourceHeight * scale).roundToInt().coerceAtLeast(1),
+                    )
+                }
+            }
+        }
+    }.getOrNull()
 }
 
 private fun calculateSampleSize(bounds: ImageBounds): Int {
