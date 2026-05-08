@@ -66,6 +66,7 @@ def migrate_sqlite_schema() -> None:
         "tags": "TEXT",
         "value_score": "INTEGER",
         "regret_score": "INTEGER",
+        "ocr_draft_fields": "TEXT",
         "image_deleted_at": "DATETIME",
         "thumbnail_deleted_at": "DATETIME",
     }

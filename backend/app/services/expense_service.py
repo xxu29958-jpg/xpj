@@ -23,8 +23,14 @@ from app.services.duplicate_service import (
     mark_not_duplicate,
 )
 from app.services.file_service import SavedUpload, delete_relative_upload
-from app.services.ocr_service import apply_ocr_result, collect_auto_ocr_results, retry_ocr, run_auto_ocr
-from app.services.receipt_parse_service import parse_receipt_text
+from app.services.ocr_service import (
+    OcrResult,
+    apply_ocr_result,
+    clear_ocr_draft_fields,
+    collect_auto_ocr_results,
+    retry_ocr,
+    run_auto_ocr,
+)
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.time_service import ensure_utc, local_month_bounds_utc, local_month_label, now_utc
 
@@ -362,6 +368,8 @@ def update_expense(db: Session, expense_id: int, tenant_id: str, payload: Expens
     if "regret_score" in updates:
         expense.regret_score = updates["regret_score"]
 
+    clear_ocr_draft_fields(expense, list(updates.keys()))
+
     should_auto_classify = (
         "category" not in updates
         and expense.category == "其他"
@@ -454,17 +462,7 @@ def recognize_expense_text(db: Session, expense_id: int, tenant_id: str, payload
         raise AppError("expense_not_found", status_code=404)
 
     raw_text = payload.raw_text.strip()
-    parsed = parse_receipt_text(raw_text)
-    expense.raw_text = raw_text
-    expense.confidence = parsed.confidence
-    if expense.amount_cents is None and parsed.amount_cents is not None:
-        expense.amount_cents = parsed.amount_cents
-    if not (expense.merchant or "").strip() and parsed.merchant:
-        expense.merchant = parsed.merchant
-    if expense.expense_time is None and parsed.expense_time is not None:
-        expense.expense_time = parsed.expense_time
-    if expense.category == "其他" and parsed.category:
-        expense.category = parsed.category
+    apply_ocr_result(expense, OcrResult(raw_text=raw_text, confidence=None))
     if expense.category == "其他":
         classify_expense(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:

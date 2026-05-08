@@ -27,6 +27,7 @@ class Expense(Base):
     image_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     raw_text: Mapped[str | None] = mapped_column(Text, default="", nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ocr_draft_fields: Mapped[str | None] = mapped_column(Text, nullable=True)
     duplicate_status: Mapped[str] = mapped_column(String(32), default="none", nullable=False, index=True)
     duplicate_of_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     duplicate_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -450,6 +450,79 @@ def test_recognize_text_does_not_overwrite_user_filled_fields(client: TestClient
     assert payload["expense_time"] == "2026-05-04T00:00:00Z"
 
 
+def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    first_raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-72.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-05 21:38:13",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": first_raw_text},
+    )
+    assert response.status_code == 200
+    assert response.json()["amount_cents"] == 7200
+    assert response.json()["merchant"] == "好想来零食乐园"
+
+    corrected_raw_text = "\n".join(
+        [
+            "账单详情",
+            "巴南区卢记牛肉面",
+            "-19.00",
+            "交易成功",
+            "支付时间",
+            "2026-05-07 08:30:00",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": corrected_raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["confirmed_at"] is None
+    assert payload["amount_cents"] == 1900
+    assert payload["merchant"] == "巴南区卢记牛肉面"
+
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={"merchant": "用户手动确认商家"},
+    )
+    assert response.status_code == 200
+
+    newer_raw_text = "\n".join(
+        [
+            "账单详情",
+            "淘宝闪购",
+            "-25.68",
+            "交易成功",
+            "支付时间",
+            "2026-05-07 15:17:09",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": newer_raw_text},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["amount_cents"] == 2568
+    assert payload["merchant"] == "用户手动确认商家"
+    assert payload["status"] == "pending"
+
+
 def test_duplicate_detection_never_rejects_or_confirms(client: TestClient) -> None:
     first_id = upload_png(client)
     second_id = upload_png(client)
