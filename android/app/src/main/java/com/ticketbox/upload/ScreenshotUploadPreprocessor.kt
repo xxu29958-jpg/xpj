@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
@@ -14,6 +15,8 @@ data class PreparedUploadImage(
     val fileName: String,
     val contentType: String?,
     val bytes: ByteArray,
+    val sourceSizeBytes: Long,
+    val preparationDurationMs: Long = 0L,
 )
 
 private const val MAX_UPLOAD_LONG_SIDE = 1600
@@ -21,6 +24,13 @@ private const val JPEG_QUALITY = 84
 private const val KEEP_ORIGINAL_MAX_BYTES = 450_000L
 
 fun Context.prepareScreenshotUpload(uri: Uri): PreparedUploadImage? {
+    val startedAt = SystemClock.elapsedRealtime()
+    return prepareScreenshotUploadImage(uri)?.let { prepared ->
+        prepared.copy(preparationDurationMs = SystemClock.elapsedRealtime() - startedAt)
+    }
+}
+
+private fun Context.prepareScreenshotUploadImage(uri: Uri): PreparedUploadImage? {
     val metadata = readUploadMetadata(uri)
     val bounds = readImageBounds(uri)
     if (bounds == null) {
@@ -54,6 +64,7 @@ fun Context.prepareScreenshotUpload(uri: Uri): PreparedUploadImage? {
         fileName = metadata.fileName.toJpegUploadName(),
         contentType = "image/jpeg",
         bytes = bytes,
+        sourceSizeBytes = metadata.sizeBytes,
     )
 }
 
@@ -171,6 +182,7 @@ private fun Context.readOriginalUpload(uri: Uri, metadata: UploadMetadata): Prep
         fileName = metadata.fileName.ifBlank { defaultUploadFileName(metadata.contentType) },
         contentType = metadata.contentType,
         bytes = bytes,
+        sourceSizeBytes = metadata.sizeBytes.takeIf { it > 0 } ?: bytes.size.toLong(),
     )
 }
 

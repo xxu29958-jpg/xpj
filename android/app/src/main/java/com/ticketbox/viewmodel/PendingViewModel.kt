@@ -58,11 +58,36 @@ class PendingViewModel(
         }
     }
 
-    fun uploadScreenshot(fileName: String, contentType: String?, bytes: ByteArray) {
-        if (_uiState.value.uploading) return
+    fun markUploadPreparing(): Boolean {
+        if (_uiState.value.uploading) return false
+        _uiState.update { it.copy(uploading = true, message = null) }
+        return true
+    }
+
+    fun uploadPreparationFailed(message: String = "这张图片暂时无法读取，请换一张试试。") {
+        _uiState.update { it.copy(uploading = false, message = message) }
+    }
+
+    fun uploadScreenshot(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+        preparationDurationMs: Long? = null,
+        sourceSizeBytes: Long? = null,
+        uploadAlreadyStarted: Boolean = false,
+    ) {
+        if (!uploadAlreadyStarted && _uiState.value.uploading) return
         viewModelScope.launch {
-            _uiState.update { it.copy(uploading = true, message = null) }
-            repository.uploadScreenshot(fileName = fileName, contentType = contentType, bytes = bytes)
+            if (!uploadAlreadyStarted) {
+                _uiState.update { it.copy(uploading = true, message = null) }
+            }
+            repository.uploadScreenshot(
+                fileName = fileName,
+                contentType = contentType,
+                bytes = bytes,
+                preparationDurationMs = preparationDurationMs,
+                sourceSizeBytes = sourceSizeBytes,
+            )
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(uploading = false, message = "截图已上传，等你确认。")

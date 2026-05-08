@@ -19,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,6 +61,9 @@ import com.ticketbox.viewmodel.SettingsViewModel
 import com.ticketbox.viewmodel.StatsViewModel
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
 import com.ticketbox.viewmodel.repositoryViewModelFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class BottomTab(
     val key: String,
@@ -230,15 +234,29 @@ private fun MainShell(
                     val pendingViewModel: PendingViewModel = viewModel(factory = repositoryFactory)
                     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
                     val context = LocalContext.current
+                    val uploadScope = rememberCoroutineScope()
                     val imagePickerLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.PickVisualMedia(),
                     ) { uri ->
-                        val selected = uri?.let { context.prepareScreenshotUpload(it) } ?: return@rememberLauncherForActivityResult
-                        pendingViewModel.uploadScreenshot(
-                            fileName = selected.fileName,
-                            contentType = selected.contentType,
-                            bytes = selected.bytes,
-                        )
+                        if (uri == null) return@rememberLauncherForActivityResult
+                        if (!pendingViewModel.markUploadPreparing()) return@rememberLauncherForActivityResult
+                        uploadScope.launch {
+                            val selected = withContext(Dispatchers.IO) {
+                                context.prepareScreenshotUpload(uri)
+                            }
+                            if (selected == null) {
+                                pendingViewModel.uploadPreparationFailed()
+                                return@launch
+                            }
+                            pendingViewModel.uploadScreenshot(
+                                fileName = selected.fileName,
+                                contentType = selected.contentType,
+                                bytes = selected.bytes,
+                                preparationDurationMs = selected.preparationDurationMs,
+                                sourceSizeBytes = selected.sourceSizeBytes,
+                                uploadAlreadyStarted = true,
+                            )
+                        }
                     }
                     PendingScreen(
                         state = state,

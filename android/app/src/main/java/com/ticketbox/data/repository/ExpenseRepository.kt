@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
+import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.CsvExport
@@ -248,7 +249,13 @@ class ExpenseRepository(
         api().pendingExpenses().map { it.toDomain() }
     }
 
-    suspend fun uploadScreenshot(fileName: String, contentType: String?, bytes: ByteArray): Result<Long> = safeCall {
+    suspend fun uploadScreenshot(
+        fileName: String,
+        contentType: String?,
+        bytes: ByteArray,
+        preparationDurationMs: Long? = null,
+        sourceSizeBytes: Long? = null,
+    ): Result<Long> = safeCall {
         require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
         val cleanName = fileName
             .trim()
@@ -257,7 +264,25 @@ class ExpenseRepository(
         val mediaType = (contentType?.takeIf { it.isNotBlank() } ?: "image/jpeg").toMediaTypeOrNull()
         val body = bytes.toRequestBody(mediaType)
         val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
-        val response = api().uploadScreenshot(filePart)
+        var uploadResponse: UploadResponseDto? = null
+        val networkDurationMs = measureTimeMillis {
+            uploadResponse = api().uploadScreenshot(filePart)
+        }
+        val response = requireNotNull(uploadResponse)
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                NETWORK_LOG_TAG,
+                buildString {
+                    append("Screenshot upload timing: ")
+                    append("prepare_ms=").append(preparationDurationMs ?: -1)
+                    append(" network_ms=").append(networkDurationMs)
+                    append(" server_ms=").append(response.durationMs ?: -1)
+                    append(" source_bytes=").append(sourceSizeBytes ?: -1)
+                    append(" upload_bytes=").append(response.uploadSizeBytes ?: bytes.size)
+                    append(" server_breakdown=").append(response.timingMs.orEmpty())
+                },
+            )
+        }
         settingsStore.saveLastUploadAt(Instant.now().toString())
         response.id
     }

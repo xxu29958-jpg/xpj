@@ -62,7 +62,7 @@ ViewModel：
 
 Repository：
 
-- 根据 URI 读取图片流。
+- 接收已准备好的图片字节，不在主线程读取或压缩大图。
 - 生成 multipart/form-data。
 - 调用 API。
 - 解析统一错误。
@@ -99,6 +99,17 @@ ApiService：
 - token。
 - 文件本机路径。
 
+调试构建允许在 Logcat 的 `TicketboxNetwork` tag 记录上传耗时分段：
+
+```text
+prepare_ms      Photo Picker 返回 URI 后，本机读取/采样/压缩耗时
+network_ms      Retrofit 上传请求耗时，包含公网链路
+server_ms       后端返回的服务端总耗时
+server_breakdown 后端 body/form、文件保存、DB 创建分段
+```
+
+这些字段只用于定位“上传慢”发生在手机预处理、网络链路还是 Windows 后端，不进入普通用户界面。
+
 ## 7. 验收
 
 - 点击“上传截图”能打开系统 Photo Picker。
@@ -115,6 +126,7 @@ ApiService：
 - 后端 `POST /api/app/upload-screenshot`，使用 `Authorization: Bearer APP_TOKEN`。
 - Android `ApiService.uploadScreenshot` 使用 Retrofit multipart。
 - `ExpenseRepository.uploadScreenshot` 统一处理 multipart、错误和最近上传时间。
+- 选图后的图片读取、采样和压缩已移到 IO 线程，避免阻塞 Compose 主线程。
 - `PendingViewModel` 管理上传中、成功、失败状态。
 - 待确认页主按钮“上传截图”打开系统 Photo Picker。
 - 真机验证 Photo Picker 可打开，界面显示系统“安全访问”说明。

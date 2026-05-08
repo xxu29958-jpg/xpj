@@ -14,6 +14,12 @@ data class UploadResponseDto(
     val publicId: String,
     val status: String,
     val message: String,
+    @param:Json(name = "upload_size_bytes")
+    val uploadSizeBytes: Long? = null,
+    @param:Json(name = "duration_ms")
+    val durationMs: Long? = null,
+    @param:Json(name = "timing_ms")
+    val timingMs: Map<String, Long>? = null,
 )
 
 data class ExpenseDto(
