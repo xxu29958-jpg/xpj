@@ -86,6 +86,37 @@ function Ensure-LocalAndroidEnvironment {
     }
 }
 
+function Get-AndroidVerifyPlan {
+    $gradleFile = Join-Path $AndroidRoot "app\build.gradle.kts"
+    $hasGrayFlavor = $false
+    $hasInternalFlavor = $false
+    if (Test-Path -LiteralPath $gradleFile) {
+        $gradleText = Get-Content -Encoding UTF8 -Raw -LiteralPath $gradleFile
+        $hasGrayFlavor = $gradleText -match 'create\("gray"\)'
+        $hasInternalFlavor = $gradleText -match 'create\("internal"\)'
+    }
+
+    if ($hasGrayFlavor) {
+        $assembleTasks = @(":app:assembleGrayDebug")
+        if ($hasInternalFlavor) {
+            $assembleTasks += ":app:assembleInternalDebug"
+        }
+        return @{
+            Label = "gray"
+            Test = ":app:testGrayDebugUnitTest"
+            Assemble = $assembleTasks
+            Lint = ":app:lintGrayDebug"
+        }
+    }
+
+    return @{
+        Label = "debug"
+        Test = ":app:testDebugUnitTest"
+        Assemble = @(":app:assembleDebug")
+        Lint = ":app:lintDebug"
+    }
+}
+
 if (-not $SkipBackend) {
     Invoke-Checked -FilePath "powershell.exe" -Arguments @(
         "-NoProfile",
@@ -118,10 +149,12 @@ if (-not $SkipAndroid) {
         throw "未找到 Android Gradle Wrapper：$gradle"
     }
 
-    Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", ":app:testGrayDebugUnitTest") -WorkingDirectory $AndroidRoot
-    Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", ":app:assembleGrayDebug", ":app:assembleInternalDebug") -WorkingDirectory $AndroidRoot
+    $androidPlan = Get-AndroidVerifyPlan
+    Write-Host "Android 验证变体：$($androidPlan.Label)"
+    Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", $androidPlan.Test) -WorkingDirectory $AndroidRoot
+    Invoke-Checked -FilePath $gradle -Arguments (@("--no-daemon") + $androidPlan.Assemble) -WorkingDirectory $AndroidRoot
     if (-not $SkipLint) {
-        Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", ":app:lintGrayDebug") -WorkingDirectory $AndroidRoot
+        Invoke-Checked -FilePath $gradle -Arguments @("--no-daemon", $androidPlan.Lint) -WorkingDirectory $AndroidRoot
     }
 }
 else {
