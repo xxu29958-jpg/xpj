@@ -654,6 +654,9 @@ def _calibrate_merchant_candidates(candidates: list[_MerchantCandidate], context
             if candidate.source == "success_title":
                 profile += 16
                 evidence.append("profile_alipay_detail_success_title:+16")
+                if _has_more_specific_nearby_merchant_alias(context, candidate):
+                    noise -= 14
+                    evidence.append("short_alias_near_specific_merchant:-14")
             if candidate.source.startswith("label:收款方") or (
                 candidate.source in {"keyword", "first_line"} and candidate.value in BANK_KEYWORDS
             ):
@@ -818,6 +821,20 @@ def _looks_like_payment_institution_context(text: str, keyword: str) -> bool:
 def _looks_like_bank_reminder(text: str, keyword: str) -> bool:
     lines = text.splitlines()
     return keyword in BANK_KEYWORDS and bool(lines) and lines[0].strip() == keyword and "交易提醒" in text
+
+
+def _has_more_specific_nearby_merchant_alias(context: _ReceiptContext, candidate: _MerchantCandidate) -> bool:
+    value = candidate.value.strip()
+    if len(value) >= 6:
+        return False
+
+    for line in context.lines[max(0, candidate.line_index - 1) : min(len(context.lines), candidate.line_index + 3)]:
+        cleaned = _clean_merchant(line)
+        if not cleaned or cleaned == value:
+            continue
+        if value in cleaned and _is_title_merchant_candidate(cleaned):
+            return True
+    return False
 
 
 def _clean_merchant(value: str) -> str | None:

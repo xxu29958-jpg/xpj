@@ -243,6 +243,38 @@ def test_taobao_flash_payment_sheet_prefers_bottom_amount_and_merchant() -> None
     assert parsed.category == "餐饮"
 
 
+def test_alipay_bill_detail_prefers_specific_merchant_over_short_alias() -> None:
+    raw_text = "\n".join(
+        [
+            "22:46",
+            "l 4G 79",
+            "账单详情",
+            "闪购",
+            "淘宝闪购",
+            "-25.68",
+            "交易成功",
+            "支付时间",
+            "2026-05-0715:17:09",
+            "付款方式",
+            "花呗>",
+            "商品说明",
+            "廣仔牛腩饭外卖订单",
+            "支付奖励",
+            "立即领取3积分",
+            "账单分类",
+            "餐饮美食>",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+
+    assert parsed.amount_cents == 2568
+    assert parsed.merchant == "淘宝闪购"
+    assert parsed.category == "餐饮"
+    assert parsed.expense_time is not None
+    assert _utc_iso(parsed.expense_time) == "2026-05-07T07:17:09Z"
+
+
 def test_status_bar_battery_number_does_not_beat_payment_amount() -> None:
     raw_text = "\n".join(
         [
