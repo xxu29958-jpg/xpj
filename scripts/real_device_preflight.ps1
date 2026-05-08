@@ -98,6 +98,7 @@ function Invoke-TestUpload {
     [System.Buffer]::BlockCopy($pngBytes, 0, $body, $prefixBytes.Length, $pngBytes.Length)
     [System.Buffer]::BlockCopy($suffixBytes, 0, $body, $prefixBytes.Length + $pngBytes.Length, $suffixBytes.Length)
 
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
         $response = Invoke-WebRequest `
             -Method Post `
@@ -106,9 +107,13 @@ function Invoke-TestUpload {
             -ContentType "multipart/form-data; boundary=$boundary" `
             -Body $body `
             -UseBasicParsing
-        return ($response.Content | ConvertFrom-Json)
+        $stopwatch.Stop()
+        $payload = $response.Content | ConvertFrom-Json
+        $payload | Add-Member -NotePropertyName client_duration_ms -NotePropertyValue $stopwatch.ElapsedMilliseconds -Force
+        return $payload
     }
     catch {
+        $stopwatch.Stop()
         $response = $_.Exception.Response
         if ($response) {
             $stream = $response.GetResponseStream()
@@ -259,7 +264,15 @@ if (-not $SkipBackend) {
             $upload = Invoke-TestUpload -BaseUrl $baseUrl -Token $resolvedUploadToken
             $uploadedId = Get-FirstScalar -Value $upload.id
             Assert-PublicId -Value $upload.public_id -Context "上传接口"
+            $serverDuration = Get-FirstScalar -Value $upload.duration_ms
+            $uploadBytes = Get-FirstScalar -Value $upload.upload_size_bytes
             Write-Host "测试截图上传成功，pending id：$uploadedId"
+            if ($null -ne $uploadBytes -or $null -ne $serverDuration) {
+                Write-Host "上传耗时：客户端 $($upload.client_duration_ms) ms；服务端保存 $serverDuration ms；文件 $uploadBytes bytes"
+            }
+            else {
+                Write-Host "上传耗时：客户端 $($upload.client_duration_ms) ms；当前后端未返回服务端耗时字段。"
+            }
 
             $pending = Get-FlatItems -Items (Invoke-Json -Uri "$baseUrl/api/expenses/pending" -Headers $appHeaders)
             $uploadedPending = Find-ExpenseById -Items $pending -Id $uploadedId
