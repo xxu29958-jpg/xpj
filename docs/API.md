@@ -187,9 +187,17 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
   "status": "pending",
   "message": "uploaded",
   "upload_size_bytes": 348120,
-  "duration_ms": 86
+  "duration_ms": 86,
+  "timing_ms": {
+    "body_read_ms": 12,
+    "file_save_ms": 18,
+    "db_create_ms": 24,
+    "total_ms": 86
+  }
 }
 ```
+
+`timing_ms` 用于运维排查上传慢的问题。原始图片请求体通常包含 `body_read_ms`，表单上传通常包含 `form_parse_ms`。普通 App 不需要展示这些字段。
 
 ### POST /api/app/upload-screenshot
 
@@ -224,7 +232,13 @@ file: 图片文件
   "status": "pending",
   "message": "uploaded",
   "upload_size_bytes": 348120,
-  "duration_ms": 86
+  "duration_ms": 86,
+  "timing_ms": {
+    "form_parse_ms": 8,
+    "file_save_ms": 18,
+    "db_create_ms": 24,
+    "total_ms": 86
+  }
 }
 ```
 

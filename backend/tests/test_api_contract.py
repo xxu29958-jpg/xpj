@@ -33,6 +33,10 @@ def upload_png(client: TestClient, headers: dict[str, str] | None = None) -> int
     UUID(payload["public_id"])
     assert payload["upload_size_bytes"] == len(PNG_BYTES)
     assert payload["duration_ms"] >= 0
+    assert payload["timing_ms"]["total_ms"] >= 0
+    assert payload["timing_ms"]["form_parse_ms"] >= 0
+    assert payload["timing_ms"]["file_save_ms"] >= 0
+    assert payload["timing_ms"]["db_create_ms"] >= 0
     return int(payload["id"])
 
 
@@ -47,6 +51,10 @@ def upload_png_as_raw_body(client: TestClient) -> int:
     assert payload["status"] == "pending"
     assert payload["upload_size_bytes"] == len(PNG_BYTES)
     assert payload["duration_ms"] >= 0
+    assert payload["timing_ms"]["total_ms"] >= 0
+    assert payload["timing_ms"]["body_read_ms"] >= 0
+    assert payload["timing_ms"]["file_save_ms"] >= 0
+    assert payload["timing_ms"]["db_create_ms"] >= 0
     return int(payload["id"])
 
 

@@ -36,6 +36,7 @@ class UploadResponse(BaseModel):
     duplicate_of_id: int | None
     upload_size_bytes: int
     duration_ms: int
+    timing_ms: dict[str, int] = Field(default_factory=dict)
 
 
 class UploadCheckResponse(BaseModel):

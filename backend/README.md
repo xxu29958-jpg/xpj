@@ -249,9 +249,19 @@ curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
   "id": 1,
   "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
-  "message": "uploaded"
+  "message": "uploaded",
+  "upload_size_bytes": 68,
+  "duration_ms": 21,
+  "timing_ms": {
+    "form_parse_ms": 3,
+    "file_save_ms": 4,
+    "db_create_ms": 7,
+    "total_ms": 21
+  }
 }
 ```
+
+`timing_ms` 只用于排查上传慢的问题。表单上传通常包含 `form_parse_ms`，原始图片请求体通常包含 `body_read_ms`。
 
 ### 查询待确认账单
 
