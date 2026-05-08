@@ -34,22 +34,24 @@ ADMIN_TOKEN=...
 - 默认租户 name 为 `我的小票夹`。
 - 旧数据自动归到 `owner`。
 - 不破坏现有个人使用。
+- 当前实现中 `TENANTS_JSON` 只包含 `upload_token` 和 `app_token`。
+- `ADMIN_TOKEN` 是独立维护令牌，不在 `TENANTS_JSON` 内配置；当前映射到默认租户，用于窄维护接口。
 
 ## 3. 后端新增概念
 
-需要新增：
+当前实现：
 
 - 租户配置解析。
-- `TenantContext`。
-- `get_current_app_tenant()`。
-- `get_current_upload_tenant()`。
+- `AuthContext`，包含 `tenant_id`、`tenant_name`、`token_type`。
+- `get_current_app_context()`。
+- `get_current_upload_context()`。
 - `get_current_admin_context()`。
 
 上下文规则：
 
 - Upload Token 只能得到上传租户。
 - App Token 只能得到 App 租户。
-- Admin Token 用于服务拥有者运维，不代表普通用户。
+- Admin Token 用于服务拥有者运维，不代表普通用户；当前返回默认租户的 `AuthContext(token_type="admin")`。
 - routes 层只负责认证并把租户传给 service。
 - service 层所有查询和写入必须带租户过滤。
 
@@ -131,6 +133,8 @@ Authorization: Bearer <tenant app token>
 两者行为一致：
 
 - 保存截图。
+- 新上传保存到 `uploads/{tenant_id}/YYYY/MM/`。
+- 老数据如果仍是 `uploads/YYYY/MM/...`，启动迁移会在文件存在时移动到 `uploads/{tenant_id}/YYYY/MM/...`；文件不存在时保留记录，访问返回 `image_not_found`。
 - 生成缩略图。
 - 计算 image_hash。
 - 创建当前租户的 pending 账单。
@@ -174,14 +178,17 @@ status != rejected
 
 `GET /api/settings/server` 面向 Android App 时只返回当前租户和用户可理解的摘要。
 
-允许返回：
+实际返回：
 
 - `tenant_name`
-- pending 数量
-- confirmed 数量
-- 最近上传时间
-- 最近同步相关摘要
-- OCR 是否启用的用户化描述
+- `status`
+- `storage_status`
+- `pending_count`
+- `confirmed_count`
+- `rejected_count`
+- `suspected_duplicate_count`
+- `upload_storage_bytes`
+- `latest_upload_at`
 
 不返回：
 
@@ -209,6 +216,8 @@ Windows 诊断脚本可以显示运维摘要，但不得打印 token。
 - iOS upload_token 进入正确租户。
 - Android app_token 上传到正确租户。
 - 未配置 `TENANTS_JSON` 时旧单用户配置仍然可用。
+- 旧路径存在时迁移到租户目录。
+- 旧路径文件缺失时访问返回 `image_not_found`。
 
 ## 11. 禁止事项
 

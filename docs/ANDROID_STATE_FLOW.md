@@ -4,7 +4,7 @@
 
 ## 1. 产品主线
 
-小票夹第一版必须保持：
+小票夹当前主线必须保持：
 
 ```text
 上传截图
@@ -60,7 +60,7 @@ pending
 - `editing` 只是用户编辑草稿，不是新状态。
 - `confirmed` 代表用户手动确认后的正式入账。
 - `rejected` 代表用户明确忽略待确认账单。
-- `manual` 记一笔第一版必须远端创建成功后才写 Room，并直接进入 `confirmed`。
+- `manual` 记一笔必须远端创建成功后才写 Room，并直接进入 `confirmed`。
 
 ## 3. 时间口径
 
@@ -151,14 +151,14 @@ Room 只承担 confirmed 账本缓存，不做复杂离线编辑。
 
 规则：
 
-- pending 第一版不做复杂离线编辑。
+- pending 不做复杂离线编辑。
 - confirmed 远端成功后写 Room。
 - confirmed 同步按 `serverId` upsert，不能重复插入。
 - 账本在线时远端优先。
 - 远端失败时账本页保留并展示 Room confirmed 缓存。
 - 编辑 confirmed 远端成功后更新 Room。
 - 编辑 confirmed 远端失败时不改 Room。
-- 手动记一笔第一版必须在线成功后才写 Room。
+- 手动记一笔必须在线成功后才写 Room。
 
 ## 7. 重复检测
 
@@ -214,7 +214,7 @@ OCR 只填草稿，不自动入账。
 - OCR 可以填充空字段或默认分类。
 - OCR 可以纠正仍然标记为 OCR 草稿的字段。
 - 用户通过 PATCH 修改过的金额、商家、分类或消费时间，会从 OCR 草稿集合移除。
-- 后续 OCR retry 不得覆盖已经被用户手动修改过的字段。
+- 后续 OCR retry 或自动识别不得覆盖已经被用户手动修改过的字段。
 - `raw_text` 和 `confidence` 属于识别结果本身，可以随 OCR retry 更新。
 
 这个规则解决“初次 OCR 错了，后面更强规则修不回来”的问题，同时保留“用户确认优先”的产品边界。

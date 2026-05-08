@@ -50,7 +50,7 @@ ADMIN_TOKEN   维护接口使用
 - 只接受 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 单文件默认最大 10MB。
 - 校验扩展名或 content-type 后，还会检查图片文件头。
-- HEIC 第一版可以保存，但不保证 Android 预览。
+- HEIC 可以保存原图，但当前缩略图生成会跳过 HEIC，Android 预览需要降级处理。
 
 ## 数据库
 
@@ -63,13 +63,13 @@ ADMIN_TOKEN   维护接口使用
 
 ## 维护接口
 
-`POST /api/maintenance/cleanup-images` 使用 `ADMIN_TOKEN`，只按配置清理已确认账单的图片。
+`POST /api/maintenance/cleanup-images` 使用 `ADMIN_TOKEN`，只按配置清理当前 admin 上下文租户的已确认账单图片和缩略图。当前实现中 `ADMIN_TOKEN` 映射到默认租户，不提供全局后台。
 
 限制：
 
 - 不接收任意文件路径。
 - 不提供目录浏览、文件下载、文件删除等通用文件管理能力。
-- 清理前会校验目标相对路径必须位于后端 `uploads` 目录内。
+- 清理前会校验目标相对路径必须位于后端 `uploads/{tenant_id}/` 目录内。
 - `DELETE_IMAGE_AFTER_DAYS <= 0` 时不执行删除。
 
 ## 网络暴露

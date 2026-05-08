@@ -94,13 +94,15 @@ ADMIN_TOKEN=...
 
 如果未配置 `TENANTS_JSON`，自动使用旧配置创建默认租户 `owner`，不能破坏现有个人使用。
 
-后端需要新增：
+当前后端实现：
 
 - 租户配置
-- 租户上下文
-- `get_current_app_tenant()`
-- `get_current_upload_tenant()`
+- `AuthContext`
+- `get_current_app_context()`
+- `get_current_upload_context()`
 - `get_current_admin_context()`
+
+当前 `TENANTS_JSON` 只配置 `upload_token` 和 `app_token`。`ADMIN_TOKEN` 是独立维护令牌，返回默认租户的 admin 上下文，不是每个租户一枚 admin token。
 
 数据库要求：
 
@@ -108,6 +110,7 @@ ADMIN_TOKEN=...
 - `CategoryRule` 增加 `tenant_id`
 - `DuplicateIgnore` 增加 `tenant_id`
 - 旧数据自动归到 `owner`
+- 旧图片路径 `uploads/YYYY/MM/...` 如果文件存在，会迁移到 `uploads/{tenant_id}/YYYY/MM/...`；文件不存在时保留记录并在访问时返回 `image_not_found`
 - 增加 `tenant_id + status + expense_time` 等必要索引
 
 所有账单、图片、统计、分类规则、重复检测、CSV 导出都必须按 `tenant_id` 过滤。

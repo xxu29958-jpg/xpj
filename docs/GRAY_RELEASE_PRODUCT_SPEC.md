@@ -148,6 +148,8 @@ ADMIN_TOKEN=...
 
 如果未配置 `TENANTS_JSON`，后端自动使用旧配置生成默认租户 `owner`，旧数据迁移到 `owner`。
 
+当前实现中 `TENANTS_JSON` 只配置 `upload_token` 和 `app_token`。`ADMIN_TOKEN` 是独立维护令牌，返回默认租户的 admin 上下文，用于窄维护接口。
+
 必须按 `tenant_id` 隔离：
 
 - 账单
@@ -178,6 +180,8 @@ file=<image>
 ```
 
 Android 不保存 `Upload-Token`。用户绑定一次 App Token 后，App 自己具备上传权限。
+
+新上传图片保存到 `uploads/{tenant_id}/YYYY/MM/`。历史 `uploads/YYYY/MM/...` 路径会在文件存在时迁移到租户目录；文件已丢失时保留记录，访问返回 `image_not_found`。
 
 ## 7. UI 总原则
 

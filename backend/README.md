@@ -55,6 +55,7 @@ notepad .env
 ```
 
 请把 `.env` 中的三个 Token 换成随机长字符串。
+多租户灰度时可额外配置 `TENANTS_JSON`，其中只包含每个租户的 `upload_token` 和 `app_token`；`ADMIN_TOKEN` 仍是独立维护令牌，当前映射到默认租户的 admin 上下文。
 
 示例：
 
@@ -487,7 +488,7 @@ Invoke-RestMethod `
 
 ### 图片清理维护
 
-维护接口使用 `ADMIN_TOKEN`。它只按 `DELETE_IMAGE_AFTER_DAYS` 清理已确认账单图片，不接收任意文件路径。
+维护接口使用 `ADMIN_TOKEN`。它只按 `DELETE_IMAGE_AFTER_DAYS` 清理当前 admin 上下文租户的已确认账单图片和缩略图，不接收任意文件路径。
 
 ```powershell
 $adminHeaders = @{ Authorization = "Bearer admin-test-token" }
@@ -513,7 +514,7 @@ Invoke-RestMethod `
 - 上传接口使用 `Upload-Token`。
 - App 接口使用 `Authorization: Bearer APP_TOKEN`。
 - 维护接口使用 `Authorization: Bearer ADMIN_TOKEN`。
-- `uploads/` 不作为静态目录公开。
+- 新上传保存到 `uploads/{tenant_id}/YYYY/MM/`，`uploads/` 不作为静态目录公开。
 - 图片只能通过 `GET /api/expenses/{id}/image` 鉴权访问。
 - 缩略图只能通过 `GET /api/expenses/{id}/thumbnail` 鉴权访问。
 - API 不返回 Windows 本机真实路径。
