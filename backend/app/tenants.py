@@ -30,6 +30,13 @@ class AdminContext:
     default_tenant: Tenant
 
 
+@dataclass(frozen=True)
+class AuthContext:
+    tenant_id: str
+    tenant_name: str
+    token_type: str
+
+
 def _clean_tenant_id(value: str) -> str:
     tenant_id = value.strip()
     if not TENANT_ID_PATTERN.fullmatch(tenant_id):

@@ -107,6 +107,15 @@ class NetworkErrorMapperTest {
     }
 
     @Test
+    fun rejectsPlainHttpBindingServerUrl() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            validateBindingInput(serverUrl = "http://api.zen70.cn", appToken = "token")
+        }
+
+        assertEquals("请使用 HTTPS 同步地址。", error.message)
+    }
+
+    @Test
     fun rejectsBlankBindingAppToken() {
         val error = assertFailsWith<IllegalArgumentException> {
             validateBindingInput(serverUrl = "https://api.zen70.cn", appToken = " ")

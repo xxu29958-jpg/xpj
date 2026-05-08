@@ -4,8 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +48,7 @@ fun SettingsScreen(
     onSkinChange: (AppSkin) -> Unit,
     onApplyBackgroundSettings: (BackgroundSettings) -> Unit,
     onClearBackgroundImage: () -> Unit,
+    onBackgroundImageError: (String) -> Unit = {},
     onImmersionModeChange: (ImmersionMode) -> Unit,
     onParallaxChange: (Boolean) -> Unit,
     onReduceMotionChange: (Boolean) -> Unit,
@@ -57,15 +56,11 @@ fun SettingsScreen(
     showAdvancedTools: Boolean = false,
 ) {
     var route by remember { mutableStateOf<SettingsRoute>(SettingsRoute.Root) }
-    var localMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val backgroundImageStore = remember(context) { BackgroundImageStore(context) }
     val appVersionName = stringResource(R.string.app_version_name)
     val appVersionCode = integerResource(R.integer.app_version_code)
 
-    val pickCustomImage = {
-        localMessage = null
-    }
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
@@ -74,18 +69,16 @@ fun SettingsScreen(
             backgroundImageStore.copyPickedImageToPrivateStorage(uri)
         }
             .onSuccess { path -> route = SettingsRoute.BackgroundCrop(path) }
-            .onFailure { localMessage = "背景没有保存成功，请换一张图片再试。" }
+            .onFailure { onBackgroundImageError("背景没有保存成功，请换一张图片再试。") }
     }
 
     fun launchImagePicker() {
-        pickCustomImage()
         backgroundPickerLauncher.launch(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
         )
     }
 
     fun previewThemeDefault() {
-        localMessage = "已恢复主题默认背景"
         onApplyBackgroundSettings(state.backgroundSettings.withoutBackground())
     }
 
@@ -169,7 +162,7 @@ fun SettingsScreen(
                             title = "自定义背景",
                         )
                     }
-                    .onFailure { localMessage = "背景裁剪没有完成，请换一张图片再试。" }
+                    .onFailure { onBackgroundImageError("背景裁剪没有完成，请换一张图片再试。") }
             },
         )
 
@@ -213,9 +206,5 @@ fun SettingsScreen(
             appVersionCode = appVersionCode,
             onBack = { route = SettingsRoute.Root },
         )
-    }
-
-    localMessage?.let {
-        Text(it, color = MaterialTheme.colorScheme.secondary)
     }
 }

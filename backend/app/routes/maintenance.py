@@ -7,18 +7,21 @@ from app.auth import verify_admin_token
 from app.database import get_db
 from app.schemas import MaintenanceCleanupResponse, MaintenanceOrphanCleanupResponse
 from app.services.cleanup_service import cleanup_confirmed_images, cleanup_orphan_uploads, cleanup_rejected_images
+from app.tenants import AuthContext
 
 
 router = APIRouter(
     prefix="/api/maintenance",
     tags=["maintenance"],
-    dependencies=[Depends(verify_admin_token)],
 )
 
 
 @router.post("/cleanup-images", response_model=MaintenanceCleanupResponse)
-def post_cleanup_images(db: Session = Depends(get_db)) -> MaintenanceCleanupResponse:
-    result = cleanup_confirmed_images(db)
+def post_cleanup_images(
+    auth: AuthContext = Depends(verify_admin_token),
+    db: Session = Depends(get_db),
+) -> MaintenanceCleanupResponse:
+    result = cleanup_confirmed_images(db, auth.tenant_id)
     return MaintenanceCleanupResponse(
         enabled=result.enabled,
         delete_after_days=result.delete_after_days,
@@ -29,8 +32,11 @@ def post_cleanup_images(db: Session = Depends(get_db)) -> MaintenanceCleanupResp
 
 
 @router.post("/cleanup-rejected", response_model=MaintenanceCleanupResponse)
-def post_cleanup_rejected(db: Session = Depends(get_db)) -> MaintenanceCleanupResponse:
-    result = cleanup_rejected_images(db)
+def post_cleanup_rejected(
+    auth: AuthContext = Depends(verify_admin_token),
+    db: Session = Depends(get_db),
+) -> MaintenanceCleanupResponse:
+    result = cleanup_rejected_images(db, auth.tenant_id)
     return MaintenanceCleanupResponse(
         enabled=result.enabled,
         delete_after_days=result.delete_after_days,
@@ -42,10 +48,11 @@ def post_cleanup_rejected(db: Session = Depends(get_db)) -> MaintenanceCleanupRe
 
 @router.post("/cleanup-orphans", response_model=MaintenanceOrphanCleanupResponse)
 def post_cleanup_orphans(
+    auth: AuthContext = Depends(verify_admin_token),
     dry_run: bool = Query(default=True),
     db: Session = Depends(get_db),
 ) -> MaintenanceOrphanCleanupResponse:
-    result = cleanup_orphan_uploads(db, dry_run=dry_run)
+    result = cleanup_orphan_uploads(db, auth.tenant_id, dry_run=dry_run)
     return MaintenanceOrphanCleanupResponse(
         dry_run=result.dry_run,
         grace_hours=result.grace_hours,

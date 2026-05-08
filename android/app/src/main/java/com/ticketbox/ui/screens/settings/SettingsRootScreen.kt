@@ -111,6 +111,12 @@ fun SettingsRootScreen(
     onOpenSecurity: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
+    val connectionTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
+    val connectionSubtitle = if (showAdvancedTools) {
+        "连接测试、联调自检、同步状态"
+    } else {
+        "检查连接、同步账本状态"
+    }
     SettingsPageFrame(
         title = "设置",
         subtitle = "账本状态、外观和本机数据。",
@@ -122,8 +128,8 @@ fun SettingsRootScreen(
             lastSyncAt = state.lastConfirmedSyncAt,
         )
         SettingsEntryRow(
-            title = "服务器与联调",
-            subtitle = if (showAdvancedTools) "连接测试、联调自检、同步状态" else "连接测试和同步状态",
+            title = connectionTitle,
+            subtitle = connectionSubtitle,
             icon = Icons.Filled.CloudDone,
             onClick = onOpenServer,
         )

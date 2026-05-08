@@ -89,9 +89,6 @@ import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppPrimaryButton
-import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.displayTime
@@ -158,13 +155,13 @@ fun BackgroundGalleryScreen(
         }
         SettingsSection(title = "自定义", icon = Icons.Filled.PhotoLibrary) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AppPrimaryButton(
+                BackgroundActionButton(
                     text = "从相册选择",
-                    icon = Icons.Filled.PhotoLibrary,
                     modifier = Modifier.weight(1f),
+                    leadingIcon = Icons.Filled.PhotoLibrary,
                     onClick = onPickCustomImage,
                 )
-                AppSecondaryButton(
+                BackgroundActionButton(
                     text = "主题默认",
                     modifier = Modifier.weight(1f),
                     leadingIcon = Icons.Filled.RestartAlt,

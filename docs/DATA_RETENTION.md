@@ -66,7 +66,7 @@ ORPHAN_UPLOAD_GRACE_HOURS=24
 
 ## 维护接口
 
-维护接口只允许 `ADMIN_TOKEN` 调用：
+维护接口只允许 `ADMIN_TOKEN` 调用，并只作用于该 token 映射的租户：
 
 ```http
 Authorization: Bearer ADMIN_TOKEN
@@ -81,7 +81,7 @@ Authorization: Bearer ADMIN_TOKEN
   - 按 `DELETE_REJECTED_AFTER_DAYS` 清理 rejected 图片。
 
 - `POST /api/maintenance/cleanup-orphans?dry_run=true`
-  - 扫描数据库未引用的 uploads 文件。
+  - 扫描当前租户目录下数据库未引用的 uploads 文件。
   - 默认 dry-run，不删除。
 
 - `POST /api/maintenance/cleanup-orphans?dry_run=false`

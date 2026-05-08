@@ -33,13 +33,15 @@ class OrphanCleanupResult:
     deleted_bytes: int
 
 
-def _delete_relative_file(relative_path: str | None) -> bool:
+def _delete_relative_file(relative_path: str | None, tenant_id: str) -> bool:
     if not relative_path:
         return False
     settings = get_settings()
+    tenant_upload_dir = (settings.upload_dir / tenant_id).resolve()
     candidate = (BACKEND_ROOT / relative_path).resolve()
     try:
         candidate.relative_to(settings.upload_dir)
+        candidate.relative_to(tenant_upload_dir)
     except ValueError:
         return False
     if candidate.is_file():
@@ -61,10 +63,15 @@ def _relative_upload_path(path: Path) -> str | None:
         return None
 
 
-def _referenced_upload_paths(db: Session) -> set[str]:
+def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
     rows = db.execute(
-        select(Expense.image_path, Expense.thumbnail_path).where(
-            or_(Expense.image_path.is_not(None), Expense.thumbnail_path.is_not(None))
+        select(Expense.image_path, Expense.thumbnail_path)
+        .where(Expense.tenant_id == tenant_id)
+        .where(
+            or_(
+                Expense.image_path.is_not(None),
+                Expense.thumbnail_path.is_not(None),
+            )
         )
     )
     referenced: set[str] = set()
@@ -87,12 +94,12 @@ def cleanup_after_confirm(expense: Expense) -> Expense:
         return expense
 
     now = now_utc()
-    if _delete_relative_file(expense.image_path):
+    if _delete_relative_file(expense.image_path, expense.tenant_id):
         expense.image_deleted_at = now
     return expense
 
 
-def cleanup_confirmed_images(db: Session) -> CleanupResult:
+def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
     settings = get_settings()
     if settings.delete_image_after_days <= 0:
         return CleanupResult(
@@ -107,6 +114,7 @@ def cleanup_confirmed_images(db: Session) -> CleanupResult:
     expenses = list(
         db.scalars(
             select(Expense).where(
+                Expense.tenant_id == tenant_id,
                 Expense.status == "confirmed",
                 Expense.confirmed_at.is_not(None),
                 Expense.confirmed_at <= cutoff,
@@ -119,11 +127,11 @@ def cleanup_confirmed_images(db: Session) -> CleanupResult:
     deleted_thumbnails = 0
     for expense in expenses:
         changed = False
-        if expense.image_deleted_at is None and _delete_relative_file(expense.image_path):
+        if expense.image_deleted_at is None and _delete_relative_file(expense.image_path, expense.tenant_id):
             expense.image_deleted_at = now
             deleted_images += 1
             changed = True
-        if expense.thumbnail_deleted_at is None and _delete_relative_file(expense.thumbnail_path):
+        if expense.thumbnail_deleted_at is None and _delete_relative_file(expense.thumbnail_path, expense.tenant_id):
             expense.thumbnail_deleted_at = now
             deleted_thumbnails += 1
             changed = True
@@ -142,7 +150,7 @@ def cleanup_confirmed_images(db: Session) -> CleanupResult:
     )
 
 
-def cleanup_rejected_images(db: Session) -> CleanupResult:
+def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
     settings = get_settings()
     if settings.delete_rejected_after_days <= 0:
         return CleanupResult(
@@ -157,6 +165,7 @@ def cleanup_rejected_images(db: Session) -> CleanupResult:
     expenses = list(
         db.scalars(
             select(Expense).where(
+                Expense.tenant_id == tenant_id,
                 Expense.status == "rejected",
                 Expense.rejected_at.is_not(None),
                 Expense.rejected_at <= cutoff,
@@ -169,11 +178,11 @@ def cleanup_rejected_images(db: Session) -> CleanupResult:
     deleted_thumbnails = 0
     for expense in expenses:
         changed = False
-        if expense.image_deleted_at is None and _delete_relative_file(expense.image_path):
+        if expense.image_deleted_at is None and _delete_relative_file(expense.image_path, expense.tenant_id):
             expense.image_deleted_at = now
             deleted_images += 1
             changed = True
-        if expense.thumbnail_deleted_at is None and _delete_relative_file(expense.thumbnail_path):
+        if expense.thumbnail_deleted_at is None and _delete_relative_file(expense.thumbnail_path, expense.tenant_id):
             expense.thumbnail_deleted_at = now
             deleted_thumbnails += 1
             changed = True
@@ -192,9 +201,10 @@ def cleanup_rejected_images(db: Session) -> CleanupResult:
     )
 
 
-def cleanup_orphan_uploads(db: Session, *, dry_run: bool = True) -> OrphanCleanupResult:
+def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True) -> OrphanCleanupResult:
     settings = get_settings()
-    referenced = _referenced_upload_paths(db)
+    tenant_upload_dir = (settings.upload_dir / tenant_id).resolve()
+    referenced = _referenced_upload_paths(db, tenant_id)
     cutoff = now_utc() - timedelta(hours=max(settings.orphan_upload_grace_hours, 0))
 
     scanned_files = 0
@@ -203,7 +213,7 @@ def cleanup_orphan_uploads(db: Session, *, dry_run: bool = True) -> OrphanCleanu
     orphan_bytes = 0
     deleted_bytes = 0
 
-    if not settings.upload_dir.exists():
+    if not tenant_upload_dir.exists():
         return OrphanCleanupResult(
             dry_run=dry_run,
             grace_hours=settings.orphan_upload_grace_hours,
@@ -214,7 +224,7 @@ def cleanup_orphan_uploads(db: Session, *, dry_run: bool = True) -> OrphanCleanu
             deleted_bytes=0,
         )
 
-    for path in settings.upload_dir.rglob("*"):
+    for path in tenant_upload_dir.rglob("*"):
         if not path.is_file() or not _is_supported_upload_file(path):
             continue
         relative_path = _relative_upload_path(path)

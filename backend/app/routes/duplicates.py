@@ -3,11 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_tenant
+from app.auth import get_current_app_context
 from app.database import get_db
 from app.schemas import ExpenseResponse
 from app.services.expense_service import list_duplicate_expenses
-from app.tenants import Tenant
+from app.tenants import AuthContext
 
 
 router = APIRouter(
@@ -18,7 +18,7 @@ router = APIRouter(
 
 @router.get("", response_model=list[ExpenseResponse])
 def get_duplicates(
-    tenant: Tenant = Depends(get_current_app_tenant),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> list[ExpenseResponse]:
-    return list_duplicate_expenses(db, tenant.id)
+    return list_duplicate_expenses(db, auth.tenant_id)

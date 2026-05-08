@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.auth import get_current_app_tenant, get_current_upload_tenant
+from app.auth import get_current_app_context, get_current_upload_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
@@ -17,7 +17,7 @@ from app.models import Expense
 from app.schemas import UploadCheckResponse, UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
 from app.services.file_service import ALLOWED_EXTENSIONS, SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
-from app.tenants import Tenant
+from app.tenants import AuthContext
 
 
 router = APIRouter(prefix="/api", tags=["uploads"])
@@ -42,7 +42,7 @@ def _elapsed_ms(started_at: float) -> int:
     return max(0, int((perf_counter() - started_at) * 1000))
 
 
-async def _save_request_upload(request: Request) -> tuple[SavedUpload, dict[str, int]]:
+async def _save_request_upload(request: Request, tenant_id: str) -> tuple[SavedUpload, dict[str, int]]:
     timing_ms: dict[str, int] = {}
     content_type = request.headers.get("content-type", "")
     if content_type.lower().startswith("multipart/form-data"):
@@ -59,14 +59,14 @@ async def _save_request_upload(request: Request) -> tuple[SavedUpload, dict[str,
                     value = form.get(field_name)
                     if isinstance(value, UploadFile):
                         save_started_at = perf_counter()
-                        saved_file = await save_upload(value)
+                        saved_file = await save_upload(value, tenant_id)
                         timing_ms["file_save_ms"] = _elapsed_ms(save_started_at)
                         return saved_file, timing_ms
 
                 for value in form.values():
                     if isinstance(value, UploadFile):
                         save_started_at = perf_counter()
-                        saved_file = await save_upload(value)
+                        saved_file = await save_upload(value, tenant_id)
                         timing_ms["file_save_ms"] = _elapsed_ms(save_started_at)
                         return saved_file, timing_ms
         except StarletteHTTPException as exc:
@@ -86,6 +86,7 @@ async def _save_request_upload(request: Request) -> tuple[SavedUpload, dict[str,
     save_started_at = perf_counter()
     saved_file = save_upload_bytes(
         body,
+        tenant_id=tenant_id,
         filename=request.headers.get("X-Upload-Filename"),
         content_type=content_type,
     )
@@ -114,9 +115,9 @@ def _upload_response(
     )
 
 
-def _create_pending_or_cleanup(db: Session, saved_file: SavedUpload, tenant: Tenant, *, source: str) -> Expense:
+def _create_pending_or_cleanup(db: Session, saved_file: SavedUpload, tenant_id: str, *, source: str) -> Expense:
     try:
-        return create_pending_expense(db, saved_file, tenant.id, source=source, run_enrichment=False)
+        return create_pending_expense(db, saved_file, tenant_id, source=source, run_enrichment=False)
     except Exception:
         delete_saved_upload(saved_file)
         raise
@@ -126,22 +127,22 @@ async def _handle_upload(
     *,
     request: Request,
     background_tasks: BackgroundTasks,
-    tenant: Tenant,
+    auth: AuthContext,
     db: Session,
     source: str,
     endpoint: str,
 ) -> UploadResponse:
     started_at = perf_counter()
-    saved_file, timing_ms = await _save_request_upload(request)
+    saved_file, timing_ms = await _save_request_upload(request, auth.tenant_id)
     db_started_at = perf_counter()
-    expense = _create_pending_or_cleanup(db, saved_file, tenant, source=source)
+    expense = _create_pending_or_cleanup(db, saved_file, auth.tenant_id, source=source)
     timing_ms["db_create_ms"] = _elapsed_ms(db_started_at)
     duration_ms = _elapsed_ms(started_at)
     timing_ms["total_ms"] = duration_ms
     logger.info(
         "upload accepted endpoint=%s tenant=%s expense_id=%s bytes=%s media_type=%s duration_ms=%s timing_ms=%s duplicate=%s",
         endpoint,
-        tenant.id,
+        auth.tenant_id,
         expense.id,
         saved_file.size_bytes,
         saved_file.media_type,
@@ -149,7 +150,7 @@ async def _handle_upload(
         json.dumps(timing_ms, ensure_ascii=False, sort_keys=True),
         expense.duplicate_status,
     )
-    background_tasks.add_task(enrich_pending_expense, expense.id, tenant.id)
+    background_tasks.add_task(enrich_pending_expense, expense.id, auth.tenant_id)
     return _upload_response(expense, saved_file, duration_ms, timing_ms)
 
 
@@ -157,7 +158,7 @@ async def _handle_upload(
     "/upload/check",
     response_model=UploadCheckResponse,
 )
-def upload_check(_: Tenant = Depends(get_current_upload_tenant)) -> UploadCheckResponse:
+def upload_check(_: AuthContext = Depends(get_current_upload_context)) -> UploadCheckResponse:
     settings = get_settings()
     return UploadCheckResponse(
         max_upload_size_mb=settings.max_upload_size_mb,
@@ -172,13 +173,13 @@ def upload_check(_: Tenant = Depends(get_current_upload_tenant)) -> UploadCheckR
 async def upload_screenshot(
     request: Request,
     background_tasks: BackgroundTasks,
-    tenant: Tenant = Depends(get_current_upload_tenant),
+    auth: AuthContext = Depends(get_current_upload_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     return await _handle_upload(
         request=request,
         background_tasks=background_tasks,
-        tenant=tenant,
+        auth=auth,
         db=db,
         source="iPhone截图",
         endpoint="ios_shortcut",
@@ -192,13 +193,13 @@ async def upload_screenshot(
 async def app_upload_screenshot(
     request: Request,
     background_tasks: BackgroundTasks,
-    tenant: Tenant = Depends(get_current_app_tenant),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     return await _handle_upload(
         request=request,
         background_tasks=background_tasks,
-        tenant=tenant,
+        auth=auth,
         db=db,
         source="Android截图",
         endpoint="android_app",

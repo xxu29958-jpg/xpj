@@ -129,6 +129,8 @@ private fun TicketboxContent(
             BindServerScreen(
                 loading = appState.binding,
                 message = appState.authMessage,
+                defaultServerUrl = BuildConfig.DEFAULT_SERVER_URL,
+                showServerUrlInput = BuildConfig.SHOW_ADVANCED_TOOLS || BuildConfig.DEFAULT_SERVER_URL.isBlank(),
                 onBind = appViewModel::bind,
             )
         }
@@ -344,6 +346,7 @@ private fun MainShell(
                         onSkinChange = onSkinChange,
                         onApplyBackgroundSettings = settingsViewModel::applyBackgroundSettings,
                         onClearBackgroundImage = settingsViewModel::clearBackgroundImage,
+                        onBackgroundImageError = settingsViewModel::backgroundImageCopyFailed,
                         onImmersionModeChange = settingsViewModel::setImmersionMode,
                         onParallaxChange = settingsViewModel::setParallaxEnabled,
                         onReduceMotionChange = settingsViewModel::setReduceMotion,

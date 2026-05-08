@@ -28,9 +28,11 @@ import com.ticketbox.ui.components.SoftPanel
 fun BindServerScreen(
     loading: Boolean,
     message: String?,
+    defaultServerUrl: String,
+    showServerUrlInput: Boolean,
     onBind: (String, String) -> Unit,
 ) {
-    var serverUrl by remember { mutableStateOf("") }
+    var serverUrl by remember(defaultServerUrl) { mutableStateOf(defaultServerUrl) }
     var token by remember { mutableStateOf("") }
 
     Column(
@@ -58,18 +60,24 @@ fun BindServerScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    "服务拥有者会提供同步地址和访问口令。",
+                    if (showServerUrlInput) {
+                        "服务拥有者会提供同步地址和访问口令。"
+                    } else {
+                        "服务拥有者已配置同步地址，请输入访问口令。"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("同步地址") },
-                    placeholder = { Text("向服务拥有者获取") },
-                    singleLine = true,
-                )
+                if (showServerUrlInput) {
+                    OutlinedTextField(
+                        value = serverUrl,
+                        onValueChange = { serverUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("同步地址") },
+                        placeholder = { Text("向服务拥有者获取") },
+                        singleLine = true,
+                    )
+                }
                 OutlinedTextField(
                     value = token,
                     onValueChange = { token = it },

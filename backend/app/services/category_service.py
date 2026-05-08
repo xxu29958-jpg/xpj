@@ -45,15 +45,23 @@ def merge_categories(values: list[str]) -> list[str]:
     return sorted(categories, key=category_sort_key)
 
 
-def normalize_existing_expense_categories(db: Session) -> None:
+def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
     changed = False
-    expenses = db.scalars(select(Expense).where(Expense.category.in_(LEGACY_CATEGORY_ALIASES.keys())))
+    expenses = db.scalars(
+        select(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
+    )
     for expense in expenses:
         normalized = normalize_category(expense.category)
         if normalized != expense.category:
             expense.category = normalized
             changed = True
-    rules = db.scalars(select(CategoryRule).where(CategoryRule.category.in_(LEGACY_CATEGORY_ALIASES.keys())))
+    rules = db.scalars(
+        select(CategoryRule)
+        .where(CategoryRule.tenant_id == tenant_id)
+        .where(CategoryRule.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
+    )
     for rule in rules:
         normalized = normalize_category(rule.category)
         if normalized != rule.category:

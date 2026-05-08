@@ -111,9 +111,15 @@ fun ServerSettingsScreen(
     onSync: () -> Unit,
 ) {
     var showDiagnosticsDetails by remember { mutableStateOf(false) }
+    val pageTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
+    val pageSubtitle = if (showAdvancedTools) {
+        "普通版只显示连接状态，内部版保留诊断明细。"
+    } else {
+        "查看当前账本是否连接正常。"
+    }
     SettingsPageFrame(
-        title = "服务器与联调",
-        subtitle = "普通版只显示连接状态，内部版保留诊断明细。",
+        title = pageTitle,
+        subtitle = pageSubtitle,
         onBack = onBack,
     ) {
         AccountStatusCard(

@@ -326,10 +326,10 @@ rejected 第一版不恢复、不展示
 
 ## 10. 图片保存规则
 
-上传图片保存到：
+上传图片保存到租户目录：
 
 ```text
-backend/uploads/YYYY/MM/
+backend/uploads/{tenant_id}/YYYY/MM/
 ```
 
 要求：
@@ -401,7 +401,7 @@ Content-Type: image/jpeg 或 image/png
 - 校验 `Upload-Token`。
 - 校验文件类型。
 - 校验文件大小。
-- 保存图片到 `uploads/YYYY/MM/`。
+- 保存图片到 `uploads/{tenant_id}/YYYY/MM/`。
 - 生成随机文件名。
 - 计算 `image_hash`。
 - 创建一条 pending expense。

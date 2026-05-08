@@ -55,16 +55,16 @@ def _clean_category(value: str | None) -> str:
     return normalize_category(value)
 
 
-def _try_generate_thumbnail(relative_path: str | None) -> str | None:
+def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | None:
     try:
-        return generate_thumbnail(relative_path)
+        return generate_thumbnail(relative_path, tenant_id=tenant_id)
     except Exception:
         return None
 
 
 def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
     if not expense.thumbnail_path:
-        expense.thumbnail_path = _try_generate_thumbnail(expense.image_path)
+        expense.thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
     run_auto_ocr(expense)
     if expense.category == "其他":
         classify_expense(db, expense)
@@ -81,7 +81,7 @@ def create_pending_expense(
     run_enrichment: bool = True,
 ) -> Expense:
     now = now_utc()
-    thumbnail_path = _try_generate_thumbnail(saved_file.relative_path) if run_enrichment else None
+    thumbnail_path = _try_generate_thumbnail(saved_file.relative_path, tenant_id) if run_enrichment else None
     expense = Expense(
         tenant_id=tenant_id,
         amount_cents=None,
@@ -422,11 +422,11 @@ def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
 
 def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple[Path, str]:
     expense = get_expense(db, expense_id, tenant_id)
-    resolved = resolve_protected_thumbnail(expense.thumbnail_path)
+    resolved = resolve_protected_thumbnail(expense.thumbnail_path, tenant_id)
     if resolved is not None:
         return resolved
 
-    thumbnail_path = generate_thumbnail(expense.image_path)
+    thumbnail_path = generate_thumbnail(expense.image_path, tenant_id=tenant_id)
     if thumbnail_path is not None:
         expense.thumbnail_path = thumbnail_path
         expense.thumbnail_deleted_at = None
@@ -434,7 +434,7 @@ def ensure_thumbnail_file(db: Session, expense_id: int, tenant_id: str) -> tuple
         db.commit()
         db.refresh(expense)
 
-    resolved = resolve_protected_thumbnail(expense.thumbnail_path)
+    resolved = resolve_protected_thumbnail(expense.thumbnail_path, tenant_id)
     if resolved is None:
         raise AppError("image_not_found", status_code=404)
     return resolved

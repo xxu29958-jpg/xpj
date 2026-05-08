@@ -10,22 +10,25 @@ from app.services.time_service import to_iso
 
 def _upload_storage_bytes(db: Session, tenant_id: str) -> int:
     settings = get_settings()
+    tenant_upload_dir = (settings.upload_dir / tenant_id).resolve()
     total = 0
-    paths = db.scalars(
-        select(Expense.image_path)
+    rows = db.execute(
+        select(Expense.image_path, Expense.thumbnail_path)
         .where(Expense.tenant_id == tenant_id)
-        .where(Expense.image_path.is_not(None))
+        .where((Expense.image_path.is_not(None)) | (Expense.thumbnail_path.is_not(None)))
     )
-    for relative_path in paths:
-        if not relative_path:
-            continue
-        candidate = (BACKEND_ROOT / relative_path).resolve()
-        try:
-            candidate.relative_to(settings.upload_dir)
-        except ValueError:
-            continue
-        if candidate.is_file():
-            total += candidate.stat().st_size
+    for image_path, thumbnail_path in rows:
+        for relative_path in {image_path, thumbnail_path}:
+            if not relative_path:
+                continue
+            candidate = (BACKEND_ROOT / relative_path).resolve()
+            try:
+                candidate.relative_to(settings.upload_dir)
+                candidate.relative_to(tenant_upload_dir)
+            except ValueError:
+                continue
+            if candidate.is_file():
+                total += candidate.stat().st_size
     return total
 
 

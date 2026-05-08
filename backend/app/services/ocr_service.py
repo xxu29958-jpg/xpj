@@ -69,7 +69,7 @@ class RapidOcrProvider:
                 status_code=500,
             ) from exc
 
-        image_path, _ = resolve_protected_image(expense.image_path)
+        image_path, _ = resolve_protected_image(expense.image_path, expense.tenant_id)
         try:
             result = RapidOCR()(str(image_path))
         except Exception as exc:
@@ -84,7 +84,7 @@ class RapidOcrProvider:
 
 class LocalLlmOcrProvider:
     def extract(self, expense: Expense) -> OcrResult:
-        image_path, media_type = resolve_protected_image(expense.image_path)
+        image_path, media_type = resolve_protected_image(expense.image_path, expense.tenant_id)
         image_bytes = image_path.read_bytes()
         media_type = media_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
         encoded = base64.b64encode(image_bytes).decode("ascii")

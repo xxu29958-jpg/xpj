@@ -4,13 +4,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_tenant
+from app.auth import get_current_app_context
 from app.database import get_db
 from app.errors import AppError
 from app.models import CategoryRule
 from app.schemas import CategoryRuleCreateRequest, CategoryRuleResponse, CategoryRuleUpdateRequest, StatusResponse
 from app.services.classify_service import create_rule, delete_rule, list_rules, update_rule
-from app.tenants import Tenant
+from app.tenants import AuthContext
 
 
 router = APIRouter(
@@ -21,21 +21,21 @@ router = APIRouter(
 
 @router.get("/categories", response_model=list[CategoryRuleResponse])
 def get_category_rules(
-    tenant: Tenant = Depends(get_current_app_tenant),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> list[CategoryRuleResponse]:
-    return list_rules(db, tenant.id)
+    return list_rules(db, auth.tenant_id)
 
 
 @router.post("/categories", response_model=CategoryRuleResponse)
 def post_category_rule(
     payload: CategoryRuleCreateRequest,
-    tenant: Tenant = Depends(get_current_app_tenant),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
     return create_rule(
         db,
-        tenant_id=tenant.id,
+        tenant_id=auth.tenant_id,
         keyword=payload.keyword,
         category=payload.category,
         enabled=payload.enabled,
@@ -47,10 +47,10 @@ def post_category_rule(
 def patch_category_rule(
     rule_id: int,
     payload: CategoryRuleUpdateRequest,
-    tenant: Tenant = Depends(get_current_app_tenant),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
-    rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == tenant.id))
+    rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == auth.tenant_id))
     if rule is None:
         raise AppError("rule_not_found", status_code=404)
     return update_rule(db, rule, **payload.model_dump(exclude_unset=True))
@@ -59,10 +59,10 @@ def patch_category_rule(
 @router.delete("/categories/{rule_id}", response_model=StatusResponse)
 def delete_category_rule(
     rule_id: int,
-    tenant: Tenant = Depends(get_current_app_tenant),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
-    rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == tenant.id))
+    rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == auth.tenant_id))
     if rule is None:
         raise AppError("rule_not_found", status_code=404)
     delete_rule(db, rule)

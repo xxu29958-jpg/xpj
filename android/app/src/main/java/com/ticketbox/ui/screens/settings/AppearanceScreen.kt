@@ -40,12 +40,10 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -88,7 +86,6 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
-import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
 import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.displayTime
@@ -171,34 +168,30 @@ fun AppearanceScreen(
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
+                        BackgroundActionButton(
+                            text = "背景图库",
                             modifier = Modifier.weight(1f),
                             onClick = onOpenGallery,
-                        ) {
-                            Text("背景图库")
-                        }
-                        OutlinedButton(
+                        )
+                        BackgroundActionButton(
+                            text = "从相册选择",
                             modifier = Modifier.weight(1f),
                             onClick = onPickCustomImage,
-                        ) {
-                            Text("从相册选择")
-                        }
+                        )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(
+                        BackgroundActionButton(
+                            text = "跟随主题包",
                             modifier = Modifier.weight(1f),
                             onClick = onPreviewThemeDefault,
-                        ) {
-                            Text("跟随主题包")
-                        }
-                        OutlinedButton(
+                        )
+                        BackgroundActionButton(
+                            text = "移除自定义图",
                             modifier = Modifier.weight(1f),
                             enabled = state.backgroundSettings.source == BackgroundSource.CustomImage &&
                                 state.backgroundSettings.customImagePath != null,
                             onClick = onClearBackgroundImage,
-                        ) {
-                            Text("移除自定义图")
-                        }
+                        )
                     }
                     Text(
                         text = "自定义图只存在本机。想重新使用松雾、港湾等主题氛围时，点“跟随主题包”即可切回。",

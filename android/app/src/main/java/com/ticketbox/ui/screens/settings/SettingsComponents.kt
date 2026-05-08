@@ -156,6 +156,23 @@ internal fun SettingsPageFrame(
 }
 
 @Composable
+internal fun BackgroundActionButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    leadingIcon: ImageVector? = null,
+    onClick: () -> Unit,
+) {
+    QuietOutlinedButton(
+        text = text,
+        modifier = modifier,
+        enabled = enabled,
+        leadingIcon = leadingIcon,
+        onClick = onClick,
+    )
+}
+
+@Composable
 internal fun AccountStatusCard(
     serverSettings: ServerSettings?,
     lastUploadAt: String?,

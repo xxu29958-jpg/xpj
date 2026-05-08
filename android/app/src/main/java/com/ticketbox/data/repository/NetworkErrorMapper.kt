@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.BuildConfig
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
@@ -37,8 +38,10 @@ fun networkDiagnosticMessage(error: IOException, serverUrl: String?): String {
 
 fun validateBindingInput(serverUrl: String, appToken: String): String {
     val normalized = serverUrl.trim().trimEnd('/')
+    val allowInternalInsecureBinding = BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS
     require(normalized.isNotBlank()) { "请输入服务器地址。" }
-    require(!isLocalOnlyServerUrl(normalized)) { "请填写公网服务器地址。" }
+    require(allowInternalInsecureBinding || !isLocalOnlyServerUrl(normalized)) { "请填写公网服务器地址。" }
+    require(allowInternalInsecureBinding || normalized.startsWith("https://", ignoreCase = true)) { "请使用 HTTPS 同步地址。" }
     require(appToken.isNotBlank()) { "请输入访问口令。" }
     return normalized
 }

@@ -715,7 +715,7 @@ Authorization: Bearer ADMIN_TOKEN
 
 规则：
 
-- 只扫描 `UPLOAD_DIR` 内支持的图片文件。
+- 只扫描当前 `ADMIN_TOKEN` 对应租户目录内支持的图片文件。
 - 只处理数据库没有引用的文件。
 - 使用 `ORPHAN_UPLOAD_GRACE_HOURS` 保护最近上传文件。
 - 不接收任意文件路径。

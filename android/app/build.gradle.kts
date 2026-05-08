@@ -21,6 +21,7 @@ android {
         resValue("string", "app_version_name", ticketboxVersionName)
         resValue("integer", "app_version_code", ticketboxVersionCode.toString())
         buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "false")
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.zen70.cn\"")
         manifestPlaceholders["appLabel"] = "小票夹"
     }
 

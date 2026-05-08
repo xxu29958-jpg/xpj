@@ -80,7 +80,7 @@ def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monke
     settings = cleanup_service.get_settings()
     monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, orphan_upload_grace_hours=1))
 
-    orphan_dir = TEST_UPLOAD_DIR / "2026" / "05"
+    orphan_dir = TEST_UPLOAD_DIR / "owner" / "2026" / "05"
     orphan_dir.mkdir(parents=True, exist_ok=True)
     orphan = orphan_dir / "orphan.png"
     orphan.write_bytes(PNG_BYTES)
@@ -108,12 +108,17 @@ def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient,
     settings = cleanup_service.get_settings()
     monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, orphan_upload_grace_hours=1))
 
-    orphan_dir = TEST_UPLOAD_DIR / "2026" / "05"
+    orphan_dir = TEST_UPLOAD_DIR / "owner" / "2026" / "05"
     orphan_dir.mkdir(parents=True, exist_ok=True)
     orphan = orphan_dir / "orphan-delete.png"
     orphan.write_bytes(PNG_BYTES)
+    tester_orphan_dir = TEST_UPLOAD_DIR / "tester_1" / "2026" / "05"
+    tester_orphan_dir.mkdir(parents=True, exist_ok=True)
+    tester_orphan = tester_orphan_dir / "tester-orphan.png"
+    tester_orphan.write_bytes(PNG_BYTES)
     old = (now_utc() - timedelta(hours=3)).timestamp()
     os.utime(orphan, (old, old))
+    os.utime(tester_orphan, (old, old))
 
     response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
     assert response.status_code == 200
@@ -122,4 +127,5 @@ def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient,
     assert payload["orphan_files"] == 1
     assert payload["deleted_files"] == 1
     assert not orphan.exists()
+    assert tester_orphan.exists()
     assert os.path.isfile(referenced_path)
