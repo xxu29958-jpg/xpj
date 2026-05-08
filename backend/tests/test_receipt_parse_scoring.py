@@ -241,3 +241,24 @@ def test_taobao_flash_payment_sheet_prefers_bottom_amount_and_merchant() -> None
     assert parsed.amount_cents == 2568
     assert parsed.merchant == "淘宝闪购商户"
     assert parsed.category == "餐饮"
+
+
+def test_status_bar_battery_number_does_not_beat_payment_amount() -> None:
+    raw_text = "\n".join(
+        [
+            "08:30",
+            "5G",
+            "72",
+            "支付成功",
+            "巴南区卢记牛肉面",
+            "¥19.00",
+            "摇一摇，有优惠",
+            "返回商家",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+
+    assert parsed.amount_cents == 1900
+    assert parsed.merchant == "巴南区卢记牛肉面"
+    assert parsed.category == "餐饮"

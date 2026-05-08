@@ -403,6 +403,10 @@ def _calibrate_amount_candidates(candidates: list[_AmountCandidate], context: _R
                 structure += 8
                 evidence.append("profile_mobility_inline_amount:+8")
 
+        if _looks_like_status_bar_numeric_amount(context, candidate):
+            noise -= 90
+            evidence.append("status_bar_numeric_amount_noise:-90")
+
         if profile == 0 and context_score == 0 and structure == 0 and noise == 0:
             calibrated.append(candidate)
             continue
@@ -486,6 +490,22 @@ def _has_discount_context(lines: list[str], index: int) -> bool:
 def _has_money_marker(value: str) -> bool:
     upper_value = value.upper()
     return any(marker in value for marker in MONEY_MARKERS) or any(marker in upper_value for marker in UPPER_MONEY_MARKERS)
+
+
+def _looks_like_status_bar_numeric_amount(context: _ReceiptContext, candidate: _AmountCandidate) -> bool:
+    if candidate.source != "line" or candidate.line_index > 4:
+        return False
+    if any("money_marker" in item or "signed_primary_amount" in item for item in candidate.evidence):
+        return False
+
+    line_text = context.lines[candidate.line_index].strip() if candidate.line_index < len(context.lines) else ""
+    if not re.fullmatch(r"\d{1,3}", line_text):
+        return False
+
+    nearby = _nearby_text(context.lines, candidate.line_index, before=2, after=1).upper()
+    has_network_marker = any(marker in nearby for marker in ("4G", "5G", "WIFI", "WI-FI", "VPN"))
+    has_clock_marker = any(CLOCK_LINE_PATTERN.match(line.strip()) for line in context.lines[: candidate.line_index + 1])
+    return has_network_marker or has_clock_marker
 
 
 def _money_to_cents(value: str) -> int | None:
