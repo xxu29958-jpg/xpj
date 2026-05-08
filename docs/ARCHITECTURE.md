@@ -172,7 +172,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```text
 UPLOAD_TOKEN  iPhone 快捷指令上传截图使用，只能调用上传接口。
 APP_TOKEN     Android App 使用，可读取、编辑、确认、拒绝账单和查看受保护图片。
-ADMIN_TOKEN   预留给未来后台管理，第一版可以不实现后台页面。
+ADMIN_TOKEN   维护接口使用；当前映射到默认租户的 admin 上下文，不提供全局后台。
 ```
 
 请求头：
@@ -189,6 +189,7 @@ Authorization: Bearer xxxxxx
 
 - `/api/upload-screenshot` 只接受 `Upload-Token`。
 - Android App 接口只接受 `Authorization: Bearer APP_TOKEN`。
+- `/api/maintenance/*` 只接受 `Authorization: Bearer ADMIN_TOKEN`，并只作用于当前 admin 上下文的租户。
 - `/api/auth/check` 必须验证 `APP_TOKEN`。
 - `/api/health` 可以不鉴权，只用于本地或隧道健康检查。
 
@@ -439,7 +440,7 @@ Authorization: Bearer APP_TOKEN
     "category": "其他",
     "note": "",
     "source": "iPhone截图",
-    "image_path": "uploads/2026/05/xxx.png",
+    "image_path": "uploads/owner/2026/05/xxx.png",
     "image_hash": "sha256...",
     "raw_text": "",
     "confidence": null,

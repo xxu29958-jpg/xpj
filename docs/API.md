@@ -575,6 +575,7 @@ Authorization: Bearer APP_TOKEN
 ```
 
 返回后端非敏感运行状态，不返回 Token、本机路径或数据库路径。
+`upload_storage_bytes` 只统计当前 App Token 对应租户目录下仍存在的图片和缩略图文件。
 
 返回：
 
@@ -659,7 +660,7 @@ Authorization: Bearer ADMIN_TOKEN
 
 - 只按 `DELETE_IMAGE_AFTER_DAYS` 配置清理已确认账单图片。
 - 不接收任意文件路径。
-- 只删除数据库中保存的相对路径，且路径必须位于 `uploads` 目录内。
+- 只删除数据库中保存的相对路径，且路径必须位于当前 admin 上下文租户的 `uploads/{tenant_id}/` 目录内。
 - `DELETE_IMAGE_AFTER_DAYS <= 0` 时只返回未启用，不执行删除。
 
 返回：
@@ -686,6 +687,7 @@ Authorization: Bearer ADMIN_TOKEN
 
 - 只按 `DELETE_REJECTED_AFTER_DAYS` 配置清理 rejected 账单图片。
 - 只清理图片和缩略图，不删除 rejected 数据库行。
+- 只删除当前 admin 上下文租户目录内的文件。
 - `DELETE_REJECTED_AFTER_DAYS <= 0` 时只返回未启用，不执行删除。
 
 返回：
@@ -715,7 +717,7 @@ Authorization: Bearer ADMIN_TOKEN
 
 规则：
 
-- 只扫描当前 `ADMIN_TOKEN` 对应租户目录内支持的图片文件。
+- 只扫描当前 admin 上下文租户目录内支持的图片文件。当前实现中 `ADMIN_TOKEN` 映射到默认租户。
 - 只处理数据库没有引用的文件。
 - 使用 `ORPHAN_UPLOAD_GRACE_HOURS` 保护最近上传文件。
 - 不接收任意文件路径。

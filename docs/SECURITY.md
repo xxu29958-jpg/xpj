@@ -63,13 +63,13 @@ ADMIN_TOKEN   维护接口使用
 
 ## 维护接口
 
-`POST /api/maintenance/cleanup-images` 使用 `ADMIN_TOKEN`，只按配置清理已确认账单的图片。
+`POST /api/maintenance/cleanup-images` 使用 `ADMIN_TOKEN`，只按配置清理当前 admin 上下文租户的已确认账单图片和缩略图。当前实现中 `ADMIN_TOKEN` 映射到默认租户，不提供全局后台。
 
 限制：
 
 - 不接收任意文件路径。
 - 不提供目录浏览、文件下载、文件删除等通用文件管理能力。
-- 清理前会校验目标相对路径必须位于后端 `uploads` 目录内。
+- 清理前会校验目标相对路径必须位于后端 `uploads/{tenant_id}/` 目录内。
 - `DELETE_IMAGE_AFTER_DAYS <= 0` 时不执行删除。
 
 ## 网络暴露

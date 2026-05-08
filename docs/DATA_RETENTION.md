@@ -10,9 +10,10 @@
    - 这是长期可信数据源。
 
 2. Windows 后端 uploads
-   - 文件夹：`backend/uploads/`
+   - 文件夹：`backend/uploads/{tenant_id}/YYYY/MM/`
    - 职责：保存 iPhone / Android 上传的账单截图和缩略图
    - 数据库只保存相对路径，不保存本机绝对路径。
+   - 历史 `backend/uploads/YYYY/MM/` 路径如果文件存在，会在启动迁移中移动到租户目录；文件不存在时不报错，访问返回 `image_not_found`。
    - uploads 不作为静态目录公开，只能通过受保护图片接口访问。
 
 3. Android Room
@@ -66,7 +67,7 @@ ORPHAN_UPLOAD_GRACE_HOURS=24
 
 ## 维护接口
 
-维护接口只允许 `ADMIN_TOKEN` 调用，并只作用于该 token 映射的租户：
+维护接口只允许 `ADMIN_TOKEN` 调用。当前代码把它映射到默认租户的 admin 上下文，并只作用于该租户：
 
 ```http
 Authorization: Bearer ADMIN_TOKEN
@@ -75,10 +76,10 @@ Authorization: Bearer ADMIN_TOKEN
 接口：
 
 - `POST /api/maintenance/cleanup-images`
-  - 按 `DELETE_IMAGE_AFTER_DAYS` 清理 confirmed 图片。
+  - 按 `DELETE_IMAGE_AFTER_DAYS` 清理当前 admin 上下文租户的 confirmed 图片和缩略图。
 
 - `POST /api/maintenance/cleanup-rejected`
-  - 按 `DELETE_REJECTED_AFTER_DAYS` 清理 rejected 图片。
+  - 按 `DELETE_REJECTED_AFTER_DAYS` 清理当前 admin 上下文租户的 rejected 图片和缩略图。
 
 - `POST /api/maintenance/cleanup-orphans?dry_run=true`
   - 扫描当前租户目录下数据库未引用的 uploads 文件。
