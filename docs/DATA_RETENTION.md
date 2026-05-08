@@ -51,7 +51,7 @@ ORPHAN_UPLOAD_GRACE_HOURS=24
 
 - `DELETE_IMAGE_AFTER_CONFIRM`
   - 确认入账时是否立刻删除原图。
-  - 第一版建议保持 `false`。
+  - 当前建议保持 `false`。
 
 - `DELETE_IMAGE_AFTER_DAYS`
   - confirmed 账单图片保留天数。

@@ -124,7 +124,7 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 说明：
 
 - 后端接受 `jpg`、`jpeg`、`png`、`webp`、`heic`。
-- 第一版 Android 预览 HEIC 不做强保证，所以快捷指令优先转 JPEG 或 PNG。
+- 当前 HEIC 会保存原图但跳过缩略图生成，所以快捷指令优先转 JPEG 或 PNG。
 - iPhone 上传只使用 `UPLOAD_TOKEN`，不要使用 `APP_TOKEN`。
 - iOS 26.4 真机已验证：`表单` 模式会导致 `invalid_request` 的概率更高，稳定配置是“请求正文：文件”。
 
@@ -337,7 +337,7 @@ ADB 找不到设备：
 HEIC 不能预览：
 
 ```text
-后端可保存 HEIC，但第一版 Android 不保证预览 HEIC。
+后端可保存 HEIC 原图，但当前缩略图生成会跳过 HEIC，Android 预览需要降级处理。
 iPhone 快捷指令优先转 JPEG 或 PNG。
 ```
 

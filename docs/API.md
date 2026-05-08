@@ -174,7 +174,7 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
 - 数据库只保存相对路径。
 - 计算 `image_hash`。
 - 生成 pending 账单。
-- 尝试生成 JPEG 缩略图，HEIC 第一版可能无缩略图。
+- 尝试生成 JPEG 缩略图；当前 HEIC 会保存原图但跳过缩略图生成。
 - 检测完全相同 `image_hash`，只标记疑似重复，不自动拒绝。
 - 用户补充 `amount_cents`、`merchant`、`expense_time` 后，会额外检测同金额、同商家、24 小时内的相似账单。
 
@@ -516,7 +516,7 @@ Authorization: Bearer APP_TOKEN
 
 返回 `duplicate_status = suspected` 且未被拒绝的账单列表。
 
-第一版已支持两类提示：
+当前已支持两类提示：
 
 - 图片 `image_hash` 完全一致。
 - 金额一致、商家一致、消费时间或确认时间相差 24 小时内。

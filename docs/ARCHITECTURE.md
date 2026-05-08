@@ -24,27 +24,26 @@ docs/GRAY_ACCEPTANCE_CHECKLIST.md
 
 ## 1. 项目定位
 
-小票夹是一个私人半自动记账系统，面向个人使用，不做商业云服务。第一版的核心目标是让账单截图从 iPhone 进入 Windows 后端，再由 Android App 人工确认入账。
+小票夹是一个私人半自动记账系统，面向个人和灰度试用使用，不做商业云服务。当前核心目标是让账单截图从 iPhone 或 Android 进入 Windows 后端，由 OCR/规则生成草稿，再由 Android App 人工确认入账。
 
-第一版重点：
+当前已实现重点：
 
 - iPhone 截图上传。
+- Android 截图上传。
 - Windows FastAPI 后端保存截图。
-- 后端创建 pending 待确认账单。
+- 后端创建 pending 待确认账单，并可按配置运行 OCR 草稿识别。
 - Android App 拉取 pending 账单。
 - 用户编辑金额、商家、分类、消费时间、备注。
 - 用户确认或拒绝账单。
 - confirmed 账单同步到 Android Room 本地缓存。
+- 多租户按 token 隔离账单、图片、统计、分类规则、重复检测和导出。
+- 分类规则、重复检测、缩略图和图片清理维护接口已落地。
 
-第一版明确不做：
+当前明确不做：
 
-- 真正 OCR。
-- 自动分类。
 - 账号注册和登录系统。
-- 多用户。
 - 邮箱、手机号、第三方登录。
 - Web 后台管理页面。
-- 复杂图表。
 - 远程控制电脑。
 - 云端商业部署。
 - 自动读取 iPhone 相册。
@@ -71,7 +70,7 @@ iPhone 截图
 
 - iPhone 只负责上传图片。
 - 后端只负责保存、校验、建账单、提供 API。
-- Android App 是第一版唯一人工确认入口。
+- Android App 是当前唯一人工确认入口。
 - SQLite 数据库只能被本机后端访问。
 - uploads 目录不能被静态公开。
 - Cloudflare Tunnel 只映射 API，不映射 Windows 文件夹。
@@ -285,9 +284,9 @@ category: string，默认 其他
 note: string?，备注
 source: string，默认 iPhone截图
 image_path: string?，相对路径
-image_hash: string?，图片 sha256，第一版只保存不去重
-raw_text: string?，OCR 原文预留
-confidence: float?，OCR 置信度预留
+image_hash: string?，图片 sha256，用于当前租户内完全重复检测
+raw_text: string?，OCR 原文或快捷指令文本识别结果
+confidence: float?，OCR 置信度
 status: string，pending / confirmed / rejected
 expense_time: datetime?，实际消费时间，UTC
 created_at: datetime，上传/创建时间，UTC
@@ -322,7 +321,7 @@ AI订阅
 pending -> confirmed
 pending -> rejected
 confirmed -> confirmed，允许继续 PATCH 修正
-rejected 第一版不恢复、不展示
+rejected 当前不恢复，普通列表默认不展示
 ```
 
 ## 10. 图片保存规则
@@ -339,13 +338,13 @@ backend/uploads/{tenant_id}/YYYY/MM/
 - 单个文件最大 10MB。
 - 保存前生成随机文件名。
 - 不使用原始文件名。
-- 计算 `image_hash`，第一版只保存，不强制去重。
+- 计算 `image_hash`，用于当前租户内重复检测；重复只提示，不自动删除、不自动拒绝、不自动入账。
 - `image_path` 只保存相对路径。
 - API 返回不能暴露 Windows 真实路径。
 - uploads 不能作为公开静态目录。
-- 预留确认后删除原图配置项，第一版默认不自动删除。
+- 支持按配置确认后删除原图、按保留天数清理图片；默认不自动删除。
 
-iPhone 快捷指令建议上传前转为 JPEG 或 PNG。后端可以接受 HEIC，但第一版不保证 Android 端预览 HEIC。
+iPhone 快捷指令建议上传前转为 JPEG 或 PNG。后端可以接受 HEIC 原图，但当前缩略图生成会跳过 HEIC，Android 端需要降级处理。
 
 ## 11. 后端 API
 
@@ -406,7 +405,7 @@ Content-Type: image/jpeg 或 image/png
 - 生成随机文件名。
 - 计算 `image_hash`。
 - 创建一条 pending expense。
-- `amount_cents`、`merchant`、`raw_text` 第一版留空。
+- 根据配置运行 OCR provider 和规则解析，填充 `amount_cents`、`merchant`、`raw_text`、`confidence`、`expense_time`、`category` 等草稿字段；默认 `OCR_PROVIDER=empty` 且 `OCR_AUTO_RUN=false`。
 - `category` 默认 `其他`。
 - `status = pending`。
 
@@ -653,7 +652,7 @@ Compose Screen
 
 ## 13. Android 绑定与登录
 
-第一版不做账号密码。
+当前不做账号密码。
 
 首次打开：
 
@@ -756,7 +755,7 @@ Compose Screen
 备注
 消费时间
 来源
-OCR 原文，第一版为空，可折叠
+OCR 原文，可折叠；未识别时为空
 ```
 
 按钮：
@@ -797,7 +796,7 @@ OCR 原文，第一版为空，可折叠
 
 ### 统计页
 
-第一版统计：
+当前统计：
 
 ```text
 本月总支出
@@ -807,7 +806,7 @@ OCR 原文，第一版为空，可折叠
 最近 7 天支出
 ```
 
-第一版可以使用 Compose 简单卡片或列表，不强制复杂图表。
+Android 使用 Compose 卡片、列表和图表展示，不要求后台报表式复杂大屏。
 
 ### 设置页
 
@@ -819,7 +818,7 @@ OCR 原文，第一版为空，可折叠
 重新同步
 清除本地缓存
 清除服务器绑定
-修改分类列表，第一版可选
+管理分类规则
 关于小票夹
 ```
 
@@ -932,9 +931,9 @@ api.我的域名.com -> http://127.0.0.1:8000
 - API 不返回本机真实路径。
 - 图片路径只保存相对路径。
 - 受保护图片接口必须验证 `APP_TOKEN`。
-- 预留确认后删除原图配置项。
+- 支持确认后删除原图和按天数清理图片，删除必须限制在租户 uploads 目录内。
 
-## 19. 第一版开发顺序
+## 19. 当前开发顺序基线
 
 1. 后端基础：配置、数据库、模型、统一错误、Token 校验。
 2. 上传闭环：上传图片、保存文件、计算 hash、创建 pending。
@@ -947,7 +946,7 @@ api.我的域名.com -> http://127.0.0.1:8000
 
 ## 20. 交付清单
 
-第一版完成时应具备：
+当前交付应具备：
 
 - 完整项目结构。
 - 后端完整代码。
@@ -958,4 +957,4 @@ api.我的域名.com -> http://127.0.0.1:8000
 - iPhone 快捷指令配置说明。
 - Android Studio 运行说明。
 - 安全注意事项。
-- 后续 OCR 升级建议。
+- OCR、分类规则、重复检测、缩略图、图片清理和生活化统计说明。
