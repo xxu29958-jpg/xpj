@@ -50,6 +50,7 @@ ADMIN_TOKEN   维护接口使用
 - 只接受 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 单文件默认最大 10MB。
 - 校验扩展名或 content-type 后，还会检查图片文件头。
+- `jpg`、`jpeg`、`png`、`webp` 会通过 Pillow `verify()` 做可解码校验；`heic` 当前只做 `ftyp` brand 校验并保存原图，因为本地 Pillow 默认不保证 HEIC 解码能力。
 - HEIC 可以保存原图，但当前缩略图生成会跳过 HEIC，Android 预览需要降级处理。
 
 ## 数据库

@@ -79,6 +79,42 @@ X-Timezone: Asia/Shanghai
 Authorization: Bearer ADMIN_TOKEN
 ```
 
+## API 契约矩阵
+
+| Endpoint | Method | 后端 route | Android ApiService | 请求 DTO / 参数 | 响应 DTO | 鉴权 | 测试覆盖 | 用途 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `/api/health` | GET | `backend/app/main.py` | 无 | 无 | `{"status":"ok"}` | 无 | `backend/tests/test_api_contract.py`, smoke | smoke |
+| `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal 绑定 |
+| `/api/upload/check` | GET | `backend/app/routes/uploads.py` | 无 | header `Upload-Token` | `UploadCheckResponse` | UPLOAD_TOKEN | `backend/tests/test_api_contract.py`, smoke | iPhone shortcut |
+| `/api/upload-screenshot` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart；header `Upload-Token`、`X-Timezone` | `UploadResponseDto` | UPLOAD_TOKEN | `backend/tests/test_api_contract.py`, smoke | iPhone shortcut |
+| `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | gray/internal Android 上传 |
+| `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/timezone` | `PaginatedExpensesDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
+| `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/timezone` | streaming `text/csv` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal 导出 |
+| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseUpdateRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/debug 读取详情 |
+| `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/expenses/{id}/recognize-text` | POST | `backend/app/routes/expenses.py` | 无 | `RecognizeTextRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/shortcut text |
+| `/api/expenses/{id}/mark-not-duplicate` | POST | `backend/app/routes/expenses.py` | `markNotDuplicate(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}/image` | GET | `backend/app/routes/expenses.py` | `expenseImage(id)` | path `id` | streaming image | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/thumbnail` | GET | `backend/app/routes/expenses.py` | `expenseThumbnail(id)` | path `id` | streaming image | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/duplicates` | GET | `backend/app/routes/duplicates.py` | `duplicates()` | 无 | `List<ExpenseDto>` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/rules/categories` | GET | `backend/app/routes/rules.py` | `categoryRules()` | 无 | `List<CategoryRuleDto>` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | internal/高级入口 |
+| `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
+| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py`, smoke | admin |
+| `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py` | admin |
+| `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py` | admin |
+
 ## 基础接口
 
 ### GET /api/health
