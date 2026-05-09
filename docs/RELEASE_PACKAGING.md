@@ -171,8 +171,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.
 脚本通过后会生成：
 
 ```text
-artifacts/rc-gate/<run-id>/v0.2.0-rc1-artifact-manifest.json
-artifacts/rc-gate/<run-id>/v0.2.0-rc1-handoff-checklist.md
+artifacts/rc-gate/<run-id>/v0.3.0-rc1-artifact-manifest.json
+artifacts/rc-gate/<run-id>/v0.3.0-rc1-handoff-checklist.md
 ```
 
 manifest 记录：
@@ -189,9 +189,9 @@ manifest 记录：
 
 handoff checklist 必须写清楚：
 
-- Android gray 用户只收到对应 tenant 的 `app_token`。
-- iPhone 快捷指令用户只收到对应 tenant 的 `upload_token`。
-- 服务拥有者才持有 internal APK 和维护凭据。
-- 不得发出 `backend\.env`、完整 `TENANTS_JSON`、`ADMIN_TOKEN`、其他 tenant token、含 token 的日志/截图/CI 输出、keystore 或签名密码。
+- Android gray 用户只收到服务地址和一次性 Pairing Code。
+- iPhone 快捷指令用户只收到对应 UploadLink URL。
+- 服务拥有者才持有 internal APK、admin token 和维护凭据。
+- 不得发出 `backend\.env`、admin token、session token、UploadLink、含凭证的日志/截图/CI 输出、keystore 或签名密码。
 
-没有通过 `scripts\verify_rc_artifacts.ps1`，不得把任何包称为 `v0.2.0-rc1`。
+没有通过 `scripts\verify_rc_artifacts.ps1`，不得把任何包称为 `v0.3.0-rc1`。

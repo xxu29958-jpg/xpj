@@ -175,13 +175,20 @@ internal fun BackgroundActionButton(
 @Composable
 internal fun AccountStatusCard(
     serverSettings: ServerSettings?,
+    accountName: String? = null,
+    ledgerName: String? = null,
+    deviceName: String? = null,
+    role: String? = null,
     lastUploadAt: String?,
     lastSyncAt: String?,
     busy: Boolean = false,
     onCheckConnection: (() -> Unit)? = null,
     onSync: (() -> Unit)? = null,
 ) {
-    val ledgerName = serverSettings?.tenantName?.takeIf { it.isNotBlank() } ?: "我的小票夹"
+    val displayAccount = serverSettings?.accountName?.takeIf { it.isNotBlank() } ?: accountName?.takeIf { it.isNotBlank() } ?: "我"
+    val displayLedger = serverSettings?.ledgerName?.takeIf { it.isNotBlank() } ?: ledgerName?.takeIf { it.isNotBlank() } ?: "我的小票夹"
+    val displayDevice = serverSettings?.deviceName?.takeIf { it.isNotBlank() } ?: deviceName?.takeIf { it.isNotBlank() } ?: "当前设备"
+    val displayRole = serverSettings?.role?.takeIf { it.isNotBlank() } ?: role?.takeIf { it.isNotBlank() } ?: "owner"
     SoftPanel(containerAlpha = 0.96f) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -202,7 +209,7 @@ internal fun AccountStatusCard(
                         style = MaterialTheme.typography.labelMedium,
                     )
                     Text(
-                        text = ledgerName,
+                        text = displayLedger,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -210,6 +217,9 @@ internal fun AccountStatusCard(
                 }
                 StatusPill(connected = serverSettings != null)
             }
+            AccountInfoLine(text = "当前账号：$displayAccount")
+            AccountInfoLine(text = "当前设备：$displayDevice")
+            AccountInfoLine(text = "角色：$displayRole")
             AccountInfoLine(
                 text = "最近上传：${(lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) } ?: "还没有上传"}",
             )

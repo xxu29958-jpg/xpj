@@ -109,6 +109,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 严格模式，适合出门前检查：
 
 ```powershell
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
 ```
 
@@ -121,16 +122,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 - `TicketboxBackup` 每日 SQLite 备份任务状态。
 - 本机 `/api/health`。
 - 公网 `/api/health`。
-- 公网 `/api/auth/check`，Token 从 `backend\.env` 读取但不会打印。
-- 最近后端访问日志。
+- 公网 `/api/auth/check`（使用 `-SessionToken` 或 `TICKETBOX_SESSION_TOKEN`，不会打印 token）。
+- 最近后端日志。
 
 更适合日常使用的一键诊断：
 
 ```powershell
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Strict
 ```
 
-它会额外汇总数据库大小、待确认数量、已入账数量、最近上传时间、截图存储占用和上传口令检查。脚本读取本机 `backend\.env`，但不会打印 Token。
+它会额外汇总数据库大小、待确认数量、已入账数量、最近上传时间和截图存储占用。脚本使用 `-SessionToken` 或 `TICKETBOX_SESSION_TOKEN`，但不会打印 token。UploadLink 只能上传，诊断脚本不会读取或打印 upload key。
 
 默认诊断只输出摘要：
 
@@ -141,11 +143,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.p
 - 待确认和已入账数量。
 - 数据库大小。
 - 图片占用。
-- 租户数量。
+- 账本数量。
 
 只有加 `-Advanced` 才显示端口、URL、cloudflared 进程、计划任务、HTTP 检查和日志尾部：
 
 ```powershell
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Advanced
 ```
 
@@ -155,11 +158,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.p
 
 ```powershell
 cd E:\projects\xiaopiaojia
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
   -ServerUrl https://api.zen70.cn
 ```
 
-这条命令会尝试启动后端、启动已安装的 cloudflared 服务或计划任务，并检查公网 health/auth。
+这条命令会尝试启动后端、启动已安装的 cloudflared 服务或计划任务，并检查公网 health；如果提供了 session token，也会检查 `/api/auth/check`。
 
 ## 手机显示网络不可用时
 
@@ -185,16 +189,19 @@ https://api.zen70.cn/api/health
 如果 Safari 能打开，但 App 显示网络不可用，运行：
 
 ```powershell
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
 ```
 
-再看 `backend\logs\ticketbox-backend-*.out.log` 是否有 App 对应接口请求。
+再看 `backend\logs\ticketbox-backend-*.out.log` 和 `ticketbox-backend-*.err.log` 是否有异常。
 
-如果日志里没有新请求，说明请求没有到达后端，优先查手机网络、域名、Cloudflare Tunnel 或 App 配置。
+后端默认关闭 Uvicorn access log，避免 UploadLink URL 中的 `upload_key` 被写入日志。因此日志里没有完整请求路径不代表请求没有到达后端，排查上传以脚本输出、pending 列表或数据库状态为准。
 
-如果日志里有请求但状态码是 `401`，优先查 `APP_TOKEN`。
+如果脚本或客户端返回 `401`，优先检查 session token 是否有效（是否被撤销或过期）。
 
-如果日志里有上传请求但返回 `401`，优先查 iOS 快捷指令的 `Upload-Token`。
+如果 UploadLink 上传返回 `401`，优先检查 URL 中的 `upload_key` 是否正确。
+
+如果返回 `legacy_auth_removed`，说明客户端仍在使用旧版 `APP_TOKEN` 或 `UPLOAD_TOKEN`，需要更新为新版凭证。
 
 ## 防止 Windows 睡眠
 

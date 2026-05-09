@@ -35,7 +35,7 @@ Android App 使用：
 
 ```http
 POST /api/app/upload-screenshot
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 X-Timezone: 手机系统 IANA 时区
 Content-Type: multipart/form-data
 file=<image>
@@ -44,10 +44,10 @@ file=<image>
 不使用：
 
 ```http
-Upload-Token
+UploadLink
 ```
 
-`Upload-Token` 只保留给 iPhone 快捷指令。
+UploadLink 只保留给 iPhone 快捷指令。Android App 只使用绑定后拿到的 session token。
 
 ## 5. Repository 边界
 
@@ -123,14 +123,14 @@ server_breakdown 后端 body/form、文件保存、DB 创建分段
 - 选择图片后能上传。
 - 上传成功后 pending 列表刷新。
 - 上传失败不白屏。
-- Android 不保存 Upload Token。
+- Android 不保存 UploadLink 或旧 Upload Token。
 - Android 不申请全相册权限。
 
 ## 8. 当前落地
 
 已实现：
 
-- 后端 `POST /api/app/upload-screenshot`，使用 `Authorization: Bearer APP_TOKEN`。
+- 后端 `POST /api/app/upload-screenshot`，使用 `Authorization: Bearer <session_token>`。
 - Android `ApiService.uploadScreenshot` 使用 Retrofit multipart，并随请求发送手机系统时区 `X-Timezone`。
 - `ExpenseRepository.uploadScreenshot` 统一处理 multipart、错误和最近上传时间。
 - 选图后的图片读取、采样和压缩已移到 IO 线程，避免阻塞 Compose 主线程。

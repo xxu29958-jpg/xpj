@@ -10,6 +10,8 @@ import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
+import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -43,7 +45,11 @@ class RepositoryException(message: String) : RuntimeException(message)
 
 internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): String {
     return when (errorCode.trim()) {
-        "invalid_token" -> "访问口令不对，请重新检查。"
+        "invalid_token" -> "绑定已失效，请重新绑定账本。"
+        "legacy_auth_removed" -> "请使用新版绑定方式。"
+        "invalid_pairing_code" -> "绑定码无效，请重新输入。"
+        "pairing_code_expired" -> "绑定码已过期，请重新获取。"
+        "pairing_code_used" -> "绑定码已使用，请重新获取。"
         "file_too_large" -> "上传文件超过大小限制。"
         "unsupported_file_type" -> "不支持的图片格式。"
         "expense_not_found" -> "账单不存在。"
@@ -135,7 +141,7 @@ class ExpenseRepository(
                 ?.let { return backendErrorUserMessage(it.error, it.message) }
         }
         return when (statusCode) {
-            401, 403 -> "访问口令不对，请重新检查。"
+            401, 403 -> "绑定已失效，请重新绑定账本。"
             404 -> "账单不存在。"
             413 -> "上传文件超过大小限制。"
             else -> "连接出错（$statusCode），请稍后再试。"
@@ -175,12 +181,31 @@ class ExpenseRepository(
         }
     }
 
-    suspend fun bindServer(serverUrl: String, appToken: String): Result<Unit> {
+    suspend fun bindServer(serverUrl: String, pairingCode: String): Result<Unit> {
         return safeCall(serverUrlHint = serverUrl) {
-            val normalized = validateBindingInput(serverUrl, appToken)
-            api(normalized, appToken).checkAuth()
+            val normalized = validateBindingInput(serverUrl, pairingCode)
+            val pairResponse = api(normalized, null).pairDevice(
+                PairRequestDto(
+                    pairingCode = pairingCode.trim(),
+                    deviceName = currentDeviceName(),
+                    platform = "android",
+                ),
+            )
+            syncConfirmedFromService(
+                service = api(normalized, pairResponse.sessionToken),
+                replaceCache = true,
+                recordSyncTimestamp = false,
+            )
             settingsStore.saveServerUrl(normalized)
-            tokenStore.saveToken(appToken)
+            tokenStore.saveToken(pairResponse.sessionToken)
+            settingsStore.saveIdentity(
+                accountName = pairResponse.accountName,
+                ledgerName = pairResponse.ledgerName,
+                deviceName = pairResponse.deviceName,
+                role = pairResponse.role,
+                boundAt = Instant.now().toString(),
+            )
+            settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
             settingsStore.markUnlocked()
         }
     }
@@ -357,13 +382,28 @@ class ExpenseRepository(
         readProtectedImage(api().expenseImage(id))
     }
 
-    suspend fun syncConfirmed(month: String? = null, category: String? = null): Result<List<Expense>> = safeCall {
-        val collected = mutableListOf<Expense>()
+    private fun currentDeviceName(): String {
+        val manufacturer = android.os.Build.MANUFACTURER.orEmpty().trim()
+        val model = android.os.Build.MODEL.orEmpty().trim()
+        return listOf(manufacturer, model)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "Android 设备" }
+    }
+
+    private suspend fun syncConfirmedFromService(
+        service: ApiService,
+        month: String? = null,
+        category: String? = null,
+        replaceCache: Boolean = false,
+        recordSyncTimestamp: Boolean = true,
+    ): List<Expense> {
+        val collectedDtos = mutableListOf<ExpenseDto>()
         var page = 1
         val pageSize = 50
         var total = Int.MAX_VALUE
         do {
-            val response = api().confirmedExpenses(
+            val response = service.confirmedExpenses(
                 page = page,
                 pageSize = pageSize,
                 month = month,
@@ -371,12 +411,26 @@ class ExpenseRepository(
                 timezone = currentTimezoneId(),
             )
             total = response.total
-            expenseDao.upsertAllByServerId(response.items.map { it.toEntity() })
-            collected += response.items.map { it.toDomain() }
+            collectedDtos += response.items
             page += 1
-        } while (collected.size < total)
-        settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
-        collected
+        } while (collectedDtos.size < total)
+
+        if (replaceCache) {
+            expenseDao.clear()
+        }
+        val entities = collectedDtos.map { it.toEntity() }
+        if (entities.isNotEmpty()) {
+            expenseDao.upsertAllByServerId(entities)
+        }
+        val collected = collectedDtos.map { it.toDomain() }
+        if (recordSyncTimestamp) {
+            settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
+        }
+        return collected
+    }
+
+    suspend fun syncConfirmed(month: String? = null, category: String? = null): Result<List<Expense>> = safeCall {
+        syncConfirmedFromService(api(), month, category)
     }
 
     suspend fun categories(): Result<List<String>> = safeCall {
@@ -476,9 +530,10 @@ class ExpenseRepository(
         settingsStore.clearLastConfirmedSyncAt()
     }
 
-    fun clearBinding() {
+    suspend fun clearBinding() {
         cachedServerUrl = null
         cachedApi = null
+        expenseDao.clear()
         settingsStore.clear()
         tokenStore.clear()
     }

@@ -115,7 +115,10 @@ class ProtectedImage(
 )
 
 data class ServerSettings(
-    val tenantName: String,
+    val accountName: String,
+    val ledgerName: String,
+    val deviceName: String,
+    val role: String,
     val status: String,
     val storageStatus: String,
     val pendingCount: Int,

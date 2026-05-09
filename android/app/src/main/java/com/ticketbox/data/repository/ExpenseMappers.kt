@@ -153,7 +153,10 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
 )
 
 fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
-    tenantName = tenantName,
+    accountName = accountName,
+    ledgerName = ledgerName,
+    deviceName = deviceName,
+    role = role,
     status = status,
     storageStatus = storageStatus,
     pendingCount = pendingCount,

@@ -25,7 +25,7 @@ if ($existing) {
 "[{0}] starting ticketbox backend on 127.0.0.1:{1}" -f (Get-Date -Format "s"), $Port | Out-File -FilePath $LogFile -Append -Encoding utf8
 $process = Start-Process `
     -FilePath $Python `
-    -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$Port") `
+    -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$Port", "--no-access-log") `
     -WorkingDirectory $BackendRoot `
     -WindowStyle Hidden `
     -RedirectStandardOutput $OutLogFile `

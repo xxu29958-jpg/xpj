@@ -2,22 +2,24 @@
 
 ## 灰度版总入口
 
-灰度版要把小票夹从个人联调工程升级为可给他人试用的私人生活账本 App。完整要求见：
+当前开发基准以 v0.3 账号 / 账本 / 设备身份模型为准。完整要求见：
 
 ```text
-docs/GRAY_RELEASE_REQUIREMENTS.md
-docs/GRAY_RELEASE_PRODUCT_SPEC.md
-docs/MULTI_TENANT_SPEC.md
-docs/ANDROID_GRAY_UX_SPEC.md
+docs/ACCOUNT_SYSTEM.md
+docs/BOOTSTRAP.md
+docs/API.md
+docs/SECURITY.md
+docs/ANDROID_RULES.md
+docs/ANDROID_STATE_FLOW.md
 docs/ANDROID_UPLOAD.md
 docs/RELEASE_PACKAGING.md
-docs/GRAY_ACCEPTANCE_CHECKLIST.md
+docs/GRAY_ACCEPTANCE_EXECUTION.md
 ```
 
 灰度版强制要求：
 
 - 普通用户主体验不显示服务器域名、token、接口名、Cloudflare、端口、日志和诊断脚本。
-- 多租户按 `tenant_id` 隔离账单、图片、统计、分类规则、重复检测和 CSV。
+- 多账本按 `ledger_id` 隔离账单、图片、统计、分类规则、重复检测和 CSV。
 - iPhone 快捷指令和 Android App 均可上传截图。
 - OCR 只填草稿，不自动入账。
 - Release 包和 Windows 运维诊断分层提供。
@@ -36,12 +38,13 @@ docs/GRAY_ACCEPTANCE_CHECKLIST.md
 - 用户编辑金额、商家、分类、消费时间、备注。
 - 用户确认或拒绝账单。
 - confirmed 账单同步到 Android Room 本地缓存。
-- 多租户按 token 隔离账单、图片、统计、分类规则、重复检测和导出。
+- v0.3 身份系统：Account、Ledger、Device、AuthToken、UploadLink、PairingCode。
+- 多账本隔离账单、图片、统计、分类规则、重复检测和导出。
 - 分类规则、重复检测、缩略图和图片清理维护接口已落地。
 
 当前明确不做：
 
-- 账号注册和登录系统。
+- 商业账号注册和登录系统。
 - 邮箱、手机号、第三方登录。
 - Web 后台管理页面。
 - 远程控制电脑。
@@ -57,7 +60,7 @@ docs/GRAY_ACCEPTANCE_CHECKLIST.md
 ```text
 iPhone 截图
   -> iOS 快捷指令上传图片
-  -> https://api.我的域名.com/api/upload-screenshot
+  -> https://api.我的域名.com/u/<upload_key>
   -> Cloudflare Tunnel
   -> Windows 主机 FastAPI 服务，监听 127.0.0.1:8000
   -> SQLite 数据库 + uploads 私有图片目录
@@ -80,7 +83,7 @@ iPhone 截图
 - Python 3.11+
 - FastAPI
 - SQLite
-- SQLAlchemy 或 SQLModel
+- SQLAlchemy
 - Pydantic
 - Uvicorn
 - Windows 11 可运行
@@ -99,23 +102,23 @@ backend/
     schemas.py
     auth.py
     errors.py
+    tenants.py
     routes/
       auth.py
+      bootstrap.py
       health.py
       expenses.py
       uploads.py
       stats.py
+      settings.py
+      maintenance.py
+      rules.py
+      duplicates.py
     services/
       file_service.py
       expense_service.py
       time_service.py
-  uploads/
-  data/
-    ticketbox.db
-  requirements.txt
-  .env.example
-  run.bat
-  README.md
+      identity_service.py
 ```
 
 职责划分：
@@ -123,21 +126,20 @@ backend/
 - `main.py`：创建 FastAPI app、注册路由、注册统一异常处理。
 - `config.py`：读取 `.env` 或环境变量。
 - `database.py`：SQLite engine、session、建表入口。
-- `models.py`：数据库 ORM 模型。
+- `models.py`：数据库 ORM 模型（含 Account、Ledger、Device、AuthToken、UploadLink、PairingCode）。
 - `schemas.py`：Pydantic 请求和响应模型。
-- `auth.py`：`Upload-Token` 和 `Authorization: Bearer` 校验。
+- `auth.py`：`Authorization: Bearer` 校验、旧版 token 检测。
+- `tenants.py`：`AuthContext` 运行时身份上下文。
 - `errors.py`：统一错误结构。
 - `routes/`：HTTP 层。
 - `services/`：业务逻辑和文件处理。
+- `services/identity_service.py`：核心身份逻辑（绑定、鉴权、初始化）。
 
 ## 4. 后端配置
 
 `.env` 示例：
 
 ```env
-UPLOAD_TOKEN=替换为随机长字符串
-APP_TOKEN=替换为随机长字符串
-ADMIN_TOKEN=替换为随机长字符串
 DATABASE_URL=sqlite:///data/ticketbox.db
 UPLOAD_DIR=uploads
 MAX_UPLOAD_SIZE_MB=10
@@ -145,16 +147,26 @@ DELETE_IMAGE_AFTER_CONFIRM=false
 GENERATE_THUMBNAIL=true
 DELETE_IMAGE_AFTER_DAYS=0
 OCR_PROVIDER=empty
+OCR_AUTO_RUN=false
+OCR_FALLBACK_PROVIDER=empty
+OCR_MIN_CONFIDENCE=0.65
+OCR_DEFAULT_TIMEZONE=Asia/Shanghai
+LOCAL_LLM_BASE_URL=http://127.0.0.1:1234/v1
+LOCAL_LLM_MODEL=
+LOCAL_LLM_TIMEOUT_SECONDS=60
 ```
+
+> **注意**：v0.3 不再在 `.env` 中配置 `APP_TOKEN`、`UPLOAD_TOKEN`、`ADMIN_TOKEN`。旧 app/upload token 已被废弃，运行时请求使用它们会返回 `legacy_auth_removed`；旧静态 admin token 不再是有效维护凭证。
 
 `run.bat`：
 
 ```bat
 @echo off
 cd /d %~dp0
-call .venv\Scripts\activate
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_backend.ps1 -Port 8000
 ```
+
+`start_backend.ps1` 会使用 `--no-access-log` 启动 Uvicorn，避免 UploadLink URL 中的 `upload_key` 出现在访问日志里。
 
 后端默认只监听：
 
@@ -164,33 +176,38 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 不要监听 `0.0.0.0`。
 
-## 5. Token 与权限
+## 5. v0.3 身份与权限
 
-使用三个 Token：
+v0.3 废弃了旧版三个静态 Token（`UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN`），改为基于 SQLite 的可撤销凭证系统：
 
 ```text
-UPLOAD_TOKEN  iPhone 快捷指令上传截图使用，只能调用上传接口。
-APP_TOKEN     Android App 使用，可读取、编辑、确认、拒绝账单和查看受保护图片。
-ADMIN_TOKEN   维护接口使用；当前映射到默认租户的 admin 上下文，不提供全局后台。
+PairingCode    Android 绑定入口，6 位数字，一次性，有 TTL（默认 15 分钟）
+AuthToken      设备会话 token，Bearer 鉴权，可撤销
+UploadLink     iPhone 上传入口，URL 路径携带 upload_key，可撤销
+BootstrapAdmin 初始化时生成的 admin token，用于维护接口
 ```
 
 请求头：
 
 ```http
-Upload-Token: xxxxxx
+Authorization: Bearer <session_token>
 ```
 
 ```http
-Authorization: Bearer xxxxxx
+Authorization: Bearer <admin_token>
 ```
 
 认证规则：
 
-- `/api/upload-screenshot` 只接受 `Upload-Token`。
-- Android App 接口只接受 `Authorization: Bearer APP_TOKEN`。
-- `/api/maintenance/*` 只接受 `Authorization: Bearer ADMIN_TOKEN`，并只作用于当前 admin 上下文的租户。
-- `/api/auth/check` 必须验证 `APP_TOKEN`。
+- `POST /api/auth/pair` 不需要鉴权，用 Pairing Code 换取 session token。
+- `POST /api/bootstrap/owner` 不需要鉴权，但只接受后端本机 loopback 请求，且仅首次初始化可用。
+- `POST /api/bootstrap/pairing-codes` 需要 admin token。
+- `/u/{upload_key}` 通过 URL 路径中的 upload_key 鉴权，不需要 header。
+- Android App 接口需要 `Authorization: Bearer <session_token>`。
+- `/api/maintenance/*` 需要 `Authorization: Bearer <admin_token>`，并只作用于当前 admin 上下文对应的账本。
+- `/api/auth/check` 必须验证 session token。
 - `/api/health` 可以不鉴权，只用于本地或隧道健康检查。
+- 旧版 `APP_TOKEN`、`UPLOAD_TOKEN`、`TENANTS_JSON` app/upload token 一律返回 `legacy_auth_removed`（401）；旧静态 admin token 按无效凭证处理。
 
 ## 6. 统一错误格式
 
@@ -207,6 +224,11 @@ Authorization: Bearer xxxxxx
 
 ```text
 invalid_token
+legacy_auth_removed
+bootstrap_already_initialized
+invalid_pairing_code
+pairing_code_expired
+pairing_code_used
 file_too_large
 unsupported_file_type
 expense_not_found
@@ -242,7 +264,7 @@ Android Room：
 amountCents: Long?
 ```
 
-单位统一为“分”。界面显示时转换为元：
+单位统一为"分"。界面显示时转换为元：
 
 ```text
 3680 -> ¥36.80
@@ -284,7 +306,7 @@ category: string，默认 其他
 note: string?，备注
 source: string，默认 iPhone截图
 image_path: string?，相对路径
-image_hash: string?，图片 sha256，用于当前租户内完全重复检测
+image_hash: string?，图片 sha256，用于当前账本内完全重复检测
 raw_text: string?，OCR 原文或快捷指令文本识别结果
 confidence: float?，OCR 置信度
 status: string，pending / confirmed / rejected
@@ -326,10 +348,10 @@ rejected 当前不恢复，普通列表默认不展示
 
 ## 10. 图片保存规则
 
-上传图片保存到租户目录：
+上传图片保存到账本目录：
 
 ```text
-backend/uploads/{tenant_id}/YYYY/MM/
+backend/uploads/{ledger_id}/YYYY/MM/
 ```
 
 要求：
@@ -338,7 +360,7 @@ backend/uploads/{tenant_id}/YYYY/MM/
 - 单个文件最大 10MB。
 - 保存前生成随机文件名。
 - 不使用原始文件名。
-- 计算 `image_hash`，用于当前租户内重复检测；重复只提示，不自动删除、不自动拒绝、不自动入账。
+- 计算 `image_hash`，用于当前账本内重复检测；重复只提示，不自动删除、不自动拒绝、不自动入账。
 - `image_path` 只保存相对路径。
 - API 返回不能暴露 Windows 真实路径。
 - uploads 不能作为公开静态目录。
@@ -366,24 +388,54 @@ GET /api/health
 
 ```http
 GET /api/auth/check
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回：
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "account_name": "Owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "小米 15 Pro",
+  "role": "owner",
+  "scope": "app"
 }
 ```
 
-Android 首次绑定服务器时使用这个接口验证 Token。
+Android 绑定后校验 session token 使用。
+
+### 设备绑定
+
+```http
+POST /api/auth/pair
+```
+
+请求体：
+
+```json
+{
+  "pairing_code": "738294",
+  "device_name": "小米 15 Pro",
+  "platform": "Android"
+}
+```
+
+返回 session token，Android 保存到 Keystore。
+
+### Owner 初始化
+
+```http
+POST /api/bootstrap/owner
+```
+
+仅首次可用，返回 admin token、upload key、pairing code 等只显示一次的凭证。
 
 ### 上传截图
 
 ```http
-POST /api/upload-screenshot
-Upload-Token: UPLOAD_TOKEN
+POST /u/<upload_key>?tz=Asia/Shanghai
 User-Agent: TicketBox/1.0 iOS-Shortcut
 Content-Type: image/jpeg 或 image/png
 ```
@@ -394,14 +446,14 @@ Content-Type: image/jpeg 或 image/png
 原始图片文件内容
 ```
 
-后端也兼容标准 `multipart/form-data` 字段 `file`，但 iOS 26.4 快捷指令实测首选“请求正文：文件”，不要首选“表单”。
+后端也兼容标准 `multipart/form-data` 字段 `file`，但 iOS 26.4 快捷指令实测首选"请求正文：文件"，不要首选"表单"。
 
 行为：
 
-- 校验 `Upload-Token`。
+- 通过 URL 路径中的 `upload_key` 鉴权。
 - 校验文件类型。
 - 校验文件大小。
-- 保存图片到 `uploads/{tenant_id}/YYYY/MM/`。
+- 保存图片到 `uploads/{ledger_id}/YYYY/MM/`。
 - 生成随机文件名。
 - 计算 `image_hash`。
 - 创建一条 pending expense。
@@ -424,40 +476,16 @@ Content-Type: image/jpeg 或 image/png
 
 ```http
 GET /api/expenses/pending
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
-返回：
-
-```json
-[
-  {
-    "id": 1,
-    "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
-    "amount_cents": null,
-    "merchant": null,
-    "category": "其他",
-    "note": "",
-    "source": "iPhone截图",
-    "image_path": "uploads/owner/2026/05/xxx.png",
-    "image_hash": "sha256...",
-    "raw_text": "",
-    "confidence": null,
-    "status": "pending",
-    "expense_time": null,
-    "created_at": "2026-05-03T12:00:00Z",
-    "updated_at": "2026-05-03T12:00:00Z",
-    "confirmed_at": null,
-    "rejected_at": null
-  }
-]
-```
+返回 pending 账单列表。
 
 ### 获取已确认账单
 
 ```http
 GET /api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=餐饮
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 参数：
@@ -484,7 +512,7 @@ category: string，可选
 
 ```http
 PATCH /api/expenses/{id}
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 Content-Type: application/json
 ```
 
@@ -510,7 +538,7 @@ Content-Type: application/json
 
 ```http
 POST /api/expenses/{id}/confirm
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 行为：
@@ -524,7 +552,7 @@ Authorization: Bearer APP_TOKEN
 
 ```http
 POST /api/expenses/{id}/reject
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 行为：
@@ -537,12 +565,12 @@ Authorization: Bearer APP_TOKEN
 
 ```http
 GET /api/expenses/{id}/image
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 行为：
 
-- 校验 `APP_TOKEN`。
+- 校验 session token。
 - 查询 expense。
 - 根据数据库中的相对 `image_path` 读取本地文件。
 - 返回图片流。
@@ -553,7 +581,7 @@ Authorization: Bearer APP_TOKEN
 
 ```http
 GET /api/stats/monthly?month=2026-05
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 统计口径：
@@ -590,7 +618,7 @@ Authorization: Bearer APP_TOKEN
 - Jetpack Compose
 - Material 3
 - Room
-- Retrofit 或 Ktor Client
+- Retrofit
 - Kotlin Coroutines
 - Android BiometricPrompt
 - Android Keystore
@@ -622,7 +650,6 @@ android/
         theme/
         navigation/
         screens/
-          LoginScreen.kt
           BindServerScreen.kt
           PendingScreen.kt
           LedgerScreen.kt
@@ -646,7 +673,7 @@ Android 数据流：
 Compose Screen
   -> ViewModel
   -> Repository
-  -> Retrofit/Ktor API + Room DAO
+  -> Retrofit API + Room DAO
   -> UI State
 ```
 
@@ -657,12 +684,14 @@ Compose Screen
 首次打开：
 
 ```text
-绑定我的服务器
+绑定我的账本
   -> 输入服务器地址，例如 https://api.我的域名.com
-  -> 输入 App Token
-  -> 调用 GET /api/auth/check
-  -> 成功后保存服务器地址
-  -> App Token 存入 Android Keystore
+  -> 输入 6 位绑定码（Pairing Code）
+  -> 调用 POST /api/auth/pair
+  -> 用新 session token 调用 syncConfirmed() 完整拉取 confirmed
+  -> 替换 Room confirmed 缓存
+  -> 保存 session token 到 Android Keystore
+  -> 保存服务器地址和账号 / 账本 / 设备 / 角色
   -> 进入 App
 ```
 
@@ -671,16 +700,17 @@ Compose Screen
 ```text
 显示 小票夹
   -> 弹出指纹/面容验证
-  -> 验证成功后读取 Keystore 中的 Token
+  -> 验证成功后读取 Keystore 中的 session token
   -> 进入主界面
 ```
 
 安全要求：
 
 - 指纹只用于解锁本地 Token。
-- 服务器仍然通过 `Authorization: Bearer APP_TOKEN` 校验。
+- 服务器仍然通过 `Authorization: Bearer <session_token>` 校验。
 - App 切到后台超过 5 分钟，再回来需要重新验证。
-- 设置页提供“清除绑定”。
+- 设置页提供"清除绑定"。
+- 卸载重装后需要重新获取 Pairing Code 绑定。
 
 ## 14. Android 页面
 
@@ -709,7 +739,7 @@ Compose Screen
 - 打开页面时请求 `/api/expenses/pending`。
 - 下拉刷新。
 - 显示所有 pending 账单。
-- 每条显示截图缩略图或“截图已上传”。
+- 每条显示截图缩略图或"截图已上传"。
 - 点击卡片进入编辑页。
 
 卡片字段：
@@ -813,9 +843,9 @@ Android 使用 Compose 卡片、列表和图表展示，不要求后台报表式
 功能：
 
 ```text
-显示当前服务器地址
-测试连接
-重新同步
+显示当前账本
+检查连接
+更新账本
 清除本地缓存
 清除服务器绑定
 管理分类规则
@@ -874,24 +904,26 @@ updatedAt: String?
   -> 建议转换为 JPEG 或 PNG
   -> 使用 获取 URL 内容
   -> 方法 POST
+  -> URL: https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
   -> 请求正文选择 文件
   -> 文件选择 转换后的图像
-  -> 添加 Upload-Token 和 User-Agent 请求头
+  -> 添加 User-Agent: TicketBox/1.0 iOS-Shortcut 请求头
   -> 成功后显示 已上传到小票夹
 ```
 
-URL：
+UploadLink URL：
 
 ```text
-https://api.我的域名.com/api/upload-screenshot
+https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
 ```
 
 请求头：
 
 ```http
-Upload-Token: xxxxxx
 User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
+
+> **注意**：v0.3 不再使用 `Upload-Token` header。旧快捷指令使用旧 token 会收到 `legacy_auth_removed`。
 
 失败时显示后端返回的中文错误信息。
 
@@ -914,6 +946,7 @@ api.我的域名.com -> http://127.0.0.1:8000
 - 不开放路由器端口。
 - 不直接暴露 Windows 文件夹。
 - 不把 uploads 设置成公开目录。
+- 不把 SQLite 数据库目录暴露到公网。
 - FastAPI 只监听 `127.0.0.1`。
 
 ## 18. 安全注意事项
@@ -930,19 +963,21 @@ api.我的域名.com -> http://127.0.0.1:8000
 - 不提供远程关机、命令执行、文件管理等危险接口。
 - API 不返回本机真实路径。
 - 图片路径只保存相对路径。
-- 受保护图片接口必须验证 `APP_TOKEN`。
-- 支持确认后删除原图和按天数清理图片，删除必须限制在租户 uploads 目录内。
+- 受保护图片接口必须验证 session token。
+- 支持确认后删除原图和按天数清理图片，删除必须限制在账本 uploads 目录内。
 
 ## 19. 当前开发顺序基线
 
 1. 后端基础：配置、数据库、模型、统一错误、Token 校验。
-2. 上传闭环：上传图片、保存文件、计算 hash、创建 pending。
-3. 账单 API：pending、confirmed 分页、patch、confirm、reject、image。
-4. 统计 API：按 `expense_time` fallback `confirmed_at` 统计。
-5. Android 绑定与认证：`/api/auth/check`、Keystore、Biometric。
-6. Android pending、edit、confirm、reject。
-7. Android Room confirmed upsert 和账本离线缓存。
-8. README：Windows、Cloudflare Tunnel、iOS 快捷指令、Android Studio。
+2. 身份系统：Account、Ledger、Device、AuthToken、UploadLink、PairingCode。
+3. Owner Bootstrap：初始化、生成凭证、绑定码管理。
+4. 上传闭环：上传图片、保存文件、计算 hash、创建 pending。
+5. 账单 API：pending、confirmed 分页、patch、confirm、reject、image。
+6. 统计 API：按 `expense_time` fallback `confirmed_at` 统计。
+7. Android 绑定与认证：`POST /api/auth/pair`、Keystore、Biometric。
+8. Android pending、edit、confirm、reject。
+9. Android Room confirmed upsert 和账本离线缓存。
+10. README：Windows、Cloudflare Tunnel、iOS 快捷指令、Android Studio。
 
 ## 20. 交付清单
 
@@ -958,3 +993,4 @@ api.我的域名.com -> http://127.0.0.1:8000
 - Android Studio 运行说明。
 - 安全注意事项。
 - OCR、分类规则、重复检测、缩略图、图片清理和生活化统计说明。
+- v0.3 身份系统文档（Account、Ledger、Device、凭证管理）。

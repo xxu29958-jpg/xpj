@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from app.database import init_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
-from app.routes import auth, duplicates, expenses, maintenance, rules, settings, stats, uploads
+from app.routes import auth, bootstrap, duplicates, expenses, maintenance, rules, settings, stats, uploads
 from app.schemas import HealthResponse
 
 
@@ -27,7 +27,9 @@ app = FastAPI(
 add_exception_handlers(app)
 
 app.include_router(auth.router)
+app.include_router(bootstrap.router)
 app.include_router(uploads.router)
+app.include_router(uploads.upload_link_router)
 app.include_router(expenses.router)
 app.include_router(duplicates.router)
 app.include_router(rules.router)

@@ -26,8 +26,13 @@ File: Converted Image
 Required headers:
 
 ```http
-Upload-Token: UPLOAD_TOKEN
 User-Agent: TicketBox/1.0 iOS-Shortcut
+```
+
+Authentication is carried by the UploadLink URL path:
+
+```text
+POST /u/<upload_key>?tz=Asia/Shanghai
 ```
 
 The backend continues to support `multipart/form-data` for standard HTTP clients, but iOS shortcut documentation and runbooks should not recommend form mode as the primary path.

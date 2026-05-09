@@ -67,10 +67,10 @@ ORPHAN_UPLOAD_GRACE_HOURS=24
 
 ## 维护接口
 
-维护接口只允许 `ADMIN_TOKEN` 调用。当前代码把它映射到默认租户的 admin 上下文，并只作用于该租户：
+维护接口只允许 admin scope token 调用，并只作用于当前 admin 上下文对应的账本：
 
 ```http
-Authorization: Bearer ADMIN_TOKEN
+Authorization: Bearer <admin_token>
 ```
 
 接口：

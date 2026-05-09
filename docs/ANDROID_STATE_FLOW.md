@@ -1,6 +1,6 @@
 # 小票夹状态流与业务边界
 
-本文是 Android 与后端共同遵守的业务状态规范。更完整的历史说明见 [ANDROID_STATE_FLOWS.md](ANDROID_STATE_FLOWS.md)，但本文件作为当前验收入口。
+本文是 Android 与后端共同遵守的当前业务状态规范。
 
 ## 1. 产品主线
 
@@ -108,15 +108,15 @@ Android：
 
 上传接口必须保持：
 
-- iPhone 快捷指令：`POST /api/upload-screenshot`，使用 `Upload-Token`。
-- Android App：`POST /api/app/upload-screenshot`，使用 `Authorization: Bearer APP_TOKEN`。
+- iPhone 快捷指令：`POST /u/{upload_key}`，使用 UploadLink URL。
+- Android App：`POST /api/app/upload-screenshot`，使用 `Authorization: Bearer <session_token>`。
 - 两者都只能创建 `pending`。
 
 上传要求：
 
 - 支持 `multipart/form-data` 和 raw image body。
 - raw 和 multipart 使用同一套最大大小限制。
-- 必须先校验 Token，再读取和保存文件。
+- 必须先校验 UploadLink 或 session token，再读取和保存文件。
 - 超限返回 `file_too_large`。
 - 不支持类型返回 `unsupported_file_type`。
 - 错误统一返回 `{ "error": "...", "message": "..." }`。

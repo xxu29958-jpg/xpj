@@ -18,26 +18,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
-$EnvPath = Join-Path $BackendRoot ".env"
 $DbPath = Join-Path $BackendRoot "data\ticketbox.db"
 $BackupDir = Join-Path $BackendRoot "backups"
 $BaseUrl = $ServerUrl.TrimEnd("/")
-
-function Read-EnvValue {
-    param([Parameter(Mandatory = $true)][string]$Name)
-
-    if (-not (Test-Path -LiteralPath $EnvPath)) {
-        return ""
-    }
-
-    $line = Get-Content -Encoding UTF8 -LiteralPath $EnvPath |
-        Where-Object { $_ -match "^$Name=" } |
-        Select-Object -First 1
-    if (-not $line) {
-        return ""
-    }
-    return ($line -replace "^$Name=", "").Trim()
-}
 
 function Format-Bytes {
     param([long]$Bytes)
@@ -55,7 +38,7 @@ function Invoke-MaintenancePost {
     )
 
     if ([string]::IsNullOrWhiteSpace($AdminToken)) {
-        throw "没有 ADMIN_TOKEN。请传入 -AdminToken，或在 backend\.env 配置 ADMIN_TOKEN。"
+        throw "没有 admin session token。请传入 -AdminToken，或设置 TICKETBOX_ADMIN_TOKEN。"
     }
 
     $uri = "$BaseUrl$Path$Query"
@@ -118,7 +101,7 @@ function Vacuum-Database {
 }
 
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
-    $AdminToken = Read-EnvValue -Name "ADMIN_TOKEN"
+    $AdminToken = [Environment]::GetEnvironmentVariable("TICKETBOX_ADMIN_TOKEN")
 }
 
 $hasAction = $Backup -or $PruneBackups -or $CleanupConfirmedImages -or $CleanupRejectedImages -or $CleanupOrphans -or $Vacuum

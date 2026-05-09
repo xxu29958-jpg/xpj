@@ -5,6 +5,8 @@
     [switch]$SkipRelease,
     [switch]$UseTemporaryKeystore,
     [switch]$SkipDevice,
+    [string]$SessionToken = "",
+    [string]$UploadLink = "",
     [string]$Serial = "",
     [string]$Adb = ""
 )
@@ -39,8 +41,12 @@ $RequiredRoutes = @(
     "/api/duplicates",
     "/api/settings/server",
     "/api/expenses/export.csv",
+    "/api/auth/check",
+    "/api/auth/pair",
+    "/api/bootstrap/owner",
+    "/api/bootstrap/pairing-codes",
     "/api/app/upload-screenshot",
-    "/api/upload-screenshot"
+    "/u/{upload_key}"
 )
 
 function Write-Step {
@@ -64,39 +70,37 @@ function Invoke-CheckedScript {
     }
 }
 
-function Read-BackendEnv {
-    $envPath = Join-Path $BackendRoot ".env"
-    $values = @{}
-    if (-not (Test-Path -LiteralPath $envPath)) {
-        return $values
-    }
-    foreach ($line in Get-Content -Encoding UTF8 -LiteralPath $envPath) {
-        $trimmed = $line.Trim()
-        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#")) {
-            continue
-        }
-        $parts = $trimmed -split "=", 2
-        if ($parts.Count -eq 2) {
-            $values[$parts[0].Trim()] = $parts[1].Trim()
-        }
-    }
-    return $values
-}
-
 function Get-Secret {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][hashtable]$EnvValues
+        [string]$ExplicitValue = ""
     )
 
+    if ($ExplicitValue.Trim().Length -gt 0) {
+        return $ExplicitValue.Trim()
+    }
     $processValue = [Environment]::GetEnvironmentVariable($Name)
     if ($processValue -and $processValue.Trim().Length -gt 0) {
         return $processValue.Trim()
     }
-    if ($EnvValues.ContainsKey($Name) -and $EnvValues[$Name].Trim().Length -gt 0) {
-        return $EnvValues[$Name].Trim()
-    }
     return ""
+}
+
+function Resolve-UploadUrl {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+
+    $trimmed = $Value.Trim()
+    if ($trimmed.StartsWith("http://", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $trimmed.StartsWith("https://", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $trimmed
+    }
+    if ($trimmed.StartsWith("/")) {
+        return "$BaseUrl$trimmed"
+    }
+    return "$BaseUrl/$trimmed"
 }
 
 function Invoke-MultipartUpload {
@@ -268,15 +272,15 @@ else {
 
 Write-Step "公网上传闭环"
 if (-not $SkipPublicEndpoint) {
-    $envValues = Read-BackendEnv
-    $appToken = Get-Secret -Name "APP_TOKEN" -EnvValues $envValues
-    $uploadToken = Get-Secret -Name "UPLOAD_TOKEN" -EnvValues $envValues
-    if ($appToken.Length -eq 0 -or $uploadToken.Length -eq 0) {
-        throw "缺少 APP_TOKEN 或 UPLOAD_TOKEN，无法做公网上传验收。"
+    $sessionToken = Get-Secret -Name "TICKETBOX_SESSION_TOKEN" -ExplicitValue $SessionToken
+    $uploadLink = Get-Secret -Name "TICKETBOX_UPLOAD_LINK" -ExplicitValue $UploadLink
+    if ($sessionToken.Length -eq 0 -or $uploadLink.Length -eq 0) {
+        throw "缺少 TICKETBOX_SESSION_TOKEN 或 TICKETBOX_UPLOAD_LINK，无法做公网上传验收。"
     }
 
-    $appHeaders = @{ Authorization = "Bearer $appToken" }
-    $iosUpload = Invoke-MultipartUpload -Uri "$BaseUrl/api/upload-screenshot" -Headers @{ "Upload-Token" = $uploadToken }
+    $appHeaders = @{ Authorization = "Bearer $sessionToken" }
+    $uploadUrl = Resolve-UploadUrl -BaseUrl $BaseUrl -Value $uploadLink
+    $iosUpload = Invoke-MultipartUpload -Uri $uploadUrl -Headers @{}
     $androidUpload = Invoke-MultipartUpload -Uri "$BaseUrl/api/app/upload-screenshot" -Headers $appHeaders
     foreach ($item in @($iosUpload, $androidUpload)) {
         $reject = Invoke-RestMethod -Method Post -Uri "$BaseUrl/api/expenses/$($item.id)/reject" -Headers $appHeaders -TimeoutSec 15
@@ -284,7 +288,7 @@ if (-not $SkipPublicEndpoint) {
             throw "验收上传账单清理失败：$($item.id)"
         }
     }
-    Write-Host "OK   iOS 上传接口和 Android 上传接口均可通过公网创建 pending，并已清理为忽略。"
+    Write-Host "OK   UploadLink 和 Android session 上传接口均可通过公网创建 pending，并已清理为忽略。"
 }
 else {
     Write-Host "SKIP 公网上传闭环。"

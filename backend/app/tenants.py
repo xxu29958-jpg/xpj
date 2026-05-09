@@ -32,9 +32,26 @@ class AdminContext:
 
 @dataclass(frozen=True)
 class AuthContext:
-    tenant_id: str
-    tenant_name: str
-    token_type: str
+    account_id: int
+    account_name: str
+    ledger_id: str
+    ledger_name: str
+    device_id: int
+    device_name: str
+    role: str
+    scope: str
+
+    @property
+    def tenant_id(self) -> str:
+        return self.ledger_id
+
+    @property
+    def tenant_name(self) -> str:
+        return self.ledger_name
+
+    @property
+    def token_type(self) -> str:
+        return self.scope
 
 
 def _clean_tenant_id(value: str) -> str:
@@ -88,8 +105,6 @@ def configured_tenants() -> tuple[Tenant, ...]:
 
     ids = [tenant.id for tenant in tenants]
     if len(ids) != len(set(ids)):
-        raise AppError("server_error", status_code=500)
-    if any(not tenant.upload_token or not tenant.app_token for tenant in tenants):
         raise AppError("server_error", status_code=500)
     return tenants
 

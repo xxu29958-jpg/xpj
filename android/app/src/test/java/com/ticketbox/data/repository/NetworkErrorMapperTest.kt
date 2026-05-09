@@ -82,7 +82,7 @@ class NetworkErrorMapperTest {
     fun normalizesBindingServerUrl() {
         val normalized = validateBindingInput(
             serverUrl = " https://api.zen70.cn/ ",
-            appToken = "token",
+            pairingCode = "123456",
         )
 
         assertEquals("https://api.zen70.cn", normalized)
@@ -91,7 +91,7 @@ class NetworkErrorMapperTest {
     @Test
     fun rejectsBlankBindingServerUrl() {
         val error = assertFailsWith<IllegalArgumentException> {
-            validateBindingInput(serverUrl = " ", appToken = "token")
+            validateBindingInput(serverUrl = " ", pairingCode = "123456")
         }
 
         assertEquals("请输入账本地址。", error.message)
@@ -100,7 +100,7 @@ class NetworkErrorMapperTest {
     @Test
     fun rejectsLocalOnlyBindingServerUrl() {
         val error = assertFailsWith<IllegalArgumentException> {
-            validateBindingInput(serverUrl = "http://127.0.0.1:8000", appToken = "token")
+            validateBindingInput(serverUrl = "http://127.0.0.1:8000", pairingCode = "123456")
         }
 
         assertEquals("请填写可在手机上访问的地址。", error.message)
@@ -109,7 +109,7 @@ class NetworkErrorMapperTest {
     @Test
     fun rejectsPlainHttpBindingServerUrl() {
         val error = assertFailsWith<IllegalArgumentException> {
-            validateBindingInput(serverUrl = "http://api.zen70.cn", appToken = "token")
+            validateBindingInput(serverUrl = "http://api.zen70.cn", pairingCode = "123456")
         }
 
         assertEquals("请使用 HTTPS 地址。", error.message)
@@ -118,9 +118,9 @@ class NetworkErrorMapperTest {
     @Test
     fun rejectsBlankBindingAppToken() {
         val error = assertFailsWith<IllegalArgumentException> {
-            validateBindingInput(serverUrl = "https://api.zen70.cn", appToken = " ")
+            validateBindingInput(serverUrl = "https://api.zen70.cn", pairingCode = " ")
         }
 
-        assertEquals("请输入访问口令。", error.message)
+        assertEquals("请输入绑定码。", error.message)
     }
 }

@@ -75,6 +75,8 @@ https://api.zen70.cn
 也可以显式指定：
 
 ```powershell
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
+$env:TICKETBOX_UPLOAD_LINK="/u/<upload_key>?tz=Asia/Shanghai"
 powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
   -ServerUrl https://api.zen70.cn
 ```
@@ -82,9 +84,10 @@ powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
 脚本会：
 
 - 检查 `/api/health`。
-- 检查 `/api/auth/check`。
-- 用内置 1x1 PNG 测试 `/api/upload-screenshot`。
-- 从 `backend\.env` 读取 `APP_TOKEN` 和 `UPLOAD_TOKEN`，但不会打印 Token。
+- 检查 `/api/auth/check`（使用 session token）。
+- 用 UploadLink URL 测试上传。
+
+> **注意**：v0.3 以后脚本不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`。需要通过 `-SessionToken` / `-UploadLink` 参数，或 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证。`UploadLink` 可以是完整 URL，也可以是 `/u/<upload_key>?tz=...` 路径。
 
 当前 Windows 联调推荐同时启用两个登录自启任务：
 
@@ -106,26 +109,26 @@ Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel
 
 更完整的长期运行流程见 [Windows 长期运行 Runbook](WINDOWS_SERVICE_RUNBOOK.md)。
 
-只检查健康和 App Token，不上传测试图：
+只检查健康和 session token，不上传测试图：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
   -ServerUrl https://api.你的域名.com `
+  -SessionToken "<session_token>" `
   -SkipUpload
 ```
 
 ## iPhone 快捷指令 URL
 
-快捷指令上传地址：
+v0.3 快捷指令使用 UploadLink URL，不再使用旧版 `Upload-Token` header：
 
 ```text
-https://api.你的域名.com/api/upload-screenshot
+https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
 ```
 
 请求头：
 
 ```text
-Upload-Token: 你的UPLOAD_TOKEN
 User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
@@ -136,7 +139,9 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 文件值：转换后的图像
 ```
 
-建议在快捷指令里先转换为 JPEG 或 PNG。iOS 26.4 实测应使用“文件”请求正文，不要使用“表单”请求正文。
+建议在快捷指令里先转换为 JPEG 或 PNG。iOS 26.4 实测应使用"文件"请求正文，不要使用"表单"请求正文。
+
+旧快捷指令如果使用旧版 `/api/upload-screenshot` 和 `Upload-Token` header，后端会返回 `legacy_auth_removed`。
 
 ## Android 绑定地址
 
@@ -146,22 +151,32 @@ Android App 首次绑定服务器地址：
 https://api.你的域名.com
 ```
 
-Token 使用：
+绑定码（Pairing Code）：
 
 ```text
-APP_TOKEN
+服务拥有者提供的 6 位数字
 ```
 
-灰度用户版绑定后只查看账本连接状态；内部联调版可以进入设置页运行“运行诊断”。
+> **注意**：v0.3 不再使用旧版 `APP_TOKEN`。Android 绑定需要服务器地址 + 6 位绑定码。
+
+灰度用户版绑定后只查看账本连接状态；内部联调版可以进入设置页运行"运行检测"。
 
 ## 常见问题
 
 `invalid_token`：
 
 ```text
-iPhone 上传只用 Upload-Token。
-Android App 只用 Authorization: Bearer APP_TOKEN。
+Android App 使用 Authorization: Bearer <session_token>。
+iPhone 快捷指令使用完整 UploadLink URL。
 不要用 /api/health 验证 Token。
+```
+
+`legacy_auth_removed`：
+
+```text
+说明请求使用了旧版 APP_TOKEN、UPLOAD_TOKEN 或旧版 /api/upload-screenshot。
+Android：重新获取绑定码重新绑定。
+iPhone：更新快捷指令为完整 UploadLink URL。
 ```
 
 `502` 或 `Bad Gateway`：
@@ -172,16 +187,18 @@ Android App 只用 Authorization: Bearer APP_TOKEN。
 确认后端没有被防火墙或杀毒软件拦截本地回环访问。
 ```
 
-公网健康检查通，但 App Token 失败：
+公网健康检查通，但 App 绑定失败：
 
 ```text
-检查 backend\.env 中的 APP_TOKEN。
-确认 Android 输入的是 APP_TOKEN，不是 UPLOAD_TOKEN。
+检查绑定码是否正确（6 位数字）。
+确认绑定码未过期（默认 15 分钟）。
+确认绑定码未被使用过（一次性）。
 ```
 
 上传失败：
 
 ```text
+确认快捷指令 URL 是完整的 UploadLink，包含 /u/<upload_key>。
 确认快捷指令请求体是 文件，不是 表单。
 确认已添加 User-Agent: TicketBox/1.0 iOS-Shortcut。
 确认图片小于 10MB。
@@ -200,10 +217,12 @@ Android App 只用 Authorization: Bearer APP_TOKEN。
 查看后端和 Tunnel 当前状态、最近访问日志：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 `
+  -ServerUrl https://api.zen70.cn
 ```
 
-出门前建议运行一键保障检查。它会尝试启动 FastAPI 后端、启动已安装的 cloudflared 服务或计划任务，并检查公网 health/auth：
+出门前建议运行一键保障检查。它会尝试启动 FastAPI 后端、启动已安装的 cloudflared 服务或计划任务，并检查公网 health：
 
 ```powershell
 cd E:\projects\xiaopiaojia
@@ -213,7 +232,7 @@ powershell -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
 
 如果这条命令通过，手机离开家里 Wi-Fi 后仍然可以通过 `https://api.zen70.cn` 访问。前提是 Windows 主机没有睡眠、断网或关机。
 
-如果手机请求真的打到了后端，应该能在 `backend\logs\ticketbox-backend-*.out.log` 里看到对应接口和状态码。若这里没有任何新请求，问题在手机网络、域名、Cloudflare Tunnel 或快捷指令请求发起阶段，后端日志不会凭空出现。
+后端启动脚本默认关闭 Uvicorn access log，避免 UploadLink URL 中的 `upload_key` 被写入日志。排查上传时以脚本输出、pending 列表或数据库状态为准，不要为了看 `/u/<upload_key>` 路径临时打开访问日志。
 
 ## 官方资料
 

@@ -1,6 +1,7 @@
 ﻿param(
     [string]$ServerUrl = "https://api.zen70.cn",
-    [int]$Tail = 40
+    [int]$Tail = 40,
+    [string]$SessionToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,22 +10,17 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
-$EnvPath = Join-Path $BackendRoot ".env"
 $LogDir = Join-Path $BackendRoot "logs"
 
-function Read-EnvValue {
-    param([Parameter(Mandatory = $true)][string]$Name)
-
-    if (-not (Test-Path -LiteralPath $EnvPath)) {
-        return ""
+function Resolve-SessionToken {
+    if ($SessionToken.Trim().Length -gt 0) {
+        return $SessionToken.Trim()
     }
-    $line = Get-Content -Encoding UTF8 -LiteralPath $EnvPath |
-        Where-Object { $_ -match "^$Name=" } |
-        Select-Object -First 1
-    if (-not $line) {
-        return ""
+    $processValue = [Environment]::GetEnvironmentVariable("TICKETBOX_SESSION_TOKEN")
+    if ($processValue -and $processValue.Trim().Length -gt 0) {
+        return $processValue.Trim()
     }
-    return ($line -replace "^$Name=", "").Trim()
+    return ""
 }
 
 function Test-Endpoint {
@@ -44,7 +40,7 @@ function Test-Endpoint {
 }
 
 $baseUrl = $ServerUrl.TrimEnd("/")
-$appToken = Read-EnvValue -Name "APP_TOKEN"
+$resolvedSessionToken = Resolve-SessionToken
 
 Write-Host "小票夹服务器状态"
 Write-Host "项目目录：$ProjectRoot"
@@ -77,11 +73,11 @@ Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel -ErrorAct
 Write-Host "接口检查："
 Test-Endpoint -Name "local health " -Uri "http://127.0.0.1:8000/api/health"
 Test-Endpoint -Name "public health" -Uri "$baseUrl/api/health"
-if ($appToken.Length -gt 0) {
-    Test-Endpoint -Name "public auth  " -Uri "$baseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $appToken" }
+if ($resolvedSessionToken.Length -gt 0) {
+    Test-Endpoint -Name "public auth  " -Uri "$baseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $resolvedSessionToken" }
 }
 else {
-    Write-Host "SKIP public auth：backend\.env 中没有 APP_TOKEN。"
+    Write-Host "SKIP public auth：没有 TICKETBOX_SESSION_TOKEN。"
 }
 
 Write-Host ""

@@ -4,7 +4,8 @@
     [string]$BackendTaskName = "TicketboxBackend",
     [string]$TunnelTaskName = "TicketboxCloudflareTunnel",
     [int]$TimeoutSeconds = 45,
-    [switch]$SkipPublicAuth
+    [switch]$SkipPublicAuth,
+    [string]$SessionToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,7 +15,6 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $BackendStartScript = Join-Path $BackendRoot "scripts\start_backend.ps1"
-$EnvPath = Join-Path $BackendRoot ".env"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 $Failures = New-Object System.Collections.Generic.List[string]
 
@@ -24,20 +24,15 @@ function Write-Step {
     Write-Host "== $Message =="
 }
 
-function Read-EnvValue {
-    param([Parameter(Mandatory = $true)][string]$Name)
-
-    if (-not (Test-Path -LiteralPath $EnvPath)) {
-        return ""
+function Resolve-SessionToken {
+    if ($SessionToken.Trim().Length -gt 0) {
+        return $SessionToken.Trim()
     }
-
-    $line = Get-Content -Encoding UTF8 -LiteralPath $EnvPath |
-        Where-Object { $_ -match "^$Name=" } |
-        Select-Object -First 1
-    if (-not $line) {
-        return ""
+    $processValue = [Environment]::GetEnvironmentVariable("TICKETBOX_SESSION_TOKEN")
+    if ($processValue -and $processValue.Trim().Length -gt 0) {
+        return $processValue.Trim()
     }
-    return ($line -replace "^$Name=", "").Trim()
+    return ""
 }
 
 function Test-Endpoint {
@@ -150,17 +145,17 @@ if (-not (Wait-Endpoint -Name "public health" -Uri "$BaseUrl/api/health")) {
     $Failures.Add("公网入口不可用：$BaseUrl/api/health")
 }
 
-$appToken = Read-EnvValue -Name "APP_TOKEN"
-if (-not $SkipPublicAuth -and $appToken.Length -gt 0) {
-    if (-not (Wait-Endpoint -Name "public auth  " -Uri "$BaseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $appToken" })) {
-        $Failures.Add("公网 App 鉴权检查失败：$BaseUrl/api/auth/check")
+$resolvedSessionToken = Resolve-SessionToken
+if (-not $SkipPublicAuth -and $resolvedSessionToken.Length -gt 0) {
+    if (-not (Wait-Endpoint -Name "public auth  " -Uri "$BaseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $resolvedSessionToken" })) {
+        $Failures.Add("公网 session 鉴权检查失败：$BaseUrl/api/auth/check")
     }
 }
 elseif ($SkipPublicAuth) {
     Write-Host "SKIP public auth：已指定 -SkipPublicAuth。"
 }
 else {
-    Write-Host "SKIP public auth：backend\\.env 中没有 APP_TOKEN。"
+    Write-Host "SKIP public auth：没有 TICKETBOX_SESSION_TOKEN。"
 }
 
 Write-Step "结果"

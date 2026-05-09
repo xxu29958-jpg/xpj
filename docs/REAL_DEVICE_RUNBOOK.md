@@ -75,12 +75,14 @@ Tunnel 配好后，用公网域名检查：
 Invoke-RestMethod https://api.你的域名.com/api/health
 ```
 
-App Token 检查：
+Session token 检查：
 
 ```powershell
-$headers = @{ Authorization = "Bearer 你的APP_TOKEN" }
+$headers = @{ Authorization = "Bearer <session_token>" }
 Invoke-RestMethod https://api.你的域名.com/api/auth/check -Headers $headers
 ```
+
+> **注意**：v0.3 使用 session token 替代旧版 `APP_TOKEN`。
 
 ## 3. iPhone 快捷指令
 
@@ -94,12 +96,12 @@ Invoke-RestMethod https://api.你的域名.com/api/auth/check -Headers $headers
 
 1. 从分享菜单接收图片。
 2. 必要时把图片转换为 JPEG 或 PNG。
-3. 使用“获取 URL 内容”。
+3. 使用"获取 URL 内容"。
 4. 方法选择 `POST`。
-5. URL 填：
+5. URL 填完整 UploadLink：
 
 ```text
-https://api.你的域名.com/api/upload-screenshot
+https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
 ```
 
 请求体使用 `文件`，不要使用 `表单`：
@@ -111,7 +113,6 @@ https://api.你的域名.com/api/upload-screenshot
 请求头：
 
 ```text
-Upload-Token: 你的UPLOAD_TOKEN
 User-Agent: TicketBox/1.0 iOS-Shortcut
 ```
 
@@ -125,8 +126,9 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 
 - 后端接受 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 当前 HEIC 会保存原图但跳过缩略图生成，所以快捷指令优先转 JPEG 或 PNG。
-- iPhone 上传只使用 `UPLOAD_TOKEN`，不要使用 `APP_TOKEN`。
-- iOS 26.4 真机已验证：`表单` 模式会导致 `invalid_request` 的概率更高，稳定配置是“请求正文：文件”。
+- v0.3 使用 UploadLink URL，不再需要 `Upload-Token` header。
+- iOS 26.4 真机已验证：`表单` 模式会导致 `invalid_request` 的概率更高，稳定配置是"请求正文：文件"。
+- 旧快捷指令使用旧版 `/api/upload-screenshot` 会收到 `legacy_auth_removed`。
 
 ## 4. Android 真机安装
 
@@ -186,6 +188,8 @@ E:\projects\xiaopiaojia\android\app\build\outputs\apk\internal\debug\app-interna
 
 ```powershell
 cd E:\projects\xiaopiaojia
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
+$env:TICKETBOX_UPLOAD_LINK="/u/<upload_key>?tz=Asia/Shanghai"
 powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1 -SkipDevice
 ```
 
@@ -206,10 +210,12 @@ powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1 -Buil
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1 `
   -ServerUrl https://api.你的域名.com `
+  -SessionToken "<session_token>" `
+  -UploadLink "/u/<upload_key>?tz=Asia/Shanghai" `
   -SkipDevice
 ```
 
-脚本默认从 `backend\.env` 读取 `APP_TOKEN` 和 `UPLOAD_TOKEN`，不会打印 Token。
+> v0.3 以后脚本不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`。请通过 `-SessionToken` / `-UploadLink` 参数，或 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证。
 
 ## 6. USB 反向转发联调
 
@@ -221,7 +227,7 @@ $adb = "E:\projects\xiaopiaojia\.toolchains\android-sdk\platform-tools\adb.exe"
 & $adb -s 设备序列号 reverse --list
 ```
 
-internalDebug 包支持仅用于联调的 intent 绑定入口，避免中文输入法改写同步地址或访问口令：
+internalDebug 包支持仅用于联调的 intent 绑定入口，避免中文输入法改写同步地址或手动输入 session token：
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
@@ -231,17 +237,15 @@ cd E:\projects\xiaopiaojia\android
 等价的底层 adb 命令如下：
 
 ```powershell
-$envLines = [System.IO.File]::ReadAllLines("E:\projects\xiaopiaojia\backend\.env", [System.Text.UTF8Encoding]::new($false))
-$appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^APP_TOKEN=", "").Trim()
 & $adb -s 设备序列号 shell am start -n com.ticketbox.internal/.MainActivity `
   --es ticketbox.debug.server_url "http://127.0.0.1:8000" `
-  --es ticketbox.debug.app_token $appToken
+  --es ticketbox.debug.session_token "<session_token>"
 ```
 
 说明：
 
 - 这个入口只在 internal debuggable APK 中生效，灰度用户版不会响应。
-- 不打印 Token，不进入 release 构建。
+- 不打印凭证，不进入 release 构建；`install_debug_apk.ps1 -DebugBind` 也要求显式传入 `-SessionToken`。
 - `http://127.0.0.1:8000` 依赖 `adb reverse`，只用于 USB 联调。
 - 正式使用仍然配置 `https://api.你的域名.com`。
 
@@ -250,11 +254,15 @@ $appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^A
 首次打开 Android App：
 
 ```text
-同步地址：服务拥有者提供的 HTTPS 地址
-访问口令：服务拥有者提供的 App 访问口令
+账本地址：服务拥有者提供的 HTTPS 地址
+绑定码：服务拥有者提供的 6 位数字
 ```
 
-绑定成功后进入 App。灰度用户版设置页只显示账本状态和同步状态；内部联调版设置页才显示“运行诊断”。
+> **注意**：v0.3 不再使用旧版 `APP_TOKEN`。Android 绑定需要服务器地址 + 6 位绑定码（Pairing Code）。
+
+绑定成功后进入 App。灰度用户版设置页只显示账本状态和同步状态；内部联调版设置页才显示"运行检测"。
+
+Android 绑定成功前会先用新 session token 完整执行 `syncConfirmed()`，替换 Room confirmed 缓存；如果同步失败，不保存本地绑定信息。
 
 灰度用户版设置页只显示：
 
@@ -277,7 +285,7 @@ $appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^A
 
 按顺序验证：
 
-1. iPhone 分享一张账单截图，执行“上传到小票夹”。
+1. iPhone 分享一张账单截图，执行"上传到小票夹"。
 2. 后端返回 uploaded。
 3. Android 待确认页下拉刷新，看到一条 pending。
 4. 打开编辑页，确认截图缩略图或原图入口可用。
@@ -293,9 +301,17 @@ $appToken = (($envLines | Where-Object { $_ -match "^APP_TOKEN=" }) -replace "^A
 `invalid_token`：
 
 ```text
-检查 iPhone 是否使用 Upload-Token。
-检查 Android 是否使用 Authorization: Bearer APP_TOKEN。
+检查 Android 是否使用有效的 session token。
+检查 iPhone 是否使用正确的 UploadLink URL。
 不要用 /api/health 判断 Token 是否正确。
+```
+
+`legacy_auth_removed`：
+
+```text
+说明使用了旧版 APP_TOKEN 或 UPLOAD_TOKEN。
+Android：向服务拥有者获取新绑定码重新绑定。
+iPhone：更新快捷指令为完整 UploadLink URL。
 ```
 
 `unsupported_file_type`：
@@ -346,4 +362,4 @@ iPhone 快捷指令优先转 JPEG 或 PNG。
 - Android 真机运行与调试：https://developer.android.com/studio/run/device
 - Android Debug Bridge：https://developer.android.com/tools/adb
 - Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
-- Apple 快捷指令“获取 URL 内容”：https://support.apple.com/guide/shortcuts/use-the-get-contents-of-url-action-apd58d46713f/ios
+- Apple 快捷指令"获取 URL 内容"：https://support.apple.com/guide/shortcuts/use-the-get-contents-of-url-action-apd58d46713f/ios

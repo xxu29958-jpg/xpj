@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
 import secrets
+import shutil
 from uuid import uuid4
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_ROOT, get_settings
-from app.tenants import DEFAULT_TENANT_ID, configured_tenants
+from app.tenants import DEFAULT_TENANT_ID
 
 
 settings = get_settings()
@@ -17,6 +19,7 @@ connect_args = {"check_same_thread": False} if settings.database_url.startswith(
 
 engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+_sqlite_backup_done = False
 
 
 class Base(DeclarativeBase):
@@ -34,20 +37,73 @@ def get_db() -> Generator[Session, None, None]:
 def init_db() -> None:
     from app import models  # noqa: F401
 
+    backup_sqlite_database_once()
     Base.metadata.create_all(bind=engine)
     migrate_sqlite_schema()
+    seed_identity_data()
     migrate_upload_paths_to_tenant_dirs()
     seed_runtime_data()
+
+
+def _sqlite_database_path() -> Path | None:
+    prefix = "sqlite:///"
+    if not settings.database_url.startswith(prefix):
+        return None
+    raw_path = settings.database_url[len(prefix):]
+    if raw_path in {"", ":memory:"}:
+        return None
+    return Path(raw_path)
+
+
+def backup_sqlite_database_once() -> Path | None:
+    global _sqlite_backup_done
+    if _sqlite_backup_done:
+        return None
+    _sqlite_backup_done = True
+
+    db_path = _sqlite_database_path()
+    if db_path is None or not db_path.is_file():
+        return None
+
+    backup_dir = BACKEND_ROOT / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_name = f"{db_path.stem}-pre-v0.3-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.db"
+    backup_path = (backup_dir / backup_name).resolve()
+    try:
+        backup_path.relative_to(backup_dir.resolve())
+    except ValueError as exc:
+        raise RuntimeError("SQLite backup target escaped backup directory") from exc
+    shutil.copy2(db_path, backup_path)
+    return backup_path
+
+
+def seed_identity_data() -> None:
+    from app.models import CategoryRule, DuplicateIgnore, Expense
+    from app.services.identity_service import ensure_identity_for_existing_ledger_ids, ensure_identity_seed
+
+    with SessionLocal() as db:
+        ensure_identity_seed(db)
+        ids: set[str] = set()
+        if inspect(engine).has_table("expenses"):
+            ids.update(str(value) for value in db.scalars(select(Expense.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("category_rules"):
+            ids.update(str(value) for value in db.scalars(select(CategoryRule.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("duplicate_ignores"):
+            ids.update(str(value) for value in db.scalars(select(DuplicateIgnore.tenant_id).distinct()) if value)
+        if ids:
+            ensure_identity_for_existing_ledger_ids(db, ids)
+        db.commit()
 
 
 def seed_runtime_data() -> None:
     from app.services.category_service import normalize_existing_expense_categories
     from app.services.classify_service import seed_default_rules
+    from app.services.identity_service import ledger_ids
 
     with SessionLocal() as db:
-        for tenant in configured_tenants():
-            normalize_existing_expense_categories(db, tenant.id)
-            seed_default_rules(db, tenant.id)
+        for ledger_id in ledger_ids(db):
+            normalize_existing_expense_categories(db, ledger_id)
+            seed_default_rules(db, ledger_id)
 
 
 def _is_tenant_scoped_upload(path: Path, tenant_ids: set[str]) -> bool:
@@ -91,7 +147,14 @@ def _move_legacy_upload_path(relative_path: str | None, tenant_id: str, tenant_i
 
 
 def migrate_upload_paths_to_tenant_dirs() -> None:
-    tenant_ids = {tenant.id for tenant in configured_tenants()}
+    from app.services.identity_service import ledger_ids
+    from app.tenants import configured_tenants
+
+    if inspect(engine).has_table("ledgers"):
+        with SessionLocal() as db:
+            tenant_ids = set(ledger_ids(db))
+    else:
+        tenant_ids = {tenant.id for tenant in configured_tenants()}
     if not tenant_ids or not settings.upload_dir.exists():
         return
 
@@ -156,19 +219,14 @@ def migrate_sqlite_schema() -> None:
             text("UPDATE expenses SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
             {"tenant_id": DEFAULT_TENANT_ID},
         )
-        for tenant in configured_tenants():
-            public_id_rows = connection.execute(
-                text(
-                    "SELECT id FROM expenses "
-                    "WHERE tenant_id = :tenant_id AND (public_id IS NULL OR public_id = '')"
-                ),
-                {"tenant_id": tenant.id},
-            ).mappings()
-            for row in public_id_rows:
-                connection.execute(
-                    text("UPDATE expenses SET public_id = :public_id WHERE id = :id AND tenant_id = :tenant_id"),
-                    {"public_id": str(uuid4()), "id": row["id"], "tenant_id": tenant.id},
-                )
+        public_id_rows = connection.execute(
+            text("SELECT id FROM expenses WHERE public_id IS NULL OR public_id = ''")
+        ).mappings()
+        for row in public_id_rows:
+            connection.execute(
+                text("UPDATE expenses SET public_id = :public_id WHERE id = :id"),
+                {"public_id": str(uuid4()), "id": row["id"]},
+            )
         connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_expenses_public_id ON expenses (public_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_status_created_at ON expenses (status, created_at)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_category_status ON expenses (category, status)"))

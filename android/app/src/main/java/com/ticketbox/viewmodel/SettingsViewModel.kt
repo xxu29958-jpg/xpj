@@ -18,6 +18,11 @@ import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val serverUrl: String? = null,
+    val accountName: String? = null,
+    val ledgerName: String? = null,
+    val deviceName: String? = null,
+    val role: String? = null,
+    val boundAt: String? = null,
     val monthlyBudgetCents: Long? = null,
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
@@ -36,6 +41,11 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(
         SettingsUiState(
             serverUrl = settingsStore.serverUrl(),
+            accountName = settingsStore.accountName(),
+            ledgerName = settingsStore.ledgerName(),
+            deviceName = settingsStore.deviceName(),
+            role = settingsStore.role(),
+            boundAt = settingsStore.boundAt(),
             monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
             lastUploadAt = repository.lastUploadAt(),
             lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
@@ -125,6 +135,10 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             serverSettings = settings,
+                            accountName = settings.accountName,
+                            ledgerName = settings.ledgerName,
+                            deviceName = settings.deviceName,
+                            role = settings.role,
                             lastUploadAt = repository.lastUploadAt() ?: settings.latestUploadAt,
                             message = null,
                             busy = if (showBusy) false else it.busy,

@@ -1,7 +1,7 @@
 ﻿param(
     [string]$ServerUrl = "http://127.0.0.1:8000",
-    [string]$AppToken = "",
-    [string]$UploadToken = "",
+    [string]$SessionToken = "",
+    [string]$UploadLink = "",
     [switch]$SkipBackend,
     [switch]$SkipUpload,
     [switch]$SkipDevice,
@@ -20,47 +20,38 @@ $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $InstallScript = Join-Path $ProjectRoot "android\scripts\install_debug_apk.ps1"
 
-function Read-BackendEnv {
-    $envPath = Join-Path $BackendRoot ".env"
-    $values = @{}
-    if (-not (Test-Path -LiteralPath $envPath)) {
-        return $values
-    }
-
-    foreach ($line in Get-Content -Encoding UTF8 -LiteralPath $envPath) {
-        $trimmed = $line.Trim()
-        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#")) {
-            continue
-        }
-
-        $parts = $trimmed -split "=", 2
-        if ($parts.Count -eq 2) {
-            $values[$parts[0].Trim()] = $parts[1].Trim()
-        }
-    }
-
-    return $values
-}
-
 function Resolve-SecretValue {
     param(
         [string]$ExplicitValue,
-        [string]$Name,
-        [hashtable]$EnvValues
+        [string]$Name
     )
 
     if ($ExplicitValue.Trim().Length -gt 0) {
         return $ExplicitValue.Trim()
-    }
-    if ($EnvValues.ContainsKey($Name) -and $EnvValues[$Name].Trim().Length -gt 0) {
-        return $EnvValues[$Name].Trim()
     }
     $processValue = [Environment]::GetEnvironmentVariable($Name)
     if ($processValue -and $processValue.Trim().Length -gt 0) {
         return $processValue.Trim()
     }
 
-    throw "缺少 $Name。请传入参数，或在 backend\.env 中配置。"
+    throw "缺少 $Name。请通过参数或环境变量传入。"
+}
+
+function Resolve-UploadUrl {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+
+    $trimmed = $Value.Trim()
+    if ($trimmed.StartsWith("http://", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $trimmed.StartsWith("https://", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $trimmed
+    }
+    if ($trimmed.StartsWith("/")) {
+        return "$BaseUrl$trimmed"
+    }
+    return "$BaseUrl/$trimmed"
 }
 
 function Invoke-Json {
@@ -79,8 +70,7 @@ function Invoke-Json {
 
 function Invoke-TestUpload {
     param(
-        [Parameter(Mandatory = $true)][string]$BaseUrl,
-        [Parameter(Mandatory = $true)][string]$Token
+        [Parameter(Mandatory = $true)][string]$UploadUrl
     )
 
     $pngBytes = [Convert]::FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
@@ -102,8 +92,7 @@ function Invoke-TestUpload {
     try {
         $response = Invoke-WebRequest `
             -Method Post `
-            -Uri "$BaseUrl/api/upload-screenshot" `
-            -Headers @{ "Upload-Token" = $Token } `
+            -Uri $UploadUrl `
             -ContentType "multipart/form-data; boundary=$boundary" `
             -Body $body `
             -UseBasicParsing
@@ -233,11 +222,10 @@ function Assert-PublicId {
 }
 
 $baseUrl = $ServerUrl.TrimEnd("/")
-$envValues = Read-BackendEnv
 
 if (-not $SkipBackend) {
-    $resolvedAppToken = Resolve-SecretValue -ExplicitValue $AppToken -Name "APP_TOKEN" -EnvValues $envValues
-    $appHeaders = @{ Authorization = "Bearer $resolvedAppToken" }
+    $resolvedSessionToken = Resolve-SecretValue -ExplicitValue $SessionToken -Name "TICKETBOX_SESSION_TOKEN"
+    $appHeaders = @{ Authorization = "Bearer $resolvedSessionToken" }
 
     $health = Invoke-Json -Uri "$baseUrl/api/health"
     if ($health.status -ne "ok") {
@@ -247,9 +235,9 @@ if (-not $SkipBackend) {
 
     $auth = Invoke-Json -Uri "$baseUrl/api/auth/check" -Headers $appHeaders
     if ($auth.status -ne "ok") {
-        throw "App Token 检查未返回 ok。"
+        throw "Session Token 检查未返回 ok。"
     }
-    Write-Host "App Token 检查通过。"
+    Write-Host "Session Token 检查通过。"
 
     $confirmedProbe = Invoke-Json -Uri "$baseUrl/api/expenses/confirmed?page=1&page_size=1" -Headers $appHeaders
     if ($confirmedProbe.items -and $confirmedProbe.items.Count -gt 0) {
@@ -258,10 +246,11 @@ if (-not $SkipBackend) {
     Write-Host "账单 API 契约检查通过。"
 
     if (-not $SkipUpload) {
-        $resolvedUploadToken = Resolve-SecretValue -ExplicitValue $UploadToken -Name "UPLOAD_TOKEN" -EnvValues $envValues
+        $resolvedUploadLink = Resolve-SecretValue -ExplicitValue $UploadLink -Name "TICKETBOX_UPLOAD_LINK"
+        $resolvedUploadUrl = Resolve-UploadUrl -BaseUrl $baseUrl -Value $resolvedUploadLink
         $uploadedId = $null
         try {
-            $upload = Invoke-TestUpload -BaseUrl $baseUrl -Token $resolvedUploadToken
+            $upload = Invoke-TestUpload -UploadUrl $resolvedUploadUrl
             $uploadedId = Get-FirstScalar -Value $upload.id
             Assert-PublicId -Value $upload.public_id -Context "上传接口"
             $serverDuration = Get-FirstScalar -Value $upload.duration_ms

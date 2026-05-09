@@ -1,6 +1,6 @@
 # Android 开发规则
 
-灰度版 Android UX/UI 以 `docs/ANDROID_GRAY_UX_SPEC.md` 为准。状态流以 `docs/ANDROID_STATE_FLOWS.md` 为准。外观、背景、预览、裁剪和沉浸模式以 `docs/ANDROID_APPEARANCE_BACKGROUND.md` 为准。本阶段落地状态见 `docs/ANDROID_BACKGROUND_IMPLEMENTATION_STATUS.md`。普通用户主体验不得显示服务器域名、token、接口名、Cloudflare、端口、后端日志或诊断脚本。技术诊断只允许在 debug build 隐藏入口、Windows 运维脚本、运维文档或后续 Web 管理页中出现。
+灰度版 Android 以当前 `docs/ARCHITECTURE.md`、`docs/ANDROID_STATE_FLOW.md`、`docs/ANDROID_UPLOAD.md` 和 `docs/ANDROID_APPEARANCE_BACKGROUND.md` 为准。普通用户主体验不得显示服务器域名、token、接口名、Cloudflare、端口、后端日志或诊断脚本。技术诊断只允许在 debug build 隐藏入口、Windows 运维脚本、运维文档或后续 Web 管理页中出现。
 
 Android 使用轻量 MVVM：
 
@@ -128,10 +128,11 @@ serverId 不存在 -> 插入本地记录
 
 ## Token 与日志
 
-- APP_TOKEN 不写死。
-- APP_TOKEN 不打印日志。
-- APP_TOKEN 不明文写 SharedPreferences。
-- 使用 Android Keystore 保存。
+- session token 不写死。
+- session token 不打印日志。
+- session token 不明文写 SharedPreferences。
+- 使用 Android Keystore 保存 session token。
+- UploadLink 不进入 Android App，不保存、不发送。
 - gray 版不启用 OkHttp 网络日志；internalDebug 最多 BASIC，不打印 Header、Body、Token 或完整服务器 URL。
 - Repository 应复用绑定后的 ApiService/OkHttpClient，不允许每次接口调用重新创建网络栈。
 - 只允许 GET 对 502、503、504 做一次轻量重试；写操作不能透明重试。
@@ -174,6 +175,6 @@ serverId 不存在 -> 插入本地记录
 
 - Windows 真机安装使用 `android\install_debug_apk.bat`。
 - 脚本只允许安装已构建的 debug APK，或先构建再安装。
-- 脚本不读取、不输出、不保存 `APP_TOKEN`。
+- 脚本不读取、不输出、不保存旧 token；DebugBind 只接受显式传入的 session token。
 - 多设备连接时必须显式指定 `-Serial`。
 - 灰度用户首次绑定后只查看账本连接状态；内部联调版可在设置页运行“运行诊断”。

@@ -1,37 +1,42 @@
 # 小票夹安全说明
 
-灰度版新增多租户隔离要求。完整要求见 `docs/MULTI_TENANT_SPEC.md`。
+v0.3 隔离要求以账号 / 账本 / 设备模型为准，完整要求见 `docs/ACCOUNT_SYSTEM.md`。
 
 核心底线：
 
-- 账单不串租户。
-- 图片不串租户。
-- CSV 不串租户。
-- 分类规则不串租户。
-- 重复检测不跨租户。
+- 账单不串账本。
+- 图片不串账本。
+- CSV 不串账本。
+- 分类规则不串账本。
+- 重复检测不跨账本。
 - 普通 App 不显示服务器域名、token、Cloudflare、端口、日志或诊断脚本。
 
-小票夹是私人本地优先软件，不按公网多用户系统设计。安全重点是保护 Token、图片、SQLite 数据库和 Windows 主机。
+小票夹是私人本地优先软件，不按公网多用户系统设计。安全重点是保护凭证、图片、SQLite 数据库和 Windows 主机。
 
-## Token
+## v0.3 身份凭证模型
 
-后端使用三个 Token：
+v0.3 废弃了旧版的 `APP_TOKEN`/`UPLOAD_TOKEN`/`ADMIN_TOKEN` 静态 token 模型，改为基于 SQLite 的可撤销凭证系统：
 
 ```text
-UPLOAD_TOKEN  iPhone 快捷指令上传图片使用
-APP_TOKEN     Android App 访问账单接口使用
-ADMIN_TOKEN   维护接口使用
+PairingCode    Android 绑定入口，6 位数字，一次性，有 TTL（默认 15 分钟）
+AuthToken      设备会话 token，Bearer 鉴权，可撤销
+UploadLink     iPhone 上传入口，URL 路径携带 upload_key，可撤销
+BootstrapAdmin 初始化时生成的 admin scope token，用于后续管理操作
 ```
 
 规则：
 
-- `UPLOAD_TOKEN` 只能用于 `/api/upload-screenshot`。
-- `APP_TOKEN` 用于账单、图片、统计、规则等 App 接口。
+- `PairingCode` 只用于 `POST /api/auth/pair`，成功后返回 `session_token`，PairingCode 立即失效。
+- `PairingCode` 只保存 hash，消费时用原子条件更新保证一次性；同一来源短时间内失败过多会被限流。
+- `AuthToken` 用于 Android App 调用账单、图片、统计、规则等接口，通过 `Authorization: Bearer <session_token>` 传递。
+- `UploadLink` 用于 iPhone 快捷指令上传截图，通过完整 URL `POST /u/<upload_key>?tz=...` 传递，不需要额外请求头。
 - `GET /api/settings/server` 只返回非敏感运行状态，不返回 Token、本机路径或数据库路径。
-- `ADMIN_TOKEN` 只用于 `/api/maintenance/*` 这类窄维护接口。
-- `/api/auth/check` 是 Android 绑定服务器的唯一 Token 校验接口。
-- `/api/health` 不代表 Token 正确。
-- Token 不写入代码、README、提交记录、日志或截图。
+- `/api/auth/check` 是 Android 校验 session token 的唯一接口。
+- `/api/health` 不代表任何凭证有效。
+- 旧版 `APP_TOKEN`、`UPLOAD_TOKEN`、`TENANTS_JSON` 里的 token 请求一律返回 `legacy_auth_removed`（401）。
+- 旧版静态 `ADMIN_TOKEN` 不再是运行时凭证；维护接口只接受数据库中保存 hash 的 admin scope token。
+- 凭证不写入代码、README、提交记录、日志或截图。
+- 因为 UploadLink 的 `upload_key` 在 URL 路径中，公网运行必须使用 `run.bat` / `backend\scripts\start_backend.ps1` 启动后端，或手动给 Uvicorn 加 `--no-access-log`，避免访问日志记录 `/u/{upload_key}`。
 
 ## 图片
 
@@ -41,7 +46,7 @@ ADMIN_TOKEN   维护接口使用
 - 图片只能通过鉴权接口读取。
 - 原图接口是 `GET /api/expenses/{id}/image`。
 - 缩略图接口是 `GET /api/expenses/{id}/thumbnail`。
-- API 不返回 Windows 真实路径。
+- API 返回不能暴露 Windows 真实路径。
 - 数据库只保存相对路径。
 - 上传文件使用随机文件名，不使用原始文件名。
 
@@ -62,16 +67,17 @@ ADMIN_TOKEN   维护接口使用
 - CSV 导出只返回已确认账单业务数据，不提供任意文件下载或目录浏览。
 - Windows 备份脚本只复制 `backend\data\ticketbox.db` 到 `backend\backups`，清理旧备份前会校验目标仍在备份目录内。
 - 数据库恢复脚本只允许从 `backend\backups\ticketbox-*.db` 恢复，覆盖前会自动备份当前数据库。
+- v0.3 迁移前会自动创建 `backups\ticketbox-pre-v0.3-YYYYMMDD-HHMMSS.db` 备份。
 
 ## 维护接口
 
-`POST /api/maintenance/cleanup-images` 使用 `ADMIN_TOKEN`，只按配置清理当前 admin 上下文租户的已确认账单图片和缩略图。当前实现中 `ADMIN_TOKEN` 映射到默认租户，不提供全局后台。
+维护接口使用 admin token（`Authorization: Bearer <admin_token>`），只作用于当前 admin 上下文对应的账本。
 
 限制：
 
 - 不接收任意文件路径。
 - 不提供目录浏览、文件下载、文件删除等通用文件管理能力。
-- 清理前会校验目标相对路径必须位于后端 `uploads/{tenant_id}/` 目录内。
+- 清理前会校验目标相对路径必须位于后端 `uploads/{ledger_id}/` 目录内。
 - `DELETE_IMAGE_AFTER_DAYS <= 0` 时不执行删除。
 
 ## 网络暴露
@@ -100,7 +106,7 @@ api.我的域名.com -> http://127.0.0.1:8000
 
 ## Android 客户端
 
-- APP_TOKEN 使用 Android Keystore 保存。
+- Session token 使用 Android Keystore 保存。
 - BiometricPrompt 只用于本地解锁 Token，不替代服务端鉴权。
 - OkHttp 日志不得打印 Header、Body 或 Token。
 - 清除绑定必须清除服务器地址、Token 和本地解锁状态。

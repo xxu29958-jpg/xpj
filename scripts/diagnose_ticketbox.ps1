@@ -3,7 +3,8 @@
     [int]$Port = 8000,
     [int]$Tail = 20,
     [switch]$Advanced,
-    [switch]$Strict
+    [switch]$Strict,
+    [string]$SessionToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,19 +36,15 @@ function Add-Row {
     })
 }
 
-function Read-EnvValue {
-    param([Parameter(Mandatory = $true)][string]$Name)
-
-    if (-not (Test-Path -LiteralPath $EnvPath)) {
-        return ""
+function Resolve-SessionToken {
+    if ($SessionToken.Trim().Length -gt 0) {
+        return $SessionToken.Trim()
     }
-    $line = Get-Content -Encoding UTF8 -LiteralPath $EnvPath |
-        Where-Object { $_ -match "^$Name=" } |
-        Select-Object -First 1
-    if (-not $line) {
-        return ""
+    $processValue = [Environment]::GetEnvironmentVariable("TICKETBOX_SESSION_TOKEN")
+    if ($processValue -and $processValue.Trim().Length -gt 0) {
+        return $processValue.Trim()
     }
-    return ($line -replace "^$Name=", "").Trim()
+    return ""
 }
 
 function Format-Bytes {
@@ -76,43 +73,6 @@ function Invoke-JsonCheck {
         Add-Row -Target $Target -Name $Name -Status "FAIL" -Detail $_.Exception.Message
         return $null
     }
-}
-
-function Get-TenantCount {
-    $tenantsJson = Read-EnvValue -Name "TENANTS_JSON"
-    if ([string]::IsNullOrWhiteSpace($tenantsJson)) {
-        return 1
-    }
-    try {
-        $tenants = $tenantsJson | ConvertFrom-Json
-        if ($tenants -is [array]) {
-            return $tenants.Count
-        }
-        return 1
-    }
-    catch {
-        return 1
-    }
-}
-
-function Get-DefaultTenantName {
-    $tenantsJson = Read-EnvValue -Name "TENANTS_JSON"
-    if (-not [string]::IsNullOrWhiteSpace($tenantsJson)) {
-        try {
-            $tenants = @($tenantsJson | ConvertFrom-Json)
-            $owner = $tenants | Where-Object { $_.id -eq "owner" } | Select-Object -First 1
-            if ($owner -and -not [string]::IsNullOrWhiteSpace([string]$owner.name)) {
-                return [string]$owner.name
-            }
-            if ($tenants.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$tenants[0].name)) {
-                return [string]$tenants[0].name
-            }
-        }
-        catch {
-            return "owner"
-        }
-    }
-    return "我的小票夹"
 }
 
 Write-Host "小票夹服务诊断"
@@ -184,12 +144,17 @@ else {
     Add-Row -Target $Summary -Name "外网访问" -Status "FAIL" -Detail "不可访问"
 }
 
-$appToken = Read-EnvValue -Name "APP_TOKEN"
-$uploadToken = Read-EnvValue -Name "UPLOAD_TOKEN"
+$resolvedSessionToken = Resolve-SessionToken
 
-if ($appToken.Length -gt 0) {
-    Invoke-JsonCheck -Name "App 访问口令" -Uri "$BaseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $appToken" } -Target $Details | Out-Null
-    $settings = Invoke-JsonCheck -Name "服务概况" -Uri "$BaseUrl/api/settings/server" -Headers @{ Authorization = "Bearer $appToken" } -Target $Details
+if ($resolvedSessionToken.Length -gt 0) {
+    $sessionHeaders = @{ Authorization = "Bearer $resolvedSessionToken" }
+    $auth = Invoke-JsonCheck -Name "Session 身份检查" -Uri "$BaseUrl/api/auth/check" -Headers $sessionHeaders -Target $Details
+    if ($auth) {
+        Add-Row -Target $Summary -Name "当前账号" -Status "OK" -Detail $auth.account_name
+        Add-Row -Target $Summary -Name "当前账本" -Status "OK" -Detail $auth.ledger_name
+        Add-Row -Target $Summary -Name "当前设备" -Status "OK" -Detail $auth.device_name
+    }
+    $settings = Invoke-JsonCheck -Name "服务概况" -Uri "$BaseUrl/api/settings/server" -Headers $sessionHeaders -Target $Details
     if ($settings) {
         $latestUpload = if ($settings.latest_upload_at) { $settings.latest_upload_at } else { "暂无" }
         Add-Row -Target $Summary -Name "最近上传" -Status "OK" -Detail $latestUpload
@@ -199,21 +164,10 @@ if ($appToken.Length -gt 0) {
     }
 }
 else {
-    Add-Row -Target $Summary -Name "服务概况" -Status "WARN" -Detail "backend\.env 中没有 APP_TOKEN"
+    Add-Row -Target $Summary -Name "服务概况" -Status "WARN" -Detail "没有 TICKETBOX_SESSION_TOKEN"
 }
 
-if ($uploadToken.Length -gt 0) {
-    Invoke-JsonCheck -Name "上传口令检查" -Uri "$BaseUrl/api/upload/check" -Headers @{
-        "Upload-Token" = $uploadToken
-        "User-Agent" = "TicketBox/1.0 Windows-Diagnostics"
-    } -Target $Details | Out-Null
-}
-else {
-    Add-Row -Target $Details -Name "上传口令检查" -Status "WARN" -Detail "backend\.env 中没有 UPLOAD_TOKEN"
-}
-
-Add-Row -Target $Summary -Name "租户数量" -Status "OK" -Detail "$(Get-TenantCount) 个"
-Add-Row -Target $Summary -Name "默认租户" -Status "OK" -Detail (Get-DefaultTenantName)
+Add-Row -Target $Details -Name "UploadLink 检查" -Status "INFO" -Detail "UploadLink 只能 POST 创建 pending，诊断脚本不读取或打印 upload key。"
 
 $Summary | Format-Table -AutoSize
 

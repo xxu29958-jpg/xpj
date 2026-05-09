@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
-from conftest import BACKEND_ROOT, PNG_BYTES, TEST_UPLOAD_DIR, admin_headers, app_headers, upload_headers
+from conftest import BACKEND_ROOT, PNG_BYTES, TEST_UPLOAD_DIR, admin_headers, app_headers, upload_headers, upload_url_path
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.time_service import now_utc
@@ -14,7 +14,7 @@ from app.services.time_service import now_utc
 
 def _upload_png(client: TestClient) -> int:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )

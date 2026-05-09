@@ -8,7 +8,7 @@
 
 ```http
 GET /api/expenses/{id}/image
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 ## 安全要求

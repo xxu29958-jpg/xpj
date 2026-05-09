@@ -18,6 +18,12 @@ TEST_TENANT_UPLOAD_TOKEN = "pytest-tenant-upload-token"
 TEST_TENANT_APP_TOKEN = "pytest-tenant-app-token"
 TEST_DB_PATH = BACKEND_ROOT / "data" / "pytest_test.db"
 TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / "pytest_test"
+CURRENT_APP_TOKEN = ""
+CURRENT_ADMIN_TOKEN = ""
+CURRENT_UPLOAD_KEY = ""
+CURRENT_PAIRING_CODE = ""
+CURRENT_TENANT_APP_TOKEN = ""
+CURRENT_TENANT_UPLOAD_KEY = ""
 
 os.environ.update(
     {
@@ -51,8 +57,10 @@ os.environ.update(
     },
 )
 
-from app.database import Base, engine, init_db  # noqa: E402
+from app.database import Base, SessionLocal, engine, init_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models import Account, AuthToken, Device, Ledger, UploadLink  # noqa: E402
+from app.services.identity_service import bootstrap_owner, hash_secret, new_session_token, new_upload_key  # noqa: E402
 
 
 PNG_BYTES = base64.b64decode(
@@ -61,29 +69,94 @@ PNG_BYTES = base64.b64decode(
 
 
 def app_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {TEST_APP_TOKEN}"}
+    return {"Authorization": f"Bearer {CURRENT_APP_TOKEN}"}
 
 
 def upload_headers() -> dict[str, str]:
-    return {"Upload-Token": TEST_UPLOAD_TOKEN}
+    return {}
 
 
 def admin_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {TEST_ADMIN_TOKEN}"}
+    return {"Authorization": f"Bearer {CURRENT_ADMIN_TOKEN}"}
 
 
 def gray_app_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {TEST_TENANT_APP_TOKEN}"}
+    return {"Authorization": f"Bearer {CURRENT_TENANT_APP_TOKEN}"}
 
 
 def gray_upload_headers() -> dict[str, str]:
-    return {"Upload-Token": TEST_TENANT_UPLOAD_TOKEN}
+    return {}
+
+
+def upload_url_path() -> str:
+    return f"/u/{CURRENT_UPLOAD_KEY}"
+
+
+def gray_upload_url_path() -> str:
+    return f"/u/{CURRENT_TENANT_UPLOAD_KEY}"
+
+
+def _seed_test_identity_tokens() -> None:
+    global CURRENT_APP_TOKEN
+    global CURRENT_ADMIN_TOKEN
+    global CURRENT_UPLOAD_KEY
+    global CURRENT_PAIRING_CODE
+    global CURRENT_TENANT_APP_TOKEN
+    global CURRENT_TENANT_UPLOAD_KEY
+
+    with SessionLocal() as db:
+        bootstrap = bootstrap_owner(db, account_name="我", ledger_name="我的小票夹", device_name="pytest-owner")
+        CURRENT_ADMIN_TOKEN = bootstrap.admin_token
+        CURRENT_UPLOAD_KEY = bootstrap.upload_key
+        CURRENT_PAIRING_CODE = bootstrap.pairing_code
+
+    with SessionLocal() as db:
+        owner = db.query(Account).order_by(Account.id.asc()).first()
+        assert owner is not None
+        owner_ledger = db.query(Ledger).filter(Ledger.ledger_id == "owner").one()
+        tester_ledger = db.query(Ledger).filter(Ledger.ledger_id == "tester_1").one()
+
+        owner_device = Device(account_id=owner.id, device_name="pytest-android", platform="android")
+        tester_device = Device(account_id=owner.id, device_name="pytest-gray-android", platform="android")
+        db.add_all([owner_device, tester_device])
+        db.flush()
+
+        CURRENT_APP_TOKEN = new_session_token()
+        CURRENT_TENANT_APP_TOKEN = new_session_token()
+        CURRENT_TENANT_UPLOAD_KEY = new_upload_key()
+        db.add_all(
+            [
+                AuthToken(
+                    token_hash=hash_secret(CURRENT_APP_TOKEN),
+                    account_id=owner.id,
+                    device_id=owner_device.id,
+                    ledger_id=owner_ledger.ledger_id,
+                    scope="app",
+                ),
+                AuthToken(
+                    token_hash=hash_secret(CURRENT_TENANT_APP_TOKEN),
+                    account_id=owner.id,
+                    device_id=tester_device.id,
+                    ledger_id=tester_ledger.ledger_id,
+                    scope="app",
+                ),
+                UploadLink(
+                    token_hash=hash_secret(CURRENT_TENANT_UPLOAD_KEY),
+                    account_id=owner.id,
+                    device_id=tester_device.id,
+                    ledger_id=tester_ledger.ledger_id,
+                    default_timezone="Asia/Shanghai",
+                ),
+            ]
+        )
+        db.commit()
 
 
 def reset_runtime() -> None:
     Base.metadata.drop_all(bind=engine)
     shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
     init_db()
+    _seed_test_identity_tokens()
 
 
 @pytest.fixture()

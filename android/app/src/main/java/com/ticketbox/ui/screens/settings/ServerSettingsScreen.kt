@@ -124,6 +124,10 @@ fun ServerSettingsScreen(
     ) {
         AccountStatusCard(
             serverSettings = state.serverSettings,
+            accountName = state.accountName,
+            ledgerName = state.ledgerName,
+            deviceName = state.deviceName,
+            role = state.role,
             lastUploadAt = state.lastUploadAt,
             lastSyncAt = state.lastConfirmedSyncAt,
             busy = state.busy,

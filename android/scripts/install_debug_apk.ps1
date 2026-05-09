@@ -9,6 +9,7 @@
     [switch]$ListDevices,
     [string]$Serial = "",
     [string]$ServerUrl = "http://127.0.0.1:8000",
+    [string]$SessionToken = "",
     [string]$Adb = "",
     [string]$ApkPath = ""
 )
@@ -19,7 +20,6 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $AndroidRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $ProjectRoot = Resolve-Path (Join-Path $AndroidRoot "..")
-$BackendEnv = Join-Path $ProjectRoot "backend\.env"
 $PackageName = if ($Flavor -eq "internal") { "com.ticketbox.internal" } else { "com.ticketbox" }
 $DefaultApk = Join-Path $AndroidRoot "app\build\outputs\apk\$Flavor\debug\app-$Flavor-debug.apk"
 
@@ -164,24 +164,6 @@ function Select-DeviceSerial {
     throw "未发现 Android 设备。请连接手机、打开开发者选项和 USB 调试。"
 }
 
-function Read-AppToken {
-    if (-not (Test-Path -LiteralPath $BackendEnv)) {
-        throw "未找到后端 .env：$BackendEnv"
-    }
-
-    $lines = [System.IO.File]::ReadAllLines($BackendEnv, [System.Text.UTF8Encoding]::new($false))
-    $tokenLine = $lines | Where-Object { $_ -match "^APP_TOKEN=" } | Select-Object -First 1
-    if (-not $tokenLine) {
-        throw "backend\.env 中未找到 APP_TOKEN。"
-    }
-
-    $token = ($tokenLine -replace "^APP_TOKEN=", "").Trim()
-    if ($token.Length -eq 0) {
-        throw "backend\.env 中 APP_TOKEN 为空。"
-    }
-    return $token
-}
-
 Set-Location $AndroidRoot
 Ensure-LocalAndroidEnvironment
 
@@ -222,7 +204,10 @@ if ($DebugBind) {
     if ($Flavor -ne "internal") {
         throw "DebugBind 只允许用于 internal 调试版，灰度用户版不暴露内部绑定入口。请加 -Flavor internal。"
     }
-    $appToken = Read-AppToken
+    $resolvedSessionToken = $SessionToken.Trim()
+    if ($resolvedSessionToken.Length -eq 0) {
+        throw "DebugBind 需要 -SessionToken。v0.3 不再从 backend\.env 读取 APP_TOKEN。"
+    }
     Invoke-Checked -FilePath $adbPath -Arguments @(
         "-s",
         $deviceSerial,
@@ -235,8 +220,8 @@ if ($DebugBind) {
         "ticketbox.debug.server_url",
         $ServerUrl,
         "--es",
-        "ticketbox.debug.app_token",
-        $appToken
+        "ticketbox.debug.session_token",
+        $resolvedSessionToken
     )
     Write-Host "已用 debug intent 启动并绑定服务器。"
 }

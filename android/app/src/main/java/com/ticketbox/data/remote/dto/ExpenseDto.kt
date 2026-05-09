@@ -4,8 +4,34 @@ import com.squareup.moshi.Json
 
 data class AuthCheckDto(
     val status: String,
-    @param:Json(name = "tenant_name")
-    val tenantName: String? = null,
+    @param:Json(name = "account_name")
+    val accountName: String,
+    @param:Json(name = "ledger_name")
+    val ledgerName: String,
+    @param:Json(name = "device_name")
+    val deviceName: String,
+    val role: String,
+    val scope: String,
+)
+
+data class PairRequestDto(
+    @param:Json(name = "pairing_code")
+    val pairingCode: String,
+    @param:Json(name = "device_name")
+    val deviceName: String,
+    val platform: String,
+)
+
+data class PairResponseDto(
+    @param:Json(name = "session_token")
+    val sessionToken: String,
+    @param:Json(name = "account_name")
+    val accountName: String,
+    @param:Json(name = "ledger_name")
+    val ledgerName: String,
+    @param:Json(name = "device_name")
+    val deviceName: String,
+    val role: String,
 )
 
 data class StatusDto(
@@ -155,8 +181,13 @@ data class FrequentMerchantDto(
 )
 
 data class ServerSettingsDto(
-    @param:Json(name = "tenant_name")
-    val tenantName: String,
+    @param:Json(name = "account_name")
+    val accountName: String,
+    @param:Json(name = "ledger_name")
+    val ledgerName: String,
+    @param:Json(name = "device_name")
+    val deviceName: String,
+    val role: String,
     val status: String,
     @param:Json(name = "storage_status")
     val storageStatus: String,

@@ -159,7 +159,7 @@ fun SecurityPrivacyScreen(
                 ) {
                     Text("指纹 / 面容只用于本地解锁", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        text = "账本访问仍然使用绑定时保存的访问口令。App 切到后台超过 5 分钟后会要求重新解锁。",
+                        text = "账本访问使用绑定时保存的会话凭证。App 切到后台超过 5 分钟后会要求重新解锁。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(

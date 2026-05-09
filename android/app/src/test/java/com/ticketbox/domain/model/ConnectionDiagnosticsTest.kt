@@ -37,7 +37,7 @@ class ConnectionDiagnosticsTest {
     fun failuresMakeDiagnosticsUnhealthy() {
         val diagnostics = ConnectionDiagnostics(
             checks = listOf(
-                DiagnosticCheck("身份验证", DiagnosticStatus.Fail, "访问口令不对，请重新检查。", 18),
+                DiagnosticCheck("身份验证", DiagnosticStatus.Fail, "绑定已失效，请重新绑定账本。", 18),
             ),
         )
 

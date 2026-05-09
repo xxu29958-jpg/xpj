@@ -2,7 +2,7 @@
 
 本清单用于灰度发布前逐项验收，每项必须实际执行并记录结果。不写"建议验证"等不可执行项，不预填"已通过"。
 
-gray/internal 泄漏验收口径是“普通用户 UI 不可见”：gray 版主流程和设置页不得显示服务器域名、token、Cloudflare、端口、接口名、日志或诊断脚本。它不是 APK 字符串、反编译产物或网络包级别的不可见审计；v0.3 再另开 build secrets / APK string scan 专项。
+gray/internal 泄漏验收口径是"普通用户 UI 不可见"：gray 版主流程和设置页不得显示服务器域名、token、Cloudflare、端口、接口名、日志或诊断脚本。它不是 APK 字符串、反编译产物或网络包级别的不可见审计；v0.3 再另开 build secrets / APK string scan 专项。
 
 ## 验收环境
 
@@ -98,23 +98,25 @@ cd /d E:\projects\xiaopiaojia\backend
 
 ```powershell
 cd E:\projects\xiaopiaojia
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
+$env:TICKETBOX_UPLOAD_LINK="/u/<upload_key>?tz=Asia/Shanghai"
 powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
   -ServerUrl https://api.你的域名.com
 ```
 
-（脚本默认从 `backend\.env` 读取 Token，不会打印 Token。）
+> v0.3 以后 `check_cloudflare_endpoint.ps1` 不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`。请通过 `-SessionToken` / `-UploadLink` 参数，或 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证。
 
 **预期结果**：
 
 - `/api/health` 返回 ok。
-- `/api/auth/check` 返回凭证有效。
-- `/api/upload-screenshot` 用内置 1x1 PNG 测试上传成功。
+- `/api/auth/check` 返回 session token 有效。
+- UploadLink 上传测试成功。
 
 **失败处理**：
 
 - 若 health 不通，检查 Windows 是否睡眠、后端是否运行、cloudflared 是否运行。
-- 若 auth 失败，检查 `backend\.env` 的 `APP_TOKEN`。
-- 若上传失败，检查 `UPLOAD_TOKEN` 和 Tunnel 映射。
+- 若 auth 失败，检查设备 session token 是否有效或是否被撤销。
+- 若上传失败，检查 UploadLink URL 是否正确。
 
 **是否阻断灰度**：是。公网不通，手机离开 Wi-Fi 后无法使用。
 
@@ -134,6 +136,7 @@ powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
 
 ```powershell
 cd E:\projects\xiaopiaojia
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
   -ServerUrl https://api.你的域名.com
 ```
@@ -142,7 +145,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_run
 
 - 后端已启动或自动启动。
 - cloudflared 已启动或自动启动。
-- 公网 health/auth 检查通过。
+- 公网 health 检查通过。
 
 **失败处理**：
 
@@ -172,23 +175,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_run
 快捷指令配置预检（首次配置时）：
 
 ```text
-URL: https://api.你的域名.com/api/upload/check
-方法: GET
+URL: https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
+方法: POST
 请求头:
-  Upload-Token: 你的_UPLOAD_TOKEN
   User-Agent: TicketBox/1.0 iOS-Shortcut
+请求正文: 文件（转换后的图像）
 ```
+
+> **注意**：v0.3 不再使用 `Upload-Token` header。快捷指令 URL 必须是完整的 UploadLink，包含 `/u/<upload_key>`。
 
 **预期结果**：
 
 - 快捷指令显示"已上传到小票夹"。
-- 后端 `backend\logs\ticketbox-backend-*.out.log` 出现 `/api/upload-screenshot` 200 记录。
-- 数据库中新增一条 `status=pending` 记录。
+- Android 待确认页或数据库中新增一条 `status=pending` 记录。
+- 后端默认关闭 Uvicorn access log，不应为了查看 `/u/<upload_key>` 路径打开访问日志。
 
 **失败处理**：
 
 - 若提示网络中断，先用 Safari 打开 `https://api.你的域名.com/api/health`。
-- 若返回 `invalid_token`，检查 `Upload-Token` 是否正确，不要填 `APP_TOKEN`。
+- 若返回 `legacy_auth_removed`，说明快捷指令仍使用旧版 `Upload-Token` 或 `/api/upload-screenshot`，需要更新为完整 UploadLink URL。
+- 若返回 `invalid_token`，检查 UploadLink URL 中的 `upload_key` 是否正确。
 - 若返回 `invalid_request`，检查请求正文是否为 `文件` 模式，不要选 `表单`。
 - 若返回 `unsupported_file_type`，快捷指令增加"转换图像"为 JPEG/PNG 步骤。
 - 若返回 `file_too_large`，单图超过 10MB，先压缩再上传。
@@ -232,7 +238,7 @@ URL: https://api.你的域名.com/api/upload/check
 - API 不返回 Windows 本机真实路径。
 - 上传失败不残留文件。
 
-**是否阻断灰度**：是。真实图片样本不过，不进入 v0.2-rc1。
+**是否阻断灰度**：是。真实图片样本不过，不进入 v0.3-rc1。
 
 **证据路径**：样本清单截图 + Android 待确认页截图 + 后端测试输出
 
@@ -248,17 +254,17 @@ URL: https://api.你的域名.com/api/upload/check
 
 **执行命令/动作**：
 
-如果使用 PR artifact 作为 `v0.2.0-rc1` 真机验收包，先执行 RC artifact 门禁：
+如果使用 PR artifact 作为 `v0.3.0-rc1` 真机验收包，先执行 RC artifact 门禁：
 
 ```powershell
 cd E:\projects\xiaopiaojia
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.ps1 `
-  -RunId 25592323349 `
-  -ExpectedCommit 67c05ee0ef4164fad2db1babfa27086cf5e00f73
+  -RunId <run_id> `
+  -ExpectedCommit <commit_sha>
 ```
 
-脚本通过后，使用 `artifacts\rc-gate\<run-id>\v0.2.0-rc1-handoff-checklist.md` 作为发包清单。
-未生成 manifest 和 handoff checklist 的 artifact，不得称为 `v0.2.0-rc1`。
+脚本通过后，使用 `artifacts\rc-gate\<run-id>\v0.3.0-rc1-handoff-checklist.md` 作为发包清单。
+未生成 manifest 和 handoff checklist 的 artifact，不得称为 `v0.3.0-rc1`。
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
@@ -281,7 +287,7 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 - PR artifact 门禁脚本退出码为 0。
 - gray/internal APK 的 package、versionName、versionCode、SHA256 已记录。
-- 发包清单写明访问口令发放对象和不得发出的 token/密钥。
+- 发包清单写明绑定码发放对象和不得发出的凭证。
 - `assembleGrayDebug` BUILD SUCCESSFUL。
 - `adb install` 返回 Success。
 - 真机桌面出现"小票夹"图标。
@@ -309,22 +315,27 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 **执行命令/动作**：
 
 1. 真机打开"小票夹"。
-2. 灰度用户版默认已内置账本地址，只输入访问口令：`APP_TOKEN`（服务拥有者提供）。
-3. 如果界面出现"账本地址"输入框（内部版或未内置默认地址时），输入：`https://api.你的域名.com`。
+2. 输入账本地址：`https://api.你的域名.com`。
+3. 输入服务拥有者提供的 6 位绑定码（Pairing Code）。
 4. 点击"绑定账本"。
+
+> **注意**：v0.3 不再使用旧版 `APP_TOKEN`。Android 绑定需要服务器地址 + 6 位数字绑定码。
 
 **预期结果**：
 
 - 绑定成功，进入 App 主界面（底部导航：待确认 / 账本 / 统计 / 设置）。
 - 设置页显示"已连接"。
+- Room 本地 confirmed 缓存通过 `syncConfirmed()` 重建。
 
 **失败处理**：
 
-- 若提示"绑定没成功，请检查地址和访问口令"：
-  - 如果当前界面有账本地址输入框，确认地址是 `https://` 开头，不是 `http://`。
-  - 如果当前界面有账本地址输入框，确认不是 `localhost` 或 `127.0.0.1`。
-  - 确认输入的是 `APP_TOKEN`，不是 `UPLOAD_TOKEN`。
+- 若提示"绑定没成功，请检查账本地址和绑定码"：
+  - 确认地址是 `https://` 开头，不是 `http://`。
+  - 确认不是 `localhost` 或 `127.0.0.1`。
+  - 确认输入的是 6 位数字绑定码，不是旧版 `APP_TOKEN`。
+  - 确认绑定码未过期（默认 15 分钟）且未被使用过。
   - 用 Safari/浏览器打开 `https://api.你的域名.com/api/health` 确认公网可达。
+- 若返回 `legacy_auth_removed`，说明后端已升级 v0.3，必须使用新绑定码。
 
 **是否阻断灰度**：是。绑定失败，用户无法进入 App。
 
@@ -492,6 +503,8 @@ cd E:\projects\xiaopiaojia
 powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 `
   -BackupPath "E:\projects\xiaopiaojia\backend\backups\ticketbox-YYYYmmdd-HHMMSS.db"
 ```
+
+> **注意**：v0.3 迁移前会自动创建 `backups\ticketbox-pre-v0.3-YYYYMMDD-HHMMSS.db`。回滚到 v0.2 时需要使用这个备份。
 
 **预期结果**：
 

@@ -10,28 +10,28 @@ from fastapi.testclient import TestClient
 from conftest import (
     BACKEND_ROOT,
     PNG_BYTES,
-    TEST_ADMIN_TOKEN,
     TEST_APP_TOKEN,
-    TEST_TENANT_APP_TOKEN,
-    TEST_TENANT_UPLOAD_TOKEN,
     TEST_UPLOAD_TOKEN,
     TEST_UPLOAD_DIR,
     admin_headers,
     app_headers,
     gray_app_headers,
     gray_upload_headers,
+    gray_upload_url_path,
     upload_headers,
+    upload_url_path,
 )
-from app.auth import verify_admin_token, verify_app_token, verify_upload_token
 from app.database import SessionLocal, migrate_upload_paths_to_tenant_dirs
-from app.models import Expense
+from app.main import app
+from app.models import AuthToken, Expense, PairingCode, UploadLink
+from app.services.identity_service import hash_secret
 from app.services.ocr_service import MockOcrProvider, retry_ocr
-from app.tenants import AuthContext
+from app.services.time_service import now_utc
 
 
-def upload_png(client: TestClient, headers: dict[str, str] | None = None) -> int:
+def upload_png(client: TestClient, headers: dict[str, str] | None = None, path: str | None = None) -> int:
     response = client.post(
-        "/api/upload-screenshot",
+        path or upload_url_path(),
         headers=headers or upload_headers(),
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )
@@ -57,7 +57,7 @@ def upload_png(client: TestClient, headers: dict[str, str] | None = None) -> int
 
 def upload_png_as_raw_body(client: TestClient) -> int:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers={**upload_headers(), "Content-Type": "image/png"},
         content=PNG_BYTES,
     )
@@ -129,43 +129,106 @@ def test_health_and_auth_contract(client: TestClient) -> None:
 
     response = client.get("/api/auth/check", headers=app_headers())
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "tenant_name": "我的小票夹"}
+    assert response.json() == {
+        "status": "ok",
+        "account_name": "我",
+        "ledger_name": "我的小票夹",
+        "device_name": "pytest-android",
+        "role": "owner",
+        "scope": "app",
+    }
 
-    response = client.get("/api/auth/check", headers={"Authorization": "Bearer bad"})
+    response = client.get("/api/auth/check", headers={"Authorization": f"Bearer {TEST_APP_TOKEN}"})
     assert response.status_code == 401
-    assert response.json()["error"] == "invalid_token"
+    assert response.json()["error"] == "legacy_auth_removed"
     assert response.json()["message"]
 
 
-def test_token_verifiers_return_auth_context(client: TestClient) -> None:
-    owner_app = verify_app_token(f"Bearer {TEST_APP_TOKEN}")
-    tester_app = verify_app_token(f"Bearer {TEST_TENANT_APP_TOKEN}")
-    owner_upload = verify_upload_token(TEST_UPLOAD_TOKEN)
-    tester_upload = verify_upload_token(TEST_TENANT_UPLOAD_TOKEN)
-    admin = verify_admin_token(f"Bearer {TEST_ADMIN_TOKEN}")
+def test_tokens_are_hashed_and_legacy_tokens_are_rejected(client: TestClient) -> None:
+    with SessionLocal() as db:
+        assert db.query(AuthToken).filter(AuthToken.token_hash == TEST_APP_TOKEN).count() == 0
+        assert db.query(UploadLink).filter(UploadLink.token_hash == TEST_UPLOAD_TOKEN).count() == 0
+        assert db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(TEST_APP_TOKEN)).count() == 0
+        assert db.query(UploadLink).filter(UploadLink.token_hash == hash_secret(TEST_UPLOAD_TOKEN)).count() == 0
 
-    assert owner_app == AuthContext(tenant_id="owner", tenant_name="我的小票夹", token_type="app")
-    assert tester_app == AuthContext(tenant_id="tester_1", tenant_name="灰度用户1", token_type="app")
-    assert owner_upload == AuthContext(tenant_id="owner", tenant_name="我的小票夹", token_type="upload")
-    assert tester_upload == AuthContext(tenant_id="tester_1", tenant_name="灰度用户1", token_type="upload")
-    assert admin.tenant_id == "owner"
-    assert admin.token_type == "admin"
+    app_response = client.get("/api/auth/check", headers={"Authorization": f"Bearer {TEST_APP_TOKEN}"})
+    assert app_response.status_code == 401
+    assert app_response.json()["error"] == "legacy_auth_removed"
+
+    upload_response = client.post(
+        "/api/upload-screenshot",
+        headers={"Upload-Token": TEST_UPLOAD_TOKEN, "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert upload_response.status_code == 401
+    assert upload_response.json()["error"] == "legacy_auth_removed"
+
+
+def test_bootstrap_owner_requires_local_request(client: TestClient) -> None:
+    with TestClient(app, client=("203.0.113.10", 50000)) as remote_client:
+        response = remote_client.post("/api/bootstrap/owner", json={})
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "invalid_token"
 
 
 def test_upload_check_contract(client: TestClient) -> None:
-    response = client.get("/api/upload/check", headers=upload_headers())
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "ok"
-    assert payload["max_upload_size_mb"] == 10
-    assert payload["recommended_body"] == "file"
-    assert "png" in payload["supported_file_types"]
-    assert "token" not in str(payload).lower()
-    assert "path" not in str(payload).lower()
+    response = client.get("/api/upload/check", headers={"Upload-Token": TEST_UPLOAD_TOKEN})
+    assert response.status_code == 401
+    assert response.json()["error"] == "legacy_auth_removed"
 
     response = client.get("/api/upload/check", headers={"Upload-Token": "bad"})
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
+
+
+def test_owner_can_create_pairing_code_and_android_can_pair_once(client: TestClient) -> None:
+    response = client.post("/api/bootstrap/pairing-codes", headers=admin_headers(), json={"ttl_minutes": 15})
+    assert response.status_code == 200
+    pairing = response.json()
+    assert pairing["ledger_name"] == "我的小票夹"
+    assert pairing["pairing_code"].isdigit()
+    assert len(pairing["pairing_code"]) == 6
+
+    paired = client.post(
+        "/api/auth/pair",
+        json={"pairing_code": pairing["pairing_code"], "device_name": "小米 15 Pro", "platform": "android"},
+    )
+    assert paired.status_code == 200
+    payload = paired.json()
+    assert payload["session_token"].startswith("tbx_")
+    assert payload["account_name"] == "我"
+    assert payload["ledger_name"] == "我的小票夹"
+    assert payload["device_name"] == "小米 15 Pro"
+    assert payload["role"] == "owner"
+
+    check = client.get("/api/auth/check", headers={"Authorization": f"Bearer {payload['session_token']}"})
+    assert check.status_code == 200
+    assert check.json()["device_name"] == "小米 15 Pro"
+
+    reused = client.post(
+        "/api/auth/pair",
+        json={"pairing_code": pairing["pairing_code"], "device_name": "小米 15 Pro", "platform": "android"},
+    )
+    assert reused.status_code == 409
+    assert reused.json()["error"] == "pairing_code_used"
+
+
+def test_pairing_code_expires(client: TestClient) -> None:
+    response = client.post("/api/bootstrap/pairing-codes", headers=admin_headers(), json={"ttl_minutes": 1})
+    assert response.status_code == 200
+    code = response.json()["pairing_code"]
+    with SessionLocal() as db:
+        pairing = db.query(PairingCode).filter(PairingCode.code_hash == hash_secret(code)).one()
+        pairing.expires_at = now_utc() - timedelta(minutes=1)
+        db.commit()
+
+    expired = client.post(
+        "/api/auth/pair",
+        json={"pairing_code": code, "device_name": "过期设备", "platform": "android"},
+    )
+    assert expired.status_code == 410
+    assert expired.json()["error"] == "pairing_code_expired"
 
 
 def test_framework_errors_use_uniform_chinese_shape(client: TestClient) -> None:
@@ -280,7 +343,7 @@ def test_upload_passes_client_timezone_to_background_ocr(client: TestClient, mon
     monkeypatch.setattr("app.routes.uploads.enrich_pending_expense", fake_enrich)
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers={**upload_headers(), "Content-Type": "image/png", "X-Timezone": "America/Los_Angeles"},
         content=PNG_BYTES,
     )
@@ -293,7 +356,7 @@ def test_upload_passes_client_timezone_to_background_ocr(client: TestClient, mon
 
 def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"image": ("shortcut-image.jpeg", PNG_BYTES, "image/png")},
     )
@@ -309,7 +372,7 @@ def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> N
 
 def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        "/u/bad-upload-key",
         headers={"Upload-Token": "bad-token", "Content-Type": "image/png"},
         content=PNG_BYTES,
     )
@@ -338,7 +401,7 @@ def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -
     monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers={**upload_headers(), "Content-Type": "image/png"},
         content=PNG_BYTES,
     )
@@ -349,7 +412,7 @@ def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -
 
 def test_upload_rejects_empty_raw_body_and_empty_multipart_file(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers={**upload_headers(), "Content-Type": "image/png"},
         content=b"",
     )
@@ -358,7 +421,7 @@ def test_upload_rejects_empty_raw_body_and_empty_multipart_file(client: TestClie
     assert _stored_upload_files() == []
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("empty.png", b"", "image/png")},
     )
@@ -376,7 +439,7 @@ def test_upload_multipart_uses_same_size_limit(client: TestClient, monkeypatch) 
     monkeypatch.setattr(upload_routes, "get_settings", lambda: small_settings)
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )
@@ -387,7 +450,7 @@ def test_upload_multipart_uses_same_size_limit(client: TestClient, monkeypatch) 
 
 def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers={**upload_headers(), "Content-Type": "image/png"},
         content=b"not really an image",
     )
@@ -398,7 +461,7 @@ def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
 
 def test_upload_rejects_spoofed_extension_and_content_type(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("fake.jpg", b"not really a jpeg", "image/jpeg")},
     )
@@ -407,7 +470,7 @@ def test_upload_rejects_spoofed_extension_and_content_type(client: TestClient) -
     assert _stored_upload_files() == []
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("fake.png", b"\xff\xd8\xff\xe0not really a png", "image/png")},
     )
@@ -420,7 +483,7 @@ def test_upload_rejects_fake_heic_brand_without_decodable_image(client: TestClie
     fake_heic = b"\x00\x00\x00\x1cftypheic\x00\x00\x00\x00fake-heic-payload"
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("fake.heic", fake_heic, "image/heic")},
     )
@@ -434,7 +497,7 @@ def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(client: Test
     heic_bytes = make_heic_bytes()
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("ticket.heic", heic_bytes, "image/heic")},
     )
@@ -463,7 +526,7 @@ def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(client: Test
 
 def test_upload_uses_image_header_instead_of_spoofed_metadata(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("ticket.txt", PNG_BYTES, "text/plain")},
     )
@@ -478,7 +541,7 @@ def test_upload_uses_image_header_instead_of_spoofed_metadata(client: TestClient
 
 def test_upload_randomizes_path_traversal_filename(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("../../evil.png", PNG_BYTES, "image/png")},
     )
@@ -507,7 +570,7 @@ def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient
 
     with TestClient(app, raise_server_exceptions=False) as no_raise_client:
         response = no_raise_client.post(
-            "/api/upload-screenshot",
+            upload_url_path(),
             headers=upload_headers(),
             files={"file": ("ticket.png", PNG_BYTES, "image/png")},
         )
@@ -525,7 +588,7 @@ def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, mon
     monkeypatch.setattr(expense_service, "generate_thumbnail", fail_thumbnail)
 
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )
@@ -543,7 +606,7 @@ def test_upload_thumbnail_failure_does_not_block_pending(client: TestClient, mon
 
 def test_upload_same_image_marks_suspected_duplicate_without_rejecting(client: TestClient) -> None:
     first = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("first.png", PNG_BYTES, "image/png")},
     )
@@ -552,7 +615,7 @@ def test_upload_same_image_marks_suspected_duplicate_without_rejecting(client: T
     assert first_payload["status"] == "pending"
 
     second = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("second.png", PNG_BYTES, "image/png")},
     )
@@ -566,7 +629,7 @@ def test_upload_same_image_marks_suspected_duplicate_without_rejecting(client: T
 
 def test_upload_stores_relative_paths_and_never_confirms(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"file": ("user-original-name.png", PNG_BYTES, "image/png")},
     )
@@ -1259,7 +1322,7 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) 
     )
     assert owner.status_code == 200
 
-    tester_upload_id = upload_png(client, gray_upload_headers())
+    tester_upload_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
 
     tester_confirmed = client.get("/api/expenses/confirmed?month=2026-05", headers=gray_app_headers())
     assert tester_confirmed.status_code == 200
@@ -1278,10 +1341,16 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) 
     assert tester_settings.status_code == 200
     owner_payload = owner_settings.json()
     tester_payload = tester_settings.json()
-    assert owner_payload["tenant_name"] == "我的小票夹"
+    assert owner_payload["account_name"] == "我"
+    assert owner_payload["ledger_name"] == "我的小票夹"
+    assert owner_payload["device_name"] == "pytest-android"
+    assert owner_payload["role"] == "owner"
     assert owner_payload["confirmed_count"] == 1
     assert owner_payload["pending_count"] == 0
-    assert tester_payload["tenant_name"] == "灰度用户1"
+    assert tester_payload["account_name"] == "我"
+    assert tester_payload["ledger_name"] == "灰度用户1"
+    assert tester_payload["device_name"] == "pytest-gray-android"
+    assert tester_payload["role"] == "owner"
     assert tester_payload["confirmed_count"] == 0
     assert tester_payload["pending_count"] == 1
     assert tester_payload["latest_upload_at"].endswith("Z")
@@ -1292,7 +1361,7 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) 
 
 def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicates(client: TestClient) -> None:
     owner_id = upload_png(client, upload_headers())
-    tester_id = upload_png(client, gray_upload_headers())
+    tester_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
 
     owner_pending = client.get("/api/expenses/pending", headers=app_headers()).json()
     tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers()).json()
@@ -1345,7 +1414,7 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
     assert any(item["id"] == second_owner_id for item in owner_duplicates)
     assert all(item["id"] != second_owner_id for item in tester_duplicates)
 
-    same_hash_tester_id = upload_png(client, gray_upload_headers())
+    same_hash_tester_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
     same_hash_tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers()).json()
     tester_match = next(item for item in same_hash_tester_pending if item["id"] == same_hash_tester_id)
     assert tester_match["duplicate_status"] == "suspected"
@@ -1355,7 +1424,7 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
 
 def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(client: TestClient) -> None:
     owner_id = upload_png(client, upload_headers())
-    tester_id = upload_png(client, gray_upload_headers())
+    tester_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
 
     owner_detail = client.get(f"/api/expenses/{owner_id}", headers=app_headers()).json()
     tester_detail = client.get(f"/api/expenses/{tester_id}", headers=gray_app_headers()).json()
@@ -1493,8 +1562,8 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(cli
 
     owner_settings = client.get("/api/settings/server", headers=app_headers()).json()
     tester_settings = client.get("/api/settings/server", headers=gray_app_headers()).json()
-    assert owner_settings["tenant_name"] == "我的小票夹"
-    assert tester_settings["tenant_name"] == "灰度用户1"
+    assert owner_settings["ledger_name"] == "我的小票夹"
+    assert tester_settings["ledger_name"] == "灰度用户1"
     assert owner_settings["confirmed_count"] == 1
     assert tester_settings["confirmed_count"] == 1
     assert owner_settings["pending_count"] == 0
@@ -1507,7 +1576,7 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(cli
     assert tester_settings["latest_upload_at"].endswith("Z")
 
     owner_duplicate_id = upload_png(client, upload_headers())
-    tester_duplicate_id = upload_png(client, gray_upload_headers())
+    tester_duplicate_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
     owner_duplicates = client.get("/api/duplicates", headers=app_headers()).json()
     tester_duplicates = client.get("/api/duplicates", headers=gray_app_headers()).json()
     assert any(item["id"] == owner_duplicate_id and item["duplicate_of_id"] == owner_id for item in owner_duplicates)
@@ -1543,7 +1612,7 @@ def test_category_rule_mutations_are_tenant_scoped(client: TestClient) -> None:
 
 def test_upload_screenshot_rejects_multipart_without_image_file(client: TestClient) -> None:
     response = client.post(
-        "/api/upload-screenshot",
+        upload_url_path(),
         headers=upload_headers(),
         files={"note": (None, "not an image")},
     )
@@ -2021,7 +2090,10 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(client: TestCl
     response = client.get("/api/settings/server", headers=app_headers())
     assert response.status_code == 200
     payload = response.json()
-    assert payload["tenant_name"] == "我的小票夹"
+    assert payload["account_name"] == "我"
+    assert payload["ledger_name"] == "我的小票夹"
+    assert payload["device_name"] == "pytest-android"
+    assert payload["role"] == "owner"
     assert payload["status"] == "ok"
     assert payload["storage_status"] == "normal"
     assert payload["pending_count"] == 1

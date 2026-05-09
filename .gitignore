@@ -16,6 +16,8 @@ backend/logs/*
 !backend/logs/.gitkeep
 backend/backups/*
 !backend/backups/.gitkeep
+backend/bootstrap/*
+!backend/bootstrap/.gitkeep
 
 # Android / Gradle
 .gradle/

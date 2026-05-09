@@ -1,6 +1,6 @@
 # 后端开发规则
 
-灰度版后端必须遵守 `docs/MULTI_TENANT_SPEC.md`。所有账单、图片、统计、分类规则、重复检测、CSV 导出和 App 上传接口必须按 `tenant_id` 隔离。不得用前端过滤代替后端隔离。
+v0.3 后端必须遵守 `docs/ACCOUNT_SYSTEM.md`、`docs/API.md` 和 `docs/SECURITY.md`。所有账单、图片、统计、分类规则、重复检测、CSV 导出和 App 上传接口必须按 `ledger_id` 隔离；数据库字段名暂保留 `tenant_id` 时，其语义也必须是 `ledger_id`。不得用前端过滤代替后端隔离。
 
 后端采用轻量分层：
 

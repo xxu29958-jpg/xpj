@@ -41,17 +41,28 @@ def _count_expenses(db: Session, *, tenant_id: str, status: str | None = None, d
     return int(db.scalar(statement) or 0)
 
 
-def server_settings_snapshot(db: Session, tenant_id: str, tenant_name: str) -> dict[str, int | bool | str | float | None]:
-    latest_upload_at = db.scalar(select(func.max(Expense.created_at)).where(Expense.tenant_id == tenant_id))
-    storage_bytes = _upload_storage_bytes(db, tenant_id)
+def server_settings_snapshot(
+    db: Session,
+    *,
+    ledger_id: str,
+    account_name: str,
+    ledger_name: str,
+    device_name: str,
+    role: str,
+) -> dict[str, int | bool | str | float | None]:
+    latest_upload_at = db.scalar(select(func.max(Expense.created_at)).where(Expense.tenant_id == ledger_id))
+    storage_bytes = _upload_storage_bytes(db, ledger_id)
     return {
-        "tenant_name": tenant_name,
+        "account_name": account_name,
+        "ledger_name": ledger_name,
+        "device_name": device_name,
+        "role": role,
         "status": "ok",
         "storage_status": "normal",
-        "pending_count": _count_expenses(db, tenant_id=tenant_id, status="pending"),
-        "confirmed_count": _count_expenses(db, tenant_id=tenant_id, status="confirmed"),
-        "rejected_count": _count_expenses(db, tenant_id=tenant_id, status="rejected"),
-        "suspected_duplicate_count": _count_expenses(db, tenant_id=tenant_id, duplicate_status="suspected"),
+        "pending_count": _count_expenses(db, tenant_id=ledger_id, status="pending"),
+        "confirmed_count": _count_expenses(db, tenant_id=ledger_id, status="confirmed"),
+        "rejected_count": _count_expenses(db, tenant_id=ledger_id, status="rejected"),
+        "suspected_duplicate_count": _count_expenses(db, tenant_id=ledger_id, duplicate_status="suspected"),
         "upload_storage_bytes": storage_bytes,
         "latest_upload_at": to_iso(latest_upload_at),
     }

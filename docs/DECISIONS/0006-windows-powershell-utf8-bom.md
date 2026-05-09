@@ -13,7 +13,7 @@ Microsoft Learn `about_Character_Encoding` 说明：如果脚本包含非 ASCII 
 ## 影响
 
 - 新增或修改 `.ps1` 后，需要确认 Windows PowerShell 5.1 能直接运行。
-- `.env` 不能使用 BOM，否则第一行 `UPLOAD_TOKEN` 可能被 Python 读取成带 BOM 的 key。
+- `.env` 不能使用 BOM，否则第一行配置名可能被 Python 读取成带 BOM 的 key。
 - 用 PowerShell 查看 Markdown、README、Kotlin、Python、YAML 等中文文本时，必须使用 `Get-Content -Encoding UTF8`。
 - CI 运行 `scripts\check_text_encoding.ps1`，检查文本文件是合法 UTF-8，并阻止常见 UTF-8/ANSI 误读后写回的乱码片段。
 - 不用 WSL、Docker 或 Linux shell 作为脚本运行前提。

@@ -1,8 +1,8 @@
 ﻿param(
     [Parameter(Mandatory = $false)]
     [string]$ServerUrl = "https://api.zen70.cn",
-    [string]$AppToken = "",
-    [string]$UploadToken = "",
+    [string]$SessionToken = "",
+    [string]$UploadLink = "",
     [switch]$SkipUpload,
     [switch]$AllowHttp
 )
@@ -27,11 +27,11 @@ $preflightArgs = @(
     "-ServerUrl", $baseUrl,
     "-SkipDevice"
 )
-if ($AppToken.Trim().Length -gt 0) {
-    $preflightArgs += @("-AppToken", $AppToken)
+if ($SessionToken.Trim().Length -gt 0) {
+    $preflightArgs += @("-SessionToken", $SessionToken)
 }
-if ($UploadToken.Trim().Length -gt 0) {
-    $preflightArgs += @("-UploadToken", $UploadToken)
+if ($UploadLink.Trim().Length -gt 0) {
+    $preflightArgs += @("-UploadLink", $UploadLink)
 }
 if ($SkipUpload) {
     $preflightArgs += "-SkipUpload"

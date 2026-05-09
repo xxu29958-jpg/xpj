@@ -10,6 +10,8 @@ import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
+import com.ticketbox.data.remote.dto.PairRequestDto
+import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
@@ -31,6 +33,9 @@ import retrofit2.http.Streaming
 interface ApiService {
     @GET("api/auth/check")
     suspend fun checkAuth(): AuthCheckDto
+
+    @POST("api/auth/pair")
+    suspend fun pairDevice(@Body request: PairRequestDto): PairResponseDto
 
     @GET("api/expenses/pending")
     suspend fun pendingExpenses(): List<ExpenseDto>

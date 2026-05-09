@@ -4,7 +4,7 @@
 
 小票夹以稳定闭环为最高优先级。
 
-灰度版以 `docs/GRAY_RELEASE_REQUIREMENTS.md` 为总入口。后续实现不得跳过该文档中的产品边界、多租户隔离、Android 上传、UI 去开发味、release 包、诊断分层和验收要求。
+当前开发基准以 `docs/ARCHITECTURE.md` 为总入口，并以 `docs/ACCOUNT_SYSTEM.md`、`docs/API.md`、`docs/SECURITY.md`、`docs/ANDROID_RULES.md`、`docs/BACKEND_RULES.md` 和 `docs/GRAY_ACCEPTANCE_EXECUTION.md` 作为验收边界。后续实现不得跳过这些文档中的身份、账本隔离、Android 上传、UI 去开发味、release 包、诊断分层和验收要求。
 
 优先级：
 
@@ -337,14 +337,14 @@ API 返回 E:\projects\xxx
 图片接口必须校验：
 
 ```text
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 图片清理只能通过窄维护接口按配置执行：
 
 ```text
 POST /api/maintenance/cleanup-images
-Authorization: Bearer ADMIN_TOKEN
+Authorization: Bearer <admin_token>
 ```
 
 禁止维护接口接收任意路径或提供通用文件管理能力。
@@ -356,9 +356,6 @@ Authorization: Bearer ADMIN_TOKEN
 配置项：
 
 ```text
-UPLOAD_TOKEN
-APP_TOKEN
-ADMIN_TOKEN
 DATABASE_URL
 UPLOAD_DIR
 MAX_UPLOAD_SIZE_MB
@@ -428,13 +425,13 @@ powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
 上传截图只使用：
 
 ```http
-Upload-Token: UPLOAD_TOKEN
+POST /u/<upload_key>?tz=Asia/Shanghai
 ```
 
 App 接口只使用：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 绑定服务器以后只用：
@@ -595,7 +592,7 @@ ORDER BY COALESCE(expenseTime, confirmedAt, createdAt) DESC
 
 ## 15. Token 与客户端安全规范
 
-APP_TOKEN：
+Session token：
 
 - 不写死在代码里。
 - 不打印到日志。
@@ -611,9 +608,10 @@ BiometricPrompt：
 
 ```text
 serverUrl
-APP_TOKEN
+session token
+accountName / ledgerName / deviceName / role / boundAt
 本地解锁状态
-可选：本地缓存
+Room confirmed 缓存
 ```
 
 OkHttp 日志：
@@ -716,7 +714,7 @@ powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1
 
 约束：
 
-- 预检脚本不得打印 `UPLOAD_TOKEN`、`APP_TOKEN` 或 `ADMIN_TOKEN`。
+- 预检脚本不得打印 session token、admin token、UploadLink 或旧 token。
 - 测试上传只能使用脚本内置小图或用户明确指定的受控文件，不做通用文件管理能力。
 - 设备安装逻辑复用 `android\scripts\install_debug_apk.ps1`。
 - 真机联调仍然不能公开 `uploads/`。
@@ -761,7 +759,8 @@ implement settings screen
 GET /api/health
 GET /api/auth/check 正确 Token
 GET /api/auth/check 错误 Token
-POST /api/upload-screenshot
+POST /u/{upload_key}
+POST /api/app/upload-screenshot
 上传超大文件
 上传不支持格式
 GET /api/expenses/pending

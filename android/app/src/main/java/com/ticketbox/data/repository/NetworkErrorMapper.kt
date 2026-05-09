@@ -36,13 +36,13 @@ fun networkDiagnosticMessage(error: IOException, serverUrl: String?): String {
     }
 }
 
-fun validateBindingInput(serverUrl: String, appToken: String): String {
+fun validateBindingInput(serverUrl: String, pairingCode: String): String {
     val normalized = serverUrl.trim().trimEnd('/')
     val allowInternalInsecureBinding = BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS
     require(normalized.isNotBlank()) { "请输入账本地址。" }
     require(allowInternalInsecureBinding || !isLocalOnlyServerUrl(normalized)) { "请填写可在手机上访问的地址。" }
     require(allowInternalInsecureBinding || normalized.startsWith("https://", ignoreCase = true)) { "请使用 HTTPS 地址。" }
-    require(appToken.isNotBlank()) { "请输入访问口令。" }
+    require(pairingCode.isNotBlank()) { "请输入绑定码。" }
     return normalized
 }
 

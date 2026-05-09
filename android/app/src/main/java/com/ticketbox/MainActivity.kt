@@ -37,16 +37,16 @@ class MainActivity : FragmentActivity() {
         if (!BuildConfig.SHOW_ADVANCED_TOOLS) return
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
         val serverUrl = intent.getStringExtra(DEBUG_SERVER_URL_EXTRA)?.trim()?.trimEnd('/')
-        val appToken = intent.getStringExtra(DEBUG_APP_TOKEN_EXTRA)?.trim()
-        if (serverUrl.isNullOrBlank() || appToken.isNullOrBlank()) return
+        val sessionToken = intent.getStringExtra(DEBUG_SESSION_TOKEN_EXTRA)?.trim()
+        if (serverUrl.isNullOrBlank() || sessionToken.isNullOrBlank()) return
 
         container.settingsStore.saveServerUrl(serverUrl)
-        container.tokenStore.saveToken(appToken)
+        container.tokenStore.saveToken(sessionToken)
         container.settingsStore.markUnlocked()
     }
 
     private companion object {
         const val DEBUG_SERVER_URL_EXTRA = "ticketbox.debug.server_url"
-        const val DEBUG_APP_TOKEN_EXTRA = "ticketbox.debug.app_token"
+        const val DEBUG_SESSION_TOKEN_EXTRA = "ticketbox.debug.session_token"
     }
 }

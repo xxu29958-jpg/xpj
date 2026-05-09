@@ -47,7 +47,7 @@ fun LoginScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    "本机验证通过后，才会读取账本访问口令。",
+                    "本机验证通过后，才会读取账本会话凭证。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

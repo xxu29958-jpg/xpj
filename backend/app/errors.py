@@ -12,6 +12,11 @@ class Utf8JSONResponse(JSONResponse):
 
 ERROR_MESSAGES = {
     "invalid_token": "Token 无效。",
+    "legacy_auth_removed": "请使用新版绑定方式。",
+    "bootstrap_already_initialized": "Owner 已初始化。",
+    "invalid_pairing_code": "绑定码无效。",
+    "pairing_code_expired": "绑定码已过期。",
+    "pairing_code_used": "绑定码已使用。",
     "file_too_large": "上传文件超过大小限制。",
     "unsupported_file_type": "不支持的图片格式。",
     "expense_not_found": "账单不存在。",

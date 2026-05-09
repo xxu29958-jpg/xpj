@@ -40,6 +40,32 @@ class LocalSettingsStore(context: Context) {
 
     fun lastConfirmedSyncAt(): String? = prefs.getString(KEY_LAST_CONFIRMED_SYNC_AT, null)
 
+    fun accountName(): String? = prefs.getString(KEY_ACCOUNT_NAME, null)
+
+    fun ledgerName(): String? = prefs.getString(KEY_LEDGER_NAME, null)
+
+    fun deviceName(): String? = prefs.getString(KEY_DEVICE_NAME, null)
+
+    fun role(): String? = prefs.getString(KEY_ROLE, null)
+
+    fun boundAt(): String? = prefs.getString(KEY_BOUND_AT, null)
+
+    fun saveIdentity(
+        accountName: String,
+        ledgerName: String,
+        deviceName: String,
+        role: String,
+        boundAt: String,
+    ) {
+        prefs.edit {
+            putString(KEY_ACCOUNT_NAME, accountName)
+            putString(KEY_LEDGER_NAME, ledgerName)
+            putString(KEY_DEVICE_NAME, deviceName)
+            putString(KEY_ROLE, role)
+            putString(KEY_BOUND_AT, boundAt)
+        }
+    }
+
     fun saveLastConfirmedSyncAt(value: String) {
         prefs.edit {
             putString(KEY_LAST_CONFIRMED_SYNC_AT, value)
@@ -136,6 +162,11 @@ class LocalSettingsStore(context: Context) {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_APP_SKIN = "app_skin"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
+        const val KEY_ACCOUNT_NAME = "account_name"
+        const val KEY_LEDGER_NAME = "ledger_name"
+        const val KEY_DEVICE_NAME = "device_name"
+        const val KEY_ROLE = "role"
+        const val KEY_BOUND_AT = "bound_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
         const val KEY_LAST_UPLOAD_AT = "last_upload_at"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"

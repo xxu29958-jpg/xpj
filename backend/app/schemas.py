@@ -18,7 +18,55 @@ class HealthResponse(BaseModel):
 
 class AuthCheckResponse(BaseModel):
     status: str = "ok"
-    tenant_name: str
+    account_name: str
+    ledger_name: str
+    device_name: str
+    role: str
+    scope: str
+
+
+class PairRequest(BaseModel):
+    pairing_code: str = Field(min_length=1, max_length=32)
+    device_name: str = Field(min_length=1, max_length=120)
+    platform: str = Field(min_length=1, max_length=32)
+
+
+class PairResponse(BaseModel):
+    session_token: str
+    account_name: str
+    ledger_name: str
+    device_name: str
+    role: str
+
+
+class BootstrapOwnerRequest(BaseModel):
+    account_name: str | None = None
+    ledger_name: str | None = None
+    device_name: str | None = None
+    default_timezone: str | None = None
+
+
+class BootstrapOwnerResponse(BaseModel):
+    account_name: str
+    ledger_id: str
+    ledger_name: str
+    device_name: str
+    admin_token: str
+    upload_key: str
+    upload_url_path: str
+    pairing_code: str
+    pairing_expires_at: str
+
+
+class PairingCodeCreateRequest(BaseModel):
+    device_name_hint: str | None = None
+    ttl_minutes: int = Field(default=15, ge=1, le=60)
+
+
+class PairingCodeResponse(BaseModel):
+    pairing_code: str
+    ledger_name: str
+    expires_at: str
 
 
 class StatusResponse(BaseModel):
@@ -207,7 +255,10 @@ class MaintenanceOrphanCleanupResponse(BaseModel):
 
 
 class ServerSettingsResponse(BaseModel):
-    tenant_name: str
+    account_name: str
+    ledger_name: str
+    device_name: str
+    role: str
     status: str
     storage_status: str
     pending_count: int

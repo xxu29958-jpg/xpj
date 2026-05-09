@@ -3,7 +3,8 @@
     [int]$Port = 8000,
     [int]$Tail = 30,
     [switch]$Strict,
-    [switch]$SkipPublicAuth
+    [switch]$SkipPublicAuth,
+    [string]$SessionToken = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,24 +13,19 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
-$EnvPath = Join-Path $BackendRoot ".env"
 $LogDir = Join-Path $BackendRoot "logs"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 $Failures = New-Object System.Collections.Generic.List[string]
 
-function Read-EnvValue {
-    param([Parameter(Mandatory = $true)][string]$Name)
-
-    if (-not (Test-Path -LiteralPath $EnvPath)) {
-        return ""
+function Resolve-SessionToken {
+    if ($SessionToken.Trim().Length -gt 0) {
+        return $SessionToken.Trim()
     }
-    $line = Get-Content -Encoding UTF8 -LiteralPath $EnvPath |
-        Where-Object { $_ -match "^$Name=" } |
-        Select-Object -First 1
-    if (-not $line) {
-        return ""
+    $processValue = [Environment]::GetEnvironmentVariable("TICKETBOX_SESSION_TOKEN")
+    if ($processValue -and $processValue.Trim().Length -gt 0) {
+        return $processValue.Trim()
     }
-    return ($line -replace "^$Name=", "").Trim()
+    return ""
 }
 
 function Test-Endpoint {
@@ -95,15 +91,15 @@ Write-Host "接口检查："
 Test-Endpoint -Name "local health " -Uri "http://127.0.0.1:$Port/api/health" | Out-Null
 Test-Endpoint -Name "public health" -Uri "$BaseUrl/api/health" | Out-Null
 
-$appToken = Read-EnvValue -Name "APP_TOKEN"
-if (-not $SkipPublicAuth -and $appToken.Length -gt 0) {
-    Test-Endpoint -Name "public auth  " -Uri "$BaseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $appToken" } | Out-Null
+$resolvedSessionToken = Resolve-SessionToken
+if (-not $SkipPublicAuth -and $resolvedSessionToken.Length -gt 0) {
+    Test-Endpoint -Name "public auth  " -Uri "$BaseUrl/api/auth/check" -Headers @{ Authorization = "Bearer $resolvedSessionToken" } | Out-Null
 }
 elseif ($SkipPublicAuth) {
     Write-Host "SKIP public auth：已指定 -SkipPublicAuth。"
 }
 else {
-    Write-Host "SKIP public auth：backend\.env 中没有 APP_TOKEN。"
+    Write-Host "SKIP public auth：没有 TICKETBOX_SESSION_TOKEN。"
 }
 
 Write-Host ""

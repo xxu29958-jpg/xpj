@@ -9,18 +9,20 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.auth import get_current_app_context, get_current_upload_context
+from app.auth import get_current_app_context, get_removed_upload_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import UploadCheckResponse, UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
-from app.services.file_service import ALLOWED_EXTENSIONS, SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
+from app.services.file_service import SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
+from app.services.identity_service import authenticate_upload_link, upload_link_default_timezone
 from app.tenants import AuthContext
 
 
 router = APIRouter(prefix="/api", tags=["uploads"])
+upload_link_router = APIRouter(tags=["uploads"])
 logger = logging.getLogger("ticketbox.upload")
 
 IOS_SHORTCUT_FILE_FIELDS = ("file", "image", "photo", "screenshot")
@@ -134,16 +136,16 @@ async def _handle_upload(
     timezone_name: str | None = None,
 ) -> UploadResponse:
     started_at = perf_counter()
-    saved_file, timing_ms = await _save_request_upload(request, auth.tenant_id)
+    saved_file, timing_ms = await _save_request_upload(request, auth.ledger_id)
     db_started_at = perf_counter()
-    expense = _create_pending_or_cleanup(db, saved_file, auth.tenant_id, source=source)
+    expense = _create_pending_or_cleanup(db, saved_file, auth.ledger_id, source=source)
     timing_ms["db_create_ms"] = _elapsed_ms(db_started_at)
     duration_ms = _elapsed_ms(started_at)
     timing_ms["total_ms"] = duration_ms
     logger.info(
-        "upload accepted endpoint=%s tenant=%s expense_id=%s bytes=%s media_type=%s duration_ms=%s timing_ms=%s duplicate=%s",
+        "upload accepted endpoint=%s ledger=%s expense_id=%s bytes=%s media_type=%s duration_ms=%s timing_ms=%s duplicate=%s",
         endpoint,
-        auth.tenant_id,
+        auth.ledger_id,
         expense.id,
         saved_file.size_bytes,
         saved_file.media_type,
@@ -151,7 +153,7 @@ async def _handle_upload(
         json.dumps(timing_ms, ensure_ascii=False, sort_keys=True),
         expense.duplicate_status,
     )
-    background_tasks.add_task(enrich_pending_expense, expense.id, auth.tenant_id, timezone_name)
+    background_tasks.add_task(enrich_pending_expense, expense.id, auth.ledger_id, timezone_name)
     return _upload_response(expense, saved_file, duration_ms, timing_ms)
 
 
@@ -159,12 +161,8 @@ async def _handle_upload(
     "/upload/check",
     response_model=UploadCheckResponse,
 )
-def upload_check(_: AuthContext = Depends(get_current_upload_context)) -> UploadCheckResponse:
-    settings = get_settings()
-    return UploadCheckResponse(
-        max_upload_size_mb=settings.max_upload_size_mb,
-        supported_file_types=sorted(ALLOWED_EXTENSIONS),
-    )
+def upload_check(_: AuthContext = Depends(get_removed_upload_context)) -> UploadCheckResponse:
+    raise AssertionError("unreachable")
 
 
 @router.post(
@@ -175,18 +173,10 @@ async def upload_screenshot(
     request: Request,
     background_tasks: BackgroundTasks,
     timezone: str | None = Header(default=None, alias="X-Timezone"),
-    auth: AuthContext = Depends(get_current_upload_context),
+    auth: AuthContext = Depends(get_removed_upload_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
-    return await _handle_upload(
-        request=request,
-        background_tasks=background_tasks,
-        auth=auth,
-        db=db,
-        source="iPhone截图",
-        endpoint="ios_shortcut",
-        timezone_name=timezone,
-    )
+    raise AssertionError("unreachable")
 
 
 @router.post(
@@ -208,4 +198,34 @@ async def app_upload_screenshot(
         source="Android截图",
         endpoint="android_app",
         timezone_name=timezone,
+    )
+
+
+@upload_link_router.post(
+    "/u/{upload_key}",
+    response_model=UploadResponse,
+)
+async def upload_link_screenshot(
+    upload_key: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    tz: str | None = None,
+    timezone: str | None = Header(default=None, alias="X-Timezone"),
+    db: Session = Depends(get_db),
+) -> UploadResponse:
+    auth = authenticate_upload_link(db, upload_key)
+    resolved_timezone = (
+        (timezone or "").strip()
+        or (tz or "").strip()
+        or (upload_link_default_timezone(db, upload_key) or "").strip()
+        or get_settings().ocr_default_timezone
+    )
+    return await _handle_upload(
+        request=request,
+        background_tasks=background_tasks,
+        auth=auth,
+        db=db,
+        source="iPhone截图",
+        endpoint="ios_upload_link",
+        timezone_name=resolved_timezone,
     )

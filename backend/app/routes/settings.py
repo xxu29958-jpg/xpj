@@ -21,4 +21,13 @@ def get_server_settings(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> ServerSettingsResponse:
-    return ServerSettingsResponse(**server_settings_snapshot(db, auth.tenant_id, auth.tenant_name))
+    return ServerSettingsResponse(
+        **server_settings_snapshot(
+            db,
+            ledger_id=auth.ledger_id,
+            account_name=auth.account_name,
+            ledger_name=auth.ledger_name,
+            device_name=auth.device_name,
+            role=auth.role,
+        )
+    )

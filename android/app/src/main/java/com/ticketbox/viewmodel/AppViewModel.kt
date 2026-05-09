@@ -44,17 +44,17 @@ class AppViewModel(
         }
     }
 
-    fun bind(serverUrl: String, token: String) {
+    fun bind(serverUrl: String, pairingCode: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(binding = true, authMessage = null) }
-            repository.bindServer(serverUrl, token)
+            repository.bindServer(serverUrl, pairingCode)
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(isBound = true, unlocked = true, binding = false, authMessage = null)
                     }
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(binding = false, authMessage = error.message ?: "绑定没成功，请检查地址和访问口令。") }
+                    _uiState.update { it.copy(binding = false, authMessage = error.message ?: "绑定没成功，请检查账本地址和绑定码。") }
                 }
         }
     }
@@ -86,13 +86,15 @@ class AppViewModel(
     fun clearBinding() {
         val currentSkin = _uiState.value.skin
         val currentBackground = _uiState.value.backgroundSettings
-        repository.clearBinding()
-        settingsStore.saveAppSkinKey(currentSkin.storageKey)
-        _uiState.update {
-            AppUiState(
-                skin = currentSkin,
-                backgroundSettings = currentBackground,
-            )
+        viewModelScope.launch {
+            repository.clearBinding()
+            settingsStore.saveAppSkinKey(currentSkin.storageKey)
+            _uiState.update {
+                AppUiState(
+                    skin = currentSkin,
+                    backgroundSettings = currentBackground,
+                )
+            }
         }
     }
 }

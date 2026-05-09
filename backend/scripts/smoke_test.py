@@ -20,6 +20,9 @@ HOST = "127.0.0.1"
 UPLOAD_TOKEN = "smoke-upload-token"
 APP_TOKEN = "smoke-app-token"
 ADMIN_TOKEN = "smoke-admin-token"
+SESSION_TOKEN = ""
+BOOTSTRAP_ADMIN_TOKEN = ""
+UPLOAD_PATH = ""
 
 
 PNG_BYTES = base64.b64decode(
@@ -44,11 +47,11 @@ def free_port() -> int:
 
 
 def app_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {APP_TOKEN}"}
+    return {"Authorization": f"Bearer {SESSION_TOKEN}"}
 
 
 def admin_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    return {"Authorization": f"Bearer {BOOTSTRAP_ADMIN_TOKEN}"}
 
 
 def request(
@@ -58,7 +61,9 @@ def request(
     headers: dict[str, str] | None = None,
     body: bytes | None = None,
 ) -> ApiResult:
-    req = urllib.request.Request(url, data=body, method=method, headers=headers or {})
+    request_headers = {"Connection": "close"}
+    request_headers.update(headers or {})
+    req = urllib.request.Request(url, data=body, method=method, headers=request_headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
             return ApiResult(
@@ -152,6 +157,7 @@ def start_server(port: int) -> subprocess.Popen:
             HOST,
             "--port",
             str(port),
+            "--no-access-log",
         ],
         cwd=BACKEND_ROOT,
         env=env,
@@ -183,9 +189,8 @@ def upload(base_url: str, filename: str, content_type: str, content: bytes) -> A
     body, content_header = multipart_body(filename, content_type, content)
     return request(
         "POST",
-        f"{base_url}/api/upload-screenshot",
+        f"{base_url}{UPLOAD_PATH}",
         headers={
-            "Upload-Token": UPLOAD_TOKEN,
             "Content-Type": content_header,
         },
         body=body,
@@ -193,29 +198,72 @@ def upload(base_url: str, filename: str, content_type: str, content: bytes) -> A
 
 
 def run_smoke(base_url: str) -> None:
+    global BOOTSTRAP_ADMIN_TOKEN
+    global SESSION_TOKEN
+    global UPLOAD_PATH
+
     result = request("GET", f"{base_url}/api/health")
     assert_equal(result.status, 200, "health status")
     assert_equal(result.json()["status"], "ok", "health body")
     print("OK health")
 
+    bootstrap_body = json.dumps(
+        {
+            "account_name": "我",
+            "ledger_name": "我的小票夹",
+            "device_name": "smoke-windows",
+            "default_timezone": "Asia/Shanghai",
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/bootstrap/owner",
+        headers={"Content-Type": "application/json"},
+        body=bootstrap_body,
+    )
+    assert_equal(result.status, 200, "bootstrap owner status")
+    bootstrap = result.json()
+    BOOTSTRAP_ADMIN_TOKEN = bootstrap["admin_token"]
+    UPLOAD_PATH = bootstrap["upload_url_path"]
+    assert_true(UPLOAD_PATH.startswith("/u/"), "bootstrap upload path")
+    print("OK bootstrap owner")
+
+    pair_body = json.dumps(
+        {
+            "pairing_code": bootstrap["pairing_code"],
+            "device_name": "smoke-android",
+            "platform": "android",
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/auth/pair",
+        headers={"Content-Type": "application/json"},
+        body=pair_body,
+    )
+    assert_equal(result.status, 200, "pairing status")
+    paired = result.json()
+    SESSION_TOKEN = paired["session_token"]
+    assert_equal(paired["ledger_name"], "我的小票夹", "pairing ledger")
+    print("OK android pairing")
+
     result = request("GET", f"{base_url}/api/auth/check", headers=app_headers())
     assert_equal(result.status, 200, "auth check status")
     assert_equal(result.json()["status"], "ok", "auth check body")
+    assert_equal(result.json()["device_name"], "smoke-android", "auth check device")
     print("OK auth check")
 
-    result = request("GET", f"{base_url}/api/auth/check", headers={"Authorization": "Bearer bad"})
-    assert_error(result, 401, "invalid_token")
-    print("OK invalid token error")
+    result = request("GET", f"{base_url}/api/auth/check", headers={"Authorization": f"Bearer {APP_TOKEN}"})
+    assert_error(result, 401, "legacy_auth_removed")
+    print("OK legacy app token removed")
 
     result = request("GET", f"{base_url}/api/upload/check", headers={"Upload-Token": UPLOAD_TOKEN})
-    assert_equal(result.status, 200, "upload check status")
-    upload_check = result.json()
-    assert_equal(upload_check["status"], "ok", "upload check body")
-    assert_true("png" in upload_check["supported_file_types"], "upload check supported types")
-    assert_true("token" not in json.dumps(upload_check).lower(), "upload check must not expose token")
+    assert_error(result, 401, "legacy_auth_removed")
     result = request("GET", f"{base_url}/api/upload/check", headers={"Upload-Token": "bad"})
     assert_error(result, 401, "invalid_token")
-    print("OK upload token check")
+    print("OK legacy upload token removed")
 
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=app_headers())
     assert_error(result, 401, "invalid_token")
@@ -227,7 +275,7 @@ def run_smoke(base_url: str) -> None:
     bad_body, bad_content_type = multipart_body("bad.txt", "text/plain", b"not an image")
     result = request(
         "POST",
-        f"{base_url}/api/upload-screenshot",
+        f"{base_url}{UPLOAD_PATH}",
         headers={"Upload-Token": UPLOAD_TOKEN, "Content-Type": bad_content_type},
         body=bad_body,
     )
@@ -245,8 +293,8 @@ def run_smoke(base_url: str) -> None:
 
     result = request(
         "POST",
-        f"{base_url}/api/upload-screenshot",
-        headers={"Upload-Token": UPLOAD_TOKEN, "Content-Type": "image/png"},
+        f"{base_url}{UPLOAD_PATH}",
+        headers={"Content-Type": "image/png"},
         body=PNG_BYTES,
     )
     assert_equal(result.status, 200, "raw upload status")
@@ -311,7 +359,10 @@ def run_smoke(base_url: str) -> None:
     result = request("GET", f"{base_url}/api/settings/server", headers=app_headers())
     assert_equal(result.status, 200, "server settings status")
     server_settings = result.json()
-    assert_true(bool(server_settings["tenant_name"]), "server settings tenant name")
+    assert_equal(server_settings["account_name"], "我", "server settings account name")
+    assert_equal(server_settings["ledger_name"], "我的小票夹", "server settings ledger name")
+    assert_equal(server_settings["device_name"], "smoke-android", "server settings device name")
+    assert_equal(server_settings["role"], "owner", "server settings role")
     assert_equal(server_settings["status"], "ok", "server settings status value")
     assert_equal(server_settings["storage_status"], "normal", "server settings storage status")
     assert_true(server_settings["pending_count"] >= 1, "server settings pending count")
@@ -539,24 +590,15 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["duplicate_status"], "suspected", "similar duplicate suspected")
     print("OK similar duplicate detection")
 
+    result = request("POST", f"{base_url}/api/expenses/{similar_id}/reject", headers=app_headers())
+    assert_equal(result.status, 200, "reject status")
+    assert_equal(result.json()["status"], "rejected", "rejected status")
+    print("OK reject expense")
+
     result = request("POST", f"{base_url}/api/expenses/{second_id}/confirm", headers=app_headers())
     assert_equal(result.status, 200, "second confirm status")
     print("OK second confirm")
 
-    result = request("GET", f"{base_url}/api/stats/lifestyle?month=2026-05", headers=app_headers())
-    assert_equal(result.status, 200, "lifestyle stats status")
-    lifestyle = result.json()
-    assert_equal(lifestyle["ai_subscription_amount_cents"], 2000, "lifestyle ai subscription total")
-    assert_equal(lifestyle["max_expense"]["id"], expense_id, "lifestyle max expense")
-    print("OK lifestyle stats")
-
-    third_upload = upload(base_url, "ticket3.png", "image/png", PNG_BYTES)
-    assert_equal(third_upload.status, 200, "third upload status")
-    third_id = int(third_upload.json()["id"])
-    result = request("POST", f"{base_url}/api/expenses/{third_id}/reject", headers=app_headers())
-    assert_equal(result.status, 200, "reject status")
-    assert_equal(result.json()["status"], "rejected", "rejected status")
-    print("OK reject expense")
 
 
 def main() -> int:

@@ -32,7 +32,7 @@ https://api.我的域名.com
 - 后端自增 `id` 仍用于当前 API 路径，例如 `/api/expenses/{id}`。
 - `public_id` 是账单公共 UUID，用于导出、跨端同步、排查问题和未来多端合并。
 - Android Room 同时保存 `serverId` 和 `publicId`，二者都必须唯一。
-- 普通 UI 不直接展示 UUID；需要给用户看时使用“账单编号”等生活化文案。
+- 普通 UI 不直接展示 UUID；需要给用户看时使用"账单编号"等生活化文案。
 
 错误：
 
@@ -47,6 +47,11 @@ https://api.我的域名.com
 
 ```text
 invalid_token
+legacy_auth_removed
+bootstrap_already_initialized
+invalid_pairing_code
+pairing_code_expired
+pairing_code_used
 file_too_large
 unsupported_file_type
 expense_not_found
@@ -61,60 +66,81 @@ method_not_allowed
 
 ## 认证
 
-上传截图：
+v0.3 使用可撤销凭证系统替代旧版静态 token。
+
+### 设备绑定（Pairing Code → Session Token）
+
+Android 首次绑定：
+
+1. 用户向服务拥有者索要 6 位 Pairing Code。
+2. 调用 `POST /api/auth/pair` 提交 pairing_code + device_name + platform。
+3. 后端返回 `session_token`。
+4. Android 保存 `session_token` 到 Keystore，后续所有请求使用：
 
 ```http
-Upload-Token: UPLOAD_TOKEN
-```
-
-App 接口：
-
-```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 X-Timezone: Asia/Shanghai
 ```
 
-维护接口：
+### iPhone 上传（UploadLink）
+
+iPhone 快捷指令使用完整 UploadLink URL，不再需要请求头鉴权：
+
+```text
+POST https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
+```
+
+### 维护接口（Admin Token）
+
+Owner 初始化时通过 `POST /api/bootstrap/owner` 获得 `admin_token`，用于维护接口：
 
 ```http
-Authorization: Bearer ADMIN_TOKEN
+Authorization: Bearer <admin_token>
 ```
+
+### 旧版 Token（已废弃）
+
+旧版 `APP_TOKEN`、`UPLOAD_TOKEN` 和 `TENANTS_JSON` 中的 app/upload token 请求返回 `legacy_auth_removed`（401）。旧版静态 `ADMIN_TOKEN` 不再是运行时凭证；维护接口只接受数据库 `auth_tokens.scope=admin` 中保存 hash 的 admin token，旧静态 admin 值会按普通无效凭证处理。
 
 ## API 契约矩阵
 
 | Endpoint | Method | 后端 route | Android ApiService | 请求 DTO / 参数 | 响应 DTO | 鉴权 | 测试覆盖 | 用途 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/api/health` | GET | `backend/app/main.py` | 无 | 无 | `{"status":"ok"}` | 无 | `backend/tests/test_api_contract.py`, smoke | smoke |
-| `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal 绑定 |
-| `/api/upload/check` | GET | `backend/app/routes/uploads.py` | 无 | header `Upload-Token` | `UploadCheckResponse` | UPLOAD_TOKEN | `backend/tests/test_api_contract.py`, smoke | iPhone shortcut |
-| `/api/upload-screenshot` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart；header `Upload-Token`、`X-Timezone` | `UploadResponseDto` | UPLOAD_TOKEN | `backend/tests/test_api_contract.py`, smoke | iPhone shortcut |
-| `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | gray/internal Android 上传 |
-| `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/timezone` | `PaginatedExpensesDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
-| `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/timezone` | streaming `text/csv` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal 导出 |
-| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseUpdateRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/debug 读取详情 |
-| `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/expenses/{id}/recognize-text` | POST | `backend/app/routes/expenses.py` | 无 | `RecognizeTextRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/shortcut text |
-| `/api/expenses/{id}/mark-not-duplicate` | POST | `backend/app/routes/expenses.py` | `markNotDuplicate(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/{id}/image` | GET | `backend/app/routes/expenses.py` | `expenseImage(id)` | path `id` | streaming image | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/{id}/thumbnail` | GET | `backend/app/routes/expenses.py` | `expenseThumbnail(id)` | path `id` | streaming image | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/duplicates` | GET | `backend/app/routes/duplicates.py` | `duplicates()` | 无 | `List<ExpenseDto>` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/rules/categories` | GET | `backend/app/routes/rules.py` | `categoryRules()` | 无 | `List<CategoryRuleDto>` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | internal/高级入口 |
-| `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
-| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py`, smoke | admin |
-| `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py` | admin |
-| `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py` | admin |
+| `/api/bootstrap/owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `BootstrapOwnerRequest` | `BootstrapOwnerResponse` | 本机请求（仅首次初始化） | `backend/tests/test_api_contract.py` | owner 初始化 |
+| `/api/bootstrap/pairing-codes` | POST | `backend/app/routes/bootstrap.py` | 无 | `PairingCodeCreateRequest` | `PairingCodeResponse` | Admin Token | `backend/tests/test_api_contract.py` | 生成新绑定码 |
+| `/api/auth/pair` | POST | `backend/app/routes/auth.py` | `pairDevice()` | `PairRequest` | `PairResponse` | 无 | `backend/tests/test_api_contract.py` | 设备绑定 |
+| `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | Session Token | `backend/tests/test_api_contract.py` | 校验 session |
+| `/api/upload/check` | GET | `backend/app/routes/uploads.py` | 无 | 旧版 `Upload-Token` | 错误响应 | 旧版 Upload-Token（已废弃） | `backend/tests/test_api_contract.py`, smoke | 旧版上传检查（已废弃） |
+| `/api/upload-screenshot` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart | `UploadResponseDto` | 旧版 Upload-Token（已废弃） | `backend/tests/test_api_contract.py`, smoke | 旧版 iPhone 入口（已废弃） |
+| `/u/{upload_key}` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart；query `tz` | `UploadResponseDto` | UploadLink URL | `backend/tests/test_api_contract.py`, smoke | iPhone 快捷指令上传 |
+| `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | Session Token | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | Android 上传 |
+| `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/timezone` | `PaginatedExpensesDto` | Session Token | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
+| `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal 导出 |
+| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | internal/debug 读取详情 |
+| `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/expenses/{id}/recognize-text` | POST | `backend/app/routes/expenses.py` | 无 | `RecognizeTextRequest` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | internal/shortcut text |
+| `/api/expenses/{id}/mark-not-duplicate` | POST | `backend/app/routes/expenses.py` | `markNotDuplicate(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}/image` | GET | `backend/app/routes/expenses.py` | `expenseImage(id)` | path `id` | streaming image | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/thumbnail` | GET | `backend/app/routes/expenses.py` | `expenseThumbnail(id)` | path `id` | streaming image | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/duplicates` | GET | `backend/app/routes/duplicates.py` | `duplicates()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/rules/categories` | GET | `backend/app/routes/rules.py` | `categoryRules()` | 无 | `List<CategoryRuleDto>` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | Session Token | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | internal/高级入口 |
+| `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
+| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_api_contract.py`, smoke | admin |
+| `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_api_contract.py`, smoke | admin |
+| `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | Admin Token | `backend/tests/test_api_contract.py`, smoke | admin |
 
 ## 基础接口
 
@@ -135,16 +161,119 @@ Authorization: Bearer ADMIN_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
-Android 首次绑定服务器时使用。
+Android 首次绑定后校验 session token 使用。
 
 返回：
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "account_name": "Owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "小米 15 Pro",
+  "role": "owner",
+  "scope": "app"
+}
+```
+
+### POST /api/auth/pair
+
+设备绑定接口，不需要鉴权。
+
+请求体：
+
+```json
+{
+  "pairing_code": "738294",
+  "device_name": "小米 15 Pro",
+  "platform": "Android"
+}
+```
+
+返回：
+
+```json
+{
+  "session_token": "tk_xxxxxx",
+  "account_name": "Owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "小米 15 Pro",
+  "role": "owner"
+}
+```
+
+错误：
+
+- `invalid_pairing_code`：绑定码不存在。
+- `invalid_pairing_code` + HTTP 429：同一来源短时间内失败次数过多，稍后再试或重新生成绑定码。
+- `pairing_code_used`：绑定码已被使用（一次性）。
+- `pairing_code_expired`：绑定码已过期（默认 15 分钟）。
+
+### POST /api/bootstrap/owner
+
+Owner 初始化，仅首次可用，并且只接受后端本机 loopback 请求。公网请求会返回 `invalid_token`（403）。
+
+请求体：
+
+```json
+{
+  "account_name": "Owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "Windows",
+  "default_timezone": "Asia/Shanghai"
+}
+```
+
+返回：
+
+```json
+{
+  "account_name": "Owner",
+  "ledger_id": "owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "Windows",
+  "admin_token": "tk_admin_xxxxxx",
+  "upload_key": "up_xxxxxx",
+  "upload_url_path": "/u/up_xxxxxx",
+  "pairing_code": "738294",
+  "pairing_expires_at": "2026-05-09T07:00:00Z"
+}
+```
+
+错误：
+
+- `bootstrap_already_initialized`：后端已有活跃身份数据，拒绝重复初始化。
+- `invalid_token`：请求不是从后端本机发起。
+
+### POST /api/bootstrap/pairing-codes
+
+生成新的 Pairing Code，需要 admin token。
+
+请求头：
+
+```http
+Authorization: Bearer <admin_token>
+```
+
+请求体：
+
+```json
+{
+  "device_name_hint": "iPhone",
+  "ttl_minutes": 15
+}
+```
+
+返回：
+
+```json
+{
+  "pairing_code": "529481",
+  "ledger_name": "我的小票夹",
+  "expires_at": "2026-05-09T07:15:00Z"
 }
 ```
 
@@ -152,33 +281,26 @@ Android 首次绑定服务器时使用。
 
 ### GET /api/upload/check
 
-请求头：
-
-```http
-Upload-Token: UPLOAD_TOKEN
-```
-
-用于 iPhone 快捷指令联调，确认公网域名、Cloudflare Tunnel、后端服务和 `UPLOAD_TOKEN` 都正常。
-
-返回：
-
-```json
-{
-  "status": "ok",
-  "max_upload_size_mb": 10,
-  "supported_file_types": ["heic", "jpeg", "jpg", "png", "webp"],
-  "recommended_body": "file"
-}
-```
+> **已废弃**：v0.3 不再提供 Upload Token 自检。旧版 `Upload-Token` header 请求返回 `legacy_auth_removed`；其他请求返回 `invalid_token`。Android 使用 `/api/auth/check` 和业务上传接口验证 session 是否有效。
 
 ### POST /api/upload-screenshot
 
+> **已废弃**：v0.3 使用 UploadLink URL `POST /u/{upload_key}` 代替。旧 `Upload-Token` header 请求一律返回 `legacy_auth_removed`。
+
+### POST /u/{upload_key}
+
+iPhone 快捷指令上传入口。
+
+URL 示例：
+
+```text
+POST https://api.我的域名.com/u/up_xxxxxx?tz=Asia/Shanghai
+```
+
 请求头：
 
 ```http
-Upload-Token: UPLOAD_TOKEN
 User-Agent: TicketBox/1.0 iOS-Shortcut
-X-Timezone: Asia/Shanghai
 ```
 
 请求体方式一，iOS 快捷指令推荐，iOS 26.4 真机验证通过：
@@ -206,8 +328,8 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
 
 - 支持 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 同一个接口同时支持原始图片请求体和 `multipart/form-data` 文件字段。
-- iOS 快捷指令优先使用原始图片请求体，也就是“请求正文：文件”。不要优先使用“请求正文：表单”。
-- `X-Timezone` 可选，填手机系统 IANA 时区；用于上传后 OCR 草稿的本地时间解析，未传时使用服务端 `OCR_DEFAULT_TIMEZONE`。
+- iOS 快捷指令优先使用原始图片请求体，也就是"请求正文：文件"。不要优先使用"请求正文：表单"。
+- `?tz=...` 可选，填手机系统 IANA 时区；用于上传后 OCR 草稿的本地时间解析，未传时使用服务端 `OCR_DEFAULT_TIMEZONE`。
 - Cloudflare 可能拦截没有标准 `User-Agent` 的快捷指令请求，公网部署时建议固定 `User-Agent`。
 - 最大 10MB，按 `MAX_UPLOAD_SIZE_MB` 配置。
 - 保存为随机文件名。
@@ -250,7 +372,7 @@ Android App 自带上传入口使用。
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 请求体：
@@ -263,10 +385,10 @@ file: 图片文件
 规则：
 
 - 与 iPhone 上传共用同一套文件校验、随机命名、hash、缩略图和 pending 创建流程。
-- 按当前 `APP_TOKEN` 所属租户写入对应账本。
+- 按当前 session token 所属账本写入对应目录。
 - `X-Timezone` 可选，Android 默认发送手机系统 IANA 时区；用于上传后 OCR 草稿时间解析。
-- Android 不保存、不发送 `Upload-Token`。
-- 灰度版 UI 只显示“上传截图”，不显示 endpoint、token 或 multipart。
+- Android 不保存、不发送 UploadLink。
+- 灰度版 UI 只显示"上传截图"，不显示 endpoint、token 或 multipart。
 
 返回：
 
@@ -298,7 +420,7 @@ file: 图片文件
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回 pending 账单列表。
@@ -308,7 +430,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 用于 Android App 手动记一笔，创建后直接进入已确认账本。
@@ -338,7 +460,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 查询参数：
@@ -367,7 +489,7 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回标准默认分类和数据库中已有分类。旧版 `吃饭` 会兼容归一到 `餐饮`。
@@ -385,7 +507,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 查询参数：
@@ -409,7 +531,7 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 查询参数：
@@ -427,7 +549,7 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 Content-Type: application/json
 ```
 
@@ -453,7 +575,7 @@ Content-Type: application/json
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回单条账单详情，响应结构同 `ExpenseResponse`。找不到返回 `expense_not_found`。
@@ -463,7 +585,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 规则：
@@ -478,7 +600,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 只能拒绝 `pending`。
@@ -488,7 +610,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回原图文件流。不会返回本机真实路径。
@@ -498,7 +620,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回 JPEG 缩略图文件流。缩略图不存在时会尝试懒生成；仍不可用返回 `image_not_found`。
@@ -508,7 +630,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 重新运行当前 `OCR_PROVIDER`。OCR 只写入待确认草稿，不会自动入账。
@@ -534,7 +656,7 @@ local_llm
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 请求体：
@@ -556,10 +678,10 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
-清除疑似重复标记，并记录这组账单在当前检测类型下的“非重复”判断。图片 hash 重复和金额/商家/时间相似会分别记录，互不覆盖。
+清除疑似重复标记，并记录这组账单在当前检测类型下的"非重复"判断。图片 hash 重复和金额/商家/时间相似会分别记录，互不覆盖。
 
 ## 重复检测
 
@@ -568,7 +690,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回 `duplicate_status = suspected` 且未被拒绝的账单列表。
@@ -587,7 +709,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回自动分类规则列表。
@@ -597,7 +719,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 请求体：
@@ -616,7 +738,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 请求体支持局部更新：
@@ -632,7 +754,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 删除一条分类规则。
@@ -652,17 +774,20 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 返回后端非敏感运行状态，不返回 Token、本机路径或数据库路径。
-`upload_storage_bytes` 只统计当前 App Token 对应租户目录下仍存在的图片和缩略图文件。
+`upload_storage_bytes` 只统计当前 session token 对应账本目录下仍存在的图片和缩略图文件。
 
 返回：
 
 ```json
 {
-  "tenant_name": "我的小票夹",
+  "account_name": "Owner",
+  "ledger_name": "我的小票夹",
+  "device_name": "小米 15 Pro",
+  "role": "owner",
   "status": "ok",
   "storage_status": "normal",
   "pending_count": 1,
@@ -681,7 +806,7 @@ Authorization: Bearer APP_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 查询参数：
@@ -713,7 +838,7 @@ timezone=Asia/Shanghai
 请求头：
 
 ```http
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 查询参数：
@@ -748,14 +873,14 @@ timezone=Asia/Shanghai
 请求头：
 
 ```http
-Authorization: Bearer ADMIN_TOKEN
+Authorization: Bearer <admin_token>
 ```
 
 规则：
 
 - 只按 `DELETE_IMAGE_AFTER_DAYS` 配置清理已确认账单图片。
 - 不接收任意文件路径。
-- 只删除数据库中保存的相对路径，且路径必须位于当前 admin 上下文租户的 `uploads/{tenant_id}/` 目录内。
+- 只删除数据库中保存的相对路径，且路径必须位于当前 admin 上下文账本的 `uploads/{ledger_id}/` 目录内。
 - `DELETE_IMAGE_AFTER_DAYS <= 0` 时只返回未启用，不执行删除。
 
 返回：
@@ -775,14 +900,14 @@ Authorization: Bearer ADMIN_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer ADMIN_TOKEN
+Authorization: Bearer <admin_token>
 ```
 
 规则：
 
 - 只按 `DELETE_REJECTED_AFTER_DAYS` 配置清理 rejected 账单图片。
 - 只清理图片和缩略图，不删除 rejected 数据库行。
-- 只删除当前 admin 上下文租户目录内的文件。
+- 只删除当前 admin 上下文账本目录内的文件。
 - `DELETE_REJECTED_AFTER_DAYS <= 0` 时只返回未启用，不执行删除。
 
 返回：
@@ -802,7 +927,7 @@ Authorization: Bearer ADMIN_TOKEN
 请求头：
 
 ```http
-Authorization: Bearer ADMIN_TOKEN
+Authorization: Bearer <admin_token>
 ```
 
 查询参数：
@@ -812,7 +937,7 @@ Authorization: Bearer ADMIN_TOKEN
 
 规则：
 
-- 只扫描当前 admin 上下文租户目录内支持的图片文件。当前实现中 `ADMIN_TOKEN` 映射到默认租户。
+- 只扫描当前 admin 上下文账本目录内支持的图片文件。
 - 只处理数据库没有引用的文件。
 - 使用 `ORPHAN_UPLOAD_GRACE_HOURS` 保护最近上传文件。
 - 不接收任意文件路径。

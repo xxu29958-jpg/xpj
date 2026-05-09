@@ -45,7 +45,7 @@ AI/OCR 只生成草稿和建议，用户确认后才入账。
 - `image_hash` 完全重复检测、疑似重复列表和“仍然保留”操作。
 - 用户填写金额、商家、消费时间后，会按金额一致、商家一致、24 小时内标记疑似重复。
 - 受保护 JPEG 缩略图接口和 Android 缩略图/原图预览。
-- `DELETE_IMAGE_AFTER_DAYS` 图片清理维护接口，仅限 `ADMIN_TOKEN`。
+- `DELETE_IMAGE_AFTER_DAYS` 图片清理维护接口，仅限 admin scope token。
 - Android 统计页显示生活化统计。
 
 仍然不建议做：
@@ -85,7 +85,7 @@ backend/app/
 - `thumb_service.py`：生成 JPEG 缩略图，解决 Android 列表预览。
 - `rules.py`：分类规则管理。
 - `duplicates.py`：疑似重复账单查看和处理。
-- `maintenance.py`：图片清理维护接口，受 `ADMIN_TOKEN` 保护，并按当前维护上下文租户执行。
+- `maintenance.py`：图片清理维护接口，受 admin scope token 保护，并按当前维护上下文账本执行。
 
 ## 4. OCR 架构
 
@@ -225,14 +225,14 @@ thumbnail_path: string?
 
 ```http
 GET /api/expenses/{id}/thumbnail
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 原图接口继续保留：
 
 ```http
 GET /api/expenses/{id}/image
-Authorization: Bearer APP_TOKEN
+Authorization: Bearer <session_token>
 ```
 
 安全要求不变：
