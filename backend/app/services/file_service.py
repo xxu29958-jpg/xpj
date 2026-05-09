@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from io import BytesIO
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -75,6 +76,19 @@ def _looks_like_allowed_image(ext: str, header: bytes) -> bool:
     return False
 
 
+def _is_decodable_image(ext: str, data: bytes) -> bool:
+    if ext == "heic":
+        return True
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(data)) as image:
+            image.verify()
+    except Exception:
+        return False
+    return True
+
+
 async def save_upload(file: UploadFile, tenant_id: str) -> SavedUpload:
     data = bytearray()
     try:
@@ -110,7 +124,7 @@ def save_upload_bytes(
     header_ext = _extension_from_header(header)
     metadata_ext = _extension_from_metadata(filename, content_type)
     ext = header_ext or metadata_ext
-    if ext is None or not _looks_like_allowed_image(ext, header):
+    if ext is None or not _looks_like_allowed_image(ext, header) or not _is_decodable_image(ext, data):
         raise AppError("unsupported_file_type", status_code=400)
 
     now = datetime.now(UTC)

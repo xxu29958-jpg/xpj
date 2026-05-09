@@ -23,7 +23,7 @@ ADMIN_TOKEN = "smoke-admin-token"
 
 
 PNG_BYTES = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC"
 )
 
 
@@ -550,7 +550,7 @@ def run_smoke(base_url: str) -> None:
     assert_equal(lifestyle["max_expense"]["id"], expense_id, "lifestyle max expense")
     print("OK lifestyle stats")
 
-    third_upload = upload(base_url, "ticket3.jpg", "image/jpeg", b"\xff\xd8\xff\xe0" + (b"0" * 100))
+    third_upload = upload(base_url, "ticket3.png", "image/png", PNG_BYTES)
     assert_equal(third_upload.status, 200, "third upload status")
     third_id = int(third_upload.json()["id"])
     result = request("POST", f"{base_url}/api/expenses/{third_id}/reject", headers=app_headers())
