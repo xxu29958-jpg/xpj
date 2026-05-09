@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
+import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
@@ -103,7 +104,7 @@ interface ApiService {
     ): CategoryRuleDto
 
     @DELETE("api/rules/categories/{id}")
-    suspend fun deleteCategoryRule(@Path("id") id: Long): AuthCheckDto
+    suspend fun deleteCategoryRule(@Path("id") id: Long): StatusDto
 
     @GET("api/settings/server")
     suspend fun serverSettings(): ServerSettingsDto

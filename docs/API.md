@@ -186,6 +186,10 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
   "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
   "message": "uploaded",
+  "image_hash": "sha256...",
+  "thumbnail_path": "uploads/owner/2026/05/thumbs/xxx.jpg",
+  "duplicate_status": "none",
+  "duplicate_of_id": null,
   "upload_size_bytes": 348120,
   "duration_ms": 86,
   "timing_ms": {
@@ -231,6 +235,10 @@ file: 图片文件
   "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
   "message": "uploaded",
+  "image_hash": "sha256...",
+  "thumbnail_path": "uploads/owner/2026/05/thumbs/xxx.jpg",
+  "duplicate_status": "none",
+  "duplicate_of_id": null,
   "upload_size_bytes": 348120,
   "duration_ms": 86,
   "timing_ms": {
@@ -527,9 +535,21 @@ Authorization: Bearer APP_TOKEN
 
 ### GET /api/rules/categories
 
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
 返回自动分类规则列表。
 
 ### POST /api/rules/categories
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
 
 请求体：
 
@@ -544,6 +564,12 @@ Authorization: Bearer APP_TOKEN
 
 ### PATCH /api/rules/categories/{id}
 
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
 请求体支持局部更新：
 
 ```json
@@ -553,6 +579,12 @@ Authorization: Bearer APP_TOKEN
 ```
 
 ### DELETE /api/rules/categories/{id}
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
 
 删除一条分类规则。
 
@@ -597,6 +629,12 @@ Authorization: Bearer APP_TOKEN
 
 ### GET /api/stats/monthly
 
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
 查询参数：
 
 ```text
@@ -621,6 +659,12 @@ month=2026-05
 ```
 
 ### GET /api/stats/lifestyle
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
 
 查询参数：
 
