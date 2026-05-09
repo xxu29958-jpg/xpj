@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -83,6 +83,34 @@ def _stored_upload_files() -> list[str]:
     if not TEST_UPLOAD_DIR.exists():
         return []
     return [str(path) for path in TEST_UPLOAD_DIR.rglob("*") if path.is_file()]
+
+
+def insert_confirmed_expense(
+    *,
+    amount_cents: int,
+    merchant: str,
+    category: str,
+    expense_time: datetime | None,
+    confirmed_at: datetime,
+) -> int:
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            amount_cents=amount_cents,
+            merchant=merchant,
+            category=category,
+            note="",
+            source="pytest",
+            status="confirmed",
+            expense_time=expense_time,
+            created_at=confirmed_at,
+            updated_at=confirmed_at,
+            confirmed_at=confirmed_at,
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        return expense.id
 
 
 def test_health_and_auth_contract(client: TestClient) -> None:
@@ -228,6 +256,28 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient) -> None:
     assert item["image_path"].startswith("uploads/")
     assert item["image_path"].endswith(".png")
     assert item["image_hash"]
+
+
+def test_upload_passes_client_timezone_to_background_ocr(client: TestClient, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_enrich(expense_id: int, tenant_id: str, timezone_name: str | None = None) -> None:
+        captured["expense_id"] = expense_id
+        captured["tenant_id"] = tenant_id
+        captured["timezone_name"] = timezone_name
+
+    monkeypatch.setattr("app.routes.uploads.enrich_pending_expense", fake_enrich)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png", "X-Timezone": "America/Los_Angeles"},
+        content=PNG_BYTES,
+    )
+
+    assert response.status_code == 200
+    assert captured["expense_id"] == response.json()["id"]
+    assert captured["tenant_id"] == "owner"
+    assert captured["timezone_name"] == "America/Los_Angeles"
 
 
 def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> None:
@@ -828,6 +878,141 @@ def test_local_timezone_month_filter_matches_android_display_month(client: TestC
     months = client.get("/api/expenses/months", headers=app_headers())
     assert months.status_code == 200
     assert months.json()["items"] == ["2026-05"]
+
+
+def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(client: TestClient) -> None:
+    insert_confirmed_expense(
+        amount_cents=501,
+        merchant="确认时间跨月餐饮",
+        category="餐饮",
+        expense_time=None,
+        confirmed_at=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
+    )
+    insert_confirmed_expense(
+        amount_cents=777,
+        merchant="确认时间上月餐饮",
+        category="餐饮",
+        expense_time=None,
+        confirmed_at=datetime(2026, 4, 30, 15, 30, tzinfo=UTC),
+    )
+    insert_confirmed_expense(
+        amount_cents=888,
+        merchant="确认时间跨月交通",
+        category="交通",
+        expense_time=None,
+        confirmed_at=datetime(2026, 4, 30, 16, 40, tzinfo=UTC),
+    )
+
+    may_food_page = client.get("/api/expenses/confirmed?month=2026-05&category=餐饮", headers=app_headers())
+    assert may_food_page.status_code == 200
+    may_food_payload = may_food_page.json()
+    assert may_food_payload["total"] == 1
+    assert may_food_payload["items"][0]["merchant"] == "确认时间跨月餐饮"
+
+    april_food_page = client.get("/api/expenses/confirmed?month=2026-04&category=餐饮", headers=app_headers())
+    assert april_food_page.status_code == 200
+    april_food_payload = april_food_page.json()
+    assert april_food_payload["total"] == 1
+    assert april_food_payload["items"][0]["merchant"] == "确认时间上月餐饮"
+
+    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert may_stats.status_code == 200
+    may_stats_payload = may_stats.json()
+    assert may_stats_payload["total_amount_cents"] == 1389
+    assert may_stats_payload["count"] == 2
+    assert may_stats_payload["by_category"] == [
+        {"category": "交通", "amount_cents": 888, "count": 1},
+        {"category": "餐饮", "amount_cents": 501, "count": 1},
+    ]
+
+    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=app_headers())
+    assert april_stats.status_code == 200
+    assert april_stats.json()["total_amount_cents"] == 777
+
+    months = client.get("/api/expenses/months", headers=app_headers())
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2026-05", "2026-04"]
+
+
+def test_confirmed_month_filter_handles_cross_year_local_boundary(client: TestClient) -> None:
+    insert_confirmed_expense(
+        amount_cents=1234,
+        merchant="跨年后餐饮",
+        category="餐饮",
+        expense_time=datetime(2026, 12, 31, 16, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 12, 31, 16, 31, tzinfo=UTC),
+    )
+    insert_confirmed_expense(
+        amount_cents=4321,
+        merchant="跨年前餐饮",
+        category="餐饮",
+        expense_time=datetime(2026, 12, 31, 15, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 12, 31, 15, 31, tzinfo=UTC),
+    )
+
+    january_page = client.get("/api/expenses/confirmed?month=2027-01&category=餐饮", headers=app_headers())
+    assert january_page.status_code == 200
+    january_payload = january_page.json()
+    assert january_payload["total"] == 1
+    assert january_payload["items"][0]["merchant"] == "跨年后餐饮"
+
+    december_page = client.get("/api/expenses/confirmed?month=2026-12&category=餐饮", headers=app_headers())
+    assert december_page.status_code == 200
+    december_payload = december_page.json()
+    assert december_payload["total"] == 1
+    assert december_payload["items"][0]["merchant"] == "跨年前餐饮"
+
+    january_stats = client.get("/api/stats/monthly?month=2027-01", headers=app_headers())
+    assert january_stats.status_code == 200
+    assert january_stats.json()["total_amount_cents"] == 1234
+
+    december_stats = client.get("/api/stats/monthly?month=2026-12", headers=app_headers())
+    assert december_stats.status_code == 200
+    assert december_stats.json()["total_amount_cents"] == 4321
+
+    months = client.get("/api/expenses/months", headers=app_headers())
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2027-01", "2026-12"]
+
+
+def test_month_filter_can_follow_client_timezone_query(client: TestClient) -> None:
+    insert_confirmed_expense(
+        amount_cents=1851,
+        merchant="手机时区边界账单",
+        category="生活",
+        expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 4, 30, 16, 31, tzinfo=UTC),
+    )
+
+    shanghai_page = client.get(
+        "/api/expenses/confirmed?month=2026-05&timezone=Asia/Shanghai",
+        headers=app_headers(),
+    )
+    assert shanghai_page.status_code == 200
+    assert shanghai_page.json()["total"] == 1
+
+    utc_april_page = client.get("/api/expenses/confirmed?month=2026-04&timezone=UTC", headers=app_headers())
+    assert utc_april_page.status_code == 200
+    assert utc_april_page.json()["total"] == 1
+
+    utc_may_stats = client.get("/api/stats/monthly?month=2026-05&timezone=UTC", headers=app_headers())
+    assert utc_may_stats.status_code == 200
+    assert utc_may_stats.json()["total_amount_cents"] == 0
+
+    shanghai_may_stats = client.get(
+        "/api/stats/monthly?month=2026-05&timezone=Asia/Shanghai",
+        headers=app_headers(),
+    )
+    assert shanghai_may_stats.status_code == 200
+    assert shanghai_may_stats.json()["total_amount_cents"] == 1851
+
+    shanghai_months = client.get("/api/expenses/months?timezone=Asia/Shanghai", headers=app_headers())
+    assert shanghai_months.status_code == 200
+    assert shanghai_months.json()["items"] == ["2026-05"]
+
+    utc_months = client.get("/api/expenses/months?timezone=UTC", headers=app_headers())
+    assert utc_months.status_code == 200
+    assert utc_months.json()["items"] == ["2026-04"]
 
 
 def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:

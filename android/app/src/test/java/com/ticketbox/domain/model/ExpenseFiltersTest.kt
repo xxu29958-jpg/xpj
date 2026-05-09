@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.TimeZone
 
 class ExpenseFiltersTest {
     @Test
@@ -47,6 +48,113 @@ class ExpenseFiltersTest {
         )
 
         assertEquals(listOf(1L), filtered.map { it.id })
+    }
+
+    @Test
+    fun defaultLedgerMonthUsesPhoneSystemTimezone() {
+        val previous = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"))
+            val items = listOf(
+                expense(id = 1, category = "餐饮", expenseTime = "2026-04-30T16:30:00Z"),
+                expense(id = 2, category = "餐饮", expenseTime = "2026-04-30T15:30:00Z"),
+            )
+
+            val filtered = filterConfirmedExpenses(items, month = "2026-05", category = "")
+
+            assertEquals(listOf(1L), filtered.map { it.id })
+            assertEquals("2026-05", expenseLedgerMonth(items.first()))
+        } finally {
+            TimeZone.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun offlineRoomFilterMatchesBackendMonthAcrossYearBoundary() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = "2026-12-31T16:30:00Z", amountCents = 1200),
+            expense(id = 2, category = "餐饮", expenseTime = "2026-12-31T15:30:00Z", amountCents = 2300),
+            expense(id = 3, category = "交通", expenseTime = "2026-12-31T16:40:00Z", amountCents = 3400),
+        )
+        val zone = ZoneId.of("Asia/Shanghai")
+
+        val januaryFood = filterConfirmedExpenses(
+            expenses = items,
+            month = "2027-01",
+            category = "餐饮",
+            zoneId = zone,
+        )
+        val decemberFood = filterConfirmedExpenses(
+            expenses = items,
+            month = "2026-12",
+            category = "餐饮",
+            zoneId = zone,
+        )
+        val januaryStats = monthlyStatsFromConfirmedExpenses(
+            expenses = items,
+            month = "2027-01",
+            zoneId = zone,
+        )
+
+        assertEquals(listOf(1L), januaryFood.map { it.id })
+        assertEquals(listOf(2L), decemberFood.map { it.id })
+        checkNotNull(januaryStats)
+        assertEquals(4600, januaryStats.totalAmountCents)
+        assertEquals(2, januaryStats.count)
+    }
+
+    @Test
+    fun monthlyStatsFallbackUsesConfirmedAtAtLocalMonthBoundary() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = null, confirmedAt = "2026-04-30T16:30:00Z", amountCents = 1200),
+            expense(id = 2, category = "餐饮", expenseTime = null, confirmedAt = "2026-04-30T15:30:00Z", amountCents = 2300),
+            expense(id = 3, category = "交通", expenseTime = null, confirmedAt = "2026-04-30T16:40:00Z", amountCents = 3400),
+        )
+        val zone = ZoneId.of("Asia/Shanghai")
+
+        val mayFood = filterConfirmedExpenses(
+            expenses = items,
+            month = "2026-05",
+            category = "餐饮",
+            zoneId = zone,
+        )
+        val mayStats = monthlyStatsFromConfirmedExpenses(
+            expenses = items,
+            month = "2026-05",
+            zoneId = zone,
+        )
+
+        assertEquals(listOf(1L), mayFood.map { it.id })
+        checkNotNull(mayStats)
+        assertEquals(4600, mayStats.totalAmountCents)
+        assertEquals(2, mayStats.count)
+    }
+
+    @Test
+    fun expenseLedgerMonthUsesLocalMonthAndFallbackOrder() {
+        val zone = ZoneId.of("Asia/Shanghai")
+
+        assertEquals(
+            "2026-05",
+            expenseLedgerMonth(
+                expense(id = 1, category = "餐饮", expenseTime = "2026-04-30T16:30:00Z"),
+                zoneId = zone,
+            ),
+        )
+        assertEquals(
+            "2026-05",
+            expenseLedgerMonth(
+                expense(id = 2, category = "餐饮", expenseTime = null, confirmedAt = "2026-04-30T16:30:00Z"),
+                zoneId = zone,
+            ),
+        )
+        assertEquals(
+            "2027-01",
+            expenseLedgerMonth(
+                expense(id = 3, category = "餐饮", expenseTime = "2026-12-31T16:30:00Z"),
+                zoneId = zone,
+            ),
+        )
     }
 
     @Test

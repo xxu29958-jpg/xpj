@@ -36,6 +36,7 @@ Android App 使用：
 ```http
 POST /api/app/upload-screenshot
 Authorization: Bearer APP_TOKEN
+X-Timezone: 手机系统 IANA 时区
 Content-Type: multipart/form-data
 file=<image>
 ```
@@ -124,7 +125,7 @@ server_breakdown 后端 body/form、文件保存、DB 创建分段
 已实现：
 
 - 后端 `POST /api/app/upload-screenshot`，使用 `Authorization: Bearer APP_TOKEN`。
-- Android `ApiService.uploadScreenshot` 使用 Retrofit multipart。
+- Android `ApiService.uploadScreenshot` 使用 Retrofit multipart，并随请求发送手机系统时区 `X-Timezone`。
 - `ExpenseRepository.uploadScreenshot` 统一处理 multipart、错误和最近上传时间。
 - 选图后的图片读取、采样和压缩已移到 IO 线程，避免阻塞 Compose 主线程。
 - `PendingViewModel` 管理上传中、成功、失败状态。

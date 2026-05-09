@@ -74,7 +74,7 @@ private fun ExpenseDto.requiredPublicId(): String {
     return publicId
         ?.trim()
         ?.takeIf { it.isNotBlank() }
-        ?: throw RepositoryException("服务器版本过旧，请重启 Windows 后端后再试。")
+        ?: throw RepositoryException("账本版本过旧，请重启电脑上的小票夹后再试。")
 }
 
 fun ExpenseEntity.toDomain(): Expense = Expense(

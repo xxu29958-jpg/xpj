@@ -118,7 +118,7 @@ fun DataExportScreen(
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
             title = { Text("清除手机本地数据？") },
-            text = { Text("清除后，手机里已缓存的账单会移除。服务端账单不会删除，之后可以重新同步。") },
+            text = { Text("清除后，手机里已缓存的账单会移除。账本数据不会删除，之后可以重新更新。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -196,7 +196,7 @@ fun DataExportScreen(
                 }
             }
         }
-        SettingsSection(title = "同步与缓存", icon = Icons.Filled.RestartAlt) {
+        SettingsSection(title = "更新与缓存", icon = Icons.Filled.RestartAlt) {
             Text(
                 text = "已确认账单会缓存在手机，离线时账本页仍可查看本地记录。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -208,7 +208,7 @@ fun DataExportScreen(
                     enabled = !state.busy,
                     onClick = onSync,
                 ) {
-                    Text(if (state.busy) "同步中" else "重新同步")
+                    Text(if (state.busy) "更新中" else "重新更新")
                 }
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -221,7 +221,7 @@ fun DataExportScreen(
                 }
             }
             Text(
-                text = "CSV 导出请在账本页选择月份和分类后点击导出账单；没有账单时按钮会禁用。",
+                text = "表格导出请在账本页选择月份和分类后点击导出账单；没有账单时按钮会禁用。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )

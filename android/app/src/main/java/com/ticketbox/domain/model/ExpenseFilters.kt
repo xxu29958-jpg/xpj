@@ -39,6 +39,13 @@ fun filterConfirmedExpenses(
     }
 }
 
+fun expenseLedgerMonth(
+    expense: Expense,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String? {
+    return expense.ledgerLocalDate(zoneId)?.let { YearMonth.from(it).toString() }
+}
+
 fun recentDailySpending(
     expenses: List<Expense>,
     days: Int = 7,

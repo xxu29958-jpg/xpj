@@ -19,7 +19,7 @@ class ExpenseMappersTest {
             expenseDto(publicId = null).toDomain()
         }
 
-        assertEquals("服务器版本过旧，请重启 Windows 后端后再试。", error.message)
+        assertEquals("账本版本过旧，请重启电脑上的小票夹后再试。", error.message)
     }
 
     @Test

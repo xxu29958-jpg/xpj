@@ -11,7 +11,7 @@ import javax.net.ssl.SSLHandshakeException
 fun userNetworkMessage(error: IOException, serverUrl: String?): String {
     val cleanServerUrl = serverUrl?.trim().orEmpty()
     return when {
-        isLocalOnlyServerUrl(cleanServerUrl) -> "请填写公网服务器地址。"
+        isLocalOnlyServerUrl(cleanServerUrl) -> "请填写可在手机上访问的地址。"
         error is SSLHandshakeException -> "当前网络或 VPN 可能拦截了小票夹连接，请稍后重试或切换网络。"
         error is SocketTimeoutException -> "网络响应有点慢，请稍后重试。"
         error is InterruptedIOException -> "当前网络连接超时，可能是 VPN 或弱网影响，请稍后重试。"
@@ -39,9 +39,9 @@ fun networkDiagnosticMessage(error: IOException, serverUrl: String?): String {
 fun validateBindingInput(serverUrl: String, appToken: String): String {
     val normalized = serverUrl.trim().trimEnd('/')
     val allowInternalInsecureBinding = BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS
-    require(normalized.isNotBlank()) { "请输入服务器地址。" }
-    require(allowInternalInsecureBinding || !isLocalOnlyServerUrl(normalized)) { "请填写公网服务器地址。" }
-    require(allowInternalInsecureBinding || normalized.startsWith("https://", ignoreCase = true)) { "请使用 HTTPS 同步地址。" }
+    require(normalized.isNotBlank()) { "请输入账本地址。" }
+    require(allowInternalInsecureBinding || !isLocalOnlyServerUrl(normalized)) { "请填写可在手机上访问的地址。" }
+    require(allowInternalInsecureBinding || normalized.startsWith("https://", ignoreCase = true)) { "请使用 HTTPS 地址。" }
     require(appToken.isNotBlank()) { "请输入访问口令。" }
     return normalized
 }

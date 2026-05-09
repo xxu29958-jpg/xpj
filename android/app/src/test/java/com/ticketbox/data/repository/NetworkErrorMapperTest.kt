@@ -18,7 +18,7 @@ class NetworkErrorMapperTest {
             serverUrl = "http://127.0.0.1:8000",
         )
 
-        assertEquals("请填写公网服务器地址。", message)
+        assertEquals("请填写可在手机上访问的地址。", message)
     }
 
     @Test
@@ -94,7 +94,7 @@ class NetworkErrorMapperTest {
             validateBindingInput(serverUrl = " ", appToken = "token")
         }
 
-        assertEquals("请输入服务器地址。", error.message)
+        assertEquals("请输入账本地址。", error.message)
     }
 
     @Test
@@ -103,7 +103,7 @@ class NetworkErrorMapperTest {
             validateBindingInput(serverUrl = "http://127.0.0.1:8000", appToken = "token")
         }
 
-        assertEquals("请填写公网服务器地址。", error.message)
+        assertEquals("请填写可在手机上访问的地址。", error.message)
     }
 
     @Test
@@ -112,7 +112,7 @@ class NetworkErrorMapperTest {
             validateBindingInput(serverUrl = "http://api.zen70.cn", appToken = "token")
         }
 
-        assertEquals("请使用 HTTPS 同步地址。", error.message)
+        assertEquals("请使用 HTTPS 地址。", error.message)
     }
 
     @Test

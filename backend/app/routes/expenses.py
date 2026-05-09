@@ -64,6 +64,7 @@ def get_confirmed_expenses(
     page_size: int = Query(default=50, ge=1, le=200),
     month: str | None = None,
     category: str | None = None,
+    timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> PaginatedExpensesResponse:
@@ -74,6 +75,7 @@ def get_confirmed_expenses(
         page_size=page_size,
         month=month,
         category=category,
+        timezone_name=timezone,
     )
     return PaginatedExpensesResponse(items=items, page=page, page_size=page_size, total=total)
 
@@ -88,20 +90,28 @@ def get_expense_categories(
 
 @router.get("/months", response_model=MonthsResponse)
 def get_expense_months(
+    timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> MonthsResponse:
-    return MonthsResponse(items=list_months(db, auth.tenant_id))
+    return MonthsResponse(items=list_months(db, auth.tenant_id, timezone_name=timezone))
 
 
 @router.get("/export.csv")
 def get_expenses_csv(
     month: str | None = None,
     category: str | None = None,
+    timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> Response:
-    content = "\ufeff" + export_confirmed_csv(db, tenant_id=auth.tenant_id, month=month, category=category)
+    content = "\ufeff" + export_confirmed_csv(
+        db,
+        tenant_id=auth.tenant_id,
+        month=month,
+        category=category,
+        timezone_name=timezone,
+    )
     filename = "ticketbox-expenses"
     if month:
         filename += f"-{month}"

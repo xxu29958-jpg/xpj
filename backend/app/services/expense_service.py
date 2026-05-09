@@ -115,7 +115,7 @@ def create_pending_expense(
         raise
 
 
-def enrich_pending_expense(expense_id: int, tenant_id: str) -> None:
+def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str | None = None) -> None:
     """Fill OCR/category draft fields after the upload response has been sent."""
     from app.database import SessionLocal
 
@@ -128,13 +128,13 @@ def enrich_pending_expense(expense_id: int, tenant_id: str) -> None:
         if expense is None or expense.status != "pending":
             return
 
-        ocr_results = collect_auto_ocr_results(expense)
+        ocr_results = collect_auto_ocr_results(expense, timezone_name=timezone_name)
         try:
             db.refresh(expense)
             if expense.status != "pending":
                 return
             for result in ocr_results:
-                apply_ocr_result(expense, result)
+                apply_ocr_result(expense, result, timezone_name=timezone_name)
             if expense.category == "其他":
                 classify_expense(db, expense)
             if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
@@ -211,8 +211,12 @@ def _stat_time(expense: Expense) -> datetime | None:
     return ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
 
 
-def _stat_month_bounds(month: str) -> tuple[datetime, datetime] | None:
-    return local_month_bounds_utc(month, get_settings().ocr_default_timezone)
+def _stat_timezone(timezone_name: str | None = None) -> str:
+    return (timezone_name or "").strip() or get_settings().ocr_default_timezone
+
+
+def _stat_month_bounds(month: str, timezone_name: str | None = None) -> tuple[datetime, datetime] | None:
+    return local_month_bounds_utc(month, _stat_timezone(timezone_name))
 
 
 def _confirmed_query(
@@ -220,12 +224,13 @@ def _confirmed_query(
     tenant_id: str,
     month: str | None = None,
     category: str | None = None,
+    timezone_name: str | None = None,
 ) -> Select[tuple[Expense]]:
     query = _base_confirmed_query(tenant_id)
     if category:
         query = query.where(Expense.category == normalize_category(category))
     if month:
-        bounds = _stat_month_bounds(month)
+        bounds = _stat_month_bounds(month, timezone_name)
         if bounds is None:
             return query.where(false())
         start_utc, end_utc = bounds
@@ -245,11 +250,12 @@ def list_confirmed(
     page_size: int = 50,
     month: str | None = None,
     category: str | None = None,
+    timezone_name: str | None = None,
 ) -> tuple[list[Expense], int]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
 
-    query = _confirmed_query(tenant_id=tenant_id, month=month, category=category)
+    query = _confirmed_query(tenant_id=tenant_id, month=month, category=category, timezone_name=timezone_name)
     total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
     expenses = list(
         db.scalars(
@@ -267,8 +273,15 @@ def _filtered_confirmed(
     tenant_id: str,
     month: str | None = None,
     category: str | None = None,
+    timezone_name: str | None = None,
 ) -> list[Expense]:
-    return list(db.scalars(_confirmed_ordered(_confirmed_query(tenant_id=tenant_id, month=month, category=category))))
+    return list(
+        db.scalars(
+            _confirmed_ordered(
+                _confirmed_query(tenant_id=tenant_id, month=month, category=category, timezone_name=timezone_name)
+            )
+        )
+    )
 
 
 def list_categories(db: Session, tenant_id: str) -> list[str]:
@@ -277,8 +290,8 @@ def list_categories(db: Session, tenant_id: str) -> list[str]:
     )
 
 
-def list_months(db: Session, tenant_id: str) -> list[str]:
-    timezone_name = get_settings().ocr_default_timezone
+def list_months(db: Session, tenant_id: str, timezone_name: str | None = None) -> list[str]:
+    resolved_timezone = _stat_timezone(timezone_name)
     expenses = db.scalars(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
@@ -288,7 +301,7 @@ def list_months(db: Session, tenant_id: str) -> list[str]:
     months = {
         label
         for expense in expenses
-        if (label := local_month_label(_stat_time(expense), timezone_name)) is not None
+        if (label := local_month_label(_stat_time(expense), resolved_timezone)) is not None
     }
     return sorted(months, reverse=True)
 
@@ -299,8 +312,9 @@ def export_confirmed_csv(
     tenant_id: str,
     month: str | None = None,
     category: str | None = None,
+    timezone_name: str | None = None,
 ) -> str:
-    expenses = _filtered_confirmed(db, tenant_id=tenant_id, month=month, category=category)
+    expenses = _filtered_confirmed(db, tenant_id=tenant_id, month=month, category=category, timezone_name=timezone_name)
     output = StringIO()
     writer = csv.writer(output, lineterminator="\n")
     writer.writerow(
@@ -486,12 +500,12 @@ def mark_expense_not_duplicate(db: Session, expense_id: int, tenant_id: str) -> 
     return expense
 
 
-def monthly_stats(db: Session, month: str, tenant_id: str) -> dict:
+def monthly_stats(db: Session, month: str, tenant_id: str, timezone_name: str | None = None) -> dict:
     by_category: dict[str, dict[str, int | str]] = defaultdict(lambda: {"category": "", "amount_cents": 0, "count": 0})
 
     total_amount_cents = 0
     total_count = 0
-    bounds = _stat_month_bounds(month)
+    bounds = _stat_month_bounds(month, timezone_name)
     if bounds is None:
         return {
             "month": month,
@@ -535,8 +549,8 @@ def monthly_stats(db: Session, month: str, tenant_id: str) -> dict:
     }
 
 
-def lifestyle_stats(db: Session, month: str, tenant_id: str) -> dict:
-    month_expenses = list(db.scalars(_confirmed_query(tenant_id=tenant_id, month=month)))
+def lifestyle_stats(db: Session, month: str, tenant_id: str, timezone_name: str | None = None) -> dict:
+    month_expenses = list(db.scalars(_confirmed_query(tenant_id=tenant_id, month=month, timezone_name=timezone_name)))
     recent_start = now_utc() - timedelta(days=7)
 
     ai_subscription_amount_cents = sum(

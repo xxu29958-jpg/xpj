@@ -75,11 +75,11 @@ class SettingsViewModel(
                         it.copy(
                             busy = false,
                             lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
-                            message = "同步完成",
+                            message = "更新完成",
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "暂时同步不了，请稍后再试。") } }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "暂时更新不了，请稍后再试。") } }
         }
     }
 
@@ -135,7 +135,7 @@ class SettingsViewModel(
                     _uiState.update {
                         it.copy(
                             busy = if (showBusy) false else it.busy,
-                            message = "账本状态暂时没有同步，稍后再试。",
+                            message = "账本状态暂时没有更新，稍后再试。",
                         )
                     }
                 }

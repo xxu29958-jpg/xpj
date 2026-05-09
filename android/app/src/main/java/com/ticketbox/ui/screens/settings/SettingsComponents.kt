@@ -214,7 +214,7 @@ internal fun AccountStatusCard(
                 text = "最近上传：${(lastUploadAt ?: serverSettings?.latestUploadAt)?.let { displayTime(it) } ?: "还没有上传"}",
             )
             AccountInfoLine(
-                text = "最近同步：${lastSyncAt?.let { displayTime(it) } ?: "还没有同步"} · 存储正常",
+                text = "最近更新：${lastSyncAt?.let { displayTime(it) } ?: "还没有更新"} · 存储正常",
             )
             if (onCheckConnection != null && onSync != null) {
                 Row(
@@ -232,7 +232,7 @@ internal fun AccountStatusCard(
                         enabled = !busy,
                         onClick = onSync,
                     ) {
-                        Text("同步账本")
+                        Text("更新账本")
                     }
                 }
             }
@@ -251,9 +251,9 @@ internal fun AdvancedStatusCard(
         when {
             it.failedCount > 0 -> "发现 ${it.failedCount} 个问题"
             it.warningCount > 0 -> "可用，有 ${it.warningCount} 个提醒"
-            else -> "连接诊断正常"
+            else -> "连接检测正常"
         }
-    } ?: "尚未运行诊断"
+    } ?: "尚未运行检测"
 
     SoftPanel(containerAlpha = 0.98f) {
         Column(
@@ -262,7 +262,7 @@ internal fun AdvancedStatusCard(
         ) {
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(
-                text = "绑定地址：${serverUrl?.takeIf { it.isNotBlank() } ?: "未绑定"}",
+                text = "连接地址：${serverUrl?.takeIf { it.isNotBlank() } ?: "未绑定"}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

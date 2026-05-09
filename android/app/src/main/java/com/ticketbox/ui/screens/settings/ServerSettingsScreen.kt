@@ -113,7 +113,7 @@ fun ServerSettingsScreen(
     var showDiagnosticsDetails by remember { mutableStateOf(false) }
     val pageTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
     val pageSubtitle = if (showAdvancedTools) {
-        "普通版只显示连接状态，内部版保留诊断明细。"
+        "普通版只显示连接状态，内部版保留检测明细。"
     } else {
         "查看当前账本是否连接正常。"
     }
@@ -136,7 +136,7 @@ fun ServerSettingsScreen(
         if (showAdvancedTools) {
             SettingsSection(title = "内部工具", icon = Icons.Filled.Settings) {
                 Text(
-                    text = "仅内部版显示，用于服务拥有者联调和排障；灰度用户版不会出现这些信息。",
+                    text = "仅内部版显示，用于服务拥有者调试和排障；灰度用户版不会出现这些信息。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -146,14 +146,14 @@ fun ServerSettingsScreen(
                         enabled = !state.busy,
                         onClick = onRunDiagnostics,
                     ) {
-                        Text("运行诊断")
+                        Text("运行检测")
                     }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         enabled = !state.busy,
                         onClick = onRefreshServerSettings,
                     ) {
-                        Text("刷新服务")
+                        Text("刷新设置")
                     }
                 }
                 AdvancedStatusCard(
