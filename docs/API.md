@@ -19,6 +19,7 @@ https://api.我的域名.com
 - 数据库存 UTC。
 - API 返回 ISO 8601 字符串，例如 `2026-05-03T04:20:00Z`。
 - 统计优先按 `expense_time`，为空时按 `confirmed_at`。
+- `timezone` / `X-Timezone` 使用 IANA 时区名。未传 `timezone` 时使用服务端 `OCR_DEFAULT_TIMEZONE`；传入无效时区名时，当前查询边界按 UTC 降级，上传 OCR 草稿解析按服务端默认时区降级。
 
 金额：
 

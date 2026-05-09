@@ -2,7 +2,7 @@
 
 本清单用于灰度发布前逐项验收，每项必须实际执行并记录结果。不写"建议验证"等不可执行项，不预填"已通过"。
 
-gray/internal 泄漏验收口径是“普通用户 UI 不可见”：gray 版主流程和设置页不得显示服务器域名、token、Cloudflare、端口、接口名、日志或诊断脚本。它不是 APK 字符串、反编译产物或网络包级别的不可见审计；这类更强口径需要另开专项。
+gray/internal 泄漏验收口径是“普通用户 UI 不可见”：gray 版主流程和设置页不得显示服务器域名、token、Cloudflare、端口、接口名、日志或诊断脚本。它不是 APK 字符串、反编译产物或网络包级别的不可见审计；v0.3 再另开 build secrets / APK string scan 专项。
 
 ## 验收环境
 
@@ -196,6 +196,45 @@ URL: https://api.你的域名.com/api/upload/check
 **是否阻断灰度**：是。iPhone 上传是灰度核心闭环入口。
 
 **证据路径**：iPhone 快捷指令完成截图 + 后端日志截图
+
+**状态**：
+
+---
+
+## 5A. 真实图片样本上传
+
+**验收项**：真实截图和伪造样本的上传结果符合安全预期。
+
+**执行人**：服务拥有者 / 灰度用户
+
+**执行命令/动作**：
+
+按下列样本分别走 iPhone 快捷指令或 Android 上传入口，记录结果：
+
+| 样本 | 入口 | 预期结果 |
+| --- | --- | --- |
+| iPhone JPEG 账单截图 | iPhone 快捷指令 | 创建 pending，缩略图可见 |
+| iPhone PNG 账单截图 | iPhone 快捷指令 | 创建 pending，缩略图可见 |
+| iPhone HEIC 原图 | iPhone 快捷指令 | 创建 pending，后端完成 HEIC 解码校验，并尽量生成 JPEG 缩略图 |
+| Android JPEG 截图 | Android 上传 | 创建 pending，待确认页可见 |
+| Android PNG 截图 | Android 上传 | 创建 pending，待确认页可见 |
+| 微信支付截图 | iPhone 或 Android | 创建 pending，OCR 只填草稿，不自动入账 |
+| 支付宝账单截图 | iPhone 或 Android | 创建 pending，OCR 只填草稿，不自动入账 |
+| 长截图 | iPhone 或 Android | 可上传或被大小限制拒绝；不得白屏或生成 confirmed |
+| 接近 10MB 的真实图片 | iPhone 或 Android | 小于限制则 pending，超过限制返回 `file_too_large` |
+| fake JPEG | curl / 测试脚本 | 返回 `unsupported_file_type`，不残留文件 |
+| fake HEIC | curl / 测试脚本 | 返回 `unsupported_file_type`，不残留文件 |
+
+**预期结果**：
+
+- 所有成功上传都只创建 pending。
+- 所有伪造图片都被拒绝。
+- API 不返回 Windows 本机真实路径。
+- 上传失败不残留文件。
+
+**是否阻断灰度**：是。真实图片样本不过，不进入 v0.2-rc1。
+
+**证据路径**：样本清单截图 + Android 待确认页截图 + 后端测试输出
 
 **状态**：
 
@@ -532,6 +571,7 @@ $env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 | 3 | Cloudflare Tunnel 公网可达 | 是 | 服务拥有者 | | |
 | 4 | 出门前保障检查 | 否 | 服务拥有者 | | |
 | 5 | iPhone 快捷指令上传 | 是 | 灰度用户 | | |
+| 5A | 真实图片样本上传 | 是 | 服务拥有者 / 灰度用户 | | |
 | 6 | Android 构建与安装 | 是 | 服务拥有者 | | |
 | 7 | Android 绑定账本 | 是 | 灰度用户 | | |
 | 8 | 待确认账单拉取与编辑 | 是 | 灰度用户 | | |

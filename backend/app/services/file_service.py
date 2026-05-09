@@ -77,11 +77,13 @@ def _looks_like_allowed_image(ext: str, header: bytes) -> bool:
 
 
 def _is_decodable_image(ext: str, data: bytes) -> bool:
-    if ext == "heic":
-        return True
     try:
         from PIL import Image
 
+        if ext == "heic":
+            from pillow_heif import register_heif_opener
+
+            register_heif_opener()
         with Image.open(BytesIO(data)) as image:
             image.verify()
     except Exception:

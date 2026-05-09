@@ -41,7 +41,7 @@ private fun Context.prepareScreenshotUploadImage(uri: Uri): PreparedUploadImage?
     if (
         metadata.sizeBytes in 1..KEEP_ORIGINAL_MAX_BYTES &&
         longSide <= MAX_UPLOAD_LONG_SIDE &&
-        metadata.contentType in setOf("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif")
+        metadata.contentType in setOf("image/jpeg", "image/png", "image/webp")
     ) {
         return readOriginalUpload(uri, metadata)
     }

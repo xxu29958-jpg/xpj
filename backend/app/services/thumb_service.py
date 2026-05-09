@@ -32,11 +32,16 @@ def generate_thumbnail(
         return None
     if tenant_id is not None and not _is_under_path(source, _tenant_upload_dir(tenant_id)):
         return None
-    if not source.is_file() or source.suffix.lower() == ".heic":
+    if not source.is_file():
         return None
 
     try:
         from PIL import Image
+
+        if source.suffix.lower() == ".heic":
+            from pillow_heif import register_heif_opener
+
+            register_heif_opener()
     except ImportError:
         return None
 

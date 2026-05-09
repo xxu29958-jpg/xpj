@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -111,6 +112,16 @@ def insert_confirmed_expense(
         db.commit()
         db.refresh(expense)
         return expense.id
+
+
+def make_heic_bytes() -> bytes:
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    output = BytesIO()
+    Image.new("RGB", (8, 8), (31, 127, 255)).save(output, format="HEIF")
+    return output.getvalue()
 
 
 def test_health_and_auth_contract(client: TestClient) -> None:
@@ -403,6 +414,51 @@ def test_upload_rejects_spoofed_extension_and_content_type(client: TestClient) -
     assert response.status_code == 400
     assert response.json()["error"] == "unsupported_file_type"
     assert _stored_upload_files() == []
+
+
+def test_upload_rejects_fake_heic_brand_without_decodable_image(client: TestClient) -> None:
+    fake_heic = b"\x00\x00\x00\x1cftypheic\x00\x00\x00\x00fake-heic-payload"
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("fake.heic", fake_heic, "image/heic")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+
+def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(client: TestClient) -> None:
+    heic_bytes = make_heic_bytes()
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.heic", heic_bytes, "image/heic")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
+    assert item["image_path"].endswith(".heic")
+    assert item["thumbnail_path"] is not None
+    assert item["thumbnail_path"].endswith(".jpg")
+
+    image = client.get(f"/api/expenses/{payload['id']}/image", headers=app_headers())
+    assert image.status_code == 200
+    assert image.headers["content-type"].startswith("image/heic")
+    assert image.content == heic_bytes
+
+    thumbnail = client.get(f"/api/expenses/{payload['id']}/thumbnail", headers=app_headers())
+    assert thumbnail.status_code == 200
+    assert thumbnail.headers["content-type"].startswith("image/jpeg")
+    assert thumbnail.content.startswith(b"\xff\xd8")
 
 
 def test_upload_uses_image_header_instead_of_spoofed_metadata(client: TestClient) -> None:
@@ -1013,6 +1069,21 @@ def test_month_filter_can_follow_client_timezone_query(client: TestClient) -> No
     utc_months = client.get("/api/expenses/months?timezone=UTC", headers=app_headers())
     assert utc_months.status_code == 200
     assert utc_months.json()["items"] == ["2026-04"]
+
+    shanghai_export = client.get("/api/expenses/export.csv?month=2026-05&timezone=Asia/Shanghai", headers=app_headers())
+    assert shanghai_export.status_code == 200
+    assert "手机时区边界账单" in shanghai_export.text
+
+    utc_may_export = client.get("/api/expenses/export.csv?month=2026-05&timezone=UTC", headers=app_headers())
+    assert utc_may_export.status_code == 200
+    assert "手机时区边界账单" not in utc_may_export.text
+
+    invalid_timezone_page = client.get(
+        "/api/expenses/confirmed?month=2026-04&timezone=Not/AZone",
+        headers=app_headers(),
+    )
+    assert invalid_timezone_page.status_code == 200
+    assert invalid_timezone_page.json()["total"] == 1
 
 
 def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:

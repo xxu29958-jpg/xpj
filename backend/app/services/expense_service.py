@@ -133,6 +133,8 @@ def enrich_pending_expense(expense_id: int, tenant_id: str, timezone_name: str |
             db.refresh(expense)
             if expense.status != "pending":
                 return
+            if not expense.thumbnail_path:
+                expense.thumbnail_path = _try_generate_thumbnail(expense.image_path, expense.tenant_id)
             for result in ocr_results:
                 apply_ocr_result(expense, result, timezone_name=timezone_name)
             if expense.category == "其他":

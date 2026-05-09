@@ -100,6 +100,12 @@ ApiService：
 - token。
 - 文件本机路径。
 
+## HEIC 策略
+
+- Android 选到 HEIC/HEIF 时，优先用系统 `ImageDecoder` 解码并转成 JPEG 上传。
+- 如果系统无法解码，App 会按原图上传，交给后端 `pillow-heif` 做真实解码校验；后端拒绝伪造或损坏 HEIC。
+- 用户可见结果仍然只有上传成功或失败文案，不展示 HEIC、解码器或接口细节。
+
 调试构建允许在 Logcat 的 `TicketboxNetwork` tag 记录上传耗时分段：
 
 ```text
