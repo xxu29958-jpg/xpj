@@ -142,3 +142,56 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\accept_gray_release.
 ```
 
 如果三者不一致，脚本会直接失败，不能把该包发给灰度用户。
+
+## 9. RC artifact 门禁
+
+从 PR artifact 发真机验收包时，不能只看 CI 通过或文件名。必须先运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.ps1 `
+  -RunId 25592323349 `
+  -ExpectedCommit 67c05ee0ef4164fad2db1babfa27086cf5e00f73
+```
+
+脚本会自动下载 GitHub Actions artifact，并校验：
+
+- CI run 已完成且结论为 success。
+- CI run 的 commit 等于指定 commit。
+- gray artifact 名称为 `ticketbox-gray-debug-apk`。
+- internal artifact 名称为 `ticketbox-internal-debug-apk`。
+- gray 包名为 `com.ticketbox`。
+- internal 包名为 `com.ticketbox.internal`。
+- gray/internal 包名必须不同。
+- gray 版本名必须是 `0.2.0-rc1`。
+- internal 版本名必须是 `0.2.0-rc1-internal`。
+- gray/internal 版本名必须不同。
+- gray/internal `versionCode` 必须是 `20001`。
+- gray/internal APK 的 SHA256 必须分别记录，且不能相同。
+
+脚本通过后会生成：
+
+```text
+artifacts/rc-gate/<run-id>/v0.2.0-rc1-artifact-manifest.json
+artifacts/rc-gate/<run-id>/v0.2.0-rc1-handoff-checklist.md
+```
+
+manifest 记录：
+
+- release candidate 名称。
+- CI run id。
+- CI commit。
+- artifact 名称。
+- APK 包名。
+- versionName。
+- versionCode。
+- APK SHA256。
+- APK 大小。
+
+handoff checklist 必须写清楚：
+
+- Android gray 用户只收到对应 tenant 的 `app_token`。
+- iPhone 快捷指令用户只收到对应 tenant 的 `upload_token`。
+- 服务拥有者才持有 internal APK 和维护凭据。
+- 不得发出 `backend\.env`、完整 `TENANTS_JSON`、`ADMIN_TOKEN`、其他 tenant token、含 token 的日志/截图/CI 输出、keystore 或签名密码。
+
+没有通过 `scripts\verify_rc_artifacts.ps1`，不得把任何包称为 `v0.2.0-rc1`。

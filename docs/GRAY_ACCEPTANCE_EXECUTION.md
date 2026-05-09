@@ -248,6 +248,18 @@ URL: https://api.你的域名.com/api/upload/check
 
 **执行命令/动作**：
 
+如果使用 PR artifact 作为 `v0.2.0-rc1` 真机验收包，先执行 RC artifact 门禁：
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.ps1 `
+  -RunId 25592323349 `
+  -ExpectedCommit 67c05ee0ef4164fad2db1babfa27086cf5e00f73
+```
+
+脚本通过后，使用 `artifacts\rc-gate\<run-id>\v0.2.0-rc1-handoff-checklist.md` 作为发包清单。
+未生成 manifest 和 handoff checklist 的 artifact，不得称为 `v0.2.0-rc1`。
+
 ```powershell
 cd E:\projects\xiaopiaojia\android
 $env:JAVA_HOME="$env:LOCALAPPDATA\Programs\Kimi\runtime"
@@ -267,6 +279,9 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 **预期结果**：
 
+- PR artifact 门禁脚本退出码为 0。
+- gray/internal APK 的 package、versionName、versionCode、SHA256 已记录。
+- 发包清单写明访问口令发放对象和不得发出的 token/密钥。
 - `assembleGrayDebug` BUILD SUCCESSFUL。
 - `adb install` 返回 Success。
 - 真机桌面出现"小票夹"图标。
