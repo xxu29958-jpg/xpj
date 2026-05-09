@@ -6,14 +6,14 @@
 
 1. Windows 后端 SQLite
    - 文件：`backend/data/ticketbox.db`
-   - 职责：账单主库、租户隔离、分类规则、重复检测记录、统计来源
+   - 职责：账单主库、账本隔离、分类规则、重复检测记录、统计来源
    - 这是长期可信数据源。
 
 2. Windows 后端 uploads
-   - 文件夹：`backend/uploads/{tenant_id}/YYYY/MM/`
+   - 文件夹：`backend/uploads/{ledger_id}/YYYY/MM/`
    - 职责：保存 iPhone / Android 上传的账单截图和缩略图
    - 数据库只保存相对路径，不保存本机绝对路径。
-   - 历史 `backend/uploads/YYYY/MM/` 路径如果文件存在，会在启动迁移中移动到租户目录；文件不存在时不报错，访问返回 `image_not_found`。
+   - 历史 `backend/uploads/YYYY/MM/` 路径如果文件存在，会在启动迁移中移动到账本目录；文件不存在时不报错，访问返回 `image_not_found`。
    - uploads 不作为静态目录公开，只能通过受保护图片接口访问。
 
 3. Android Room
@@ -76,13 +76,13 @@ Authorization: Bearer <admin_token>
 接口：
 
 - `POST /api/maintenance/cleanup-images`
-  - 按 `DELETE_IMAGE_AFTER_DAYS` 清理当前 admin 上下文租户的 confirmed 图片和缩略图。
+  - 按 `DELETE_IMAGE_AFTER_DAYS` 清理当前 admin 上下文账本的 confirmed 图片和缩略图。
 
 - `POST /api/maintenance/cleanup-rejected`
-  - 按 `DELETE_REJECTED_AFTER_DAYS` 清理当前 admin 上下文租户的 rejected 图片和缩略图。
+  - 按 `DELETE_REJECTED_AFTER_DAYS` 清理当前 admin 上下文账本的 rejected 图片和缩略图。
 
 - `POST /api/maintenance/cleanup-orphans?dry_run=true`
-  - 扫描当前租户目录下数据库未引用的 uploads 文件。
+  - 扫描当前账本目录下数据库未引用的 uploads 文件。
   - 默认 dry-run，不删除。
 
 - `POST /api/maintenance/cleanup-orphans?dry_run=false`

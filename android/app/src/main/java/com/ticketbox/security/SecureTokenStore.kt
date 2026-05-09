@@ -12,10 +12,10 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class SecureTokenStore(context: Context) {
+class SecureTokenStore(context: Context) : SessionTokenStore {
     private val prefs = context.getSharedPreferences("ticketbox_secure_token", Context.MODE_PRIVATE)
 
-    fun saveToken(token: String) {
+    override fun saveToken(token: String) {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
         val encrypted = cipher.doFinal(token.toByteArray(StandardCharsets.UTF_8))
@@ -25,7 +25,7 @@ class SecureTokenStore(context: Context) {
         }
     }
 
-    fun getToken(): String? {
+    override fun getToken(): String? {
         return runCatching {
             val iv = Base64.decode(prefs.getString(KEY_IV, null) ?: return null, Base64.NO_WRAP)
             val encrypted = Base64.decode(prefs.getString(KEY_TOKEN, null) ?: return null, Base64.NO_WRAP)
@@ -35,7 +35,7 @@ class SecureTokenStore(context: Context) {
         }.getOrNull()
     }
 
-    fun clear() {
+    override fun clear() {
         prefs.edit {
             clear()
         }

@@ -238,7 +238,7 @@ URL: https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
 - API 不返回 Windows 本机真实路径。
 - 上传失败不残留文件。
 
-**是否阻断灰度**：是。真实图片样本不过，不进入 v0.3-rc1。
+**是否阻断灰度**：是。真实图片样本不过，不进入 v0.3-alpha 真机验收。
 
 **证据路径**：样本清单截图 + Android 待确认页截图 + 后端测试输出
 
@@ -254,7 +254,7 @@ URL: https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
 
 **执行命令/动作**：
 
-如果使用 PR artifact 作为 `v0.3.0-rc1` 真机验收包，先执行 RC artifact 门禁：
+如果使用 PR artifact 作为 `v0.3.0-alpha1` 真机验收包，先执行 artifact 门禁：
 
 ```powershell
 cd E:\projects\xiaopiaojia
@@ -263,8 +263,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.
   -ExpectedCommit <commit_sha>
 ```
 
-脚本通过后，使用 `artifacts\rc-gate\<run-id>\v0.3.0-rc1-handoff-checklist.md` 作为发包清单。
-未生成 manifest 和 handoff checklist 的 artifact，不得称为 `v0.3.0-rc1`。
+脚本通过后，使用 `artifacts\rc-gate\<run-id>\v0.3.0-alpha1-handoff-checklist.md` 作为发包清单。
+未生成 manifest 和 handoff checklist 的 artifact，不得称为 `v0.3.0-alpha1`。
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
@@ -325,6 +325,8 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 - 绑定成功，进入 App 主界面（底部导航：待确认 / 账本 / 统计 / 设置）。
 - 设置页显示"已连接"。
+- Android 在 `POST /api/auth/pair` 成功后先保存 session 和身份，再恢复 confirmed。
+- 如果恢复失败，仍进入 App，并提示"已绑定，但历史账本恢复失败，可稍后在账本页更新。"；用户可进入账本页手动更新。
 - Room 本地 confirmed 缓存通过 `syncConfirmed()` 重建。
 
 **失败处理**：
@@ -340,6 +342,43 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 **是否阻断灰度**：是。绑定失败，用户无法进入 App。
 
 **证据路径**：真机绑定成功界面截图
+
+**状态**：
+
+---
+
+## 7.1 Android 卸载重装恢复 E2E
+
+**验收项**：卸载重装后重新绑定同一账本，能恢复 confirmed 到 Room，断网后仍可查看。
+
+**执行人**：服务拥有者
+
+**执行命令/动作**：
+
+1. 后端确认至少有 1 笔 confirmed 账单。
+2. 生成新的 Pairing Code。
+3. 卸载 Android App，重新安装 `v0.3.0-alpha1` gray 包。
+4. 首次打开 App，输入服务器地址和 Pairing Code。
+5. 绑定成功后进入"账本"页，确认历史 confirmed 账单出现。
+6. 停止本机后端或让手机断网。
+7. 强停并重新打开 App，再进入"账本"页。
+
+**预期结果**：
+
+- 绑定成功后设置页显示账号、账本、设备和角色。
+- 账本页出现卸载前已有的 confirmed 账单。
+- 断网或后端停止后，账本页仍从 Room 显示这些账单。
+- 如果绑定后首次恢复失败，App 仍保持已绑定，用户可在账本页点击更新后恢复。
+
+**失败处理**：
+
+- 若绑定码已使用，需要重新生成 Pairing Code。
+- 若账本页为空，先联网点击"更新账本"，再断网复测。
+- 若绑定成功后 App 回到未绑定页，说明 session 保存顺序有回归，阻断 alpha。
+
+**是否阻断灰度**：是。卸载重装恢复不过，不进入 v0.3-alpha 真机扩大测试。
+
+**证据路径**：卸载重装绑定截图 + 账本页在线截图 + 断网账本页截图
 
 **状态**：
 
@@ -504,7 +543,7 @@ powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 `
   -BackupPath "E:\projects\xiaopiaojia\backend\backups\ticketbox-YYYYmmdd-HHMMSS.db"
 ```
 
-> **注意**：v0.3 迁移前会自动创建 `backups\ticketbox-pre-v0.3-YYYYMMDD-HHMMSS.db`。回滚到 v0.2 时需要使用这个备份。
+> **注意**：v0.3 只会在发现 pre-v0.3 数据库结构时创建 `backups\ticketbox-pre-v0.3-YYYYMMDD-HHMMSS.db`。身份表迁移完成后，后续重启不会重复生成新的 pre-v0.3 备份。回滚到 v0.2 时使用首次迁移前的备份。
 
 **预期结果**：
 

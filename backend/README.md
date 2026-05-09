@@ -35,9 +35,9 @@ setup.bat -Dev
 - 创建 `.venv`。
 - 安装后端依赖。
 - 创建 `data`、`uploads`、`logs`、`backups` 目录。
-- 如果 `.env` 不存在，自动生成随机 `UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN`。
+- 如果 `.env` 不存在，创建不含运行时身份凭证的基础配置文件。
 
-已有 `.env` 时脚本不会覆盖。确实要重建 Token 时才使用：
+已有 `.env` 时脚本不会覆盖。确实要重建基础配置时才使用：
 
 ```bat
 setup.bat -ForceEnv
@@ -54,15 +54,11 @@ copy .env.example .env
 notepad .env
 ```
 
-请把 `.env` 中的三个 Token 换成随机长字符串。
-多租户灰度时可额外配置 `TENANTS_JSON`，其中只包含每个租户的 `upload_token` 和 `app_token`；`ADMIN_TOKEN` 仍是独立维护令牌，当前映射到默认租户的 admin 上下文。
+v0.3 不再在 `.env` 中配置 `UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN` 或正式运行时 `TENANTS_JSON`。身份凭证通过 Bootstrap Owner 生成，只显示一次，并且只保存 hash 到 SQLite。
 
 示例：
 
 ```env
-UPLOAD_TOKEN=replace-with-long-random-upload-token
-APP_TOKEN=replace-with-long-random-app-token
-ADMIN_TOKEN=replace-with-long-random-admin-token
 DATABASE_URL=sqlite:///data/ticketbox.db
 UPLOAD_DIR=uploads
 MAX_UPLOAD_SIZE_MB=10
@@ -78,6 +74,15 @@ LOCAL_LLM_BASE_URL=http://127.0.0.1:1234/v1
 LOCAL_LLM_MODEL=
 LOCAL_LLM_TIMEOUT_SECONDS=60
 ```
+
+首次启动或迁移到 v0.3 后，初始化 owner、admin token、iOS UploadLink 和 Android Pairing Code：
+
+```powershell
+cd E:\projects\xiaopiaojia\backend
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap_owner.ps1
+```
+
+输出文件位于 `backend\bootstrap\`，已被 `.gitignore` 覆盖。不要提交、截图或转发这些文件。
 
 ## 启动
 
@@ -185,13 +190,7 @@ powershell -ExecutionPolicy Bypass -File scripts\restore_database.ps1 `
 
 ## PowerShell 测试
 
-以下命令假设服务已经启动，并且 `.env` 中：
-
-```text
-UPLOAD_TOKEN=upload-test-token
-APP_TOKEN=app-test-token
-ADMIN_TOKEN=admin-test-token
-```
+以下命令假设服务已经启动，并且已经通过 `scripts\bootstrap_owner.ps1` 拿到只显示一次的 `admin_token`、`upload_url_path` 和 Android Pairing Code。Android 绑定成功后会得到 `session_token`，业务接口使用这个 session token。
 
 ### 健康检查
 
@@ -199,10 +198,11 @@ ADMIN_TOKEN=admin-test-token
 Invoke-RestMethod http://127.0.0.1:8000/api/health
 ```
 
-### App Token 检查
+### Session Token 检查
 
 ```powershell
-$appHeaders = @{ Authorization = "Bearer app-test-token" }
+$sessionToken = "<session_token>"
+$appHeaders = @{ Authorization = "Bearer $sessionToken" }
 Invoke-RestMethod http://127.0.0.1:8000/api/auth/check -Headers $appHeaders
 ```
 
@@ -219,16 +219,8 @@ Invoke-RestMethod http://127.0.0.1:8000/api/auth/check -Headers $appHeaders
 
 PowerShell 里建议使用 `curl.exe`，避免 `curl` 被 PowerShell alias 到 `Invoke-WebRequest`。
 
-先校验上传 Token：
-
 ```powershell
-curl.exe "http://127.0.0.1:8000/api/upload/check" `
-  -H "Upload-Token: upload-test-token"
-```
-
-```powershell
-curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
-  -H "Upload-Token: upload-test-token" `
+curl.exe -X POST "http://127.0.0.1:8000/u/<upload_key>?tz=Asia/Shanghai" `
   -F "file=@test.png"
 ```
 
@@ -237,8 +229,7 @@ curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
 也可以直接上传原始图片请求体，方便对应 iOS 快捷指令的“文件”请求正文：
 
 ```powershell
-curl.exe -X POST "http://127.0.0.1:8000/api/upload-screenshot" `
-  -H "Upload-Token: upload-test-token" `
+curl.exe -X POST "http://127.0.0.1:8000/u/<upload_key>?tz=Asia/Shanghai" `
   -H "Content-Type: image/png" `
   --data-binary "@test.png"
 ```
@@ -344,7 +335,7 @@ Invoke-WebRequest `
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\export_confirmed.ps1 `
-  -AppToken app-test-token `
+  -SessionToken $sessionToken `
   -Month 2026-05 `
   -OutFile ticketbox-2026-05.csv
 ```
@@ -488,10 +479,10 @@ Invoke-RestMethod `
 
 ### 图片清理维护
 
-维护接口使用 `ADMIN_TOKEN`。它只按 `DELETE_IMAGE_AFTER_DAYS` 清理当前 admin 上下文租户的已确认账单图片和缩略图，不接收任意文件路径。
+维护接口使用 Bootstrap Owner 生成的 admin token。它只按 `DELETE_IMAGE_AFTER_DAYS` 清理当前 admin 上下文账本的已确认账单图片和缩略图，不接收任意文件路径。
 
 ```powershell
-$adminHeaders = @{ Authorization = "Bearer admin-test-token" }
+$adminHeaders = @{ Authorization = "Bearer <admin_token>" }
 Invoke-RestMethod `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/maintenance/cleanup-images `
@@ -511,10 +502,11 @@ Invoke-RestMethod `
 
 ## 安全边界
 
-- 上传接口使用 `Upload-Token`。
-- App 接口使用 `Authorization: Bearer APP_TOKEN`。
-- 维护接口使用 `Authorization: Bearer ADMIN_TOKEN`。
-- 新上传保存到 `uploads/{tenant_id}/YYYY/MM/`，`uploads/` 不作为静态目录公开。
+- iPhone 上传使用 UploadLink URL `POST /u/<upload_key>?tz=...`，只能创建 pending。
+- Android 和业务接口使用 `Authorization: Bearer <session_token>`。
+- 维护接口使用 `Authorization: Bearer <admin_token>`。
+- 旧 `APP_TOKEN` / `UPLOAD_TOKEN` / 静态 `ADMIN_TOKEN` 不再是运行时凭证。
+- 新上传保存到 `uploads/{ledger_id}/YYYY/MM/`，`uploads/` 不作为静态目录公开。
 - 图片只能通过 `GET /api/expenses/{id}/image` 鉴权访问。
 - 缩略图只能通过 `GET /api/expenses/{id}/thumbnail` 鉴权访问。
 - API 不返回 Windows 本机真实路径。

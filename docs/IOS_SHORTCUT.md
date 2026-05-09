@@ -90,6 +90,8 @@ iOS 26.4 实测中，`表单` 模式容易把"转换后的图像"当作普通表
 
 - 不要把 admin token、session token 或 pairing code 放到 iPhone 快捷指令里。
 - iPhone 只使用 UploadLink URL，它是独立的、只用于上传的凭证。
+- 不要把完整 UploadLink URL 发到聊天、日志、截图或工单里；需要排查时把 `/u/<upload_key>` 打码成 `/u/***`。
+- 后端必须用 `--no-access-log` 方式启动，避免 Uvicorn 访问日志写下完整 UploadLink 路径。Cloudflare 或其他代理日志也不要保存完整 URL。
 - `User-Agent` 必须一起添加。Cloudflare 可能会把没有标准 `User-Agent` 的快捷指令请求拦截为 `error code: 1010`，手机上会显示成"网络中断"。
 - `?tz=...` 不参与鉴权，只用于上传后 OCR 草稿时间解析。
 - 推荐快捷指令先转换为 JPEG 或 PNG，减少上传体积并提升预览稳定性；v0.3 也支持 HEIC 原图，后端会做真实解码校验并尝试生成 JPEG 缩略图。

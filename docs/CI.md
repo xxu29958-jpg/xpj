@@ -104,11 +104,11 @@ Android：
 - Lint 失败：看 `android/app/build/reports/lint-results-grayDebug.html`。
 # CI 与灰度版发布底线
 
-灰度版实现期间，CI 仍然是合并和发布底线。任何多租户、Android 上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
+灰度版实现期间，CI 仍然是合并和发布底线。任何账本隔离、Android 上传、UI 改造或 release 脚本变更，都不能绕过既有后端和 Android 验证。
 
 灰度版新增要求：
 
-- 后端测试必须覆盖多租户隔离。
+- 后端测试必须覆盖账本隔离。
 - Android 测试必须覆盖上传入口的非 UI 逻辑和 gray/internal 差异。
 - PowerShell 脚本仍必须通过 UTF-8 with BOM 检查。
 - GitHub 发布后必须等待 Actions 绿灯。

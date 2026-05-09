@@ -116,7 +116,7 @@ class NetworkErrorMapperTest {
     }
 
     @Test
-    fun rejectsBlankBindingAppToken() {
+    fun rejectsBlankBindingPairingCode() {
         val error = assertFailsWith<IllegalArgumentException> {
             validateBindingInput(serverUrl = "https://api.zen70.cn", pairingCode = " ")
         }

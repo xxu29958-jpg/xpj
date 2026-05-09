@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 import secrets
 import shutil
+import sqlite3
 from uuid import uuid4
 
 from sqlalchemy import create_engine, inspect, select, text
@@ -20,6 +21,15 @@ connect_args = {"check_same_thread": False} if settings.database_url.startswith(
 engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 _sqlite_backup_done = False
+V03_IDENTITY_TABLES = {
+    "accounts",
+    "ledgers",
+    "ledger_members",
+    "devices",
+    "auth_tokens",
+    "upload_links",
+    "pairing_codes",
+}
 
 
 class Base(DeclarativeBase):
@@ -64,6 +74,8 @@ def backup_sqlite_database_once() -> Path | None:
     db_path = _sqlite_database_path()
     if db_path is None or not db_path.is_file():
         return None
+    if not _needs_pre_v03_backup(db_path):
+        return None
 
     backup_dir = BACKEND_ROOT / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
@@ -75,6 +87,18 @@ def backup_sqlite_database_once() -> Path | None:
         raise RuntimeError("SQLite backup target escaped backup directory") from exc
     shutil.copy2(db_path, backup_path)
     return backup_path
+
+
+def _needs_pre_v03_backup(db_path: Path) -> bool:
+    try:
+        with sqlite3.connect(db_path) as connection:
+            table_rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise RuntimeError(f"SQLite database cannot be inspected before migration: {db_path}") from exc
+    table_names = {str(row[0]) for row in table_rows}
+    if not table_names:
+        return False
+    return not V03_IDENTITY_TABLES.issubset(table_names)
 
 
 def seed_identity_data() -> None:

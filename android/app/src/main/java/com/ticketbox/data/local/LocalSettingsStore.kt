@@ -12,23 +12,23 @@ private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
     name = "ticketbox_background_settings",
 )
 
-class LocalSettingsStore(context: Context) {
+class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("ticketbox_settings", Context.MODE_PRIVATE)
     private val backgroundStore = BackgroundSettingsDataStore(appContext.ticketboxBackgroundDataStore)
 
-    val backgroundSettingsFlow: Flow<BackgroundSettings> = backgroundStore.settingsFlow
+    override val backgroundSettingsFlow: Flow<BackgroundSettings> = backgroundStore.settingsFlow
 
-    fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
+    override fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
-    fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
+    override fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
 
-    fun monthlyBudgetCents(): Long? {
+    override fun monthlyBudgetCents(): Long? {
         val value = prefs.getLong(KEY_MONTHLY_BUDGET_CENTS, NO_BUDGET)
         return value.takeIf { it > 0L }
     }
 
-    fun saveMonthlyBudgetCents(amountCents: Long?) {
+    override fun saveMonthlyBudgetCents(amountCents: Long?) {
         prefs.edit {
             if (amountCents == null || amountCents <= 0L) {
                 remove(KEY_MONTHLY_BUDGET_CENTS)
@@ -38,19 +38,19 @@ class LocalSettingsStore(context: Context) {
         }
     }
 
-    fun lastConfirmedSyncAt(): String? = prefs.getString(KEY_LAST_CONFIRMED_SYNC_AT, null)
+    override fun lastConfirmedSyncAt(): String? = prefs.getString(KEY_LAST_CONFIRMED_SYNC_AT, null)
 
-    fun accountName(): String? = prefs.getString(KEY_ACCOUNT_NAME, null)
+    override fun accountName(): String? = prefs.getString(KEY_ACCOUNT_NAME, null)
 
-    fun ledgerName(): String? = prefs.getString(KEY_LEDGER_NAME, null)
+    override fun ledgerName(): String? = prefs.getString(KEY_LEDGER_NAME, null)
 
-    fun deviceName(): String? = prefs.getString(KEY_DEVICE_NAME, null)
+    override fun deviceName(): String? = prefs.getString(KEY_DEVICE_NAME, null)
 
-    fun role(): String? = prefs.getString(KEY_ROLE, null)
+    override fun role(): String? = prefs.getString(KEY_ROLE, null)
 
-    fun boundAt(): String? = prefs.getString(KEY_BOUND_AT, null)
+    override fun boundAt(): String? = prefs.getString(KEY_BOUND_AT, null)
 
-    fun saveIdentity(
+    override fun saveIdentity(
         accountName: String,
         ledgerName: String,
         deviceName: String,
@@ -66,53 +66,53 @@ class LocalSettingsStore(context: Context) {
         }
     }
 
-    fun saveLastConfirmedSyncAt(value: String) {
+    override fun saveLastConfirmedSyncAt(value: String) {
         prefs.edit {
             putString(KEY_LAST_CONFIRMED_SYNC_AT, value)
         }
     }
 
-    fun clearLastConfirmedSyncAt() {
+    override fun clearLastConfirmedSyncAt() {
         prefs.edit {
             remove(KEY_LAST_CONFIRMED_SYNC_AT)
         }
     }
 
-    fun lastUploadAt(): String? = prefs.getString(KEY_LAST_UPLOAD_AT, null)
+    override fun lastUploadAt(): String? = prefs.getString(KEY_LAST_UPLOAD_AT, null)
 
-    fun saveLastUploadAt(value: String) {
+    override fun saveLastUploadAt(value: String) {
         prefs.edit {
             putString(KEY_LAST_UPLOAD_AT, value)
         }
     }
 
-    fun saveAppSkinKey(skinKey: String) {
+    override fun saveAppSkinKey(skinKey: String) {
         prefs.edit {
             putString(KEY_APP_SKIN, skinKey)
         }
     }
 
-    fun saveServerUrl(serverUrl: String) {
+    override fun saveServerUrl(serverUrl: String) {
         prefs.edit {
             putString(KEY_SERVER_URL, serverUrl.trim().trimEnd('/'))
         }
     }
 
-    fun isBound(): Boolean = !serverUrl().isNullOrBlank()
+    override fun isBound(): Boolean = !serverUrl().isNullOrBlank()
 
-    fun markUnlocked() {
+    override fun markUnlocked() {
         prefs.edit {
             putLong(KEY_LAST_UNLOCKED_AT, System.currentTimeMillis())
         }
     }
 
-    fun markBackgrounded() {
+    override fun markBackgrounded() {
         prefs.edit {
             putLong(KEY_LAST_BACKGROUNDED_AT, System.currentTimeMillis())
         }
     }
 
-    fun requiresUnlock(): Boolean {
+    override fun requiresUnlock(): Boolean {
         val lastUnlockedAt = prefs.getLong(KEY_LAST_UNLOCKED_AT, 0L)
         if (lastUnlockedAt == 0L) return true
         val lastBackgroundedAt = prefs.getLong(KEY_LAST_BACKGROUNDED_AT, 0L)
@@ -120,7 +120,7 @@ class LocalSettingsStore(context: Context) {
         return System.currentTimeMillis() - lastBackgroundedAt > LOCK_AFTER_MS
     }
 
-    fun clear() {
+    override fun clear() {
         prefs.edit {
             clear()
         }

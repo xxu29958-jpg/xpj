@@ -45,9 +45,11 @@ Room 是本机缓存。卸载重装后：
 -> 输入 Pairing Code
 -> 后端识别同一 Account / Ledger
 -> 生成新 Device 和 session token
--> App 先用新 session 完整 syncConfirmed()
--> Room 替换并重建 confirmed 缓存
 -> 本地保存 session token 和账号 / 账本 / 设备信息
+-> App 用新 session 执行 syncConfirmed()
+-> Room 替换并重建 confirmed 缓存
 ```
+
+绑定成功后必须先保存 session 和身份，再恢复 confirmed。`syncConfirmed()` 失败时绑定仍然成立，App 提示"已绑定，但历史账本恢复失败，可稍后在账本页更新"，用户可进入账本页手动更新；绑定码不能因为恢复失败而让用户失去重试入口。
 
 这条链路是 v0.3 的核心验收项。
