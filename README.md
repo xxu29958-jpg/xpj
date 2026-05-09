@@ -33,6 +33,8 @@ iPhone 快捷指令或 Android 上传截图
 - [关键决策](docs/DECISIONS/)
 - [官方资料与依赖来源](docs/REFERENCES.md)
 - [依赖管理](docs/DEPENDENCIES.md)
+- [灰度验收执行清单](docs/GRAY_ACCEPTANCE_EXECUTION.md)
+- [错误码文案映射](docs/ERROR_MESSAGE_MAPPING.md)
 
 ## 项目组成
 

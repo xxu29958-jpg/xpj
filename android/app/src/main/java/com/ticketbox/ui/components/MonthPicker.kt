@@ -95,7 +95,7 @@ fun MonthPickerSheet(
             if (months.isEmpty()) {
                 item {
                     Text(
-                        text = "同步后会显示可选月份。",
+                        text = "更新后会显示可选月份。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp),
                     )

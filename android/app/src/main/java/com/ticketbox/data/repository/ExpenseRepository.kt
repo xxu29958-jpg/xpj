@@ -34,11 +34,30 @@ import retrofit2.HttpException
 import retrofit2.Response
 import java.io.IOException
 import java.time.Instant
+import java.util.TimeZone
 import kotlin.system.measureTimeMillis
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
 
 class RepositoryException(message: String) : RuntimeException(message)
+
+internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): String {
+    return when (errorCode.trim()) {
+        "invalid_token" -> "访问口令不对，请重新检查。"
+        "file_too_large" -> "上传文件超过大小限制。"
+        "unsupported_file_type" -> "不支持的图片格式。"
+        "expense_not_found" -> "账单不存在。"
+        "amount_required" -> "请先填写金额。"
+        "image_not_found" -> "图片不存在。"
+        "rule_not_found" -> "分类规则不存在。"
+        "rule_in_use" -> "分类规则仍在使用，不能删除。"
+        "server_error" -> "暂时处理不了，请稍后再试。"
+        "invalid_request" -> "请求参数不正确。"
+        "route_not_found" -> "账本版本过旧，请重启电脑上的小票夹后再试。"
+        "method_not_allowed" -> "操作方式不正确，请更新 App 后再试。"
+        else -> serverMessage.trim().ifBlank { "操作失败。" }
+    }
+}
 
 class ExpenseRepository(
     private val expenseDao: ExpenseDao,
@@ -58,9 +77,13 @@ class ExpenseRepository(
     private var cachedServerUrl: String? = null
     private var cachedApi: ApiService? = null
 
+    private fun currentTimezoneId(): String {
+        return TimeZone.getDefault().id
+    }
+
     private fun api(serverUrlOverride: String? = null, tokenOverride: String? = null): ApiService {
         val serverUrl = serverUrlOverride ?: settingsStore.serverUrl()
-        require(!serverUrl.isNullOrBlank()) { "服务器地址未绑定" }
+        require(!serverUrl.isNullOrBlank()) { "账本地址未绑定" }
         if (serverUrlOverride != null || tokenOverride != null) {
             return apiClient.create(serverUrl) { tokenOverride ?: tokenStore.getToken() }
         }
@@ -109,15 +132,13 @@ class ExpenseRepository(
         if (!body.isNullOrBlank()) {
             runCatching { errorAdapter.fromJson(body) }
                 .getOrNull()
-                ?.message
-                ?.takeIf { it.isNotBlank() }
-                ?.let { return it }
+                ?.let { return backendErrorUserMessage(it.error, it.message) }
         }
         return when (statusCode) {
             401, 403 -> "访问口令不对，请重新检查。"
             404 -> "账单不存在。"
             413 -> "上传文件超过大小限制。"
-            else -> "服务器返回错误 $statusCode。"
+            else -> "连接出错（$statusCode），请稍后再试。"
         }
     }
 
@@ -208,21 +229,21 @@ class ExpenseRepository(
         record("身份验证", "访问凭证有效") {
             service.checkAuth()
         }
-        record("服务器状态", "小票夹服务正常") {
+        record("账本状态", "小票夹服务正常") {
             service.serverSettings()
         }
         record("待确认账单", "可以读取待确认账单") {
             pending = service.pendingExpenses().map { it.toDomain() }
         }
-        record("已确认账本", "可以同步账本") {
-            service.confirmedExpenses(page = 1, pageSize = 1)
+        record("已确认账单", "可以更新账本") {
+            service.confirmedExpenses(page = 1, pageSize = 1, timezone = currentTimezoneId())
         }
         record("月度统计", "可以读取月度统计") {
-            service.monthlyStats(null)
+            service.monthlyStats(month = null, timezone = currentTimezoneId())
         }
         record("分类与月份", "可以读取分类和月份") {
             service.categories()
-            service.months()
+            service.months(timezone = currentTimezoneId())
         }
         record("疑似重复", "可以读取疑似重复账单") {
             service.duplicates()
@@ -266,7 +287,7 @@ class ExpenseRepository(
         val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
         var uploadResponse: UploadResponseDto? = null
         val networkDurationMs = measureTimeMillis {
-            uploadResponse = api().uploadScreenshot(filePart)
+            uploadResponse = api().uploadScreenshot(filePart, timezone = currentTimezoneId())
         }
         val response = requireNotNull(uploadResponse)
         if (BuildConfig.DEBUG) {
@@ -342,7 +363,13 @@ class ExpenseRepository(
         val pageSize = 50
         var total = Int.MAX_VALUE
         do {
-            val response = api().confirmedExpenses(page = page, pageSize = pageSize, month = month, category = category)
+            val response = api().confirmedExpenses(
+                page = page,
+                pageSize = pageSize,
+                month = month,
+                category = category,
+                timezone = currentTimezoneId(),
+            )
             total = response.total
             expenseDao.upsertAllByServerId(response.items.map { it.toEntity() })
             collected += response.items.map { it.toDomain() }
@@ -357,13 +384,13 @@ class ExpenseRepository(
     }
 
     suspend fun months(): Result<List<String>> = safeCall {
-        api().months().items
+        api().months(timezone = currentTimezoneId()).items
     }
 
     suspend fun exportConfirmedCsv(month: String? = null, category: String? = null): Result<CsvExport> = safeCall {
         val cleanMonth = month?.trim()?.ifBlank { null }
         val cleanCategory = category?.trim()?.ifBlank { null }
-        val response = api().exportCsv(month = cleanMonth, category = cleanCategory)
+        val response = api().exportCsv(month = cleanMonth, category = cleanCategory, timezone = currentTimezoneId())
         if (!response.isSuccessful) {
             throw RepositoryException(parseErrorMessage(response.code(), response.errorBody()?.string()))
         }
@@ -381,11 +408,11 @@ class ExpenseRepository(
     }
 
     suspend fun monthlyStats(month: String? = null): Result<MonthlyStats> = safeCall {
-        api().monthlyStats(month).toDomain()
+        api().monthlyStats(month = month, timezone = currentTimezoneId()).toDomain()
     }
 
     suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats> = safeCall {
-        api().lifestyleStats(month).toDomain()
+        api().lifestyleStats(month = month, timezone = currentTimezoneId()).toDomain()
     }
 
     suspend fun categoryRules(): Result<List<CategoryRule>> = safeCall {

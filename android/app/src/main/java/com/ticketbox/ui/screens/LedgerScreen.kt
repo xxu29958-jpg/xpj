@@ -298,7 +298,7 @@ private fun LedgerToolsSheet(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("筛选与同步", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("筛选与更新", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
                 text = ledgerCombinedStatusLine(state),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -323,13 +323,13 @@ private fun LedgerToolsSheet(
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             LedgerInlineButton(
-                text = if (state.exporting) "导出中" else "导出 CSV",
+                text = if (state.exporting) "导出中" else "导出表格",
                 modifier = Modifier.weight(1f),
                 enabled = canExport,
                 onClick = onExportCsv,
             )
             LedgerInlineButton(
-                text = if (state.syncing) "同步中" else "同步账本",
+                text = if (state.syncing) "更新中" else "更新账本",
                 modifier = Modifier.weight(1f),
                 enabled = !state.syncing,
                 onClick = onSync,
@@ -886,7 +886,7 @@ private fun EmptyLedgerState(
         else -> "本地还没有已确认账单"
     }
     val body = if (hasMonth || hasCategory) {
-        "可以切换月份、选择全部分类，或先同步服务器。"
+        "可以切换月份、选择全部分类，或先更新账本。"
     } else {
         "在待确认页确认几笔账单后，账本会在这里显示。"
     }
@@ -920,7 +920,7 @@ private fun EmptyLedgerState(
                         Text("重置筛选")
                     }
                     QuietOutlinedButton(
-                        text = "同步账本",
+                        text = "更新账本",
                         modifier = Modifier.weight(1f),
                         enabled = !state.syncing,
                         onClick = onSync,
@@ -933,7 +933,7 @@ private fun EmptyLedgerState(
                         Text("手动记一笔")
                     }
                     QuietOutlinedButton(
-                        text = "同步账本",
+                        text = "更新账本",
                         modifier = Modifier.weight(1f),
                         enabled = !state.syncing,
                         onClick = onSync,
@@ -973,9 +973,9 @@ private fun LedgerEmptyIllustration() {
 
 private fun ledgerCombinedStatusLine(state: LedgerUiState): String {
     val syncText = when {
-        state.syncing -> "同步中"
-        state.lastSyncAt != null -> "同步完成 · ${ledgerSyncClock(state.lastSyncAt)}"
-        else -> "离线缓存"
+        state.syncing -> "更新中"
+        state.lastSyncAt != null -> "更新完成 · ${ledgerSyncClock(state.lastSyncAt)}"
+        else -> "离线可用"
     }
     val month = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
     val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
@@ -992,8 +992,8 @@ private fun ledgerFilterSummary(state: LedgerUiState): String {
 
 private fun ledgerStatusLine(state: LedgerUiState): String {
     return when {
-        state.syncing -> "同步中"
-        state.message?.contains("同步", ignoreCase = true) == true -> {
+        state.syncing -> "更新中"
+        state.message?.contains("更新", ignoreCase = true) == true -> {
             val syncedAt = state.lastSyncAt?.let(::ledgerSyncClock)
             if (syncedAt == null) {
                 "✓ ${state.message}"
@@ -1001,8 +1001,8 @@ private fun ledgerStatusLine(state: LedgerUiState): String {
                 "✓ ${state.message} · $syncedAt"
             }
         }
-        state.lastSyncAt != null -> "✓ 同步完成 · ${ledgerSyncClock(state.lastSyncAt)}"
-        else -> "离线可看本地缓存"
+        state.lastSyncAt != null -> "✓ 更新完成 · ${ledgerSyncClock(state.lastSyncAt)}"
+        else -> "离线可查看"
     }
 }
 

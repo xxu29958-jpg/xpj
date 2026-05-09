@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.expenseLedgerMonth
 import com.ticketbox.domain.model.filterConfirmedExpenses
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,13 +112,13 @@ class LedgerViewModel(
                         it.copy(
                             syncing = false,
                             lastSyncAt = repository.lastConfirmedSyncAt(),
-                            message = "同步完成",
+                            message = "更新完成",
                         )
                     }
                 }
                 .onFailure { error ->
                     _uiState.update {
-                        it.copy(syncing = false, message = error.message ?: "暂时同步不了，先看本机账本。")
+                        it.copy(syncing = false, message = error.message ?: "暂时更新不了，先看本机账本。")
                     }
                 }
         }
@@ -128,7 +129,7 @@ class LedgerViewModel(
             val filters = _uiState.value
             if (filters.items.isEmpty()) {
                 _uiState.update {
-                    it.copy(message = "暂无可导出的已确认账单。请先确认几笔账单，或重新同步后再试。")
+                    it.copy(message = "暂无可导出的已确认账单。请先确认几笔账单，或重新更新后再试。")
                 }
                 return@launch
             }
@@ -162,7 +163,7 @@ class LedgerViewModel(
                     _uiState.update { state ->
                         val next = state.copy(
                             creatingManual = false,
-                            monthFilter = expense.expenseTime?.take(7) ?: state.monthFilter,
+                            monthFilter = expenseLedgerMonth(expense) ?: state.monthFilter,
                             categoryFilter = "",
                             message = "已记入账本",
                         )

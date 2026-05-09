@@ -70,6 +70,7 @@ App 接口：
 
 ```http
 Authorization: Bearer APP_TOKEN
+X-Timezone: Asia/Shanghai
 ```
 
 维护接口：
@@ -140,6 +141,7 @@ Upload-Token: UPLOAD_TOKEN
 ```http
 Upload-Token: UPLOAD_TOKEN
 User-Agent: TicketBox/1.0 iOS-Shortcut
+X-Timezone: Asia/Shanghai
 ```
 
 请求体方式一，iOS 快捷指令推荐，iOS 26.4 真机验证通过：
@@ -168,6 +170,7 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
 - 支持 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 同一个接口同时支持原始图片请求体和 `multipart/form-data` 文件字段。
 - iOS 快捷指令优先使用原始图片请求体，也就是“请求正文：文件”。不要优先使用“请求正文：表单”。
+- `X-Timezone` 可选，填手机系统 IANA 时区；用于上传后 OCR 草稿的本地时间解析，未传时使用服务端 `OCR_DEFAULT_TIMEZONE`。
 - Cloudflare 可能拦截没有标准 `User-Agent` 的快捷指令请求，公网部署时建议固定 `User-Agent`。
 - 最大 10MB，按 `MAX_UPLOAD_SIZE_MB` 配置。
 - 保存为随机文件名。
@@ -220,6 +223,7 @@ file: 图片文件
 
 - 与 iPhone 上传共用同一套文件校验、随机命名、hash、缩略图和 pending 创建流程。
 - 按当前 `APP_TOKEN` 所属租户写入对应账本。
+- `X-Timezone` 可选，Android 默认发送手机系统 IANA 时区；用于上传后 OCR 草稿时间解析。
 - Android 不保存、不发送 `Upload-Token`。
 - 灰度版 UI 只显示“上传截图”，不显示 endpoint、token 或 multipart。
 
@@ -299,6 +303,7 @@ page: 默认 1
 page_size: 默认 50，最大 200
 month: YYYY-MM，可选
 category: 分类，可选
+timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
 ```
 
 返回：
@@ -338,7 +343,13 @@ Authorization: Bearer APP_TOKEN
 Authorization: Bearer APP_TOKEN
 ```
 
-返回已确认账单中出现过的月份，按新到旧排序。统计和账本页可用它做月份快捷选择。
+查询参数：
+
+```text
+timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
+```
+
+返回已确认账单中出现过的月份，按新到旧排序。月份按 `timezone` 对应的本地自然月计算，统计和账本页可用它做月份快捷选择。
 
 返回：
 
@@ -361,6 +372,7 @@ Authorization: Bearer APP_TOKEN
 ```text
 month: YYYY-MM，可选
 category: 分类，可选
+timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
 ```
 
 返回 `text/csv`，用于导出已确认账单。导出接口只返回账单数据，不提供文件目录浏览或任意文件下载。
@@ -601,6 +613,7 @@ Authorization: Bearer APP_TOKEN
 
 ```text
 month=2026-05
+timezone=Asia/Shanghai
 ```
 
 返回：
@@ -626,6 +639,7 @@ month=2026-05
 
 ```text
 month=2026-05
+timezone=Asia/Shanghai
 ```
 
 返回：

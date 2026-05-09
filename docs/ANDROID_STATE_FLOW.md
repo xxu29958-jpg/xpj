@@ -98,8 +98,9 @@ COALESCE(expense_time, confirmed_at)
 Android：
 
 - 展示时间时转设备本地时区。
-- 账本月份筛选按本地时区计算。
-- Room 本地趋势、月份筛选和统计补充也按本地时区。
+- 账本月份筛选按手机系统时区计算。
+- Room 本地趋势、月份筛选和统计补充也按手机系统时区。
+- Android 请求 confirmed、months、stats 和 export 时传手机系统 IANA 时区；后端未收到 `timezone` 时才回落到 `OCR_DEFAULT_TIMEZONE`，当前默认是 `Asia/Shanghai`。
 
 这样避免 UTC 月底账单在 Android 显示为下个月，但后端统计仍落在上个月。
 
@@ -277,6 +278,6 @@ Android 测试必须覆盖：
 
 - confirmed 写入 Room 时按 serverId upsert。
 - pending / rejected 不进入 confirmed 缓存。
-- 账本本地月份筛选按本地时区。
+- 账本本地月份筛选按手机系统时区。
 - 远端失败时账本页不清空 Room 已有 confirmed 数据。
 - 图片路径缺失时域模型仍可展示账本数据。

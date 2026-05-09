@@ -155,7 +155,7 @@ class _RankedCandidate(Protocol):
 _CandidateT = TypeVar("_CandidateT", bound=_RankedCandidate)
 
 
-def parse_receipt_text(raw_text: str) -> ParsedReceipt:
+def parse_receipt_text(raw_text: str, timezone_name: str | None = None) -> ParsedReceipt:
     text = _normalize_text(raw_text)
     if not text:
         return ParsedReceipt()
@@ -163,7 +163,7 @@ def parse_receipt_text(raw_text: str) -> ParsedReceipt:
     context = _build_receipt_context(text)
     amount_candidate = _best_candidate(_calibrate_amount_candidates(_amount_candidates(text), context))
     merchant_candidate = _best_candidate(_calibrate_merchant_candidates(_merchant_candidates(text), context))
-    time_candidate = _best_candidate(_calibrate_time_candidates(_time_candidates(text), context))
+    time_candidate = _best_candidate(_calibrate_time_candidates(_time_candidates(text, timezone_name), context))
     amount_cents = amount_candidate.amount_cents if amount_candidate else None
     merchant = merchant_candidate.value if merchant_candidate else None
     expense_time = time_candidate.value if time_candidate else None
@@ -842,13 +842,13 @@ def _clean_merchant(value: str) -> str | None:
     return cleaned or None
 
 
-def _extract_expense_time(text: str) -> datetime | None:
+def _extract_expense_time(text: str, timezone_name: str | None = None) -> datetime | None:
     context = _build_receipt_context(text)
-    candidate = _best_candidate(_calibrate_time_candidates(_time_candidates(text), context))
+    candidate = _best_candidate(_calibrate_time_candidates(_time_candidates(text, timezone_name), context))
     return candidate.value if candidate else None
 
 
-def _time_candidates(text: str) -> list[_TimeCandidate]:
+def _time_candidates(text: str, timezone_name: str | None = None) -> list[_TimeCandidate]:
     candidates: list[_TimeCandidate] = []
     for pattern_index, pattern in enumerate(TIME_PATTERNS):
         for match in pattern.finditer(text):
@@ -861,7 +861,7 @@ def _time_candidates(text: str) -> list[_TimeCandidate]:
                     int(hour),
                     int(minute),
                     int(second or 0),
-                    tzinfo=_default_timezone(),
+                    tzinfo=_default_timezone(timezone_name),
                 )
             except ValueError:
                 continue
@@ -883,13 +883,13 @@ def _time_candidates(text: str) -> list[_TimeCandidate]:
             month, day, hour, minute, second = match.groups()
             try:
                 local_value = datetime(
-                    _default_local_year(),
+                    _default_local_year(timezone_name),
                     int(month),
                     int(day),
                     int(hour),
                     int(minute),
                     int(second or 0),
-                    tzinfo=_default_timezone(),
+                    tzinfo=_default_timezone(timezone_name),
                 )
             except ValueError:
                 continue
@@ -971,15 +971,16 @@ def _calibrate_time_candidates(candidates: list[_TimeCandidate], context: _Recei
     return calibrated
 
 
-def _default_timezone() -> ZoneInfo:
+def _default_timezone(timezone_name: str | None = None) -> ZoneInfo:
+    name = (timezone_name or "").strip() or get_settings().ocr_default_timezone
     try:
-        return ZoneInfo(get_settings().ocr_default_timezone)
+        return ZoneInfo(name)
     except ZoneInfoNotFoundError:
         return ZoneInfo("Asia/Shanghai")
 
 
-def _default_local_year() -> int:
-    return datetime.now(_default_timezone()).year
+def _default_local_year(timezone_name: str | None = None) -> int:
+    return datetime.now(_default_timezone(timezone_name)).year
 
 
 def _suggest_category(text: str, merchant: str | None) -> str | None:

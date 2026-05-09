@@ -113,7 +113,7 @@ fun SecurityPrivacyScreen(
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
             title = { Text("清除手机本地数据？") },
-            text = { Text("服务端账单不会删除。之后可重新同步已入账账单。") },
+            text = { Text("账本数据不会删除。之后可重新更新已入账账单。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -131,7 +131,7 @@ fun SecurityPrivacyScreen(
         AlertDialog(
             onDismissRequest = { showClearBindingDialog = false },
             title = { Text("退出当前账本？") },
-            text = { Text("退出后需要重新绑定小票夹。手机本地口令会被清除，服务端账单不会删除。") },
+            text = { Text("退出后需要重新绑定小票夹。手机本地口令会被清除，账本数据不会删除。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -159,7 +159,7 @@ fun SecurityPrivacyScreen(
                 ) {
                     Text("指纹 / 面容只用于本地解锁", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        text = "服务端访问仍然使用绑定时保存的访问口令。App 切到后台超过 5 分钟后会要求重新解锁。",
+                        text = "账本访问仍然使用绑定时保存的访问口令。App 切到后台超过 5 分钟后会要求重新解锁。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
