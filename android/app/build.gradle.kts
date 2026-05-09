@@ -1,5 +1,5 @@
-val ticketboxVersionCode = 20001
-val ticketboxVersionName = "0.2.0-rc1"
+val ticketboxVersionCode = 30001
+val ticketboxVersionName = "0.3.0-alpha1"
 
 plugins {
     alias(libs.plugins.android.application)

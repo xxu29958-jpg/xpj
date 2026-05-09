@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
+import app.database as database
 from sqlalchemy import inspect, text
 
 from app.database import BACKEND_ROOT, Base, engine, init_db, migrate_upload_paths_to_tenant_dirs
@@ -136,6 +137,32 @@ def test_v01_schema_migrates_without_losing_expense_data() -> None:
     assert migrated["duplicate_status"] == "none"
     assert {"tenant_id", "public_id", "thumbnail_path", "tags", "image_deleted_at"}.issubset(_expense_columns())
     assert "ix_expenses_public_id" in _indexes("expenses")
+
+
+def test_pre_v03_backup_is_not_recreated_after_identity_migration() -> None:
+    backup_dir = BACKEND_ROOT / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_pattern = "pytest_test-pre-v0.3-*.db"
+    for backup_file in backup_dir.glob(backup_pattern):
+        backup_file.unlink()
+
+    _reset_empty_database()
+    _create_v01_expenses_table()
+    _insert_legacy_expense(amount_cents=3680, status="confirmed")
+
+    try:
+        database._sqlite_backup_done = False
+        init_db()
+        first_backups = sorted(backup_dir.glob(backup_pattern))
+        assert len(first_backups) == 1
+
+        database._sqlite_backup_done = False
+        init_db()
+        second_backups = sorted(backup_dir.glob(backup_pattern))
+        assert second_backups == first_backups
+    finally:
+        for backup_file in backup_dir.glob(backup_pattern):
+            backup_file.unlink()
 
 
 def test_missing_public_id_backfills_unique_values() -> None:

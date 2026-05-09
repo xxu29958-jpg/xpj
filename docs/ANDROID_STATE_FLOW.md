@@ -161,6 +161,21 @@ Room 只承担 confirmed 账本缓存，不做复杂离线编辑。
 - 编辑 confirmed 远端失败时不改 Room。
 - 手动记一笔必须在线成功后才写 Room。
 
+## 6.1 绑定后 confirmed 恢复
+
+Pairing Code 绑定是一次性动作。`POST /api/auth/pair` 成功后，Android 必须立即保存：
+
+- serverUrl。
+- session token。
+- accountName / ledgerName / deviceName / role / boundAt。
+
+随后再执行 confirmed 恢复并重建 Room 缓存。若 confirmed 恢复失败：
+
+- 不清除已保存的 session 和身份。
+- 不回到未绑定页。
+- 显示"已绑定，但历史账本恢复失败，可稍后在账本页更新。"
+- 用户进入账本页后可手动点击更新账本，继续使用同一个 session 恢复缓存。
+
 ## 7. 重复检测
 
 重复检测只提示，不做处置。
@@ -176,7 +191,7 @@ Room 只承担 confirmed 账本缓存，不做复杂离线编辑。
 - 自动删除。
 - 自动拒绝。
 - 自动入账。
-- 跨租户检测。
+- 跨账本检测。
 - rejected 参与重复提醒。
 
 `mark-not-duplicate` 只清除当前检测类型，不影响其他检测类型。例如用户忽略了同图 hash 重复后，后续仍可根据金额、商家、时间触发相似重复提醒。
@@ -250,7 +265,7 @@ OCR 只填草稿，不自动入账。
 - `keyword` 可以自由填写。
 - `category` 尽量从标准分类选择。
 - 后端保存和统计前需要归一化分类。
-- 分类规则按租户隔离。
+- 分类规则按账本隔离。
 - 避免因为自由文本导致统计分类爆炸。
 
 ## 11. 当前测试覆盖

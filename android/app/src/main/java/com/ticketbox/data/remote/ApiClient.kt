@@ -22,7 +22,7 @@ import java.net.InetAddress
 import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
-class ApiClient(context: Context? = null) {
+class ApiClient(context: Context? = null) : ApiServiceFactory {
     private companion object {
         const val LOG_TAG = "TicketboxNetwork"
         const val USER_AGENT = "TicketBox/1.0 Android"
@@ -33,7 +33,7 @@ class ApiClient(context: Context? = null) {
 
     private val nonVpnNetworkProvider = context?.applicationContext?.let(::NonVpnNetworkProvider)
 
-    fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
+    override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }

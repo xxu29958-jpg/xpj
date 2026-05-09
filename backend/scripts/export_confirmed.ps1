@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BaseUrl = "http://127.0.0.1:8000",
     [Parameter(Mandatory = $true)]
-    [string]$AppToken,
+    [string]$SessionToken,
     [string]$Month = "",
     [string]$Category = "",
     [string]$OutFile = "ticketbox-expenses.csv"
@@ -22,7 +22,7 @@ if ($query.Count -gt 0) {
 
 Invoke-WebRequest `
     -Uri $uri `
-    -Headers @{ Authorization = "Bearer $AppToken" } `
+    -Headers @{ Authorization = "Bearer $SessionToken" } `
     -OutFile $OutFile
 
 Write-Host "已导出到 $OutFile"

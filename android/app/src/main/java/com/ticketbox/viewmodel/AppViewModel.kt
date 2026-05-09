@@ -2,11 +2,11 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.data.local.LocalSettingsStore
-import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.repository.ServerBindingRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.security.SecureTokenStore
+import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,9 +23,9 @@ data class AppUiState(
 )
 
 class AppViewModel(
-    private val repository: ExpenseRepository,
-    private val settingsStore: LocalSettingsStore,
-    private val tokenStore: SecureTokenStore,
+    private val repository: ServerBindingRepository,
+    private val settingsStore: TicketboxSettingsStore,
+    private val tokenStore: SessionTokenStore,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
         AppUiState(
@@ -48,9 +48,14 @@ class AppViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(binding = true, authMessage = null) }
             repository.bindServer(serverUrl, pairingCode)
-                .onSuccess {
+                .onSuccess { result ->
                     _uiState.update { state ->
-                        state.copy(isBound = true, unlocked = true, binding = false, authMessage = null)
+                        state.copy(
+                            isBound = true,
+                            unlocked = true,
+                            binding = false,
+                            authMessage = if (result.confirmedRestoreFailed) BIND_RESTORE_FAILED_MESSAGE else null,
+                        )
                     }
                 }
                 .onFailure { error ->
@@ -78,6 +83,10 @@ class AppViewModel(
         _uiState.update { it.copy(authMessage = message) }
     }
 
+    fun consumeAuthMessage() {
+        _uiState.update { it.copy(authMessage = null) }
+    }
+
     fun selectSkin(skin: AppSkin) {
         settingsStore.saveAppSkinKey(skin.storageKey)
         _uiState.update { it.copy(skin = skin, authMessage = "已切换为${skin.displayName}") }
@@ -98,3 +107,5 @@ class AppViewModel(
         }
     }
 }
+
+internal const val BIND_RESTORE_FAILED_MESSAGE = "已绑定，但历史账本恢复失败，可稍后在账本页更新。"

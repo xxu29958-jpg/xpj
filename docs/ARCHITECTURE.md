@@ -688,12 +688,14 @@ Compose Screen
   -> 输入服务器地址，例如 https://api.我的域名.com
   -> 输入 6 位绑定码（Pairing Code）
   -> 调用 POST /api/auth/pair
-  -> 用新 session token 调用 syncConfirmed() 完整拉取 confirmed
-  -> 替换 Room confirmed 缓存
   -> 保存 session token 到 Android Keystore
   -> 保存服务器地址和账号 / 账本 / 设备 / 角色
+  -> 用新 session token 调用 syncConfirmed() 完整拉取 confirmed
+  -> 替换 Room confirmed 缓存
   -> 进入 App
 ```
+
+`POST /api/auth/pair` 成功后，Pairing Code 已被服务端消费。Android 必须先保存服务器地址、session token 和身份信息，再执行 confirmed 恢复；如果恢复失败，绑定仍然成立，只提示用户稍后在账本页更新。
 
 后续打开：
 

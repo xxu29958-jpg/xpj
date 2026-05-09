@@ -1,0 +1,122 @@
+package com.ticketbox.viewmodel
+
+import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.repository.BindServerResult
+import com.ticketbox.data.repository.ServerBindingRepository
+import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.security.SessionTokenStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class AppViewModelBindingTest {
+    @Test
+    fun bindKeepsUserBoundWhenConfirmedRestoreFails() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(
+                    Result.success(BindServerResult(confirmedRestoreFailed = true)),
+                ),
+                settingsStore = FakeAppSettingsStore(initialBound = false),
+                tokenStore = FakeSessionTokenStore(initialToken = null),
+            )
+
+            viewModel.bind("https://api.zen70.cn", "123456")
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertTrue(state.isBound)
+            assertTrue(state.unlocked)
+            assertEquals(false, state.binding)
+            assertEquals(BIND_RESTORE_FAILED_MESSAGE, state.authMessage)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+}
+
+private class FakeBindingRepository(
+    private val bindResult: Result<BindServerResult>,
+) : ServerBindingRepository {
+    override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> = bindResult
+
+    override suspend fun clearBinding() = Unit
+}
+
+private class FakeAppSettingsStore(
+    private val initialBound: Boolean,
+) : TicketboxSettingsStore {
+    override val backgroundSettingsFlow: Flow<BackgroundSettings> = emptyFlow()
+
+    override fun serverUrl(): String? = null
+
+    override fun appSkinKey(): String? = null
+
+    override fun monthlyBudgetCents(): Long? = null
+
+    override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
+
+    override fun lastConfirmedSyncAt(): String? = null
+
+    override fun accountName(): String? = null
+
+    override fun ledgerName(): String? = null
+
+    override fun deviceName(): String? = null
+
+    override fun role(): String? = null
+
+    override fun boundAt(): String? = null
+
+    override fun saveIdentity(
+        accountName: String,
+        ledgerName: String,
+        deviceName: String,
+        role: String,
+        boundAt: String,
+    ) = Unit
+
+    override fun saveLastConfirmedSyncAt(value: String) = Unit
+
+    override fun clearLastConfirmedSyncAt() = Unit
+
+    override fun lastUploadAt(): String? = null
+
+    override fun saveLastUploadAt(value: String) = Unit
+
+    override fun saveAppSkinKey(skinKey: String) = Unit
+
+    override fun saveServerUrl(serverUrl: String) = Unit
+
+    override fun isBound(): Boolean = initialBound
+
+    override fun markUnlocked() = Unit
+
+    override fun markBackgrounded() = Unit
+
+    override fun requiresUnlock(): Boolean = false
+
+    override fun clear() = Unit
+}
+
+private class FakeSessionTokenStore(
+    private val initialToken: String?,
+) : SessionTokenStore {
+    override fun saveToken(token: String) = Unit
+
+    override fun getToken(): String? = initialToken
+
+    override fun clear() = Unit
+}

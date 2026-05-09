@@ -5,8 +5,8 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ExpenseDao
-import com.ticketbox.data.local.LocalSettingsStore
-import com.ticketbox.data.remote.ApiClient
+import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
@@ -25,8 +25,9 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.mergeExpenseCategories
-import com.ticketbox.security.SecureTokenStore
+import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -67,10 +68,11 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
 
 class ExpenseRepository(
     private val expenseDao: ExpenseDao,
-    private val apiClient: ApiClient,
-    private val settingsStore: LocalSettingsStore,
-    private val tokenStore: SecureTokenStore,
-) {
+    private val apiClient: ApiServiceFactory,
+    private val settingsStore: TicketboxSettingsStore,
+    private val tokenStore: SessionTokenStore,
+    private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
+) : ServerBindingRepository {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
     }
@@ -181,20 +183,15 @@ class ExpenseRepository(
         }
     }
 
-    suspend fun bindServer(serverUrl: String, pairingCode: String): Result<Unit> {
+    override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> {
         return safeCall(serverUrlHint = serverUrl) {
             val normalized = validateBindingInput(serverUrl, pairingCode)
             val pairResponse = api(normalized, null).pairDevice(
                 PairRequestDto(
                     pairingCode = pairingCode.trim(),
-                    deviceName = currentDeviceName(),
+                    deviceName = deviceNameProvider(),
                     platform = "android",
                 ),
-            )
-            syncConfirmedFromService(
-                service = api(normalized, pairResponse.sessionToken),
-                replaceCache = true,
-                recordSyncTimestamp = false,
             )
             settingsStore.saveServerUrl(normalized)
             tokenStore.saveToken(pairResponse.sessionToken)
@@ -205,8 +202,21 @@ class ExpenseRepository(
                 role = pairResponse.role,
                 boundAt = Instant.now().toString(),
             )
-            settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
             settingsStore.markUnlocked()
+            val restoreFailed = try {
+                syncConfirmedFromService(
+                    service = api(normalized, pairResponse.sessionToken),
+                    replaceCache = true,
+                    recordSyncTimestamp = false,
+                )
+                settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
+                false
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                logNetworkWarning("Confirmed restore failed after successful binding.", error)
+                true
+            }
+            BindServerResult(confirmedRestoreFailed = restoreFailed)
         }
     }
 
@@ -382,15 +392,6 @@ class ExpenseRepository(
         readProtectedImage(api().expenseImage(id))
     }
 
-    private fun currentDeviceName(): String {
-        val manufacturer = android.os.Build.MANUFACTURER.orEmpty().trim()
-        val model = android.os.Build.MODEL.orEmpty().trim()
-        return listOf(manufacturer, model)
-            .filter { it.isNotBlank() }
-            .joinToString(" ")
-            .ifBlank { "Android 设备" }
-    }
-
     private suspend fun syncConfirmedFromService(
         service: ApiService,
         month: String? = null,
@@ -530,11 +531,24 @@ class ExpenseRepository(
         settingsStore.clearLastConfirmedSyncAt()
     }
 
-    suspend fun clearBinding() {
+    override suspend fun clearBinding() {
         cachedServerUrl = null
         cachedApi = null
         expenseDao.clear()
         settingsStore.clear()
         tokenStore.clear()
     }
+}
+
+private fun logNetworkWarning(message: String, error: Throwable) {
+    runCatching { Log.w("TicketboxNetwork", message, error) }
+}
+
+internal fun defaultAndroidDeviceName(): String {
+    val manufacturer = android.os.Build.MANUFACTURER.orEmpty().trim()
+    val model = android.os.Build.MODEL.orEmpty().trim()
+    return listOf(manufacturer, model)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+        .ifBlank { "Android 设备" }
 }

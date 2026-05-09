@@ -12,7 +12,7 @@ v0.2.0-rc1
 
 ## 自动备份
 
-后端启动迁移前会自动复制 SQLite：
+后端启动时如果发现数据库仍是 pre-v0.3 结构，会在迁移前自动复制 SQLite：
 
 ```text
 backend\data\ticketbox.db
@@ -20,6 +20,8 @@ backend\data\ticketbox.db
 ```
 
 `uploads/` 不移动、不删除，仍保留原路径。
+
+完成 v0.3 身份表迁移后，后续重启不会重复生成 `pre-v0.3` 备份。回滚时使用首次迁移前生成的这份备份。
 
 ## 回滚步骤
 

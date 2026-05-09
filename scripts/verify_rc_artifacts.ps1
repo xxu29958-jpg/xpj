@@ -5,9 +5,9 @@
     [Parameter(Mandatory = $true)]
     [string]$ExpectedCommit,
 
-    [string]$ReleaseCandidateName = "v0.2.0-rc1",
-    [string]$ExpectedVersionName = "0.2.0-rc1",
-    [int]$ExpectedVersionCode = 20001,
+    [string]$ReleaseCandidateName = "v0.3.0-alpha1",
+    [string]$ExpectedVersionName = "0.3.0-alpha1",
+    [int]$ExpectedVersionCode = 30001,
     [string]$OutputDir = ""
 )
 

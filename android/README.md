@@ -93,7 +93,7 @@ cd E:\projects\xiaopiaojia\android
 
 - `DebugBind` 只允许 internal 版使用。
 - 灰度用户版必须走正常绑定流程，不暴露内部联调入口。
-- 绑定页里的访问口令来自后端租户 `APP_TOKEN`，保存到 Android Keystore。
+- 绑定页使用后端生成的 6 位 Pairing Code。绑定成功后，App 把 session token 保存到 Android Keystore，并保存账号、账本、设备和角色信息。
 
 ## Android 自带上传
 
@@ -103,10 +103,10 @@ cd E:\projects\xiaopiaojia\android
 2. 系统 Photo Picker 打开。
 3. 选择账单截图。
 4. App 以 multipart/form-data 上传，字段名为 `file`。
-5. 请求头使用 `Authorization: Bearer APP_TOKEN`。
+5. 请求头使用 `Authorization: Bearer <session_token>`。
 6. 上传成功后自动刷新待确认列表。
 
-Android 不保存、不发送 iPhone 快捷指令使用的 `Upload-Token`。
+Android 不保存、不发送 iPhone 快捷指令使用的 UploadLink。
 
 ## Release APK
 
@@ -135,7 +135,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_release_apk.ps
 
 ## 已接入功能
 
-- 首次绑定使用 `/api/auth/check` 校验访问口令。
+- 首次绑定使用 Pairing Code 调用 `/api/auth/pair`，成功后用 `/api/auth/check` 校验 session token。
 - 待确认页加载 pending 账单和受保护缩略图。
 - 待确认页支持 Android Photo Picker 上传截图。
 - 编辑页可查看截图、保存草稿、确认入账、忽略这张、重试识别、标记“仍然保留”。
@@ -148,7 +148,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_release_apk.ps
 
 ## 安全规则
 
-- APP_TOKEN 不写死、不打印、不明文存 SharedPreferences。
+- session token 不写死、不打印、不明文存 SharedPreferences，只保存到 Android Keystore。
 - 生物识别只用于本地解锁，不替代后端 Bearer Token。
 - OkHttp 日志不得打印 Header、Body 或 Token。
 - 灰度用户版不展示服务器域名、Token、接口名、Cloudflare、端口、日志或诊断脚本。

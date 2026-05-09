@@ -13,6 +13,8 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -108,6 +110,7 @@ fun TicketboxApp(
             repository = repository,
             settingsViewModelFactory = settingsViewModelFactory,
             biometricAuthManager = biometricAuthManager,
+            onAuthMessageShown = appViewModel::consumeAuthMessage,
         )
     }
 }
@@ -119,6 +122,7 @@ private fun TicketboxContent(
     repository: ExpenseRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
+    onAuthMessageShown: () -> Unit,
 ) {
     if (!appState.isBound) {
         ImmersiveBackgroundScaffold(
@@ -165,6 +169,8 @@ private fun TicketboxContent(
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
         backgroundSettings = appState.backgroundSettings,
+        startupMessage = appState.authMessage,
+        onStartupMessageShown = onAuthMessageShown,
         onSkinChange = appViewModel::selectSkin,
         onBindingCleared = {
             appViewModel.clearBinding()
@@ -178,6 +184,8 @@ private fun MainShell(
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
     backgroundSettings: BackgroundSettings,
+    startupMessage: String?,
+    onStartupMessageShown: () -> Unit,
     onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
@@ -185,6 +193,13 @@ private fun MainShell(
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
     val repositoryFactory = repositoryViewModelFactory(repository)
     val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(startupMessage) {
+        val message = startupMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        onStartupMessageShown()
+    }
 
     ImmersiveBackgroundScaffold(
         backgroundSettings = backgroundSettings,
@@ -216,6 +231,7 @@ private fun MainShell(
         Scaffold(
             containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0.dp),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 AppBottomNav(
                     items = BottomTab.entries.map { it.toBottomNavItem() },
