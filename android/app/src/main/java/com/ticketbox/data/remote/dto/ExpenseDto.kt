@@ -8,6 +8,10 @@ data class AuthCheckDto(
     val tenantName: String? = null,
 )
 
+data class StatusDto(
+    val status: String,
+)
+
 data class UploadResponseDto(
     val id: Long,
     @param:Json(name = "public_id")
