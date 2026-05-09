@@ -39,6 +39,13 @@ def upload_png(client: TestClient, headers: dict[str, str] | None = None) -> int
     assert payload["status"] == "pending"
     UUID(payload["public_id"])
     assert payload["upload_size_bytes"] == len(PNG_BYTES)
+    if payload["thumbnail_path"] is not None:
+        assert payload["thumbnail_path"].startswith("uploads/")
+        assert ".." not in payload["thumbnail_path"]
+        assert "\\" not in payload["thumbnail_path"]
+        assert ":" not in payload["thumbnail_path"]
+    assert "token" not in str(payload).lower()
+    assert "E:\\" not in str(payload)
     assert payload["duration_ms"] >= 0
     assert payload["timing_ms"]["total_ms"] >= 0
     assert payload["timing_ms"]["form_parse_ms"] >= 0
@@ -57,6 +64,13 @@ def upload_png_as_raw_body(client: TestClient) -> int:
     payload = response.json()
     assert payload["status"] == "pending"
     assert payload["upload_size_bytes"] == len(PNG_BYTES)
+    if payload["thumbnail_path"] is not None:
+        assert payload["thumbnail_path"].startswith("uploads/")
+        assert ".." not in payload["thumbnail_path"]
+        assert "\\" not in payload["thumbnail_path"]
+        assert ":" not in payload["thumbnail_path"]
+    assert "token" not in str(payload).lower()
+    assert "E:\\" not in str(payload)
     assert payload["duration_ms"] >= 0
     assert payload["timing_ms"]["total_ms"] >= 0
     assert payload["timing_ms"]["body_read_ms"] >= 0
@@ -243,6 +257,17 @@ def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> 
     assert _stored_upload_files() == []
 
 
+def test_shortcut_upload_rejects_app_token_before_saving_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**app_headers(), "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+    assert _stored_upload_files() == []
+
+
 def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -> None:
     from app.routes import uploads as upload_routes
     from app.services import file_service
@@ -258,6 +283,26 @@ def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -
     )
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"
+    assert _stored_upload_files() == []
+
+
+def test_upload_rejects_empty_raw_body_and_empty_multipart_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=b"",
+    )
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_request"
+    assert _stored_upload_files() == []
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("empty.png", b"", "image/png")},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
     assert _stored_upload_files() == []
 
 
@@ -288,6 +333,61 @@ def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
     assert response.status_code == 400
     assert response.json()["error"] == "unsupported_file_type"
     assert _stored_upload_files() == []
+
+
+def test_upload_rejects_spoofed_extension_and_content_type(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("fake.jpg", b"not really a jpeg", "image/jpeg")},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("fake.png", b"\xff\xd8\xff\xe0not really a png", "image/png")},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+
+def test_upload_uses_image_header_instead_of_spoofed_metadata(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.txt", PNG_BYTES, "text/plain")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
+    assert item["image_path"].endswith(".png")
+
+
+def test_upload_randomizes_path_traversal_filename(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("../../evil.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    expense_id = int(response.json()["id"])
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == expense_id)
+    assert item["status"] == "pending"
+    assert item["image_path"].startswith("uploads/pytest_test/owner/")
+    assert ".." not in item["image_path"]
+    assert "evil" not in item["image_path"]
+    assert "\\" not in item["image_path"]
+    assert ":" not in item["image_path"]
 
 
 def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient, monkeypatch) -> None:
@@ -798,6 +898,24 @@ def test_android_app_upload_uses_app_token_and_current_tenant(client: TestClient
     owner_pending = client.get("/api/expenses/pending", headers=app_headers())
     assert owner_pending.status_code == 200
     assert [item["id"] for item in owner_pending.json()] == [owner_id]
+
+
+def test_protected_image_and_thumbnail_reject_database_path_escape(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.image_path = "../outside.png"
+        expense.thumbnail_path = "../outside-thumb.jpg"
+        db.commit()
+
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    assert image.status_code == 404
+    assert image.json() == {"error": "image_not_found", "message": "图片不存在。"}
+
+    thumbnail = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=app_headers())
+    assert thumbnail.status_code == 404
+    assert thumbnail.json() == {"error": "image_not_found", "message": "图片不存在。"}
 
 
 def test_legacy_upload_paths_migrate_into_current_tenant_dir(client: TestClient) -> None:
