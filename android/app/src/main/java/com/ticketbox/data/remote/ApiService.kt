@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
+import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
@@ -18,6 +19,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.Part
@@ -39,19 +41,21 @@ interface ApiService {
         @Query("page_size") pageSize: Int = 50,
         @Query("month") month: String? = null,
         @Query("category") category: String? = null,
+        @Query("timezone") timezone: String? = null,
     ): PaginatedExpensesDto
 
     @GET("api/expenses/categories")
     suspend fun categories(): CategoriesDto
 
     @GET("api/expenses/months")
-    suspend fun months(): MonthsDto
+    suspend fun months(@Query("timezone") timezone: String? = null): MonthsDto
 
     @GET("api/expenses/export.csv")
     @Streaming
     suspend fun exportCsv(
         @Query("month") month: String? = null,
         @Query("category") category: String? = null,
+        @Query("timezone") timezone: String? = null,
     ): Response<ResponseBody>
 
     @POST("api/expenses/manual")
@@ -59,7 +63,10 @@ interface ApiService {
 
     @Multipart
     @POST("api/app/upload-screenshot")
-    suspend fun uploadScreenshot(@Part file: MultipartBody.Part): UploadResponseDto
+    suspend fun uploadScreenshot(
+        @Part file: MultipartBody.Part,
+        @Header("X-Timezone") timezone: String? = null,
+    ): UploadResponseDto
 
     @PATCH("api/expenses/{id}")
     suspend fun updateExpense(
@@ -103,14 +110,20 @@ interface ApiService {
     ): CategoryRuleDto
 
     @DELETE("api/rules/categories/{id}")
-    suspend fun deleteCategoryRule(@Path("id") id: Long): AuthCheckDto
+    suspend fun deleteCategoryRule(@Path("id") id: Long): StatusDto
 
     @GET("api/settings/server")
     suspend fun serverSettings(): ServerSettingsDto
 
     @GET("api/stats/monthly")
-    suspend fun monthlyStats(@Query("month") month: String? = null): MonthlyStatsDto
+    suspend fun monthlyStats(
+        @Query("month") month: String? = null,
+        @Query("timezone") timezone: String? = null,
+    ): MonthlyStatsDto
 
     @GET("api/stats/lifestyle")
-    suspend fun lifestyleStats(@Query("month") month: String? = null): LifestyleStatsDto
+    suspend fun lifestyleStats(
+        @Query("month") month: String? = null,
+        @Query("timezone") timezone: String? = null,
+    ): LifestyleStatsDto
 }

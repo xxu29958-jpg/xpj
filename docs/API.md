@@ -19,6 +19,7 @@ https://api.我的域名.com
 - 数据库存 UTC。
 - API 返回 ISO 8601 字符串，例如 `2026-05-03T04:20:00Z`。
 - 统计优先按 `expense_time`，为空时按 `confirmed_at`。
+- `timezone` / `X-Timezone` 使用 IANA 时区名。未传 `timezone` 时使用服务端 `OCR_DEFAULT_TIMEZONE`；传入无效时区名时，当前查询边界按 UTC 降级，上传 OCR 草稿解析按服务端默认时区降级。
 
 金额：
 
@@ -70,6 +71,7 @@ App 接口：
 
 ```http
 Authorization: Bearer APP_TOKEN
+X-Timezone: Asia/Shanghai
 ```
 
 维护接口：
@@ -77,6 +79,42 @@ Authorization: Bearer APP_TOKEN
 ```http
 Authorization: Bearer ADMIN_TOKEN
 ```
+
+## API 契约矩阵
+
+| Endpoint | Method | 后端 route | Android ApiService | 请求 DTO / 参数 | 响应 DTO | 鉴权 | 测试覆盖 | 用途 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `/api/health` | GET | `backend/app/main.py` | 无 | 无 | `{"status":"ok"}` | 无 | `backend/tests/test_api_contract.py`, smoke | smoke |
+| `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal 绑定 |
+| `/api/upload/check` | GET | `backend/app/routes/uploads.py` | 无 | header `Upload-Token` | `UploadCheckResponse` | UPLOAD_TOKEN | `backend/tests/test_api_contract.py`, smoke | iPhone shortcut |
+| `/api/upload-screenshot` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart；header `Upload-Token`、`X-Timezone` | `UploadResponseDto` | UPLOAD_TOKEN | `backend/tests/test_api_contract.py`, smoke | iPhone shortcut |
+| `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | gray/internal Android 上传 |
+| `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/timezone` | `PaginatedExpensesDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
+| `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/timezone` | streaming `text/csv` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal 导出 |
+| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseUpdateRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/debug 读取详情 |
+| `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/expenses/{id}/recognize-text` | POST | `backend/app/routes/expenses.py` | 无 | `RecognizeTextRequest` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/shortcut text |
+| `/api/expenses/{id}/mark-not-duplicate` | POST | `backend/app/routes/expenses.py` | `markNotDuplicate(id)` | path `id` | `ExpenseDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/expenses/{id}/image` | GET | `backend/app/routes/expenses.py` | `expenseImage(id)` | path `id` | streaming image | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/expenses/{id}/thumbnail` | GET | `backend/app/routes/expenses.py` | `expenseThumbnail(id)` | path `id` | streaming image | APP_TOKEN | `backend/tests/test_api_contract.py`, smoke | gray/internal |
+| `/api/duplicates` | GET | `backend/app/routes/duplicates.py` | `duplicates()` | 无 | `List<ExpenseDto>` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/rules/categories` | GET | `backend/app/routes/rules.py` | `categoryRules()` | 无 | `List<CategoryRuleDto>` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | internal/高级入口 |
+| `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | APP_TOKEN | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
+| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | APP_TOKEN | `backend/tests/test_api_contract.py` | gray/internal |
+| `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py`, smoke | admin |
+| `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py` | admin |
+| `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | ADMIN_TOKEN | `backend/tests/test_api_contract.py` | admin |
 
 ## 基础接口
 
@@ -140,6 +178,7 @@ Upload-Token: UPLOAD_TOKEN
 ```http
 Upload-Token: UPLOAD_TOKEN
 User-Agent: TicketBox/1.0 iOS-Shortcut
+X-Timezone: Asia/Shanghai
 ```
 
 请求体方式一，iOS 快捷指令推荐，iOS 26.4 真机验证通过：
@@ -168,6 +207,7 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
 - 支持 `jpg`、`jpeg`、`png`、`webp`、`heic`。
 - 同一个接口同时支持原始图片请求体和 `multipart/form-data` 文件字段。
 - iOS 快捷指令优先使用原始图片请求体，也就是“请求正文：文件”。不要优先使用“请求正文：表单”。
+- `X-Timezone` 可选，填手机系统 IANA 时区；用于上传后 OCR 草稿的本地时间解析，未传时使用服务端 `OCR_DEFAULT_TIMEZONE`。
 - Cloudflare 可能拦截没有标准 `User-Agent` 的快捷指令请求，公网部署时建议固定 `User-Agent`。
 - 最大 10MB，按 `MAX_UPLOAD_SIZE_MB` 配置。
 - 保存为随机文件名。
@@ -186,6 +226,10 @@ file -> image -> photo -> screenshot -> 表单里的第一个文件字段
   "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
   "message": "uploaded",
+  "image_hash": "sha256...",
+  "thumbnail_path": "uploads/owner/2026/05/thumbs/xxx.jpg",
+  "duplicate_status": "none",
+  "duplicate_of_id": null,
   "upload_size_bytes": 348120,
   "duration_ms": 86,
   "timing_ms": {
@@ -220,6 +264,7 @@ file: 图片文件
 
 - 与 iPhone 上传共用同一套文件校验、随机命名、hash、缩略图和 pending 创建流程。
 - 按当前 `APP_TOKEN` 所属租户写入对应账本。
+- `X-Timezone` 可选，Android 默认发送手机系统 IANA 时区；用于上传后 OCR 草稿时间解析。
 - Android 不保存、不发送 `Upload-Token`。
 - 灰度版 UI 只显示“上传截图”，不显示 endpoint、token 或 multipart。
 
@@ -231,6 +276,10 @@ file: 图片文件
   "public_id": "018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d",
   "status": "pending",
   "message": "uploaded",
+  "image_hash": "sha256...",
+  "thumbnail_path": "uploads/owner/2026/05/thumbs/xxx.jpg",
+  "duplicate_status": "none",
+  "duplicate_of_id": null,
   "upload_size_bytes": 348120,
   "duration_ms": 86,
   "timing_ms": {
@@ -299,6 +348,7 @@ page: 默认 1
 page_size: 默认 50，最大 200
 month: YYYY-MM，可选
 category: 分类，可选
+timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
 ```
 
 返回：
@@ -338,7 +388,13 @@ Authorization: Bearer APP_TOKEN
 Authorization: Bearer APP_TOKEN
 ```
 
-返回已确认账单中出现过的月份，按新到旧排序。统计和账本页可用它做月份快捷选择。
+查询参数：
+
+```text
+timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
+```
+
+返回已确认账单中出现过的月份，按新到旧排序。月份按 `timezone` 对应的本地自然月计算，统计和账本页可用它做月份快捷选择。
 
 返回：
 
@@ -361,6 +417,7 @@ Authorization: Bearer APP_TOKEN
 ```text
 month: YYYY-MM，可选
 category: 分类，可选
+timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
 ```
 
 返回 `text/csv`，用于导出已确认账单。导出接口只返回账单数据，不提供文件目录浏览或任意文件下载。
@@ -527,9 +584,21 @@ Authorization: Bearer APP_TOKEN
 
 ### GET /api/rules/categories
 
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
 返回自动分类规则列表。
 
 ### POST /api/rules/categories
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
 
 请求体：
 
@@ -544,6 +613,12 @@ Authorization: Bearer APP_TOKEN
 
 ### PATCH /api/rules/categories/{id}
 
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
 请求体支持局部更新：
 
 ```json
@@ -553,6 +628,12 @@ Authorization: Bearer APP_TOKEN
 ```
 
 ### DELETE /api/rules/categories/{id}
+
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
 
 删除一条分类规则。
 
@@ -597,10 +678,17 @@ Authorization: Bearer APP_TOKEN
 
 ### GET /api/stats/monthly
 
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
 查询参数：
 
 ```text
 month=2026-05
+timezone=Asia/Shanghai
 ```
 
 返回：
@@ -622,10 +710,17 @@ month=2026-05
 
 ### GET /api/stats/lifestyle
 
+请求头：
+
+```http
+Authorization: Bearer APP_TOKEN
+```
+
 查询参数：
 
 ```text
 month=2026-05
+timezone=Asia/Shanghai
 ```
 
 返回：

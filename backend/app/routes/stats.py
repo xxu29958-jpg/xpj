@@ -21,18 +21,22 @@ router = APIRouter(
 @router.get("/monthly", response_model=MonthlyStatsResponse)
 def get_monthly_stats(
     month: str | None = None,
+    timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> MonthlyStatsResponse:
-    target_month = month or current_month(get_settings().ocr_default_timezone)
-    return MonthlyStatsResponse(**monthly_stats(db, target_month, auth.tenant_id))
+    timezone_name = timezone or get_settings().ocr_default_timezone
+    target_month = month or current_month(timezone_name)
+    return MonthlyStatsResponse(**monthly_stats(db, target_month, auth.tenant_id, timezone_name=timezone_name))
 
 
 @router.get("/lifestyle", response_model=LifestyleStatsResponse)
 def get_lifestyle_stats(
     month: str | None = None,
+    timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> LifestyleStatsResponse:
-    target_month = month or current_month(get_settings().ocr_default_timezone)
-    return LifestyleStatsResponse(**lifestyle_stats(db, target_month, auth.tenant_id))
+    timezone_name = timezone or get_settings().ocr_default_timezone
+    target_month = month or current_month(timezone_name)
+    return LifestyleStatsResponse(**lifestyle_stats(db, target_month, auth.tenant_id, timezone_name=timezone_name))

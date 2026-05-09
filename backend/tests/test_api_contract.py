@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -39,6 +40,13 @@ def upload_png(client: TestClient, headers: dict[str, str] | None = None) -> int
     assert payload["status"] == "pending"
     UUID(payload["public_id"])
     assert payload["upload_size_bytes"] == len(PNG_BYTES)
+    if payload["thumbnail_path"] is not None:
+        assert payload["thumbnail_path"].startswith("uploads/")
+        assert ".." not in payload["thumbnail_path"]
+        assert "\\" not in payload["thumbnail_path"]
+        assert ":" not in payload["thumbnail_path"]
+    assert "token" not in str(payload).lower()
+    assert "E:\\" not in str(payload)
     assert payload["duration_ms"] >= 0
     assert payload["timing_ms"]["total_ms"] >= 0
     assert payload["timing_ms"]["form_parse_ms"] >= 0
@@ -57,6 +65,13 @@ def upload_png_as_raw_body(client: TestClient) -> int:
     payload = response.json()
     assert payload["status"] == "pending"
     assert payload["upload_size_bytes"] == len(PNG_BYTES)
+    if payload["thumbnail_path"] is not None:
+        assert payload["thumbnail_path"].startswith("uploads/")
+        assert ".." not in payload["thumbnail_path"]
+        assert "\\" not in payload["thumbnail_path"]
+        assert ":" not in payload["thumbnail_path"]
+    assert "token" not in str(payload).lower()
+    assert "E:\\" not in str(payload)
     assert payload["duration_ms"] >= 0
     assert payload["timing_ms"]["total_ms"] >= 0
     assert payload["timing_ms"]["body_read_ms"] >= 0
@@ -69,6 +84,44 @@ def _stored_upload_files() -> list[str]:
     if not TEST_UPLOAD_DIR.exists():
         return []
     return [str(path) for path in TEST_UPLOAD_DIR.rglob("*") if path.is_file()]
+
+
+def insert_confirmed_expense(
+    *,
+    amount_cents: int,
+    merchant: str,
+    category: str,
+    expense_time: datetime | None,
+    confirmed_at: datetime,
+) -> int:
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            amount_cents=amount_cents,
+            merchant=merchant,
+            category=category,
+            note="",
+            source="pytest",
+            status="confirmed",
+            expense_time=expense_time,
+            created_at=confirmed_at,
+            updated_at=confirmed_at,
+            confirmed_at=confirmed_at,
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        return expense.id
+
+
+def make_heic_bytes() -> bytes:
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    output = BytesIO()
+    Image.new("RGB", (8, 8), (31, 127, 255)).save(output, format="HEIF")
+    return output.getvalue()
 
 
 def test_health_and_auth_contract(client: TestClient) -> None:
@@ -216,6 +269,28 @@ def test_upload_screenshot_accepts_ios_file_body(client: TestClient) -> None:
     assert item["image_hash"]
 
 
+def test_upload_passes_client_timezone_to_background_ocr(client: TestClient, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_enrich(expense_id: int, tenant_id: str, timezone_name: str | None = None) -> None:
+        captured["expense_id"] = expense_id
+        captured["tenant_id"] = tenant_id
+        captured["timezone_name"] = timezone_name
+
+    monkeypatch.setattr("app.routes.uploads.enrich_pending_expense", fake_enrich)
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png", "X-Timezone": "America/Los_Angeles"},
+        content=PNG_BYTES,
+    )
+
+    assert response.status_code == 200
+    assert captured["expense_id"] == response.json()["id"]
+    assert captured["tenant_id"] == "owner"
+    assert captured["timezone_name"] == "America/Los_Angeles"
+
+
 def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> None:
     response = client.post(
         "/api/upload-screenshot",
@@ -243,6 +318,17 @@ def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> 
     assert _stored_upload_files() == []
 
 
+def test_shortcut_upload_rejects_app_token_before_saving_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**app_headers(), "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+    assert _stored_upload_files() == []
+
+
 def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -> None:
     from app.routes import uploads as upload_routes
     from app.services import file_service
@@ -258,6 +344,26 @@ def test_upload_raw_body_uses_same_size_limit(client: TestClient, monkeypatch) -
     )
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"
+    assert _stored_upload_files() == []
+
+
+def test_upload_rejects_empty_raw_body_and_empty_multipart_file(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=b"",
+    )
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_request"
+    assert _stored_upload_files() == []
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("empty.png", b"", "image/png")},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
     assert _stored_upload_files() == []
 
 
@@ -288,6 +394,106 @@ def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
     assert response.status_code == 400
     assert response.json()["error"] == "unsupported_file_type"
     assert _stored_upload_files() == []
+
+
+def test_upload_rejects_spoofed_extension_and_content_type(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("fake.jpg", b"not really a jpeg", "image/jpeg")},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("fake.png", b"\xff\xd8\xff\xe0not really a png", "image/png")},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+
+def test_upload_rejects_fake_heic_brand_without_decodable_image(client: TestClient) -> None:
+    fake_heic = b"\x00\x00\x00\x1cftypheic\x00\x00\x00\x00fake-heic-payload"
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("fake.heic", fake_heic, "image/heic")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
+
+
+def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(client: TestClient) -> None:
+    heic_bytes = make_heic_bytes()
+
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.heic", heic_bytes, "image/heic")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
+    assert item["image_path"].endswith(".heic")
+    assert item["thumbnail_path"] is not None
+    assert item["thumbnail_path"].endswith(".jpg")
+
+    image = client.get(f"/api/expenses/{payload['id']}/image", headers=app_headers())
+    assert image.status_code == 200
+    assert image.headers["content-type"].startswith("image/heic")
+    assert image.content == heic_bytes
+
+    thumbnail = client.get(f"/api/expenses/{payload['id']}/thumbnail", headers=app_headers())
+    assert thumbnail.status_code == 200
+    assert thumbnail.headers["content-type"].startswith("image/jpeg")
+    assert thumbnail.content.startswith(b"\xff\xd8")
+
+
+def test_upload_uses_image_header_instead_of_spoofed_metadata(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("ticket.txt", PNG_BYTES, "text/plain")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
+    assert item["image_path"].endswith(".png")
+
+
+def test_upload_randomizes_path_traversal_filename(client: TestClient) -> None:
+    response = client.post(
+        "/api/upload-screenshot",
+        headers=upload_headers(),
+        files={"file": ("../../evil.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200
+    expense_id = int(response.json()["id"])
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == expense_id)
+    assert item["status"] == "pending"
+    assert item["image_path"].startswith("uploads/pytest_test/owner/")
+    assert ".." not in item["image_path"]
+    assert "evil" not in item["image_path"]
+    assert "\\" not in item["image_path"]
+    assert ":" not in item["image_path"]
 
 
 def test_upload_cleans_saved_file_when_pending_creation_fails(client: TestClient, monkeypatch) -> None:
@@ -730,6 +936,156 @@ def test_local_timezone_month_filter_matches_android_display_month(client: TestC
     assert months.json()["items"] == ["2026-05"]
 
 
+def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(client: TestClient) -> None:
+    insert_confirmed_expense(
+        amount_cents=501,
+        merchant="确认时间跨月餐饮",
+        category="餐饮",
+        expense_time=None,
+        confirmed_at=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
+    )
+    insert_confirmed_expense(
+        amount_cents=777,
+        merchant="确认时间上月餐饮",
+        category="餐饮",
+        expense_time=None,
+        confirmed_at=datetime(2026, 4, 30, 15, 30, tzinfo=UTC),
+    )
+    insert_confirmed_expense(
+        amount_cents=888,
+        merchant="确认时间跨月交通",
+        category="交通",
+        expense_time=None,
+        confirmed_at=datetime(2026, 4, 30, 16, 40, tzinfo=UTC),
+    )
+
+    may_food_page = client.get("/api/expenses/confirmed?month=2026-05&category=餐饮", headers=app_headers())
+    assert may_food_page.status_code == 200
+    may_food_payload = may_food_page.json()
+    assert may_food_payload["total"] == 1
+    assert may_food_payload["items"][0]["merchant"] == "确认时间跨月餐饮"
+
+    april_food_page = client.get("/api/expenses/confirmed?month=2026-04&category=餐饮", headers=app_headers())
+    assert april_food_page.status_code == 200
+    april_food_payload = april_food_page.json()
+    assert april_food_payload["total"] == 1
+    assert april_food_payload["items"][0]["merchant"] == "确认时间上月餐饮"
+
+    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert may_stats.status_code == 200
+    may_stats_payload = may_stats.json()
+    assert may_stats_payload["total_amount_cents"] == 1389
+    assert may_stats_payload["count"] == 2
+    assert may_stats_payload["by_category"] == [
+        {"category": "交通", "amount_cents": 888, "count": 1},
+        {"category": "餐饮", "amount_cents": 501, "count": 1},
+    ]
+
+    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=app_headers())
+    assert april_stats.status_code == 200
+    assert april_stats.json()["total_amount_cents"] == 777
+
+    months = client.get("/api/expenses/months", headers=app_headers())
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2026-05", "2026-04"]
+
+
+def test_confirmed_month_filter_handles_cross_year_local_boundary(client: TestClient) -> None:
+    insert_confirmed_expense(
+        amount_cents=1234,
+        merchant="跨年后餐饮",
+        category="餐饮",
+        expense_time=datetime(2026, 12, 31, 16, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 12, 31, 16, 31, tzinfo=UTC),
+    )
+    insert_confirmed_expense(
+        amount_cents=4321,
+        merchant="跨年前餐饮",
+        category="餐饮",
+        expense_time=datetime(2026, 12, 31, 15, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 12, 31, 15, 31, tzinfo=UTC),
+    )
+
+    january_page = client.get("/api/expenses/confirmed?month=2027-01&category=餐饮", headers=app_headers())
+    assert january_page.status_code == 200
+    january_payload = january_page.json()
+    assert january_payload["total"] == 1
+    assert january_payload["items"][0]["merchant"] == "跨年后餐饮"
+
+    december_page = client.get("/api/expenses/confirmed?month=2026-12&category=餐饮", headers=app_headers())
+    assert december_page.status_code == 200
+    december_payload = december_page.json()
+    assert december_payload["total"] == 1
+    assert december_payload["items"][0]["merchant"] == "跨年前餐饮"
+
+    january_stats = client.get("/api/stats/monthly?month=2027-01", headers=app_headers())
+    assert january_stats.status_code == 200
+    assert january_stats.json()["total_amount_cents"] == 1234
+
+    december_stats = client.get("/api/stats/monthly?month=2026-12", headers=app_headers())
+    assert december_stats.status_code == 200
+    assert december_stats.json()["total_amount_cents"] == 4321
+
+    months = client.get("/api/expenses/months", headers=app_headers())
+    assert months.status_code == 200
+    assert months.json()["items"] == ["2027-01", "2026-12"]
+
+
+def test_month_filter_can_follow_client_timezone_query(client: TestClient) -> None:
+    insert_confirmed_expense(
+        amount_cents=1851,
+        merchant="手机时区边界账单",
+        category="生活",
+        expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 4, 30, 16, 31, tzinfo=UTC),
+    )
+
+    shanghai_page = client.get(
+        "/api/expenses/confirmed?month=2026-05&timezone=Asia/Shanghai",
+        headers=app_headers(),
+    )
+    assert shanghai_page.status_code == 200
+    assert shanghai_page.json()["total"] == 1
+
+    utc_april_page = client.get("/api/expenses/confirmed?month=2026-04&timezone=UTC", headers=app_headers())
+    assert utc_april_page.status_code == 200
+    assert utc_april_page.json()["total"] == 1
+
+    utc_may_stats = client.get("/api/stats/monthly?month=2026-05&timezone=UTC", headers=app_headers())
+    assert utc_may_stats.status_code == 200
+    assert utc_may_stats.json()["total_amount_cents"] == 0
+
+    shanghai_may_stats = client.get(
+        "/api/stats/monthly?month=2026-05&timezone=Asia/Shanghai",
+        headers=app_headers(),
+    )
+    assert shanghai_may_stats.status_code == 200
+    assert shanghai_may_stats.json()["total_amount_cents"] == 1851
+
+    shanghai_months = client.get("/api/expenses/months?timezone=Asia/Shanghai", headers=app_headers())
+    assert shanghai_months.status_code == 200
+    assert shanghai_months.json()["items"] == ["2026-05"]
+
+    utc_months = client.get("/api/expenses/months?timezone=UTC", headers=app_headers())
+    assert utc_months.status_code == 200
+    assert utc_months.json()["items"] == ["2026-04"]
+
+    shanghai_export = client.get("/api/expenses/export.csv?month=2026-05&timezone=Asia/Shanghai", headers=app_headers())
+    assert shanghai_export.status_code == 200
+    assert "手机时区边界账单" in shanghai_export.text
+
+    utc_may_export = client.get("/api/expenses/export.csv?month=2026-05&timezone=UTC", headers=app_headers())
+    assert utc_may_export.status_code == 200
+    assert "手机时区边界账单" not in utc_may_export.text
+
+    invalid_timezone_page = client.get(
+        "/api/expenses/confirmed?month=2026-04&timezone=Not/AZone",
+        headers=app_headers(),
+    )
+    assert invalid_timezone_page.status_code == 200
+    assert invalid_timezone_page.json()["total"] == 1
+
+
 def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:
     expense_id = upload_png(client)
     response = client.patch(
@@ -798,6 +1154,24 @@ def test_android_app_upload_uses_app_token_and_current_tenant(client: TestClient
     owner_pending = client.get("/api/expenses/pending", headers=app_headers())
     assert owner_pending.status_code == 200
     assert [item["id"] for item in owner_pending.json()] == [owner_id]
+
+
+def test_protected_image_and_thumbnail_reject_database_path_escape(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.image_path = "../outside.png"
+        expense.thumbnail_path = "../outside-thumb.jpg"
+        db.commit()
+
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    assert image.status_code == 404
+    assert image.json() == {"error": "image_not_found", "message": "图片不存在。"}
+
+    thumbnail = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=app_headers())
+    assert thumbnail.status_code == 404
+    assert thumbnail.json() == {"error": "image_not_found", "message": "图片不存在。"}
 
 
 def test_legacy_upload_paths_migrate_into_current_tenant_dir(client: TestClient) -> None:

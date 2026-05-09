@@ -19,6 +19,8 @@
 - Pillow PyPI 元数据：https://pypi.org/project/pillow/
 - Pillow 12.2.0 release notes：https://pillow.readthedocs.io/en/stable/releasenotes/12.2.0.html
 - Pillow image file formats：https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html
+- pillow-heif PyPI 元数据：https://pypi.org/project/pillow-heif/
+- pillow-heif 文档：https://pillow-heif.readthedocs.io/
 
 ## Android
 

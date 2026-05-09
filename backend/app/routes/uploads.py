@@ -4,7 +4,7 @@ import json
 import logging
 from time import perf_counter
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -131,6 +131,7 @@ async def _handle_upload(
     db: Session,
     source: str,
     endpoint: str,
+    timezone_name: str | None = None,
 ) -> UploadResponse:
     started_at = perf_counter()
     saved_file, timing_ms = await _save_request_upload(request, auth.tenant_id)
@@ -150,7 +151,7 @@ async def _handle_upload(
         json.dumps(timing_ms, ensure_ascii=False, sort_keys=True),
         expense.duplicate_status,
     )
-    background_tasks.add_task(enrich_pending_expense, expense.id, auth.tenant_id)
+    background_tasks.add_task(enrich_pending_expense, expense.id, auth.tenant_id, timezone_name)
     return _upload_response(expense, saved_file, duration_ms, timing_ms)
 
 
@@ -173,6 +174,7 @@ def upload_check(_: AuthContext = Depends(get_current_upload_context)) -> Upload
 async def upload_screenshot(
     request: Request,
     background_tasks: BackgroundTasks,
+    timezone: str | None = Header(default=None, alias="X-Timezone"),
     auth: AuthContext = Depends(get_current_upload_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
@@ -183,6 +185,7 @@ async def upload_screenshot(
         db=db,
         source="iPhone截图",
         endpoint="ios_shortcut",
+        timezone_name=timezone,
     )
 
 
@@ -193,6 +196,7 @@ async def upload_screenshot(
 async def app_upload_screenshot(
     request: Request,
     background_tasks: BackgroundTasks,
+    timezone: str | None = Header(default=None, alias="X-Timezone"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
@@ -203,4 +207,5 @@ async def app_upload_screenshot(
         db=db,
         source="Android截图",
         endpoint="android_app",
+        timezone_name=timezone,
     )

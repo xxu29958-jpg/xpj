@@ -28,7 +28,7 @@ class OcrResult:
 
 
 class OcrProvider(Protocol):
-    def extract(self, expense: Expense) -> OcrResult:
+    def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
         ...
 
 
@@ -37,17 +37,17 @@ LEGACY_AUTO_OCR_WINDOW = timedelta(minutes=5)
 
 
 class EmptyOcrProvider:
-    def extract(self, expense: Expense) -> OcrResult:
+    def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
         return OcrResult(raw_text=expense.raw_text or "", confidence=expense.confidence)
 
 
 class MockOcrProvider:
-    def extract(self, expense: Expense) -> OcrResult:
+    def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
         raw_text = (
             expense.raw_text
             or "中国建设银行\n交易提醒\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
         )
-        parsed = parse_receipt_text(raw_text)
+        parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
         return OcrResult(
             raw_text=raw_text,
             confidence=parsed.confidence if parsed.confidence is not None else 0.0,
@@ -59,7 +59,7 @@ class MockOcrProvider:
 
 
 class RapidOcrProvider:
-    def extract(self, expense: Expense) -> OcrResult:
+    def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
         try:
             from rapidocr import RapidOCR  # type: ignore[import-not-found]
         except ImportError as exc:
@@ -79,11 +79,15 @@ class RapidOcrProvider:
         raw_text = "\n".join(texts)
         scores = [float(score) for score in (result.scores or ()) if score is not None]
         confidence = (sum(scores) / len(scores)) if scores else None
-        return _merge_result_with_text_parse(OcrResult(raw_text=raw_text, confidence=confidence), parsed_confidence=confidence)
+        return _merge_result_with_text_parse(
+            OcrResult(raw_text=raw_text, confidence=confidence),
+            parsed_confidence=confidence,
+            timezone_name=timezone_name,
+        )
 
 
 class LocalLlmOcrProvider:
-    def extract(self, expense: Expense) -> OcrResult:
+    def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
         image_path, media_type = resolve_protected_image(expense.image_path, expense.tenant_id)
         image_bytes = image_path.read_bytes()
         media_type = media_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
@@ -118,7 +122,7 @@ class LocalLlmOcrProvider:
         response = self._post_chat_completion(payload)
         content = _extract_message_content(response)
         parsed_json = _parse_json_object(content)
-        return _result_from_llm_json(parsed_json)
+        return _result_from_llm_json(parsed_json, timezone_name=timezone_name)
 
     def _first_available_model(self, base_url: str) -> str:
         endpoint = f"{base_url}/models"
@@ -168,10 +172,10 @@ def get_ocr_provider(provider_name: str | None = None) -> OcrProvider:
     return EmptyOcrProvider()
 
 
-def retry_ocr(expense: Expense, provider: OcrProvider | None = None) -> Expense:
+def retry_ocr(expense: Expense, provider: OcrProvider | None = None, timezone_name: str | None = None) -> Expense:
     active_provider = provider or get_ocr_provider()
-    result = active_provider.extract(expense)
-    apply_ocr_result(expense, result)
+    result = active_provider.extract(expense, timezone_name=timezone_name)
+    apply_ocr_result(expense, result, timezone_name=timezone_name)
     return expense
 
 
@@ -194,14 +198,14 @@ def clear_ocr_draft_fields(expense: Expense, fields: set[str] | list[str] | tupl
     _write_ocr_draft_fields(expense, updated)
 
 
-def collect_auto_ocr_results(expense: Expense) -> list[OcrResult]:
+def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None) -> list[OcrResult]:
     """Run configured OCR providers and return draft results without mutating the expense."""
     settings = get_settings()
     if not settings.ocr_auto_run:
         return []
 
     try:
-        primary_result = get_ocr_provider(settings.ocr_provider).extract(expense)
+        primary_result = get_ocr_provider(settings.ocr_provider).extract(expense, timezone_name=timezone_name)
         results = [primary_result]
 
         draft = Expense(
@@ -213,23 +217,23 @@ def collect_auto_ocr_results(expense: Expense) -> list[OcrResult]:
             expense_time=expense.expense_time,
             ocr_draft_fields=expense.ocr_draft_fields,
         )
-        apply_ocr_result(draft, primary_result)
+        apply_ocr_result(draft, primary_result, timezone_name=timezone_name)
         if _needs_fallback(draft) and settings.ocr_fallback_provider not in {"", "empty", settings.ocr_provider}:
-            results.append(get_ocr_provider(settings.ocr_fallback_provider).extract(expense))
+            results.append(get_ocr_provider(settings.ocr_fallback_provider).extract(expense, timezone_name=timezone_name))
         return results
     except Exception:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
         return []
 
 
-def run_auto_ocr(expense: Expense) -> None:
-    for result in collect_auto_ocr_results(expense):
-        apply_ocr_result(expense, result)
+def run_auto_ocr(expense: Expense, timezone_name: str | None = None) -> None:
+    for result in collect_auto_ocr_results(expense, timezone_name=timezone_name):
+        apply_ocr_result(expense, result, timezone_name=timezone_name)
 
 
-def apply_ocr_result(expense: Expense, result: OcrResult) -> None:
-    parsed = parse_receipt_text(result.raw_text)
-    merged = _merge_result_with_text_parse(result, parsed_confidence=parsed.confidence)
+def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | None = None) -> None:
+    parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
+    merged = _merge_result_with_text_parse(result, parsed_confidence=parsed.confidence, timezone_name=timezone_name)
     draft_fields = ocr_draft_fields(expense)
     applied_fields: set[str] = set()
 
@@ -293,8 +297,13 @@ def _write_ocr_draft_fields(expense: Expense, fields: set[str]) -> None:
     expense.ocr_draft_fields = json.dumps(normalized, ensure_ascii=False)
 
 
-def _merge_result_with_text_parse(result: OcrResult, *, parsed_confidence: float | None) -> OcrResult:
-    parsed = parse_receipt_text(result.raw_text)
+def _merge_result_with_text_parse(
+    result: OcrResult,
+    *,
+    parsed_confidence: float | None,
+    timezone_name: str | None = None,
+) -> OcrResult:
+    parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
     return OcrResult(
         raw_text=result.raw_text,
         confidence=_best_confidence(result.confidence, parsed_confidence, parsed.confidence),
@@ -361,12 +370,12 @@ def rewrap_code_fence(content: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _result_from_llm_json(payload: dict[str, Any]) -> OcrResult:
+def _result_from_llm_json(payload: dict[str, Any], timezone_name: str | None = None) -> OcrResult:
     raw_text = str(payload.get("raw_text") or "")
     confidence = _coerce_float(payload.get("confidence"))
     amount_cents = _coerce_int(payload.get("amount_cents"))
     merchant = _coerce_optional_text(payload.get("merchant"))
-    expense_time = _coerce_datetime(payload.get("expense_time"))
+    expense_time = _coerce_datetime(payload.get("expense_time"), timezone_name=timezone_name)
     category = _coerce_optional_text(payload.get("category"))
     return OcrResult(
         raw_text=raw_text,
@@ -405,7 +414,7 @@ def _coerce_float(value: Any) -> float | None:
         return None
 
 
-def _coerce_datetime(value: Any) -> datetime | None:
+def _coerce_datetime(value: Any, timezone_name: str | None = None) -> datetime | None:
     text = _coerce_optional_text(value)
     if text is None:
         return None
@@ -413,5 +422,5 @@ def _coerce_datetime(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError:
-        return parse_receipt_text(f"时间：{text}").expense_time
+        return parse_receipt_text(f"时间：{text}", timezone_name=timezone_name).expense_time
     return ensure_utc(parsed)

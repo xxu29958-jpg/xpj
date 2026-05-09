@@ -1,0 +1,28 @@
+package com.ticketbox.data.repository
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class BackendErrorMessageMapperTest {
+    @Test
+    fun masksServerErrorDetailsForUsers() {
+        val message = backendErrorUserMessage(
+            errorCode = "server_error",
+            serverMessage = "本地大模型识别失败：Connection refused at 127.0.0.1:11434",
+        )
+
+        assertEquals("暂时处理不了，请稍后再试。", message)
+    }
+
+    @Test
+    fun mapsKnownBackendErrorCodesToGrayCopy() {
+        assertEquals("访问口令不对，请重新检查。", backendErrorUserMessage("invalid_token", "Token 无效。"))
+        assertEquals("账本版本过旧，请重启电脑上的小票夹后再试。", backendErrorUserMessage("route_not_found", "接口不存在。"))
+        assertEquals("操作方式不正确，请更新 App 后再试。", backendErrorUserMessage("method_not_allowed", "请求方法不允许。"))
+    }
+
+    @Test
+    fun keepsUnknownBackendMessageAsFallback() {
+        assertEquals("自定义错误。", backendErrorUserMessage("future_error", "自定义错误。"))
+    }
+}

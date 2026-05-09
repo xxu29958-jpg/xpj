@@ -115,7 +115,7 @@ fun SettingsRootScreen(
     val connectionSubtitle = if (showAdvancedTools) {
         "连接测试、联调自检、同步状态"
     } else {
-        "检查连接、同步账本状态"
+        "检查连接、更新账本状态"
     }
     SettingsPageFrame(
         title = "设置",
@@ -147,7 +147,7 @@ fun SettingsRootScreen(
         )
         SettingsEntryRow(
             title = "数据与导出",
-            subtitle = "月度预算、本地缓存、CSV 导出说明",
+            subtitle = "月度预算、本地缓存、表格导出说明",
             icon = Icons.Filled.FileDownload,
             onClick = onOpenDataExport,
         )

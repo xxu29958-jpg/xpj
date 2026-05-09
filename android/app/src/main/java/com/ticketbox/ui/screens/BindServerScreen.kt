@@ -61,9 +61,9 @@ fun BindServerScreen(
             ) {
                 Text(
                     if (showServerUrlInput) {
-                        "服务拥有者会提供同步地址和访问口令。"
+                        "服务拥有者会提供账本地址和访问口令。"
                     } else {
-                        "服务拥有者已配置同步地址，请输入访问口令。"
+                        "服务拥有者已配置账本地址，请输入访问口令。"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -73,7 +73,7 @@ fun BindServerScreen(
                         value = serverUrl,
                         onValueChange = { serverUrl = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("同步地址") },
+                        label = { Text("账本地址") },
                         placeholder = { Text("向服务拥有者获取") },
                         singleLine = true,
                     )

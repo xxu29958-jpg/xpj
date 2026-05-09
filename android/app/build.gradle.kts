@@ -1,5 +1,5 @@
-val ticketboxVersionCode = 1
-val ticketboxVersionName = "0.1.0"
+val ticketboxVersionCode = 20001
+val ticketboxVersionName = "0.2.0-rc1"
 
 plugins {
     alias(libs.plugins.android.application)
@@ -30,6 +30,7 @@ android {
         create("gray") {
             dimension = "audience"
             manifestPlaceholders["appLabel"] = "小票夹"
+            resValue("string", "app_version_name", ticketboxVersionName)
             buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "false")
         }
         create("internal") {
@@ -37,6 +38,7 @@ android {
             applicationIdSuffix = ".internal"
             versionNameSuffix = "-internal"
             manifestPlaceholders["appLabel"] = "小票夹内部版"
+            resValue("string", "app_version_name", "$ticketboxVersionName-internal")
             buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "true")
         }
     }

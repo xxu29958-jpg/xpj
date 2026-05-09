@@ -47,6 +47,18 @@ def test_scoring_prefers_alipay_primary_amount_merchant_and_time() -> None:
     assert parsed.confidence is not None and parsed.confidence >= 0.8
 
 
+def test_receipt_time_parser_accepts_client_timezone() -> None:
+    raw_text = "交易时间：2026-04-30 23:30:00"
+
+    shanghai = parse_receipt_text(raw_text, timezone_name="Asia/Shanghai")
+    los_angeles = parse_receipt_text(raw_text, timezone_name="America/Los_Angeles")
+
+    assert shanghai.expense_time is not None
+    assert los_angeles.expense_time is not None
+    assert _utc_iso(shanghai.expense_time) == "2026-04-30T15:30:00Z"
+    assert _utc_iso(los_angeles.expense_time) == "2026-05-01T06:30:00Z"
+
+
 def test_context_quality_bonus_rewards_structured_profile_evidence() -> None:
     context = _ReceiptContext(
         text="structured receipt",
