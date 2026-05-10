@@ -106,41 +106,48 @@ Authorization: Bearer <admin_token>
 
 | Endpoint | Method | 后端 route | Android ApiService | 请求 DTO / 参数 | 响应 DTO | 鉴权 | 测试覆盖 | 用途 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `/api/health` | GET | `backend/app/main.py` | 无 | 无 | `{"status":"ok"}` | 无 | `backend/tests/test_api_contract.py`, smoke | smoke |
-| `/api/bootstrap/owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `BootstrapOwnerRequest` | `BootstrapOwnerResponse` | 本机请求（仅首次初始化） | `backend/tests/test_api_contract.py` | owner 初始化 |
-| `/api/bootstrap/pairing-codes` | POST | `backend/app/routes/bootstrap.py` | 无 | `PairingCodeCreateRequest` | `PairingCodeResponse` | Admin Token | `backend/tests/test_api_contract.py` | 生成新绑定码 |
-| `/api/auth/pair` | POST | `backend/app/routes/auth.py` | `pairDevice()` | `PairRequest` | `PairResponse` | 无 | `backend/tests/test_api_contract.py` | 设备绑定 |
-| `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | Session Token | `backend/tests/test_api_contract.py` | 校验 session |
-| `/api/upload/check` | GET | `backend/app/routes/uploads.py` | 无 | 旧版 `Upload-Token` | 错误响应 | 旧版 Upload-Token（已废弃） | `backend/tests/test_api_contract.py`, smoke | 旧版上传检查（已废弃） |
-| `/api/upload-screenshot` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart | `UploadResponseDto` | 旧版 Upload-Token（已废弃） | `backend/tests/test_api_contract.py`, smoke | 旧版 iPhone 入口（已废弃） |
-| `/u/{upload_key}` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart；query `tz` | `UploadResponseDto` | UploadLink URL | `backend/tests/test_api_contract.py`, smoke | iPhone 快捷指令上传 |
-| `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | Session Token | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | Android 上传 |
-| `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/timezone` | `PaginatedExpensesDto` | Session Token | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
-| `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal 导出 |
-| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | internal/debug 读取详情 |
-| `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/expenses/{id}/recognize-text` | POST | `backend/app/routes/expenses.py` | 无 | `RecognizeTextRequest` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | internal/shortcut text |
-| `/api/expenses/{id}/mark-not-duplicate` | POST | `backend/app/routes/expenses.py` | `markNotDuplicate(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/expenses/{id}/image` | GET | `backend/app/routes/expenses.py` | `expenseImage(id)` | path `id` | streaming image | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/expenses/{id}/thumbnail` | GET | `backend/app/routes/expenses.py` | `expenseThumbnail(id)` | path `id` | streaming image | Session Token | `backend/tests/test_api_contract.py`, smoke | gray/internal |
-| `/api/duplicates` | GET | `backend/app/routes/duplicates.py` | `duplicates()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/rules/categories` | GET | `backend/app/routes/rules.py` | `categoryRules()` | 无 | `List<CategoryRuleDto>` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_api_contract.py` | internal/高级入口 |
-| `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | Session Token | `backend/tests/test_api_contract.py`, `ApiDtoContractTest` | internal/高级入口 |
-| `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_api_contract.py`, Android domain tests | gray/internal |
-| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_api_contract.py` | gray/internal |
-| `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_api_contract.py`, smoke | admin |
-| `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_api_contract.py`, smoke | admin |
-| `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | Admin Token | `backend/tests/test_api_contract.py`, smoke | admin |
+| `/api/health` | GET | `backend/app/main.py` | 无 | 无 | `{"status":"ok"}` | 无 | `backend/tests/test_auth_bootstrap.py`, smoke | smoke |
+| `/api/bootstrap/owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `BootstrapOwnerRequest` | `BootstrapOwnerResponse` | 默认禁用；启用后需 `X-Bootstrap-Secret`（一次性） | `backend/tests/test_auth_bootstrap.py` | owner 初始化 |
+| `/api/bootstrap/pairing-codes` | POST | `backend/app/routes/bootstrap.py` | 无 | `PairingCodeCreateRequest` | `PairingCodeResponse` | Admin Token | `backend/tests/test_auth_bootstrap.py` | 生成新绑定码 |
+| `/api/auth/pair` | POST | `backend/app/routes/auth.py` | `pairDevice()` | `PairRequest` | `PairResponse` | 无 | `backend/tests/test_auth_bootstrap.py` | 设备绑定 |
+| `/api/auth/check` | GET | `backend/app/routes/auth.py` | `checkAuth()` | header `Authorization` | `AuthCheckDto` | Session Token | `backend/tests/test_auth_bootstrap.py` | 校验 session |
+| `/api/upload/check` | GET | `backend/app/routes/uploads.py` | 无 | 旧版 `Upload-Token` | 错误响应 | 旧版 Upload-Token（已废弃） | `backend/tests/test_auth_bootstrap.py`, smoke | 旧版上传检查（已废弃） |
+| `/api/upload-screenshot` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart | `UploadResponseDto` | 旧版 Upload-Token（已废弃） | `backend/tests/test_uploads.py`, smoke | 旧版 iPhone 入口（已废弃） |
+| `/u/{upload_key}` | POST | `backend/app/routes/uploads.py` | 无 | raw image 或 multipart；query `tz` | `UploadResponseDto` | UploadLink URL | `backend/tests/test_uploads.py`, smoke | iPhone 快捷指令上传 |
+| `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | Session Token | `backend/tests/test_uploads.py`, `ApiDtoContractTest` | Android 上传 |
+| `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
+| `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/timezone` | `PaginatedExpensesDto` | Session Token | `backend/tests/test_stats_filters.py`, Android domain tests | gray/internal |
+| `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
+| `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
+| `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, smoke | gray/internal 导出 |
+| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
+| `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
+| `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
+| `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
+| `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
+| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/高级入口 |
+| `/api/expenses/{id}/recognize-text` | POST | `backend/app/routes/expenses.py` | 无 | `RecognizeTextRequest` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/shortcut text |
+| `/api/expenses/{id}/mark-not-duplicate` | POST | `backend/app/routes/expenses.py` | `markNotDuplicate(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
+| `/api/expenses/{id}/image` | GET | `backend/app/routes/expenses.py` | `expenseImage(id)` | path `id` | streaming image | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
+| `/api/expenses/{id}/thumbnail` | GET | `backend/app/routes/expenses.py` | `expenseThumbnail(id)` | path `id` | streaming image | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
+| `/api/duplicates` | GET | `backend/app/routes/duplicates.py` | `duplicates()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
+| `/api/rules/categories` | GET | `backend/app/routes/rules.py` | `categoryRules()` | 无 | `List<CategoryRuleDto>` | Session Token | `backend/tests/test_expenses.py` | internal/高级入口 |
+| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_expenses.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_expenses.py` | internal/高级入口 |
+| `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | Session Token | `backend/tests/test_expenses.py`, `ApiDtoContractTest` | internal/高级入口 |
+| `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
+| `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, Android domain tests | gray/internal |
+| `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
+| `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
+| `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
+| `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
+| `/api/admin/devices` | GET | `backend/app/routes/admin.py` | 无 | 无 | `List<AdminDeviceResponse>` | Admin Token | `backend/tests/test_admin_devices_and_upload_links.py` | admin 设备管理 |
+| `/api/admin/devices/{public_id}/revoke` | POST | `backend/app/routes/admin.py` | 无 | path `public_id` | `AdminDeviceResponse` | Admin Token | `backend/tests/test_admin_devices_and_upload_links.py` | 停用设备并撤销其全部 token |
+| `/api/admin/devices/{public_id}/rename` | POST | `backend/app/routes/admin.py` | 无 | `AdminDeviceRenameRequest` | `AdminDeviceResponse` | Admin Token | `backend/tests/test_admin_devices_and_upload_links.py` | admin 重命名设备 |
+| `/api/admin/upload-links` | GET | `backend/app/routes/admin.py` | 无 | 无 | `List<AdminUploadLinkResponse>` | Admin Token | `backend/tests/test_admin_devices_and_upload_links.py` | 列出 UploadLink（链接掩码 `/u/***`） |
+| `/api/admin/upload-links` | POST | `backend/app/routes/admin.py` | 无 | `AdminUploadLinkCreateRequest` | `AdminUploadLinkSecretResponse` | Admin Token | `backend/tests/test_admin_devices_and_upload_links.py` | 创建新的 UploadLink，仅返回一次完整 URL |
+| `/api/admin/upload-links/{public_id}/rotate` | POST | `backend/app/routes/admin.py` | 无 | path `public_id` | `AdminUploadLinkSecretResponse` | Admin Token | `backend/tests/test_admin_devices_and_upload_links.py` | 轮换 UploadLink；旧 key 立即失效 |
+| `/api/admin/upload-links/{public_id}/revoke` | POST | `backend/app/routes/admin.py` | 无 | path `public_id` | `AdminUploadLinkResponse` | Admin Token | `backend/tests/test_admin_devices_and_upload_links.py` | 立即停用 UploadLink |
 
 ## 基础接口
 

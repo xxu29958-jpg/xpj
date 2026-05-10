@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}小票夹 Owner Console{% endblock %}</title>
+  <link rel="stylesheet" href="/static/owner/owner.css">
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="/owner">🎫 小票夹</a>
+  <a href="/owner" {% if request.url.path == '/owner' %}class="active"{% endif %}>仪表盘</a>
+  <a href="/owner/devices" {% if '/devices' in request.url.path %}class="active"{% endif %}>设备</a>
+  <a href="/owner/pairing" {% if '/pairing' in request.url.path %}class="active"{% endif %}>绑定码</a>
+  <a href="/owner/upload-links" {% if '/upload-links' in request.url.path %}class="active"{% endif %}>上传链接</a>
+  <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="active"{% endif %}>诊断</a>
+  <span style="flex:1"></span>
+  <span style="font-size:11px;color:#475569">v{{ backend_version }} · 本机管理后台</span>
+</nav>
+<div class="page">
+{% block content %}{% endblock %}
+</div>
+</body>
+</html>

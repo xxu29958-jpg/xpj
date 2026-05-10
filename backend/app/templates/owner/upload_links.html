@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}iPhone 上传链接 — 小票夹{% endblock %}
+{% block content %}
+<h1>iPhone 上传链接</h1>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if new_secret %}
+<div class="card">
+  <div class="alert alert-success">
+    ✅ 上传链接已{% if new_secret.public_id %}创建/轮换{% endif %}。<br>
+    <strong>完整上传路径仅显示一次，请立即复制到 iPhone 快捷指令。</strong>
+  </div>
+  <div class="secret-box">{{ new_secret.upload_url_path }}?tz={{ new_secret.default_timezone or 'Asia/Shanghai' }}</div>
+  <p class="secret-note">⚠️ 离开本页面后无法再查看完整路径，列表中只显示掩码。</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h2 style="margin:0;border:none;padding:0">链接列表</h2>
+    <form method="post" action="/owner/upload-links">
+      <button type="submit" class="btn btn-primary">+ 新建上传链接</button>
+    </form>
+  </div>
+  {% if links %}
+  <table>
+    <thead>
+      <tr>
+        <th>账本</th>
+        <th>时区</th>
+        <th>最近使用</th>
+        <th>状态</th>
+        <th>路径（掩码）</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for link in links %}
+      <tr>
+        <td>{{ link.ledger_name }}</td>
+        <td>{{ link.default_timezone or 'Asia/Shanghai' }}</td>
+        <td>{{ link.last_used_at or '—' }}</td>
+        <td>
+          {% if link.revoked_at %}
+            <span class="badge badge-off">已停用</span>
+          {% else %}
+            <span class="badge badge-ok">正常</span>
+          {% endif %}
+        </td>
+        <td style="font-family:monospace;color:#475569">{{ link.masked_url_path }}</td>
+        <td>
+          <div class="actions">
+            {% if not link.revoked_at %}
+            <form class="inline" method="post"
+                  action="/owner/upload-links/{{ link.public_id }}/rotate"
+                  onsubmit="return confirm('重新生成上传 Key？旧 iPhone 快捷指令将立即失效。')">
+              <button type="submit" class="btn btn-secondary">重新生成</button>
+            </form>
+            <form class="inline" method="post"
+                  action="/owner/upload-links/{{ link.public_id }}/revoke"
+                  onsubmit="return confirm('确认停用该上传链接？')">
+              <button type="submit" class="btn btn-danger">停用</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p style="color:#64748b;text-align:center;padding:24px">暂无上传链接，点击「新建」创建一个。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>iPhone 快捷指令使用说明</h2>
+  <ol style="font-size:13px;color:#334155;line-height:2;padding-left:20px">
+    <li>在 iPhone「快捷指令」App 中创建新快捷指令。</li>
+    <li>添加「从输入获取图片」→「获取 URL 内容」动作。</li>
+    <li>将上方完整上传路径（含 <code>?tz=...</code>）粘贴到 URL 字段。</li>
+    <li>方法选 <strong>POST</strong>，正文选 <strong>文件（图片）</strong>。</li>
+    <li>保存并分享到桌面即可使用。</li>
+  </ol>
+</div>
+{% endblock %}

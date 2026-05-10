@@ -7,7 +7,7 @@ from app.auth import get_current_app_context
 from app.config import get_settings
 from app.database import get_db
 from app.schemas import LifestyleStatsResponse, MonthlyStatsResponse
-from app.services.expense_service import lifestyle_stats, monthly_stats
+from app.services.stats_service import lifestyle_stats, monthly_stats
 from app.services.time_service import current_month
 from app.tenants import AuthContext
 

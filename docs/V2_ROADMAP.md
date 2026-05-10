@@ -38,7 +38,7 @@ AI/OCR 只生成草稿和建议，用户确认后才入账。
 
 - OCR retry 可插拔入口，不自动入账。
 - `OCR_PROVIDER=empty|mock|rapidocr|local_llm` 配置入口已落地。
-- `receipt_parse_service.py` 已能从 `raw_text` 规则提取金额、商家、消费时间、分类建议。
+- `receipt_parse_service.py` 及 `receipt_parse_*` 子模块已能从 `raw_text` 规则提取金额、商家、消费时间、分类建议。
 - `POST /api/expenses/{id}/recognize-text` 已落地，可用于调试文本识别或接入快捷指令文本。
 - `OCR_AUTO_RUN` 上传后自动识别开关已落地，默认关闭；失败不影响 pending 创建。
 - 自动分类规则表、默认规则、规则增删改接口和 Android 设置页入口。

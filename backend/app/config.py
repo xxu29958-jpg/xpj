@@ -53,6 +53,8 @@ class Settings:
     local_llm_model: str
     local_llm_timeout_seconds: int
     tenants_json: str
+    enable_http_bootstrap: bool
+    http_bootstrap_secret: str
 
     @property
     def max_upload_size_bytes(self) -> int:
@@ -87,4 +89,6 @@ def get_settings() -> Settings:
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
+        enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
+        http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
     )

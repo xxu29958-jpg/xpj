@@ -1,5 +1,7 @@
 # 小票夹
 
+**当前版本：v0.3.1-alpha2**
+
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 的核心变化是把旧 token/tenant 运行时模型切换为账号、账本、设备和可撤销凭证。
 
 ```text
@@ -60,7 +62,19 @@ run.bat
 
 `setup.bat` 会创建 `.venv`、安装依赖，并在 `.env` 不存在时生成基础配置。v0.3 不再在 `.env` 里生成运行时 token。
 
-首次初始化 owner 身份：
+## Owner Console（本机管理后台）
+
+后端启动后在浏览器打开：
+
+```
+http://127.0.0.1:8000/owner
+```
+
+可中文查看服务状态、管理设备、生成 Android 绑定码、创建和管理 iPhone 上传链接。
+
+Owner Console 仅允许本机访问（127.0.0.1），不通过 Cloudflare Tunnel 暴露到公网。
+
+## 首次初始化 Owner 身份
 
 ```powershell
 cd E:\projects\xiaopiaojia\backend

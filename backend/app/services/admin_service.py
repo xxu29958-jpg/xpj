@@ -1,0 +1,270 @@
+"""Admin service helpers for v0.3.1-alpha2 device & UploadLink management.
+
+These helpers are called from :mod:`app.routes.admin`. They never return raw
+secrets except for newly minted upload keys (which is the one-shot reveal flow
+that the contract explicitly allows when creating or rotating a link).
+
+Important guarantees:
+
+* The current admin's own device cannot be revoked by accident — the caller
+  must enforce that. The service raises if the public id is unknown or already
+  revoked.
+* Revoking a device atomically revokes every active ``AuthToken`` and
+  ``UploadLink`` for that device.
+* Rotating an upload link revokes the old link and returns the new key once.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
+
+from app.errors import AppError
+from app.models import Account, AuthToken, Device, Ledger, UploadLink
+from app.services.identity_service import (
+    _ensure_device,
+    hash_secret,
+    new_upload_key,
+)
+from app.services.time_service import now_utc, to_iso
+
+
+@dataclass(frozen=True)
+class DeviceSummary:
+    public_id: str
+    device_name: str
+    platform: str
+    account_name: str
+    ledger_id: str | None
+    ledger_name: str | None
+    last_seen_at: str | None
+    revoked_at: str | None
+
+
+@dataclass(frozen=True)
+class UploadLinkSummary:
+    public_id: str
+    ledger_id: str
+    ledger_name: str
+    account_name: str
+    device_name: str
+    default_timezone: str | None
+    masked_url_path: str
+    last_used_at: str | None
+    revoked_at: str | None
+    created_at: str | None
+
+
+@dataclass(frozen=True)
+class UploadLinkSecret:
+    """One-shot reveal returned by create / rotate. Never persisted."""
+
+    public_id: str
+    upload_url_path: str
+    default_timezone: str | None
+
+
+def _device_with_relations(db: Session, device: Device) -> DeviceSummary:
+    account = db.get(Account, device.account_id)
+    # A device's nominal ledger is its most recently used active auth_token's
+    # ledger; if none, fall back to the most recent token of any state.
+    token = db.scalar(
+        select(AuthToken)
+        .where(AuthToken.device_id == device.id)
+        .order_by(AuthToken.last_used_at.desc().nullslast(), AuthToken.id.desc())
+        .limit(1)
+    )
+    ledger_id: str | None = None
+    ledger_name: str | None = None
+    if token is not None:
+        ledger_id = token.ledger_id
+        ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == token.ledger_id).limit(1))
+        if ledger is not None:
+            ledger_name = ledger.name
+    return DeviceSummary(
+        public_id=device.public_id,
+        device_name=device.device_name,
+        platform=device.platform,
+        account_name=account.display_name if account is not None else "",
+        ledger_id=ledger_id,
+        ledger_name=ledger_name,
+        last_seen_at=to_iso(device.last_seen_at),
+        revoked_at=to_iso(device.revoked_at),
+    )
+
+
+def list_devices(db: Session) -> list[DeviceSummary]:
+    devices = db.scalars(select(Device).order_by(Device.id.asc())).all()
+    return [_device_with_relations(db, d) for d in devices]
+
+
+def _device_by_public_id(db: Session, public_id: str) -> Device:
+    device = db.scalar(select(Device).where(Device.public_id == public_id).limit(1))
+    if device is None:
+        raise AppError("invalid_request", "设备不存在。", status_code=404)
+    return device
+
+
+def revoke_device(db: Session, *, public_id: str, current_device_public_id: str) -> DeviceSummary:
+    if public_id == current_device_public_id:
+        raise AppError(
+            "invalid_request",
+            "不能停用当前正在使用的管理员设备，请先用本地脚本切换。",
+            status_code=409,
+        )
+    device = _device_by_public_id(db, public_id)
+    now = now_utc()
+    if device.revoked_at is None:
+        device.revoked_at = now
+    # Atomically revoke every active auth_token and upload_link for this device
+    db.execute(
+        update(AuthToken)
+        .where(AuthToken.device_id == device.id)
+        .where(AuthToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    db.execute(
+        update(UploadLink)
+        .where(UploadLink.device_id == device.id)
+        .where(UploadLink.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    db.commit()
+    db.refresh(device)
+    return _device_with_relations(db, device)
+
+
+def rename_device(db: Session, *, public_id: str, new_name: str) -> DeviceSummary:
+    name = (new_name or "").strip()
+    if not name or len(name) > 120:
+        raise AppError("invalid_request", "设备名称需在 1-120 字符之间。", status_code=422)
+    device = _device_by_public_id(db, public_id)
+    device.device_name = name
+    db.commit()
+    db.refresh(device)
+    return _device_with_relations(db, device)
+
+
+def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
+    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == link.ledger_id).limit(1))
+    account = db.get(Account, link.account_id)
+    device = db.get(Device, link.device_id)
+    return UploadLinkSummary(
+        public_id=link.public_id,
+        ledger_id=link.ledger_id,
+        ledger_name=ledger.name if ledger is not None else link.ledger_id,
+        account_name=account.display_name if account is not None else "",
+        device_name=device.device_name if device is not None else "",
+        default_timezone=link.default_timezone,
+        # Lists / dashboards must NEVER show the full upload key — only the
+        # public_id is safe to reveal repeatedly.
+        masked_url_path="/u/***",
+        last_used_at=to_iso(link.last_used_at),
+        revoked_at=to_iso(link.revoked_at),
+        created_at=to_iso(link.created_at),
+    )
+
+
+def list_upload_links(db: Session) -> list[UploadLinkSummary]:
+    links = db.scalars(select(UploadLink).order_by(UploadLink.id.asc())).all()
+    return [_upload_link_summary(db, link) for link in links]
+
+
+def _upload_link_by_public_id(db: Session, public_id: str) -> UploadLink:
+    link = db.scalar(select(UploadLink).where(UploadLink.public_id == public_id).limit(1))
+    if link is None:
+        raise AppError("invalid_request", "上传链接不存在。", status_code=404)
+    return link
+
+
+def create_upload_link(
+    db: Session,
+    *,
+    ledger_id: str,
+    admin_account_id: int,
+    default_timezone: str | None,
+) -> tuple[UploadLinkSummary, UploadLinkSecret]:
+    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
+    if ledger is None or ledger.archived_at is not None:
+        raise AppError("invalid_request", "账本不存在。", status_code=404)
+    # Each UploadLink is anchored on a synthetic device entry so the device
+    # column stays meaningful (a revoked device should kill its links).
+    device = _ensure_device(db, admin_account_id, "iPhone 快捷指令", "ios")
+    upload_key = new_upload_key()
+    link = UploadLink(
+        public_id=_new_public_id(db),
+        token_hash=hash_secret(upload_key),
+        account_id=admin_account_id,
+        device_id=device.id,
+        ledger_id=ledger_id,
+        default_timezone=default_timezone,
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    summary = _upload_link_summary(db, link)
+    secret = UploadLinkSecret(
+        public_id=link.public_id,
+        upload_url_path=_upload_url_path(upload_key, default_timezone),
+        default_timezone=default_timezone,
+    )
+    return summary, secret
+
+
+def rotate_upload_link(
+    db: Session, *, public_id: str
+) -> tuple[UploadLinkSummary, UploadLinkSecret]:
+    link = _upload_link_by_public_id(db, public_id)
+    now = now_utc()
+    link.revoked_at = now
+    new_key = new_upload_key()
+    new_link = UploadLink(
+        public_id=_new_public_id(db),
+        token_hash=hash_secret(new_key),
+        account_id=link.account_id,
+        device_id=link.device_id,
+        ledger_id=link.ledger_id,
+        default_timezone=link.default_timezone,
+    )
+    db.add(new_link)
+    db.commit()
+    db.refresh(new_link)
+    summary = _upload_link_summary(db, new_link)
+    secret = UploadLinkSecret(
+        public_id=new_link.public_id,
+        upload_url_path=_upload_url_path(new_key, new_link.default_timezone),
+        default_timezone=new_link.default_timezone,
+    )
+    return summary, secret
+
+
+def revoke_upload_link(db: Session, *, public_id: str) -> UploadLinkSummary:
+    link = _upload_link_by_public_id(db, public_id)
+    if link.revoked_at is None:
+        link.revoked_at = now_utc()
+        db.commit()
+        db.refresh(link)
+    return _upload_link_summary(db, link)
+
+
+def _new_public_id(db: Session) -> str:
+    from uuid import uuid4
+
+    while True:
+        candidate = str(uuid4())
+        if (
+            db.scalar(
+                select(UploadLink.id).where(UploadLink.public_id == candidate).limit(1)
+            )
+            is None
+        ):
+            return candidate
+
+
+def _upload_url_path(upload_key: str, default_timezone: str | None) -> str:
+    tz = (default_timezone or "Asia/Shanghai").strip() or "Asia/Shanghai"
+    from urllib.parse import quote
+
+    return f"/u/{upload_key}?tz={quote(tz, safe='/')}"

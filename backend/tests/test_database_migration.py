@@ -241,6 +241,13 @@ def test_missing_tenant_id_backfills_owner_for_expenses_rules_and_duplicate_igno
 
 
 def test_legacy_upload_paths_migrate_to_tenant_directory_and_missing_files_stay_reference_only() -> None:
+    """v0.3.1-alpha2: ``init_db`` no longer auto-moves legacy uploads. The
+    opt-in helper ``migrate_upload_paths_to_tenant_dirs`` must still move
+    on-disk legacy files into the tenant directory when invoked explicitly,
+    and must leave database-only references (files that never existed on
+    disk) untouched.
+    """
+
     _reset_empty_database()
     _create_v01_expenses_table()
     with engine.begin() as connection:
@@ -266,7 +273,14 @@ def test_legacy_upload_paths_migrate_to_tenant_directory_and_missing_files_stay_
         tenant_id="owner",
     )
 
+    # init_db must NOT move the legacy files (Phase 2 P0 contract).
     init_db()
+    untouched = _fetch_expense(existing_id)
+    assert str(untouched["image_path"]) == legacy_file.relative_to(BACKEND_ROOT).as_posix()
+    assert legacy_file.is_file()
+
+    # The opt-in helper still works when explicitly invoked.
+    migrate_upload_paths_to_tenant_dirs()
 
     migrated = _fetch_expense(existing_id)
     assert str(migrated["image_path"]).startswith("uploads/pytest_test/owner/2026/05/")

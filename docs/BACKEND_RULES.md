@@ -93,7 +93,7 @@ OCR provider 当前约束：
 - OCR 只生成草稿建议，不自动确认入账。
 - 上传后的自动 OCR 由 `OCR_AUTO_RUN` 控制，失败不得影响 pending 创建。
 - 手动 OCR retry 可以把 provider 错误返回给 App。
-- 规则抽取集中在 `receipt_parse_service.py`。
+- 规则抽取入口集中在 `receipt_parse_service.py`，金额、商家、时间、分类候选逻辑分别放在 `receipt_parse_amount.py`、`receipt_parse_merchant.py`、`receipt_parse_time.py`、`receipt_parse_category.py`。
 
 ## 验收
 

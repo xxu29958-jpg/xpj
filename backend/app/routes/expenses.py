@@ -19,11 +19,8 @@ from app.services.expense_service import (
     confirm_expense,
     create_manual_expense,
     ensure_thumbnail_file,
-    export_confirmed_csv,
     get_expense,
-    list_categories,
     list_confirmed,
-    list_months,
     list_pending,
     mark_expense_not_duplicate,
     reject_expense,
@@ -32,6 +29,7 @@ from app.services.expense_service import (
     update_expense,
 )
 from app.services.file_service import resolve_protected_image
+from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.tenants import AuthContext
 
 

@@ -200,7 +200,7 @@ Authorization: Bearer <admin_token>
 认证规则：
 
 - `POST /api/auth/pair` 不需要鉴权，用 Pairing Code 换取 session token。
-- `POST /api/bootstrap/owner` 不需要鉴权，但只接受后端本机 loopback 请求，且仅首次初始化可用。
+- `POST /api/bootstrap/owner` 默认禁用（返回 `404 bootstrap_disabled`）。仅当后端运行环境显式设置 `ENABLE_HTTP_BOOTSTRAP=true` 并配置 `HTTP_BOOTSTRAP_SECRET` 时可用，调用方必须携带 `X-Bootstrap-Secret` 请求头；secret 一次性消费。loopback 不再用作鉴权依据，Cloudflare Tunnel 公网无法绕过。详见 [BOOTSTRAP.md](BOOTSTRAP.md)。
 - `POST /api/bootstrap/pairing-codes` 需要 admin token。
 - `/u/{upload_key}` 通过 URL 路径中的 upload_key 鉴权，不需要 header。
 - Android App 接口需要 `Authorization: Bearer <session_token>`。

@@ -183,12 +183,37 @@ def _is_under_path(candidate: Path, root: Path) -> bool:
 
 
 def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[Path, str]:
+    """Resolve a relative image path that the caller has already authorized.
+
+    The caller is responsible for verifying that the owning expense belongs to
+    ``tenant_id``. This function only enforces filesystem-level safety:
+
+    - reject empty / missing paths
+    - reject absolute paths and Windows drive specs
+    - reject ``..`` traversal that escapes the uploads root
+    - require the resolved file to live inside the uploads root
+
+    Legacy v0.2 paths (``uploads/YYYY/MM/foo.png`` without a tenant prefix) are
+    accepted as long as they remain inside the uploads root. New uploads are
+    written under ``uploads/<tenant>/...`` but old files are not moved on
+    startup (see docs/ROLLBACK.md).
+    """
+
     if not relative_path:
         raise AppError("image_not_found", status_code=404)
 
+    raw = str(relative_path)
+    # Reject absolute paths, Windows drive specs, and explicit traversal tokens
+    # before touching the filesystem so the error surface is uniform.
+    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
+        raise AppError("image_not_found", status_code=404)
+    normalized_parts = Path(raw.replace("\\", "/")).parts
+    if any(part == ".." for part in normalized_parts):
+        raise AppError("image_not_found", status_code=404)
+
     settings = get_settings()
-    candidate = (BACKEND_ROOT / relative_path).resolve()
-    if not _is_under_path(candidate, settings.upload_dir) or not _is_under_path(candidate, _tenant_upload_dir(tenant_id)):
+    candidate = (BACKEND_ROOT / raw).resolve()
+    if not _is_under_path(candidate, settings.upload_dir):
         raise AppError("image_not_found", status_code=404)
 
     if not candidate.is_file():

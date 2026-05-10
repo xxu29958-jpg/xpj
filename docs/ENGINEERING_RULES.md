@@ -149,7 +149,7 @@ OCR 强制边界：
 - Provider 失败不能破坏上传截图的 pending 创建。
 - 自动 OCR 默认关闭，由 `OCR_AUTO_RUN` 控制。
 - OCR 结果只能填充空字段，不覆盖用户已经手动编辑的金额、商家、消费时间。
-- OCR 提取规则集中放在 `receipt_parse_service.py`，不要散落在 route 或 Android UI。
+- OCR 提取入口放在 `receipt_parse_service.py`，金额、商家、时间、分类规则分别放在对应 `receipt_parse_*` service 文件中；不要散落在 route 或 Android UI。
 - 本地大模型必须通过配置接入，不允许在代码里写死模型名或服务地址。
 
 ## 4.1 强代码硬规则

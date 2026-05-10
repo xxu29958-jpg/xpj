@@ -95,5 +95,5 @@ updated_at - created_at <= 5 分钟
 当前测试入口：
 
 ```text
-backend/tests/test_api_contract.py
+backend/tests/test_expenses.py
 ```

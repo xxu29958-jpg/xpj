@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}生成绑定码 — 小票夹{% endblock %}
+{% block content %}
+<h1>生成 Android 绑定码</h1>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if pairing_result %}
+<div class="card">
+  <div class="alert alert-success">绑定码已生成，请在有效期内完成绑定。</div>
+  <div class="code-big">{{ pairing_result.pairing_code }}</div>
+  <div class="meta" style="text-align:center">
+    账本：{{ pairing_result.ledger_name }} &nbsp;·&nbsp;
+    有效期至：{{ pairing_result.expires_at }}
+  </div>
+  <p style="color:#64748b;font-size:12px;margin-top:16px;text-align:center">
+    在 Android 小票夹 App 中点击"绑定账本"，输入上方 6 位码完成绑定。<br>
+    绑定码为一次性使用，过期后自动失效。
+  </p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>生成新绑定码</h2>
+  <p style="color:#64748b;font-size:13px;margin-bottom:16px">
+    绑定码用于 Android 设备绑定本地私人账本。每次生成仅有一个有效码，过期自动失效。
+  </p>
+  <form method="post" action="/owner/pairing">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <label style="font-size:13px">有效时长（分钟）：
+        <input type="number" name="ttl_minutes" value="15" min="1" max="60"
+               style="width:70px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px">
+      </label>
+      <button type="submit" class="btn btn-primary">生成绑定码</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

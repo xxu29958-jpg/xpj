@@ -44,6 +44,9 @@ backend\
     errors.py
     routes\
       auth.py
+      bootstrap.py
+      admin.py
+      owner_console.py
       duplicates.py
       expenses.py
       maintenance.py
@@ -52,6 +55,8 @@ backend\
       stats.py
       uploads.py
     services\
+      admin_service.py
+      owner_console_service.py
       category_service.py
       classify_service.py
       cleanup_service.py
@@ -59,9 +64,30 @@ backend\
       expense_service.py
       file_service.py
       ocr_service.py
+      receipt_parse_service.py
+      receipt_parse_amount.py
+      receipt_parse_merchant.py
+      receipt_parse_time.py
+      receipt_parse_category.py
       server_settings_service.py
+      stats_service.py
       thumb_service.py
       time_service.py
+    middleware\
+      logging.py
+    templates\
+      owner\
+        base.html
+        index.html
+        devices.html
+        pairing.html
+        upload_links.html
+        diagnostics.html
+    static\
+      owner\
+        owner.css
+    log_sanitize.py
+    version.py
   data\
     .gitkeep
   uploads\
@@ -72,7 +98,13 @@ backend\
     .gitkeep
   tests\
     conftest.py
-    test_api_contract.py
+    api_contract_helpers.py
+    test_auth_bootstrap.py
+    test_uploads.py
+    test_expenses.py
+    test_tenant_isolation.py
+    test_stats_filters.py
+    test_maintenance.py
   scripts\
     backup_database.ps1
     export_confirmed.ps1

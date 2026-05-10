@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}诊断 — 小票夹{% endblock %}
+{% block content %}
+<h1>诊断信息</h1>
+<p style="color:#64748b;font-size:12px;margin-bottom:16px">
+  此页面仅在本机可见，不通过 Cloudflare Tunnel 暴露到公网。
+</p>
+
+<div class="card">
+  <h2>版本与身份</h2>
+  <div class="kv-grid">
+    <span class="kv-key">后端版本</span><span class="kv-val">{{ backend_version }}</span>
+    <span class="kv-key">身份模型</span><span class="kv-val">{{ identity_schema }}</span>
+    <span class="kv-key">Owner Console</span><span class="kv-val">{{ owner_console_status }}</span>
+    <span class="kv-key">当前账号</span><span class="kv-val">{{ account_name }}</span>
+    <span class="kv-key">当前账本</span><span class="kv-val">{{ ledger_name }}</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>存储状态</h2>
+  <div class="kv-grid">
+    <span class="kv-key">数据库</span>
+    <span class="kv-val">
+      {% if database_status == 'ok' %}<span class="badge badge-ok">正常</span>
+      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
+    </span>
+    <span class="kv-key">上传目录</span>
+    <span class="kv-val">
+      {% if upload_dir_status == 'ok' %}<span class="badge badge-ok">正常</span>
+      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
+    </span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>账单概要</h2>
+  <div class="kv-grid">
+    <span class="kv-key">待确认账单</span><span class="kv-val">{{ pending_count }}</span>
+    <span class="kv-key">已入账账单</span><span class="kv-val">{{ confirmed_count }}</span>
+    <span class="kv-key">活跃设备数</span><span class="kv-val">{{ active_device_count }}</span>
+    <span class="kv-key">上传链接数</span><span class="kv-val">{{ active_upload_link_count }}</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>OCR 配置</h2>
+  <div class="kv-grid">
+    <span class="kv-key">OCR 提供方</span><span class="kv-val">{{ ocr_provider }}</span>
+    <span class="kv-key">自动 OCR</span>
+    <span class="kv-val">
+      {% if ocr_auto_run %}<span class="badge badge-ok">开启</span>
+      {% else %}<span class="badge badge-off">关闭</span>{% endif %}
+    </span>
+    <span class="kv-key">最大上传大小</span><span class="kv-val">{{ max_upload_size_mb }} MB</span>
+    <span class="kv-key">HTTP Bootstrap</span>
+    <span class="kv-val">
+      {% if enable_http_bootstrap %}<span class="badge badge-warn">已开启</span>
+      {% else %}<span class="badge badge-off">已禁用（安全默认）</span>{% endif %}
+    </span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>快速操作</h2>
+  <div class="quick-links">
+    <a href="/api/health" target="_blank">健康检查 API</a>
+    <a href="/owner/devices">设备管理</a>
+    <a href="/owner/pairing">生成绑定码</a>
+    <a href="/owner/upload-links">上传链接</a>
+  </div>
+</div>
+{% endblock %}

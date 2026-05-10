@@ -51,7 +51,9 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     migrate_sqlite_schema()
     seed_identity_data()
-    migrate_upload_paths_to_tenant_dirs()
+    # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
+    # paths remain readable through resolve_protected_image() after the route
+    # has verified expense ownership. See docs/ROLLBACK.md.
     seed_runtime_data()
 
 
@@ -346,5 +348,32 @@ def migrate_sqlite_schema() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_duplicate_ignores_tenant_pair_kind "
                     "ON duplicate_ignores (tenant_id, expense_id, duplicate_of_id, kind)"
+                )
+            )
+
+        # v0.3.1-alpha2: backfill upload_links.public_id for rows created
+        # before the column existed.
+        if "upload_links" in inspector.get_table_names():
+            upload_link_columns = {
+                column["name"] for column in inspector.get_columns("upload_links")
+            }
+            if "public_id" not in upload_link_columns:
+                connection.execute(
+                    text("ALTER TABLE upload_links ADD COLUMN public_id VARCHAR(36)")
+                )
+            empty_rows = connection.execute(
+                text(
+                    "SELECT id FROM upload_links WHERE public_id IS NULL OR public_id = ''"
+                )
+            ).mappings()
+            for row in empty_rows:
+                connection.execute(
+                    text("UPDATE upload_links SET public_id = :public_id WHERE id = :id"),
+                    {"public_id": str(uuid4()), "id": row["id"]},
+                )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_upload_links_public_id "
+                    "ON upload_links (public_id)"
                 )
             )

@@ -78,7 +78,7 @@
 ```text
 services/
   ocr_service.py
-  receipt_parse_service.py
+  receipt_parse_service.py / receipt_parse_*.py
   classify_service.py
   duplicate_service.py
 ```

@@ -50,7 +50,7 @@ raw_text
 
 1. 先把新截图归类为候选来源、噪音过滤、上下文加权或分类提示，不直接散落到主流程。
 2. 规则表和权重表集中放在 `backend/app/services/receipt_parse_rules.py`。
-3. `backend/app/services/receipt_parse_service.py` 只负责候选生成、候选评分、候选证据记录和最终选择。
+3. `backend/app/services/receipt_parse_service.py` 负责解析入口、上下文、证据汇总和最终选择；金额、商家、时间、分类候选生成与校准分别放在 `receipt_parse_amount.py`、`receipt_parse_merchant.py`、`receipt_parse_time.py`、`receipt_parse_category.py`。
 4. UI 噪音如状态栏、返回首页、广告、奖励、支付服务入口统一进入过滤/降权集合。
 5. 支付方式上下文如 `使用某银行卡支付` 只用于找相邻商家候选，不直接作为商家。
 6. 每个真实错例必须变成回归测试，避免后续 OCR 规则互相覆盖。

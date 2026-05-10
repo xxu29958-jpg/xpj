@@ -20,6 +20,7 @@ HOST = "127.0.0.1"
 UPLOAD_TOKEN = "smoke-upload-token"
 APP_TOKEN = "smoke-app-token"
 ADMIN_TOKEN = "smoke-admin-token"
+SMOKE_BOOTSTRAP_SECRET = "smoke-bootstrap-secret"
 SESSION_TOKEN = ""
 BOOTSTRAP_ADMIN_TOKEN = ""
 UPLOAD_PATH = ""
@@ -145,6 +146,8 @@ def start_server(port: int) -> subprocess.Popen:
             "DELETE_IMAGE_AFTER_CONFIRM": "false",
             "GENERATE_THUMBNAIL": "true",
             "OCR_PROVIDER": "empty",
+            "ENABLE_HTTP_BOOTSTRAP": "true",
+            "HTTP_BOOTSTRAP_SECRET": SMOKE_BOOTSTRAP_SECRET,
         }
     )
     return subprocess.Popen(
@@ -219,7 +222,10 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/bootstrap/owner",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Bootstrap-Secret": SMOKE_BOOTSTRAP_SECRET,
+        },
         body=bootstrap_body,
     )
     assert_equal(result.status, 200, "bootstrap owner status")

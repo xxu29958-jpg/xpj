@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 — 小票夹{% endblock %}
+{% block content %}
+<h1>仪表盘</h1>
+
+<div class="stat-grid">
+  <div class="stat">
+    <div class="num">{{ pending_count }}</div>
+    <div class="label">待确认账单</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ confirmed_count }}</div>
+    <div class="label">已入账账单</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ active_device_count }}</div>
+    <div class="label">活跃设备</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ active_upload_link_count }}</div>
+    <div class="label">上传链接</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>服务状态</h2>
+  <div class="kv-grid">
+    <span class="kv-key">后端版本</span>
+    <span class="kv-val">{{ backend_version }}</span>
+    <span class="kv-key">身份模型版本</span>
+    <span class="kv-val">{{ identity_schema }}</span>
+    <span class="kv-key">数据库状态</span>
+    <span class="kv-val">
+      {% if database_status == 'ok' %}<span class="badge badge-ok">正常</span>
+      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
+    </span>
+    <span class="kv-key">上传目录</span>
+    <span class="kv-val">
+      {% if upload_dir_status == 'ok' %}<span class="badge badge-ok">正常</span>
+      {% else %}<span class="badge badge-err">缺失</span>{% endif %}
+    </span>
+    <span class="kv-key">Owner Console</span>
+    <span class="kv-val"><span class="badge badge-ok">{{ owner_console_status }}</span></span>
+    <span class="kv-key">当前账号</span>
+    <span class="kv-val">{{ account_name }}</span>
+    <span class="kv-key">当前账本</span>
+    <span class="kv-val">{{ ledger_name }}</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>快捷入口</h2>
+  <div class="quick-links">
+    <a href="/owner/devices">📱 管理设备</a>
+    <a href="/owner/pairing">🔑 生成绑定码</a>
+    <a href="/owner/upload-links">📎 iPhone 上传链接</a>
+    <a href="/owner/diagnostics">🔍 诊断信息</a>
+    <a href="/api/health" target="_blank">❤️ 健康检查</a>
+  </div>
+</div>
+{% endblock %}

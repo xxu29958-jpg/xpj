@@ -14,6 +14,11 @@ class ErrorResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
+    backend_version: str | None = None
+    identity_schema: str | None = None
+    database_status: str | None = None
+    upload_dir_status: str | None = None
+    owner_console_status: str | None = None
 
 
 class AuthCheckResponse(BaseModel):
@@ -67,6 +72,49 @@ class PairingCodeResponse(BaseModel):
     pairing_code: str
     ledger_name: str
     expires_at: str
+
+
+# v0.3.1-alpha2 Phase 3 / 4 — admin device & UploadLink management.
+class AdminDeviceResponse(BaseModel):
+    public_id: str
+    device_name: str
+    platform: str
+    account_name: str
+    ledger_id: str | None = None
+    ledger_name: str | None = None
+    last_seen_at: str | None = None
+    revoked_at: str | None = None
+
+
+class AdminDeviceRenameRequest(BaseModel):
+    device_name: str = Field(min_length=1, max_length=120)
+
+
+class AdminUploadLinkResponse(BaseModel):
+    public_id: str
+    ledger_id: str
+    ledger_name: str
+    account_name: str
+    device_name: str
+    default_timezone: str | None = None
+    masked_url_path: str
+    last_used_at: str | None = None
+    revoked_at: str | None = None
+    created_at: str | None = None
+
+
+class AdminUploadLinkCreateRequest(BaseModel):
+    ledger_id: str | None = None
+    default_timezone: str | None = None
+
+
+class AdminUploadLinkSecretResponse(BaseModel):
+    """One-shot reveal returned by create / rotate. The full upload URL is
+    only present in this response and never re-served."""
+
+    link: AdminUploadLinkResponse
+    upload_url_path: str
+    default_timezone: str | None = None
 
 
 class StatusResponse(BaseModel):
