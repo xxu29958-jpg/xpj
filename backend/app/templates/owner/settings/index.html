@@ -1,0 +1,56 @@
+{% extends "settings/_layout.html" %}
+{% block title %}设置 — 小票夹{% endblock %}
+{% block settings_body %}
+<div class="card">
+  <h2>概览</h2>
+  <p style="font-size:13px;color:#475569;line-height:1.7">
+    Owner Console 只允许在线修改非常少量、面向操作者的运行时项；其他配置仍然必须在
+    <code>{{ settings_view.env_path }}</code> 中手工调整。
+  </p>
+  <dl class="kv-list">
+    <dt>公网域名</dt>
+    <dd>
+      {% if settings_view.public_base_url_configured %}
+        <code>{{ settings_view.public_base_url }}</code>
+        <span class="badge badge-ok" style="margin-left:8px">已配置</span>
+      {% else %}
+        <span class="badge badge-off">未配置</span>
+      {% endif %}
+      <a href="/owner/settings/public-base-url" style="margin-left:8px;font-size:12px">编辑</a>
+    </dd>
+    <dt>Admin API 公网放行</dt>
+    <dd>
+      {% if security_view.allow_public_admin_api %}
+        <span class="badge badge-off">已放行（不建议）</span>
+      {% else %}
+        <span class="badge badge-ok">仅本机</span>
+      {% endif %}
+      <a href="/owner/settings/security" style="margin-left:8px;font-size:12px">查看</a>
+    </dd>
+    <dt>OpenAPI 文档</dt>
+    <dd>
+      {% if security_view.enable_api_docs %}
+        <span class="badge badge-off">已挂载（公网可见）</span>
+      {% else %}
+        <span class="badge badge-ok">已关闭</span>
+      {% endif %}
+    </dd>
+    <dt>HTTP Bootstrap</dt>
+    <dd>
+      {% if security_view.enable_http_bootstrap %}
+        <span class="badge badge-off">已开启</span>
+      {% else %}
+        <span class="badge badge-ok">已关闭</span>
+      {% endif %}
+    </dd>
+    <dt>.env 文件</dt>
+    <dd>
+      {% if settings_view.env_exists %}
+        <code>{{ settings_view.env_path }}</code>
+      {% else %}
+        <span class="badge badge-off">不存在（保存后会自动创建）</span>
+      {% endif %}
+    </dd>
+  </dl>
+</div>
+{% endblock %}

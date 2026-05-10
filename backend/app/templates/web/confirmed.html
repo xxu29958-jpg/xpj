@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}已入账 — 小票夹{% endblock %}
+{% block content %}
+<h1>已入账账单 <span style="font-size:13px;color:#64748b;font-weight:normal">共 {{ total }} 条</span></h1>
+
+<div class="card">
+  <form method="get" action="/web/confirmed" class="filter-row">
+    <label>月份（YYYY-MM）：
+      <input type="text" name="month" value="{{ month }}" placeholder="2026-05" pattern="\d{4}-\d{2}">
+    </label>
+    <button type="submit" class="btn btn-secondary">筛选</button>
+    {% if month %}<a class="btn btn-link" href="/web/confirmed">清除</a>{% endif %}
+  </form>
+</div>
+
+{% if expenses %}
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>商家 / 备注</th>
+        <th style="width:90px">金额 (元)</th>
+        <th style="width:120px">分类</th>
+        <th style="width:140px">交易时间</th>
+        <th style="width:80px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for e in expenses %}
+      <tr>
+        <td>
+          <div style="font-weight:600">{{ e.merchant or '（未填）' }}</div>
+          {% if e.note %}<div style="font-size:12px;color:#64748b">{{ e.note }}</div>{% endif %}
+        </td>
+        <td class="amount">{{ e.amount_yuan }}</td>
+        <td>{{ e.category }}</td>
+        <td style="font-size:12px;color:#64748b">{{ e.expense_time or e.created_at }}</td>
+        <td><a class="btn btn-link" href="/web/expenses/{{ e.id }}/edit">编辑</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+      <a class="btn btn-secondary" href="/web/confirmed?page={{ page - 1 }}{% if month %}&month={{ month }}{% endif %}">上一页</a>
+    {% endif %}
+    <span>第 {{ page }} / {{ total_pages }} 页</span>
+    {% if page < total_pages %}
+      <a class="btn btn-secondary" href="/web/confirmed?page={{ page + 1 }}{% if month %}&month={{ month }}{% endif %}">下一页</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card empty">这个范围内没有已入账记录。</div>
+{% endif %}
+{% endblock %}

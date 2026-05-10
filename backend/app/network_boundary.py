@@ -79,6 +79,5 @@ def require_admin_network_boundary(request: Request) -> None:
         return
     raise AppError(
         "admin_api_local_only",
-        "管理 API 默认仅允许本机访问。",
         status_code=403,
     )

@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$ServerUrl = "https://api.zen70.cn",
+    [string]$ServerUrl = "https://api.example.com",
     [int]$Port = 8000,
     [int]$Tail = 20,
     [switch]$Advanced,

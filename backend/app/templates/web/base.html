@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}小票夹 网页版{% endblock %}</title>
+  <link rel="stylesheet" href="/static/web/web.css">
+</head>
+<body>
+<nav class="nav">
+  <a class="brand" href="/web/pending">🎫 小票夹 · 网页版</a>
+  <a href="/web/pending" {% if '/pending' in request.url.path %}class="active"{% endif %}>待确认</a>
+  <a href="/web/confirmed" {% if '/confirmed' in request.url.path %}class="active"{% endif %}>已入账</a>
+  <a href="/web/stats" {% if '/stats' in request.url.path %}class="active"{% endif %}>统计</a>
+  <span style="flex:1"></span>
+  <span style="font-size:11px;color:#94a3b8;border:1px solid #e2e8f0;padding:2px 6px;border-radius:4px" title="本机自用操作台，仅服务默认账本，不对外网开放">本机 MVP · 单账本</span>
+  <a href="/owner" style="font-size:12px">本机管理后台</a>
+  <span style="font-size:11px;color:#94a3b8">v{{ backend_version }}</span>
+</nav>
+<div class="page">
+{% block content %}{% endblock %}
+</div>
+</body>
+</html>

@@ -81,23 +81,195 @@ def test_owner_upload_links_list_masked(local_client: TestClient) -> None:
     assert raw_keys == [], f"raw upload key visible in list: {raw_keys[:1]}"
 
 
-def test_owner_upload_links_create_reveals_once(local_client: TestClient) -> None:
-    resp = local_client.post("/owner/upload-links")
-    assert resp.status_code == 200
-    # After create the full path should appear once in the secret-box section
-    assert "/u/" in resp.text
-    # But if we navigate back to the list it should be gone
-    list_resp = local_client.get("/owner/upload-links")
-    import re
+def test_owner_upload_links_create_reveals_once(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import config as app_config
+    from app.services import owner_console_service
 
-    raw_keys = re.findall(r"upl_[A-Za-z0-9_\-]{20,}", list_resp.text)
-    assert raw_keys == [], f"raw upload key visible in list after navigate: {raw_keys[:1]}"
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://api.zen70.cn")
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post("/owner/upload-links")
+        assert resp.status_code == 200
+        # Full public URL must appear once in the one-shot reveal section.
+        assert "https://api.zen70.cn/u/" in resp.text
+        # In the rendered full URL itself, ?tz= must appear exactly once —
+        # the relative path already carries the timezone parameter, the
+        # template must not append it again.
+        import re
+
+        full_urls = re.findall(r"https://api\.zen70\.cn/u/[^\s\"<]+", resp.text)
+        assert len(full_urls) == 1, full_urls
+        assert full_urls[0].count("?tz=") == 1, full_urls[0]
+        # Navigating back to the list must not show raw upload keys.
+        list_resp = local_client.get("/owner/upload-links")
+        assert "/u/***" in list_resp.text
+        raw_keys = re.findall(r"upl_[A-Za-z0-9_\-]{20,}", list_resp.text)
+        assert raw_keys == [], f"raw upload key visible in list: {raw_keys[:1]}"
+        full_urls = re.findall(r"https://api\.zen70\.cn/u/[A-Za-z0-9_\-]+", list_resp.text)
+        assert full_urls == [], f"full URL leaked in list: {full_urls[:1]}"
+    finally:
+        app_config.get_settings.cache_clear()
+        # owner_console_service imports get_settings lazily, no cache to clear there.
+        _ = owner_console_service
+
+
+def test_owner_upload_links_warns_when_public_base_url_missing(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import config as app_config
+
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post("/owner/upload-links")
+        assert resp.status_code == 200
+        # Owner Console must NOT pretend to provide a usable public URL.
+        assert "PUBLIC_BASE_URL" in resp.text
+        assert "未配置" in resp.text
+        # No https:// /u/ URL should be rendered when the env is missing.
+        import re
+
+        full_urls = re.findall(r"https?://[^\s\"<]+/u/[A-Za-z0-9_\-]+", resp.text)
+        assert full_urls == [], f"unexpected full URL when PUBLIC_BASE_URL empty: {full_urls[:1]}"
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+def test_owner_upload_links_invalid_public_base_url_treated_as_empty(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import config as app_config
+
+    # Missing scheme is invalid and must be ignored (not used to compose URL).
+    monkeypatch.setenv("PUBLIC_BASE_URL", "api.zen70.cn")
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post("/owner/upload-links")
+        assert resp.status_code == 200
+        assert "未配置" in resp.text
+    finally:
+        app_config.get_settings.cache_clear()
 
 
 def test_owner_diagnostics_page_opens(local_client: TestClient) -> None:
     resp = local_client.get("/owner/diagnostics")
     assert resp.status_code == 200
     assert "诊断" in resp.text
+
+
+def test_owner_settings_page_opens(local_client: TestClient) -> None:
+    resp = local_client.get("/owner/settings")
+    assert resp.status_code == 200
+    assert "公网域名" in resp.text
+    # secondary nav must be present
+    assert "/owner/settings/public-base-url" in resp.text
+    assert "/owner/settings/security" in resp.text
+    assert "/owner/settings/api" in resp.text
+
+
+def test_owner_settings_subpages_open(local_client: TestClient) -> None:
+    for slug in ("public-base-url", "security", "api", "about"):
+        resp = local_client.get(f"/owner/settings/{slug}")
+        assert resp.status_code == 200, f"/owner/settings/{slug} failed"
+
+
+def test_owner_settings_api_inspector_lists_owner_routes(local_client: TestClient) -> None:
+    resp = local_client.get("/owner/settings/api")
+    assert resp.status_code == 200
+    # at least one Owner Console path and one /api/admin path appear
+    assert "/owner/devices" in resp.text
+    assert "/api/admin" in resp.text
+
+
+def test_owner_settings_page_remote_rejected(client: TestClient) -> None:
+    resp = client.get("/owner/settings")
+    assert resp.status_code == 403
+
+
+def test_owner_settings_save_public_base_url_writes_env(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app import config as app_config
+    from app.services import runtime_settings_service as rss
+
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("OCR_PROVIDER=empty\nPUBLIC_BASE_URL=\n", encoding="utf-8")
+    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post(
+            "/owner/settings/public-base-url",
+            data={"public_base_url": "https://api.zen70.cn/"},  # trailing slash dropped
+        )
+        assert resp.status_code == 200
+        assert "已保存" in resp.text
+        text = fake_env.read_text(encoding="utf-8")
+        assert "PUBLIC_BASE_URL=https://api.zen70.cn" in text
+        # cache must be refreshed so subsequent reads see the new value
+        assert app_config.get_settings().public_base_url == "https://api.zen70.cn"
+    finally:
+        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+        app_config.get_settings.cache_clear()
+
+
+def test_owner_settings_rejects_missing_scheme(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app import config as app_config
+    from app.services import runtime_settings_service as rss
+
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("", encoding="utf-8")
+    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post(
+            "/owner/settings/public-base-url",
+            data={"public_base_url": "api.zen70.cn"},
+        )
+        assert resp.status_code == 200
+        assert "http://" in resp.text or "https://" in resp.text
+        # nothing was written
+        assert "PUBLIC_BASE_URL=api.zen70.cn" not in fake_env.read_text(encoding="utf-8")
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+def test_owner_delete_upload_link_requires_revoke_first(local_client: TestClient) -> None:
+    create = local_client.post("/owner/upload-links")
+    assert create.status_code == 200
+    import re
+
+    pids = re.findall(r"/upload-links/([0-9a-f\-]{36})/(?:rotate|revoke)", create.text)
+    assert pids, "expected at least one public_id in the rendered list"
+    pid = pids[0]
+    # Active link cannot be deleted; service raises invalid_request 409.
+    resp = local_client.post(f"/owner/upload-links/{pid}/delete", follow_redirects=False)
+    assert resp.status_code == 409
+
+
+def test_owner_delete_upload_link_after_revoke(local_client: TestClient) -> None:
+    create = local_client.post("/owner/upload-links")
+    assert create.status_code == 200
+    import re
+
+    pids = re.findall(r"/upload-links/([0-9a-f\-]{36})/(?:rotate|revoke)", create.text)
+    assert pids
+    pid = pids[0]
+    rev = local_client.post(f"/owner/upload-links/{pid}/revoke", follow_redirects=False)
+    assert rev.status_code in (200, 303)
+    delete = local_client.post(
+        f"/owner/upload-links/{pid}/delete", follow_redirects=False
+    )
+    assert delete.status_code in (200, 303)
+    # Subsequent delete must 404 (link no longer exists).
+    again = local_client.post(
+        f"/owner/upload-links/{pid}/delete", follow_redirects=False
+    )
+    assert again.status_code == 404
 
 
 def test_health_owner_console_status_not_unimplemented(client: TestClient) -> None:
@@ -190,3 +362,82 @@ def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.M
     finally:
         monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
         network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
+
+
+# ── PUBLIC_BASE_URL origin-only validation ───────────────────────────────────
+
+@pytest.mark.parametrize(
+    "bad_url,expect_fragment",
+    [
+        ("https://api.example.com/foo",  "路径"),
+        ("https://api.example.com/foo/", "路径"),
+        ("https://api.example.com?x=1",  "查询"),
+        ("https://api.example.com#abc",  "片段"),
+    ],
+)
+def test_owner_settings_rejects_non_origin_url(
+    local_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    bad_url: str,
+    expect_fragment: str,
+) -> None:
+    from app import config as app_config
+    from app.services import runtime_settings_service as rss
+
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("", encoding="utf-8")
+    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    app_config.get_settings.cache_clear()
+    try:
+        resp = local_client.post(
+            "/owner/settings/public-base-url",
+            data={"public_base_url": bad_url},
+        )
+        assert resp.status_code == 200, resp.text
+        assert expect_fragment in resp.text, (
+            f"Expected error hint '{expect_fragment}' not found for input {bad_url!r}"
+        )
+        assert bad_url not in fake_env.read_text(encoding="utf-8"), (
+            f"Bad URL should NOT have been written to .env for input {bad_url!r}"
+        )
+    finally:
+        app_config.get_settings.cache_clear()
+
+
+def test_owner_settings_service_only_allows_public_base_url() -> None:
+    """_EDITABLE_KEYS must contain only PUBLIC_BASE_URL — any expansion is a
+    security change that requires explicit review."""
+    from app.services.runtime_settings_service import _EDITABLE_KEYS
+
+    assert _EDITABLE_KEYS == frozenset({"PUBLIC_BASE_URL"}), (
+        f"_EDITABLE_KEYS should only contain PUBLIC_BASE_URL, got: {_EDITABLE_KEYS}"
+    )
+
+
+def test_owner_settings_trailing_slash_stripped(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Trailing slash should be stripped; path /foo should be rejected."""
+    from app import config as app_config
+    from app.services import runtime_settings_service as rss
+
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("", encoding="utf-8")
+    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    app_config.get_settings.cache_clear()
+    try:
+        # bare trailing slash (no path segment) is accepted and stripped
+        resp = local_client.post(
+            "/owner/settings/public-base-url",
+            data={"public_base_url": "https://api.example.com/"},
+        )
+        assert resp.status_code == 200
+        text = fake_env.read_text(encoding="utf-8")
+        assert "PUBLIC_BASE_URL=https://api.example.com\n" in text or \
+               "PUBLIC_BASE_URL=https://api.example.com" in text
+    finally:
+        monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+        app_config.get_settings.cache_clear()
+

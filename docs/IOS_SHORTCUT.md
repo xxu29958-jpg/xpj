@@ -35,45 +35,41 @@ https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
 上传到小票夹
 ```
 
-推荐流程，已在 iOS 26.4 真机验证通过：
+iOS 26.4 真机验证通过。**关键约束**：动作 2 的「URL」字段必须粘贴 Owner Console 给出的<u>完整公网 URL</u>（以 `https://` 开头），iPhone 才会把它当成有效 URL；只复制 `/u/...` 相对路径或 `/u/***` 掩码会被 iPhone 直接判定为无效 URL。
 
-1. 快捷指令设置为"在分享表单中显示"。
-2. 接收类型选择"图像"。
-3. 添加"转换图像"动作，建议转换为 JPEG 或 PNG。
-4. 添加"获取 URL 内容"动作。
-5. URL 填完整 UploadLink，例如：
+操作顺序：
 
-```text
-https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
-```
+1. 在「快捷指令」App 中创建新快捷指令；详情里开启「在共享表单中显示」，接收类型只勾选「图像」。
+2. **动作 1：转换图像**，格式选 JPEG。
+3. **动作 2：URL**，把 Owner Console 创建/轮换 UploadLink 后显示的<u>完整公网 URL</u>整段粘贴进去（含 `https://` 和 `?tz=Asia/Shanghai`）。<u>不要</u>只粘贴 `/u/...` 相对路径，<u>不要</u>使用 `/u/***` 掩码，<u>不要</u>再手动拼接一次 `?tz=`。
+4. **动作 3：获取 URL 内容**：
+   - URL：选择上一步「URL」
+   - 方法：`POST`
+   - 请求正文：`文件`（不是表单、不是 JSON）
+   - 文件：选择「转换后的图像」
+5. **动作 4：显示通知**「已上传到小票夹」。
 
-6. 方法选择 `POST`。
-7. 请求正文选择 `文件`，不要选择 `表单`。
-8. 文件选择"转换后的图像"。
-9. 添加请求头：
+可选：在动作 3 的请求头里加 `User-Agent: TicketBox/1.0 iOS-Shortcut` 区分快捷指令流量；Cloudflare 偶尔会把没有标准 `User-Agent` 的请求拦截为 `error code: 1010`。
 
-```http
-User-Agent: TicketBox/1.0 iOS-Shortcut
-```
+**已废弃 / 不要再写到快捷指令里**：
 
-`User-Agent` 必须一起添加。Cloudflare 可能会把没有标准 `User-Agent` 的快捷指令请求拦截为 `error code: 1010`，手机上会显示成"网络中断"。
+- 「从输入获取图片」动作（接收类型已经限定为图像，多此一举）。
+- 把「快捷指令输入」直接放进 URL 字段（URL 字段必须是完整公网 URL）。
+- 只复制 `/u/...` 相对路径。
+- 使用 `/u/***` 掩码链接。
+- 手动追加 `?tz=Asia/Shanghai`（Owner Console 已经带上）。
+- `Upload-Token` 请求头（v0.3 已移除）。
 
 旧版快捷指令如果仍使用 `Upload-Token` 和 `/api/upload-screenshot`，后端会返回：
 
 ```json
-{"error":"legacy_auth_removed","message":"请使用新版 iOS 上传链接。"}
+{"error":"legacy_auth_removed","message":"登录已失效，请重新绑定设备。"}
 ```
 
-10. 上传成功后显示"获取 URL 内容"的结果，看到类似下面内容才算成功：
+成功上传后，「获取 URL 内容」会返回类似：
 
 ```json
 {"id":9,"public_id":"018f4f90-2c20-7a2f-9d1c-6a6b81e69b2d","status":"pending","message":"uploaded"}
-```
-
-11. 确认成功后，可以把显示结果改成：
-
-```text
-已上传到小票夹
 ```
 
 ## 不要使用表单模式

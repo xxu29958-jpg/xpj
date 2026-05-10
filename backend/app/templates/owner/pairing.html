@@ -13,7 +13,7 @@
   <div class="code-big">{{ pairing_result.pairing_code }}</div>
   <div class="meta" style="text-align:center">
     账本：{{ pairing_result.ledger_name }} &nbsp;·&nbsp;
-    有效期至：{{ pairing_result.expires_at[:16].replace('T',' ') if pairing_result.expires_at else '—' }} UTC
+    有效期至：{{ pairing_result.expires_at|owner_datetime }}
   </div>
   <p style="color:#64748b;font-size:12px;margin-top:16px;text-align:center">
     在 Android 小票夹 App 中点击"绑定账本"，输入上方 6 位码完成绑定。<br>

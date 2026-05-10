@@ -17,7 +17,7 @@
 
 .PARAMETER BaseUrl
     Public origin used for the Cloudflare-side probe. Defaults to
-    https://api.zen70.cn.
+    https://api.example.com (set your real domain via -BaseUrl).
 
 .PARAMETER LocalUrl
     Local backend origin. Defaults to http://127.0.0.1:8000.
@@ -42,7 +42,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$BaseUrl = 'https://api.zen70.cn',
+    [string]$BaseUrl = 'https://api.example.com',
     [string]$LocalUrl = 'http://127.0.0.1:8000',
     [string]$BackendRoot = (Join-Path $PSScriptRoot '..\backend')
 )
@@ -112,11 +112,11 @@ Add-Item -Id 'H03' -Name 'Owner Console 本机可访问' `
     -Status $h3Status -Detail "GET /owner -> $h3"
 
 # H04 owner console rejects bogus host (force public-looking Host header)
-$h4 = Get-Status -Url "$LocalUrl/owner" -Headers @{ Host = 'api.zen70.cn' }
+$h4 = Get-Status -Url "$LocalUrl/owner" -Headers @{ Host = 'public.example.com' }
 $h4Status = if ($h4 -eq 403) { 'ok' } else { 'fail' }
 Add-Item -Id 'H04' -Name 'Owner Console 拒绝伪造 Host 头' `
     -Status $h4Status `
-    -Detail "GET /owner [Host: api.zen70.cn] -> $h4 (期望 403)"
+    -Detail "GET /owner [Host: public.example.com] -> $h4 (期望 403)"
 
 # H05 public /api/health
 $h5 = Get-Status -Url "$BaseUrl/api/health"
@@ -139,19 +139,71 @@ Add-Item -Id 'H07' -Name '公网 /docs 被阻断' `
     -Status $h7Status -Detail "GET $BaseUrl/docs -> $h7 (期望 401/403/404)"
 
 # H08 sqlite db
-$dbPath = Join-Path $BackendRoot 'data\ticketbox.db'
-$dbOk = (Test-Path -LiteralPath $dbPath) -and ((Get-Item $dbPath).Length -gt 0)
-$dbDetail = if (Test-Path -LiteralPath $dbPath) {
-    "size={0:N0}B" -f (Get-Item $dbPath).Length
-} else {
-    '文件不存在'
+function Resolve-DbPath {
+    param([string]$BackendRoot)
+    $envFile = Join-Path $BackendRoot '.env'
+    if (Test-Path -LiteralPath $envFile) {
+        try {
+            $line = Get-Content -LiteralPath $envFile -Encoding UTF8 |
+                Where-Object { $_ -match '^\s*DATABASE_URL\s*=' } |
+                Select-Object -First 1
+            if ($line) {
+                $val = ($line -replace '^\s*DATABASE_URL\s*=', '').Trim().Trim('"').Trim("'")
+                if ($val -match '^sqlite:///(.+)$') {
+                    $candidate = $Matches[1]
+                    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+                        $candidate = Join-Path $BackendRoot $candidate
+                    }
+                    return $candidate
+                }
+                # Non-sqlite (e.g. postgres). Skip the file check.
+                return $null
+            }
+        } catch { }
+    }
+    return Join-Path $BackendRoot 'data\ticketbox.db'
 }
-$dbStatus = if ($dbOk) { 'ok' } else { 'fail' }
-Add-Item -Id 'H08' -Name 'SQLite 数据库文件' `
-    -Status $dbStatus -Detail $dbDetail
 
-# H09 uploads dir
-$upPath = Join-Path $BackendRoot 'uploads'
+$dbPath = Resolve-DbPath -BackendRoot $BackendRoot
+if ($null -eq $dbPath) {
+    Add-Item -Id 'H08' -Name 'SQLite 数据库文件' `
+        -Status 'warn' -Detail 'DATABASE_URL 非 sqlite，跳过文件检查'
+} else {
+    $dbOk = (Test-Path -LiteralPath $dbPath) -and ((Get-Item $dbPath).Length -gt 0)
+    $dbDetail = if (Test-Path -LiteralPath $dbPath) {
+        "{0} size={1:N0}B" -f $dbPath, (Get-Item $dbPath).Length
+    } else {
+        "{0} 文件不存在" -f $dbPath
+    }
+    $dbStatus = if ($dbOk) { 'ok' } else { 'fail' }
+    Add-Item -Id 'H08' -Name 'SQLite 数据库文件' `
+        -Status $dbStatus -Detail $dbDetail
+}
+
+# H09 uploads dir — read UPLOAD_DIR from .env, fall back to default
+function Resolve-UploadDir {
+    param([string]$BackendRoot)
+    $envFile = Join-Path $BackendRoot '.env'
+    if (Test-Path -LiteralPath $envFile) {
+        try {
+            $line = Get-Content -LiteralPath $envFile -Encoding UTF8 |
+                Where-Object { $_ -match '^\s*UPLOAD_DIR\s*=' } |
+                Select-Object -First 1
+            if ($line) {
+                $val = ($line -replace '^\s*UPLOAD_DIR\s*=', '').Trim().Trim('"').Trim("'")
+                if ($val) {
+                    if (-not [System.IO.Path]::IsPathRooted($val)) {
+                        $val = Join-Path $BackendRoot $val
+                    }
+                    return $val
+                }
+            }
+        } catch { }
+    }
+    return Join-Path $BackendRoot 'uploads'
+}
+
+$upPath = Resolve-UploadDir -BackendRoot $BackendRoot
 $upOk = Test-Path -LiteralPath $upPath -PathType Container
 $upStatus = if ($upOk) { 'ok' } else { 'fail' }
 $upDetail = if ($upOk) { 'uploads/ 存在' } else { 'uploads/ 缺失' }

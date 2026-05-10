@@ -1,6 +1,8 @@
 ﻿param(
     [ValidateSet("gray", "internal")]
     [string]$Flavor = "gray",
+    [ValidateSet("release", "debug")]
+    [string]$Variant = "release",
     [switch]$SkipManifest
 )
 
@@ -70,18 +72,26 @@ function Get-GitValue {
     return ""
 }
 
-$keystorePath = Require-Env "TICKETBOX_KEYSTORE_PATH"
-Require-Env "TICKETBOX_KEY_ALIAS" | Out-Null
-Require-Env "TICKETBOX_KEYSTORE_PASSWORD" | Out-Null
-Require-Env "TICKETBOX_KEY_PASSWORD" | Out-Null
-if (-not (Test-Path -LiteralPath $keystorePath)) {
-    throw "Release keystore 不存在：$keystorePath"
+$keystoreRequired = ($Variant -eq "release")
+$keystorePath = ""
+if ($keystoreRequired) {
+    $keystorePath = Require-Env "TICKETBOX_KEYSTORE_PATH"
+    Require-Env "TICKETBOX_KEY_ALIAS" | Out-Null
+    Require-Env "TICKETBOX_KEYSTORE_PASSWORD" | Out-Null
+    Require-Env "TICKETBOX_KEY_PASSWORD" | Out-Null
+    if (-not (Test-Path -LiteralPath $keystorePath)) {
+        throw "Release keystore 不存在：$keystorePath"
+    }
+}
+else {
+    Write-Host "Variant=debug：跳过密钥校验，将构建 debug APK。该包仅用于本机安装验证，不要分发。"
 }
 
 Ensure-JavaHome
 
-$variant = "$($Flavor.Substring(0, 1).ToUpperInvariant())$($Flavor.Substring(1))Release"
-$task = ":app:assemble$variant"
+$flavorCap = "$($Flavor.Substring(0, 1).ToUpperInvariant())$($Flavor.Substring(1))"
+$variantCap = "$($Variant.Substring(0, 1).ToUpperInvariant())$($Variant.Substring(1))"
+$task = ":app:assemble$flavorCap$variantCap"
 
 $gradleFile = Join-Path $AndroidRoot "app\build.gradle.kts"
 $versionName = "unknown"
@@ -98,7 +108,7 @@ if (Test-Path -LiteralPath $gradleFile) {
     }
 }
 
-Write-Host "正在构建小票夹 $Flavor release APK..."
+Write-Host "正在构建小票夹 $Flavor $Variant APK..."
 Write-Host "版本：$versionName ($versionCode)"
 Push-Location $AndroidRoot
 try {
@@ -111,7 +121,7 @@ finally {
     Pop-Location
 }
 
-$apkPath = Join-Path $AndroidRoot "app\build\outputs\apk\$Flavor\release\app-$Flavor-release.apk"
+$apkPath = Join-Path $AndroidRoot "app\build\outputs\apk\$Flavor\$Variant\app-$Flavor-$Variant.apk"
 if (-not (Test-Path -LiteralPath $apkPath)) {
     throw "未找到输出 APK：$apkPath"
 }
@@ -120,7 +130,7 @@ $apkFile = Get-Item -LiteralPath $apkPath
 $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $apkPath).Hash.ToLowerInvariant()
 $shaPath = "$apkPath.sha256"
 $manifestPath = Join-Path $apkFile.Directory.FullName "$($apkFile.BaseName).manifest.json"
-$outputRelativePath = "android/app/build/outputs/apk/$Flavor/release/$($apkFile.Name)"
+$outputRelativePath = "android/app/build/outputs/apk/$Flavor/$Variant/$($apkFile.Name)"
 
 [System.IO.File]::WriteAllText($shaPath, "$sha256  $($apkFile.Name)`n", $Utf8NoBom)
 
@@ -137,7 +147,7 @@ if (-not $SkipManifest) {
     $manifest = [ordered]@{
         app = "ticketbox"
         flavor = $Flavor
-        build_type = "release"
+        build_type = $Variant
         version_name = $versionName
         version_code = $versionCode
         apk_file_name = $apkFile.Name
@@ -160,9 +170,13 @@ if (-not $SkipManifest) {
     [System.IO.File]::WriteAllText($manifestPath, (($manifest | ConvertTo-Json -Depth 5) + "`n"), $Utf8NoBom)
 }
 
-Write-Host "Release APK 已生成：$apkPath"
+Write-Host "$Variant APK 已生成：$apkPath"
+Write-Host "版本：versionName=$versionName，versionCode=$versionCode"
 Write-Host "SHA256：$sha256"
 Write-Host "SHA256 文件：$shaPath"
 if (-not $SkipManifest) {
     Write-Host "发布 manifest：$manifestPath"
+}
+if ($Variant -eq "debug") {
+    Write-Host "提示：该 APK 为 debug 签名，仅用于本机验证，不要分发。"
 }

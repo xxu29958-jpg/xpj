@@ -7,14 +7,28 @@
 <div class="alert alert-danger">{{ error }}</div>
 {% endif %}
 
+{% if not public_base_url_configured %}
+<div class="alert alert-danger" style="border-left:4px solid #dc2626">
+  ⚠️ 未配置公网域名（<code>PUBLIC_BASE_URL</code>）。新建/轮换上传链接将<u>不会</u>给出可直接粘贴到 iPhone 快捷指令的完整 URL。请先到 <a href="/owner/settings"><strong>设置</strong></a> 页面填入域名（例如 <code>https://api.example.com</code>）。
+</div>
+{% endif %}
+
 {% if new_secret %}
 <div class="card">
   <div class="alert alert-success">
     ✅ 上传链接已{% if new_secret.public_id %}创建/轮换{% endif %}。<br>
-    <strong>完整上传路径仅显示一次，请立即复制到 iPhone 快捷指令。</strong>
+    <strong>请把下面的<u>完整公网 URL</u>整段复制到 iPhone 快捷指令的「URL」动作。必须包含 <code>https://</code> 开头的域名，<u>不能</u>只复制 <code>/u/...</code> 路径。</strong>
+  </div>
+  {% if new_secret_full_url %}
+  <div class="secret-box">{{ new_secret_full_url }}</div>
+  <p class="secret-note">⚠️ 完整 URL 仅显示一次；离开本页面后无法再查看，列表中只保留 <code>/u/***</code> 掩码。</p>
+  {% else %}
+  <div class="alert alert-danger">
+    未配置 <code>PUBLIC_BASE_URL</code>，只能显示相对路径。请到 <a href="/owner/settings">设置</a> 页面填入公网域名（例如 <code>https://api.example.com</code>），再回到本页重新创建上传链接。
   </div>
   <div class="secret-box">{{ new_secret.upload_url_path }}</div>
-  <p class="secret-note">⚠️ 离开本页面后无法再查看完整路径，列表中只显示掩码。</p>
+  <p class="secret-note">⚠️ 上面是相对路径，iPhone 快捷指令的「URL」动作会判定为无效 URL，无法直接使用。</p>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -29,20 +43,23 @@
   <table>
     <thead>
       <tr>
+        <th style="white-space:nowrap">创建时间</th>
+        <th style="white-space:nowrap">绑定设备</th>
         <th style="white-space:nowrap">账本</th>
         <th style="white-space:nowrap">时区</th>
         <th style="white-space:nowrap">最近使用</th>
         <th style="white-space:nowrap">状态</th>
-        <th style="white-space:nowrap">路径（掩码）</th>
         <th>操作</th>
       </tr>
     </thead>
     <tbody>
     {% for link in links %}
       <tr>
+        <td style="white-space:nowrap;color:#64748b;font-size:12px">{{ link.created_at|owner_datetime }}</td>
+        <td style="font-size:13px">{{ link.device_name or '—' }}</td>
         <td>{{ link.ledger_name }}</td>
         <td>{{ link.default_timezone or 'Asia/Shanghai' }}</td>
-        <td>{{ link.last_used_at[:16].replace('T',' ') if link.last_used_at else '—' }}</td>
+        <td>{{ link.last_used_at|owner_datetime }}</td>
         <td>
           {% if link.revoked_at %}
             <span class="badge badge-off">已停用</span>
@@ -64,6 +81,12 @@
                   onsubmit="return confirm('确认停用该上传链接？')">
               <button type="submit" class="btn btn-danger">停用</button>
             </form>
+            {% else %}
+            <form class="inline" method="post"
+                  action="/owner/upload-links/{{ link.public_id }}/delete"
+                  onsubmit="return confirm('确认从列表移除该上传链接？仅移除已停用链接记录，账单数据保留。')">
+              <button type="submit" class="btn btn-danger">移除记录</button>
+            </form>
             {% endif %}
           </div>
         </td>
@@ -79,11 +102,24 @@
 <div class="card">
   <h2>iPhone 快捷指令使用说明</h2>
   <ol style="font-size:13px;color:#334155;line-height:2;padding-left:20px">
-    <li>在 iPhone「快捷指令」App 中创建新快捷指令。</li>
-    <li>添加「从输入获取图片」→「获取 URL 内容」动作。</li>
-    <li>将上方完整上传路径（含 <code>?tz=...</code>）粘贴到 URL 字段。</li>
-    <li>方法选 <strong>POST</strong>，正文选 <strong>文件（图片）</strong>。</li>
-    <li>保存并分享到桌面即可使用。</li>
+    <li>在 iPhone「快捷指令」App 中创建新快捷指令，详情中开启「在共享表单中显示」，接收类型只勾选「图像」。</li>
+    <li>动作 1：<strong>转换图像</strong>，格式选 JPEG。</li>
+    <li>动作 2：<strong>URL</strong>，把 Owner Console 上方<u>完整公网 URL</u>整段粘贴进去（含 <code>https://</code>，含 <code>?tz=Asia/Shanghai</code>）。<u>不要</u>只复制 <code>/u/...</code> 相对路径，<u>不要</u>复制 <code>/u/***</code> 掩码，<u>不要</u>再手动拼接 <code>?tz=</code>。</li>
+    <li>动作 3：<strong>获取 URL 内容</strong>。URL 选上一步「URL」；方法 POST；请求正文「文件」；文件选「转换后的图像」。</li>
+    <li>动作 4：显示通知「已上传到小票夹」。</li>
+  </ol>
+  <p class="secret-note">小票夹 v0.3 起不再使用 <code>Upload-Token</code> 请求头；UploadLink URL 自身就是凭证。</p>
+</div>
+
+<div class="card" style="border-left:4px solid #f59e0b">
+  <h2>iPhone 上传失败排查</h2>
+  <ol style="font-size:13px;color:#334155;line-height:2;padding-left:20px">
+    <li>iPhone 提示「无效的 URL」：URL 动作里粘贴的是 <code>/u/...</code> 相对路径或 <code>/u/***</code> 掩码，必须粘贴完整公网 URL（以 <code>https://</code> 开头）。</li>
+    <li>URL 中 <code>?tz=</code> 出现两次：Owner Console 给出的完整 URL 已经带上时区参数，不要再手动拼一次。</li>
+    <li>未配置 <code>PUBLIC_BASE_URL</code>：Owner Console 只能显示相对路径，需在 <code>backend/.env</code> 设置公网域名后重新创建链接。</li>
+    <li>确认电脑端后端正在运行（任务栏中应有 Ticketbox 任务）。</li>
+    <li>确认 Cloudflare 域名当前可访问（用浏览器打开公网域名应能看到健康响应）。</li>
+    <li>仍然失败时，可在请求头中添加 <code>User-Agent: TicketBox/1.0 iOS-Shortcut</code> 以便区分流量。</li>
   </ol>
 </div>
 {% endblock %}

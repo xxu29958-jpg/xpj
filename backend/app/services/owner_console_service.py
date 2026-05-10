@@ -19,6 +19,8 @@ from app.services.admin_service import (
     UploadLinkSecret,
     UploadLinkSummary,
     create_upload_link,
+    delete_device,
+    delete_upload_link,
     list_devices,
     list_upload_links,
     rename_device,
@@ -99,6 +101,10 @@ def do_revoke_device(db: Session, public_id: str, current_device_public_id: str)
     return revoke_device(db, public_id=public_id, current_device_public_id=current_device_public_id)
 
 
+def do_delete_device(db: Session, public_id: str, current_device_public_id: str) -> None:
+    delete_device(db, public_id=public_id, current_device_public_id=current_device_public_id)
+
+
 def do_rename_device(db: Session, public_id: str, new_name: str) -> DeviceSummary:
     return rename_device(db, public_id=public_id, new_name=new_name)
 
@@ -119,6 +125,28 @@ def do_rotate_upload_link(db: Session, public_id: str) -> tuple[UploadLinkSummar
 
 def do_revoke_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
     return revoke_upload_link(db, public_id=public_id)
+
+
+def do_delete_upload_link(db: Session, public_id: str) -> None:
+    delete_upload_link(db, public_id=public_id)
+
+
+def compose_public_upload_url(secret: UploadLinkSecret) -> str | None:
+    """Return the absolute public URL for an UploadLink secret.
+
+    Combines :envvar:`PUBLIC_BASE_URL` with the relative ``upload_url_path``
+    produced by :mod:`app.services.admin_service`. Returns ``None`` when
+    ``PUBLIC_BASE_URL`` is not configured so the caller can render a
+    configuration hint instead of a half-broken URL.
+
+    The relative path already includes ``?tz=...``; do not append it again.
+    Never log or persist the returned value.
+    """
+    cfg = get_settings()
+    base = (cfg.public_base_url or "").rstrip("/")
+    if not base:
+        return None
+    return base + secret.upload_url_path
 
 
 def do_create_pairing_code(

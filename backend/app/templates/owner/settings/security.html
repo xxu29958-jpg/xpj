@@ -1,0 +1,75 @@
+{% extends "settings/_layout.html" %}
+{% block title %}安全 / 边界 — 设置 — 小票夹{% endblock %}
+{% block settings_body %}
+<div class="card">
+  <h2>安全 / 边界</h2>
+  <p style="font-size:13px;color:#475569;line-height:1.7">
+    本页只读，列出与公网攻击面相关的运行时开关。修改请编辑
+    <code>backend/.env</code> 后重启后端。
+  </p>
+
+  <table class="route-table" style="margin-top:8px">
+    <thead><tr><th>项</th><th>状态</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>ALLOW_PUBLIC_ADMIN_API</code></td>
+        <td>
+          {% if security_view.allow_public_admin_api %}
+            <span class="badge badge-off">已放行</span>
+          {% else %}
+            <span class="badge badge-ok">仅本机</span>
+          {% endif %}
+        </td>
+        <td>
+          放行后公网也能访问 <code>/api/admin/*</code>，仅靠 admin token 保护。
+          <strong>除非你完全清楚后果，否则保持关闭。</strong>
+        </td>
+      </tr>
+      <tr>
+        <td><code>ENABLE_API_DOCS</code></td>
+        <td>
+          {% if security_view.enable_api_docs %}
+            <span class="badge badge-off">已挂载</span>
+          {% else %}
+            <span class="badge badge-ok">已关闭</span>
+          {% endif %}
+        </td>
+        <td>开启后 <code>/docs</code>、<code>/redoc</code>、<code>/openapi.json</code> 公网可见。</td>
+      </tr>
+      <tr>
+        <td><code>ENABLE_HTTP_BOOTSTRAP</code></td>
+        <td>
+          {% if security_view.enable_http_bootstrap %}
+            <span class="badge badge-off">已开启</span>
+          {% else %}
+            <span class="badge badge-ok">已关闭</span>
+          {% endif %}
+        </td>
+        <td>仅在首次绑定阶段使用，绑定完成后建议关闭。</td>
+      </tr>
+      <tr>
+        <td>Owner Console 边界</td>
+        <td><span class="badge badge-ok">本机环回 + Host 头</span></td>
+        <td>
+          见 <a href="/owner/settings/api">接口一览</a> 里 “Owner Console（仅本机）” 一组路由，
+          公网请求直接返回 403。
+        </td>
+      </tr>
+      <tr>
+        <td>公网域名</td>
+        <td>
+          {% if security_view.public_base_url_configured %}
+            <span class="badge badge-ok">已配置</span>
+          {% else %}
+            <span class="badge badge-off">未配置</span>
+          {% endif %}
+        </td>
+        <td>
+          仅用于 GUI 展示完整 UploadLink。
+          <a href="/owner/settings/public-base-url">前往修改</a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

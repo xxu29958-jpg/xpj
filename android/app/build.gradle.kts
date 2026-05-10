@@ -1,5 +1,24 @@
-val ticketboxVersionCode = 30002
-val ticketboxVersionName = "0.3.2-selfuse"
+import java.util.Properties
+
+val ticketboxVersionCode = 30003
+val ticketboxVersionName = "0.3.3"
+
+// Server URL precedence:
+//   1. ENV: TICKETBOX_SERVER_URL
+//   2. local.properties: ticketbox.serverUrl=...
+//   3. fallback: https://api.example.com (placeholder; replace before publishing)
+val ticketboxServerUrl: String = run {
+    val envUrl: String? = System.getenv("TICKETBOX_SERVER_URL")
+    if (!envUrl.isNullOrBlank()) return@run envUrl.trim()
+    val propsFile = rootProject.file("local.properties")
+    if (propsFile.exists()) {
+        val props = Properties()
+        propsFile.inputStream().use { stream -> props.load(stream) }
+        val v: String? = props.getProperty("ticketbox.serverUrl")
+        if (!v.isNullOrBlank()) return@run v.trim()
+    }
+    "https://api.example.com"
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -21,7 +40,7 @@ android {
         resValue("string", "app_version_name", ticketboxVersionName)
         resValue("integer", "app_version_code", ticketboxVersionCode.toString())
         buildConfigField("Boolean", "SHOW_ADVANCED_TOOLS", "false")
-        buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.zen70.cn\"")
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"${ticketboxServerUrl}\"")
         manifestPlaceholders["appLabel"] = "小票夹"
     }
 

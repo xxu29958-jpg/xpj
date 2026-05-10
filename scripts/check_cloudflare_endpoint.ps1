@@ -1,6 +1,6 @@
 ﻿param(
     [Parameter(Mandatory = $false)]
-    [string]$ServerUrl = "https://api.zen70.cn",
+    [string]$ServerUrl = "https://api.example.com",
     [string]$SessionToken = "",
     [string]$UploadLink = "",
     [switch]$SkipUpload,

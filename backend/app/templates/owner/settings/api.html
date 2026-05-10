@@ -1,0 +1,36 @@
+{% extends "settings/_layout.html" %}
+{% block title %}接口一览 — 设置 — 小票夹{% endblock %}
+{% block settings_body %}
+<div class="card">
+  <h2>接口一览（共 {{ route_total }} 项）</h2>
+  <p style="font-size:13px;color:#475569;line-height:1.7">
+    自动从运行中的 FastAPI 路由表读取，按访问面分组。
+    Owner Console 路由仅本机可达；Admin / 上传 / Web 路由按各自鉴权放行。
+  </p>
+
+  {% for group in route_groups %}
+    {% if group.rows %}
+    <div class="card" style="margin-top:16px">
+      <span class="surface-pill {{ group.css_class }}">{{ group.label }} · {{ group.rows|length }}</span>
+      <p style="font-size:12px;color:#64748b;margin:0 0 8px">{{ group.description }}</p>
+      <table class="route-table">
+        <thead><tr><th style="width:160px">方法</th><th>路径</th><th>名称</th></tr></thead>
+        <tbody>
+        {% for row in group.rows %}
+          <tr>
+            <td>
+              {% for m in row.methods %}
+                <span class="route-method route-method-{{ m }}">{{ m }}</span>
+              {% endfor %}
+            </td>
+            <td><code>{{ row.path }}</code></td>
+            <td style="color:#64748b;font-size:12px">{{ row.name }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}编辑账单 — 小票夹{% endblock %}
+{% block content %}
+<h1>编辑账单 #{{ expense.id }}</h1>
+
+{% if error %}
+<div class="alert alert-danger">⚠️ {{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <div style="display:flex;gap:24px;flex-wrap:wrap">
+    {% if expense.has_image %}
+    <div style="flex:0 0 240px">
+      <a href="/web/expenses/{{ expense.id }}/image" target="_blank">
+        <img src="/web/expenses/{{ expense.id }}/image" alt="小票图片" class="receipt-img">
+      </a>
+    </div>
+    {% endif %}
+    <form method="post" action="/web/expenses/{{ expense.id }}/save" style="flex:1;min-width:280px">
+      <div class="form-row">
+        <label>金额 (元)</label>
+        <input type="text" name="amount_yuan" value="{{ expense.amount_yuan }}" placeholder="例如 12.34" inputmode="decimal">
+      </div>
+      <div class="form-row">
+        <label>商家</label>
+        <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200">
+      </div>
+      <div class="form-row">
+        <label>分类</label>
+        <input type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮">
+      </div>
+      <div class="form-row">
+        <label>备注</label>
+        <textarea name="note" rows="3">{{ expense.note }}</textarea>
+      </div>
+      <div class="form-row">
+        <span class="meta">
+          状态：<span class="badge badge-ok">{{ expense.status }}</span>
+          上传时间：{{ expense.created_at }}
+        </span>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">保存</button>
+        {% if expense.status == 'pending' %}
+        <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="btn btn-success">入账</button>
+        <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="btn btn-danger"
+                onclick="return confirm('丢弃这笔账单？');">丢弃</button>
+        {% endif %}
+        <a href="/web/pending" class="btn btn-link">返回</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

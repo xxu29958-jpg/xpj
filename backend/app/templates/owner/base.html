@@ -13,7 +13,9 @@
   <a href="/owner/devices" {% if '/devices' in request.url.path %}class="active"{% endif %}>设备</a>
   <a href="/owner/pairing" {% if '/pairing' in request.url.path %}class="active"{% endif %}>绑定码</a>
   <a href="/owner/upload-links" {% if '/upload-links' in request.url.path %}class="active"{% endif %}>上传链接</a>
+  <a href="/owner/backups" {% if '/backups' in request.url.path %}class="active"{% endif %}>备份</a>
   <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="active"{% endif %}>诊断</a>
+  <a href="/owner/settings" {% if '/settings' in request.url.path %}class="active"{% endif %}>设置</a>
   <span style="flex:1"></span>
   <span style="font-size:11px;color:#475569">v{{ backend_version }} · 本机管理后台</span>
 </nav>

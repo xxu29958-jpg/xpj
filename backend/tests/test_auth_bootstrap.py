@@ -28,7 +28,7 @@ def test_health_and_auth_contract(client: TestClient) -> None:
     assert health_body["status"] == "ok"
     # v0.3.1-alpha2: health surfaces version + identity schema info but must
     # not leak absolute filesystem paths.
-    assert health_body["backend_version"] == "0.3.2-selfuse"
+    assert health_body["backend_version"] == "0.3.3"
     assert health_body["identity_schema"] == "v0.3"
     assert health_body["database_status"] in {"ok", "missing"}
     assert health_body["upload_dir_status"] in {"ok", "missing"}
@@ -288,11 +288,11 @@ def test_pairing_code_expires(client: TestClient) -> None:
 def test_framework_errors_use_uniform_chinese_shape(client: TestClient) -> None:
     response = client.get("/api/not-exists", headers=app_headers())
     assert response.status_code == 404
-    assert response.json() == {"error": "route_not_found", "message": "接口不存在。"}
+    assert response.json() == {"error": "route_not_found", "message": "没有找到这个功能入口。"}
 
     response = client.post("/api/health")
     assert response.status_code == 405
     assert response.json() == {
         "error": "method_not_allowed",
-        "message": "请求方法不允许。",
+        "message": "这个入口不支持当前操作。",
     }

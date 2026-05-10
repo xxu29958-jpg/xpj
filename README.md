@@ -1,6 +1,6 @@
 # 小票夹
 
-**当前版本：v0.3.2-selfuse**（阶段：v0.3-rc1-preflight；基线 = v0.3.1-alpha2 + Owner Console UX hotfix + 公网边界加固）
+**当前版本：v0.3.3**（阶段：v0.3.3-productization；基线 = v0.3.2-selfuse + 公网边界加固 + 自用稳定产品化）
 
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 的核心变化是把旧 token/tenant 运行时模型切换为账号、账本、设备和可撤销凭证。
 
@@ -71,9 +71,19 @@ run.bat
 http://127.0.0.1:8000/owner
 ```
 
-可中文查看服务状态、管理设备、生成 Android 绑定码、创建和管理 iPhone 上传链接。
+可中文查看服务状态、管理设备、生成 Android 绑定码、创建和管理 iPhone 上传链接，以及触发数据库手动备份。
 
 Owner Console 仅允许本机访问（127.0.0.1），不通过 Cloudflare Tunnel 暴露到公网。
+
+## 网页版账本（/web，本机）
+
+v0.3.3 起，后端额外提供一个轻量网页版账本视图，方便在 PC 上确认 / 编辑账单：
+
+```
+http://127.0.0.1:8000/web
+```
+
+包括待确认列表、已确认列表（按月份过滤）、月度统计、单笔编辑 / 确认 / 拒绝。仅本机可访问，公网仍 403。详见 [docs/V0_3_3_PRODUCTIZATION.md](docs/V0_3_3_PRODUCTIZATION.md)。
 
 ## 首次初始化 Owner 身份
 
@@ -108,7 +118,7 @@ $env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
 ```
 
-手机离开家里 Wi-Fi 后仍然通过 Cloudflare Tunnel 访问公网域名，例如 `https://api.zen70.cn`。必须保证 Windows 主机在线、没有睡眠，并且 FastAPI 后端和 cloudflared 正在运行。
+手机离开家里 Wi-Fi 后仍然通过 Cloudflare Tunnel 访问公网域名，例如 `https://api.example.com`（请替换成你自己的私有域名）。必须保证 Windows 主机在线、没有睡眠，并且 FastAPI 后端和 cloudflared 正在运行。
 
 ## Android 打开
 

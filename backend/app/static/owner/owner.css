@@ -180,3 +180,72 @@ form.inline { display: inline; }
 .kv-grid { display: grid; grid-template-columns: 180px 1fr; gap: 6px 12px; }
 .kv-key { font-size: 12px; color: #64748b; align-self: center; }
 .kv-val { font-size: 13px; color: #1e293b; }
+
+/* ── settings secondary nav ────────────────────────────────────────────── */
+.settings-shell { display: flex; gap: 16px; align-items: flex-start; }
+.settings-side {
+    flex: 0 0 200px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px;
+    position: sticky;
+    top: 12px;
+}
+.settings-side a {
+    display: block;
+    padding: 8px 12px;
+    border-radius: 6px;
+    color: #334155;
+    text-decoration: none;
+    font-size: 13px;
+}
+.settings-side a:hover { background: #f1f5f9; }
+.settings-side a.active {
+    background: #1e293b;
+    color: #fff;
+    font-weight: 600;
+}
+.settings-main { flex: 1; min-width: 0; }
+.settings-main h2 { margin-top: 0; }
+@media (max-width: 720px) {
+    .settings-shell { flex-direction: column; }
+    .settings-side { width: 100%; flex: initial; position: static; }
+}
+
+/* ── route inspector ───────────────────────────────────────────────────── */
+.route-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.route-table th, .route-table td {
+    text-align: left; padding: 6px 8px; border-bottom: 1px solid #f1f5f9;
+}
+.route-table th { font-weight: 600; color: #475569; }
+.route-table code {
+    font-family: ui-monospace, Consolas, monospace;
+    background: #f8fafc; padding: 2px 6px; border-radius: 4px;
+}
+.route-method {
+    display: inline-block; font-family: monospace; font-size: 11px;
+    padding: 2px 6px; border-radius: 4px; margin-right: 4px;
+    background: #e2e8f0; color: #1e293b;
+}
+.route-method-GET    { background: #dcfce7; color: #166534; }
+.route-method-POST   { background: #dbeafe; color: #1e3a8a; }
+.route-method-DELETE { background: #fee2e2; color: #991b1b; }
+.route-method-MOUNT  { background: #f1f5f9; color: #475569; }
+
+.surface-pill {
+    display: inline-block; padding: 2px 8px; font-size: 11px;
+    border-radius: 999px; margin-bottom: 6px;
+}
+.surface-owner    { background: #fef3c7; color: #92400e; }
+.surface-admin    { background: #fce7f3; color: #9d174d; }
+.surface-upload   { background: #dbeafe; color: #1e3a8a; }
+.surface-web      { background: #e0e7ff; color: #3730a3; }
+.surface-bootstrap{ background: #fde68a; color: #92400e; }
+.surface-public   { background: #dcfce7; color: #166534; }
+.surface-docs     { background: #f1f5f9; color: #334155; }
+.surface-static   { background: #f1f5f9; color: #475569; }
+
+.kv-list { display: grid; grid-template-columns: 200px 1fr; gap: 8px 16px; font-size: 13px; }
+.kv-list dt { color: #64748b; }
+.kv-list dd { margin: 0; color: #1e293b; font-family: ui-monospace, Consolas, monospace; word-break: break-all; }

@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$ServerUrl = "https://api.zen70.cn",
+    [string]$ServerUrl = "https://api.example.com",
     [switch]$SkipProjectVerify,
     [switch]$SkipPublicEndpoint,
     [switch]$SkipRelease,

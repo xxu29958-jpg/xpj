@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>设置</h1>
+<div class="settings-shell">
+  <nav class="settings-side">
+    {% for item in settings_nav %}
+      <a href="{{ item.url }}"
+         class="{% if item.slug == settings_active %}active{% endif %}">
+        {{ item.label }}
+      </a>
+    {% endfor %}
+  </nav>
+  <div class="settings-main">
+    {% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+    {% block settings_body %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

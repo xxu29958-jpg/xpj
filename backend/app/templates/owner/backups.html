@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}数据库备份 — 小票夹{% endblock %}
+{% block content %}
+<h1>数据库备份</h1>
+
+{% if error %}
+<div class="alert alert-danger">⚠️ {{ error }}</div>
+{% endif %}
+
+{% if created_now %}
+<div class="alert alert-success">
+  ✅ 备份已创建：<code>{{ created_now.file_name }}</code>（{{ created_now.size_text }}）
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>最近一次备份</h2>
+  {% if latest %}
+  <div class="kv-grid">
+    <span class="kv-key">文件名</span>
+    <span class="kv-val" style="font-family:monospace">{{ latest.file_name }}</span>
+    <span class="kv-key">备份时间</span>
+    <span class="kv-val">{{ latest.created_at }}</span>
+    <span class="kv-key">大小</span>
+    <span class="kv-val">{{ latest.size_text }}</span>
+    <span class="kv-key">类型</span>
+    <span class="kv-val"><span class="badge badge-ok">{{ latest.kind }}</span></span>
+  </div>
+  {% else %}
+  <p style="color:#64748b">暂无备份，点击下方按钮立即创建一次。</p>
+  {% endif %}
+  <form method="post" action="/owner/backups" style="margin-top:12px">
+    <button type="submit" class="btn btn-primary">立即备份一次</button>
+  </form>
+  <p class="secret-note" style="margin-top:8px">
+    备份文件保存在 <code>backend\backups\</code>，与计划任务每日自动备份共用同一目录。<br>
+    恢复请使用 <code>scripts\restore_ticketbox_db.ps1</code>，本页不提供网页恢复，避免误操作。
+  </p>
+</div>
+
+<div class="card">
+  <h2>所有备份</h2>
+  {% if backups %}
+  <table>
+    <thead>
+      <tr>
+        <th style="white-space:nowrap">备份时间</th>
+        <th style="white-space:nowrap">类型</th>
+        <th style="white-space:nowrap">大小</th>
+        <th>文件名</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for entry in backups %}
+      <tr>
+        <td style="white-space:nowrap">{{ entry.created_at }}</td>
+        <td><span class="badge badge-ok">{{ entry.kind }}</span></td>
+        <td style="white-space:nowrap">{{ entry.size_text }}</td>
+        <td style="font-family:monospace;color:#475569">{{ entry.file_name }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#64748b">暂无备份记录。</p>
+  {% endif %}
+</div>
+{% endblock %}

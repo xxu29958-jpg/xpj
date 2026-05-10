@@ -84,6 +84,11 @@ jobs:
       run:
         working-directory: android
 
+    env:
+      # Inject the canonical owner server URL so BuildConfig.DEFAULT_SERVER_URL
+      # is populated without keeping a hardcoded domain in build.gradle.kts.
+      TICKETBOX_SERVER_URL: https://api.zen70.cn
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6

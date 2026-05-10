@@ -39,6 +39,7 @@ class DeviceSummary:
     account_name: str
     ledger_id: str | None
     ledger_name: str | None
+    created_at: str | None
     last_seen_at: str | None
     revoked_at: str | None
 
@@ -90,6 +91,7 @@ def _device_with_relations(db: Session, device: Device) -> DeviceSummary:
         account_name=account.display_name if account is not None else "",
         ledger_id=ledger_id,
         ledger_name=ledger_name,
+        created_at=to_iso(device.created_at),
         last_seen_at=to_iso(device.last_seen_at),
         revoked_at=to_iso(device.revoked_at),
     )
@@ -247,6 +249,50 @@ def revoke_upload_link(db: Session, *, public_id: str) -> UploadLinkSummary:
         db.commit()
         db.refresh(link)
     return _upload_link_summary(db, link)
+
+
+def delete_device(db: Session, *, public_id: str, current_device_public_id: str) -> None:
+    """Permanently remove a device row and its dependents.
+
+    Only allowed for devices that have been revoked first; the active admin
+    device cannot be deleted. Cascade-deletes :class:`AuthToken` and
+    :class:`UploadLink` rows referencing this device. ``Expense`` has no FK
+    to :class:`Device` and is left untouched.
+    """
+    if public_id == current_device_public_id:
+        raise AppError(
+            "invalid_request",
+            "不能删除当前正在使用的管理员设备。",
+            status_code=409,
+        )
+    device = _device_by_public_id(db, public_id)
+    if device.revoked_at is None:
+        raise AppError(
+            "invalid_request",
+            "请先停用该设备再删除，避免误删活跃绑定。",
+            status_code=409,
+        )
+    db.execute(AuthToken.__table__.delete().where(AuthToken.device_id == device.id))
+    db.execute(UploadLink.__table__.delete().where(UploadLink.device_id == device.id))
+    db.delete(device)
+    db.commit()
+
+
+def delete_upload_link(db: Session, *, public_id: str) -> None:
+    """Permanently remove an UploadLink row.
+
+    Only allowed for already-revoked links so we never delete a key that an
+    iPhone Shortcut might still be using.
+    """
+    link = _upload_link_by_public_id(db, public_id)
+    if link.revoked_at is None:
+        raise AppError(
+            "invalid_request",
+            "请先停用该上传链接再删除。",
+            status_code=409,
+        )
+    db.delete(link)
+    db.commit()
 
 
 def _new_public_id(db: Session) -> str:

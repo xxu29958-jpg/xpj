@@ -57,10 +57,22 @@ class Settings:
     http_bootstrap_secret: str
     enable_api_docs: bool
     allow_public_admin_api: bool
+    public_base_url: str
 
     @property
     def max_upload_size_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
+
+
+def _resolve_public_base_url(raw: str | None) -> str:
+    if not raw:
+        return ""
+    value = raw.strip().rstrip("/")
+    if not value:
+        return ""
+    if not (value.startswith("http://") or value.startswith("https://")):
+        return ""
+    return value
 
 
 @lru_cache
@@ -95,4 +107,5 @@ def get_settings() -> Settings:
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
         enable_api_docs=_bool_env("ENABLE_API_DOCS", False),
         allow_public_admin_api=_bool_env("ALLOW_PUBLIC_ADMIN_API", False),
+        public_base_url=_resolve_public_base_url(os.getenv("PUBLIC_BASE_URL")),
     )

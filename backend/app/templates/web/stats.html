@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}统计 — 小票夹{% endblock %}
+{% block content %}
+<h1>{{ month }} 月度统计</h1>
+
+<div class="card">
+  <form method="get" action="/web/stats" class="filter-row">
+    <label>切换月份：
+      <input type="text" name="month" value="{{ month }}" pattern="\d{4}-\d{2}">
+    </label>
+    <button type="submit" class="btn btn-secondary">查看</button>
+  </form>
+</div>
+
+<div class="stat-grid">
+  <div class="stat">
+    <div class="num">{{ total_amount_yuan }}</div>
+    <div class="label">本月总支出 (元)</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ count }}</div>
+    <div class="label">入账笔数</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>按分类</h2>
+  {% if by_category %}
+  <table>
+    <thead>
+      <tr>
+        <th>分类</th>
+        <th style="width:90px">笔数</th>
+        <th style="width:120px">金额 (元)</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in by_category %}
+      <tr>
+        <td>{{ row.category }}</td>
+        <td>{{ row.count }}</td>
+        <td class="amount">{{ row.amount_yuan }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#64748b">本月暂无入账记录。</p>
+  {% endif %}
+</div>
+{% endblock %}

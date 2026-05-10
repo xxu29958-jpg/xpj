@@ -4,7 +4,7 @@
     v0.3-rc1-preflight public-boundary acceptance probe.
 
 .DESCRIPTION
-    Confirms that the Cloudflare Tunnel surface (default https://api.zen70.cn)
+    Confirms that the Cloudflare Tunnel surface (default https://api.example.com)
     only exposes the endpoints intended for public consumption (/api/health,
     /api/auth/pair, /u/{key}, /api/expenses/* with valid app token) and that
     Owner Console / admin / bootstrap / docs are all rejected.
@@ -19,7 +19,8 @@
     branch on $LASTEXITCODE without parsing).
 
 .PARAMETER BaseUrl
-    Public origin to probe. Defaults to https://api.zen70.cn.
+    Public origin to probe. Defaults to https://api.example.com (override
+    with -BaseUrl on the command line; never commit your real domain).
 
 .PARAMETER LocalUrl
     Local backend origin used as the "is it actually up" sanity check.
@@ -37,7 +38,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$BaseUrl = 'https://api.zen70.cn',
+    [string]$BaseUrl = 'https://api.example.com',
     [string]$LocalUrl = 'http://127.0.0.1:8000'
 )
 
@@ -134,15 +135,37 @@ Add-Result -Name 'public /u/{fake}' -Url "$BaseUrl/u/upl_does_not_exist_*" -Meth
 
 # ── 3) public forbidden surface ─────────────────────────────────────────────
 $forbiddenChecks = @(
-    @{ Name = 'public /owner';                  Url = "$BaseUrl/owner";              Method = 'GET'  }
-    @{ Name = 'public /owner/devices';          Url = "$BaseUrl/owner/devices";      Method = 'GET'  }
-    @{ Name = 'public /owner/upload-links';     Url = "$BaseUrl/owner/upload-links"; Method = 'GET'  }
-    @{ Name = 'public /api/admin/devices';      Url = "$BaseUrl/api/admin/devices";  Method = 'GET'  }
+    @{ Name = 'public /owner';                  Url = "$BaseUrl/owner";                  Method = 'GET'  }
+    @{ Name = 'public /owner/devices';          Url = "$BaseUrl/owner/devices";          Method = 'GET'  }
+    @{ Name = 'public /owner/upload-links';     Url = "$BaseUrl/owner/upload-links";     Method = 'GET'  }
+    @{ Name = 'public /owner/pairing';          Url = "$BaseUrl/owner/pairing";          Method = 'GET'  }
+    @{ Name = 'public /owner/diagnostics';      Url = "$BaseUrl/owner/diagnostics";      Method = 'GET'  }
+    @{ Name = 'public /owner/settings';         Url = "$BaseUrl/owner/settings";         Method = 'GET'  }
+    @{ Name = 'public /owner/settings/api';     Url = "$BaseUrl/owner/settings/api";     Method = 'GET'  }
+    @{ Name = 'public /owner/settings/security';Url = "$BaseUrl/owner/settings/security";Method = 'GET'  }
+    @{ Name = 'public /owner/backups';          Url = "$BaseUrl/owner/backups";          Method = 'GET'  }
+    @{ Name = 'public POST /owner/devices/x/revoke';      Url = "$BaseUrl/owner/devices/00000000-0000-0000-0000-000000000000/revoke";      Method = 'POST' }
+    @{ Name = 'public POST /owner/upload-links create';   Url = "$BaseUrl/owner/upload-links";        Method = 'POST' }
+    @{ Name = 'public POST /owner/pairing/refresh';       Url = "$BaseUrl/owner/pairing/refresh";     Method = 'POST' }
+    @{ Name = 'public POST /owner/settings/public-base-url'; Url = "$BaseUrl/owner/settings/public-base-url"; Method = 'POST' }
+    @{ Name = 'public /api/admin/devices';      Url = "$BaseUrl/api/admin/devices";      Method = 'GET'  }
     @{ Name = 'public /api/admin/upload-links'; Url = "$BaseUrl/api/admin/upload-links"; Method = 'GET' }
-    @{ Name = 'public /api/bootstrap/owner';    Url = "$BaseUrl/api/bootstrap/owner"; Method = 'POST' }
-    @{ Name = 'public /docs';                   Url = "$BaseUrl/docs";               Method = 'GET'  }
-    @{ Name = 'public /openapi.json';           Url = "$BaseUrl/openapi.json";       Method = 'GET'  }
-    @{ Name = 'public /redoc';                  Url = "$BaseUrl/redoc";              Method = 'GET'  }
+    @{ Name = 'public POST /api/admin/devices'; Url = "$BaseUrl/api/admin/devices";      Method = 'POST' }
+    @{ Name = 'public POST /api/admin/upload-links'; Url = "$BaseUrl/api/admin/upload-links"; Method = 'POST' }
+    @{ Name = 'public /api/bootstrap/owner';    Url = "$BaseUrl/api/bootstrap/owner";    Method = 'POST' }
+    @{ Name = 'public /docs';                   Url = "$BaseUrl/docs";                   Method = 'GET'  }
+    @{ Name = 'public /openapi.json';           Url = "$BaseUrl/openapi.json";           Method = 'GET'  }
+    @{ Name = 'public /redoc';                  Url = "$BaseUrl/redoc";                  Method = 'GET'  }
+    # /web — local-only ledger browser (must never be reachable from public internet)
+    @{ Name = 'public /web';                             Url = "$BaseUrl/web";                             Method = 'GET'  }
+    @{ Name = 'public /web/pending';                     Url = "$BaseUrl/web/pending";                     Method = 'GET'  }
+    @{ Name = 'public /web/confirmed';                   Url = "$BaseUrl/web/confirmed";                   Method = 'GET'  }
+    @{ Name = 'public /web/stats';                       Url = "$BaseUrl/web/stats";                       Method = 'GET'  }
+    @{ Name = 'public GET /web/expenses/1/edit';         Url = "$BaseUrl/web/expenses/1/edit";             Method = 'GET'  }
+    @{ Name = 'public POST /web/expenses/1/confirm';     Url = "$BaseUrl/web/expenses/1/confirm";          Method = 'POST' }
+    @{ Name = 'public POST /web/expenses/1/reject';      Url = "$BaseUrl/web/expenses/1/reject";           Method = 'POST' }
+    @{ Name = 'public GET /web/expenses/1/image';        Url = "$BaseUrl/web/expenses/1/image";            Method = 'GET'  }
+    @{ Name = 'public GET /web/expenses/1/thumbnail';    Url = "$BaseUrl/web/expenses/1/thumbnail";        Method = 'GET'  }
 )
 
 foreach ($c in $forbiddenChecks) {

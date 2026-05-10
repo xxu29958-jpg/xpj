@@ -1,0 +1,39 @@
+{% extends "settings/_layout.html" %}
+{% block title %}公网域名 — 设置 — 小票夹{% endblock %}
+{% block settings_body %}
+<div class="card">
+  <h2>公网域名（PUBLIC_BASE_URL）</h2>
+  <p style="font-size:13px;color:#475569;line-height:1.7">
+    iPhone 快捷指令的「URL」动作只接受完整公网 URL（以 <code>https://</code> 开头）。
+    填写本机后端通过 Cloudflare Tunnel 暴露的公网域名后，
+    Owner Console 在新建 / 轮换上传链接时会直接给出可粘贴的完整 URL。
+  </p>
+  <p style="font-size:13px;color:#475569;line-height:1.7">
+    当前值：
+    {% if settings_view.public_base_url_configured %}
+      <code>{{ settings_view.public_base_url }}</code>
+      <span class="badge badge-ok" style="margin-left:8px">已配置</span>
+    {% else %}
+      <span class="badge badge-off">未配置</span>
+    {% endif %}
+  </p>
+
+  <form method="post" action="/owner/settings/public-base-url" style="margin-top:16px">
+    <div class="form-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label for="public_base_url" style="font-size:13px;color:#334155;min-width:120px">公网域名</label>
+      <input type="text" id="public_base_url" name="public_base_url"
+             value="{{ settings_view.public_base_url }}"
+             placeholder="https://api.example.com"
+             style="flex:1;min-width:280px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:monospace;font-size:13px"
+             pattern="https?://.+"
+             title="必须以 http:// 或 https:// 开头">
+      <button type="submit" class="btn btn-primary">保存</button>
+    </div>
+    <p style="font-size:12px;color:#64748b;margin-top:8px">
+      留空可清除该配置（清除后 Owner Console 将重新提示「未配置」）。
+      末尾斜杠会自动去掉；保存到 <code>{{ settings_view.env_path }}</code>，
+      下一次创建上传链接即生效，无需重启后端。
+    </p>
+  </form>
+</div>
+{% endblock %}

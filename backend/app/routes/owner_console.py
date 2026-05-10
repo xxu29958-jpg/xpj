@@ -36,6 +36,47 @@ from app.version import BACKEND_VERSION
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "owner"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
+
+def _format_owner_datetime(value: object, tz: str = "Asia/Shanghai") -> str:
+    """Format ISO-like datetimes for Owner Console tables.
+
+    Accepts ``str`` (ISO-8601), ``datetime``, or anything falsy. Returns ``"—"``
+    for falsy / unparseable input. Naive datetimes are assumed to be UTC; the
+    output is rendered in the requested IANA timezone using ``YYYY-MM-DD HH:MM``
+    so columns line up. Falls back to a simple ``[:16]`` slice if the runtime
+    lacks the requested zone (e.g. minimal Windows base image without tzdata).
+    """
+    if not value:
+        return "—"
+    from datetime import datetime, timezone
+
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return "—"
+        try:
+            # Python's fromisoformat handles "...+00:00"; replace trailing Z.
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw[:16].replace("T", " ")
+    elif isinstance(value, datetime):
+        dt = value
+    else:
+        return str(value)[:16].replace("T", " ")
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+
+        local = dt.astimezone(ZoneInfo(tz))
+    except Exception:
+        local = dt
+    return local.strftime("%Y-%m-%d %H:%M")
+
+
+templates.env.filters["owner_datetime"] = _format_owner_datetime
+
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 
@@ -117,6 +158,17 @@ def owner_rename_device(
     return RedirectResponse(url="/owner/devices", status_code=303)
 
 
+@router.post("/devices/{public_id}/delete", response_class=HTMLResponse)
+def owner_delete_device(
+    public_id: str,
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    svc.do_delete_device(db, public_id, current_device_public_id="")
+    return RedirectResponse(url="/owner/devices", status_code=303)
+
+
 # ── pairing ──────────────────────────────────────────────────────────────────
 
 @router.get("/pairing", response_class=HTMLResponse)
@@ -167,6 +219,8 @@ def owner_upload_links_get(
     ctx = _base(request, db)
     ctx["links"] = links
     ctx["new_secret"] = None
+    ctx["new_secret_full_url"] = None
+    ctx["public_base_url_configured"] = bool(get_settings().public_base_url)
     return templates.TemplateResponse(request=request, name="upload_links.html", context=ctx)
 
 
@@ -182,6 +236,8 @@ def owner_upload_links_create(
         ctx = _base(request, db)
         ctx["links"] = []
         ctx["new_secret"] = None
+        ctx["new_secret_full_url"] = None
+        ctx["public_base_url_configured"] = bool(get_settings().public_base_url)
         ctx["error"] = "服务未初始化，请先运行 bootstrap_dev_owner.ps1。"
         return templates.TemplateResponse(request=request, name="upload_links.html", context=ctx)
     cfg = get_settings()
@@ -193,6 +249,8 @@ def owner_upload_links_create(
     ctx = _base(request, db)
     ctx["links"] = links
     ctx["new_secret"] = secret
+    ctx["new_secret_full_url"] = svc.compose_public_upload_url(secret)
+    ctx["public_base_url_configured"] = bool(cfg.public_base_url)
     ctx["error"] = None
     return templates.TemplateResponse(request=request, name="upload_links.html", context=ctx)
 
@@ -209,6 +267,8 @@ def owner_upload_links_rotate(
     ctx = _base(request, db)
     ctx["links"] = links
     ctx["new_secret"] = secret
+    ctx["new_secret_full_url"] = svc.compose_public_upload_url(secret)
+    ctx["public_base_url_configured"] = bool(get_settings().public_base_url)
     ctx["error"] = None
     return templates.TemplateResponse(request=request, name="upload_links.html", context=ctx)
 
@@ -221,6 +281,17 @@ def owner_upload_links_revoke(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     svc.do_revoke_upload_link(db, public_id)
+    return RedirectResponse(url="/owner/upload-links", status_code=303)
+
+
+@router.post("/upload-links/{public_id}/delete", response_class=HTMLResponse)
+def owner_upload_links_delete(
+    public_id: str,
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    svc.do_delete_upload_link(db, public_id)
     return RedirectResponse(url="/owner/upload-links", status_code=303)
 
 
@@ -241,3 +312,190 @@ def owner_diagnostics(
     ctx["enable_http_bootstrap"] = cfg.enable_http_bootstrap
     ctx["max_upload_size_mb"] = cfg.max_upload_size_mb
     return templates.TemplateResponse(request=request, name="diagnostics.html", context=ctx)
+
+
+# ── settings ─────────────────────────────────────────────────────────────────
+
+from app.services import runtime_settings_service  # noqa: E402
+from app.services import route_inspector_service  # noqa: E402
+
+
+_SETTINGS_NAV = (
+    {"slug": "", "label": "概览", "url": "/owner/settings"},
+    {"slug": "public-base-url", "label": "公网域名", "url": "/owner/settings/public-base-url"},
+    {"slug": "security", "label": "安全 / 边界", "url": "/owner/settings/security"},
+    {"slug": "api", "label": "接口一览", "url": "/owner/settings/api"},
+    {"slug": "about", "label": "关于", "url": "/owner/settings/about"},
+)
+
+
+def _settings_ctx(
+    request: Request,
+    db: Session,
+    *,
+    active: str = "",
+    message: str | None = None,
+    error: str | None = None,
+) -> dict:
+    ctx = _base(request, db)
+    ctx["settings_view"] = runtime_settings_service.get_view()
+    ctx["settings_nav"] = _SETTINGS_NAV
+    ctx["settings_active"] = active
+    ctx["message"] = message
+    ctx["error"] = error
+    return ctx
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def owner_settings_index(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    ctx = _settings_ctx(request, db, active="")
+    ctx["security_view"] = runtime_settings_service.get_security_view()
+    return templates.TemplateResponse(
+        request=request, name="settings/index.html", context=ctx
+    )
+
+
+@router.get("/settings/public-base-url", response_class=HTMLResponse)
+def owner_settings_public_base_url_get(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    ctx = _settings_ctx(request, db, active="public-base-url")
+    return templates.TemplateResponse(
+        request=request, name="settings/public_base_url.html", context=ctx
+    )
+
+
+@router.post("/settings/public-base-url", response_class=HTMLResponse)
+def owner_settings_set_public_base_url(
+    request: Request,
+    public_base_url: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    try:
+        runtime_settings_service.update_public_base_url(public_base_url)
+    except Exception as exc:  # surfaced to UI
+        message = getattr(exc, "message", None) or "保存失败，请检查输入。"
+        ctx = _settings_ctx(request, db, active="public-base-url", error=message)
+        return templates.TemplateResponse(
+            request=request, name="settings/public_base_url.html", context=ctx
+        )
+    ctx = _settings_ctx(
+        request,
+        db,
+        active="public-base-url",
+        message="已保存到 backend/.env，下一次创建上传链接即生效。",
+    )
+    return templates.TemplateResponse(
+        request=request, name="settings/public_base_url.html", context=ctx
+    )
+
+
+@router.get("/settings/security", response_class=HTMLResponse)
+def owner_settings_security(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    ctx = _settings_ctx(request, db, active="security")
+    ctx["security_view"] = runtime_settings_service.get_security_view()
+    return templates.TemplateResponse(
+        request=request, name="settings/security.html", context=ctx
+    )
+
+
+@router.get("/settings/api", response_class=HTMLResponse)
+def owner_settings_api(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    ctx = _settings_ctx(request, db, active="api")
+    groups = route_inspector_service.list_route_groups(request.app)
+    ctx["route_groups"] = groups
+    ctx["route_total"] = route_inspector_service.count_routes(groups)
+    return templates.TemplateResponse(
+        request=request, name="settings/api.html", context=ctx
+    )
+
+
+@router.get("/settings/about", response_class=HTMLResponse)
+def owner_settings_about(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    ctx = _settings_ctx(request, db, active="about")
+    ctx["about_view"] = runtime_settings_service.get_about_view()
+    return templates.TemplateResponse(
+        request=request, name="settings/about.html", context=ctx
+    )
+
+
+# ── backups ──────────────────────────────────────────────────────────────────
+
+from app.services import backup_service  # noqa: E402  (local import to keep ordering tidy)
+
+
+def _format_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    return f"{size_bytes / 1024 / 1024:.1f} MB"
+
+
+def _backup_view(entries: list[backup_service.BackupEntry]) -> list[dict]:
+    return [
+        {
+            "file_name": entry.file_name,
+            "size_text": _format_size(entry.size_bytes),
+            "created_at": entry.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "kind": entry.kind,
+        }
+        for entry in entries
+    ]
+
+
+@router.get("/backups", response_class=HTMLResponse)
+def owner_backups_get(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    entries = backup_service.list_backups()
+    ctx = _base(request, db)
+    ctx["backups"] = _backup_view(entries)
+    ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
+    ctx["created_now"] = None
+    ctx["error"] = None
+    return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
+
+
+@router.post("/backups", response_class=HTMLResponse)
+def owner_backups_create(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    error: str | None = None
+    created: dict | None = None
+    try:
+        entry = backup_service.create_manual_backup()
+        created = _backup_view([entry])[0]
+    except Exception as exc:  # AppError or unexpected I/O
+        error = getattr(exc, "message", None) or "备份失败，请稍后再试。"
+    entries = backup_service.list_backups()
+    ctx = _base(request, db)
+    ctx["backups"] = _backup_view(entries)
+    ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
+    ctx["created_now"] = created
+    ctx["error"] = error
+    return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
+

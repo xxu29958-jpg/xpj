@@ -12,6 +12,7 @@
         <th>平台</th>
         <th style="white-space:nowrap">账号</th>
         <th style="white-space:nowrap">账本</th>
+        <th style="white-space:nowrap">创建时间</th>
         <th style="white-space:nowrap">最近使用</th>
         <th style="white-space:nowrap">状态</th>
         <th>操作</th>
@@ -24,7 +25,8 @@
         <td>{{ d.platform }}</td>
         <td>{{ d.account_name }}</td>
         <td>{{ d.ledger_name or d.ledger_id or '—' }}</td>
-        <td>{{ d.last_seen_at[:16].replace('T',' ') if d.last_seen_at else '—' }}</td>
+        <td style="white-space:nowrap;color:#64748b;font-size:12px">{{ d.created_at|owner_datetime }}</td>
+        <td>{{ d.last_seen_at|owner_datetime }}</td>
         <td>
           {% if d.revoked_at %}
             <span class="badge badge-off">已停用</span>
@@ -45,6 +47,11 @@
                        value="{{ d.device_name }}" maxlength="120" required>
                 <button type="submit" class="btn btn-secondary">重命名</button>
               </div>
+            </form>
+            {% else %}
+            <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/delete"
+                  onsubmit="return confirm('确认从列表移除设备「{{ d.device_name }}」？将永久移除该设备及其历史 token / 上传链接记录，账单数据保留。')">
+              <button type="submit" class="btn btn-danger">移除记录</button>
             </form>
             {% endif %}
           </div>

@@ -1,6 +1,6 @@
 # Windows 长期运行 Runbook
 
-**当前版本：v0.3.2-selfuse（阶段：v0.3-rc1-preflight）**
+**当前版本：v0.3.3（阶段：v0.3.3-productization）**
 
 ## Owner Console
 
@@ -117,6 +117,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop_backend.ps1
 ```
 
 `stop_backend.ps1` 默认只停止小票夹自己的 `uvicorn app.main:app` 进程。端口被其他程序占用时会拒绝停止，避免误杀无关进程。
+
+一键重启（先停后起）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restart_backend.ps1
+```
+
+查看 Windows 计划任务状态：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_windows_task_status.ps1
+```
+
+输出 `TicketboxBackend` / `TicketboxCloudflareTunnel` / `TicketboxBackup` 的 `State`、`LastRunTime`、`LastTaskResult`。
 
 ## 查看当前状态
 

@@ -1,0 +1,14 @@
+{% extends "settings/_layout.html" %}
+{% block title %}关于 — 设置 — 小票夹{% endblock %}
+{% block settings_body %}
+<div class="card">
+  <h2>关于</h2>
+  <dl class="kv-list">
+    <dt>后端版本</dt><dd>{{ about_view.backend_version }}</dd>
+    <dt>后端目录</dt><dd>{{ about_view.backend_root }}</dd>
+    <dt>数据库</dt><dd>{{ about_view.database_url_masked }}</dd>
+    <dt>上传目录</dt><dd>{{ about_view.upload_dir }}</dd>
+    <dt>单文件上限</dt><dd>{{ about_view.max_upload_size_mb }} MB</dd>
+  </dl>
+</div>
+{% endblock %}
