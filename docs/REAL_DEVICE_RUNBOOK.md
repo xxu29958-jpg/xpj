@@ -363,3 +363,32 @@ iPhone 快捷指令优先转 JPEG 或 PNG。
 - Android Debug Bridge：https://developer.android.com/tools/adb
 - Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
 - Apple 快捷指令"获取 URL 内容"：https://support.apple.com/guide/shortcuts/use-the-get-contents-of-url-action-apd58d46713f/ios
+
+## 附录 A. v0.3.2 自用稳定版 E2E 辅助脚本
+
+为了让"绑定 -> 已确认恢复 -> 飞行模式离线可读"这条链路可重复，提供：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_android_pairing_e2e.ps1 `
+  -DeviceSerial <你的设备序列号>
+```
+
+可选参数：
+
+```text
+-PairingCode 123456            # best-effort 自动 input；Compose 导航不稳，失败时人工点按
+-ServerUrl https://你的域名     # 仅用于在脚本结尾提示人工核对 /api/health
+-ApkPath ...                  # 默认 android\app\build\outputs\apk\gray\debug\app-gray-debug.apk
+```
+
+脚本会在 `artifacts\` 目录里写入：
+
+```text
+artifacts\e2e_launch.png
+artifacts\e2e_pairing_input.png   # 仅在传 PairingCode 时
+artifacts\e2e_logcat.txt
+```
+
+`artifacts\` 已在 `.gitignore` 中，不要把截图 / logcat / pairing code 提交进 git。
+
+完整自用清单见 `docs\V0_3_2_SELFUSE_CHECKLIST.md`。

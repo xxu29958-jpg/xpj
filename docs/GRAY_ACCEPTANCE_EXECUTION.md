@@ -657,3 +657,11 @@ $env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 2. 非阻断项允许记录已知问题，但需在灰度说明中告知用户。
 3. 未实际执行的项不得预填"通过"。
 4. 所有证据截图按日期归档，命名格式：`YYYYMMDD_序号_简要描述.png`。
+
+## v0.3.2 自用稳定版补充说明
+
+v0.3.2 self-use stable candidate 的自用门禁不替代本灰度清单，二者互补：
+
+- 本清单关注"灰度发给他人时不能泄漏服务器/凭证/调试入口"。
+- `docs/V0_3_2_SELFUSE_CHECKLIST.md` 关注"我自己单机能稳定使用"，包含 Owner Console UX、UploadLink 安全、Android 绑定恢复、飞行模式离线可读等。
+- 本轮 Owner Console UX hotfix（`upload_links.html` 双重 `?tz=`、`devices.html`/`pairing.html` 时间戳、表头 nowrap）已并入 `v0.3.2-selfuse-stabilization` 分支。

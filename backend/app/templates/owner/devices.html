@@ -10,10 +10,10 @@
       <tr>
         <th>设备名</th>
         <th>平台</th>
-        <th>账号</th>
-        <th>账本</th>
-        <th>最近使用</th>
-        <th>状态</th>
+        <th style="white-space:nowrap">账号</th>
+        <th style="white-space:nowrap">账本</th>
+        <th style="white-space:nowrap">最近使用</th>
+        <th style="white-space:nowrap">状态</th>
         <th>操作</th>
       </tr>
     </thead>
@@ -24,7 +24,7 @@
         <td>{{ d.platform }}</td>
         <td>{{ d.account_name }}</td>
         <td>{{ d.ledger_name or d.ledger_id or '—' }}</td>
-        <td>{{ d.last_seen_at or '—' }}</td>
+        <td>{{ d.last_seen_at[:16].replace('T',' ') if d.last_seen_at else '—' }}</td>
         <td>
           {% if d.revoked_at %}
             <span class="badge badge-off">已停用</span>
