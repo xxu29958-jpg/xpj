@@ -105,3 +105,88 @@ def test_health_owner_console_status_not_unimplemented(client: TestClient) -> No
     assert resp.status_code == 200
     data = resp.json()
     assert data.get("owner_console_status") not in {None, "not-implemented"}
+
+
+# ── v0.3-rc1-preflight: Host-header hardening ───────────────────────────────
+
+class _FakeClient:
+    def __init__(self, host: str) -> None:
+        self.host = host
+
+
+class _FakeRequest:
+    """Minimal stand-in for Starlette ``Request`` used to exercise the
+    network boundary helper. We avoid spinning up the full ASGI stack so we
+    can vary the TCP peer address (which Starlette's TestClient pins to
+    ``testclient``)."""
+
+    def __init__(self, peer: str | None, host_header: str) -> None:
+        self.client = _FakeClient(peer) if peer is not None else None
+        self.headers = {"host": host_header}
+
+
+def test_owner_console_local_peer_local_host_allowed() -> None:
+    from app.network_boundary import require_owner_console_local
+
+    require_owner_console_local(_FakeRequest("127.0.0.1", "127.0.0.1:8000"))
+    require_owner_console_local(_FakeRequest("127.0.0.1", "localhost:8000"))
+    require_owner_console_local(_FakeRequest("::1", "[::1]:8000"))
+
+
+def test_owner_console_local_peer_public_host_rejected() -> None:
+    """Cloudflare Tunnel forwards public traffic to 127.0.0.1, so loopback
+    peer alone must not grant access. The Host header has to also look
+    local, otherwise the boundary rejects with 403."""
+    from app.errors import AppError
+    from app.network_boundary import require_owner_console_local
+
+    with pytest.raises(AppError) as excinfo:
+        require_owner_console_local(_FakeRequest("127.0.0.1", "api.zen70.cn"))
+    assert excinfo.value.status_code == 403
+
+
+def test_owner_console_remote_peer_rejected() -> None:
+    from app.errors import AppError
+    from app.network_boundary import require_owner_console_local
+
+    with pytest.raises(AppError):
+        require_owner_console_local(_FakeRequest("203.0.113.5", "127.0.0.1:8000"))
+    with pytest.raises(AppError):
+        require_owner_console_local(_FakeRequest("testclient", "testserver"))
+
+
+def test_admin_boundary_local_allowed() -> None:
+    from app.network_boundary import require_admin_network_boundary
+
+    require_admin_network_boundary(_FakeRequest("127.0.0.1", "127.0.0.1:8000"))
+
+
+def test_admin_boundary_public_host_rejected_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.errors import AppError
+    from app import network_boundary
+
+    # Defensive: ensure the public-allow flag is not enabled by env leakage.
+    monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
+    network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
+    try:
+        with pytest.raises(AppError) as excinfo:
+            network_boundary.require_admin_network_boundary(
+                _FakeRequest("127.0.0.1", "api.zen70.cn")
+            )
+        assert excinfo.value.status_code == 403
+    finally:
+        network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
+
+
+def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import network_boundary
+
+    monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "true")
+    network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
+    try:
+        network_boundary.require_admin_network_boundary(
+            _FakeRequest("127.0.0.1", "api.zen70.cn")
+        )
+    finally:
+        monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
+        network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]

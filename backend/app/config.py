@@ -55,6 +55,8 @@ class Settings:
     tenants_json: str
     enable_http_bootstrap: bool
     http_bootstrap_secret: str
+    enable_api_docs: bool
+    allow_public_admin_api: bool
 
     @property
     def max_upload_size_bytes(self) -> int:
@@ -91,4 +93,6 @@ def get_settings() -> Settings:
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
         enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
+        enable_api_docs=_bool_env("ENABLE_API_DOCS", False),
+        allow_public_admin_api=_bool_env("ALLOW_PUBLIC_ADMIN_API", False),
     )

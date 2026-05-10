@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.models import Device
+from app.network_boundary import require_admin_network_boundary
 from app.schemas import (
     AdminDeviceRenameRequest,
     AdminDeviceResponse,
@@ -30,7 +31,11 @@ from app.services import admin_service
 from app.tenants import AuthContext
 
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin_network_boundary)],
+)
 
 
 def _device_response(summary: admin_service.DeviceSummary) -> AdminDeviceResponse:

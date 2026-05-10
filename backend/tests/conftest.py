@@ -162,6 +162,12 @@ def reset_runtime() -> None:
 @pytest.fixture()
 def client() -> TestClient:
     reset_runtime()
+    # v0.3-rc1-preflight: bypass the public-host network boundary for the
+    # default TestClient (peer=testclient, host=testserver). Boundary
+    # behaviour is exercised directly in tests/test_owner_console.py via
+    # the network_boundary helper.
+    from app.network_boundary import require_admin_network_boundary
+    app.dependency_overrides[require_admin_network_boundary] = lambda: None
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

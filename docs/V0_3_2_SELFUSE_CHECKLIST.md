@@ -1,8 +1,11 @@
 # v0.3.2 自用稳定版 验收清单
 
-> 适用版本：`v0.3.2 self-use stable candidate`（基于 `v0.3.1-alpha2` + Owner Console UX hotfix）。
+> 适用版本：`v0.3.2-selfuse`（基线 = `v0.3.1-alpha2` + Owner Console UX hotfix + 公网边界加固）。
+> 当前阶段：`v0.3-rc1-preflight`（公网边界与 iPhone UploadLink 公网链路已经实测通过，
+> 见 [`docs/V0_3_RC1_PREFLIGHT_REPORT.md`](V0_3_RC1_PREFLIGHT_REPORT.md)）。
 >
 > 本文档**不是家庭正式版指南**，也**不是 rc1 终验**。它的目标是把"我自己一个人能稳定用"这件事跑通并固化。
+> rc1 形式态还要求真机 iPhone Shortcut 与持机走一遍 confirmed 缓存恢复，详见上面 preflight 报告第 9 节。
 
 ## 适用范围
 

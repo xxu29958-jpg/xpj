@@ -31,6 +31,9 @@ app = FastAPI(
     description="私人半自动记账系统后端。",
     lifespan=lifespan,
     default_response_class=Utf8JSONResponse,
+    docs_url="/docs" if get_settings().enable_api_docs else None,
+    redoc_url="/redoc" if get_settings().enable_api_docs else None,
+    openapi_url="/openapi.json" if get_settings().enable_api_docs else None,
 )
 
 add_exception_handlers(app)

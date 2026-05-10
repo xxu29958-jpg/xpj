@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.errors import AppError
+from app.network_boundary import require_owner_console_local
 from app.services import owner_console_service as svc
 from app.version import BACKEND_VERSION
 
@@ -40,14 +40,12 @@ router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 
 def _require_local(request: Request) -> None:
-    """Block non-loopback clients."""
-    host = request.client.host if request.client else ""
-    if host not in {"127.0.0.1", "::1", "localhost"}:
-        raise AppError(
-            "invalid_request",
-            "Owner Console 仅允许本机访问。",
-            status_code=403,
-        )
+    """Block non-loopback clients.
+
+    v0.3-rc1-preflight: also reject public Host headers (Cloudflare Tunnel
+    forwards to loopback so the TCP peer alone is insufficient).
+    """
+    require_owner_console_local(request)
 
 
 LocalOnly = Depends(_require_local)

@@ -1,4 +1,4 @@
-# v0.3 账号 / 账本 / 设备身份模型（当前版本：v0.3.1-alpha2）
+# v0.3 账号 / 账本 / 设备身份模型（当前版本：v0.3.2-selfuse；阶段：v0.3-rc1-preflight）
 
 v0.3 把旧 `APP_TOKEN` / `UPLOAD_TOKEN` / `TENANTS_JSON` 运行时模型切换为账号、账本、设备和可撤销凭证。
 

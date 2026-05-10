@@ -1,6 +1,6 @@
 # 小票夹
 
-**当前版本：v0.3.2 self-use stable candidate**（基线 = v0.3.1-alpha2 + Owner Console UX hotfix）
+**当前版本：v0.3.2-selfuse**（阶段：v0.3-rc1-preflight；基线 = v0.3.1-alpha2 + Owner Console UX hotfix + 公网边界加固）
 
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 的核心变化是把旧 token/tenant 运行时模型切换为账号、账本、设备和可撤销凭证。
 

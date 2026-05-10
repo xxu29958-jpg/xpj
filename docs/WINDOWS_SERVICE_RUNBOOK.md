@@ -1,6 +1,6 @@
 # Windows 长期运行 Runbook
 
-**当前版本：v0.3.1-alpha2**
+**当前版本：v0.3.2-selfuse（阶段：v0.3-rc1-preflight）**
 
 ## Owner Console
 
