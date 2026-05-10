@@ -6,6 +6,8 @@ data class AuthCheckDto(
     val status: String,
     @param:Json(name = "account_name")
     val accountName: String,
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
     @param:Json(name = "ledger_name")
     val ledgerName: String,
     @param:Json(name = "device_name")
@@ -27,6 +29,8 @@ data class PairResponseDto(
     val sessionToken: String,
     @param:Json(name = "account_name")
     val accountName: String,
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
     @param:Json(name = "ledger_name")
     val ledgerName: String,
     @param:Json(name = "device_name")

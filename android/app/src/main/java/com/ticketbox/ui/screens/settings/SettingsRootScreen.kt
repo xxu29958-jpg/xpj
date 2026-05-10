@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
@@ -109,6 +110,7 @@ fun SettingsRootScreen(
     onOpenCategoryRules: () -> Unit,
     onOpenDataExport: () -> Unit,
     onOpenSecurity: () -> Unit,
+    onOpenLedgers: () -> Unit = {},
     onOpenAbout: () -> Unit,
 ) {
     val connectionTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
@@ -160,6 +162,12 @@ fun SettingsRootScreen(
             subtitle = "本机解锁、本地数据、退出账本",
             icon = Icons.Filled.Security,
             onClick = onOpenSecurity,
+        )
+        SettingsEntryRow(
+            title = "账本 (实验)",
+            subtitle = "查看、切换、新建账本（v0.4-alpha1）",
+            icon = Icons.Filled.FolderShared,
+            onClick = onOpenLedgers,
         )
         SettingsEntryRow(
             title = "关于",

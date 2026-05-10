@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -81,6 +82,7 @@ private enum class BottomTab(
 @Composable
 fun TicketboxApp(
     repository: ExpenseRepository,
+    ledgerRepository: LedgerRepository,
     appViewModelFactory: ViewModelProvider.Factory,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
@@ -108,6 +110,7 @@ fun TicketboxApp(
             appState = appState,
             appViewModel = appViewModel,
             repository = repository,
+            ledgerRepository = ledgerRepository,
             settingsViewModelFactory = settingsViewModelFactory,
             biometricAuthManager = biometricAuthManager,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
@@ -120,6 +123,7 @@ private fun TicketboxContent(
     appState: AppUiState,
     appViewModel: AppViewModel,
     repository: ExpenseRepository,
+    ledgerRepository: LedgerRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
     onAuthMessageShown: () -> Unit,
@@ -166,6 +170,7 @@ private fun TicketboxContent(
 
     MainShell(
         repository = repository,
+        ledgerRepository = ledgerRepository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
         backgroundSettings = appState.backgroundSettings,
@@ -181,6 +186,7 @@ private fun TicketboxContent(
 @Composable
 private fun MainShell(
     repository: ExpenseRepository,
+    ledgerRepository: LedgerRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
     backgroundSettings: BackgroundSettings,
@@ -368,6 +374,9 @@ private fun MainShell(
                         onReduceMotionChange = settingsViewModel::setReduceMotion,
                         onBindingCleared = onBindingCleared,
                         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
+                        ledgerRepository = ledgerRepository,
+                        activeLedgerId = ledgerRepository.activeLedgerId(),
+                        onLedgerSwitched = settingsViewModel::sync,
                     )
                 }
             }

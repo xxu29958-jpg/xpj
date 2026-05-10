@@ -43,6 +43,7 @@ class BootstrapResult:
 class PairingResult:
     session_token: str
     account_name: str
+    ledger_id: str
     ledger_name: str
     device_name: str
     role: str
@@ -516,6 +517,7 @@ def pair_device(
     return PairingResult(
         session_token=token,
         account_name=account.display_name,
+        ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,
         device_name=device.device_name,
         role=role,

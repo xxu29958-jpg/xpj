@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def check_auth(auth: AuthContext = Depends(get_current_app_context)) -> AuthCheckResponse:
     return AuthCheckResponse(
         account_name=auth.account_name,
+        ledger_id=auth.ledger_id,
         ledger_name=auth.ledger_name,
         device_name=auth.device_name,
         role=auth.role,
@@ -37,6 +38,7 @@ def pair(payload: PairRequest, request: Request, db: Session = Depends(get_db)) 
     return PairResponse(
         session_token=result.session_token,
         account_name=result.account_name,
+        ledger_id=result.ledger_id,
         ledger_name=result.ledger_name,
         device_name=result.device_name,
         role=result.role,

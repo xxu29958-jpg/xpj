@@ -20,6 +20,22 @@ interface TicketboxSettingsStore {
 
     fun ledgerName(): String?
 
+    fun activeLedgerId(): String?
+
+    fun activeLedgerName(): String?
+
+    fun availableLedgersJson(): String?
+
+    /**
+     * Emits whenever the active ledger id changes (login, switch, clear).
+     * Emits the current value on subscription.
+     */
+    fun observeActiveLedgerId(): Flow<String?>
+
+    fun saveActiveLedger(ledgerId: String, ledgerName: String)
+
+    fun saveAvailableLedgersJson(json: String?)
+
     fun deviceName(): String?
 
     fun role(): String?
@@ -28,6 +44,7 @@ interface TicketboxSettingsStore {
 
     fun saveIdentity(
         accountName: String,
+        ledgerId: String,
         ledgerName: String,
         deviceName: String,
         role: String,

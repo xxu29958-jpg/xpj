@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.errors import AppError
 from app.models import Account, Device, Expense, Ledger, UploadLink
 from app.services.admin_service import (
     DeviceSummary,
@@ -31,6 +32,12 @@ from app.services.admin_service import (
 from app.services.identity_service import (
     PairingCodeResult,
     create_pairing_code,
+)
+from app.services.ledger_service import (
+    LedgerSummary,
+    create_ledger as ledger_service_create_ledger,
+    ledger_member_counts,
+    list_ledgers_for_account,
 )
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
@@ -163,3 +170,97 @@ def get_default_ledger_id(db: Session) -> str | None:
 def get_owner_account_id(db: Session) -> int | None:
     account = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
     return account.id if account else None
+
+
+# ── v0.4-alpha1: ledger management view-models ──────────────────────────────
+
+@dataclass
+class LedgerConsoleVM:
+    """View-model for a single ledger row in the Owner Console ledgers page.
+
+    Counts are computed at display time; for v0.4-alpha1 the absolute numbers
+    matter less than confirming each ledger has its own pending/confirmed
+    bucket and that switching ledgers does not bleed counts across.
+    """
+
+    ledger_id: str
+    name: str
+    role: str
+    is_default: bool
+    pending_count: int
+    confirmed_count: int
+    active_device_count: int
+
+
+def list_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
+    """Return ledger rows the local owner can manage from the console.
+
+    Uses the same membership rules as :func:`list_ledgers_for_account`. The
+    "owner account" is the first account row created at bootstrap; multi-
+    account login is not part of v0.4-alpha1.
+    """
+    owner_id = get_owner_account_id(db)
+    if owner_id is None:
+        return []
+    summaries: list[LedgerSummary] = list_ledgers_for_account(db, account_id=owner_id)
+    rows: list[LedgerConsoleVM] = []
+    for summary in summaries:
+        pending = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Expense)
+                .where(Expense.tenant_id == summary.ledger_id)
+                .where(Expense.status == "pending")
+            )
+            or 0
+        )
+        confirmed = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Expense)
+                .where(Expense.tenant_id == summary.ledger_id)
+                .where(Expense.status == "confirmed")
+            )
+            or 0
+        )
+        counts = ledger_member_counts(db, ledger_id=summary.ledger_id)
+        rows.append(
+            LedgerConsoleVM(
+                ledger_id=summary.ledger_id,
+                name=summary.name,
+                role=summary.role,
+                is_default=summary.is_default,
+                pending_count=pending,
+                confirmed_count=confirmed,
+                active_device_count=counts["active_devices"],
+            )
+        )
+    return rows
+
+
+def list_console_ledger_choices(db: Session) -> list[LedgerSummary]:
+    """Return the ledger summaries the pairing dropdown should show.
+
+    Returns an empty list before bootstrap so the caller can render a clear
+    "service not initialised" message instead of a blank dropdown.
+    """
+    owner_id = get_owner_account_id(db)
+    if owner_id is None:
+        return []
+    return list_ledgers_for_account(db, account_id=owner_id)
+
+
+def do_create_ledger(db: Session, *, name: str) -> LedgerSummary:
+    """Create a new ledger owned by the local owner account.
+
+    Owner Console runs as the local owner; we look up that account here so
+    the route handler stays free of identity logic.
+    """
+    owner_id = get_owner_account_id(db)
+    if owner_id is None:
+        raise AppError(
+            "invalid_request",
+            "服务未初始化，请先运行 bootstrap_dev_owner.ps1。",
+            status_code=409,
+        )
+    return ledger_service_create_ledger(db, account_id=owner_id, name=name)

@@ -32,6 +32,10 @@ ERROR_MESSAGES = {
     "invalid_request": "请求参数不正确。",
     "route_not_found": "没有找到这个功能入口。",
     "method_not_allowed": "这个入口不支持当前操作。",
+    "ledger_not_found": "账本不存在或没有访问权限。",
+    "ledger_name_required": "请填写账本名称。",
+    "ledger_name_too_long": "账本名称过长，请控制在 60 个字以内。",
+    "ledger_forbidden": "当前账号没有该账本的访问权限。",
 }
 
 

@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ExpenseEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -116,6 +116,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v0.4-alpha1 multi-ledger foundation: every confirmed-cache row belongs to
+        // a specific ledger. Existing rows are tagged with the sentinel ledgerId
+        // 'legacy' and will be replaced the next time a token-bound ledger refreshes
+        // its cache. We never use destructiveMigration.
+        private val Migration3To4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE expenses ADD COLUMN ledgerId TEXT NOT NULL DEFAULT 'legacy'",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_expenses_ledgerId ON expenses (ledgerId)",
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -123,7 +138,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "ticketbox.db",
                 )
-                    .addMigrations(Migration1To2, Migration2To3)
+                    .addMigrations(Migration1To2, Migration2To3, Migration3To4)
                     .build()
                     .also { instance = it }
             }

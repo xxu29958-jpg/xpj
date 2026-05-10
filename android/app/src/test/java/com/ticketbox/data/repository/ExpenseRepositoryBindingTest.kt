@@ -84,7 +84,7 @@ class ExpenseRepositoryBindingTest {
 
         assertTrue(bindResult.confirmedRestoreFailed)
         assertEquals(1, syncResult.size)
-        assertEquals("高德", dao.getConfirmed().single().merchant)
+        assertEquals("高德", dao.getConfirmed("owner").single().merchant)
         assertEquals("session-token", apiFactory.tokenValues.last())
     }
 }
@@ -108,6 +108,7 @@ private class FakeApiService(
         return PairResponseDto(
             sessionToken = "session-token",
             accountName = "我",
+            ledgerId = "owner",
             ledgerName = "我的小票夹",
             deviceName = request.deviceName,
             role = "owner",
@@ -178,6 +179,12 @@ private class FakeApiService(
 
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
 
+    override suspend fun listLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto = unsupported()
+
+    override suspend fun createLedger(request: com.ticketbox.data.remote.dto.LedgerCreateRequestDto): com.ticketbox.data.remote.dto.LedgerDto = unsupported()
+
+    override suspend fun switchLedger(ledgerId: String): com.ticketbox.data.remote.dto.LedgerSwitchResponseDto = unsupported()
+
     private fun confirmedExpenseDto(): ExpenseDto {
         return ExpenseDto(
             id = 9,
@@ -214,7 +221,9 @@ private class FakeTicketboxSettingsStore(
     override val backgroundSettingsFlow: Flow<BackgroundSettings> = MutableStateFlow(BackgroundSettings())
     private var serverUrl: String? = null
     private var accountName: String? = null
+    private val ledgerIdFlow = MutableStateFlow<String?>(null)
     private var ledgerName: String? = null
+    private var availableLedgersJson: String? = null
     private var deviceName: String? = null
     private var role: String? = null
     private var boundAt: String? = null
@@ -239,6 +248,24 @@ private class FakeTicketboxSettingsStore(
 
     override fun ledgerName(): String? = ledgerName
 
+    override fun activeLedgerId(): String? = ledgerIdFlow.value
+
+    override fun activeLedgerName(): String? = ledgerName
+
+    override fun availableLedgersJson(): String? = availableLedgersJson
+
+    override fun observeActiveLedgerId(): Flow<String?> = ledgerIdFlow
+
+    override fun saveActiveLedger(ledgerId: String, ledgerName: String) {
+        events += "saveActiveLedger"
+        ledgerIdFlow.value = ledgerId
+        this.ledgerName = ledgerName
+    }
+
+    override fun saveAvailableLedgersJson(json: String?) {
+        availableLedgersJson = json
+    }
+
     override fun deviceName(): String? = deviceName
 
     override fun role(): String? = role
@@ -247,6 +274,7 @@ private class FakeTicketboxSettingsStore(
 
     override fun saveIdentity(
         accountName: String,
+        ledgerId: String,
         ledgerName: String,
         deviceName: String,
         role: String,
@@ -254,6 +282,7 @@ private class FakeTicketboxSettingsStore(
     ) {
         events += "saveIdentity"
         this.accountName = accountName
+        ledgerIdFlow.value = ledgerId
         this.ledgerName = ledgerName
         this.deviceName = deviceName
         this.role = role
@@ -294,6 +323,7 @@ private class FakeTicketboxSettingsStore(
     override fun clear() {
         serverUrl = null
         accountName = null
+        ledgerIdFlow.value = null
         ledgerName = null
         deviceName = null
         role = null
@@ -322,22 +352,27 @@ private class FakeSessionTokenStore(
 
 private class FakeExpenseDao : ExpenseDao {
     private val expenses = linkedMapOf<Long, ExpenseEntity>()
-    private val confirmedFlow = MutableStateFlow<List<ExpenseEntity>>(emptyList())
+    private val flows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     private var nextId = 1L
 
-    override fun observeConfirmed(): Flow<List<ExpenseEntity>> = confirmedFlow
+    override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
 
-    override suspend fun getConfirmed(): List<ExpenseEntity> {
+    override suspend fun getConfirmed(ledgerId: String): List<ExpenseEntity> {
         return expenses.values
-            .filter { it.status == "confirmed" }
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
             .sortedByDescending { it.expenseTime ?: it.confirmedAt ?: it.createdAt }
     }
 
-    override suspend fun findByServerId(serverId: Long): ExpenseEntity? {
-        return expenses.values.firstOrNull { it.serverId == serverId }
+    override suspend fun findByServerId(ledgerId: String, serverId: Long): ExpenseEntity? {
+        return expenses.values.firstOrNull { it.ledgerId == ledgerId && it.serverId == serverId }
     }
 
-    override suspend fun findByServerIds(serverIds: List<Long>): List<ExpenseEntity> {
+    override suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity> {
+        val wanted = serverIds.toSet()
+        return expenses.values.filter { it.ledgerId == ledgerId && it.serverId in wanted }
+    }
+
+    override suspend fun findAnyByServerIds(serverIds: List<Long>): List<ExpenseEntity> {
         val wanted = serverIds.toSet()
         return expenses.values.filter { it.serverId in wanted }
     }
@@ -345,7 +380,7 @@ private class FakeExpenseDao : ExpenseDao {
     override suspend fun insert(expense: ExpenseEntity): Long {
         val id = if (expense.id == 0L) nextId++ else expense.id
         expenses[id] = expense.copy(id = id)
-        emitConfirmed()
+        emit(expense.ledgerId)
         return id
     }
 
@@ -355,7 +390,7 @@ private class FakeExpenseDao : ExpenseDao {
 
     override suspend fun update(expense: ExpenseEntity) {
         expenses[expense.id] = expense
-        emitConfirmed()
+        emit(expense.ledgerId)
     }
 
     override suspend fun updateAll(expenses: List<ExpenseEntity>) {
@@ -363,12 +398,29 @@ private class FakeExpenseDao : ExpenseDao {
     }
 
     override suspend fun clear() {
+        val touched = expenses.values.map { it.ledgerId }.toSet()
         expenses.clear()
-        emitConfirmed()
+        touched.forEach { emit(it) }
     }
 
-    private suspend fun emitConfirmed() {
-        confirmedFlow.emit(getConfirmed())
+    override suspend fun clearForLedger(ledgerId: String) {
+        expenses.values
+            .filter { it.ledgerId == ledgerId }
+            .map { it.id }
+            .forEach { expenses.remove(it) }
+        emit(ledgerId)
+    }
+
+    private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> =
+        flows.getOrPut(ledgerId) { MutableStateFlow(snapshot(ledgerId)) }
+
+    private fun snapshot(ledgerId: String): List<ExpenseEntity> =
+        expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
+            .sortedByDescending { it.expenseTime ?: it.confirmedAt ?: it.createdAt }
+
+    private fun emit(ledgerId: String) {
+        flowFor(ledgerId).value = snapshot(ledgerId)
     }
 }
 

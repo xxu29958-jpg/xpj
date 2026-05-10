@@ -8,6 +8,7 @@ class ExpenseEntityMapperTest {
     @Test
     fun confirmedRoomEntityDisplaysLedgerDataWithoutOriginalImage() {
         val expense = ExpenseEntity(
+            ledgerId = "owner",
             serverId = 9,
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
             amountCents = 3680,

@@ -9,9 +9,10 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.database import init_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
-from app.routes import auth, bootstrap, duplicates, expenses, maintenance, rules, settings, stats, uploads
+from app.routes import auth, bootstrap, duplicates, expenses, ledgers, maintenance, rules, settings, stats, uploads
 from app.routes import admin as admin_routes
 from app.routes import owner_console
+from app.routes import owner_ledgers
 from app.routes import web_app
 from app.schemas import HealthResponse
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
@@ -46,12 +47,14 @@ app.include_router(uploads.router)
 app.include_router(uploads.upload_link_router)
 app.include_router(expenses.router)
 app.include_router(duplicates.router)
+app.include_router(ledgers.router)
 app.include_router(rules.router)
 app.include_router(settings.router)
 app.include_router(stats.router)
 app.include_router(maintenance.router)
 app.include_router(admin_routes.router)
 app.include_router(owner_console.router)
+app.include_router(owner_ledgers.router)
 app.include_router(web_app.router)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 

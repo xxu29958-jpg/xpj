@@ -17,5 +17,6 @@ sealed class SettingsRoute {
     data object CategoryRules : SettingsRoute()
     data object DataExport : SettingsRoute()
     data object SecurityPrivacy : SettingsRoute()
+    data object Ledgers : SettingsRoute()
     data object About : SettingsRoute()
 }

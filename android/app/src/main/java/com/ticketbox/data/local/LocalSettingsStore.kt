@@ -7,6 +7,7 @@ import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 
 private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
     name = "ticketbox_background_settings",
@@ -18,6 +19,12 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     private val backgroundStore = BackgroundSettingsDataStore(appContext.ticketboxBackgroundDataStore)
 
     override val backgroundSettingsFlow: Flow<BackgroundSettings> = backgroundStore.settingsFlow
+
+    // Hot flow over active ledger id. Initialized from disk so that
+    // first subscribers observe the persisted value without a race.
+    private val activeLedgerIdFlow = MutableStateFlow(prefs.getString(KEY_ACTIVE_LEDGER_ID, null))
+
+    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerIdFlow
 
     override fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
@@ -44,6 +51,32 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun ledgerName(): String? = prefs.getString(KEY_LEDGER_NAME, null)
 
+    override fun activeLedgerId(): String? = prefs.getString(KEY_ACTIVE_LEDGER_ID, null)
+
+    override fun activeLedgerName(): String? = prefs.getString(KEY_ACTIVE_LEDGER_NAME, null)
+
+    override fun availableLedgersJson(): String? = prefs.getString(KEY_AVAILABLE_LEDGERS_JSON, null)
+
+    override fun saveActiveLedger(ledgerId: String, ledgerName: String) {
+        prefs.edit {
+            putString(KEY_ACTIVE_LEDGER_ID, ledgerId)
+            putString(KEY_ACTIVE_LEDGER_NAME, ledgerName)
+            // Mirror legacy ledgerName field so existing screens keep working.
+            putString(KEY_LEDGER_NAME, ledgerName)
+        }
+        activeLedgerIdFlow.value = ledgerId
+    }
+
+    override fun saveAvailableLedgersJson(json: String?) {
+        prefs.edit {
+            if (json.isNullOrBlank()) {
+                remove(KEY_AVAILABLE_LEDGERS_JSON)
+            } else {
+                putString(KEY_AVAILABLE_LEDGERS_JSON, json)
+            }
+        }
+    }
+
     override fun deviceName(): String? = prefs.getString(KEY_DEVICE_NAME, null)
 
     override fun role(): String? = prefs.getString(KEY_ROLE, null)
@@ -52,6 +85,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun saveIdentity(
         accountName: String,
+        ledgerId: String,
         ledgerName: String,
         deviceName: String,
         role: String,
@@ -59,11 +93,14 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     ) {
         prefs.edit {
             putString(KEY_ACCOUNT_NAME, accountName)
+            putString(KEY_ACTIVE_LEDGER_ID, ledgerId)
+            putString(KEY_ACTIVE_LEDGER_NAME, ledgerName)
             putString(KEY_LEDGER_NAME, ledgerName)
             putString(KEY_DEVICE_NAME, deviceName)
             putString(KEY_ROLE, role)
             putString(KEY_BOUND_AT, boundAt)
         }
+        activeLedgerIdFlow.value = ledgerId
     }
 
     override fun saveLastConfirmedSyncAt(value: String) {
@@ -124,6 +161,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         prefs.edit {
             clear()
         }
+        activeLedgerIdFlow.value = null
     }
 
     suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
@@ -164,6 +202,9 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
         const val KEY_ACCOUNT_NAME = "account_name"
         const val KEY_LEDGER_NAME = "ledger_name"
+        const val KEY_ACTIVE_LEDGER_ID = "active_ledger_id"
+        const val KEY_ACTIVE_LEDGER_NAME = "active_ledger_name"
+        const val KEY_AVAILABLE_LEDGERS_JSON = "available_ledgers_json"
         const val KEY_DEVICE_NAME = "device_name"
         const val KEY_ROLE = "role"
         const val KEY_BOUND_AT = "bound_at"

@@ -24,6 +24,7 @@ class HealthResponse(BaseModel):
 class AuthCheckResponse(BaseModel):
     status: str = "ok"
     account_name: str
+    ledger_id: str
     ledger_name: str
     device_name: str
     role: str
@@ -39,9 +40,34 @@ class PairRequest(BaseModel):
 class PairResponse(BaseModel):
     session_token: str
     account_name: str
+    ledger_id: str
     ledger_name: str
     device_name: str
     role: str
+
+
+class LedgerResponse(BaseModel):
+    ledger_id: str
+    name: str
+    role: str
+    is_default: bool
+    created_at: str | None = None
+    archived_at: str | None = None
+
+
+class LedgerListResponse(BaseModel):
+    ledgers: list[LedgerResponse]
+
+
+class LedgerCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class LedgerSwitchResponse(BaseModel):
+    session_token: str
+    ledger: LedgerResponse
+    account_name: str
+    device_name: str
 
 
 class BootstrapOwnerRequest(BaseModel):

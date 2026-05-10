@@ -29,6 +29,8 @@ import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -197,6 +199,7 @@ class ExpenseRepository(
             tokenStore.saveToken(pairResponse.sessionToken)
             settingsStore.saveIdentity(
                 accountName = pairResponse.accountName,
+                ledgerId = pairResponse.ledgerId,
                 ledgerName = pairResponse.ledgerName,
                 deviceName = pairResponse.deviceName,
                 role = pairResponse.role,
@@ -344,28 +347,24 @@ class ExpenseRepository(
     }
 
     suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = safeCall {
-        val dto = api().updateExpense(id, draft.toRequest())
-        if (dto.status == "confirmed") {
-            expenseDao.upsertByServerId(dto.toEntity())
-        }
-        dto.toDomain()
+        cacheIfConfirmed(api().updateExpense(id, draft.toRequest())).toDomain()
     }
 
     suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = safeCall {
         require(draft.amountCents != null) { "请先填写金额。" }
-        val dto = api().createManualExpense(draft.toRequest())
-        if (dto.status == "confirmed") {
-            expenseDao.upsertByServerId(dto.toEntity())
-        }
-        dto.toDomain()
+        cacheIfConfirmed(api().createManualExpense(draft.toRequest())).toDomain()
     }
 
     suspend fun confirmExpense(id: Long): Result<Expense> = safeCall {
-        val dto = api().confirmExpense(id)
+        cacheIfConfirmed(api().confirmExpense(id)).toDomain()
+    }
+
+    private suspend fun cacheIfConfirmed(dto: ExpenseDto): ExpenseDto {
         if (dto.status == "confirmed") {
-            expenseDao.upsertByServerId(dto.toEntity())
+            val ledgerId = activeLedgerIdOrLegacy()
+            expenseDao.upsertByServerIdForLedger(ledgerId, dto.toEntity(ledgerId))
         }
-        dto.toDomain()
+        return dto
     }
 
     suspend fun rejectExpense(id: Long): Result<Expense> = safeCall {
@@ -417,11 +416,16 @@ class ExpenseRepository(
         } while (collectedDtos.size < total)
 
         if (replaceCache) {
-            expenseDao.clear()
+            // v0.4-alpha1: scope cache replacement to the active ledger so other
+            // ledgers' confirmed rows survive token rotations. Read the ledger
+            // id once and reuse it for the whole sync to avoid clear-A/insert-B
+            // races if a switch happens mid-flight.
+            expenseDao.clearForLedger(activeLedgerIdOrLegacy())
         }
-        val entities = collectedDtos.map { it.toEntity() }
+        val ledgerId = activeLedgerIdOrLegacy()
+        val entities = collectedDtos.map { it.toEntity(ledgerId) }
         if (entities.isNotEmpty()) {
-            expenseDao.upsertAllByServerId(entities)
+            expenseDao.upsertAllByServerIdForLedger(ledgerId, entities)
         }
         val collected = collectedDtos.map { it.toDomain() }
         if (recordSyncTimestamp) {
@@ -458,9 +462,14 @@ class ExpenseRepository(
         CsvExport(fileName = fileName, bytes = body.use { it.bytes() })
     }
 
-    fun observeConfirmed(): Flow<List<Expense>> {
-        return expenseDao.observeConfirmed().map { list -> list.map { it.toDomain() } }
-    }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun observeConfirmed(): Flow<List<Expense>> =
+        // Re-subscribe to the DAO query when the active ledger changes so a
+        // token rotation reflects immediately in the UI.
+        settingsStore.observeActiveLedgerId()
+            .map { it?.takeIf { id -> id.isNotBlank() } ?: "legacy" }
+            .distinctUntilChanged()
+            .flatMapLatest { id -> expenseDao.observeConfirmed(id).map { rows -> rows.map { it.toDomain() } } }
 
     suspend fun monthlyStats(month: String? = null): Result<MonthlyStats> = safeCall {
         api().monthlyStats(month = month, timezone = currentTimezoneId()).toDomain()
@@ -525,6 +534,9 @@ class ExpenseRepository(
     fun saveMonthlyBudgetCents(amountCents: Long?) {
         settingsStore.saveMonthlyBudgetCents(amountCents)
     }
+
+    private fun activeLedgerIdOrLegacy(): String =
+        settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() } ?: "legacy"
 
     suspend fun clearLocalCache() {
         expenseDao.clear()

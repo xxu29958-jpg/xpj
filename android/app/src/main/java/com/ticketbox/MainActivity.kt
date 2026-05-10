@@ -19,6 +19,7 @@ class MainActivity : FragmentActivity() {
         setContent {
             TicketboxApp(
                 repository = container.expenseRepository,
+                ledgerRepository = container.ledgerRepository,
                 appViewModelFactory = appViewModelFactory(
                     repository = container.expenseRepository,
                     settingsStore = container.settingsStore,

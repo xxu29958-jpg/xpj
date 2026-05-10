@@ -6,6 +6,9 @@ import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
+import com.ticketbox.data.remote.dto.LedgerListResponseDto
+import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
@@ -131,4 +134,13 @@ interface ApiService {
         @Query("month") month: String? = null,
         @Query("timezone") timezone: String? = null,
     ): LifestyleStatsDto
+
+    @GET("api/ledgers")
+    suspend fun listLedgers(): LedgerListResponseDto
+
+    @POST("api/ledgers")
+    suspend fun createLedger(@Body request: LedgerCreateRequestDto): com.ticketbox.data.remote.dto.LedgerDto
+
+    @POST("api/ledgers/{ledgerId}/switch")
+    suspend fun switchLedger(@Path("ledgerId") ledgerId: String): LedgerSwitchResponseDto
 }

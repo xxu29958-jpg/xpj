@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
@@ -25,6 +26,7 @@ import com.ticketbox.ui.screens.settings.BackgroundGalleryScreen
 import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.CategoryRulesScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
+import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
@@ -54,6 +56,9 @@ fun SettingsScreen(
     onReduceMotionChange: (Boolean) -> Unit,
     onBindingCleared: () -> Unit,
     showAdvancedTools: Boolean = false,
+    ledgerRepository: LedgerRepository? = null,
+    activeLedgerId: String? = null,
+    onLedgerSwitched: () -> Unit = {},
 ) {
     var route by remember { mutableStateOf<SettingsRoute>(SettingsRoute.Root) }
     val context = LocalContext.current
@@ -101,6 +106,7 @@ fun SettingsScreen(
             onOpenCategoryRules = { route = SettingsRoute.CategoryRules },
             onOpenDataExport = { route = SettingsRoute.DataExport },
             onOpenSecurity = { route = SettingsRoute.SecurityPrivacy },
+            onOpenLedgers = { route = SettingsRoute.Ledgers },
             onOpenAbout = { route = SettingsRoute.About },
         )
 
@@ -200,6 +206,22 @@ fun SettingsScreen(
             onClearCache = onClearCache,
             onBindingCleared = onBindingCleared,
         )
+
+        SettingsRoute.Ledgers -> {
+            val repo = ledgerRepository
+            if (repo != null) {
+                LedgerSwitcherScreen(
+                    repository = repo,
+                    activeLedgerId = activeLedgerId,
+                    onBack = { route = SettingsRoute.Root },
+                    onSwitched = onLedgerSwitched,
+                )
+            } else {
+                // Defensive: if the screen is wired without a repository
+                // (e.g. previews) just fall back to the root.
+                route = SettingsRoute.Root
+            }
+        }
 
         SettingsRoute.About -> AboutScreen(
             appVersionName = appVersionName,

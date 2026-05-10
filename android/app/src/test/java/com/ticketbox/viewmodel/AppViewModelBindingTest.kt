@@ -74,6 +74,18 @@ private class FakeAppSettingsStore(
 
     override fun ledgerName(): String? = null
 
+    override fun activeLedgerId(): String? = null
+
+    override fun activeLedgerName(): String? = null
+
+    override fun availableLedgersJson(): String? = null
+
+    override fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
+
+    override fun saveActiveLedger(ledgerId: String, ledgerName: String) = Unit
+
+    override fun saveAvailableLedgersJson(json: String?) = Unit
+
     override fun deviceName(): String? = null
 
     override fun role(): String? = null
@@ -82,6 +94,7 @@ private class FakeAppSettingsStore(
 
     override fun saveIdentity(
         accountName: String,
+        ledgerId: String,
         ledgerName: String,
         deviceName: String,
         role: String,

@@ -12,11 +12,13 @@ import androidx.room.PrimaryKey
         Index(value = ["status", "expenseTime"]),
         Index(value = ["status", "confirmedAt"]),
         Index(value = ["status", "createdAt"]),
+        Index(value = ["ledgerId"]),
     ],
 )
 data class ExpenseEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    val ledgerId: String,
     val serverId: Long,
     val publicId: String,
     val amountCents: Long?,

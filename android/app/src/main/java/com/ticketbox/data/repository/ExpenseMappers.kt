@@ -46,7 +46,8 @@ fun ExpenseDto.toDomain(): Expense = Expense(
     rejectedAt = rejectedAt,
 )
 
-fun ExpenseDto.toEntity(): ExpenseEntity = ExpenseEntity(
+fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
+    ledgerId = ledgerId,
     serverId = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,

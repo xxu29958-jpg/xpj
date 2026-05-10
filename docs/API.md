@@ -179,12 +179,15 @@ Android 首次绑定后校验 session token 使用。
 {
   "status": "ok",
   "account_name": "Owner",
+  "ledger_id": "owner",
   "ledger_name": "我的小票夹",
   "device_name": "小米 15 Pro",
   "role": "owner",
   "scope": "app"
 }
 ```
+
+> v0.4-alpha1 起新增 `ledger_id`，对应当前会话激活的账本。
 
 ### POST /api/auth/pair
 
@@ -206,11 +209,14 @@ Android 首次绑定后校验 session token 使用。
 {
   "session_token": "tk_xxxxxx",
   "account_name": "Owner",
+  "ledger_id": "owner",
   "ledger_name": "我的小票夹",
   "device_name": "小米 15 Pro",
   "role": "owner"
 }
 ```
+
+> v0.4-alpha1 起新增 `ledger_id`。
 
 错误：
 
@@ -218,6 +224,46 @@ Android 首次绑定后校验 session token 使用。
 - `invalid_pairing_code` + HTTP 429：同一来源短时间内失败次数过多，稍后再试或重新生成绑定码。
 - `pairing_code_used`：绑定码已被使用（一次性）。
 - `pairing_code_expired`：绑定码已过期（默认 15 分钟）。
+
+### GET /api/ledgers
+
+> v0.4-alpha1 起提供。返回当前会话账号有权访问的账本。需要 session token。
+
+```json
+{
+  "ledgers": [
+    {"ledger_id": "owner", "name": "我的小票夹", "role": "owner", "is_default": true,
+     "created_at": "2026-01-01T00:00:00Z", "archived_at": null}
+  ]
+}
+```
+
+### POST /api/ledgers
+
+> v0.4-alpha1 起提供。新建账本，请求体 `{"name": "..."}`。
+
+- 名称为空：返回 `validation_error` + `请填写账本名称`。
+- 名称超过 60 字：返回 `validation_error` + `账本名称最多 60 个字`。
+
+返回单个 `LedgerDto`。
+
+### POST /api/ledgers/{ledger_id}/switch
+
+> v0.4-alpha1 起提供。把当前会话切换到目标账本，**轮换** session token；旧 token 立即失效。
+
+```json
+{
+  "session_token": "tk_yyyy",
+  "ledger": {"ledger_id": "owner", "name": "我的小票夹", "role": "owner", "is_default": true,
+             "created_at": "2026-01-01T00:00:00Z", "archived_at": null},
+  "account_name": "Owner",
+  "device_name": "小米 15 Pro"
+}
+```
+
+错误：
+
+- `forbidden` / `请选择一个有权限的账本`：调用方对该账本无成员关系。
 
 ### POST /api/bootstrap/owner
 
