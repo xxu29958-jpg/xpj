@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -16,6 +17,28 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
+/**
+ * slice 3 M7：BottomSheet 类型枚举，标记当前打开的 review 快速操作面板。
+ */
+sealed class PendingSheet {
+    object None : PendingSheet()
+    data class QuickCategory(val expense: Expense) : PendingSheet()
+    data class QuickMerchant(val expense: Expense) : PendingSheet()
+    data class MissingAmount(val expense: Expense) : PendingSheet()
+    data class Duplicate(val expense: Expense) : PendingSheet()
+    object BulkConfirm : PendingSheet()
+}
+
+/**
+ * 批量确认运行时统计。
+ */
+data class BulkConfirmRunState(
+    val total: Int = 0,
+    val succeeded: Int = 0,
+    val failed: Int = 0,
+    val running: Boolean = false,
+)
+
 data class PendingUiState(
     val items: List<Expense> = emptyList(),
     val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
@@ -23,20 +46,34 @@ data class PendingUiState(
     val loading: Boolean = false,
     val uploading: Boolean = false,
     val message: String? = null,
+    val activeSheet: PendingSheet = PendingSheet.None,
+    val categoryOptions: List<String> = emptyList(),
+    val bulkConfirm: BulkConfirmRunState = BulkConfirmRunState(),
 )
 
 class PendingViewModel(
-    private val repository: ExpenseRepository,
+    internal val repository: ExpenseRepository,
 ) : ViewModel() {
     private companion object {
         const val THUMBNAIL_CONCURRENCY = 4
     }
 
-    private val _uiState = MutableStateFlow(PendingUiState())
+    internal val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
 
     init {
         refresh()
+        loadCategoryOptions()
+    }
+
+    private fun loadCategoryOptions() {
+        viewModelScope.launch {
+            repository.categories()
+                .onSuccess { options ->
+                    _uiState.update { it.copy(categoryOptions = options) }
+                }
+                .onFailure { /* 静默失败：用户仍可手动输入分类 */ }
+        }
     }
 
     fun refresh() {
@@ -201,8 +238,7 @@ class PendingViewModel(
                     _uiState.update { state ->
                         state.copy(
                             items = state.items.map { if (it.id == updated.id) updated else it },
-                            actionInProgressIds = state.actionInProgressIds - updated.id,
-                            message = "已保留这条账单",
+                            actionInProgressIds = state.actionInProgressIds - updated.id,                            message = "已保留这条账单",
                         )
                     }
                 }

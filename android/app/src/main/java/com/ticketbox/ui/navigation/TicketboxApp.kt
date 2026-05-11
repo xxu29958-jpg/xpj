@@ -62,8 +62,19 @@ import com.ticketbox.viewmodel.LedgerViewModel
 import com.ticketbox.viewmodel.PendingViewModel
 import com.ticketbox.viewmodel.SettingsViewModel
 import com.ticketbox.viewmodel.StatsViewModel
+import com.ticketbox.viewmodel.closeSheet
+import com.ticketbox.viewmodel.confirmReadyExpenses
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
+import com.ticketbox.viewmodel.openBulkConfirm
+import com.ticketbox.viewmodel.openDuplicateAction
+import com.ticketbox.viewmodel.openMissingAmount
+import com.ticketbox.viewmodel.openQuickCategory
+import com.ticketbox.viewmodel.openQuickMerchant
 import com.ticketbox.viewmodel.repositoryViewModelFactory
+import com.ticketbox.viewmodel.saveAmountAndConfirm
+import com.ticketbox.viewmodel.saveAmountDraft
+import com.ticketbox.viewmodel.saveQuickCategory
+import com.ticketbox.viewmodel.saveQuickMerchant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -294,6 +305,18 @@ private fun MainShell(
                                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                             )
                         },
+                        onQuickCategory = pendingViewModel::openQuickCategory,
+                        onSaveQuickCategory = pendingViewModel::saveQuickCategory,
+                        onQuickMerchant = pendingViewModel::openQuickMerchant,
+                        onSaveQuickMerchant = pendingViewModel::saveQuickMerchant,
+                        onMissingAmount = pendingViewModel::openMissingAmount,
+                        onSaveAmountDraft = pendingViewModel::saveAmountDraft,
+                        onSaveAmountAndConfirm = pendingViewModel::saveAmountAndConfirm,
+                        onOpenBulkConfirm = pendingViewModel::openBulkConfirm,
+                        onConfirmReady = pendingViewModel::confirmReadyExpenses,
+                        onOpenDuplicate = pendingViewModel::openDuplicateAction,
+                        onIgnoreDuplicate = pendingViewModel::reject,
+                        onCloseSheet = pendingViewModel::closeSheet,
                     )
                 }
                 BottomTab.Ledger -> {

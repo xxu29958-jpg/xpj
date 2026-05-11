@@ -1,29 +1,10 @@
-package com.ticketbox.ui.screens
+﻿package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,61 +12,36 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.AppEmptyStateCard
-import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.AppHeroCard
-import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
-import com.ticketbox.ui.components.AppSectionHeader
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
-import com.ticketbox.ui.components.PrimaryCtaButton
-import com.ticketbox.ui.components.ReceiptIllustration
-import com.ticketbox.ui.components.SafeBadge
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.screens.pending.BulkConfirmEntry
+import com.ticketbox.ui.screens.pending.EmptyPendingState
+import com.ticketbox.ui.screens.pending.LoadingPendingState
+import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
+import com.ticketbox.ui.screens.pending.NeedsReviewFilter
+import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
+import com.ticketbox.ui.screens.pending.PendingDisplayMode
+import com.ticketbox.ui.screens.pending.PendingHeader
+import com.ticketbox.ui.screens.pending.PendingMessageCard
+import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
+import com.ticketbox.ui.screens.pending.PendingToolsSheet
+import com.ticketbox.ui.screens.pending.PendingTop
+import com.ticketbox.ui.screens.pending.UploadFlowCard
+import com.ticketbox.ui.screens.pending.UploadProgressCard
+import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.viewmodel.PendingUiState
 
-private enum class PendingDisplayMode {
-    Compact,
-    Comfortable,
-}
-
 /**
- * v0.4-alpha2 Needs Review filter — UI-only.
- * 不触碰 Retrofit/Room；只在已加载的 `state.items` 上做客户端过滤。
+ * 待确认账单页面入口（slice 3 拆分后）。
+ *
+ * 仅负责：路由 → 状态 wiring → BottomSheet 派发 → 列表组装。
+ * BottomSheet 内容与子组件分布在 `ui.screens.pending` 子包，
+ * 业务事件全部经由 `PendingViewModel`（含 review action 扩展函数）。
  */
-private enum class NeedsReviewFilter(val label: String) {
-    All("全部"),
-    NeedsAmount("缺金额"),
-    NeedsMerchant("缺商家"),
-    Duplicate("疑似重复"),
-    ReadyToConfirm("可直接确认"),
-}
-
-private fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFilter): List<Expense> {
-    return when (filter) {
-        NeedsReviewFilter.All -> items
-        NeedsReviewFilter.NeedsAmount -> items.filter { it.amountCents == null }
-        NeedsReviewFilter.NeedsMerchant -> items.filter { it.merchant.isNullOrBlank() }
-        NeedsReviewFilter.Duplicate -> items.filter { it.duplicateStatus == "suspected" }
-        NeedsReviewFilter.ReadyToConfirm -> items.filter {
-            it.amountCents != null && !it.merchant.isNullOrBlank() && it.duplicateStatus != "suspected"
-        }
-    }
-}
-
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun PendingScreen(
@@ -96,6 +52,18 @@ fun PendingScreen(
     onReject: (Expense) -> Unit,
     onKeepDuplicate: (Expense) -> Unit,
     onUploadScreenshot: () -> Unit,
+    onQuickCategory: (Expense) -> Unit = {},
+    onSaveQuickCategory: (Long, String) -> Unit = { _, _ -> },
+    onQuickMerchant: (Expense) -> Unit = {},
+    onSaveQuickMerchant: (Long, String) -> Unit = { _, _ -> },
+    onMissingAmount: (Expense) -> Unit = {},
+    onSaveAmountDraft: (Long, Long) -> Unit = { _, _ -> },
+    onSaveAmountAndConfirm: (Long, Long) -> Unit = { _, _ -> },
+    onOpenBulkConfirm: () -> Unit = {},
+    onConfirmReady: () -> Unit = {},
+    onOpenDuplicate: (Expense) -> Unit = {},
+    onIgnoreDuplicate: (Expense) -> Unit = {},
+    onCloseSheet: () -> Unit = {},
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
     var showPendingTools by rememberSaveable { mutableStateOf(false) }
@@ -130,6 +98,24 @@ fun PendingScreen(
         }
     }
 
+    PendingReviewSheetHost(
+        sheet = state.activeSheet,
+        categoryOptions = state.categoryOptions,
+        actionInProgressIds = state.actionInProgressIds,
+        readyCount = readyToConfirmCount,
+        missingAmountSkip = needsAmountCount,
+        duplicateSkip = duplicateCount,
+        bulkRunning = state.bulkConfirm.running,
+        onSaveQuickCategory = onSaveQuickCategory,
+        onSaveQuickMerchant = onSaveQuickMerchant,
+        onSaveAmountDraft = onSaveAmountDraft,
+        onSaveAmountAndConfirm = onSaveAmountAndConfirm,
+        onKeepBoth = onKeepDuplicate,
+        onIgnoreCurrent = onIgnoreDuplicate,
+        onConfirmReady = onConfirmReady,
+        onDismiss = onCloseSheet,
+    )
+
     AppScrollableContent(
         role = AppPageRole.Pending,
         isRefreshing = state.loading,
@@ -151,9 +137,7 @@ fun PendingScreen(
         }
 
         state.message?.let { message ->
-            item {
-                PendingMessageCard(message = message)
-            }
+            item { PendingMessageCard(message = message) }
         }
 
         if (state.uploading) {
@@ -195,6 +179,15 @@ fun PendingScreen(
                         onSelect = { needsReviewFilter = it },
                     )
                 }
+                if (needsReviewFilter == NeedsReviewFilter.ReadyToConfirm && readyToConfirmCount > 0) {
+                    item {
+                        BulkConfirmEntry(
+                            readyCount = readyToConfirmCount,
+                            inProgress = state.bulkConfirm.running,
+                            onOpen = onOpenBulkConfirm,
+                        )
+                    }
+                }
             }
         }
 
@@ -213,513 +206,20 @@ fun PendingScreen(
                         showActions = true,
                         actionsEnabled = expense.id !in state.actionInProgressIds,
                         onEdit = { onEdit(expense) },
-                        onConfirm = { onConfirm(expense) },
+                        onConfirm = {
+                            when {
+                                expense.amountCents == null -> onMissingAmount(expense)
+                                expense.duplicateStatus == "suspected" -> onOpenDuplicate(expense)
+                                expense.category.isBlank() -> onQuickCategory(expense)
+                                expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
+                                else -> onConfirm(expense)
+                            }
+                        },
                         onReject = { onReject(expense) },
                         onKeepDuplicate = { onKeepDuplicate(expense) },
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PendingMessageCard(message: String) {
-    val visuals = LocalThemeVisuals.current
-    AppGlassCard(containerAlpha = 0.94f) {
-        Row(
-            modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(visuals.chipSelected.copy(alpha = 0.82f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            Text(
-                text = message,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PendingTop(
-    pendingCount: Int,
-    duplicateCount: Int,
-    uploading: Boolean,
-    onUploadScreenshot: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        AppPageHeader(
-            title = if (pendingCount > 0) {
-                "今天有 $pendingCount 张截图待确认"
-            } else {
-                "今天还没有截图待确认"
-            },
-            subtitle = "不会自动入账，确认后才进入账本",
-        ) {
-            SafeBadge()
-        }
-
-        AppHeroCard {
-            Row(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = "等待你确认",
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        text = "$pendingCount 张",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black,
-                    )
-                    Text(
-                        text = "识别结果只是草稿",
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                if (pendingCount == 0 && duplicateCount == 0) {
-                    Box(
-                        modifier = Modifier.weight(0.82f),
-                        contentAlignment = Alignment.CenterEnd,
-                    ) {
-                        PendingHeroStatusPill()
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.weight(0.92f),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        PendingHeroMetric("$pendingCount", "待确认", modifier = Modifier.weight(1f))
-                        PendingHeroMetric("$duplicateCount", "疑似重复", modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-
-        PrimaryCtaButton(
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uploading,
-            icon = Icons.Filled.AddPhotoAlternate,
-            text = if (uploading) "正在上传截图" else "上传截图",
-            onClick = onUploadScreenshot,
-        )
-    }
-}
-
-@Composable
-private fun PendingHeroStatusPill() {
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(AppRadius.medium))
-            .background(Color.White.copy(alpha = 0.18f))
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.24f),
-                shape = RoundedCornerShape(AppRadius.medium),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = "今日状态",
-            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.72f),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = "无待确认",
-            color = MaterialTheme.colorScheme.onPrimary,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Black,
-        )
-    }
-}
-
-@Composable
-private fun PendingHeroMetric(value: String, label: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(AppRadius.medium))
-            .background(Color.White.copy(alpha = 0.88f))
-            .border(
-                width = 1.dp,
-                color = Color.White.copy(alpha = 0.46f),
-                shape = RoundedCornerShape(AppRadius.medium),
-            )
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Black,
-        )
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-            style = MaterialTheme.typography.labelSmall,
-        )
-    }
-}
-
-@Composable
-private fun UploadFlowCard() {
-    AppGlassCard(containerAlpha = 0.92f) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FlowStep("1", "上传", "选一张截图", modifier = Modifier.weight(1f))
-            Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowStep("2", "核对", "补金额商家", modifier = Modifier.weight(1f))
-            Text("→", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowStep("3", "入账", "确认后记录", modifier = Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun UploadProgressCard() {
-    AppGlassCard(containerAlpha = 0.96f) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "正在创建待确认账单",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
-            )
-            Text(
-                text = "上传完成后会自动刷新，不会直接入账。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
-
-@Composable
-private fun FlowStep(
-    number: String,
-    title: String,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-) {
-    val visuals = LocalThemeVisuals.current
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(visuals.chipSelected),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = number,
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
-            )
-        }
-        Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, maxLines = 1)
-        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-    }
-}
-
-@Composable
-private fun LoadingPendingState() {
-    val visuals = LocalThemeVisuals.current
-    AppGlassCard(containerAlpha = 0.94f) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(11.dp),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(visuals.chipSelected.copy(alpha = 0.72f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(19.dp),
-                    )
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Text(
-                        text = "正在整理待确认账单",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Black,
-                    )
-                    Text(
-                        text = "截图上传后会出现在这里，确认后才会入账。",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
-
-@Composable
-private fun PendingHeader(
-    loading: Boolean,
-    displayMode: PendingDisplayMode,
-    onOpenTools: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AppSectionHeader(
-            title = "待处理",
-            subtitle = "点进截图后补金额、商家和分类",
-            modifier = Modifier.weight(1f),
-        )
-        AppSecondaryButton(
-            text = if (loading) "刷新中" else pendingDisplayModeLabel(displayMode),
-            enabled = !loading,
-            onClick = onOpenTools,
-        )
-    }
-}
-
-@Composable
-private fun PendingToolsSheet(
-    loading: Boolean,
-    displayMode: PendingDisplayMode,
-    onDisplayModeChange: (PendingDisplayMode) -> Unit,
-    onRefresh: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "待处理设置",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
-            )
-            Text(
-                text = "调整列表密度，或重新整理待确认截图。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            AppFilterChip(
-                selected = displayMode == PendingDisplayMode.Compact,
-                onClick = { onDisplayModeChange(PendingDisplayMode.Compact) },
-                label = "紧凑",
-            )
-            AppFilterChip(
-                selected = displayMode == PendingDisplayMode.Comfortable,
-                onClick = { onDisplayModeChange(PendingDisplayMode.Comfortable) },
-                label = "舒适",
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppSecondaryButton(
-                text = if (loading) "刷新中" else "刷新待确认",
-                modifier = Modifier.weight(1f),
-                enabled = !loading,
-                onClick = onRefresh,
-            )
-            Button(
-                modifier = Modifier.weight(1f),
-                onClick = onDismiss,
-            ) {
-                Text("完成")
-            }
-        }
-    }
-}
-
-private fun pendingDisplayModeLabel(displayMode: PendingDisplayMode): String {
-    return when (displayMode) {
-        PendingDisplayMode.Compact -> "紧凑"
-        PendingDisplayMode.Comfortable -> "舒适"
-    }
-}
-
-@Composable
-private fun EmptyPendingState(
-    uploading: Boolean,
-    showUploadGuide: Boolean,
-    onToggleGuide: () -> Unit,
-    onRefresh: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        AppSectionHeader(
-            title = "待处理",
-            subtitle = "上传截图后，会出现在这里等你确认",
-        )
-        AppEmptyStateCard {
-            Row(
-                modifier = Modifier.padding(AppSpacing.cardPadding),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ReceiptIllustration(compact = true)
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text("还没有待确认账单", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                    Text(
-                        text = "截图上传后不会自动入账，你确认后才会记录。",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppSecondaryButton(
-                text = if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令",
-                modifier = Modifier.weight(1.25f),
-                leadingIcon = Icons.Filled.Info,
-                onClick = onToggleGuide,
-            )
-            AppSecondaryButton(
-                text = "刷新",
-                modifier = Modifier.weight(0.75f),
-                enabled = !uploading,
-                onClick = onRefresh,
-            )
-        }
-        if (showUploadGuide) {
-            AppGlassCard(containerAlpha = 0.94f) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("iPhone 上传方法", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                    Text("1. 打开账单截图，点分享。")
-                    Text("2. 选择“上传到小票夹”快捷指令。")
-                    Text("3. 上传成功后回到这里刷新。")
-                }
-            }
-        }
-    }
-}
-
-
-@Composable
-private fun NeedsReviewFilterBar(
-    selected: NeedsReviewFilter,
-    allCount: Int,
-    needsAmountCount: Int,
-    needsMerchantCount: Int,
-    duplicateCount: Int,
-    readyToConfirmCount: Int,
-    onSelect: (NeedsReviewFilter) -> Unit,
-) {
-    val scroll = rememberScrollState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(scroll)
-            .padding(horizontal = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val labelOf: (NeedsReviewFilter) -> String = { f ->
-            val count = when (f) {
-                NeedsReviewFilter.All -> allCount
-                NeedsReviewFilter.NeedsAmount -> needsAmountCount
-                NeedsReviewFilter.NeedsMerchant -> needsMerchantCount
-                NeedsReviewFilter.Duplicate -> duplicateCount
-                NeedsReviewFilter.ReadyToConfirm -> readyToConfirmCount
-            }
-            "${f.label} $count"
-        }
-        NeedsReviewFilter.values().forEach { f ->
-            AppFilterChip(
-                label = labelOf(f),
-                selected = f == selected,
-                onClick = { onSelect(f) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun NeedsReviewEmptyFilterCard(filter: NeedsReviewFilter) {
-    AppGlassCard(containerAlpha = 0.92f) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = "没有符合 [${filter.label}] 的待确认账单",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
-            )
-            Text(
-                text = "切换其他筛选可以看到剩余账单。当前不会自动判断，也不会自动入账。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
         }
     }
 }

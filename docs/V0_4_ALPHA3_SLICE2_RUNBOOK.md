@@ -113,29 +113,25 @@ headless 抓取以下页面，结束后自动停掉 uvicorn：
 
 ## 10. 未完成事项（待后续 PR）
 
-> 下列功能在 slice 2 合同范围内但因工作量超出本轮预算未交付，记录于此供后续 PR 接续。
+> slice 2 合同内但因预算未交付的条目，本节做"已落地"标记，避免后续 PR 重复领取。
 
-### PR18 T19-T23 — Android 评审快速操作 BottomSheet
+### PR18 T19-T23 — Android 评审快速操作 BottomSheet ✅ 已在 slice 3 交付
 
-合同要求在 `PendingScreen` 的 `ExpenseCard` 上新增四套 `ModalBottomSheet`：
-
-| 编号 | 功能 | 关键文件（待新建） |
+| 编号 | 功能 | 实际落地文件 |
 |------|------|-------------------|
-| T19 | 快速设置分类 (`QuickCategorySheet`) | `ui/screens/pending/QuickCategorySheet.kt` |
-| T20 | 快速设置商家 (`QuickMerchantSheet`) | `ui/screens/pending/QuickMerchantSheet.kt` |
-| T21 | 补填金额流程 (`MissingAmountSheet`) | `ui/screens/pending/MissingAmountSheet.kt` |
-| T22 | 批量确认 (`BulkConfirmSheet`) | `ui/screens/pending/BulkConfirmSheet.kt` |
-| T23 | ViewModel 绑定 + Repository API 对接 | `viewmodel/PendingViewModel.kt` 扩展 |
+| T19 | 快速设置分类 (`QuickCategorySheet`) | `android/app/src/main/java/com/ticketbox/ui/screens/pending/sheets/QuickCategorySheet.kt` |
+| T20 | 快速设置商家 (`QuickMerchantSheet`) | `android/app/src/main/java/com/ticketbox/ui/screens/pending/sheets/QuickMerchantSheet.kt` |
+| T21 | 补填金额流程 (`MissingAmountSheet`) | `android/app/src/main/java/com/ticketbox/ui/screens/pending/sheets/MissingAmountSheet.kt` |
+| T22 | 批量确认 (`BulkConfirmSheet`) | `android/app/src/main/java/com/ticketbox/ui/screens/pending/sheets/BulkConfirmSheet.kt` |
+| T22b | 疑似重复确认 (`DuplicateConfirmSheet`) | `android/app/src/main/java/com/ticketbox/ui/screens/pending/sheets/DuplicateConfirmSheet.kt` |
+| T23 | ViewModel 评审动作扩展 | `viewmodel/PendingViewModel.kt` + `viewmodel/PendingViewModelReviewActions.kt` |
 
-**现有基础设施（已就绪，随时接续）：**
-- `PendingScreen.kt` 已有 `ModalBottomSheet` import + `showPendingTools` 状态。
-- `ExpenseCard.kt` 已有 `onKeepDuplicate` 回调示例，扩展方式一致。
-- `NeedsReviewFilter.Duplicate` 枚举 + `markNotDuplicate` ViewModel 方法已在 slice 1 中建立。
-- 后端 `/api/expenses/{id}` PATCH 已支持 `category` / `merchant` / `amount_cents` 字段更新。
+完整设计 / 验收口径参见 [`V0_4_ALPHA3_SLICE3_ANDROID_REVIEW_WORKFLOW.md`](V0_4_ALPHA3_SLICE3_ANDROID_REVIEW_WORKFLOW.md)，PR 入口 [#15](https://github.com/zhe9898/7/pull/15)。
 
-**接续指引：**
-1. 在 `ui/screens/pending/` 下新建各 Sheet 文件，参考 `MonthPickerSheet.kt` 结构。
-2. 在 `PendingViewModel` 中增加对应 `update*` suspend 方法。
-3. 在 `ExpenseCard` 添加 `onQuickCategory` / `onQuickMerchant` / `onFillAmount` lambda 参数。
-4. 在 `PendingScreen` 中串联 Sheet 显示状态与 ViewModel 调用。
-5. 架构门：`PendingScreen.kt` ≤ 450 行，Sheet 文件各 ≤ 220 行。
+slice 3 同步把 `PendingScreen.kt` 拆为：
+
+- `ui/screens/PendingScreen.kt`（slim orchestrator，≤ 280 行）
+- `ui/screens/pending/PendingReviewSheetHost.kt`
+- `ui/screens/pending/PendingHeader.kt` / `PendingFilters.kt` / `PendingComponents.kt` / `PendingEmptyStates.kt`
+
+架构门以 G2 标准对齐（Compose Screen ≤ 280、BottomSheet ≤ 220、ViewModel ≤ 360），所有新增文件均通过 `:app:testGrayDebugUnitTest` / `:app:lintGrayDebug` / `:app:assembleGrayDebug` 验证。
