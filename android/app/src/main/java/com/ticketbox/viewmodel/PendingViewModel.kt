@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.PendingReviewActions
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
@@ -52,7 +52,7 @@ data class PendingUiState(
 )
 
 class PendingViewModel(
-    internal val repository: ExpenseRepository,
+    internal val repository: PendingReviewActions,
 ) : ViewModel() {
     private companion object {
         const val THUMBNAIL_CONCURRENCY = 4

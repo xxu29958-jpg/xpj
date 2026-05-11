@@ -76,7 +76,7 @@ class ExpenseRepository(
     private val settingsStore: TicketboxSettingsStore,
     private val tokenStore: SessionTokenStore,
     private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
-) : ServerBindingRepository {
+) : ServerBindingRepository, PendingReviewActions {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
     }
@@ -306,16 +306,16 @@ class ExpenseRepository(
         ConnectionDiagnostics(checks)
     }
 
-    suspend fun fetchPending(): Result<List<Expense>> = safeCall {
+    override suspend fun fetchPending(): Result<List<Expense>> = safeCall {
         api().pendingExpenses().map { it.toDomain() }
     }
 
-    suspend fun uploadScreenshot(
+    override suspend fun uploadScreenshot(
         fileName: String,
         contentType: String?,
         bytes: ByteArray,
-        preparationDurationMs: Long? = null,
-        sourceSizeBytes: Long? = null,
+        preparationDurationMs: Long?,
+        sourceSizeBytes: Long?,
     ): Result<Long> = safeCall {
         require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
         val cleanName = fileName
@@ -348,7 +348,7 @@ class ExpenseRepository(
         response.id
     }
 
-    suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = safeCall {
+    override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = safeCall {
         cacheIfConfirmed(api().updateExpense(id, draft.toRequest())).toDomain()
     }
 
@@ -357,7 +357,7 @@ class ExpenseRepository(
         cacheIfConfirmed(api().createManualExpense(draft.toRequest())).toDomain()
     }
 
-    suspend fun confirmExpense(id: Long): Result<Expense> = safeCall {
+    override suspend fun confirmExpense(id: Long): Result<Expense> = safeCall {
         cacheIfConfirmed(api().confirmExpense(id)).toDomain()
     }
 
@@ -369,7 +369,7 @@ class ExpenseRepository(
         return dto
     }
 
-    suspend fun rejectExpense(id: Long): Result<Expense> = safeCall {
+    override suspend fun rejectExpense(id: Long): Result<Expense> = safeCall {
         api().rejectExpense(id).toDomain()
     }
 
@@ -377,7 +377,7 @@ class ExpenseRepository(
         api().retryOcr(id).toDomain()
     }
 
-    suspend fun markNotDuplicate(id: Long): Result<Expense> = safeCall {
+    override suspend fun markNotDuplicate(id: Long): Result<Expense> = safeCall {
         api().markNotDuplicate(id).toDomain()
     }
 
@@ -385,7 +385,7 @@ class ExpenseRepository(
         api().duplicates().map { it.toDomain() }
     }
 
-    suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = safeCall {
+    override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = safeCall {
         readProtectedImage(api().expenseThumbnail(id))
     }
 
@@ -440,7 +440,7 @@ class ExpenseRepository(
         syncConfirmedFromService(api(), month, category)
     }
 
-    suspend fun categories(): Result<List<String>> = safeCall {
+    override suspend fun categories(): Result<List<String>> = safeCall {
         mergeExpenseCategories(api().categories().items)
     }
 

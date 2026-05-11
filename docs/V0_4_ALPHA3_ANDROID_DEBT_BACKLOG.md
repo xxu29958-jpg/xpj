@@ -30,11 +30,12 @@
 
 ## 优先级 P2（择期处理）
 
-### ExpenseRepository.kt（516 行）
+### ExpenseRepository.kt（576 行）
 
 - 当前打包了：身份绑定、上传、CRUD、duplicate、CSV、stats、recurring、data quality、category rules、image。
-- 建议拆分（slice 4 或 v0.5）：
-  - `ExpenseReviewRepository`（CRUD + duplicate + confirm/reject）
+- **alpha4 已做（接口反转，不拆物理文件）**：抽出 `data/repository/PendingReviewActions` 接口，`ExpenseRepository` 实现该接口；`PendingViewModel` 改为依赖接口 → 可用 Fake 单元测试覆盖 review 流程。
+- 完整物理拆分建议（slice 4 或 v0.5）：
+  - `ExpenseReviewRepository`（CRUD + duplicate + confirm/reject，实现 `PendingReviewActions`）
   - `StatsRepository`（monthly / lifestyle / recurring / dataQuality）
   - `ExportRepository`（CSV）
   - `CategoryRuleRepository`
