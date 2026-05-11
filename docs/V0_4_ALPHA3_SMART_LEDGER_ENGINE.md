@@ -7,6 +7,17 @@
 
 ---
 
+## 🚩 RC1 状态（2026-05-11）
+
+**v0.4-alpha3 已进入 RC1。** 基线 commit `c05e85f`（main），包含 PR #11 / #14 / #15 / #16 全部合并。
+
+- 自动化矩阵全绿：292 pytest pass / Android 4 gates SUCCESS / 公网边界 35/35 PASS / 自用健康 11/11 OK。
+- 真机走查通过：Android（Xiaomi 2410DPN6CC）+ iPhone（UploadLink）+ 多账本隔离均验证成功。
+- 详细报告：`docs/V0_4_ALPHA3_RC1_REPORT.md` / `docs/V0_4_ALPHA3_RC1_KNOWN_ISSUES.md` / `docs/V0_4_ALPHA3_RC1_SCREENSHOTS.md`。
+- Tag 计划：`v0.4-alpha3-rc1`（P0=0, P1=0）。
+
+---
+
 ## 1. 版本目标
 
 让小票夹从 **"能上传 + 能确认 + 能切账本"** 推进到 **"能整理 + 能识别 + 能建议 + 能洞察"**。

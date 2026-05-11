@@ -1,6 +1,8 @@
 # 小票夹
 
-**当前版本：v0.4.0a1**（阶段：v0.4-alpha1-multi-ledger-foundation；基线 = v0.3.3 产品化 + 多账本地基）
+**当前版本：v0.4.0a1**（阶段：**v0.4-alpha3 已进入 RC1**；基线 = v0.3.3 产品化 + 多账本地基 + Smart Ledger Engine + 移动端架构稳定）
+
+> 🚩 **v0.4-alpha3-rc1 验收已完成**（2026-05-11，commit `c05e85f`）：自动化矩阵全绿（292 pytest pass / Android 4 gates SUCCESS / 公网边界 35/35 / 自用健康 11/11），Android + iPhone 真机走查通过，多账本隔离验证通过，P0=0 / P1=0。详见 [V0_4_ALPHA3_RC1_REPORT.md](docs/V0_4_ALPHA3_RC1_REPORT.md)、[V0_4_ALPHA3_RC1_KNOWN_ISSUES.md](docs/V0_4_ALPHA3_RC1_KNOWN_ISSUES.md)、[V0_4_ALPHA3_RC1_SCREENSHOTS.md](docs/V0_4_ALPHA3_RC1_SCREENSHOTS.md)。
 
 下一里程碑：**v0.4-alpha2 Monarch-inspired Tri-surface UI/UX**（Android 生活流 + /web 桌面账本流 + /owner 本机管理流，三端信息架构统一，不做家庭成员邀请 / 不做预算 / 不做 recurring / 不做银行聚合）。
 
