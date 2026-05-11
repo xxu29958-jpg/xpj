@@ -1,0 +1,202 @@
+package com.ticketbox.ui.screens.stats
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.CategoryInsight
+import com.ticketbox.domain.model.CategoryStats
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.LocalThemeVisuals
+
+@Composable
+internal fun CategoryStructureCard(
+    categories: List<CategoryStats>,
+    totalAmountCents: Long,
+    insight: CategoryInsight?,
+) {
+    val topCategories = categories.sortedByDescending { it.amountCents }.take(5)
+    val topCategory = topCategories.firstOrNull()
+    AppGlassCard(containerAlpha = 0.96f) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CategoryDonut(
+                    categories = topCategories,
+                    totalAmountCents = totalAmountCents,
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("分类结构", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        text = topCategory?.let { "主要花在「${it.category}」" } ?: "还没有分类支出",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = insight?.let { "占本月 ${it.topSharePercent}% · ${it.categoryCount} 个分类" }
+                            ?: "${categories.size} 个分类",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                topCategories.forEachIndexed { index, category ->
+                    CategoryStructureBarRow(
+                        category = category,
+                        totalAmountCents = totalAmountCents,
+                        index = index,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryStructureBarRow(
+    category: CategoryStats,
+    totalAmountCents: Long,
+    index: Int,
+) {
+    val colors = statsCategoryColors()
+    val percent = if (totalAmountCents > 0L) {
+        (category.amountCents * 100 / totalAmountCents).toInt()
+    } else {
+        0
+    }
+    val progress = if (totalAmountCents > 0L) {
+        (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(colors[index % colors.size]),
+            )
+            Text(
+                text = category.category,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = formatAmount(category.amountCents),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "$percent%",
+                modifier = Modifier.width(38.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(7.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .height(7.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(colors[index % colors.size]),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryDonut(
+    categories: List<CategoryStats>,
+    totalAmountCents: Long,
+) {
+    val colors = statsCategoryColors()
+    Canvas(modifier = Modifier.size(92.dp)) {
+        val stroke = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
+        if (totalAmountCents <= 0L || categories.isEmpty()) {
+            drawArc(
+                color = Color.LightGray.copy(alpha = 0.28f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = stroke,
+            )
+            return@Canvas
+        }
+        var startAngle = -90f
+        categories.forEachIndexed { index, category ->
+            val sweep = 360f * (category.amountCents.toFloat() / totalAmountCents.toFloat()).coerceIn(0f, 1f)
+            drawArc(
+                color = colors[index % colors.size],
+                startAngle = startAngle,
+                sweepAngle = sweep,
+                useCenter = false,
+                style = stroke,
+            )
+            startAngle += sweep
+        }
+    }
+}
+
+@Composable
+private fun statsCategoryColors(): List<Color> {
+    val visuals = LocalThemeVisuals.current
+    return listOf(
+        visuals.primary,
+        visuals.accent,
+        visuals.warningTint,
+        visuals.primaryDark.copy(alpha = 0.70f),
+        visuals.shadowTint.copy(alpha = 0.55f),
+    )
+}

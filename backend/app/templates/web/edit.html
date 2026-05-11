@@ -8,22 +8,27 @@
 {% endif %}
 
 <div class="card">
-  <div style="display:flex;gap:24px;flex-wrap:wrap">
+  <div class="edit-grid">
     {% if expense.has_image %}
-    <div style="flex:0 0 240px">
-      <a href="/web/expenses/{{ expense.id }}/image" target="_blank">
-        <img src="/web/expenses/{{ expense.id }}/image" alt="小票图片" class="receipt-img">
+    <div class="edit-image">
+      <a href="/web/expenses/{{ expense.id }}/image{{ q }}" target="_blank">
+        <img src="/web/expenses/{{ expense.id }}/image{{ q }}" alt="小票图片" class="receipt-img">
       </a>
     </div>
+    {% elif expense.image_state == 'cleaned' %}
+    <div class="edit-image meta">图片已清理</div>
+    {% else %}
+    <div class="edit-image meta">暂不预览</div>
     {% endif %}
-    <form method="post" action="/web/expenses/{{ expense.id }}/save" style="flex:1;min-width:280px">
+    <form method="post" action="/web/expenses/{{ expense.id }}/save" class="edit-form">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <div class="form-row">
         <label>金额 (元)</label>
         <input type="text" name="amount_yuan" value="{{ expense.amount_yuan }}" placeholder="例如 12.34" inputmode="decimal">
       </div>
       <div class="form-row">
         <label>商家</label>
-        <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200">
+        <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家">
       </div>
       <div class="form-row">
         <label>分类</label>
@@ -35,8 +40,15 @@
       </div>
       <div class="form-row">
         <span class="meta">
-          状态：<span class="badge badge-ok">{{ expense.status }}</span>
-          上传时间：{{ expense.created_at }}
+          状态：
+          {% if expense.is_duplicate %}<span class="status-chip warn">疑似重复</span>
+          {% elif expense.status == 'confirmed' %}<span class="status-chip ok">已确认</span>
+          {% elif expense.status == 'rejected' %}<span class="status-chip muted">已忽略</span>
+          {% elif expense.needs_amount %}<span class="status-chip warn">缺金额</span>
+          {% elif expense.needs_merchant %}<span class="status-chip muted">缺商家</span>
+          {% else %}<span class="status-chip pending">待确认</span>{% endif %}
+          ｜来源：{{ expense.source_label }}
+          ｜上传时间：{{ expense.created_at }}
         </span>
       </div>
       <div class="actions">
@@ -44,9 +56,9 @@
         {% if expense.status == 'pending' %}
         <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="btn btn-success">入账</button>
         <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="btn btn-danger"
-                onclick="return confirm('丢弃这笔账单？');">丢弃</button>
+                onclick="return confirm('忽略这笔账单？');">忽略</button>
         {% endif %}
-        <a href="/web/pending" class="btn btn-link">返回</a>
+        <a href="/web/pending{{ q }}" class="btn btn-link">返回</a>
       </div>
     </form>
   </div>

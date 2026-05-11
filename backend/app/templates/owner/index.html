@@ -48,6 +48,131 @@
   </div>
 </div>
 
+{% if dq_summary %}
+<div class="card">
+  <h2>运营快照 · {{ ledger_name }}</h2>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="num">{{ dq_summary.pending_total }}</div>
+      <div class="label">待确认</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ dq_summary.ready_to_confirm }}</div>
+      <div class="label">可一键入账</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ dq_summary.suspected_duplicates }}</div>
+      <div class="label">疑似重复</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ dq_summary.missing_merchant }}</div>
+      <div class="label">缺商家</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ dq_summary.missing_category }}</div>
+      <div class="label">未分类</div>
+    </div>
+    <div class="stat">
+      <div class="num">
+        {% if dq_summary.oldest_pending_age_days is none %}—{% else %}{{ dq_summary.oldest_pending_age_days }}d{% endif %}
+      </div>
+      <div class="label">最久未处理</div>
+    </div>
+  </div>
+  <div class="quick-links" style="margin-top:12px">
+    <a href="/web/data-quality?ledger_id={{ primary_tenant_id }}" target="_blank">🩺 数据体检</a>
+    <a href="/web/duplicates?ledger_id={{ primary_tenant_id }}" target="_blank">🧬 重复整理</a>
+    <a href="/web/categories/uncategorized?ledger_id={{ primary_tenant_id }}" target="_blank">🏷️ 未分类</a>
+    <a href="/web/import?ledger_id={{ primary_tenant_id }}" target="_blank">⬆️ CSV 导入</a>
+    <a href="/web/export.csv?ledger_id={{ primary_tenant_id }}" target="_blank">⬇️ CSV 导出</a>
+  </div>
+</div>
+{% endif %}
+
+{% if windows_tasks %}
+<div class="card">
+  <h2>Windows 计划任务</h2>
+  <p class="hint">只读：在 Windows 任务计划程序中创建/编辑/启停任务。</p>
+  <table>
+    <thead>
+      <tr>
+        <th>任务</th>
+        <th>状态</th>
+        <th>上次运行</th>
+        <th>上次结果</th>
+        <th>下次运行</th>
+        <th>备注</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in windows_tasks %}
+      <tr>
+        <td>{{ task.name }}</td>
+        <td>
+          {% if not task.available %}<span class="badge badge-err">不可用</span>
+          {% elif task.status == 'Ready' %}<span class="badge badge-ok">就绪</span>
+          {% elif task.status == 'Running' %}<span class="badge badge-ok">运行中</span>
+          {% elif task.status == 'Disabled' %}<span class="badge badge-warn">已禁用</span>
+          {% else %}<span class="badge badge-warn">{{ task.status }}</span>{% endif %}
+        </td>
+        <td>{{ task.last_run or '—' }}</td>
+        <td>{{ task.last_result or '—' }}</td>
+        <td>{{ task.next_run or '—' }}</td>
+        <td>{{ task.note or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if ledger_health %}
+<div class="card">
+  <h2>账本健康</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>账本</th>
+        <th style="text-align:right">待确认</th>
+        <th style="text-align:right">可入账</th>
+        <th style="text-align:right">疑似重复</th>
+        <th style="text-align:right">缺商家</th>
+        <th style="text-align:right">未分类</th>
+        <th style="text-align:right">最久</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in ledger_health %}
+      <tr>
+        <td>
+          {{ row.name }}
+          {% if row.is_default %}<span class="badge badge-ok">默认</span>{% endif %}
+        </td>
+        <td style="text-align:right">{{ row.pending }}</td>
+        <td style="text-align:right">{{ row.ready_to_confirm }}</td>
+        <td style="text-align:right">
+          {% if row.suspected_duplicates > 0 %}
+            <span class="badge badge-warn">{{ row.suspected_duplicates }}</span>
+          {% else %}0{% endif %}
+        </td>
+        <td style="text-align:right">{{ row.missing_merchant }}</td>
+        <td style="text-align:right">{{ row.missing_category }}</td>
+        <td style="text-align:right">
+          {% if row.oldest_pending_age_days is none %}—{% else %}{{ row.oldest_pending_age_days }}d{% endif %}
+        </td>
+        <td>
+          <a href="/web?ledger_id={{ row.ledger_id }}" target="_blank">/web</a>
+          ·
+          <a href="/web/data-quality?ledger_id={{ row.ledger_id }}" target="_blank">体检</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>快捷入口</h2>
   <div class="quick-links">

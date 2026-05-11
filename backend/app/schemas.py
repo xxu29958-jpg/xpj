@@ -310,6 +310,64 @@ class LifestyleStatsResponse(BaseModel):
     frequent_merchants: list[dict[str, int | str]]
 
 
+# v0.4-alpha3 — Rules Engine
+class RulePreviewRequest(BaseModel):
+    keyword: str
+    target_category: str | None = None
+    match_field: str = "merchant"  # "merchant" | "raw_text" | "any"
+    limit: int = 10
+
+
+class RulePreviewItem(BaseModel):
+    id: int
+    merchant: str | None
+    amount_cents: int | None
+    current_category: str
+    suggested_category: str | None
+    reason: str
+
+
+class RulePreviewResponse(BaseModel):
+    matched_count: int
+    items: list[RulePreviewItem]
+
+
+class RuleApplyPendingResponse(BaseModel):
+    pending_scanned: int
+    changed_count: int
+
+
+# v0.4-alpha3 — Recurring candidates (read-only insights)
+class RecurringCandidateItem(BaseModel):
+    merchant: str
+    amount_cents: int
+    occurrence_count: int
+    last_seen_at: datetime | None
+    confidence: str
+    reason: str
+
+    @field_serializer("last_seen_at")
+    def serialize_last_seen_at(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class RecurringCandidatesResponse(BaseModel):
+    items: list[RecurringCandidateItem]
+
+
+# v0.4-alpha3 slice 2 — Data Quality summary
+class DataQualitySummaryResponse(BaseModel):
+    pending_total: int
+    missing_amount: int
+    missing_merchant: int
+    missing_category: int
+    suspected_duplicates: int
+    confirmed_without_image: int
+    ready_to_confirm: int
+    oldest_pending_age_days: int | None
+    generated_at: str
+
+
 class MaintenanceCleanupResponse(BaseModel):
     enabled: bool
     delete_after_days: int

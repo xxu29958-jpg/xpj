@@ -1,41 +1,55 @@
 {% extends "base.html" %}
-{% block title %}已入账 — 小票夹{% endblock %}
+{% block title %}已确认 — 小票夹{% endblock %}
 {% block content %}
-<h1>已入账账单 <span style="font-size:13px;color:#64748b;font-weight:normal">共 {{ total }} 条</span></h1>
+<h1>已确认账单 <span class="page-title-sub">共 {{ total }} 条</span></h1>
 
 <div class="card">
   <form method="get" action="/web/confirmed" class="filter-row">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <label>月份（YYYY-MM）：
       <input type="text" name="month" value="{{ month }}" placeholder="2026-05" pattern="\d{4}-\d{2}">
     </label>
     <button type="submit" class="btn btn-secondary">筛选</button>
-    {% if month %}<a class="btn btn-link" href="/web/confirmed">清除</a>{% endif %}
+    {% if month %}<a class="btn btn-link" href="/web/confirmed{{ q }}">清除</a>{% endif %}
   </form>
 </div>
 
 {% if expenses %}
 <div class="card">
-  <table>
+  <table class="transaction-table">
     <thead>
       <tr>
+        <th style="width:64px">图片</th>
         <th>商家 / 备注</th>
-        <th style="width:90px">金额 (元)</th>
+        <th style="width:120px;text-align:right">金额</th>
         <th style="width:120px">分类</th>
-        <th style="width:140px">交易时间</th>
-        <th style="width:80px">操作</th>
+        <th style="width:130px">时间</th>
+        <th style="width:80px">来源</th>
+        <th style="width:120px">状态</th>
+        <th style="width:90px">操作</th>
       </tr>
     </thead>
     <tbody>
     {% for e in expenses %}
-      <tr>
+      <tr class="transaction-row">
         <td>
-          <div style="font-weight:600">{{ e.merchant or '（未填）' }}</div>
-          {% if e.note %}<div style="font-size:12px;color:#64748b">{{ e.note }}</div>{% endif %}
+          {% if e.has_image %}
+            <a href="/web/expenses/{{ e.id }}/image{{ q }}" target="_blank">
+              <img src="/web/expenses/{{ e.id }}/thumbnail{{ q }}" alt="" class="thumb">
+            </a>
+          {% elif e.image_state == 'cleaned' %}<span class="meta">已清理</span>
+          {% else %}<span class="meta">暂不预览</span>{% endif %}
         </td>
-        <td class="amount">{{ e.amount_yuan }}</td>
-        <td>{{ e.category }}</td>
-        <td style="font-size:12px;color:#64748b">{{ e.expense_time or e.created_at }}</td>
-        <td><a class="btn btn-link" href="/web/expenses/{{ e.id }}/edit">编辑</a></td>
+        <td>
+          <div class="row-title">{{ e.merchant or '未填写商家' }}</div>
+          {% if e.note %}<div class="row-sub">{{ e.note }}</div>{% endif %}
+        </td>
+        <td class="amount">¥{{ e.amount_yuan }}</td>
+        <td><span class="category-badge">{{ e.category }}</span></td>
+        <td class="meta">{{ e.expense_time or e.created_at }}</td>
+        <td class="meta">{{ e.source_label }}</td>
+        <td><span class="status-chip ok">已确认</span></td>
+        <td><a class="btn btn-link" href="/web/expenses/{{ e.id }}/edit{{ q }}">编辑</a></td>
       </tr>
     {% endfor %}
     </tbody>
@@ -44,16 +58,19 @@
   {% if total_pages > 1 %}
   <div class="pagination">
     {% if page > 1 %}
-      <a class="btn btn-secondary" href="/web/confirmed?page={{ page - 1 }}{% if month %}&month={{ month }}{% endif %}">上一页</a>
+      <a class="btn btn-secondary" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&page={{ page - 1 }}{% if month %}&month={{ month }}{% endif %}">上一页</a>
     {% endif %}
     <span>第 {{ page }} / {{ total_pages }} 页</span>
     {% if page < total_pages %}
-      <a class="btn btn-secondary" href="/web/confirmed?page={{ page + 1 }}{% if month %}&month={{ month }}{% endif %}">下一页</a>
+      <a class="btn btn-secondary" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&page={{ page + 1 }}{% if month %}&month={{ month }}{% endif %}">下一页</a>
     {% endif %}
   </div>
   {% endif %}
 </div>
 {% else %}
-<div class="card empty">这个范围内没有已入账记录。</div>
+<div class="card empty-state">
+  <div class="empty-state-title">这个月还没有已确认账单</div>
+  <div class="empty-state-hint">确认后才会出现在这里；OCR 只填草稿，不会自动入账。</div>
+</div>
 {% endif %}
 {% endblock %}

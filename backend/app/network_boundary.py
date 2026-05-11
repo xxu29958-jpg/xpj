@@ -14,6 +14,8 @@ public hostname (e.g. ``api.zen70.cn``) and is the only signal we rely on.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import Request
 
 from app.config import get_settings
@@ -27,7 +29,7 @@ _LOOPBACK_PEERS: frozenset[str] = frozenset({"127.0.0.1", "::1", "localhost"})
 # port may be omitted, the default backend port (8000), or any of the
 # loopback aliases. Anything else (including the public Cloudflare Tunnel
 # hostname) is treated as "public" and may be rejected by callers.
-_LOOPBACK_HOSTS: frozenset[str] = frozenset(
+_BASE_LOOPBACK_HOSTS: frozenset[str] = frozenset(
     {
         "127.0.0.1",
         "127.0.0.1:8000",
@@ -41,6 +43,24 @@ _LOOPBACK_HOSTS: frozenset[str] = frozenset(
 )
 
 
+def _extra_loopback_hosts() -> frozenset[str]:
+    """Honour the ``XPJ_EXTRA_LOOPBACK_HOSTS`` env var (comma-separated).
+
+    Used by local tooling that runs uvicorn on a non-default port (e.g. the
+    screenshot capture script on :8765). Never expand this list at runtime
+    based on request headers — only static, owner-controlled config.
+    """
+    raw = os.environ.get("XPJ_EXTRA_LOOPBACK_HOSTS", "")
+    if not raw:
+        return frozenset()
+    extras = {item.strip().lower() for item in raw.split(",") if item.strip()}
+    return frozenset(extras)
+
+
+def _loopback_hosts() -> frozenset[str]:
+    return _BASE_LOOPBACK_HOSTS | _extra_loopback_hosts()
+
+
 def _peer_host(request: Request) -> str:
     return request.client.host if request.client else ""
 
@@ -52,7 +72,7 @@ def _request_host(request: Request) -> str:
 def is_loopback_request(request: Request) -> bool:
     """Return ``True`` only when both the TCP peer and the Host header look
     like a local-machine request."""
-    return _peer_host(request) in _LOOPBACK_PEERS and _request_host(request) in _LOOPBACK_HOSTS
+    return _peer_host(request) in _LOOPBACK_PEERS and _request_host(request) in _loopback_hosts()
 
 
 def require_owner_console_local(request: Request) -> None:

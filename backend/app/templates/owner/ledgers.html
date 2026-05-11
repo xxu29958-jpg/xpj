@@ -4,8 +4,9 @@
 <h1>账本管理</h1>
 
 <div class="alert" style="background:#fef3c7;border-left:4px solid #f59e0b;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#78350f">
-  v0.4-alpha1：当前是<strong>账本地基</strong>，不是家庭正式版。<br>
-  本页只支持创建账本、查看账本基础信息。家庭成员权限、邮箱/手机号登录将在 v0.5 引入。
+  v0.4-alpha2：本页是<strong>本机管理流</strong>，用于查看/新建账本。所有账本的待确认 / 已确认 / 报表请在
+  <a href="/web" style="color:#92400e;text-decoration:underline">桌面账本流 /web</a> 中切换查看。<br>
+  家庭成员邀请、邮箱/手机号登录将在 v0.5 引入；当前不会自动入账、自动判断重复、或扣预算。
 </div>
 
 {% if error %}
@@ -26,6 +27,7 @@
         <th style="padding:8px 10px">待确认</th>
         <th style="padding:8px 10px">已确认</th>
         <th style="padding:8px 10px">绑定设备</th>
+        <th style="padding:8px 10px">操作</th>
       </tr>
     </thead>
     <tbody>
@@ -37,6 +39,7 @@
         <td style="padding:8px 10px">{{ row.pending_count }}</td>
         <td style="padding:8px 10px">{{ row.confirmed_count }}</td>
         <td style="padding:8px 10px">{{ row.active_device_count }}</td>
+        <td style="padding:8px 10px"><a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">打开账本中心</a></td>
       </tr>
       {% endfor %}
     </tbody>

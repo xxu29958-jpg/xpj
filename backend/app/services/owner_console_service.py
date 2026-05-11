@@ -29,6 +29,10 @@ from app.services.admin_service import (
     revoke_upload_link,
     rotate_upload_link,
 )
+from app.services.data_quality_service import (
+    DataQualitySummary,
+    data_quality_summary,
+)
 from app.services.identity_service import (
     PairingCodeResult,
     create_pairing_code,
@@ -39,6 +43,7 @@ from app.services.ledger_service import (
     ledger_member_counts,
     list_ledgers_for_account,
 )
+from app.tenants import DEFAULT_TENANT_ID
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
 
@@ -55,6 +60,8 @@ class ConsoleIndexVM:
     ledger_name: str
     active_device_count: int
     active_upload_link_count: int
+    dq_summary: DataQualitySummary | None = None
+    primary_tenant_id: str = DEFAULT_TENANT_ID
 
 
 def get_index_vm(db: Session) -> ConsoleIndexVM:
@@ -85,6 +92,14 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
         db.scalar(select(func.count()).select_from(UploadLink).where(UploadLink.revoked_at.is_(None))) or 0
     )
 
+    primary_tenant_id = ledger.ledger_id if ledger else DEFAULT_TENANT_ID
+    try:
+        dq_summary: DataQualitySummary | None = data_quality_summary(
+            db, tenant_id=primary_tenant_id
+        )
+    except Exception:
+        dq_summary = None
+
     return ConsoleIndexVM(
         backend_version=BACKEND_VERSION,
         identity_schema=IDENTITY_SCHEMA_VERSION,
@@ -97,6 +112,8 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
         ledger_name=ledger.name if ledger else "（未初始化）",
         active_device_count=active_devices,
         active_upload_link_count=active_links,
+        dq_summary=dq_summary,
+        primary_tenant_id=primary_tenant_id,
     )
 
 
@@ -173,6 +190,59 @@ def get_owner_account_id(db: Session) -> int | None:
 
 
 # ── v0.4-alpha1: ledger management view-models ──────────────────────────────
+
+@dataclass
+class LedgerHealthVM:
+    """Per-ledger snapshot for the Owner Console dashboard health card.
+
+    Counters mirror :class:`DataQualitySummary` but are scoped to one ledger
+    so the owner can spot which ledger needs attention without opening each
+    one individually. All values are read-only; the dashboard renders direct
+    links to the matching /web pages.
+    """
+
+    ledger_id: str
+    name: str
+    is_default: bool
+    pending: int
+    ready_to_confirm: int
+    suspected_duplicates: int
+    missing_merchant: int
+    missing_category: int
+    oldest_pending_age_days: int | None
+
+
+def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
+    """Compute :class:`LedgerHealthVM` for every ledger the owner owns.
+
+    Reuses :func:`data_quality_summary` so the counters always match the
+    /web/data-quality page exactly. Empty list when the owner has no
+    ledgers yet (fresh install).
+    """
+    owner_id = get_owner_account_id(db)
+    if owner_id is None:
+        return []
+    rows: list[LedgerHealthVM] = []
+    for summary in list_ledgers_for_account(db, account_id=owner_id):
+        try:
+            dq = data_quality_summary(db, tenant_id=summary.ledger_id)
+        except Exception:
+            continue
+        rows.append(
+            LedgerHealthVM(
+                ledger_id=summary.ledger_id,
+                name=summary.name,
+                is_default=summary.is_default,
+                pending=dq.pending_total,
+                ready_to_confirm=dq.ready_to_confirm,
+                suspected_duplicates=dq.suspected_duplicates,
+                missing_merchant=dq.missing_merchant,
+                missing_category=dq.missing_category,
+                oldest_pending_age_days=dq.oldest_pending_age_days,
+            )
+        )
+    return rows
+
 
 @dataclass
 class LedgerConsoleVM:

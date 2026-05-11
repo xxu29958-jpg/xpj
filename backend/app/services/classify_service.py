@@ -150,3 +150,138 @@ def update_rule(
 def delete_rule(db: Session, rule: CategoryRule) -> None:
     db.delete(rule)
     db.commit()
+
+
+# v0.4-alpha3 — Rules Engine helpers ---------------------------------
+
+# Categories that are considered "untouched" and safe for rule auto-fill.
+_AUTO_FILLABLE_CATEGORIES = {"其他", "未分类", ""}
+
+
+def _haystack_for(expense: Expense, match_field: str) -> str:
+    field = (match_field or "merchant").strip().lower()
+    if field == "merchant":
+        return (expense.merchant or "").lower()
+    if field in {"raw_text", "raw"}:
+        return (expense.raw_text or "").lower()
+    # "any" or unrecognized → match against merchant + raw_text + note
+    return " ".join(
+        part
+        for part in [
+            expense.merchant or "",
+            expense.raw_text or "",
+            expense.note or "",
+        ]
+        if part
+    ).lower()
+
+
+def _is_auto_fillable_category(value: str | None) -> bool:
+    return normalize_category(value or "") in _AUTO_FILLABLE_CATEGORIES
+
+
+def preview_rule_for_pending(
+    db: Session,
+    *,
+    tenant_id: str,
+    keyword: str,
+    target_category: str | None,
+    match_field: str = "merchant",
+    limit: int = 10,
+) -> tuple[int, list[dict]]:
+    """Return (matched_count, items) for keyword match over pending expenses.
+
+    Pure preview — does **not** mutate database. Only scans pending records.
+    """
+    keyword_clean = (keyword or "").strip()
+    if not keyword_clean:
+        raise AppError("invalid_request", status_code=422)
+    needle = keyword_clean.lower()
+    field_label = {"merchant": "商家", "raw_text": "原文", "any": "原文/备注/商家"}.get(
+        (match_field or "merchant").strip().lower(), "商家"
+    )
+    suggested = normalize_category(target_category) if target_category else None
+
+    pending = db.scalars(
+        select(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status == "pending")
+        .order_by(Expense.created_at.desc(), Expense.id.desc())
+    )
+    matched: list[dict] = []
+    matched_count = 0
+    capped = max(1, min(int(limit or 10), 50))
+    for expense in pending:
+        if needle not in _haystack_for(expense, match_field):
+            continue
+        matched_count += 1
+        if len(matched) >= capped:
+            continue
+        matched.append(
+            {
+                "id": expense.id,
+                "merchant": expense.merchant,
+                "amount_cents": expense.amount_cents,
+                "current_category": normalize_category(expense.category or "其他"),
+                "suggested_category": suggested,
+                "reason": f"{field_label}包含 {keyword_clean}",
+            }
+        )
+    return matched_count, matched
+
+
+def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
+    """Re-run rule classification on all pending expenses for this tenant.
+
+    Only changes category when the current category is in
+    ``_AUTO_FILLABLE_CATEGORIES`` (其他 / 未分类 / 空). Never touches confirmed
+    or rejected records. Never changes the expense status — auto-confirm is
+    not allowed.
+
+    Returns ``(pending_scanned, changed_count)``.
+    """
+    pending = list(
+        db.scalars(
+            select(Expense)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.status == "pending")
+        )
+    )
+    rules = list(
+        db.scalars(
+            select(CategoryRule)
+            .where(CategoryRule.tenant_id == tenant_id)
+            .where(CategoryRule.enabled == True)  # noqa: E712
+            .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
+        )
+    )
+    if not rules:
+        return len(pending), 0
+
+    changed = 0
+    now = now_utc()
+    for expense in pending:
+        if not _is_auto_fillable_category(expense.category):
+            continue
+        haystack = " ".join(
+            part
+            for part in [
+                expense.merchant or "",
+                expense.raw_text or "",
+                expense.note or "",
+            ]
+            if part
+        ).lower()
+        if not haystack:
+            continue
+        for rule in rules:
+            if rule.keyword.lower() in haystack:
+                new_category = normalize_category(rule.category)
+                if new_category and new_category != expense.category:
+                    expense.category = new_category
+                    expense.updated_at = now
+                    changed += 1
+                break
+    if changed:
+        db.commit()
+    return len(pending), changed

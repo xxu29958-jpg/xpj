@@ -14,6 +14,8 @@ import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
+import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
+import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
@@ -134,6 +136,14 @@ interface ApiService {
         @Query("month") month: String? = null,
         @Query("timezone") timezone: String? = null,
     ): LifestyleStatsDto
+
+    @GET("api/insights/recurring-candidates")
+    suspend fun recurringCandidates(
+        @Query("timezone") timezone: String? = null,
+    ): RecurringCandidatesResponseDto
+
+    @GET("api/insights/data-quality")
+    suspend fun dataQualitySummary(): DataQualitySummaryDto
 
     @GET("api/ledgers")
     suspend fun listLedgers(): LedgerListResponseDto

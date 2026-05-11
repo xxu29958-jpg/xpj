@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}分类账本 — 小票夹{% endblock %}
+{% block content %}
+<h1>分类账本</h1>
+<p class="meta">
+  按分类汇总当月（{{ target_month }}）已确认账单，并展示各分类下未处理的待确认条数。
+  共 {{ rule_count }} 条<a href="/web/rules{{ q }}">分类规则</a>。
+  {% if uncategorized_pending %}
+  当前还有 <a href="/web/categories/uncategorized{{ q }}"><b>{{ uncategorized_pending }}</b> 条</a>未分类的待确认账单待整理。
+  {% endif %}
+</p>
+
+{% if flash_message %}
+<div class="card flash">{{ flash_message }}</div>
+{% endif %}
+
+<section class="card">
+  <h2>当月分类汇总</h2>
+  <form method="get" action="/web/categories" class="form-inline">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <label>月份
+      <input type="month" name="month" value="{{ target_month }}">
+    </label>
+    <button type="submit" class="btn btn-secondary">查询</button>
+  </form>
+  {% if categories_rows %}
+  <table class="transaction-table">
+    <thead>
+      <tr>
+        <th>分类</th>
+        <th class="num">本月已确认金额</th>
+        <th class="num">本月已确认数</th>
+        <th class="num">待确认数</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in categories_rows %}
+      <tr>
+        <td>
+          {{ row.category }}
+          {% if row.is_uncategorized %}<span class="status-chip warn">未分类</span>{% endif %}
+        </td>
+        <td class="num">¥{{ row.amount_yuan }}</td>
+        <td class="num">{{ row.confirmed_count }}</td>
+        <td class="num">{{ row.pending_count }}</td>
+        <td>
+          {% if row.is_uncategorized and row.pending_count %}
+          <a href="/web/categories/uncategorized{{ q }}">整理待确认</a>
+          {% else %}
+          <a href="/web/rules{{ q }}">编辑规则</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="meta">本月还没有已确认账单。</div>
+  {% endif %}
+</section>
+{% endblock %}

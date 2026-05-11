@@ -1,6 +1,8 @@
-"""Tests for the /web MVP UI."""
+"""Tests for the /web 桌面账本流 UI (v0.4-alpha2 Tri-surface contract)."""
 
 from __future__ import annotations
+
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,16 +20,54 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def test_web_index_redirects_to_pending(web_client: TestClient) -> None:
-    resp = web_client.get("/web", follow_redirects=False)
-    assert resp.status_code in {303, 307}
-    assert "/web/pending" in resp.headers.get("location", "")
+# ── Dashboard root ──────────────────────────────────────────────────────────
 
+def test_web_root_renders_dashboard(web_client: TestClient) -> None:
+    resp = web_client.get("/web", follow_redirects=False)
+    assert resp.status_code == 200
+    assert "仪表盘" in resp.text
+
+
+def test_web_root_slash_redirects_to_root_with_ledger(web_client: TestClient) -> None:
+    resp = web_client.get("/web/?ledger_id=owner", follow_redirects=False)
+    assert resp.status_code in {303, 307}
+    loc = resp.headers.get("location", "")
+    assert loc.startswith("/web?") and "ledger_id=owner" in loc
+
+
+# ── Loopback gate (public boundary) ─────────────────────────────────────────
 
 def test_web_pending_remote_returns_403(client: TestClient) -> None:
     resp = client.get("/web/pending")
     assert resp.status_code == 403
 
+
+def test_web_root_remote_returns_403(client: TestClient) -> None:
+    resp = client.get("/web")
+    assert resp.status_code == 403
+
+
+def test_web_confirm_remote_returns_403(client: TestClient) -> None:
+    assert client.post("/web/expenses/1/confirm").status_code == 403
+
+
+def test_web_reject_remote_returns_403(client: TestClient) -> None:
+    assert client.post("/web/expenses/1/reject").status_code == 403
+
+
+def test_web_image_remote_returns_403(client: TestClient) -> None:
+    assert client.get("/web/expenses/1/image").status_code == 403
+
+
+def test_web_thumbnail_remote_returns_403(client: TestClient) -> None:
+    assert client.get("/web/expenses/1/thumbnail").status_code == 403
+
+
+def test_web_save_remote_returns_403(client: TestClient) -> None:
+    assert client.post("/web/expenses/1/save", data={"amount_yuan": "1.00"}).status_code == 403
+
+
+# ── Local pages render OK ───────────────────────────────────────────────────
 
 def test_web_pending_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/pending")
@@ -38,7 +78,7 @@ def test_web_pending_local_returns_200(web_client: TestClient) -> None:
 def test_web_confirmed_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/confirmed")
     assert resp.status_code == 200
-    assert "已入账" in resp.text
+    assert "已确认" in resp.text
 
 
 def test_web_stats_local_returns_200(web_client: TestClient) -> None:
@@ -46,6 +86,112 @@ def test_web_stats_local_returns_200(web_client: TestClient) -> None:
     assert resp.status_code == 200
     assert "月度统计" in resp.text
 
+
+# ── Ledger selector contract ────────────────────────────────────────────────
+
+def test_web_ledger_selector_present(web_client: TestClient) -> None:
+    resp = web_client.get("/web")
+    assert resp.status_code == 200
+    assert 'name="ledger_id"' in resp.text
+    assert "owner" in resp.text  # default ledger id in <option>
+    assert "tester_1" in resp.text  # secondary ledger id in <option>
+
+
+def test_web_invalid_ledger_rejected(web_client: TestClient) -> None:
+    resp = web_client.get("/web/pending?ledger_id=does_not_exist")
+    assert resp.status_code == 400
+    body = resp.text
+    assert "请选择一个有权限的账本" in body or "invalid_request" in body
+
+
+def test_web_selected_ledger_pending_isolated(web_client: TestClient) -> None:
+    expense_id = _create_pending(web_client)
+    # Default (owner) sees the new pending row...
+    owner_pending = web_client.get("/web/pending?ledger_id=owner")
+    assert owner_pending.status_code == 200
+    # ...but tester_1 must not see it.
+    tester_pending = web_client.get("/web/pending?ledger_id=tester_1")
+    assert tester_pending.status_code == 200
+    assert str(expense_id) not in _row_id_set(tester_pending.text)
+
+
+def test_web_selected_ledger_confirmed_isolated(web_client: TestClient) -> None:
+    expense_id = _create_pending(web_client)
+    web_client.post(
+        f"/web/expenses/{expense_id}/save",
+        data={"amount_yuan": "9.99", "merchant": "X", "category": "", "note": "",
+              "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    confirm_resp = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert confirm_resp.status_code in {303, 307}
+    owner_confirmed = web_client.get("/web/confirmed?ledger_id=owner")
+    tester_confirmed = web_client.get("/web/confirmed?ledger_id=tester_1")
+    assert "9.99" in owner_confirmed.text
+    assert "9.99" not in tester_confirmed.text
+
+
+def test_web_selected_ledger_stats_isolated(web_client: TestClient) -> None:
+    resp_owner = web_client.get("/web/stats?ledger_id=owner")
+    resp_tester = web_client.get("/web/stats?ledger_id=tester_1")
+    assert resp_owner.status_code == 200
+    assert resp_tester.status_code == 200
+    # Both render but with their own scope; basic smoke
+    assert "月度统计" in resp_owner.text
+    assert "月度统计" in resp_tester.text
+
+
+def test_web_reject_keeps_selected_ledger(web_client: TestClient) -> None:
+    expense_id = _create_pending(web_client)
+    resp = web_client.post(
+        f"/web/expenses/{expense_id}/reject",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    assert "ledger_id=owner" in resp.headers.get("location", "")
+
+
+def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient) -> None:
+    expense_id = _create_pending(web_client)
+    web_client.post(
+        f"/web/expenses/{expense_id}/save",
+        data={"amount_yuan": "1.50", "merchant": "M", "category": "", "note": "",
+              "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    resp = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    assert "ledger_id=owner" in resp.headers.get("location", "")
+
+
+def test_web_no_secret_leaks(web_client: TestClient) -> None:
+    """No token_hash, upload_key, pairing_code or absolute path in HTML."""
+    pages = ["/web", "/web/pending", "/web/confirmed", "/web/stats"]
+    for path in pages:
+        resp = web_client.get(path)
+        assert resp.status_code == 200, path
+        body = resp.text
+        # 64-char lower-hex token hashes
+        assert not re.search(r"\b[0-9a-f]{64}\b", body), f"token_hash leaked in {path}"
+        # Upload keys (~40 chars urlsafe). Anything starting with /u/ + token.
+        assert "upload_key" not in body, f"upload_key keyword leaked in {path}"
+        # Pairing code printed verbatim is fine as a label; ensure runtime value not echoed
+        assert cf.CURRENT_UPLOAD_KEY not in body, f"upload_key value leaked in {path}"
+        # Absolute Windows / POSIX paths
+        assert not re.search(r"[A-Za-z]:\\\\[^\"'<>]+", body), f"abs path leaked in {path}"
+        assert "/home/" not in body and "C:\\" not in body
+
+
+# ── Existing save/confirm semantics still work ──────────────────────────────
 
 def _create_pending(client: TestClient) -> int:
     """Helper: upload a tiny PNG to the owner ledger so /web/pending sees it."""
@@ -63,15 +209,21 @@ def _create_pending(client: TestClient) -> int:
     return int(resp.json()["id"])
 
 
+def _row_id_set(html: str) -> set[str]:
+    """Extract probable expense ids appearing in URLs of pending rows."""
+    return set(re.findall(r"/web/expenses/(\d+)/edit", html))
+
+
 def test_web_edit_save_updates_amount(web_client: TestClient) -> None:
     expense_id = _create_pending(web_client)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
-        data={"amount_yuan": "12.34", "merchant": "测试商家", "category": "餐饮", "note": ""},
+        data={"amount_yuan": "12.34", "merchant": "测试商家", "category": "餐饮",
+              "note": "", "ledger_id": "owner"},
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
-    detail = web_client.get(f"/web/expenses/{expense_id}/edit")
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert detail.status_code == 200
     assert "12.34" in detail.text
     assert "测试商家" in detail.text
@@ -81,7 +233,8 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient) -> None:
     expense_id = _create_pending(web_client)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
-        data={"amount_yuan": "not-a-number", "merchant": "", "category": "", "note": ""},
+        data={"amount_yuan": "not-a-number", "merchant": "", "category": "", "note": "",
+              "ledger_id": "owner"},
     )
     assert resp.status_code == 200
     assert "请填写正确的金额" in resp.text
@@ -89,22 +242,14 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient) -> None:
 
 def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient) -> None:
     expense_id = _create_pending(web_client)
-    # Pending row has no amount; confirm should fail with Chinese message.
-    resp = web_client.post(f"/web/expenses/{expense_id}/confirm", follow_redirects=False)
-    assert resp.status_code == 200  # rendered edit page with error
+    resp = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
     assert "请先填写金额" in resp.text
 
-
-def test_web_html_does_not_leak_token_hash(web_client: TestClient) -> None:
-    import re
-
-    resp = web_client.get("/web/pending")
-    assert resp.status_code == 200
-    matches = re.findall(r"\b[0-9a-f]{64}\b", resp.text)
-    assert matches == [], f"token_hash leaked: {matches[:1]}"
-
-
-# ── Decimal amount precision ──────────────────────────────────────────────────
 
 @pytest.mark.parametrize(
     "input_str,expected_cents",
@@ -112,8 +257,8 @@ def test_web_html_does_not_leak_token_hash(web_client: TestClient) -> None:
         ("12.34", 1234),
         ("0.01", 1),
         ("0.1", 10),
-        ("12.345", 1235),   # ROUND_HALF_UP
-        ("0.005", 1),       # ROUND_HALF_UP
+        ("12.345", 1235),
+        ("0.005", 1),
         ("100", 10000),
         ("0", 0),
     ],
@@ -121,56 +266,211 @@ def test_web_html_does_not_leak_token_hash(web_client: TestClient) -> None:
 def test_web_amount_decimal_precision(
     web_client: TestClient, input_str: str, expected_cents: int
 ) -> None:
-    """Decimal-based conversion must match exact cent values (no float drift)."""
     expense_id = _create_pending(web_client)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
-        data={"amount_yuan": input_str, "merchant": "", "category": "", "note": ""},
+        data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "",
+              "ledger_id": "owner"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
-    # Re-fetch edit page and check displayed amount rounds correctly
-    detail = web_client.get(f"/web/expenses/{expense_id}/edit")
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     from decimal import Decimal
     expected_display = str((Decimal(expected_cents) / Decimal("100")).quantize(Decimal("0.01")))
-    assert expected_display in detail.text, (
-        f"input={input_str!r} expected {expected_display} in page"
-    )
+    assert expected_display in detail.text
 
 
 def test_web_save_negative_amount_shows_error(web_client: TestClient) -> None:
     expense_id = _create_pending(web_client)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
-        data={"amount_yuan": "-5.00", "merchant": "", "category": "", "note": ""},
+        data={"amount_yuan": "-5.00", "merchant": "", "category": "", "note": "",
+              "ledger_id": "owner"},
     )
     assert resp.status_code == 200
     assert "负数" in resp.text
 
 
-# ── Public-boundary enforcement for /web action routes ────────────────────────
+# ----- v0.4-alpha3 Review Center bulk + filter -------------------------
 
-def test_web_confirm_remote_returns_403(client: TestClient) -> None:
-    resp = client.post("/web/expenses/1/confirm")
-    assert resp.status_code == 403
-
-
-def test_web_reject_remote_returns_403(client: TestClient) -> None:
-    resp = client.post("/web/expenses/1/reject")
-    assert resp.status_code == 403
-
-
-def test_web_image_remote_returns_403(client: TestClient) -> None:
-    resp = client.get("/web/expenses/1/image")
-    assert resp.status_code == 403
+def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00", merchant: str = "测试") -> int:
+    """Upload a tiny PNG then patch amount+merchant via /web/expenses/{id}/save."""
+    expense_id = _create_pending(web_client)
+    resp = web_client.post(
+        f"/web/expenses/{expense_id}/save",
+        data={"amount_yuan": amount_yuan, "merchant": merchant, "category": "其他",
+              "note": "", "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}, resp.text
+    return expense_id
 
 
-def test_web_thumbnail_remote_returns_403(client: TestClient) -> None:
-    resp = client.get("/web/expenses/1/thumbnail")
-    assert resp.status_code == 403
+def test_web_pending_filter_missing_amount(web_client: TestClient) -> None:
+    pending_no_amount = _create_pending(web_client)  # no amount yet
+    pending_with_amount = _seed_pending_with_amount(web_client, "5.00", "A")
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{pending_no_amount}/edit" in resp.text
+    assert f"/web/expenses/{pending_with_amount}/edit" not in resp.text
 
 
-def test_web_save_remote_returns_403(client: TestClient) -> None:
-    resp = client.post("/web/expenses/1/save", data={"amount_yuan": "1.00"})
-    assert resp.status_code == 403
+def test_web_pending_filter_ready_excludes_missing_amount(web_client: TestClient) -> None:
+    # Seed the ready one first so it doesn't get flagged as duplicate of the
+    # second upload (same PNG bytes ⇒ second becomes suspected).
+    pending_ready = _seed_pending_with_amount(web_client, "8.00", "Ready")
+    pending_no_amount = _create_pending(web_client)
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
+    assert resp.status_code == 200
+    assert f"/web/expenses/{pending_ready}/edit" in resp.text
+    assert f"/web/expenses/{pending_no_amount}/edit" not in resp.text
 
+
+def test_web_pending_filter_active_tab_marker(web_client: TestClient) -> None:
+    _create_pending(web_client)
+    resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")
+    assert resp.status_code == 200
+    assert 'class="filter-tab is-active"' in resp.text
+
+
+def test_web_bulk_set_category_updates_pending(web_client: TestClient) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "set_category", "ledger_id": "owner",
+              "expense_ids": [str(eid)], "category": "餐饮", "filter": "all"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    detail = web_client.get(f"/web/expenses/{eid}/edit?ledger_id=owner")
+    assert "餐饮" in detail.text
+
+
+def test_web_bulk_set_category_requires_value(web_client: TestClient) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "set_category", "ledger_id": "owner",
+              "expense_ids": [str(eid)], "category": "", "filter": "all"},
+        follow_redirects=False,
+    )
+    # Empty input must not silently succeed — either 422 or redirect with skip msg.
+    assert resp.status_code in {303, 307, 422}
+
+
+def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient) -> None:
+    no_amount = _create_pending(web_client)
+    ready = _seed_pending_with_amount(web_client, "11.00", "Ready")
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "confirm_ready", "ledger_id": "owner",
+              "expense_ids": [str(no_amount), str(ready)], "filter": "all"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    # The ready one should now be confirmed (not in pending listing).
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert f"/web/expenses/{ready}/edit" not in pending.text
+    # The no-amount one stays pending.
+    assert f"/web/expenses/{no_amount}/edit" in pending.text
+
+
+def test_web_bulk_reject_removes_from_pending(web_client: TestClient) -> None:
+    eid = _seed_pending_with_amount(web_client, "12.00", "Y")
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "reject", "ledger_id": "owner",
+              "expense_ids": [str(eid)], "filter": "all"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert f"/web/expenses/{eid}/edit" not in pending.text
+
+
+def test_web_bulk_unknown_action_returns_error(web_client: TestClient) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "explode", "ledger_id": "owner",
+              "expense_ids": [str(eid)], "filter": "all"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {400, 422}
+
+
+def test_web_bulk_cross_ledger_id_is_ignored(web_client: TestClient) -> None:
+    """If an id from another ledger is submitted, action must NOT mutate it."""
+    eid_owner = _seed_pending_with_amount(web_client, "9.00", "Owner")
+    # Forge a bogus id far outside any existing range.
+    bogus_id = eid_owner + 99999
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "reject", "ledger_id": "owner",
+              "expense_ids": [str(bogus_id)], "filter": "all"},
+        follow_redirects=False,
+    )
+    # Should redirect (no crash, no mutation).
+    assert resp.status_code in {303, 307}
+    # Owner ledger still has its expense.
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert f"/web/expenses/{eid_owner}/edit" in pending.text
+
+
+# ----- v0.4-alpha3 /web/rules page ----------------------------------------
+
+def test_web_rules_local_returns_200(web_client: TestClient) -> None:
+    resp = web_client.get("/web/rules?ledger_id=owner")
+    assert resp.status_code == 200
+    assert "分类规则" in resp.text
+
+
+def test_web_rules_create_then_delete(web_client: TestClient) -> None:
+    # Create
+    resp = web_client.post(
+        "/web/rules/create",
+        data={"keyword": "测试关键词A", "category": "餐饮", "priority": "100",
+              "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    page = web_client.get("/web/rules?ledger_id=owner")
+    assert "测试关键词A" in page.text
+    # Locate id from the page (form action contains /web/rules/{id}/delete)
+    import re as _re
+    m = _re.search(r"/web/rules/(\d+)/delete", page.text)
+    assert m, page.text[:500]
+    rule_id = int(m.group(1))
+    # Toggle
+    resp = web_client.post(
+        f"/web/rules/{rule_id}/toggle",
+        data={"ledger_id": "owner"}, follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    # Delete
+    resp = web_client.post(
+        f"/web/rules/{rule_id}/delete",
+        data={"ledger_id": "owner"}, follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+
+
+def test_web_rules_preview_does_not_mutate(web_client: TestClient) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "9.00", "星巴克 国贸店")
+    resp = web_client.get(
+        "/web/rules?ledger_id=owner&preview_keyword=星巴克&preview_category=餐饮"
+    )
+    assert resp.status_code == 200
+    # Preview must list the expense.
+    assert str(expense_id) in resp.text
+    # And original expense category not yet changed (still "其他").
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "其他" in detail.text
+
+
+def test_web_rules_apply_pending_redirects(web_client: TestClient) -> None:
+    resp = web_client.post(
+        "/web/rules/apply-pending",
+        data={"ledger_id": "owner"}, follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}

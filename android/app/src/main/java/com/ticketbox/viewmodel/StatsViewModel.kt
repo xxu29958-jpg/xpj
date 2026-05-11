@@ -10,6 +10,8 @@ import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.monthlyBudgetProgress
 import com.ticketbox.domain.model.monthlyCategoryInsight
 import com.ticketbox.domain.model.monthlyStatsFromConfirmedExpenses
@@ -29,6 +31,8 @@ data class StatsUiState(
     val monthComparison: MonthComparison? = null,
     val budgetProgress: BudgetProgress? = null,
     val categoryInsight: CategoryInsight? = null,
+    val recurringCandidates: List<RecurringCandidate> = emptyList(),
+    val dataQuality: DataQualitySummary? = null,
     val months: List<String> = emptyList(),
     val month: String = YearMonth.now().toString(),
     val loading: Boolean = false,
@@ -93,6 +97,20 @@ class StatsViewModel(
             _uiState.update { it.copy(loading = true, message = null) }
             val month = _uiState.value.month.trim().ifBlank { null }
             val budgetCents = repository.monthlyBudgetCents()
+            // Fire-and-forget recurring candidates; failure is non-fatal.
+            launch {
+                repository.recurringCandidates()
+                    .onSuccess { items ->
+                        _uiState.update { it.copy(recurringCandidates = items) }
+                    }
+            }
+            // Fire-and-forget data quality summary; failure is non-fatal.
+            launch {
+                repository.dataQualitySummary()
+                    .onSuccess { summary ->
+                        _uiState.update { it.copy(dataQuality = summary) }
+                    }
+            }
             repository.monthlyStats(month)
                 .onSuccess { stats ->
                     repository.lifestyleStats(month)

@@ -115,6 +115,13 @@ def owner_index(
     vm = svc.get_index_vm(db)
     ctx = _base(request, db)
     ctx.update(vm.__dict__)
+    ctx["ledger_health"] = svc.list_ledger_health(db)
+    try:
+        from app.services import windows_task_status_service as wts
+
+        ctx["windows_tasks"] = wts.list_windows_tasks()
+    except Exception:
+        ctx["windows_tasks"] = []
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 
 

@@ -1,59 +1,139 @@
 {% extends "base.html" %}
 {% block title %}待确认 — 小票夹{% endblock %}
 {% block content %}
-<h1>待确认账单</h1>
+<h1>Review 工作台</h1>
+
+<div class="summary-grid compact">
+  <div class="summary-card"><div class="summary-card-label">全部待确认</div><div class="summary-card-num">{{ pending_count }}</div></div>
+  <div class="summary-card {{ 'warn' if needs_amount_count > 0 else '' }}"><div class="summary-card-label">缺金额</div><div class="summary-card-num">{{ needs_amount_count }}</div></div>
+  <div class="summary-card"><div class="summary-card-label">缺商家</div><div class="summary-card-num">{{ needs_merchant_count }}</div></div>
+  <div class="summary-card {{ 'warn' if suspected_duplicate_count > 0 else '' }}"><div class="summary-card-label">疑似重复</div><div class="summary-card-num">{{ suspected_duplicate_count }}</div></div>
+  <div class="summary-card ok"><div class="summary-card-label">可直接确认</div><div class="summary-card-num">{{ ready_count }}</div></div>
+</div>
+
+<nav class="filter-bar" aria-label="筛选">
+  {% set q_base = '?ledger_id=' ~ selected_ledger_id %}
+  {% set tabs = [
+    ('all',              '全部',       pending_count),
+    ('missing_amount',   '缺金额',     needs_amount_count),
+    ('missing_merchant', '缺商家',     needs_merchant_count),
+    ('duplicate',        '疑似重复',   suspected_duplicate_count),
+    ('ready',            '可直接确认', ready_count),
+  ] %}
+  {% for key, label, count in tabs %}
+    <a class="filter-tab {{ 'is-active' if filter == key else '' }}"
+       href="/web/pending{{ q_base }}&filter={{ key }}">{{ label }} ({{ count }})</a>
+  {% endfor %}
+</nav>
+
+{% if flash_message %}
+<div class="card flash">{{ flash_message }}</div>
+{% endif %}
 
 {% if expenses %}
-<div class="card">
-  <table>
-    <thead>
-      <tr>
-        <th style="width:64px">图片</th>
-        <th>商家 / 备注</th>
-        <th style="width:90px">金额 (元)</th>
-        <th style="width:120px">分类</th>
-        <th style="width:140px">上传时间</th>
-        <th style="width:200px">操作</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for e in expenses %}
-      <tr>
-        <td>
-          {% if e.has_image %}
-            <a href="/web/expenses/{{ e.id }}/image" target="_blank">
-              <img src="/web/expenses/{{ e.id }}/thumbnail" alt="" class="thumb">
-            </a>
-          {% else %}—{% endif %}
-        </td>
-        <td>
-          <div style="font-weight:600">{{ e.merchant or '（未识别商家）' }}</div>
-          {% if e.note %}<div style="font-size:12px;color:#64748b">{{ e.note }}</div>{% endif %}
-        </td>
-        <td class="amount">{{ e.amount_yuan or '—' }}</td>
-        <td>{{ e.category or '其他' }}</td>
-        <td style="font-size:12px;color:#64748b">{{ e.created_at }}</td>
-        <td>
-          <div class="actions">
-            <a class="btn btn-secondary" href="/web/expenses/{{ e.id }}/edit">编辑</a>
-            <form class="inline" method="post" action="/web/expenses/{{ e.id }}/confirm">
-              <button class="btn btn-primary" type="submit">入账</button>
-            </form>
-            <form class="inline" method="post" action="/web/expenses/{{ e.id }}/reject"
-                  onsubmit="return confirm('丢弃这笔账单？');">
-              <button class="btn btn-danger" type="submit">丢弃</button>
-            </form>
-          </div>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
+<form id="bulk-form" method="post" action="/web/review/bulk">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="filter" value="{{ filter }}">
+
+  <div class="bulk-bar">
+    <label class="bulk-check">
+      <input type="checkbox" id="bulk-select-all"> 当前页全选
+    </label>
+    <div class="bulk-actions">
+      <input class="bulk-input" type="text" name="category" placeholder="批量分类（如：餐饮）">
+      <button class="btn btn-secondary" type="submit" name="action" value="set_category">应用分类</button>
+
+      <input class="bulk-input" type="text" name="merchant" placeholder="批量商家">
+      <button class="btn btn-secondary" type="submit" name="action" value="set_merchant">应用商家</button>
+
+      <button class="btn btn-primary" type="submit" name="action" value="confirm_ready"
+              formnovalidate
+              onclick="return confirm('确认所选可入账的账单？缺金额会跳过。');">批量确认</button>
+      <button class="btn btn-secondary" type="submit" name="action" value="keep_duplicate"
+              formnovalidate>保留重复</button>
+      <button class="btn btn-danger" type="submit" name="action" value="reject"
+              formnovalidate
+              onclick="return confirm('忽略所选账单？');">批量忽略</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <table class="transaction-table">
+      <thead>
+        <tr>
+          <th style="width:32px"></th>
+          <th style="width:64px">图片</th>
+          <th>商家 / 备注</th>
+          <th style="width:120px;text-align:right">金额</th>
+          <th style="width:120px">分类</th>
+          <th style="width:130px">时间</th>
+          <th style="width:80px">来源</th>
+          <th style="width:120px">状态</th>
+          <th style="width:200px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for e in expenses %}
+        <tr class="transaction-row {{ 'is-duplicate' if e.is_duplicate else '' }}">
+          <td>
+            <input type="checkbox" class="bulk-row" name="expense_ids" value="{{ e.id }}">
+          </td>
+          <td>
+            {% if e.has_image %}
+              <a href="/web/expenses/{{ e.id }}/image{{ q }}" target="_blank">
+                <img src="/web/expenses/{{ e.id }}/thumbnail{{ q }}" alt="" class="thumb">
+              </a>
+            {% elif e.image_state == 'cleaned' %}<span class="meta">已清理</span>
+            {% else %}<span class="meta">暂不预览</span>{% endif %}
+          </td>
+          <td>
+            <div class="row-title">{{ e.merchant or '未填写商家' }}</div>
+            {% if e.note %}<div class="row-sub">{{ e.note }}</div>{% endif %}
+          </td>
+          <td class="amount">
+            {% if e.needs_amount %}<span class="status-chip warn">待填写金额</span>
+            {% else %}¥{{ e.amount_yuan }}{% endif %}
+          </td>
+          <td><span class="category-badge">{{ e.category }}</span></td>
+          <td class="meta">{{ e.created_at }}</td>
+          <td class="meta">{{ e.source_label }}</td>
+          <td>
+            {% if e.is_duplicate %}<span class="status-chip warn">疑似重复</span>
+            {% elif e.needs_amount %}<span class="status-chip warn">缺金额</span>
+            {% elif e.needs_merchant %}<span class="status-chip muted">缺商家</span>
+            {% else %}<span class="status-chip pending">待确认</span>{% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              <a class="btn btn-secondary" href="/web/expenses/{{ e.id }}/edit{{ q }}">编辑</a>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<script>
+(function() {
+  var master = document.getElementById('bulk-select-all');
+  if (!master) return;
+  master.addEventListener('change', function() {
+    var rows = document.querySelectorAll('.bulk-row');
+    for (var i = 0; i < rows.length; i++) rows[i].checked = master.checked;
+  });
+})();
+</script>
 {% else %}
-<div class="card empty">
-  暂无待确认的账单。<br>
-  <span style="color:#64748b;font-size:13px">从 iPhone 快捷指令上传小票后，会出现在这里。</span>
+<div class="card empty-state">
+  {% if filter and filter != 'all' %}
+    <div class="empty-state-title">该筛选条件下没有账单</div>
+    <div class="empty-state-hint">切换其他筛选或回到 <a href="/web/pending?ledger_id={{ selected_ledger_id }}">全部</a>。</div>
+  {% else %}
+    <div class="empty-state-title">今天还没有截图待确认</div>
+    <div class="empty-state-hint">从 iPhone 快捷指令或 Android 上传截图后会出现在这里。</div>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

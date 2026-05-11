@@ -23,6 +23,8 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.mergeExpenseCategories
 import com.ticketbox.security.SessionTokenStore
@@ -477,6 +479,14 @@ class ExpenseRepository(
 
     suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats> = safeCall {
         api().lifestyleStats(month = month, timezone = currentTimezoneId()).toDomain()
+    }
+
+    suspend fun recurringCandidates(): Result<List<RecurringCandidate>> = safeCall {
+        api().recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
+    }
+
+    suspend fun dataQualitySummary(): Result<DataQualitySummary> = safeCall {
+        api().dataQualitySummary().toDomain()
     }
 
     suspend fun categoryRules(): Result<List<CategoryRule>> = safeCall {

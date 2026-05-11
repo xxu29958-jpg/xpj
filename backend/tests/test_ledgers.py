@@ -196,14 +196,30 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     assert listing.status_code == 200
     assert "我的小票夹" in listing.text
     assert "灰度用户1" in listing.text
-    # Console shows the v0.4-alpha1 advisory banner.
-    assert "v0.4-alpha1" in listing.text
+    # Console shows the v0.4-alpha2 advisory banner.
+    assert "v0.4-alpha2" in listing.text
+    # Each ledger row exposes a "打开账本中心" link carrying its ledger_id.
+    assert 'href="/web?ledger_id=owner"' in listing.text
+    assert "打开账本中心" in listing.text
 
     create = local_client.post("/owner/ledgers", data={"name": "家庭账本"})
     assert create.status_code in (200, 303)
 
     after = local_client.get("/owner/ledgers")
     assert "家庭账本" in after.text
+
+
+def test_owner_ledgers_no_secret_leak(local_client: TestClient) -> None:
+    """The /owner/ledgers page must not echo runtime tokens or absolute paths."""
+    import re
+    import conftest as cf
+    resp = local_client.get("/owner/ledgers")
+    assert resp.status_code == 200
+    body = resp.text
+    assert cf.CURRENT_UPLOAD_KEY not in body
+    assert cf.CURRENT_APP_TOKEN not in body
+    assert cf.CURRENT_ADMIN_TOKEN not in body
+    assert not re.search(r"\b[0-9a-f]{64}\b", body)
 
 
 def test_owner_ledgers_rejects_blank_name(local_client: TestClient) -> None:

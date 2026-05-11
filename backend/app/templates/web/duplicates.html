@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}疑似重复 — 小票夹{% endblock %}
+{% block content %}
+<h1>疑似重复</h1>
+<p class="meta">
+  下方每一对账单都是系统标记为「疑似重复」的待确认账单。
+  确认它们确实重复后可以删除其中一条；如果其实并不重复，点「保留两条」即可，下次相同组合不会再误报。
+</p>
+
+{% if flash_message %}
+<div class="card flash">{{ flash_message }}</div>
+{% endif %}
+
+{% if duplicate_pairs %}
+{% for pair in duplicate_pairs %}
+<section class="card">
+  <h2>账单 #{{ pair.current.id }} 疑似与 {% if pair.original %}#{{ pair.original.id }}{% else %}已删除条目{% endif %} 重复</h2>
+  {% if pair.reason %}<p class="meta">原因：{{ pair.reason }}</p>{% endif %}
+  <div class="grid two-col">
+    <div class="card">
+      <h3>当前（#{{ pair.current.id }}）</h3>
+      <ul class="meta-list">
+        <li>金额：{% if pair.current.amount_yuan %}¥{{ pair.current.amount_yuan }}{% else %}—{% endif %}</li>
+        <li>商家：{{ pair.current.merchant or '—' }}</li>
+        <li>分类：{{ pair.current.category }}</li>
+        <li>消费时间：{{ pair.current.expense_time or '—' }}</li>
+        <li>创建时间：{{ pair.current.created_at }}</li>
+        <li>来源：{{ pair.current.source_label }}</li>
+      </ul>
+      <a href="/web/expenses/{{ pair.current.id }}/edit?ledger_id={{ selected_ledger_id }}">查看详情</a>
+    </div>
+    {% if pair.original %}
+    <div class="card">
+      <h3>被复制的条目（#{{ pair.original.id }}）</h3>
+      <ul class="meta-list">
+        <li>金额：{% if pair.original.amount_yuan %}¥{{ pair.original.amount_yuan }}{% else %}—{% endif %}</li>
+        <li>商家：{{ pair.original.merchant or '—' }}</li>
+        <li>分类：{{ pair.original.category }}</li>
+        <li>消费时间：{{ pair.original.expense_time or '—' }}</li>
+        <li>创建时间：{{ pair.original.created_at }}</li>
+        <li>状态：{{ pair.original.status }}</li>
+      </ul>
+      <a href="/web/expenses/{{ pair.original.id }}/edit?ledger_id={{ selected_ledger_id }}">查看详情</a>
+    </div>
+    {% else %}
+    <div class="card"><p class="meta">原条目已不可访问。</p></div>
+    {% endif %}
+  </div>
+  <div class="form-inline" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+    <form method="post" action="/web/duplicates/{{ pair.current.id }}/keep">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <button type="submit" class="btn btn-secondary">保留两条</button>
+    </form>
+    <form method="post" action="/web/duplicates/{{ pair.current.id }}/reject-current">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <button type="submit" class="btn btn-secondary">删除当前 #{{ pair.current.id }}</button>
+    </form>
+    {% if pair.original %}
+    <form method="post" action="/web/duplicates/{{ pair.current.id }}/reject-original">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <button type="submit" class="btn btn-secondary">删除被复制的 #{{ pair.original.id }}</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endfor %}
+{% else %}
+<div class="card">
+  <p>当前账本没有疑似重复的待确认账单。</p>
+  <p class="meta">系统会持续监控相同截图哈希以及金额/商家/时间接近的账单。</p>
+</div>
+{% endif %}
+{% endblock %}

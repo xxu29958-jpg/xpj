@@ -65,6 +65,27 @@ data class FrequentMerchant(
     val count: Int,
 )
 
+data class RecurringCandidate(
+    val merchant: String,
+    val amountCents: Long,
+    val occurrenceCount: Int,
+    val lastSeenAt: String?,
+    val confidence: String,
+    val reason: String,
+)
+
+data class DataQualitySummary(
+    val pendingTotal: Int,
+    val missingAmount: Int,
+    val missingMerchant: Int,
+    val missingCategory: Int,
+    val suspectedDuplicates: Int,
+    val confirmedWithoutImage: Int,
+    val readyToConfirm: Int,
+    val oldestPendingAgeDays: Int?,
+    val generatedAt: String,
+)
+
 data class DailySpend(
     val date: String,
     val label: String,

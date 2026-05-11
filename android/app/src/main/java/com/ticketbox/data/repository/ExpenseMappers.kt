@@ -8,6 +8,8 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.FrequentMerchantDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
+import com.ticketbox.data.remote.dto.RecurringCandidateItemDto
+import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CategoryStats
@@ -16,6 +18,8 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.normalizeExpenseCategory
 
@@ -141,6 +145,27 @@ fun LifestyleStatsDto.toDomain(): LifestyleStats = LifestyleStats(
 fun FrequentMerchantDto.toDomain(): FrequentMerchant = FrequentMerchant(
     merchant = merchant,
     count = count,
+)
+
+fun RecurringCandidateItemDto.toDomain(): RecurringCandidate = RecurringCandidate(
+    merchant = merchant,
+    amountCents = amountCents,
+    occurrenceCount = occurrenceCount,
+    lastSeenAt = lastSeenAt,
+    confidence = confidence,
+    reason = reason,
+)
+
+fun DataQualitySummaryDto.toDomain(): DataQualitySummary = DataQualitySummary(
+    pendingTotal = pendingTotal,
+    missingAmount = missingAmount,
+    missingMerchant = missingMerchant,
+    missingCategory = missingCategory,
+    suspectedDuplicates = suspectedDuplicates,
+    confirmedWithoutImage = confirmedWithoutImage,
+    readyToConfirm = readyToConfirm,
+    oldestPendingAgeDays = oldestPendingAgeDays,
+    generatedAt = generatedAt,
 )
 
 fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(

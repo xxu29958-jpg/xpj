@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}未分类清单 — 小票夹{% endblock %}
+{% block content %}
+<h1>未分类的待确认账单</h1>
+<p class="meta">
+  下列账单的分类为「其他/未分类」。勾选后批量改写分类，不会自动确认，也不会修改已确认账单。
+  如需让规则自动接管，请到<a href="/web/rules{{ q }}">分类规则</a>新增关键词规则。
+</p>
+
+{% if flash_message %}
+<div class="card flash">{{ flash_message }}</div>
+{% endif %}
+
+{% if uncategorized_items %}
+<section class="card">
+  <form method="post" action="/web/categories/uncategorized/bulk-set" class="form-stack">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <table class="transaction-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="select-all"></th>
+          <th>创建时间</th>
+          <th>商家</th>
+          <th class="num">金额</th>
+          <th>当前分类</th>
+          <th>备注</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in uncategorized_items %}
+        <tr>
+          <td><input type="checkbox" name="expense_ids" value="{{ item.id }}"></td>
+          <td>{{ item.created_at }}</td>
+          <td>{{ item.merchant or '—' }}</td>
+          <td class="num">{% if item.amount_yuan %}¥{{ item.amount_yuan }}{% else %}—{% endif %}</td>
+          <td>{{ item.category or '未分类' }}</td>
+          <td>{{ item.note or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="form-inline">
+      <label>批量设置为
+        <select name="category" required>
+          <option value="">请选择分类…</option>
+          {% for cat in default_categories %}
+          <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary">应用到所选</button>
+      <a href="/web/categories{{ q }}" class="btn btn-secondary">返回分类账本</a>
+    </div>
+  </form>
+</section>
+<script>
+  (function () {
+    var all = document.getElementById('select-all');
+    if (!all) { return; }
+    all.addEventListener('change', function () {
+      var boxes = document.querySelectorAll('input[name="expense_ids"]');
+      for (var i = 0; i < boxes.length; i++) { boxes[i].checked = all.checked; }
+    });
+  })();
+</script>
+{% else %}
+<div class="card">
+  <p>当前账本没有未分类的待确认账单。可以回到<a href="/web/categories{{ q }}">分类账本</a>。</p>
+</div>
+{% endif %}
+{% endblock %}

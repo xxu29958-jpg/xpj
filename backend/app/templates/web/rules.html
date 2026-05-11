@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}分类规则 — 小票夹{% endblock %}
+{% block content %}
+<h1>分类规则</h1>
+<p class="meta">规则按关键词匹配商家，仅改写「其他/未分类」的<b>待确认</b>账单。不会自动确认，不会回写已确认记录。</p>
+
+{% if flash_message %}
+<div class="card flash">{{ flash_message }}</div>
+{% endif %}
+
+<div class="grid two-col">
+  <section class="card">
+    <h2>新增规则</h2>
+    <form method="post" action="/web/rules/create" class="form-stack">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <label>关键词
+        <input type="text" name="keyword" required placeholder="如：星巴克">
+      </label>
+      <label>分类
+        <input type="text" name="category" required placeholder="如：餐饮">
+      </label>
+      <label>优先级（越小越优先）
+        <input type="number" name="priority" value="100" min="0" max="9999">
+      </label>
+      <button type="submit" class="btn btn-primary">添加规则</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>预览匹配</h2>
+    <form method="get" action="/web/rules" class="form-stack">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <label>关键词
+        <input type="text" name="preview_keyword" value="{{ preview_keyword }}" placeholder="如：星巴克">
+      </label>
+      <label>目标分类
+        <input type="text" name="preview_category" value="{{ preview_category }}" placeholder="如：餐饮">
+      </label>
+      <button type="submit" class="btn btn-secondary">预览</button>
+    </form>
+    {% if preview_error %}
+    <div class="status-chip warn">{{ preview_error }}</div>
+    {% endif %}
+    {% if preview %}
+    <div class="meta">命中 {{ preview.matched_count }} 条（最多展示 {{ preview['items']|length }} 条）</div>
+    {% if preview['items'] %}
+    <table class="transaction-table compact">
+      <thead><tr><th>ID</th><th>商家</th><th>原分类</th><th>命中原因</th></tr></thead>
+      <tbody>
+      {% for it in preview['items'] %}
+        <tr>
+          <td>{{ it.id }}</td>
+          <td>{{ it.merchant or '—' }}</td>
+          <td>{{ it.category or '—' }}</td>
+          <td>{{ it.reason }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-header">
+    <h2>当前规则（{{ rules|length }} 条）</h2>
+    <form method="post" action="/web/rules/apply-pending" style="display:inline">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <button type="submit" class="btn btn-primary"
+              onclick="return confirm('对所有「其他/未分类」的待确认账单跑一次规则改写分类？')">
+        一键应用到待确认
+      </button>
+    </form>
+  </div>
+  {% if rules %}
+  <table class="transaction-table">
+    <thead>
+      <tr>
+        <th style="width:60px">优先级</th>
+        <th>关键词</th>
+        <th>分类</th>
+        <th style="width:80px">状态</th>
+        <th style="width:180px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rules %}
+      <tr>
+        <td>{{ r.priority }}</td>
+        <td><code>{{ r.keyword }}</code></td>
+        <td><span class="category-badge">{{ r.category }}</span></td>
+        <td>
+          {% if r.enabled %}<span class="status-chip ok">启用</span>
+          {% else %}<span class="status-chip muted">停用</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/web/rules/{{ r.id }}/toggle" style="display:inline">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button type="submit" class="btn btn-secondary">
+              {% if r.enabled %}停用{% else %}启用{% endif %}
+            </button>
+          </form>
+          <form method="post" action="/web/rules/{{ r.id }}/delete" style="display:inline"
+                onsubmit="return confirm('删除规则 [{{ r.keyword }}]？');">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button type="submit" class="btn btn-danger">删除</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">还没有自定义规则</div>
+    <div class="empty-state-hint">默认 36 条内置规则仍在生效。可以在左侧新增本账本自有的关键词。</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

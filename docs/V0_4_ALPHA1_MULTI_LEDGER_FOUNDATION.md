@@ -1,7 +1,8 @@
 # v0.4-alpha1 多账本基础（Multi-Ledger Foundation）
 
-> 状态：**预览**。本期只交付服务端契约 + Android 数据层 + 最小切换 UI；
-> 公开发布前需要完成真机灰度验收（`docs/GRAY_ACCEPTANCE_EXECUTION.md`）。
+> 状态：**已合并**（PR #11 squash → main `5a9e18b`，2026-05-10）。本期交付
+> 服务端契约 + Android 数据层 + 最小切换 UI + 真机灰度验收记录。下一里程碑
+> 为 `v0.4-alpha2`（见 `docs/V0_4_ALPHA2_TRI_SURFACE_UI.md`）。
 
 ## 范围
 

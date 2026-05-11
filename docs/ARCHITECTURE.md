@@ -46,7 +46,6 @@ docs/GRAY_ACCEPTANCE_EXECUTION.md
 
 - 商业账号注册和登录系统。
 - 邮箱、手机号、第三方登录。
-- Web 后台管理页面。
 - 远程控制电脑。
 - 云端商业部署。
 - 自动读取 iPhone 相册。
@@ -54,6 +53,10 @@ docs/GRAY_ACCEPTANCE_EXECUTION.md
 - 微信、支付宝自动监听。
 - 银行卡接口。
 - 第三方支付接口。
+
+> v0.3.3 起后端已提供本机轻量网页版账本 `/web`（loopback only），v0.4-alpha1
+> 起本机 Owner Console 增加 `/owner/ledgers` 多账本管理入口；二者**仍只允许
+> loopback 访问**，不通过 Cloudflare Tunnel 暴露到公网，也不是商业 Web 后台。
 
 ## 2. 总体流程
 

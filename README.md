@@ -1,8 +1,10 @@
 # 小票夹
 
-**当前版本：v0.3.3**（阶段：v0.3.3-productization；基线 = v0.3.2-selfuse + 公网边界加固 + 自用稳定产品化）
+**当前版本：v0.4.0a1**（阶段：v0.4-alpha1-multi-ledger-foundation；基线 = v0.3.3 产品化 + 多账本地基）
 
-小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 的核心变化是把旧 token/tenant 运行时模型切换为账号、账本、设备和可撤销凭证。
+下一里程碑：**v0.4-alpha2 Monarch-inspired Tri-surface UI/UX**（Android 生活流 + /web 桌面账本流 + /owner 本机管理流，三端信息架构统一，不做家庭成员邀请 / 不做预算 / 不做 recurring / 不做银行聚合）。
+
+小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4-alpha1 在此基础上落地了多账本地基（`/api/ledgers` 列表 / 新建 / 切换、Room v4 `expenses.ledgerId`、设置 → 账本（实验）切换页）。**v0.4-alpha2 仍保持身份契约 `identity_schema=v0.3` 不变。**
 
 ```text
 iPhone UploadLink 或 Android 上传截图

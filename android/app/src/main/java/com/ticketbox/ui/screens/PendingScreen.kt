@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Info
@@ -60,6 +62,30 @@ private enum class PendingDisplayMode {
     Comfortable,
 }
 
+/**
+ * v0.4-alpha2 Needs Review filter — UI-only.
+ * 不触碰 Retrofit/Room；只在已加载的 `state.items` 上做客户端过滤。
+ */
+private enum class NeedsReviewFilter(val label: String) {
+    All("全部"),
+    NeedsAmount("缺金额"),
+    NeedsMerchant("缺商家"),
+    Duplicate("疑似重复"),
+    ReadyToConfirm("可直接确认"),
+}
+
+private fun applyNeedsReviewFilter(items: List<Expense>, filter: NeedsReviewFilter): List<Expense> {
+    return when (filter) {
+        NeedsReviewFilter.All -> items
+        NeedsReviewFilter.NeedsAmount -> items.filter { it.amountCents == null }
+        NeedsReviewFilter.NeedsMerchant -> items.filter { it.merchant.isNullOrBlank() }
+        NeedsReviewFilter.Duplicate -> items.filter { it.duplicateStatus == "suspected" }
+        NeedsReviewFilter.ReadyToConfirm -> items.filter {
+            it.amountCents != null && !it.merchant.isNullOrBlank() && it.duplicateStatus != "suspected"
+        }
+    }
+}
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun PendingScreen(
@@ -74,9 +100,16 @@ fun PendingScreen(
     var showUploadGuide by remember { mutableStateOf(false) }
     var showPendingTools by rememberSaveable { mutableStateOf(false) }
     var displayMode by rememberSaveable { mutableStateOf(PendingDisplayMode.Compact) }
+    var needsReviewFilter by rememberSaveable { mutableStateOf(NeedsReviewFilter.All) }
     var wasLoading by remember { mutableStateOf(state.loading) }
     val listState = rememberLazyListState()
     val duplicateCount = state.items.count { it.duplicateStatus == "suspected" }
+    val needsAmountCount = state.items.count { it.amountCents == null }
+    val needsMerchantCount = state.items.count { it.merchant.isNullOrBlank() }
+    val readyToConfirmCount = state.items.count {
+        it.amountCents != null && !it.merchant.isNullOrBlank() && it.duplicateStatus != "suspected"
+    }
+    val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
 
     LaunchedEffect(state.loading) {
         if (wasLoading && !state.loading) {
@@ -151,25 +184,40 @@ fun PendingScreen(
                         onOpenTools = { showPendingTools = true },
                     )
                 }
+                item {
+                    NeedsReviewFilterBar(
+                        selected = needsReviewFilter,
+                        allCount = state.items.size,
+                        needsAmountCount = needsAmountCount,
+                        needsMerchantCount = needsMerchantCount,
+                        duplicateCount = duplicateCount,
+                        readyToConfirmCount = readyToConfirmCount,
+                        onSelect = { needsReviewFilter = it },
+                    )
+                }
             }
         }
 
         if (state.items.isNotEmpty()) {
-            items(state.items, key = { it.id }) { expense ->
-                ExpenseCard(
-                    expense = expense,
-                    thumbnail = state.thumbnails[expense.id],
-                    previewMode = when (displayMode) {
-                        PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
-                        PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
-                    },
-                    showActions = true,
-                    actionsEnabled = expense.id !in state.actionInProgressIds,
-                    onEdit = { onEdit(expense) },
-                    onConfirm = { onConfirm(expense) },
-                    onReject = { onReject(expense) },
-                    onKeepDuplicate = { onKeepDuplicate(expense) },
-                )
+            if (filteredItems.isEmpty()) {
+                item { NeedsReviewEmptyFilterCard(filter = needsReviewFilter) }
+            } else {
+                items(filteredItems, key = { it.id }) { expense ->
+                    ExpenseCard(
+                        expense = expense,
+                        thumbnail = state.thumbnails[expense.id],
+                        previewMode = when (displayMode) {
+                            PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
+                            PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
+                        },
+                        showActions = true,
+                        actionsEnabled = expense.id !in state.actionInProgressIds,
+                        onEdit = { onEdit(expense) },
+                        onConfirm = { onConfirm(expense) },
+                        onReject = { onReject(expense) },
+                        onKeepDuplicate = { onKeepDuplicate(expense) },
+                    )
+                }
             }
         }
     }
@@ -611,6 +659,67 @@ private fun EmptyPendingState(
                     Text("3. 上传成功后回到这里刷新。")
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun NeedsReviewFilterBar(
+    selected: NeedsReviewFilter,
+    allCount: Int,
+    needsAmountCount: Int,
+    needsMerchantCount: Int,
+    duplicateCount: Int,
+    readyToConfirmCount: Int,
+    onSelect: (NeedsReviewFilter) -> Unit,
+) {
+    val scroll = rememberScrollState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scroll)
+            .padding(horizontal = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val labelOf: (NeedsReviewFilter) -> String = { f ->
+            val count = when (f) {
+                NeedsReviewFilter.All -> allCount
+                NeedsReviewFilter.NeedsAmount -> needsAmountCount
+                NeedsReviewFilter.NeedsMerchant -> needsMerchantCount
+                NeedsReviewFilter.Duplicate -> duplicateCount
+                NeedsReviewFilter.ReadyToConfirm -> readyToConfirmCount
+            }
+            "${f.label} $count"
+        }
+        NeedsReviewFilter.values().forEach { f ->
+            AppFilterChip(
+                label = labelOf(f),
+                selected = f == selected,
+                onClick = { onSelect(f) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun NeedsReviewEmptyFilterCard(filter: NeedsReviewFilter) {
+    AppGlassCard(containerAlpha = 0.92f) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "没有符合 [${filter.label}] 的待确认账单",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Black,
+            )
+            Text(
+                text = "切换其他筛选可以看到剩余账单。当前不会自动判断，也不会自动入账。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

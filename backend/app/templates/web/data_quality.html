@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}数据体检 — 小票夹{% endblock %}
+{% block content %}
+<h1>数据体检</h1>
+<p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。所有数字均为只读统计，刷新本页可重新计算。</p>
+
+<div class="summary-grid">
+  <div class="summary-card primary">
+    <div class="summary-card-label">待确认总数</div>
+    <div class="summary-card-num">{{ summary.pending_total }}</div>
+    <div class="summary-card-hint">含缺金额 / 缺商家 / 疑似重复</div>
+  </div>
+  <div class="summary-card {{ 'is-warning' if summary.missing_amount > 0 else '' }}">
+    <div class="summary-card-label">缺金额</div>
+    <div class="summary-card-num">{{ summary.missing_amount }}</div>
+    <div class="summary-card-hint">需要补金额才能确认</div>
+  </div>
+  <div class="summary-card {{ 'is-warning' if summary.missing_merchant > 0 else '' }}">
+    <div class="summary-card-label">缺商家</div>
+    <div class="summary-card-num">{{ summary.missing_merchant }}</div>
+    <div class="summary-card-hint">分类规则匹配失效来源</div>
+  </div>
+  <div class="summary-card {{ 'is-warning' if summary.missing_category > 0 else '' }}">
+    <div class="summary-card-label">未分类</div>
+    <div class="summary-card-num">{{ summary.missing_category }}</div>
+    <div class="summary-card-hint">含已确认 + 待确认</div>
+  </div>
+  <div class="summary-card {{ 'is-danger' if summary.suspected_duplicates > 0 else '' }}">
+    <div class="summary-card-label">疑似重复</div>
+    <div class="summary-card-num">{{ summary.suspected_duplicates }}</div>
+    <div class="summary-card-hint">不会自动入账，等待人工裁决</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-card-label">已确认无图</div>
+    <div class="summary-card-num">{{ summary.confirmed_without_image }}</div>
+    <div class="summary-card-hint">原图被清理或从未上传</div>
+  </div>
+  <div class="summary-card is-positive">
+    <div class="summary-card-label">可一键确认</div>
+    <div class="summary-card-num">{{ summary.ready_to_confirm }}</div>
+    <div class="summary-card-hint">金额 + 商家齐 + 非重复</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-card-label">最久待确认</div>
+    <div class="summary-card-num">
+      {% if summary.oldest_pending_age_days is none %}—{% else %}{{ summary.oldest_pending_age_days }} 天{% endif %}
+    </div>
+    <div class="summary-card-hint">距今 ingest 时间</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>建议操作</h2>
+  <ul class="dq-action-list">
+    {% if summary.missing_amount > 0 %}
+    <li>
+      <strong>{{ summary.missing_amount }} 条缺金额：</strong>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_amount">去补金额 →</a>
+    </li>
+    {% endif %}
+    {% if summary.missing_merchant > 0 %}
+    <li>
+      <strong>{{ summary.missing_merchant }} 条缺商家：</strong>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_merchant">去补商家 →</a>
+    </li>
+    {% endif %}
+    {% if summary.suspected_duplicates > 0 %}
+    <li>
+      <strong>{{ summary.suspected_duplicates }} 条疑似重复：</strong>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=duplicate">去人工裁决 →</a>
+    </li>
+    {% endif %}
+    {% if summary.ready_to_confirm > 0 %}
+    <li>
+      <strong>{{ summary.ready_to_confirm }} 条可批量确认：</strong>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">去待确认 →</a>
+      <span class="hint">需手动勾选，slice 2 不自动确认</span>
+    </li>
+    {% endif %}
+    {% if summary.missing_category > 0 %}
+    <li>
+      <strong>{{ summary.missing_category }} 条未分类：</strong>
+      <a href="/web/rules?ledger_id={{ selected_ledger_id }}">新增分类规则 →</a>
+    </li>
+    {% endif %}
+    {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 %}
+    <li class="dq-empty">数据状态良好。继续保持。</li>
+    {% endif %}
+  </ul>
+  <p class="page-footer-hint">本页快照生成于 {{ summary.generated_at }}（UTC）。</p>
+</div>
+{% endblock %}

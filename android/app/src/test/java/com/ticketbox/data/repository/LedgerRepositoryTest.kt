@@ -229,6 +229,8 @@ private class StubApi(
     override suspend fun serverSettings(): ServerSettingsDto = unsupported()
     override suspend fun monthlyStats(month: String?, timezone: String?): MonthlyStatsDto = unsupported()
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
+    override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
+    override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = unsupported()
 }
 
 private class LedgerFakeSettingsStore : TicketboxSettingsStore {

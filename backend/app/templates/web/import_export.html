@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}导入 / 导出 — 小票夹{% endblock %}
+{% block content %}
+<h1>导入 / 导出</h1>
+
+{% if flash_message %}
+<div class="card flash">{{ flash_message }}</div>
+{% endif %}
+
+<section class="card">
+  <h2>导出 CSV</h2>
+  <p class="meta">
+    下载当前账本的<b>已确认</b>账单（UTF-8 含 BOM，可直接用 Excel 打开）。
+  </p>
+  <form method="get" action="/web/export.csv" class="form-inline">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <label>月份（可选）
+      <input type="month" name="month">
+    </label>
+    <label>分类（可选）
+      <input type="text" name="category" placeholder="如：餐饮">
+    </label>
+    <button type="submit" class="btn btn-primary">下载 CSV</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>导入 CSV</h2>
+  <p class="meta">
+    支持的列：<code>amount_yuan</code>（必填，可换成 <code>amount_cents</code>）、
+    <code>merchant</code>、<code>category</code>、<code>note</code>、
+    <code>expense_time</code>（ISO，可选）、<code>tags</code>。
+    单次最多 {{ max_rows }} 行；导入后会进入<a href="/web/pending{{ q }}">「待确认」</a>队列由你逐条复核。
+  </p>
+  <form method="post" action="/web/import/preview" enctype="multipart/form-data" class="form-stack">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <label>选择 CSV 文件
+      <input type="file" name="csv_file" accept=".csv,text/csv" required>
+    </label>
+    <button type="submit" class="btn btn-secondary">预览</button>
+  </form>
+</section>
+
+{% if preview is not none %}
+<section class="card">
+  <h2>预览结果</h2>
+  <p class="meta">
+    {{ filename }} · 共 {{ preview.rows|length }} 行 ·
+    <b>{{ preview.valid_count }}</b> 行可导入 ·
+    {% if preview.error_count %}<span class="status-chip warn">{{ preview.error_count }} 行有错误</span>{% endif %}
+    {% if preview.truncated %}<span class="status-chip warn">已截断到前 {{ max_rows }} 行</span>{% endif %}
+  </p>
+  <table class="transaction-table compact">
+    <thead>
+      <tr>
+        <th>行号</th>
+        <th>状态</th>
+        <th class="num">金额</th>
+        <th>商家</th>
+        <th>分类</th>
+        <th>时间</th>
+        <th>备注/错误</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in preview.rows %}
+      <tr>
+        <td>{{ row.line_number }}</td>
+        <td>
+          {% if row.is_valid %}<span class="status-chip ok">可导入</span>
+          {% else %}<span class="status-chip err">跳过</span>{% endif %}
+        </td>
+        <td class="num">{% if row.amount_display %}¥{{ row.amount_display }}{% else %}—{% endif %}</td>
+        <td>{{ row.merchant or '—' }}</td>
+        <td>{{ row.category }}</td>
+        <td>{{ row.expense_time_display or '—' }}</td>
+        <td>{% if row.error %}<span style="color:#c00">{{ row.error }}</span>{% else %}{{ row.note }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if preview.valid_count %}
+  <form method="post" action="/web/import/confirm" class="form-inline">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="payload" value="{{ confirm_payload|e }}">
+    <button type="submit" class="btn btn-primary">导入 {{ preview.valid_count }} 条到待确认</button>
+    <a href="/web/import{{ q }}" class="btn btn-secondary">放弃</a>
+  </form>
+  {% else %}
+  <p class="meta">没有可导入的行，请修正 CSV 后重新预览。</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
