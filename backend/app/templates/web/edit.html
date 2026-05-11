@@ -24,19 +24,19 @@
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <div class="form-row">
         <label>金额 (元)</label>
-        <input type="text" name="amount_yuan" value="{{ expense.amount_yuan }}" placeholder="例如 12.34" inputmode="decimal">
+        <input type="text" name="amount_yuan" value="{{ expense.amount_yuan }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
       </div>
       <div class="form-row">
         <label>商家</label>
-        <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家">
+        <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家" {% if not can_write %}disabled{% endif %}>
       </div>
       <div class="form-row">
         <label>分类</label>
-        <input type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮">
+        <input type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" {% if not can_write %}disabled{% endif %}>
       </div>
       <div class="form-row">
         <label>备注</label>
-        <textarea name="note" rows="3">{{ expense.note }}</textarea>
+        <textarea name="note" rows="3" {% if not can_write %}disabled{% endif %}>{{ expense.note }}</textarea>
       </div>
       <div class="form-row">
         <span class="meta">
@@ -52,11 +52,13 @@
         </span>
       </div>
       <div class="actions">
+        {% if can_write %}
         <button type="submit" class="btn btn-primary">保存</button>
         {% if expense.status == 'pending' %}
         <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="btn btn-success">入账</button>
         <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="btn btn-danger"
                 onclick="return confirm('忽略这笔账单？');">忽略</button>
+        {% endif %}
         {% endif %}
         <a href="/web/pending{{ q }}" class="btn btn-link">返回</a>
       </div>

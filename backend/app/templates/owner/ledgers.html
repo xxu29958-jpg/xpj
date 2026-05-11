@@ -39,7 +39,10 @@
         <td style="padding:8px 10px">{{ row.pending_count }}</td>
         <td style="padding:8px 10px">{{ row.confirmed_count }}</td>
         <td style="padding:8px 10px">{{ row.active_device_count }}</td>
-        <td style="padding:8px 10px"><a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">打开账本中心</a></td>
+        <td style="padding:8px 10px">
+          <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">打开账本</a>
+          <a href="/owner/ledgers/{{ row.ledger_id }}/members" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;margin-left:4px">成员/邀请</a>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

@@ -187,6 +187,10 @@ private class FakeApiService(
 
     override suspend fun switchLedger(ledgerId: String): com.ticketbox.data.remote.dto.LedgerSwitchResponseDto = unsupported()
 
+    override suspend fun acceptInvitation(
+        request: com.ticketbox.data.remote.dto.InvitationAcceptRequestDto,
+    ): com.ticketbox.data.remote.dto.InvitationAcceptResponseDto = unsupported()
+
     private fun confirmedExpenseDto(): ExpenseDto {
         return ExpenseDto(
             id = 9,

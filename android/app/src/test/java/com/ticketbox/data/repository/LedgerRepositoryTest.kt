@@ -11,6 +11,8 @@ import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
+import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
@@ -143,6 +145,101 @@ class LedgerRepositoryTest {
         assertFalse(failure.message.isNullOrBlank())
     }
 
+    @Test
+    fun acceptInvitationPersistsTokenIdentityAndWipesTargetCache() = runTest {
+        val newToken = "session-token-fresh"
+        val api = StubApi(
+            acceptResult = InvitationAcceptResponseDto(
+                sessionToken = newToken,
+                accountName = "二号",
+                ledgerId = "L_family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel 8",
+                role = "member",
+            ),
+            // refreshLedgers is called after accept; let it succeed with a tiny list.
+            listLedgersResult = LedgerListResponseDto(
+                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val dao = LedgerFakeDao().apply {
+            // Pre-seed cache for the target ledger so we can prove it gets wiped.
+            insertEntity(ledgerEntity(id = 1, ledgerId = "L_family", serverId = 100))
+            insertEntity(ledgerEntity(id = 2, ledgerId = "L_other", serverId = 200))
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = dao,
+        )
+
+        val summary = repo.acceptInvitation(
+            inviteToken = "  inv_PLAINTOKEN  ",
+            accountName = "二号",
+            deviceName = "Pixel 8",
+        ).getOrThrow()
+
+        assertEquals("L_family", summary.ledgerId)
+        assertEquals("member", summary.role)
+        // The plain token is trimmed before being sent to the server.
+        assertEquals("inv_PLAINTOKEN", api.acceptRequests.single().inviteToken)
+        assertEquals("android", api.acceptRequests.single().platform)
+        // Token rotated; identity captured; active ledger switched.
+        assertEquals(newToken, tokenStore.getToken())
+        assertEquals("L_family", store.activeLedgerId())
+        assertEquals("二号", store.capturedAccountName)
+        assertEquals("Pixel 8", store.capturedDeviceName)
+        assertEquals("member", store.capturedRole)
+        assertFalse(store.capturedBoundAt.isNullOrBlank())
+        // Target-ledger cache wiped; unrelated ledger preserved.
+        assertNull(dao.find(1))
+        assertNotNull(dao.find(2))
+    }
+
+    @Test
+    fun acceptInvitationRejectsBlankTokenWithChineseMessage() = runTest {
+        val repo = makeRepo()
+        val failure = repo.acceptInvitation(
+            inviteToken = "   ",
+            accountName = "二号",
+            deviceName = "Pixel",
+        ).exceptionOrNull()
+        assertNotNull(failure)
+        assertTrue(failure.message!!.contains("邀请明文"))
+    }
+
+    @Test
+    fun acceptInvitationServerErrorPreservesOldTokenAndBinding() = runTest {
+        val errorJson = "{\"error\":\"invalid_invite_token\",\"message\":\"邀请已过期或不存在\"}"
+        val api = StubApi(
+            acceptError = HttpException(
+                Response.error<Any>(400, errorJson.toResponseBody("application/json".toMediaType())),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val failure = repo.acceptInvitation(
+            inviteToken = "inv_BAD",
+            accountName = "二号",
+            deviceName = "Pixel",
+        ).exceptionOrNull()
+        assertNotNull(failure)
+        // Old token must NOT be overwritten on failure; identity not touched.
+        assertEquals("old-token", tokenStore.getToken())
+        assertNull(store.activeLedgerId())
+        assertNull(store.capturedAccountName)
+    }
+
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
@@ -178,6 +275,9 @@ private class StubApi(
     var createResult: LedgerDto? = null,
     var switchResult: LedgerSwitchResponseDto? = null,
     var switchError: Throwable? = null,
+    var acceptResult: InvitationAcceptResponseDto? = null,
+    var acceptError: Throwable? = null,
+    val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf(),
 ) : ApiService {
     override suspend fun listLedgers(): LedgerListResponseDto {
         return listLedgersResult ?: LedgerListResponseDto(ledgers = emptyList())
@@ -197,6 +297,12 @@ private class StubApi(
     override suspend fun switchLedger(ledgerId: String): LedgerSwitchResponseDto {
         switchError?.let { throw it }
         return switchResult ?: error("Unexpected switch call")
+    }
+
+    override suspend fun acceptInvitation(request: InvitationAcceptRequestDto): InvitationAcceptResponseDto {
+        acceptRequests += request
+        acceptError?.let { throw it }
+        return acceptResult ?: error("Unexpected accept call")
     }
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto = unsupported()
@@ -239,6 +345,10 @@ private class LedgerFakeSettingsStore : TicketboxSettingsStore {
     private var ledgerName: String? = null
     private var ledgersJson: String? = null
     private val ledgerIdFlow = MutableStateFlow<String?>(null)
+    var capturedAccountName: String? = null
+    var capturedDeviceName: String? = null
+    var capturedRole: String? = null
+    var capturedBoundAt: String? = null
     override fun serverUrl(): String? = serverUrl
     override fun appSkinKey(): String? = null
     override fun monthlyBudgetCents(): Long? = null
@@ -268,6 +378,10 @@ private class LedgerFakeSettingsStore : TicketboxSettingsStore {
     ) {
         ledgerIdFlow.value = ledgerId
         this.ledgerName = ledgerName
+        capturedAccountName = accountName
+        capturedDeviceName = deviceName
+        capturedRole = role
+        capturedBoundAt = boundAt
     }
     override fun saveLastConfirmedSyncAt(value: String) = Unit
     override fun clearLastConfirmedSyncAt() = Unit

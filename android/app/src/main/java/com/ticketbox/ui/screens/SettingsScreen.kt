@@ -27,6 +27,7 @@ import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.CategoryRulesScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
+import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
@@ -107,6 +108,7 @@ fun SettingsScreen(
             onOpenDataExport = { route = SettingsRoute.DataExport },
             onOpenSecurity = { route = SettingsRoute.SecurityPrivacy },
             onOpenLedgers = { route = SettingsRoute.Ledgers },
+            onOpenJoinFamilyLedger = { route = SettingsRoute.JoinFamilyLedger },
             onOpenAbout = { route = SettingsRoute.About },
         )
 
@@ -219,6 +221,25 @@ fun SettingsScreen(
             } else {
                 // Defensive: if the screen is wired without a repository
                 // (e.g. previews) just fall back to the root.
+                route = SettingsRoute.Root
+            }
+        }
+
+        SettingsRoute.JoinFamilyLedger -> {
+            val repo = ledgerRepository
+            if (repo != null) {
+                JoinFamilyLedgerScreen(
+                    repository = repo,
+                    onBack = { route = SettingsRoute.Root },
+                    onAccepted = {
+                        // After a successful accept, jump to the ledger
+                        // picker so the user can see the joined ledger as
+                        // active and other binding-aware screens refresh.
+                        onLedgerSwitched()
+                        route = SettingsRoute.Ledgers
+                    },
+                )
+            } else {
                 route = SettingsRoute.Root
             }
         }

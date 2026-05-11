@@ -18,5 +18,6 @@ sealed class SettingsRoute {
     data object DataExport : SettingsRoute()
     data object SecurityPrivacy : SettingsRoute()
     data object Ledgers : SettingsRoute()
+    data object JoinFamilyLedger : SettingsRoute()
     data object About : SettingsRoute()
 }

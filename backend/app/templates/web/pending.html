@@ -39,6 +39,7 @@
     <label class="bulk-check">
       <input type="checkbox" id="bulk-select-all"> 当前页全选
     </label>
+    {% if can_write %}
     <div class="bulk-actions">
       <input class="bulk-input" type="text" name="category" placeholder="批量分类（如：餐饮）">
       <button class="btn btn-secondary" type="submit" name="action" value="set_category">应用分类</button>
@@ -55,6 +56,9 @@
               formnovalidate
               onclick="return confirm('忽略所选账单？');">批量忽略</button>
     </div>
+    {% else %}
+    <div class="bulk-actions"><span class="meta">只读角色，无法批量操作。</span></div>
+    {% endif %}
   </div>
 
   <div class="card">
@@ -105,7 +109,7 @@
           </td>
           <td>
             <div class="actions">
-              <a class="btn btn-secondary" href="/web/expenses/{{ e.id }}/edit{{ q }}">编辑</a>
+              <a class="btn btn-secondary" href="/web/expenses/{{ e.id }}/edit{{ q }}">{% if can_write %}编辑{% else %}查看{% endif %}</a>
             </div>
           </td>
         </tr>

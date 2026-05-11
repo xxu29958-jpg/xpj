@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}成员管理 — {{ ledger_name or '账本' }} — 小票夹{% endblock %}
+{% block content %}
+<h1>成员管理 <span style="font-size:13px;color:#64748b;font-weight:normal">/ {{ ledger_name or ledger_id }}</span></h1>
+
+<p style="margin-top:-8px;margin-bottom:18px;font-size:13px;color:#64748b">
+  <a href="/owner/ledgers" style="color:#2563eb;text-decoration:none">← 返回账本列表</a>
+</p>
+
+<div class="alert" style="background:#dbeafe;border-left:4px solid #2563eb;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#1e3a8a">
+  v0.4-beta1：家庭账本邀请仅在<strong>本机管理后台</strong>生成，公网无法签发或读取邀请明文。
+  邀请明文只显示<strong>一次</strong>，请立即复制后通过私下渠道（微信/口头）转给家庭成员。
+  成员通过 Android 「设置 → 加入家庭账本」粘贴邀请明文即可加入。
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+{% if new_invitation_token %}
+<div class="card" style="background:#ecfdf5;border-left:4px solid #16a34a">
+  <h2 style="margin-top:0;color:#14532d">邀请已生成（仅显示一次）</h2>
+  <p style="font-size:13px;color:#166534;margin-bottom:6px">把下面这串邀请明文发给家庭成员。**关闭页面或刷新后无法再次查看。**</p>
+  <pre style="background:#ffffff;border:1px solid #86efac;padding:10px 12px;border-radius:4px;font-size:14px;word-break:break-all;user-select:all">{{ new_invitation_token }}</pre>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>当前成员</h2>
+  {% if not members %}
+  <p style="color:#64748b;font-size:13px">没有成员。</p>
+  {% else %}
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:#f1f5f9;text-align:left">
+        <th style="padding:8px 10px">显示名</th>
+        <th style="padding:8px 10px">角色</th>
+        <th style="padding:8px 10px">加入时间</th>
+        <th style="padding:8px 10px">状态</th>
+        <th style="padding:8px 10px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in members %}
+      <tr style="border-top:1px solid #e2e8f0">
+        <td style="padding:8px 10px">{{ m.account_name }}{% if m.is_self %} <span style="font-size:11px;color:#2563eb">（本人）</span>{% endif %}</td>
+        <td style="padding:8px 10px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;background:{% if m.role == 'owner' %}#fde68a{% elif m.role == 'member' %}#bfdbfe{% else %}#e2e8f0{% endif %};font-size:12px">{{ m.role }}</span></td>
+        <td style="padding:8px 10px">{{ m.created_at | owner_datetime }}</td>
+        <td style="padding:8px 10px">{% if m.disabled_at %}<span style="color:#b91c1c">已停用 {{ m.disabled_at | owner_datetime }}</span>{% else %}活跃{% endif %}</td>
+        <td style="padding:8px 10px">
+          {% if not m.disabled_at and m.role != 'owner' %}
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" style="display:inline" onsubmit="return confirm('确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。');">
+            <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">停用</button>
+          </form>
+          {% else %}<span style="color:#94a3b8;font-size:12px">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>发起邀请</h2>
+  <p style="color:#64748b;font-size:13px;margin-bottom:12px">
+    成员能编辑账单；只读不能修改任何内容。owner 角色只能通过创建新账本获得，无法通过邀请下发。
+  </p>
+  <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <label style="font-size:13px">角色：
+        <select name="role" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px">
+          <option value="member">成员（可写）</option>
+          <option value="viewer">只读</option>
+        </select>
+      </label>
+      <label style="font-size:13px">备注：
+        <input type="text" name="note" maxlength="80" placeholder="例：妈妈"
+               style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px;width:200px">
+      </label>
+      <label style="font-size:13px">有效期（天）：
+        <input type="number" name="ttl_days" min="1" max="30" value="7"
+               style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px;width:80px">
+      </label>
+      <button type="submit" class="btn btn-primary">生成邀请明文</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>已发出的邀请</h2>
+  {% if not invitations %}
+  <p style="color:#64748b;font-size:13px">还没有邀请记录。</p>
+  {% else %}
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:#f1f5f9;text-align:left">
+        <th style="padding:8px 10px">角色</th>
+        <th style="padding:8px 10px">备注</th>
+        <th style="padding:8px 10px">发出</th>
+        <th style="padding:8px 10px">有效期截止</th>
+        <th style="padding:8px 10px">状态</th>
+        <th style="padding:8px 10px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inv in invitations %}
+      <tr style="border-top:1px solid #e2e8f0">
+        <td style="padding:8px 10px">{{ inv.role }}</td>
+        <td style="padding:8px 10px">{{ inv.note or '—' }}</td>
+        <td style="padding:8px 10px">{{ inv.created_at | owner_datetime }}</td>
+        <td style="padding:8px 10px">{{ inv.expires_at | owner_datetime }}</td>
+        <td style="padding:8px 10px">
+          {% if inv.used_at %}<span style="color:#16a34a">已接受 by {{ inv.used_by_account_name or '?' }} {{ inv.used_at | owner_datetime }}</span>
+          {% elif inv.revoked_at %}<span style="color:#b91c1c">已撤销 {{ inv.revoked_at | owner_datetime }}</span>
+          {% else %}<span style="color:#2563eb">待接受</span>{% endif %}
+        </td>
+        <td style="padding:8px 10px">
+          {% if not inv.used_at and not inv.revoked_at %}
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" style="display:inline" onsubmit="return confirm('确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。');">
+            <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">撤销</button>
+          </form>
+          {% else %}<span style="color:#94a3b8;font-size:12px">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

@@ -36,6 +36,13 @@ ERROR_MESSAGES = {
     "ledger_name_required": "请填写账本名称。",
     "ledger_name_too_long": "账本名称过长，请控制在 60 个字以内。",
     "ledger_forbidden": "当前账号没有该账本的访问权限。",
+    "permission_denied": "当前角色无权进行此操作。",
+    "invitation_invalid": "邀请码无效、已过期或已被使用。",
+    "invitation_role_invalid": "邀请角色只能是成员或只读。",
+    "invitation_note_too_long": "备注最多 80 个字。",
+    "member_not_found": "成员不存在或已停用。",
+    "member_cannot_disable_self": "不能停用账本的最后一位 owner。",
+    "member_cannot_disable_owner": "不能停用账本的 owner。",
 }
 
 

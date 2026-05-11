@@ -40,6 +40,7 @@
       </tbody>
     </table>
     <div class="form-inline">
+      {% if can_write %}
       <label>批量设置为
         <select name="category" required>
           <option value="">请选择分类…</option>
@@ -49,6 +50,7 @@
         </select>
       </label>
       <button type="submit" class="btn btn-primary">应用到所选</button>
+      {% else %}<span class="meta">只读角色无法批量改写分类。</span>{% endif %}
       <a href="/web/categories{{ q }}" class="btn btn-secondary">返回分类账本</a>
     </div>
   </form>

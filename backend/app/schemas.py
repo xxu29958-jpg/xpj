@@ -70,6 +70,64 @@ class LedgerSwitchResponse(BaseModel):
     device_name: str
 
 
+# v0.4-beta1 — family ledger invitations & members
+class InvitationCreateRequest(BaseModel):
+    role: str = Field(min_length=1, max_length=32)
+    note: str | None = Field(default=None, max_length=80)
+    ttl_days: int = Field(default=7, ge=1, le=30)
+
+
+class InvitationSummaryResponse(BaseModel):
+    public_id: str
+    ledger_id: str
+    role: str
+    note: str | None = None
+    created_at: str | None = None
+    expires_at: str | None = None
+    used_at: str | None = None
+    revoked_at: str | None = None
+    used_by_account_name: str | None = None
+
+
+class InvitationCreateResponse(BaseModel):
+    invite_token: str
+    invitation: InvitationSummaryResponse
+
+
+class InvitationListResponse(BaseModel):
+    invitations: list[InvitationSummaryResponse]
+
+
+class InvitationAcceptRequest(BaseModel):
+    invite_token: str = Field(min_length=1, max_length=128)
+    account_name: str = Field(min_length=1, max_length=120)
+    device_name: str = Field(min_length=1, max_length=120)
+    platform: str = Field(min_length=1, max_length=32)
+
+
+class InvitationAcceptResponse(BaseModel):
+    session_token: str
+    account_name: str
+    ledger_id: str
+    ledger_name: str
+    device_name: str
+    role: str
+
+
+class LedgerMemberResponse(BaseModel):
+    member_id: int
+    account_public_id: str
+    account_name: str
+    role: str
+    created_at: str | None = None
+    disabled_at: str | None = None
+    is_self: bool
+
+
+class LedgerMemberListResponse(BaseModel):
+    members: list[LedgerMemberResponse]
+
+
 class BootstrapOwnerRequest(BaseModel):
     account_name: str | None = None
     ledger_name: str | None = None

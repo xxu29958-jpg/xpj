@@ -9,6 +9,7 @@
 {% endif %}
 
 <div class="grid two-col">
+  {% if can_write %}
   <section class="card">
     <h2>新增规则</h2>
     <form method="post" action="/web/rules/create" class="form-stack">
@@ -25,6 +26,7 @@
       <button type="submit" class="btn btn-primary">添加规则</button>
     </form>
   </section>
+  {% endif %}
 
   <section class="card">
     <h2>预览匹配</h2>
@@ -65,6 +67,7 @@
 <section class="card">
   <div class="card-header">
     <h2>当前规则（{{ rules|length }} 条）</h2>
+    {% if can_write %}
     <form method="post" action="/web/rules/apply-pending" style="display:inline">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <button type="submit" class="btn btn-primary"
@@ -72,6 +75,7 @@
         一键应用到待确认
       </button>
     </form>
+    {% endif %}
   </div>
   {% if rules %}
   <table class="transaction-table">
@@ -95,6 +99,7 @@
           {% else %}<span class="status-chip muted">停用</span>{% endif %}
         </td>
         <td>
+          {% if can_write %}
           <form method="post" action="/web/rules/{{ r.id }}/toggle" style="display:inline">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <button type="submit" class="btn btn-secondary">
@@ -106,6 +111,7 @@
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <button type="submit" class="btn btn-danger">删除</button>
           </form>
+          {% else %}<span class="meta">—</span>{% endif %}
         </td>
       </tr>
     {% endfor %}

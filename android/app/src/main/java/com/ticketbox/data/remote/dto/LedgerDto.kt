@@ -40,3 +40,35 @@ data class LedgerSwitchResponseDto(
     @param:Json(name = "device_name")
     val deviceName: String,
 )
+
+/**
+ * v0.4-beta1 family-ledger invitation accept request.
+ *
+ * Posted to ``/api/invitations/accept`` **without** an Authorization header
+ * — the server creates a brand-new Account + Device + LedgerMember row and
+ * returns a freshly minted session token that the app must persist before
+ * any further calls.
+ */
+data class InvitationAcceptRequestDto(
+    @param:Json(name = "invite_token")
+    val inviteToken: String,
+    @param:Json(name = "account_name")
+    val accountName: String,
+    @param:Json(name = "device_name")
+    val deviceName: String,
+    val platform: String = "android",
+)
+
+data class InvitationAcceptResponseDto(
+    @param:Json(name = "session_token")
+    val sessionToken: String,
+    @param:Json(name = "account_name")
+    val accountName: String,
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
+    @param:Json(name = "ledger_name")
+    val ledgerName: String,
+    @param:Json(name = "device_name")
+    val deviceName: String,
+    val role: String,
+)

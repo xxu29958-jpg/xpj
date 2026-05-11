@@ -95,6 +95,19 @@ body {
 }
 .ledger-pill.is-default { background: var(--pill-default-bg); color: var(--pill-default-fg); }
 .ledger-pill.is-secondary { background: var(--pill-secondary-bg); color: var(--pill-secondary-fg); }
+.ledger-role-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #e2e8f0;
+    color: #334155;
+}
+.ledger-role-chip.ledger-role-owner { background: #fde68a; color: #78350f; }
+.ledger-role-chip.ledger-role-member { background: #bfdbfe; color: #1e3a8a; }
+.ledger-role-chip.ledger-role-viewer { background: #e2e8f0; color: #475569; }
 
 .page { max-width: 1180px; margin: 24px auto; padding: 0 16px 40px; }
 

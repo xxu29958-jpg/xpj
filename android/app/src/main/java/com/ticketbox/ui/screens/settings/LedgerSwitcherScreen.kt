@@ -1,10 +1,14 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material3.Button
@@ -21,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.LedgerSummary
@@ -92,10 +97,17 @@ fun LedgerSwitcherScreen(
                                     text = if (ledger.isDefault) ledger.name + "（默认）" else ledger.name,
                                     style = MaterialTheme.typography.titleSmall,
                                 )
-                                Text(
-                                    text = "${ledger.role}${if (isActive) " · 当前" else ""}",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                    LedgerRoleChip(role = ledger.role)
+                                    if (isActive) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            text = "当前",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
                             if (!isActive) {
                                 TextButton(onClick = {
@@ -183,5 +195,31 @@ fun LedgerSwitcherScreen(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+    }
+}
+
+/**
+ * v0.4-beta1 role chip. Mirrors the colour palette used by the /web role
+ * badge: owner→amber, member→blue, viewer→grey. Unknown roles fall back to
+ * the surface-variant tone so the UI never drops information silently.
+ */
+@Composable
+private fun LedgerRoleChip(role: String) {
+    val (label, container, content) = when (role) {
+        "owner" -> Triple("所有者", Color(0xFFFFE2A0), Color(0xFF5A3B00))
+        "member" -> Triple("成员（可写）", Color(0xFFC9DCFF), Color(0xFF1F3D7A))
+        "viewer" -> Triple("只读", Color(0xFFE2E2E6), Color(0xFF40404A))
+        else -> Triple(role, Color(0xFFE2E2E6), Color(0xFF40404A))
+    }
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .background(container, RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
+        )
     }
 }

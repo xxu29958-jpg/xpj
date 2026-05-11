@@ -9,6 +9,8 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
+import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
+import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
@@ -153,4 +155,9 @@ interface ApiService {
 
     @POST("api/ledgers/{ledgerId}/switch")
     suspend fun switchLedger(@Path("ledgerId") ledgerId: String): LedgerSwitchResponseDto
+
+    @POST("api/invitations/accept")
+    suspend fun acceptInvitation(
+        @Body request: InvitationAcceptRequestDto,
+    ): InvitationAcceptResponseDto
 }

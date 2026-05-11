@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.ErrorDto
+import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.Dispatchers
@@ -92,6 +93,61 @@ class LedgerRepository(
         // produces a clean view.
         expenseDao.clearForLedger(response.ledger.ledgerId)
         response.ledger.toSummary()
+    }
+
+    /**
+     * v0.4-beta1: accept a family-ledger invitation.
+     *
+     * Posts the plain ``invite_token`` to the public
+     * ``/api/invitations/accept`` endpoint; on success the server creates a
+     * brand-new Account + Device + LedgerMember row and issues a session
+     * token. The caller MUST already be unbound or willing to overwrite the
+     * current binding — accept replaces the active session token, identity,
+     * and active ledger. The local confirmed-cache for the joined ledger is
+     * wiped so the next sync produces a clean view.
+     */
+    suspend fun acceptInvitation(
+        inviteToken: String,
+        accountName: String,
+        deviceName: String,
+    ): Result<LedgerSummary> = wrap {
+        val cleanToken = inviteToken.trim()
+        require(cleanToken.isNotEmpty()) { "请粘贴邀请明文。" }
+        val cleanAccount = accountName.trim()
+        require(cleanAccount.isNotEmpty()) { "请填写你的显示名。" }
+        require(cleanAccount.length <= 120) { "显示名最多 120 个字。" }
+        val cleanDevice = deviceName.trim()
+        require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
+        require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
+        val response = api().acceptInvitation(
+            InvitationAcceptRequestDto(
+                inviteToken = cleanToken,
+                accountName = cleanAccount,
+                deviceName = cleanDevice,
+            ),
+        )
+        // Persist the new token *first*; any prior token is now stale.
+        tokenStore.saveToken(response.sessionToken)
+        settingsStore.saveIdentity(
+            accountName = response.accountName,
+            ledgerId = response.ledgerId,
+            ledgerName = response.ledgerName,
+            deviceName = response.deviceName,
+            role = response.role,
+            boundAt = java.time.Instant.now().toString(),
+        )
+        // Wipe stale cache so the new ledger view starts clean.
+        expenseDao.clearForLedger(response.ledgerId)
+        // Refresh the ledger list so the picker shows the joined ledger.
+        runCatching { refreshLedgers() }
+        LedgerSummary(
+            ledgerId = response.ledgerId,
+            name = response.ledgerName,
+            role = response.role,
+            isDefault = false,
+            createdAt = null,
+            archivedAt = null,
+        )
     }
 
     private suspend fun <T> wrap(block: suspend () -> T): Result<T> {

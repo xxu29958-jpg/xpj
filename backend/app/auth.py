@@ -63,6 +63,31 @@ def get_current_owner_or_admin_context(
     return auth
 
 
+def get_current_writer_context(
+    auth: AuthContext = Depends(get_current_app_context),
+) -> AuthContext:
+    """v0.4-beta1: app token with write permission (owner/member). Viewer 403."""
+    from app.services import permission_service
+
+    permission_service.require_write_expense(auth)
+    return auth
+
+
+def get_current_owner_app_context(
+    auth: AuthContext = Depends(get_current_app_context),
+) -> AuthContext:
+    """v0.4-beta1: app token owned by the ledger's owner role.
+
+    Unlike ``get_current_owner_or_admin_context`` this rejects admin-scoped
+    tokens — used for endpoints (e.g. invitation create) that must be
+    initiated by the actual owner account through their app session.
+    """
+    from app.services import permission_service
+
+    permission_service.require_manage_members(auth)
+    return auth
+
+
 def get_removed_upload_context(upload_token: str | None = Header(default=None, alias="Upload-Token")) -> AuthContext:
     if is_legacy_upload_token(upload_token):
         _raise_legacy_upload_removed()

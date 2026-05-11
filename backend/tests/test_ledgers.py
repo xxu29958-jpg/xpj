@@ -198,9 +198,9 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     assert "灰度用户1" in listing.text
     # Console shows the v0.4-alpha2 advisory banner.
     assert "v0.4-alpha2" in listing.text
-    # Each ledger row exposes a "打开账本中心" link carrying its ledger_id.
+    # Each ledger row exposes a "打开账本" link carrying its ledger_id.
     assert 'href="/web?ledger_id=owner"' in listing.text
-    assert "打开账本中心" in listing.text
+    assert "打开账本" in listing.text
 
     create = local_client.post("/owner/ledgers", data={"name": "家庭账本"})
     assert create.status_code in (200, 303)

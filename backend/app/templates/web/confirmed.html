@@ -49,7 +49,7 @@
         <td class="meta">{{ e.expense_time or e.created_at }}</td>
         <td class="meta">{{ e.source_label }}</td>
         <td><span class="status-chip ok">已确认</span></td>
-        <td><a class="btn btn-link" href="/web/expenses/{{ e.id }}/edit{{ q }}">编辑</a></td>
+        <td><a class="btn btn-link" href="/web/expenses/{{ e.id }}/edit{{ q }}">{% if can_write %}编辑{% else %}查看{% endif %}</a></td>
       </tr>
     {% endfor %}
     </tbody>

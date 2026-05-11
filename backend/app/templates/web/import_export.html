@@ -26,6 +26,7 @@
 
 <section class="card">
   <h2>导入 CSV</h2>
+  {% if can_write %}
   <p class="meta">
     支持的列：<code>amount_yuan</code>（必填，可换成 <code>amount_cents</code>）、
     <code>merchant</code>、<code>category</code>、<code>note</code>、
@@ -39,6 +40,9 @@
     </label>
     <button type="submit" class="btn btn-secondary">预览</button>
   </form>
+  {% else %}
+  <p class="meta">只读角色无法导入。</p>
+  {% endif %}
 </section>
 
 {% if preview is not none %}

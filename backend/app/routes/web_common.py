@@ -122,6 +122,8 @@ def _base_ctx(
         "selected_ledger_name": selected.name,
         "selected_ledger_role": selected.role,
         "selected_ledger_is_default": selected.is_default,
+        "is_viewer": selected.role == "viewer",
+        "can_write": selected.role in ("owner", "member"),
     }
 
 

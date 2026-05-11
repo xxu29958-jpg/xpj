@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context
+from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     CategoriesResponse,
@@ -50,7 +50,7 @@ def get_pending_expenses(
 @router.post("/manual", response_model=ExpenseResponse)
 def post_manual_expense(
     payload: ExpenseManualCreateRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return create_manual_expense(db, payload, auth.tenant_id)
@@ -154,7 +154,7 @@ def get_expense_thumbnail(
 def patch_expense(
     expense_id: int,
     payload: ExpenseUpdateRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return update_expense(db, expense_id, auth.tenant_id, payload)
@@ -163,7 +163,7 @@ def patch_expense(
 @router.post("/{expense_id}/confirm", response_model=ExpenseResponse)
 def post_confirm_expense(
     expense_id: int,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return confirm_expense(db, expense_id, auth.tenant_id)
@@ -172,7 +172,7 @@ def post_confirm_expense(
 @router.post("/{expense_id}/reject", response_model=ExpenseResponse)
 def post_reject_expense(
     expense_id: int,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return reject_expense(db, expense_id, auth.tenant_id)
@@ -181,7 +181,7 @@ def post_reject_expense(
 @router.post("/{expense_id}/ocr/retry", response_model=ExpenseResponse)
 def post_retry_ocr(
     expense_id: int,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return retry_expense_ocr(db, expense_id, auth.tenant_id)
@@ -191,7 +191,7 @@ def post_retry_ocr(
 def post_recognize_text(
     expense_id: int,
     payload: ExpenseRecognizeTextRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return recognize_expense_text(db, expense_id, auth.tenant_id, payload)
@@ -200,7 +200,7 @@ def post_recognize_text(
 @router.post("/{expense_id}/mark-not-duplicate", response_model=ExpenseResponse)
 def post_mark_not_duplicate(
     expense_id: int,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return mark_expense_not_duplicate(db, expense_id, auth.tenant_id)

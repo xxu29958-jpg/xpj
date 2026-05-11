@@ -105,6 +105,42 @@ class PairingCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
+class Invitation(Base):
+    """v0.4-beta1: family ledger invitation token.
+
+    Owner mints a one-time token bound to a (ledger_id, role). Plain token
+    is returned to owner once and never persisted; only ``token_hash``
+    (sha256 of the plain token) is stored. ``role`` must be ``member`` or
+    ``viewer`` — owner role is granted only via initial ledger creation or
+    explicit owner transfer (not implemented in v0.4-beta1).
+    """
+
+    __tablename__ = "invitations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    ledger_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_by_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("accounts.id"), nullable=False, index=True
+    )
+    note: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    used_by_account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("accounts.id"), nullable=True, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Expense(Base):
     __tablename__ = "expenses"
 
