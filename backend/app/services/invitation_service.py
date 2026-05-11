@@ -335,3 +335,45 @@ def disable_member(
         disabled_at=to_iso(member.disabled_at),
         is_self=False,
     )
+
+
+def update_member_role(
+    db: Session,
+    *,
+    ledger_id: str,
+    member_id: int,
+    requester_account_id: int,
+    role: str,
+) -> MemberSummary:
+    """Change an active non-owner member between member/viewer.
+
+    Owner transfer remains out of scope. Existing auth tokens pick up the new
+    role on the next request because ``AuthContext.role`` is read from
+    ``LedgerMember`` during token authentication.
+    """
+
+    if not permission_service.is_invitable_role(role):
+        raise AppError("member_role_invalid", status_code=422)
+    member = db.scalar(
+        select(LedgerMember)
+        .where(LedgerMember.id == member_id)
+        .where(LedgerMember.ledger_id == ledger_id)
+        .limit(1)
+    )
+    if member is None or member.disabled_at is not None:
+        raise AppError("member_not_found", status_code=404)
+    if member.role == "owner":
+        raise AppError("member_cannot_change_owner_role", status_code=409)
+    member.role = role
+    db.commit()
+    db.refresh(member)
+    acc = db.get(Account, member.account_id)
+    return MemberSummary(
+        member_id=member.id,
+        account_public_id=acc.public_id if acc else "",
+        account_name=acc.display_name if acc else "",
+        role=member.role,
+        created_at=to_iso(member.created_at),
+        disabled_at=to_iso(member.disabled_at),
+        is_self=(member.account_id == requester_account_id),
+    )

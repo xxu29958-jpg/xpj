@@ -5,6 +5,7 @@
 * ``POST /api/ledgers/{ledger_id}/invitations/{public_id}/revoke`` — owner
 * ``POST /api/invitations/accept`` — public; invitee claims token
 * ``GET  /api/ledgers/{ledger_id}/members`` — any member of the ledger
+* ``POST /api/ledgers/{ledger_id}/members/{member_id}/role`` — owner changes member/viewer
 * ``POST /api/ledgers/{ledger_id}/members/{member_id}/disable`` — owner
 
 All authenticated routes use ``get_current_app_context`` and enforce role
@@ -30,6 +31,7 @@ from app.schemas import (
     InvitationSummaryResponse,
     LedgerMemberListResponse,
     LedgerMemberResponse,
+    LedgerMemberRoleUpdateRequest,
 )
 from app.services import permission_service
 from app.services.invitation_service import (
@@ -41,6 +43,7 @@ from app.services.invitation_service import (
     list_invitations,
     list_members,
     revoke_invitation,
+    update_member_role,
 )
 from app.tenants import AuthContext
 
@@ -180,6 +183,29 @@ def list_members_endpoint(
     return LedgerMemberListResponse(
         members=[_to_member_response(s) for s in summaries]
     )
+
+
+@router.post(
+    "/api/ledgers/{ledger_id}/members/{member_id}/role",
+    response_model=LedgerMemberResponse,
+)
+def update_member_role_endpoint(
+    ledger_id: str,
+    member_id: int,
+    payload: LedgerMemberRoleUpdateRequest,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> LedgerMemberResponse:
+    _require_same_ledger(auth, ledger_id)
+    permission_service.require_manage_members(auth)
+    summary = update_member_role(
+        db,
+        ledger_id=ledger_id,
+        member_id=member_id,
+        requester_account_id=auth.account_id,
+        role=payload.role,
+    )
+    return _to_member_response(summary)
 
 
 @router.post(

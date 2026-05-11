@@ -316,6 +316,76 @@ def test_member_cannot_disable_other_member(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
+def test_owner_can_change_member_between_writer_and_viewer(client: TestClient) -> None:
+    family_id = _create_family_ledger(client)
+    family_app = _switch_to(client, family_id, app_headers())
+    member_token = _make_role_token(client, family_id, family_app, role="member")
+
+    members = client.get(
+        f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
+    ).json()["members"]
+    member_id = next(m for m in members if m["role"] == "member")["member_id"]
+
+    to_viewer = client.post(
+        f"/api/ledgers/{family_id}/members/{member_id}/role",
+        headers=_bearer(family_app),
+        json={"role": "viewer"},
+    )
+    assert to_viewer.status_code == 200, to_viewer.json()
+    assert to_viewer.json()["role"] == "viewer"
+
+    # Existing token sees the new role on its next authenticated request.
+    check_viewer = client.get("/api/auth/check", headers=_bearer(member_token))
+    assert check_viewer.status_code == 200
+    assert check_viewer.json()["role"] == "viewer"
+    blocked_write = client.post(
+        "/api/expenses/manual",
+        headers=_bearer(member_token),
+        json={"amount_cents": 1234, "merchant": "X", "category": "其他"},
+    )
+    assert blocked_write.status_code == 403
+
+    back_to_member = client.post(
+        f"/api/ledgers/{family_id}/members/{member_id}/role",
+        headers=_bearer(family_app),
+        json={"role": "member"},
+    )
+    assert back_to_member.status_code == 200
+    assert back_to_member.json()["role"] == "member"
+    allowed_write = client.post(
+        "/api/expenses/manual",
+        headers=_bearer(member_token),
+        json={"amount_cents": 1234, "merchant": "X", "category": "其他"},
+    )
+    assert allowed_write.status_code == 200, allowed_write.json()
+
+
+def test_member_cannot_change_roles_and_owner_role_is_fixed(client: TestClient) -> None:
+    family_id = _create_family_ledger(client)
+    family_app = _switch_to(client, family_id, app_headers())
+    member_token = _make_role_token(client, family_id, family_app, role="member")
+    members = client.get(
+        f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
+    ).json()["members"]
+    owner_id = next(m for m in members if m["role"] == "owner")["member_id"]
+    member_id = next(m for m in members if m["role"] == "member")["member_id"]
+
+    denied = client.post(
+        f"/api/ledgers/{family_id}/members/{member_id}/role",
+        headers=_bearer(member_token),
+        json={"role": "viewer"},
+    )
+    assert denied.status_code == 403
+
+    owner_change = client.post(
+        f"/api/ledgers/{family_id}/members/{owner_id}/role",
+        headers=_bearer(family_app),
+        json={"role": "viewer"},
+    )
+    assert owner_change.status_code == 409
+    assert owner_change.json()["error"] == "member_cannot_change_owner_role"
+
+
 # ---------------------------------------------------------------------------
 # T11 — disabling member revokes their token
 # ---------------------------------------------------------------------------

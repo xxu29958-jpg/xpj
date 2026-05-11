@@ -13,7 +13,7 @@
 |---|---|---|
 | Backend bytecode | `python -m compileall backend\app` | ✅ OK |
 | Backend lint | `ruff check backend` | ✅ All checks passed |
-| Backend tests | `pytest backend\tests` | ✅ 322 passed in 320.70s |
+| Backend tests | `pytest backend\tests` | ✅ 325 passed in 324.65s |
 | 文本编码 | `scripts\check_text_encoding.ps1` | ✅ UTF-8 / BOM 正常 |
 | 全量入口 | `scripts\verify_project.ps1` | ✅ pass |
 | Android unit | `:app:testGrayDebugUnitTest` | ✅ BUILD SUCCESSFUL |
@@ -61,6 +61,8 @@
 
 `pytest` 总数从 alpha3-rc1 的 292 增长到 **322**（+30）。
 
+2026-05-12 household hardening 后，新增 member/viewer 角色调整 API、Owner Console 表单和 3 个后端测试，`pytest` 总数增长到 **325**。
+
 ---
 
 ## 5. Android 端增量
@@ -89,7 +91,7 @@
 | Id | 说明 | 计划 |
 |---|---|---|
 | L01 | 邀请未提供二维码/分享链接 | 沿用手工传递；v0.5 再考虑 |
-| L02 | 没有 Owner Console 端的角色升降级 UI | 通过 `/api/admin/*` 直接操作，待 v0.5 |
+| L02 | Owner Console 端的 member/viewer 角色调整 | 已作为 beta1 后续 hardening 补齐；owner 转让仍待 v0.5 |
 | L03 | Member 无法在 App 内查看其他成员清单 | 仅 Owner Console 可见，按权限模型预期 |
 | L04 | 接受邀请会替换本机当前绑定 | Runbook §4 提示用户先备份；后续考虑“多身份并存” |
 

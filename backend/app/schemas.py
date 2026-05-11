@@ -128,6 +128,10 @@ class LedgerMemberListResponse(BaseModel):
     members: list[LedgerMemberResponse]
 
 
+class LedgerMemberRoleUpdateRequest(BaseModel):
+    role: str = Field(min_length=1, max_length=32)
+
+
 class BootstrapOwnerRequest(BaseModel):
     account_name: str | None = None
     ledger_name: str | None = None

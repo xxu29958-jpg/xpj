@@ -46,6 +46,7 @@
 | **H Android** | T19 加入家庭账本入口 + T20 当前角色展示 + T21 viewer 隐藏写 UI |
 | **I 测试** | T22 后端 12+ 权限测试 + T23 Android 绑定测试 + T24 no-secret-leak 扩展 |
 | **J 文档** | T25 Runbook + T26 截屏索引 + T27 BETA1_REPORT |
+| **K hardening** | T28 member/viewer 角色调整 API + Owner Console 表单 |
 
 ## 4. PR 拆分
 
@@ -106,7 +107,7 @@ class Invitation(Base):
     token_hash: str 64 unique (sha256 of plain token)
     role: str ("member" | "viewer", CHECK 表达式)
     created_by_account_id: int FK accounts.id
-    note: str | None 60 chars
+    note: str | None 80 chars
     expires_at: datetime (default now+7d, index)
     created_at: datetime
     used_at: datetime | None
@@ -177,6 +178,5 @@ public:  check_public_boundary.ps1 -BaseUrl https://api.zen70.cn (35/35)
 
 - Owner 转让
 - 邀请二维码生成 + Android 扫码
-- 成员角色变更（无需 disable+重邀）
 - 家庭"共同空间"信息流（不仅是账单）
 - 多 owner 模式（co-owner）

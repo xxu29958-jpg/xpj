@@ -122,6 +122,53 @@ def test_disable_member_endpoint(local_client: TestClient) -> None:
     assert "成员管理" in resp.text
 
 
+def test_role_update_form_changes_member_role(local_client: TestClient) -> None:
+    lid = _create_ledger(local_client)
+    invite_resp = local_client.post(
+        f"/owner/ledgers/{lid}/invitations",
+        data={"role": "member", "note": "爸爸", "ttl_days": "7"},
+    )
+    assert invite_resp.status_code == 200
+    invite = re.findall(r"inv_[A-Za-z0-9_\-]{20,}", invite_resp.text)[0]
+
+    accept = local_client.post(
+        "/api/invitations/accept",
+        json={
+            "invite_token": invite,
+            "account_name": "爸爸",
+            "device_name": "Dad-Phone",
+            "platform": "android",
+        },
+    )
+    assert accept.status_code == 200
+
+    from app.database import SessionLocal
+    from app.models import LedgerMember
+    from sqlalchemy import select
+
+    with SessionLocal() as db:
+        member = db.scalar(
+            select(LedgerMember)
+            .where(LedgerMember.ledger_id == lid)
+            .where(LedgerMember.role == "member")
+            .limit(1)
+        )
+        assert member is not None
+        member_id = member.id
+
+    role_change = local_client.post(
+        f"/owner/ledgers/{lid}/members/{member_id}/role",
+        data={"role": "viewer"},
+        follow_redirects=False,
+    )
+    assert role_change.status_code == 303
+
+    page = local_client.get(f"/owner/ledgers/{lid}/members")
+    assert page.status_code == 200
+    assert "爸爸" in page.text
+    assert "viewer" in page.text
+
+
 def test_ledgers_page_links_to_members(local_client: TestClient) -> None:
     lid = _create_ledger(local_client)
     resp = local_client.get("/owner/ledgers")

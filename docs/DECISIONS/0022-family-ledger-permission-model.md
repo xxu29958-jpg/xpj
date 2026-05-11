@@ -2,6 +2,7 @@
 
 - 状态：accepted
 - 日期：2026-05-11
+- 更新：2026-05-12，v0.4-beta1 hardening 已补 member/viewer 角色调整；owner 转让仍留到 v0.5。
 - 上下文：v0.4-beta1 家庭账本基础（branch `v0.4-beta1-family-ledger-foundation`）
 - 决策人：项目维护者
 
@@ -59,7 +60,7 @@ v0.4-alpha 已落地多账本（`ledger_id` 隔离 + `LedgerMember(role, disable
 - `role` (`member` / `viewer`，不能创建 `owner` 邀请——owner 必须显式转让)
 - `created_by_account_id` FK
 - `created_at` / `expires_at` / `used_at` / `used_by_account_id` / `revoked_at`
-- `note` (owner 标注，可选，最多 60 字)
+- `note` (owner 标注，可选，最多 80 字)
 
 **约束**：
 - 邀请单次使用：`used_at IS NULL AND revoked_at IS NULL AND expires_at > now()` 才有效
@@ -98,10 +99,10 @@ v0.4-alpha 已落地多账本（`ledger_id` 隔离 + `LedgerMember(role, disable
 - 所有写路径必须 `permission_service.require(...)` 显式校验。
 - 旧测试如果绕过 AuthContext 直接 mock 出 `role="owner"`，行为不变。
 - v0.5/v0.6 可在此基础上加邀请 QR 码 / 二维码扫描 / Owner Console 邀请审计。
+- v0.4-beta1 hardening 已允许 owner 将 active 非 owner 成员在 `member` / `viewer` 间调整；该能力不等同于 owner 转让，也不引入 co-owner。
 
 ## 不做
 
 - 不做邀请二维码生成（明文 token + 复制按钮够用）。
 - 不做邀请通知/Email/SMS（明文 token 由 owner 线下传递）。
-- 不做角色变更（member → viewer / viewer → member），第一版只能 disable 后重新邀请。
 - 不做 owner 转让（v0.5 候选）。

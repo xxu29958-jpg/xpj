@@ -265,6 +265,67 @@ Android 首次绑定后校验 session token 使用。
 
 - `forbidden` / `请选择一个有权限的账本`：调用方对该账本无成员关系。
 
+### POST /api/ledgers/{ledger_id}/invitations
+
+> v0.4-beta1 起提供。当前账本 owner 创建家庭账本邀请，返回的 `invite_token` 明文只显示一次。
+
+请求头：
+
+```http
+Authorization: Bearer <owner_session_token>
+```
+
+请求体：
+
+```json
+{
+  "role": "member",
+  "note": "妈妈",
+  "ttl_days": 7
+}
+```
+
+`role` 只能是 `member` 或 `viewer`，不能通过邀请创建 owner。
+
+### POST /api/invitations/accept
+
+> v0.4-beta1 起提供。被邀请设备接受邀请，创建独立 Account / Device / LedgerMember，并签发新的 app session token。
+
+请求体：
+
+```json
+{
+  "invite_token": "inv_xxxxxx",
+  "account_name": "妈妈",
+  "device_name": "Pixel 8",
+  "platform": "android"
+}
+```
+
+返回结构与 pairing 类似，包含 `session_token`、`ledger_id`、`ledger_name`、`role`。
+
+### GET /api/ledgers/{ledger_id}/members
+
+> v0.4-beta1 起提供。当前账本任意活跃成员可查看成员列表。
+
+### POST /api/ledgers/{ledger_id}/members/{member_id}/role
+
+> v0.5 household hardening 起提供。当前账本 owner 可把活跃非 owner 成员在 `member` / `viewer` 之间调整。owner 转让不走此接口。
+
+请求体：
+
+```json
+{
+  "role": "viewer"
+}
+```
+
+角色调整不改 token 明文、不重新签发 token；服务端在每次鉴权时从 `LedgerMember.role` 读取最新角色。
+
+### POST /api/ledgers/{ledger_id}/members/{member_id}/disable
+
+> v0.4-beta1 起提供。当前账本 owner 停用非 owner 成员，并吊销该成员在此账本下的活跃 token。
+
 ### POST /api/bootstrap/owner
 
 Owner 初始化，仅首次可用，并且只接受后端本机 loopback 请求。公网请求会返回 `invalid_token`（403）。

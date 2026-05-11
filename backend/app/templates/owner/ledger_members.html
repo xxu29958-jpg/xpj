@@ -44,7 +44,18 @@
       {% for m in members %}
       <tr style="border-top:1px solid #e2e8f0">
         <td style="padding:8px 10px">{{ m.account_name }}{% if m.is_self %} <span style="font-size:11px;color:#2563eb">（本人）</span>{% endif %}</td>
-        <td style="padding:8px 10px"><span style="display:inline-block;padding:2px 8px;border-radius:10px;background:{% if m.role == 'owner' %}#fde68a{% elif m.role == 'member' %}#bfdbfe{% else %}#e2e8f0{% endif %};font-size:12px">{{ m.role }}</span></td>
+        <td style="padding:8px 10px">
+          <span style="display:inline-block;padding:2px 8px;border-radius:10px;background:{% if m.role == 'owner' %}#fde68a{% elif m.role == 'member' %}#bfdbfe{% else %}#e2e8f0{% endif %};font-size:12px">{{ m.role }}</span>
+          {% if not m.disabled_at and m.role != 'owner' %}
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/role" style="display:inline-flex;align-items:center;gap:4px;margin-left:8px" onsubmit="return confirm('确定调整 {{ m.account_name }} 的角色吗？');">
+            <select name="role" style="padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
+              <option value="member" {% if m.role == 'member' %}selected{% endif %}>成员</option>
+              <option value="viewer" {% if m.role == 'viewer' %}selected{% endif %}>只读</option>
+            </select>
+            <button type="submit" class="btn btn-secondary" style="padding:3px 8px;font-size:12px">调整</button>
+          </form>
+          {% endif %}
+        </td>
         <td style="padding:8px 10px">{{ m.created_at | owner_datetime }}</td>
         <td style="padding:8px 10px">{% if m.disabled_at %}<span style="color:#b91c1c">已停用 {{ m.disabled_at | owner_datetime }}</span>{% else %}活跃{% endif %}</td>
         <td style="padding:8px 10px">

@@ -197,6 +197,45 @@ def owner_ledger_invite_revoke_post(
 
 
 @router.post(
+    "/ledgers/{ledger_id}/members/{member_id}/role",
+    response_class=HTMLResponse,
+)
+def owner_ledger_member_role_post(
+    request: Request,
+    ledger_id: str,
+    member_id: int,
+    role: str = Form(...),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    owner_id = svc.get_owner_account_id(db)
+    if owner_id is None:
+        raise AppError("server_error", status_code=500)
+    try:
+        invitation_service.update_member_role(
+            db,
+            ledger_id=ledger_id,
+            member_id=member_id,
+            requester_account_id=owner_id,
+            role=role,
+        )
+    except AppError as exc:
+        ctx = _base(request, db)
+        ctx["ledger_id"] = ledger_id
+        ctx["ledger_name"] = _ledger_name(db, ledger_id)
+        ctx["members"] = invitation_service.list_members(
+            db, ledger_id=ledger_id, requester_account_id=owner_id
+        )
+        ctx["invitations"] = invitation_service.list_invitations(db, ledger_id=ledger_id)
+        ctx["error"] = exc.message
+        ctx["new_invitation_token"] = None
+        return templates.TemplateResponse(
+            request=request, name="ledger_members.html", context=ctx
+        )
+    return RedirectResponse(url=f"/owner/ledgers/{ledger_id}/members", status_code=303)
+
+
+@router.post(
     "/ledgers/{ledger_id}/members/{member_id}/disable",
     response_class=HTMLResponse,
 )
