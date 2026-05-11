@@ -17,6 +17,10 @@
 - **/owner = 本机管理流**：服务状态、设备、上传链接、账本、备份、诊断分区
   清楚，不再像散页脚本。仍只允许 loopback。
 
+后续三端 UI/UX 美化统一政策见
+`docs/DECISIONS/0024-tri-surface-ui-ux-unification.md`。该政策不改变本版范围：
+v0.4-alpha2 只完成信息架构统一，发布级视觉 polish 放到 v0.8-v1.0。
+
 ## 不做
 
 - 不改身份 / Ledger / Device / AuthToken / UploadLink / PairingCode 表契约。

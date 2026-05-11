@@ -40,7 +40,7 @@
 - 不自动确认任何账单
 - 不自动改写已确认账单的分类
 - 不改 schema（CategoryRule / Expense 表结构维持现状）
-- 不引入图表库（Android 用 Compose 原生绘制）
+- 本版不引入图表库（Android 用 Compose 原生绘制；长期政策见 `docs/DECISIONS/0023-chart-library-policy.md`）
 
 ## 3. 能力域与任务编号
 
