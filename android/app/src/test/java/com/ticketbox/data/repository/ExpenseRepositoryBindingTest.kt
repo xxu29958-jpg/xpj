@@ -319,6 +319,22 @@ private class FakeApiService(
         ledgerId: String,
     ): com.ticketbox.data.remote.dto.LedgerMemberListResponseDto = unsupported()
 
+    override suspend fun updateLedgerMemberRole(
+        ledgerId: String,
+        memberId: Long,
+        request: com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto,
+    ): com.ticketbox.data.remote.dto.LedgerMemberDto = unsupported()
+
+    override suspend fun disableLedgerMember(
+        ledgerId: String,
+        memberId: Long,
+    ): com.ticketbox.data.remote.dto.LedgerMemberDto = unsupported()
+
+    override suspend fun transferLedgerOwner(
+        ledgerId: String,
+        memberId: Long,
+    ): com.ticketbox.data.remote.dto.OwnerTransferResponseDto = unsupported()
+
     override suspend fun previewInvitation(
         request: com.ticketbox.data.remote.dto.InvitationPreviewRequestDto,
     ): com.ticketbox.data.remote.dto.InvitationPreviewResponseDto = unsupported()

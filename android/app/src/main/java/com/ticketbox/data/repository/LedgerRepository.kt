@@ -13,9 +13,14 @@ import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
+import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
+import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.LedgerSummary
+import com.ticketbox.domain.model.OwnerTransferResult
+import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
+import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -119,6 +124,44 @@ class LedgerRepository(
         api().ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
     }
 
+    suspend fun updateFamilyMemberRole(
+        memberId: Long,
+        role: String,
+        ledgerId: String? = activeLedgerId(),
+    ): Result<FamilyMember> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        val cleanRole = role.trim()
+        require(cleanRole == LEDGER_ROLE_MEMBER || cleanRole == LEDGER_ROLE_VIEWER) {
+            "成员角色只能是成员或只读。"
+        }
+        api().updateLedgerMemberRole(
+            ledgerId = targetLedgerId,
+            memberId = memberId,
+            request = LedgerMemberRoleUpdateRequestDto(role = cleanRole),
+        ).toFamilyMember()
+    }
+
+    suspend fun disableFamilyMember(
+        memberId: Long,
+        ledgerId: String? = activeLedgerId(),
+    ): Result<FamilyMember> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        api().disableLedgerMember(targetLedgerId, memberId).toFamilyMember()
+    }
+
+    suspend fun transferOwner(
+        memberId: Long,
+        ledgerId: String? = activeLedgerId(),
+    ): Result<OwnerTransferResult> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        val response = api().transferLedgerOwner(targetLedgerId, memberId)
+        val result = response.toOwnerTransferResult()
+        persistSelfRoleIfChanged(result.previousOwner)
+        persistSelfRoleIfChanged(result.newOwner)
+        runCatching { refreshLedgers() }
+        result
+    }
+
     suspend fun previewInvitation(inviteToken: String): Result<InvitationPreview> = wrap {
         val cleanToken = inviteToken.trim()
         require(cleanToken.isNotEmpty()) { "请粘贴邀请明文。" }
@@ -206,6 +249,28 @@ class LedgerRepository(
         else -> "操作失败（$code），请稍后再试。"
     }
 
+    private fun requireActiveLedger(ledgerId: String?): String {
+        return requireNotNull(ledgerId?.takeIf { it.isNotBlank() }) {
+            "当前账本还没有准备好。"
+        }
+    }
+
+    private fun persistSelfRoleIfChanged(member: FamilyMember) {
+        if (!member.isSelf || member.role == settingsStore.role()) return
+        val accountName = settingsStore.accountName() ?: return
+        val ledgerId = settingsStore.activeLedgerId() ?: return
+        val ledgerName = settingsStore.activeLedgerName() ?: settingsStore.ledgerName() ?: return
+        val deviceName = settingsStore.deviceName() ?: return
+        settingsStore.saveIdentity(
+            accountName = accountName,
+            ledgerId = ledgerId,
+            ledgerName = ledgerName,
+            deviceName = deviceName,
+            role = member.role,
+            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+        )
+    }
+
     private companion object {
         const val LEDGER_NAME_MAX_LEN = 60
     }
@@ -235,4 +300,9 @@ private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPrevie
     ledgerName = ledgerName,
     role = role,
     expiresAt = expiresAt,
+)
+
+private fun OwnerTransferResponseDto.toOwnerTransferResult(): OwnerTransferResult = OwnerTransferResult(
+    previousOwner = previousOwner.toFamilyMember(),
+    newOwner = newOwner.toFamilyMember(),
 )

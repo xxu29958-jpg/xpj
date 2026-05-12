@@ -20,10 +20,12 @@ import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
+import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.PairResponseDto
@@ -382,6 +384,131 @@ class LedgerRepositoryTest {
         assertTrue(failure.message!!.contains("当前账本"))
     }
 
+    @Test
+    fun updateFamilyMemberRolePostsTrimmedRoleAndMapsResponse() = runTest {
+        val api = StubApi(
+            roleUpdateResult = LedgerMemberDto(
+                memberId = 2,
+                accountPublicId = "acc_member",
+                accountName = "家人",
+                role = "viewer",
+                createdAt = "2026-05-01T00:00:00Z",
+                disabledAt = null,
+                isSelf = false,
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveActiveLedger("L_family", "家庭账本")
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val updated = repo.updateFamilyMemberRole(2, " viewer ").getOrThrow()
+
+        assertEquals("viewer", updated.role)
+        assertEquals(listOf("L_family" to 2L), api.roleUpdateTargets)
+        assertEquals("viewer", api.roleUpdateRequests.single().role)
+    }
+
+    @Test
+    fun updateFamilyMemberRoleRejectsOwnerRoleLocally() = runTest {
+        val repo = makeRepo()
+        val failure = repo.updateFamilyMemberRole(2, "owner", ledgerId = "L_family").exceptionOrNull()
+
+        assertNotNull(failure)
+        assertTrue(failure.message!!.contains("成员角色只能是成员或只读"))
+    }
+
+    @Test
+    fun disableFamilyMemberPostsTargetAndMapsResponse() = runTest {
+        val api = StubApi(
+            disableResult = LedgerMemberDto(
+                memberId = 2,
+                accountPublicId = "acc_member",
+                accountName = "家人",
+                role = "member",
+                createdAt = "2026-05-01T00:00:00Z",
+                disabledAt = "2026-05-13T00:00:00Z",
+                isSelf = false,
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveActiveLedger("L_family", "家庭账本")
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val disabled = repo.disableFamilyMember(2).getOrThrow()
+
+        assertTrue(disabled.isDisabled)
+        assertEquals(listOf("L_family" to 2L), api.disableTargets)
+    }
+
+    @Test
+    fun transferOwnerDemotesSelfRoleAndRefreshesLedgerCache() = runTest {
+        val api = StubApi(
+            transferResult = OwnerTransferResponseDto(
+                ledgerId = "L_family",
+                previousOwner = LedgerMemberDto(
+                    memberId = 1,
+                    accountPublicId = "acc_self",
+                    accountName = "我",
+                    role = "member",
+                    createdAt = "2026-05-01T00:00:00Z",
+                    disabledAt = null,
+                    isSelf = true,
+                ),
+                newOwner = LedgerMemberDto(
+                    memberId = 2,
+                    accountPublicId = "acc_new",
+                    accountName = "家人",
+                    role = "owner",
+                    createdAt = "2026-05-02T00:00:00Z",
+                    disabledAt = null,
+                    isSelf = false,
+                ),
+            ),
+            listLedgersResult = LedgerListResponseDto(
+                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "L_family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val result = repo.transferOwner(2).getOrThrow()
+
+        assertEquals("member", result.previousOwner.role)
+        assertEquals("owner", result.newOwner.role)
+        assertEquals("member", store.role())
+        assertEquals(listOf("L_family" to 2L), api.transferTargets)
+        assertEquals("member", repo.cachedLedgers().single().role)
+    }
+
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
@@ -418,11 +545,18 @@ private class StubApi(
     var switchResult: LedgerSwitchResponseDto? = null,
     var switchError: Throwable? = null,
     var membersResult: LedgerMemberListResponseDto? = null,
+    var roleUpdateResult: LedgerMemberDto? = null,
+    var disableResult: LedgerMemberDto? = null,
+    var transferResult: OwnerTransferResponseDto? = null,
     var previewResult: InvitationPreviewResponseDto? = null,
     var previewError: Throwable? = null,
     var acceptResult: InvitationAcceptResponseDto? = null,
     var acceptError: Throwable? = null,
     val memberLedgerRequests: MutableList<String> = mutableListOf(),
+    val roleUpdateTargets: MutableList<Pair<String, Long>> = mutableListOf(),
+    val roleUpdateRequests: MutableList<LedgerMemberRoleUpdateRequestDto> = mutableListOf(),
+    val disableTargets: MutableList<Pair<String, Long>> = mutableListOf(),
+    val transferTargets: MutableList<Pair<String, Long>> = mutableListOf(),
     val previewRequests: MutableList<InvitationPreviewRequestDto> = mutableListOf(),
     val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf(),
 ) : ApiService {
@@ -449,6 +583,29 @@ private class StubApi(
     override suspend fun ledgerMembers(ledgerId: String): LedgerMemberListResponseDto {
         memberLedgerRequests += ledgerId
         return membersResult ?: error("Unexpected members call")
+    }
+
+    override suspend fun updateLedgerMemberRole(
+        ledgerId: String,
+        memberId: Long,
+        request: LedgerMemberRoleUpdateRequestDto,
+    ): LedgerMemberDto {
+        roleUpdateTargets += ledgerId to memberId
+        roleUpdateRequests += request
+        return roleUpdateResult ?: error("Unexpected role update call")
+    }
+
+    override suspend fun disableLedgerMember(ledgerId: String, memberId: Long): LedgerMemberDto {
+        disableTargets += ledgerId to memberId
+        return disableResult ?: error("Unexpected disable call")
+    }
+
+    override suspend fun transferLedgerOwner(
+        ledgerId: String,
+        memberId: Long,
+    ): OwnerTransferResponseDto {
+        transferTargets += ledgerId to memberId
+        return transferResult ?: error("Unexpected transfer call")
     }
 
     override suspend fun previewInvitation(

@@ -9,14 +9,17 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
+import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
@@ -161,6 +164,25 @@ interface ApiService {
 
     @GET("api/ledgers/{ledgerId}/members")
     suspend fun ledgerMembers(@Path("ledgerId") ledgerId: String): LedgerMemberListResponseDto
+
+    @POST("api/ledgers/{ledgerId}/members/{memberId}/role")
+    suspend fun updateLedgerMemberRole(
+        @Path("ledgerId") ledgerId: String,
+        @Path("memberId") memberId: Long,
+        @Body request: LedgerMemberRoleUpdateRequestDto,
+    ): LedgerMemberDto
+
+    @POST("api/ledgers/{ledgerId}/members/{memberId}/disable")
+    suspend fun disableLedgerMember(
+        @Path("ledgerId") ledgerId: String,
+        @Path("memberId") memberId: Long,
+    ): LedgerMemberDto
+
+    @POST("api/ledgers/{ledgerId}/members/{memberId}/transfer-owner")
+    suspend fun transferLedgerOwner(
+        @Path("ledgerId") ledgerId: String,
+        @Path("memberId") memberId: Long,
+    ): OwnerTransferResponseDto
 
     @POST("api/invitations/preview")
     suspend fun previewInvitation(

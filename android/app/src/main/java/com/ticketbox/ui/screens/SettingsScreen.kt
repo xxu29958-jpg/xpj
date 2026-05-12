@@ -236,7 +236,9 @@ fun SettingsScreen(
                 FamilyMembersScreen(
                     repository = repo,
                     activeLedgerId = activeLedgerId,
+                    currentRole = state.role,
                     onBack = { route = SettingsRoute.Root },
+                    onMembershipChanged = onBindingChanged,
                 )
             } else {
                 route = SettingsRoute.Root

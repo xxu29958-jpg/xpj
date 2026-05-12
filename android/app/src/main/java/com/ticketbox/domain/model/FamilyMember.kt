@@ -12,3 +12,8 @@ data class FamilyMember(
     val isDisabled: Boolean
         get() = !disabledAt.isNullOrBlank()
 }
+
+data class OwnerTransferResult(
+    val previousOwner: FamilyMember,
+    val newOwner: FamilyMember,
+)

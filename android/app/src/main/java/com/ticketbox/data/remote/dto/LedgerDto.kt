@@ -61,6 +61,19 @@ data class LedgerMemberListResponseDto(
     val members: List<LedgerMemberDto>,
 )
 
+data class LedgerMemberRoleUpdateRequestDto(
+    val role: String,
+)
+
+data class OwnerTransferResponseDto(
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
+    @param:Json(name = "previous_owner")
+    val previousOwner: LedgerMemberDto,
+    @param:Json(name = "new_owner")
+    val newOwner: LedgerMemberDto,
+)
+
 data class InvitationPreviewRequestDto(
     @param:Json(name = "invite_token")
     val inviteToken: String,
