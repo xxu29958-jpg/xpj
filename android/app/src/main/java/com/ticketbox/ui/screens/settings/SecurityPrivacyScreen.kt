@@ -70,6 +70,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -148,18 +149,36 @@ fun SecurityPrivacyScreen(
 
     SettingsPageFrame(
         title = "安全与隐私",
-        subtitle = "口令保存在本机安全区，背景图片不会上传。",
+        subtitle = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
+            "口令保存在本机安全区，背景图片不会上传。"
+        } else {
+            "本机验证当前关闭，会话凭证仍保存在本机安全区。"
+        },
         onBack = onBack,
     ) {
-        SettingsSection(title = "本机解锁", icon = Icons.Filled.Security) {
+        SettingsSection(
+            title = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) "本机解锁" else "本机验证",
+            icon = Icons.Filled.Security,
+        ) {
             SoftPanel(containerAlpha = 0.96f) {
                 Column(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("指纹 / 面容只用于本地解锁", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        text = "账本访问使用绑定时保存的会话凭证。App 切到后台超过 5 分钟后会要求重新解锁。",
+                        if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
+                            "指纹 / 面容只用于本地解锁"
+                        } else {
+                            "指纹、面容和锁屏密码验证已关闭"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        text = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
+                            "账本访问使用绑定时保存的会话凭证。App 切到后台超过 5 分钟后会要求重新解锁。"
+                        } else {
+                            "当前版本不会要求本机解锁。账本访问仍使用绑定时保存的会话凭证。"
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(

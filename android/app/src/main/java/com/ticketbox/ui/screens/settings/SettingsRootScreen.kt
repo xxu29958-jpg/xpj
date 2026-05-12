@@ -73,6 +73,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -163,7 +164,11 @@ fun SettingsRootScreen(
         )
         SettingsEntryRow(
             title = "安全与隐私",
-            subtitle = "本机解锁、本地数据、退出账本",
+            subtitle = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
+                "本机解锁、本地数据、退出账本"
+            } else {
+                "本机验证已关闭、本地数据、退出账本"
+            },
             icon = Icons.Filled.Security,
             onClick = onOpenSecurity,
         )

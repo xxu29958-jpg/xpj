@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ServerBindingRepository
 import com.ticketbox.domain.model.AppSkin
@@ -26,11 +27,15 @@ class AppViewModel(
     private val repository: ServerBindingRepository,
     private val settingsStore: TicketboxSettingsStore,
     private val tokenStore: SessionTokenStore,
+    private val requireLocalUnlock: Boolean = BuildConfig.REQUIRE_LOCAL_UNLOCK,
 ) : ViewModel() {
+    private val hasActiveBinding: Boolean
+        get() = settingsStore.isBound() && tokenStore.getToken() != null
+
     private val _uiState = MutableStateFlow(
         AppUiState(
-            isBound = settingsStore.isBound() && tokenStore.getToken() != null,
-            unlocked = settingsStore.isBound() && tokenStore.getToken() != null && !settingsStore.requiresUnlock(),
+            isBound = hasActiveBinding,
+            unlocked = hasActiveBinding && (!requireLocalUnlock || !settingsStore.requiresUnlock()),
             skin = AppSkin.fromStorageKey(settingsStore.appSkinKey()),
         ),
     )
@@ -65,11 +70,17 @@ class AppViewModel(
     }
 
     fun markBackgrounded() {
+        if (!requireLocalUnlock) return
         settingsStore.markBackgrounded()
     }
 
     fun refreshUnlockRequirement() {
-        if (_uiState.value.isBound && settingsStore.requiresUnlock()) {
+        if (!_uiState.value.isBound) return
+        if (!requireLocalUnlock) {
+            _uiState.update { it.copy(unlocked = true) }
+            return
+        }
+        if (settingsStore.requiresUnlock()) {
             _uiState.update { it.copy(unlocked = false) }
         }
     }

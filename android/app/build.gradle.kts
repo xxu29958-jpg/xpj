@@ -2,6 +2,7 @@ import java.util.Properties
 
 val ticketboxVersionCode = 50000
 val ticketboxVersionName = "0.5.0a1"
+val ticketboxRequireLocalUnlock = false
 
 // Server URL precedence:
 //   1. ENV: TICKETBOX_SERVER_URL
@@ -83,9 +84,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("Boolean", "REQUIRE_LOCAL_UNLOCK", ticketboxRequireLocalUnlock.toString())
+        }
         release {
             isDebuggable = false
             isMinifyEnabled = false
+            buildConfigField("Boolean", "REQUIRE_LOCAL_UNLOCK", ticketboxRequireLocalUnlock.toString())
             signingConfigs.findByName("release")?.let { releaseSigning ->
                 signingConfig = releaseSigning
             }

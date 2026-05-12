@@ -45,6 +45,51 @@ class AppViewModelBindingTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun disabledLocalAuthBypassStartsUnlockedEvenWhenStoreRequiresUnlock() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true)
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                settingsStore = settingsStore,
+                tokenStore = FakeSessionTokenStore(initialToken = "tk_bound"),
+                requireLocalUnlock = false,
+            )
+
+            assertTrue(viewModel.uiState.value.isBound)
+            assertTrue(viewModel.uiState.value.unlocked)
+
+            viewModel.markBackgrounded()
+            viewModel.refreshUnlockRequirement()
+
+            assertEquals(0, settingsStore.markBackgroundedCalls)
+            assertTrue(viewModel.uiState.value.unlocked)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun enabledLocalAuthKeepsBoundAppLockedWhenStoreRequiresUnlock() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val viewModel = AppViewModel(
+                repository = FakeBindingRepository(Result.success(BindServerResult())),
+                settingsStore = FakeAppSettingsStore(initialBound = true, requiresUnlock = true),
+                tokenStore = FakeSessionTokenStore(initialToken = "tk_release"),
+                requireLocalUnlock = true,
+            )
+
+            assertTrue(viewModel.uiState.value.isBound)
+            assertEquals(false, viewModel.uiState.value.unlocked)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
 }
 
 private class FakeBindingRepository(
@@ -57,8 +102,11 @@ private class FakeBindingRepository(
 
 private class FakeAppSettingsStore(
     private val initialBound: Boolean,
+    private val requiresUnlock: Boolean = false,
 ) : TicketboxSettingsStore {
     override val backgroundSettingsFlow: Flow<BackgroundSettings> = emptyFlow()
+    var markBackgroundedCalls: Int = 0
+        private set
 
     override fun serverUrl(): String? = null
 
@@ -117,9 +165,11 @@ private class FakeAppSettingsStore(
 
     override fun markUnlocked() = Unit
 
-    override fun markBackgrounded() = Unit
+    override fun markBackgrounded() {
+        markBackgroundedCalls += 1
+    }
 
-    override fun requiresUnlock(): Boolean = false
+    override fun requiresUnlock(): Boolean = requiresUnlock
 
     override fun clear() = Unit
 }

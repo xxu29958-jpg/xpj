@@ -156,7 +156,7 @@ private fun TicketboxContent(
         return
     }
 
-    if (!appState.unlocked) {
+    if (BuildConfig.REQUIRE_LOCAL_UNLOCK && !appState.unlocked) {
         ImmersiveBackgroundScaffold(
             backgroundSettings = appState.backgroundSettings,
             currentSkin = appState.skin,
