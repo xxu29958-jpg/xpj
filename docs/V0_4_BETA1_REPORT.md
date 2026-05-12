@@ -41,7 +41,7 @@
 
 ## 3. 关键设计与不变量
 
-- **角色矩阵**：`owner` / `member` / `viewer`；`viewer` 写操作一律 403 (`viewer_cannot_write`)；admin scope 仅用于本机 Owner Console，**不绕过**只读边界（除明确的“成员管理”路径）。
+- **角色矩阵**：`owner` / `member` / `viewer`；`viewer` 写操作一律 403 (`permission_denied`)；admin scope 仅用于本机 Owner Console，**不绕过**只读边界（除明确的“成员管理”路径）。
 - **邀请明文 (`inv_...`)**：`inv_` 前缀 + `secrets.token_urlsafe(24)`；DB 只存 SHA-256；明文仅在 Owner Console `POST /owner/ledgers/{id}/invitations` 响应中出现一次，绝不入库、不进 List 响应、不进日志。
 - **TTL**：默认 7 天，最大 30；过期后接受返回 `invalid_invite_token`。
 - **接受流程**（`POST /api/invitations/accept`）：**未鉴权**端点，单次创建新 `Account` + `Device` + `LedgerMember`，签发新 `AuthToken` 返回；不存在 token 重用或临时凭证。

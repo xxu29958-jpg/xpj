@@ -21,6 +21,7 @@ from app.routes.web_common import (
     _amount_yuan,
     _base_ctx,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _with_ledger,
     templates,
@@ -126,6 +127,7 @@ def web_uncategorized_bulk_set(
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
     if not expense_ids:
         target = _with_ledger(
             "/web/categories/uncategorized", selected_id, msg="请勾选要修改的账单。"

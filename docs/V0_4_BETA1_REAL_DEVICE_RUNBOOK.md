@@ -87,7 +87,7 @@ App 端：失败时本机 Token 不被覆盖，原绑定不受影响。
 | 场景 | 期望 |
 |---|---|
 | Viewer 加入后 `/web` 顶部 | 黄色只读警告横幅 + 灰色 `只读` chip |
-| App 内尝试新增费用 | 服务器返回 `viewer_cannot_write` 403 |
+| App 内尝试新增费用 | 服务器返回 `permission_denied` 403，提示“当前角色为只读，无法修改账本。” |
 | 服务器 `/api/expenses` POST | 403，App 显示 `当前角色为只读，无法修改账本` |
 
 ---

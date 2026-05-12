@@ -67,13 +67,13 @@ def can_manage_upload_links(ctx: AuthContext) -> bool:
     return ctx.role in ROLES_MANAGE
 
 
-def _deny(message_key: str = "permission_denied") -> None:
-    raise AppError(message_key, status_code=403)
+def _deny(message_key: str = "permission_denied", message: str | None = None) -> None:
+    raise AppError(message_key, message=message, status_code=403)
 
 
 def require_write_expense(ctx: AuthContext) -> None:
     if not can_write_expense(ctx):
-        _deny()
+        _deny(message="当前角色为只读，无法修改账本。")
 
 
 def require_manage_members(ctx: AuthContext) -> None:

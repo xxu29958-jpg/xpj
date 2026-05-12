@@ -21,7 +21,7 @@
 不能误判为完成的缺口：
 
 - Viewer 只读还不是全链路强约束：`POST /api/app/upload-screenshot`、分类规则 create/update/delete、`apply-pending`、部分 `/web` 直接 POST 和 CSV import confirm 仍需要后端 writer guard 复核并补测试。
-- 权限错误契约不统一：代码和测试偏 `permission_denied`，部分 beta1 文档仍写 `viewer_cannot_write`。v0.5 必须统一后端、API 文档、Android ErrorMapper、runbook 和测试。
+- 权限错误契约统一为 `permission_denied`；历史 beta1 草案里的 viewer 专用错误码不再作为当前契约。
 - `Recurring` 目前是候选洞察，不是正式固定支出模型；后端没有 `recurring_items` 表和状态机。
 - `Budget` 目前主要是 Android 本地 `monthlyBudgetCents` 进度提示；后端没有账本预算模型和共享预算权限。
 - `Goal` 是早期 MVP 语义，不是完整目标模型；后端没有可扩展 goals 表。
@@ -63,7 +63,7 @@
 后端 / API / 数据：
 
 - `H05-01` 修 viewer 写入口：Android 上传、规则 create/update/delete、`apply-pending`、`/web` save/confirm/reject/bulk/rules/import confirm 全部改 writer/owner guard。
-- `H05-02` 统一权限错误契约：建议保留当前实现里的 `permission_denied`，同步 `docs/API.md`、beta1 runbook、Android ErrorMapper 和测试；若改为 `viewer_cannot_write`，必须一次性改完并写兼容说明。
+- `H05-02` 统一权限错误契约：保留当前实现里的 `permission_denied`，同步 `docs/API.md`、beta1 runbook、Android ErrorMapper 和测试。
 - `H05-03` 家庭成员审计：邀请创建、接受、撤销、角色调整、停用；不得记录明文 token、UploadLink 或本机路径。
 - `H05-04` Owner 转让：保持单 owner，不做 co-owner；事务内完成新 owner 提升、旧 owner 降级、审计和失败回滚。
 - `H05-05` export/import 权限决策：明确 viewer 是否可批量导出；CSV import confirm 必须 writer guard。

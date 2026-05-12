@@ -102,6 +102,16 @@ def _selected_option(options: list[LedgerOption], ledger_id: str) -> LedgerOptio
     return options[0]
 
 
+def _require_selected_ledger_write(options: list[LedgerOption], ledger_id: str) -> None:
+    selected = _selected_option(options, ledger_id)
+    if selected.role not in {"owner", "member"}:
+        raise AppError(
+            "permission_denied",
+            "当前角色为只读，无法修改账本。",
+            status_code=403,
+        )
+
+
 def _with_ledger(path: str, ledger_id: str, **extra: str) -> str:
     params: dict[str, str] = {"ledger_id": ledger_id}
     for key, value in extra.items():

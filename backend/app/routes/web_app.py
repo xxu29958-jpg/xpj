@@ -25,6 +25,7 @@ from app.routes.web_common import (
     _dashboard_cards,
     _expense_view,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _with_ledger,
     templates,
@@ -145,6 +146,7 @@ def web_save(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
     amount_cents, error = _parse_amount_yuan(amount_yuan)
 
     if error is None:
@@ -182,6 +184,7 @@ def web_confirm(
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
     try:
         confirm_expense(db, expense_id, selected_id)
     except AppError as exc:
@@ -202,6 +205,7 @@ def web_reject(
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
     reject_expense(db, expense_id, selected_id)
     return RedirectResponse(url=_with_ledger("/web/pending", selected_id), status_code=303)
 

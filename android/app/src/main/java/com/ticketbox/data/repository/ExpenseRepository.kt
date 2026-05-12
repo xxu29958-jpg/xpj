@@ -62,6 +62,7 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         "image_not_found" -> "图片不存在。"
         "rule_not_found" -> "分类规则不存在。"
         "rule_in_use" -> "分类规则仍在使用，不能删除。"
+        "permission_denied" -> "当前角色为只读，无法修改账本。"
         "server_error" -> "暂时处理不了，请稍后再试。"
         "invalid_request" -> "请求参数不正确。"
         "route_not_found" -> "账本版本过旧，请重启电脑上的小票夹后再试。"

@@ -58,6 +58,7 @@ expense_not_found
 amount_required
 image_not_found
 rule_not_found
+permission_denied
 server_error
 invalid_request
 route_not_found
@@ -500,6 +501,7 @@ file: 图片文件
 
 - 与 iPhone 上传共用同一套文件校验、随机命名、hash、缩略图和 pending 创建流程。
 - 按当前 session token 所属账本写入对应目录。
+- 仅 `owner` / `member` 可上传；`viewer` 返回 `permission_denied` + `当前角色为只读，无法修改账本。`。
 - `X-Timezone` 可选，Android 默认发送手机系统 IANA 时区；用于上传后 OCR 草稿时间解析。
 - Android 不保存、不发送 UploadLink。
 - 灰度版 UI 只显示"上传截图"，不显示 endpoint、token 或 multipart。
@@ -844,6 +846,15 @@ Authorization: Bearer <session_token>
   "category": "AI订阅",
   "enabled": true,
   "priority": 5
+}
+```
+
+仅 `owner` / `member` 可新增、修改、删除或应用分类规则；`viewer` 对这些写入口返回：
+
+```json
+{
+  "error": "permission_denied",
+  "message": "当前角色为只读，无法修改账本。"
 }
 ```
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.auth import get_current_app_context, get_removed_upload_context
+from app.auth import get_current_writer_context, get_removed_upload_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
@@ -187,7 +187,7 @@ async def app_upload_screenshot(
     request: Request,
     background_tasks: BackgroundTasks,
     timezone: str | None = Header(default=None, alias="X-Timezone"),
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     return await _handle_upload(

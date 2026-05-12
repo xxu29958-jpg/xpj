@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context
+from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError
 from app.models import CategoryRule
@@ -46,7 +46,7 @@ def get_category_rules(
 @router.post("/categories", response_model=CategoryRuleResponse)
 def post_category_rule(
     payload: CategoryRuleCreateRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
     return create_rule(
@@ -63,7 +63,7 @@ def post_category_rule(
 def patch_category_rule(
     rule_id: int,
     payload: CategoryRuleUpdateRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
     rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == auth.tenant_id))
@@ -75,7 +75,7 @@ def patch_category_rule(
 @router.delete("/categories/{rule_id}", response_model=StatusResponse)
 def delete_category_rule(
     rule_id: int,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
     rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == auth.tenant_id))
@@ -110,7 +110,7 @@ def post_rule_preview(
 
 @router.post("/apply-pending", response_model=RuleApplyPendingResponse)
 def post_rule_apply_pending(
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RuleApplyPendingResponse:
     pending_scanned, changed_count = apply_rules_to_pending(db, tenant_id=auth.tenant_id)

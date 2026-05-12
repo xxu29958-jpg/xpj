@@ -29,6 +29,7 @@ from app.routes.web_common import (
     _base_ctx,
     _expense_view,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _with_ledger,
     templates,
@@ -106,6 +107,7 @@ def web_duplicate_keep(
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
     try:
         mark_expense_not_duplicate(db, expense_id, selected_id)
         msg = "已标记为「不是重复」。"
@@ -126,6 +128,7 @@ def web_duplicate_reject_current(
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
     try:
         reject_expense(db, expense_id, selected_id)
         msg = "已删除当前账单。"
@@ -146,6 +149,7 @@ def web_duplicate_reject_original(
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
     msg = "已删除被复制的那条，并保留当前账单。"
     try:
         current, original = _load_pair(db, tenant_id=selected_id, expense_id=expense_id)
