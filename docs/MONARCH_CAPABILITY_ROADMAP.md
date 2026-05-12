@@ -4,7 +4,7 @@
 
 本文记录小票夹从 `v0.4-alpha3-rc1` 到 `v1.0` 的结构化能力规划。Monarch Money 只作为成熟个人财务产品的信息架构参考，不复制其银行聚合、投资净资产、品牌视觉、专有文案或家庭共享权限模型。
 
-基于当前 `v0.4-beta1-family-ledger-foundation` 代码基线继续排期时，以 `docs/POST_BETA_DEVELOPMENT_ROADMAP.md` 作为后续开发顺序、先修风险和验收闸门。
+基于当前 `main` 代码基线继续排期时，以 `docs/POST_BETA_DEVELOPMENT_ROADMAP.md` 作为后续开发顺序、先修风险和验收闸门。`v0.4-beta1-family-ledger-foundation` 仅保留 beta1 切片历史和回溯价值，不作为新的开发分叉。
 
 ## 1. 设计原则
 
@@ -118,14 +118,16 @@ PR #16：
 
 任务：
 
-- T10 基于 beta1 邀请模型补齐 member/viewer 角色调整，不引入 co-owner。
-- T11 多账本 owner 转让设计与实现；默认不做多 owner。
-- T12 Android 设置 -> 家庭成员管理页：查看成员、角色、停用状态。
-- T13 Owner Console 家庭成员审计：邀请创建 / 接受 / 撤销 / 成员禁用记录。
-- T14 ledger 共享状态显式化：个人账本 / 共享账本文案与 badge，不改变账本隔离模型。
-- T15 家庭共享预算接入前置：只允许共享账本启用，个人账本保持独立预算。
-- T16 隐私不变式测试继续扩展：成员 A 无法访问成员 B 私有账本，角色调整不扩大可见账本。
-- T17 文档：`docs/V0_5_HOUSEHOLD_MODEL.md` + 邀请 / 停用 / 角色调整流程图。
+- T10 修 viewer 写入口：Android 上传、分类规则 create/update/delete、`apply-pending`、`/web` 直接 POST 和 CSV import confirm 全部后端强制 writer guard。
+- T11 统一权限错误契约：后端、API 文档、Android ErrorMapper、runbook 和测试使用同一错误码与中文说明。
+- T12 多账本 owner 转让设计与实现；默认不做多 owner。
+- T13 Android 设置 -> 家庭成员管理页：查看成员、角色、停用状态、个人/共享账本 badge。
+- T14 Android viewer 只读 UX：上传、手动记账、编辑、确认、规则写入口禁用或隐藏，并展示统一提示。
+- T15 Owner Console 家庭成员审计：邀请创建 / 接受 / 撤销 / 角色调整 / 成员禁用记录。
+- T16 ledger 共享状态显式化：个人账本 / 共享账本文案与 badge，不改变账本隔离模型。
+- T17 家庭共享预算接入前置：只允许共享账本启用，个人账本保持独立预算。
+- T18 隐私不变式测试继续扩展：成员 A 无法访问成员 B 私有账本，角色调整不扩大可见账本。
+- T19 文档：`docs/V0_5_HOUSEHOLD_MODEL.md` + 邀请 / 停用 / 角色调整 / owner 转让流程图。
 
 红线：
 
