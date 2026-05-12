@@ -1,4 +1,4 @@
-"""Family-ledger permission service (v0.4-beta1).
+"""Family-ledger permission service.
 
 Single source of truth for role-based access control. All write/admin
 routes MUST call one of the ``require_*`` guards. Defense-in-depth: even

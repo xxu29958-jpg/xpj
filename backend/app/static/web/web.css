@@ -260,6 +260,23 @@ form.inline { margin: 0; }
 .flash { padding: 10px 14px; background: #ecfdf5; color: #047857; border-left: 4px solid #10b981; font-size: 13px; }
 .summary-card.ok { background: #ecfdf5; }
 .summary-card.ok .summary-card-num { color: #047857; }
+.readonly-callout {
+    background: #f8fafc;
+    border-left: 4px solid #94a3b8;
+    padding: 10px 14px;
+    margin: 8px 0 16px;
+    border-radius: 6px;
+    color: #475569;
+    font-size: 13px;
+}
+.readonly-callout strong { color: #334155; }
+.readonly-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--fg-muted);
+    font-size: 12px;
+}
 
 
 

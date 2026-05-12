@@ -4,10 +4,11 @@ from pathlib import Path
 from uuid import UUID
 
 import app.database as database
+import pytest
 from sqlalchemy import inspect, text
 
 from app.database import BACKEND_ROOT, Base, engine, init_db, migrate_upload_paths_to_tenant_dirs
-from conftest import PNG_BYTES, TEST_UPLOAD_DIR
+from conftest import PNG_BYTES, TEST_DB_PATH, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
 
 
 def _reset_empty_database() -> None:
@@ -49,6 +50,15 @@ def _create_v01_expenses_table() -> None:
                 """
             )
         )
+
+
+def _table_create_sql(table_name: str) -> str:
+    with engine.begin() as connection:
+        row = connection.execute(
+            text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :name"),
+            {"name": table_name},
+        ).one()
+    return str(row[0])
 
 
 def _insert_legacy_expense(
@@ -110,7 +120,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "expenses" in inspector.get_table_names()
     assert "category_rules" in inspector.get_table_names()
     assert "duplicate_ignores" in inspector.get_table_names()
+    assert "ledger_audit_logs" in inspector.get_table_names()
     assert {"tenant_id", "public_id", "thumbnail_path", "duplicate_status"}.issubset(_expense_columns())
+    assert "ix_ledger_audit_logs_ledger_created_at" in _indexes("ledger_audit_logs")
     with engine.begin() as connection:
         owner_rules = connection.execute(
             text("SELECT COUNT(*) FROM category_rules WHERE tenant_id = 'owner'")
@@ -120,6 +132,79 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
         ).scalar_one()
     assert owner_rules > 0
     assert tester_rules > 0
+
+
+def test_new_database_enforces_family_role_constraints() -> None:
+    _reset_empty_database()
+
+    init_db()
+
+    ledger_member_sql = _table_create_sql("ledger_members")
+    invitation_sql = _table_create_sql("invitations")
+    assert "ck_ledger_members_role_valid" in ledger_member_sql
+    assert "role IN ('owner', 'member', 'viewer')" in ledger_member_sql
+    assert "ck_invitations_role_invitable" in invitation_sql
+    assert "role IN ('member', 'viewer')" in invitation_sql
+
+
+def test_legacy_database_with_invalid_family_roles_fails_startup() -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ledger_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ledger_id VARCHAR(64) NOT NULL,
+                    account_id INTEGER NOT NULL,
+                    role VARCHAR(32) NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO ledger_members (ledger_id, account_id, role) "
+                "VALUES ('owner', 1, 'admin')"
+            )
+        )
+
+    database._sqlite_backup_done = True
+    try:
+        with pytest.raises(RuntimeError, match="ledger_members.role"):
+            init_db()
+    finally:
+        database._sqlite_backup_done = False
+
+
+def test_legacy_database_with_invalid_invitation_role_fails_startup() -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE invitations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ledger_id VARCHAR(64) NOT NULL,
+                    token_hash VARCHAR(64) NOT NULL,
+                    role VARCHAR(32) NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO invitations (ledger_id, token_hash, role) "
+                "VALUES ('owner', 'hash', 'owner')"
+            )
+        )
+
+    database._sqlite_backup_done = True
+    try:
+        with pytest.raises(RuntimeError, match="invitations.role"):
+            init_db()
+    finally:
+        database._sqlite_backup_done = False
 
 
 def test_v01_schema_migrates_without_losing_expense_data() -> None:
@@ -137,12 +222,13 @@ def test_v01_schema_migrates_without_losing_expense_data() -> None:
     assert migrated["duplicate_status"] == "none"
     assert {"tenant_id", "public_id", "thumbnail_path", "tags", "image_deleted_at"}.issubset(_expense_columns())
     assert "ix_expenses_public_id" in _indexes("expenses")
+    assert "ledger_audit_logs" in inspect(engine).get_table_names()
 
 
 def test_pre_v03_backup_is_not_recreated_after_identity_migration() -> None:
     backup_dir = BACKEND_ROOT / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_pattern = "pytest_test-pre-v0.3-*.db"
+    backup_pattern = f"{TEST_DB_PATH.stem}-pre-v0.3-*.db"
     for backup_file in backup_dir.glob(backup_pattern):
         backup_file.unlink()
 
@@ -267,8 +353,9 @@ def test_legacy_upload_paths_migrate_to_tenant_directory_and_missing_files_stay_
         thumbnail_path=legacy_thumb.relative_to(BACKEND_ROOT).as_posix(),
         tenant_id="owner",
     )
+    missing_path = f"{TEST_UPLOAD_RELATIVE}/2026/05/missing.png"
     missing_id = _insert_legacy_expense(
-        image_path="uploads/pytest_test/2026/05/missing.png",
+        image_path=missing_path,
         thumbnail_path=None,
         tenant_id="owner",
     )
@@ -283,15 +370,15 @@ def test_legacy_upload_paths_migrate_to_tenant_directory_and_missing_files_stay_
     migrate_upload_paths_to_tenant_dirs()
 
     migrated = _fetch_expense(existing_id)
-    assert str(migrated["image_path"]).startswith("uploads/pytest_test/owner/2026/05/")
-    assert str(migrated["thumbnail_path"]).startswith("uploads/pytest_test/owner/2026/05/thumbs/")
+    assert str(migrated["image_path"]).startswith(f"{TEST_UPLOAD_RELATIVE}/owner/2026/05/")
+    assert str(migrated["thumbnail_path"]).startswith(f"{TEST_UPLOAD_RELATIVE}/owner/2026/05/thumbs/")
     assert (BACKEND_ROOT / str(migrated["image_path"])).is_file()
     assert (BACKEND_ROOT / str(migrated["thumbnail_path"])).is_file()
     assert not legacy_file.exists()
     assert not legacy_thumb.exists()
 
     missing = _fetch_expense(missing_id)
-    assert missing["image_path"] == "uploads/pytest_test/2026/05/missing.png"
+    assert missing["image_path"] == missing_path
 
 
 def test_legacy_upload_migration_rename_failure_keeps_original_file_and_database_path(monkeypatch) -> None:

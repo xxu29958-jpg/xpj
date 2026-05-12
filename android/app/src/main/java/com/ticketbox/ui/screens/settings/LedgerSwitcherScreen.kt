@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.LedgerSummary
+import com.ticketbox.domain.model.ledgerRoleLabel
+import com.ticketbox.domain.model.ledgerScopeLabel
 import com.ticketbox.ui.components.SoftPanel
 import kotlinx.coroutines.launch
 
@@ -70,7 +72,7 @@ fun LedgerSwitcherScreen(
 
     SettingsPageFrame(
         title = "账本",
-        subtitle = "v0.4-alpha1：实验中，可在多个账本之间切换。",
+        subtitle = "切换个人账本和共享账本。",
         onBack = onBack,
     ) {
         SettingsSection(title = "已加入的账本", icon = Icons.Filled.FolderShared) {
@@ -94,10 +96,12 @@ fun LedgerSwitcherScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = if (ledger.isDefault) ledger.name + "（默认）" else ledger.name,
+                                    text = ledger.name,
                                     style = MaterialTheme.typography.titleSmall,
                                 )
                                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                    LedgerScopeChip(isDefault = ledger.isDefault)
+                                    Spacer(Modifier.width(6.dp))
                                     LedgerRoleChip(role = ledger.role)
                                     if (isActive) {
                                         Spacer(Modifier.width(6.dp))
@@ -199,17 +203,17 @@ fun LedgerSwitcherScreen(
 }
 
 /**
- * v0.4-beta1 role chip. Mirrors the colour palette used by the /web role
+ * v0.5 role chip. Mirrors the colour palette used by the /web role
  * badge: owner→amber, member→blue, viewer→grey. Unknown roles fall back to
  * the surface-variant tone so the UI never drops information silently.
  */
 @Composable
 private fun LedgerRoleChip(role: String) {
     val (label, container, content) = when (role) {
-        "owner" -> Triple("所有者", Color(0xFFFFE2A0), Color(0xFF5A3B00))
-        "member" -> Triple("成员（可写）", Color(0xFFC9DCFF), Color(0xFF1F3D7A))
-        "viewer" -> Triple("只读", Color(0xFFE2E2E6), Color(0xFF40404A))
-        else -> Triple(role, Color(0xFFE2E2E6), Color(0xFF40404A))
+        "owner" -> Triple(ledgerRoleLabel(role), Color(0xFFFFE2A0), Color(0xFF5A3B00))
+        "member" -> Triple(ledgerRoleLabel(role), Color(0xFFC9DCFF), Color(0xFF1F3D7A))
+        "viewer" -> Triple(ledgerRoleLabel(role), Color(0xFFE2E2E6), Color(0xFF40404A))
+        else -> Triple(ledgerRoleLabel(role), Color(0xFFE2E2E6), Color(0xFF40404A))
     }
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
@@ -220,6 +224,21 @@ private fun LedgerRoleChip(role: String) {
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = content,
+        )
+    }
+}
+
+@Composable
+private fun LedgerScopeChip(isDefault: Boolean) {
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .background(Color(0xFFE7F5EF), RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = ledgerScopeLabel(isDefault),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF1D5A42),
         )
     }
 }

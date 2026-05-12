@@ -1,12 +1,12 @@
 # 小票夹
 
-**当前版本：v0.4.0a1**（阶段：**v0.4-alpha3 已进入 RC1**；基线 = v0.3.3 产品化 + 多账本地基 + Smart Ledger Engine + 移动端架构稳定）
+**当前版本：v0.5.0a1**（阶段：**Household 权限与家庭协作 hardening**；基线 = v0.4-alpha3 RC + v0.4-beta1 家庭账本基础）
 
-> 🚩 **v0.4-alpha3-rc1 验收已完成**（2026-05-11，commit `c05e85f`）：自动化矩阵全绿（292 pytest pass / Android 4 gates SUCCESS / 公网边界 35/35 / 自用健康 11/11），Android + iPhone 真机走查通过，多账本隔离验证通过，P0=0 / P1=0。详见 [V0_4_ALPHA3_RC1_REPORT.md](docs/V0_4_ALPHA3_RC1_REPORT.md)、[V0_4_ALPHA3_RC1_KNOWN_ISSUES.md](docs/V0_4_ALPHA3_RC1_KNOWN_ISSUES.md)、[V0_4_ALPHA3_RC1_SCREENSHOTS.md](docs/V0_4_ALPHA3_RC1_SCREENSHOTS.md)。
+> 🚩 **v0.5.0a1 当前验证**：后端全量 `pytest` 340 passed，Android `testGrayDebugUnitTest` / `assembleGrayDebug` / `assembleInternalDebug` / `assembleGrayRelease` / `assembleInternalRelease` / `lintGrayDebug` 通过，真机安装显示 `versionName=0.5.0a1`、`versionCode=50000`。详见 [V0_5_HOUSEHOLD_MODEL.md](docs/V0_5_HOUSEHOLD_MODEL.md)。
 
-下一里程碑：**v0.4-alpha2 Monarch-inspired Tri-surface UI/UX**（Android 生活流 + /web 桌面账本流 + /owner 本机管理流，三端信息架构统一，不做家庭成员邀请 / 不做预算 / 不做 recurring / 不做银行聚合）。
+下一里程碑：把 v0.5 hardening 打成可提交 RC：提交前完成 release 构建/签名面检查、必要真机走查和版本报告。
 
-小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4-alpha1 在此基础上落地了多账本地基（`/api/ledgers` 列表 / 新建 / 切换、Room v4 `expenses.ledgerId`、设置 → 账本（实验）切换页）。**v0.4-alpha2 仍保持身份契约 `identity_schema=v0.3` 不变。**
+小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 
 ```text
 iPhone UploadLink 或 Android 上传截图
@@ -40,6 +40,7 @@ iPhone UploadLink 或 Android 上传截图
 - [官方资料与依赖来源](docs/REFERENCES.md)
 - [依赖管理](docs/DEPENDENCIES.md)
 - [灰度验收执行清单](docs/GRAY_ACCEPTANCE_EXECUTION.md)
+- [v0.5 Household 权限模型](docs/V0_5_HOUSEHOLD_MODEL.md)
 - [v0.3.2 自用稳定版验收清单](docs/V0_3_2_SELFUSE_CHECKLIST.md)
 - [错误码文案映射](docs/ERROR_MESSAGE_MAPPING.md)
 
@@ -53,9 +54,9 @@ docs/      架构、API、安全、部署和后续规划文档
 
 当前已经实现：
 
-- `backend/`：FastAPI、SQLite、SQLAlchemy、账号/账本/设备身份表、Pairing Code、UploadLink、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、服务器状态、可插拔 OCR 入口和图片清理维护接口。
-- `android/`：灰度用户版和内部联调版、Pairing Code 绑定、Keystore session token、身份卡、指纹解锁、待确认、Android 上传截图、编辑、账本、手动记一笔、统计、设置、Room confirmed 缓存恢复、受保护图片预览、重复保留、OCR retry、CSV 导出和分类规则管理。
-- `docs/`：v0.3 身份切换、架构、API、安全、工程规范、第二版路线和关键决策。
+- `backend/`：FastAPI、SQLite、SQLAlchemy、账号/账本/设备身份表、Pairing Code、UploadLink、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、服务器状态、可插拔 OCR 入口、图片清理维护接口，以及家庭成员审计 / owner 转让 / viewer 写保护。
+- `android/`：灰度用户版和内部联调版、Pairing Code 绑定、Keystore session token、身份卡、指纹解锁、待确认、Android 上传截图、编辑、账本、手动记一笔、统计、设置、Room confirmed 缓存恢复、受保护图片预览、重复保留、OCR retry、CSV 导出、分类规则管理、家庭成员查看、邀请预览和只读 UX。
+- `docs/`：v0.3 身份切换、v0.5 Household 模型、架构、API、安全、工程规范、第二版路线和关键决策。
 
 ## 后端启动
 

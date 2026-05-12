@@ -77,6 +77,7 @@ fun PendingScreen(
     val readyToConfirmCount = state.items.count {
         it.amountCents != null && !it.merchant.isNullOrBlank() && it.duplicateStatus != "suspected"
     }
+    val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
 
     LaunchedEffect(state.loading) {
@@ -128,11 +129,12 @@ fun PendingScreen(
                 pendingCount = state.items.size,
                 duplicateCount = duplicateCount,
                 uploading = state.uploading,
+                readOnly = readOnly,
                 onUploadScreenshot = onUploadScreenshot,
             )
         }
 
-        if (state.items.isEmpty()) {
+        if (state.items.isEmpty() && !readOnly) {
             item { UploadFlowCard() }
         }
 
@@ -153,6 +155,7 @@ fun PendingScreen(
                 item {
                     EmptyPendingState(
                         uploading = state.uploading,
+                        readOnly = readOnly,
                         showUploadGuide = showUploadGuide,
                         onToggleGuide = { showUploadGuide = !showUploadGuide },
                         onRefresh = onRefresh,
@@ -179,7 +182,7 @@ fun PendingScreen(
                         onSelect = { needsReviewFilter = it },
                     )
                 }
-                if (needsReviewFilter == NeedsReviewFilter.ReadyToConfirm && readyToConfirmCount > 0) {
+                if (!readOnly && needsReviewFilter == NeedsReviewFilter.ReadyToConfirm && readyToConfirmCount > 0) {
                     item {
                         BulkConfirmEntry(
                             readyCount = readyToConfirmCount,
@@ -203,7 +206,7 @@ fun PendingScreen(
                             PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
                             PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
                         },
-                        showActions = true,
+                        showActions = !readOnly,
                         actionsEnabled = expense.id !in state.actionInProgressIds,
                         onEdit = { onEdit(expense) },
                         onConfirm = {

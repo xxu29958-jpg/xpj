@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -37,6 +37,7 @@ class Ledger(Base):
 class LedgerMember(Base):
     __tablename__ = "ledger_members"
     __table_args__ = (
+        CheckConstraint("role IN ('owner', 'member', 'viewer')", name="ck_ledger_members_role_valid"),
         UniqueConstraint("ledger_id", "account_id", name="uq_ledger_member_ledger_account"),
     )
 
@@ -106,16 +107,19 @@ class PairingCode(Base):
 
 
 class Invitation(Base):
-    """v0.4-beta1: family ledger invitation token.
+    """Family ledger invitation token.
 
     Owner mints a one-time token bound to a (ledger_id, role). Plain token
     is returned to owner once and never persisted; only ``token_hash``
     (sha256 of the plain token) is stored. ``role`` must be ``member`` or
     ``viewer`` — owner role is granted only via initial ledger creation or
-    explicit owner transfer (not implemented in v0.4-beta1).
+    explicit owner transfer.
     """
 
     __tablename__ = "invitations"
+    __table_args__ = (
+        CheckConstraint("role IN ('member', 'viewer')", name="ck_invitations_role_invitable"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
@@ -139,6 +143,36 @@ class Invitation(Base):
         Integer, ForeignKey("accounts.id"), nullable=True, index=True
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class LedgerAuditLog(Base):
+    __tablename__ = "ledger_audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    ledger_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("ledgers.ledger_id"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    actor_account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("accounts.id"), nullable=True, index=True
+    )
+    target_account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("accounts.id"), nullable=True, index=True
+    )
+    target_member_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    invitation_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    previous_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    new_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    result: Mapped[str] = mapped_column(String(32), default="success", nullable=False, index=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_ledger_audit_logs_ledger_created_at", LedgerAuditLog.ledger_id, LedgerAuditLog.created_at)
+Index("ix_ledger_audit_logs_ledger_action", LedgerAuditLog.ledger_id, LedgerAuditLog.action)
 
 
 class Expense(Base):

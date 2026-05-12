@@ -7,12 +7,12 @@
   <div class="summary-card">
     <div class="summary-card-label">待确认截图</div>
     <div class="summary-card-num">{{ cards.pending_count }}</div>
-    <div class="summary-card-hint">需要你确认才进入账本</div>
+    <div class="summary-card-hint">{% if can_write %}需要你确认才进入账本{% else %}只读查看，不能确认入账{% endif %}</div>
   </div>
   <div class="summary-card {{ 'warn' if cards.needs_amount_count > 0 else '' }}">
     <div class="summary-card-label">缺金额</div>
     <div class="summary-card-num">{{ cards.needs_amount_count }}</div>
-    <div class="summary-card-hint">没有金额无法确认入账</div>
+    <div class="summary-card-hint">{% if can_write %}没有金额无法确认入账{% else %}可查看，不能补填{% endif %}</div>
   </div>
   <div class="summary-card">
     <div class="summary-card-label">缺商家</div>
@@ -34,7 +34,7 @@
 <div class="card">
   <h2>快捷操作</h2>
   <div class="quick-actions">
-    <a class="btn btn-primary" href="/web/pending{{ q }}">处理待确认</a>
+    <a class="btn {{ 'btn-primary' if can_write else 'btn-secondary' }}" href="/web/pending{{ q }}">{% if can_write %}处理待确认{% else %}查看待确认{% endif %}</a>
     <a class="btn btn-secondary" href="/web/confirmed{{ q }}">查看已确认</a>
     <a class="btn btn-secondary" href="/web/stats{{ q }}">查看报表</a>
     <a class="btn btn-link" href="/owner/ledgers">管理账本</a>

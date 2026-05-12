@@ -15,6 +15,7 @@ import com.ticketbox.domain.model.ProtectedImage
  * [ExpenseRepository] 上，本接口不负责。
  */
 interface PendingReviewActions {
+    fun canModifyLedger(): Boolean = true
     suspend fun fetchPending(): Result<List<Expense>>
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
     suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense>

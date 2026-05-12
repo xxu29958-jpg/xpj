@@ -18,16 +18,16 @@
 - 统计现状不均衡：Android 已有 Compose 原生 donut、趋势条、预算提示和 recurring candidates 摘要；`/web` stats 仍主要是卡片和表格；`/owner` 更偏后台管理面板。
 - 家庭账本基础已经落地：邀请创建 / 接受 / 撤销、成员列表、停用成员、`owner/member/viewer` 三态、member/viewer 角色调整、Android 加入家庭账本、`/web` viewer badge。
 
-不能误判为完成的缺口：
+v0.5 前不能误判为完成的缺口；当前 v0.5 分支已补齐 viewer 写保护、owner 转让、成员审计和版本号同步，后续仍按每版 RC 门禁验证：
 
-- Viewer 只读还不是全链路强约束：`POST /api/app/upload-screenshot`、分类规则 create/update/delete、`apply-pending`、部分 `/web` 直接 POST 和 CSV import confirm 仍需要后端 writer guard 复核并补测试。
-- 权限错误契约统一为 `permission_denied`；历史 beta1 草案里的 viewer 专用错误码不再作为当前契约。
+- Viewer 只读必须保持全链路强约束：`POST /api/app/upload-screenshot`、分类规则 create/update/delete、`apply-pending`、`/web` 直接 POST 和 CSV import confirm 都必须由后端 writer guard 拦截并有测试覆盖。
+- 权限错误契约统一为 `permission_denied` + `当前角色为只读，无法修改账本。`；历史 beta1 草案里的 viewer 专用错误码不再作为当前契约。
 - `Recurring` 目前是候选洞察，不是正式固定支出模型；后端没有 `recurring_items` 表和状态机。
 - `Budget` 目前主要是 Android 本地 `monthlyBudgetCents` 进度提示；后端没有账本预算模型和共享预算权限。
 - `Goal` 是早期 MVP 语义，不是完整目标模型；后端没有可扩展 goals 表。
 - `tags` 仍是账单文本字段，尚不是可筛选、可统计、可审计的多对多 tag 模型。
 - merchant 归一化目前是轻量 helper，明确没有 `MerchantAlias` 表。
-- Android 版本标识仍有历史 `0.3.3` 痕迹，发布节奏需要在下一版整理。
+- Android / 后端版本标识已在 v0.5.0a1 同步；后续发布必须继续保持 `versionName`、`versionCode`、`BACKEND_VERSION` 和文档一致。
 - 大 CSV 当前不是 10k+ 流式能力；商品级小票拆分和家庭拆账都还没有数据模型。
 
 ## 2. 不变原则

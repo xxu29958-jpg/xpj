@@ -71,7 +71,8 @@ def test_web_pending_shows_owner_role_chip_by_default(web_client: TestClient) ->
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     assert "ledger-role-chip" in resp.text
-    assert "所有者" in resp.text
+    assert "拥有者" in resp.text
+    assert "个人账本" in resp.text
     # owner can write → bulk-actions visible.
     assert "批量确认" in resp.text
 
@@ -96,7 +97,8 @@ def test_web_member_role_keeps_write_buttons(web_client: TestClient) -> None:
     resp = web_client.get(f"/web/pending?ledger_id={lid}")
     assert resp.status_code == 200
     assert "ledger-role-member" in resp.text
-    assert "成员（可写）" in resp.text
+    assert "成员" in resp.text
+    assert "共享账本" in resp.text
     assert "批量确认" in resp.text
 
 

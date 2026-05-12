@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.data.local.LocalSettingsStore
+import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
@@ -10,6 +10,7 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,21 +37,9 @@ data class SettingsUiState(
 
 class SettingsViewModel(
     private val repository: ExpenseRepository,
-    private val settingsStore: LocalSettingsStore,
+    private val settingsStore: TicketboxSettingsStore,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(
-        SettingsUiState(
-            serverUrl = settingsStore.serverUrl(),
-            accountName = settingsStore.accountName(),
-            ledgerName = settingsStore.ledgerName(),
-            deviceName = settingsStore.deviceName(),
-            role = settingsStore.role(),
-            boundAt = settingsStore.boundAt(),
-            monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
-            lastUploadAt = repository.lastUploadAt(),
-            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
-        ),
-    )
+    private val _uiState = MutableStateFlow(SettingsUiState().withLocalBindingFields())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -67,6 +56,43 @@ class SettingsViewModel(
         }
     }
 
+    private fun canModifyCurrentLedger(): Boolean {
+        return ledgerRoleCanModify(_uiState.value.role ?: repository.currentLedgerRole())
+    }
+
+    private fun SettingsUiState.withLocalBindingFields(
+        busy: Boolean = this.busy,
+        message: String? = this.message,
+    ): SettingsUiState {
+        val localAccountName = settingsStore.accountName()
+        val localLedgerName = settingsStore.ledgerName()
+        val localDeviceName = settingsStore.deviceName()
+        val localRole = settingsStore.role()
+        return copy(
+            serverUrl = settingsStore.serverUrl(),
+            accountName = localAccountName,
+            ledgerName = localLedgerName,
+            deviceName = localDeviceName,
+            role = localRole,
+            boundAt = settingsStore.boundAt(),
+            monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
+            serverSettings = serverSettings?.copy(
+                accountName = localAccountName ?: serverSettings.accountName,
+                ledgerName = localLedgerName ?: serverSettings.ledgerName,
+                deviceName = localDeviceName ?: serverSettings.deviceName,
+                role = localRole ?: serverSettings.role,
+            ),
+            lastUploadAt = repository.lastUploadAt(),
+            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
+            busy = busy,
+            message = message,
+        )
+    }
+
+    fun refreshLocalBindingState() {
+        _uiState.update { it.withLocalBindingFields() }
+    }
+
     fun testConnection() {
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
@@ -78,18 +104,24 @@ class SettingsViewModel(
 
     fun sync() {
         viewModelScope.launch {
-            _uiState.update { it.copy(busy = true, message = null) }
+            _uiState.update { it.withLocalBindingFields(busy = true, message = null) }
             repository.syncConfirmed()
                 .onSuccess {
                     _uiState.update {
-                        it.copy(
+                        it.withLocalBindingFields(
                             busy = false,
-                            lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
                             message = "更新完成",
                         )
                     }
                 }
-                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "暂时更新不了，请稍后再试。") } }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.withLocalBindingFields(
+                            busy = false,
+                            message = error.message ?: "暂时更新不了，请稍后再试。",
+                        )
+                    }
+                }
         }
     }
 
@@ -127,22 +159,30 @@ class SettingsViewModel(
 
     private fun loadServerSettings(showBusy: Boolean = false) {
         viewModelScope.launch {
+            val ledgerIdAtRequest = settingsStore.activeLedgerId()
             if (showBusy) {
                 _uiState.update { it.copy(busy = true, message = null) }
             }
             repository.serverSettings()
                 .onSuccess { settings ->
                     _uiState.update {
-                        it.copy(
-                            serverSettings = settings,
-                            accountName = settings.accountName,
-                            ledgerName = settings.ledgerName,
-                            deviceName = settings.deviceName,
-                            role = settings.role,
-                            lastUploadAt = repository.lastUploadAt() ?: settings.latestUploadAt,
-                            message = null,
-                            busy = if (showBusy) false else it.busy,
-                        )
+                        if (ledgerIdAtRequest != settingsStore.activeLedgerId()) {
+                            it.withLocalBindingFields(
+                                busy = if (showBusy) false else it.busy,
+                                message = null,
+                            )
+                        } else {
+                            it.copy(
+                                serverSettings = settings,
+                                accountName = settings.accountName,
+                                ledgerName = settings.ledgerName,
+                                deviceName = settings.deviceName,
+                                role = settings.role,
+                                lastUploadAt = repository.lastUploadAt() ?: settings.latestUploadAt,
+                                message = null,
+                                busy = if (showBusy) false else it.busy,
+                            )
+                        }
                     }
                 }
                 .onFailure { error ->
@@ -191,6 +231,10 @@ class SettingsViewModel(
     }
 
     fun createCategoryRule(keyword: String, category: String, priority: Int) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
             repository.createCategoryRule(keyword = keyword, category = category, priority = priority)
@@ -212,6 +256,10 @@ class SettingsViewModel(
     }
 
     fun updateCategoryRule(rule: CategoryRule, keyword: String, category: String, priority: Int) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
             repository.updateCategoryRule(
@@ -234,6 +282,10 @@ class SettingsViewModel(
     }
 
     fun toggleCategoryRule(rule: CategoryRule) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
         viewModelScope.launch {
             repository.updateCategoryRule(rule.id, enabled = !rule.enabled)
                 .onSuccess { updated ->
@@ -249,6 +301,10 @@ class SettingsViewModel(
     }
 
     fun deleteCategoryRule(rule: CategoryRule) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
         viewModelScope.launch {
             repository.deleteCategoryRule(rule.id)
                 .onSuccess {

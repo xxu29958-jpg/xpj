@@ -36,13 +36,19 @@ ERROR_MESSAGES = {
     "ledger_name_required": "请填写账本名称。",
     "ledger_name_too_long": "账本名称过长，请控制在 60 个字以内。",
     "ledger_forbidden": "当前账号没有该账本的访问权限。",
-    "permission_denied": "当前角色无权进行此操作。",
+    "permission_denied": "当前角色为只读，无法修改账本。",
     "invitation_invalid": "邀请码无效、已过期或已被使用。",
     "invitation_role_invalid": "邀请角色只能是成员或只读。",
     "invitation_note_too_long": "备注最多 80 个字。",
     "member_not_found": "成员不存在或已停用。",
+    "ledger_member_role_invalid": "账本成员角色无效。",
     "member_cannot_disable_self": "不能停用账本的最后一位 owner。",
     "member_cannot_disable_owner": "不能停用账本的 owner。",
+    "member_role_invalid": "成员角色只能是成员或只读。",
+    "member_cannot_change_owner_role": "owner 角色不能通过普通角色调整修改。",
+    "owner_transfer_requires_owner": "只有当前 owner 可以转让账本。",
+    "owner_transfer_self": "不能把 owner 转让给自己。",
+    "owner_transfer_target_invalid": "只能转让给当前账本的活跃非 owner 成员。",
 }
 
 

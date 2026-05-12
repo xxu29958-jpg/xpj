@@ -1,6 +1,8 @@
 package com.ticketbox.data.local
 
+import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.ImmersionMode
 import kotlinx.coroutines.flow.Flow
 
 interface TicketboxSettingsStore {
@@ -13,6 +15,34 @@ interface TicketboxSettingsStore {
     fun monthlyBudgetCents(): Long?
 
     fun saveMonthlyBudgetCents(amountCents: Long?)
+
+    suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
+        unsupportedSettingsWrite()
+    }
+
+    suspend fun saveBackgroundImagePath(path: String) {
+        unsupportedSettingsWrite()
+    }
+
+    suspend fun clearBackgroundImage() {
+        unsupportedSettingsWrite()
+    }
+
+    suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
+        unsupportedSettingsWrite()
+    }
+
+    suspend fun setImmersionMode(mode: ImmersionMode) {
+        unsupportedSettingsWrite()
+    }
+
+    suspend fun setParallaxEnabled(enabled: Boolean) {
+        unsupportedSettingsWrite()
+    }
+
+    suspend fun setReduceMotion(enabled: Boolean) {
+        unsupportedSettingsWrite()
+    }
 
     fun lastConfirmedSyncAt(): String?
 
@@ -72,4 +102,7 @@ interface TicketboxSettingsStore {
     fun requiresUnlock(): Boolean
 
     fun clear()
+
+    private fun unsupportedSettingsWrite(): Nothing =
+        error("This settings store does not support writing appearance settings.")
 }

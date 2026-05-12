@@ -273,6 +273,32 @@ class PendingViewModelReviewActionsTest {
     }
 
     @Test
+    fun viewerWriteActionsShortCircuitWithoutRepositoryCalls() = review {
+        val target = expense(id = 42L, amountCents = 100L, merchant = "M")
+        val fake = FakeReviewActions(pending = listOf(target), canModifyLedger = false)
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.readOnly)
+        assertFalse(vm.markUploadPreparing())
+        vm.openQuickCategory(target)
+        vm.saveQuickCategory(target.id, "交通")
+        vm.confirm(target)
+        vm.reject(target)
+        vm.markNotDuplicate(target)
+        vm.confirmReadyExpenses()
+        advanceUntilIdle()
+
+        assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
+        assertEquals(READ_ONLY_LEDGER_MESSAGE, vm.uiState.value.message)
+        assertEquals(0, fake.updateCalls)
+        assertEquals(0, fake.confirmCalls)
+        assertEquals(0, fake.rejectCalls)
+        assertEquals(0, fake.markNotDuplicateCalls)
+        assertEquals(0, fake.uploadCalls)
+    }
+
+    @Test
     fun openAndCloseSheetTogglesActiveSheet() = review {
         val target = expense(id = 50L)
         val fake = FakeReviewActions(pending = listOf(target))
@@ -326,6 +352,7 @@ class PendingViewModelReviewActionsTest {
 private class FakeReviewActions(
     private val pending: List<Expense> = emptyList(),
     private val categoryOptions: List<String> = listOf("餐饮", "交通", "购物"),
+    private val canModifyLedger: Boolean = true,
 ) : PendingReviewActions {
 
     var updateResponder: (suspend (Long, ExpenseDraft) -> Result<Expense>)? = null
@@ -337,7 +364,15 @@ private class FakeReviewActions(
         private set
     var confirmCalls: Int = 0
         private set
+    var rejectCalls: Int = 0
+        private set
+    var markNotDuplicateCalls: Int = 0
+        private set
+    var uploadCalls: Int = 0
+        private set
     val confirmedIds = mutableListOf<Long>()
+
+    override fun canModifyLedger(): Boolean = canModifyLedger
 
     override suspend fun fetchPending(): Result<List<Expense>> = Result.success(pending)
 
@@ -357,11 +392,15 @@ private class FakeReviewActions(
             ?: error("confirmResponder not set; got id=$id")
     }
 
-    override suspend fun rejectExpense(id: Long): Result<Expense> =
-        rejectResponder?.invoke(id) ?: error("rejectResponder not set")
+    override suspend fun rejectExpense(id: Long): Result<Expense> {
+        rejectCalls += 1
+        return rejectResponder?.invoke(id) ?: error("rejectResponder not set")
+    }
 
-    override suspend fun markNotDuplicate(id: Long): Result<Expense> =
-        markNotDuplicateResponder?.invoke(id) ?: error("markNotDuplicateResponder not set")
+    override suspend fun markNotDuplicate(id: Long): Result<Expense> {
+        markNotDuplicateCalls += 1
+        return markNotDuplicateResponder?.invoke(id) ?: error("markNotDuplicateResponder not set")
+    }
 
     override suspend fun categories(): Result<List<String>> = Result.success(categoryOptions)
 
@@ -371,5 +410,8 @@ private class FakeReviewActions(
         bytes: ByteArray,
         preparationDurationMs: Long?,
         sourceSizeBytes: Long?,
-    ): Result<Long> = Result.failure(IllegalStateException("upload not exercised in tests"))
+    ): Result<Long> {
+        uploadCalls += 1
+        return Result.failure(IllegalStateException("upload not exercised in tests"))
+    }
 }

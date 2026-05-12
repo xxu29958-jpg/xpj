@@ -43,6 +43,7 @@ data class PendingUiState(
     val items: List<Expense> = emptyList(),
     val thumbnails: Map<Long, ProtectedImage> = emptyMap(),
     val actionInProgressIds: Set<Long> = emptySet(),
+    val readOnly: Boolean = false,
     val loading: Boolean = false,
     val uploading: Boolean = false,
     val message: String? = null,
@@ -62,8 +63,28 @@ class PendingViewModel(
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
 
     init {
+        val readOnly = !repository.canModifyLedger()
+        _uiState.update { it.copy(readOnly = readOnly, message = if (readOnly) READ_ONLY_LEDGER_MESSAGE else it.message) }
         refresh()
         loadCategoryOptions()
+    }
+
+    private fun isReadOnly(): Boolean = !repository.canModifyLedger()
+
+    internal fun blockReadOnlyWrite(closeSheet: Boolean = false): Boolean {
+        if (!isReadOnly()) {
+            _uiState.update { it.copy(readOnly = false) }
+            return false
+        }
+        _uiState.update {
+            it.copy(
+                readOnly = true,
+                uploading = false,
+                activeSheet = if (closeSheet) PendingSheet.None else it.activeSheet,
+                message = READ_ONLY_LEDGER_MESSAGE,
+            )
+        }
+        return true
     }
 
     private fun loadCategoryOptions() {
@@ -86,6 +107,7 @@ class PendingViewModel(
                         it.copy(
                             items = expenses,
                             thumbnails = it.thumbnails.filterKeys { id -> id in ids },
+                            readOnly = isReadOnly(),
                             loading = false,
                         )
                     }
@@ -96,6 +118,7 @@ class PendingViewModel(
     }
 
     fun markUploadPreparing(): Boolean {
+        if (blockReadOnlyWrite()) return false
         if (_uiState.value.uploading) return false
         _uiState.update { it.copy(uploading = true, message = null) }
         return true
@@ -113,6 +136,7 @@ class PendingViewModel(
         sourceSizeBytes: Long? = null,
         uploadAlreadyStarted: Boolean = false,
     ) {
+        if (blockReadOnlyWrite()) return
         if (!uploadAlreadyStarted && _uiState.value.uploading) return
         viewModelScope.launch {
             if (!uploadAlreadyStarted) {
@@ -174,6 +198,7 @@ class PendingViewModel(
     }
 
     fun confirm(expense: Expense) {
+        if (blockReadOnlyWrite()) return
         if (expense.amountCents == null) {
             _uiState.update { it.copy(message = "请先填写金额。") }
             return
@@ -204,6 +229,7 @@ class PendingViewModel(
     }
 
     fun reject(expense: Expense) {
+        if (blockReadOnlyWrite()) return
         if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
@@ -230,6 +256,7 @@ class PendingViewModel(
     }
 
     fun markNotDuplicate(expense: Expense) {
+        if (blockReadOnlyWrite()) return
         if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }

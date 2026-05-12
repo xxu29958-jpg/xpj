@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun ExpenseEditPrimaryActions(
     saving: Boolean,
+    allowSave: Boolean = true,
     onBack: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -29,12 +30,14 @@ internal fun ExpenseEditPrimaryActions(
         ) {
             Text("返回")
         }
-        Button(
-            modifier = Modifier.weight(1f),
-            enabled = !saving,
-            onClick = onSave,
-        ) {
-            Text(if (saving) "保存中" else "保存")
+        if (allowSave) {
+            Button(
+                modifier = Modifier.weight(1f),
+                enabled = !saving,
+                onClick = onSave,
+            ) {
+                Text(if (saving) "保存中" else "保存")
+            }
         }
     }
 }

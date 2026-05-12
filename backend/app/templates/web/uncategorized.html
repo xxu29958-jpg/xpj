@@ -3,8 +3,12 @@
 {% block content %}
 <h1>未分类的待确认账单</h1>
 <p class="meta">
+  {% if can_write %}
   下列账单的分类为「其他/未分类」。勾选后批量改写分类，不会自动确认，也不会修改已确认账单。
   如需让规则自动接管，请到<a href="/web/rules{{ q }}">分类规则</a>新增关键词规则。
+  {% else %}
+  下列账单的分类为「其他/未分类」。只读角色只能查看，不能批量改写分类。
+  {% endif %}
 </p>
 
 {% if flash_message %}
@@ -18,7 +22,7 @@
     <table class="transaction-table">
       <thead>
         <tr>
-          <th><input type="checkbox" id="select-all"></th>
+          <th><input type="checkbox" id="select-all" {% if not can_write %}disabled{% endif %}></th>
           <th>创建时间</th>
           <th>商家</th>
           <th class="num">金额</th>
@@ -29,7 +33,7 @@
       <tbody>
         {% for item in uncategorized_items %}
         <tr>
-          <td><input type="checkbox" name="expense_ids" value="{{ item.id }}"></td>
+          <td><input type="checkbox" name="expense_ids" value="{{ item.id }}" {% if not can_write %}disabled{% endif %}></td>
           <td>{{ item.created_at }}</td>
           <td>{{ item.merchant or '—' }}</td>
           <td class="num">{% if item.amount_yuan %}¥{{ item.amount_yuan }}{% else %}—{% endif %}</td>
@@ -50,7 +54,7 @@
         </select>
       </label>
       <button type="submit" class="btn btn-primary">应用到所选</button>
-      {% else %}<span class="meta">只读角色无法批量改写分类。</span>{% endif %}
+      {% else %}<span class="readonly-inline">只读角色无法批量改写分类。</span>{% endif %}
       <a href="/web/categories{{ q }}" class="btn btn-secondary">返回分类账本</a>
     </div>
   </form>

@@ -10,12 +10,18 @@ import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
+import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
+import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberDto
+import com.ticketbox.domain.model.FamilyMember
+import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.IOException
+import java.time.Instant
 
 /**
  * Repository for v0.4-alpha1 multi-ledger management.
@@ -62,6 +68,13 @@ class LedgerRepository(
         }.getOrElse { emptyList() }
     }
 
+    fun currentAccountName(): String? = settingsStore.accountName()
+
+    fun currentLedgerName(): String? = settingsStore.activeLedgerName()
+        ?: settingsStore.ledgerName()
+
+    fun currentLedgerRole(): String? = settingsStore.role()
+
     fun activeLedgerId(): String? = settingsStore.activeLedgerId()
 
     suspend fun createLedger(name: String): Result<LedgerSummary> = wrap {
@@ -85,14 +98,33 @@ class LedgerRepository(
         val response = api().switchLedger(ledgerId)
         // Persist the new token *first*; the old one is now revoked.
         tokenStore.saveToken(response.sessionToken)
-        settingsStore.saveActiveLedger(
+        settingsStore.saveIdentity(
+            accountName = response.accountName,
             ledgerId = response.ledger.ledgerId,
             ledgerName = response.ledger.name,
+            deviceName = response.deviceName,
+            role = response.ledger.role,
+            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
         )
         // Wipe stale cache for the target ledger so the upcoming sync
         // produces a clean view.
         expenseDao.clearForLedger(response.ledger.ledgerId)
         response.ledger.toSummary()
+    }
+
+    suspend fun refreshFamilyMembers(ledgerId: String? = activeLedgerId()): Result<List<FamilyMember>> = wrap {
+        val targetLedgerId = requireNotNull(ledgerId?.takeIf { it.isNotBlank() }) {
+            "当前账本还没有准备好。"
+        }
+        api().ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
+    }
+
+    suspend fun previewInvitation(inviteToken: String): Result<InvitationPreview> = wrap {
+        val cleanToken = inviteToken.trim()
+        require(cleanToken.isNotEmpty()) { "请粘贴邀请明文。" }
+        api().previewInvitation(
+            InvitationPreviewRequestDto(inviteToken = cleanToken),
+        ).toInvitationPreview()
     }
 
     /**
@@ -186,4 +218,21 @@ private fun LedgerDto.toSummary(): LedgerSummary = LedgerSummary(
     isDefault = isDefault,
     createdAt = createdAt,
     archivedAt = archivedAt,
+)
+
+internal fun LedgerMemberDto.toFamilyMember(): FamilyMember = FamilyMember(
+    memberId = memberId,
+    accountPublicId = accountPublicId,
+    displayName = accountName.ifBlank { "未命名成员" },
+    role = role,
+    joinedAt = createdAt,
+    disabledAt = disabledAt,
+    isSelf = isSelf,
+)
+
+private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(
+    ledgerId = ledgerId,
+    ledgerName = ledgerName,
+    role = role,
+    expiresAt = expiresAt,
 )

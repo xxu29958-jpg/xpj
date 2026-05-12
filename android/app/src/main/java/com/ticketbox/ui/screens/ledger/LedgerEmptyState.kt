@@ -43,10 +43,10 @@ internal fun EmptyLedgerState(
         hasCategory -> "暂无 ${state.categoryFilter} 分类账单"
         else -> "本地还没有已确认账单"
     }
-    val body = if (hasMonth || hasCategory) {
-        "可以切换月份、选择全部分类，或先更新账本。"
-    } else {
-        "在待确认页确认几笔账单后，账本会在这里显示。"
+    val body = when {
+        hasMonth || hasCategory -> "可以切换月份、选择全部分类，或先更新账本。"
+        state.readOnly -> "当前角色可查看已入账记录，不能手动记账。"
+        else -> "在待确认页确认几笔账单后，账本会在这里显示。"
     }
 
     AppEmptyStateCard {
@@ -83,13 +83,20 @@ internal fun EmptyLedgerState(
                         enabled = !state.syncing,
                         onClick = onSync,
                     )
-                } else {
+                } else if (!state.readOnly) {
                     Button(
                         modifier = Modifier.weight(1f),
                         onClick = onManualAdd,
                     ) {
                         Text("手动记一笔")
                     }
+                    QuietOutlinedButton(
+                        text = "更新账本",
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.syncing,
+                        onClick = onSync,
+                    )
+                } else {
                     QuietOutlinedButton(
                         text = "更新账本",
                         modifier = Modifier.weight(1f),

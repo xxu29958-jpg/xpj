@@ -20,6 +20,7 @@ data class LedgerUiState(
     val items: List<Expense> = emptyList(),
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
     val months: List<String> = emptyList(),
+    val readOnly: Boolean = false,
     val exportFile: CsvExport? = null,
     val monthFilter: String = YearMonth.now().toString(),
     val categoryFilter: String = "",
@@ -34,7 +35,12 @@ data class LedgerUiState(
 class LedgerViewModel(
     private val repository: ExpenseRepository,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(LedgerUiState(lastSyncAt = repository.lastConfirmedSyncAt()))
+    private val _uiState = MutableStateFlow(
+        LedgerUiState(
+            readOnly = !repository.canModifyLedger(),
+            lastSyncAt = repository.lastConfirmedSyncAt(),
+        ),
+    )
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
     private var allConfirmed: List<Expense> = emptyList()
 
@@ -101,7 +107,7 @@ class LedgerViewModel(
 
     fun sync() {
         viewModelScope.launch {
-            _uiState.update { it.copy(syncing = true, message = null) }
+            _uiState.update { it.copy(readOnly = !repository.canModifyLedger(), syncing = true, message = null) }
             val filters = _uiState.value
             repository.syncConfirmed(
                 month = filters.monthFilter.trim().ifBlank { null },
@@ -150,6 +156,10 @@ class LedgerViewModel(
     }
 
     fun createManualExpense(draft: ExpenseDraft) {
+        if (!repository.canModifyLedger()) {
+            _uiState.update { it.copy(readOnly = true, creatingManual = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
         viewModelScope.launch {
             if (draft.amountCents == null) {
                 _uiState.update { it.copy(message = "请先填写金额。") }

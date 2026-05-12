@@ -3,6 +3,9 @@
 {% block content %}
 <h1>分类规则</h1>
 <p class="meta">规则按关键词匹配商家，仅改写「其他/未分类」的<b>待确认</b>账单。不会自动确认，不会回写已确认记录。</p>
+{% if not can_write %}
+<div class="readonly-callout">只读角色可以查看和预览规则，但不能新增、启停、删除或一键应用。</div>
+{% endif %}
 
 {% if flash_message %}
 <div class="card flash">{{ flash_message }}</div>
@@ -25,6 +28,11 @@
       </label>
       <button type="submit" class="btn btn-primary">添加规则</button>
     </form>
+  </section>
+  {% else %}
+  <section class="card">
+    <h2>新增规则</h2>
+    <p class="meta">只读角色无法新增分类规则。</p>
   </section>
   {% endif %}
 
@@ -75,6 +83,8 @@
         一键应用到待确认
       </button>
     </form>
+    {% else %}
+    <span class="readonly-inline">只读角色无法一键应用规则。</span>
     {% endif %}
   </div>
   {% if rules %}
@@ -111,7 +121,7 @@
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <button type="submit" class="btn btn-danger">删除</button>
           </form>
-          {% else %}<span class="meta">—</span>{% endif %}
+          {% else %}<span class="readonly-inline">只读</span>{% endif %}
         </td>
       </tr>
     {% endfor %}
@@ -120,7 +130,7 @@
   {% else %}
   <div class="empty-state">
     <div class="empty-state-title">还没有自定义规则</div>
-    <div class="empty-state-hint">默认 36 条内置规则仍在生效。可以在左侧新增本账本自有的关键词。</div>
+    <div class="empty-state-hint">{% if can_write %}默认 36 条内置规则仍在生效。可以在左侧新增本账本自有的关键词。{% else %}默认内置规则仍在生效；只读角色不能新增本账本规则。{% endif %}</div>
   </div>
   {% endif %}
 </section>

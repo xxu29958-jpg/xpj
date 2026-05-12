@@ -4,7 +4,11 @@
 <h1>疑似重复</h1>
 <p class="meta">
   下方每一对账单都是系统标记为「疑似重复」的待确认账单。
+  {% if can_write %}
   确认它们确实重复后可以删除其中一条；如果其实并不重复，点「保留两条」即可，下次相同组合不会再误报。
+  {% else %}
+  只读角色只能查看，不能保留或删除重复项。
+  {% endif %}
 </p>
 
 {% if flash_message %}
@@ -62,7 +66,7 @@
       <button type="submit" class="btn btn-secondary">删除被复制的 #{{ pair.original.id }}</button>
     </form>
     {% endif %}
-    {% else %}<span class="meta">只读角色，无法处理重复项。</span>{% endif %}
+    {% else %}<span class="readonly-inline">只读角色，无法处理重复项。</span>{% endif %}
   </div>
 </section>
 {% endfor %}

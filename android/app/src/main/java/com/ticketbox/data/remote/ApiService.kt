@@ -8,9 +8,12 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
+import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
+import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
@@ -155,6 +158,14 @@ interface ApiService {
 
     @POST("api/ledgers/{ledgerId}/switch")
     suspend fun switchLedger(@Path("ledgerId") ledgerId: String): LedgerSwitchResponseDto
+
+    @GET("api/ledgers/{ledgerId}/members")
+    suspend fun ledgerMembers(@Path("ledgerId") ledgerId: String): LedgerMemberListResponseDto
+
+    @POST("api/invitations/preview")
+    suspend fun previewInvitation(
+        @Body request: InvitationPreviewRequestDto,
+    ): InvitationPreviewResponseDto
 
     @POST("api/invitations/accept")
     suspend fun acceptInvitation(

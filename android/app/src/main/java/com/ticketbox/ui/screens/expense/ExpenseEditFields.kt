@@ -39,6 +39,7 @@ internal fun EditDraftPreviewCard(
     previewImage: ProtectedImage?,
     imageLoading: Boolean,
     ocrRunning: Boolean,
+    readOnly: Boolean,
     showLargeImage: Boolean,
     onToggleLargeImage: () -> Unit,
     onRetryOcr: () -> Unit,
@@ -105,22 +106,24 @@ internal fun EditDraftPreviewCard(
                                 fontWeight = FontWeight.Bold,
                             )
                         }
-                        OutlinedButton(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(40.dp),
-                            enabled = !ocrRunning,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                            onClick = onRetryOcr,
-                        ) {
-                            Text(
-                                if (ocrRunning) "识别中" else "重新识别",
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
+                        if (!readOnly) {
+                            OutlinedButton(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp),
+                                enabled = !ocrRunning,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                onClick = onRetryOcr,
+                            ) {
+                                Text(
+                                    if (ocrRunning) "识别中" else "重新识别",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
                     }
                 }
@@ -154,12 +157,14 @@ internal fun OcrProgressCard() {
 internal fun SelectableCategoryChip(
     selected: Boolean,
     label: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     AppFilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
+        enabled = enabled,
         leadingIcon = if (selected) {
             {
                 Icon(
@@ -181,6 +186,7 @@ internal fun ExpenseDateField(
     onPickTime: () -> Unit,
     onUseNow: () -> Unit,
     onClear: () -> Unit,
+    enabled: Boolean = true,
 ) {
     SoftPanel(containerAlpha = 0.98f) {
         Column(
@@ -198,19 +204,19 @@ internal fun ExpenseDateField(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                OutlinedButton(onClick = onPickDate) {
+                OutlinedButton(enabled = enabled, onClick = onPickDate) {
                     Text("选日期")
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onPickTime) {
+                TextButton(enabled = enabled, onClick = onPickTime) {
                     Text("选时间")
                 }
-                TextButton(onClick = onUseNow) {
+                TextButton(enabled = enabled, onClick = onUseNow) {
                     Text("设为现在")
                 }
                 TextButton(
-                    enabled = expenseTime.isNotBlank(),
+                    enabled = enabled && expenseTime.isNotBlank(),
                     onClick = onClear,
                 ) {
                     Text("清除")

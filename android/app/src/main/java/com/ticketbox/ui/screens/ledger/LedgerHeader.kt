@@ -23,7 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun LedgerHeader(onManualAdd: () -> Unit) {
+internal fun LedgerHeader(readOnly: Boolean, onManualAdd: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
         Text(
             text = "小票夹",
@@ -55,14 +55,16 @@ internal fun LedgerHeader(onManualAdd: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Button(
-                modifier = Modifier.heightIn(min = 44.dp),
-                onClick = onManualAdd,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("记一笔")
+            if (!readOnly) {
+                Button(
+                    modifier = Modifier.heightIn(min = 44.dp),
+                    onClick = onManualAdd,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("记一笔")
+                }
             }
         }
     }

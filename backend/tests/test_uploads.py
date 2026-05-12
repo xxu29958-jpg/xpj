@@ -12,6 +12,7 @@ from api_contract_helpers import (
 from app.main import app
 from conftest import (
     PNG_BYTES,
+    TEST_UPLOAD_RELATIVE,
     app_headers,
     upload_headers,
     upload_url_path,
@@ -270,7 +271,7 @@ def test_upload_randomizes_path_traversal_filename(client: TestClient) -> None:
     assert pending.status_code == 200
     item = next(expense for expense in pending.json() if expense["id"] == expense_id)
     assert item["status"] == "pending"
-    assert item["image_path"].startswith("uploads/pytest_test/owner/")
+    assert item["image_path"].startswith(f"{TEST_UPLOAD_RELATIVE}/owner/")
     assert ".." not in item["image_path"]
     assert "evil" not in item["image_path"]
     assert "\\" not in item["image_path"]

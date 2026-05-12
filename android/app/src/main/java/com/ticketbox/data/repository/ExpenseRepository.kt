@@ -12,6 +12,7 @@ import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.PairRequestDto
+import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -26,6 +27,7 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.mergeExpenseCategories
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +95,10 @@ class ExpenseRepository(
     private fun currentTimezoneId(): String {
         return TimeZone.getDefault().id
     }
+
+    fun currentLedgerRole(): String? = settingsStore.role()
+
+    override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
     private fun api(serverUrlOverride: String? = null, tokenOverride: String? = null): ApiService {
         val serverUrl = serverUrlOverride ?: settingsStore.serverUrl()
@@ -188,6 +194,31 @@ class ExpenseRepository(
         }
     }
 
+    private fun persistAuthCheck(check: com.ticketbox.data.remote.dto.AuthCheckDto) {
+        settingsStore.saveIdentity(
+            accountName = check.accountName,
+            ledgerId = check.ledgerId,
+            ledgerName = check.ledgerName,
+            deviceName = check.deviceName,
+            role = check.role,
+            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+        )
+    }
+
+    private fun persistServerSettings(settings: ServerSettingsDto, expectedLedgerId: String?) {
+        val expected = expectedLedgerId ?: return
+        val ledgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() } ?: return
+        if (ledgerId != expected) return
+        settingsStore.saveIdentity(
+            accountName = settings.accountName,
+            ledgerId = ledgerId,
+            ledgerName = settings.ledgerName,
+            deviceName = settings.deviceName,
+            role = settings.role,
+            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+        )
+    }
+
     override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> {
         return safeCall(serverUrlHint = serverUrl) {
             val normalized = validateBindingInput(serverUrl, pairingCode)
@@ -227,7 +258,7 @@ class ExpenseRepository(
     }
 
     suspend fun testConnection(): Result<Unit> = safeCall {
-        api().checkAuth()
+        persistAuthCheck(api().checkAuth())
     }
 
     suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> = safeCall {
@@ -533,7 +564,10 @@ class ExpenseRepository(
     }
 
     suspend fun serverSettings(): Result<ServerSettings> = safeCall {
-        api().serverSettings().toDomain()
+        val ledgerIdAtRequest = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
+        val settings = api().serverSettings()
+        persistServerSettings(settings, expectedLedgerId = ledgerIdAtRequest)
+        settings.toDomain()
     }
 
     fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()

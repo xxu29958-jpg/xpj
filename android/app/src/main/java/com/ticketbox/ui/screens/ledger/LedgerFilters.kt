@@ -35,7 +35,7 @@ internal fun LedgerFilterPanel(
     onCategoryChange: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        LedgerHeader(onManualAdd = onManualAdd)
+        LedgerHeader(readOnly = state.readOnly, onManualAdd = onManualAdd)
         LedgerSummaryStrip(state)
         LedgerInlineFilters(
             state = state,

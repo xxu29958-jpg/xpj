@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderShared
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
@@ -112,6 +113,7 @@ fun SettingsRootScreen(
     onOpenDataExport: () -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenLedgers: () -> Unit = {},
+    onOpenFamilyMembers: () -> Unit = {},
     onOpenJoinFamilyLedger: () -> Unit = {},
     onOpenAbout: () -> Unit,
 ) {
@@ -167,13 +169,19 @@ fun SettingsRootScreen(
         )
         SettingsEntryRow(
             title = "账本 (实验)",
-            subtitle = "查看、切换、新建账本（v0.4-alpha1）",
+            subtitle = "查看、切换、新建账本",
             icon = Icons.Filled.FolderShared,
             onClick = onOpenLedgers,
         )
         SettingsEntryRow(
+            title = "家庭成员",
+            subtitle = "查看当前账本成员、角色和状态",
+            icon = Icons.Filled.Group,
+            onClick = onOpenFamilyMembers,
+        )
+        SettingsEntryRow(
             title = "加入家庭账本",
-            subtitle = "使用本机管理后台生成的邀请明文（v0.4-beta1）",
+            subtitle = "使用本机管理后台生成的邀请明文",
             icon = Icons.Filled.GroupAdd,
             onClick = onOpenJoinFamilyLedger,
         )

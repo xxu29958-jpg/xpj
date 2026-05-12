@@ -10,9 +10,10 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuthToken, LedgerMember
+from app.models import AuthToken, Expense, LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.identity_service import hash_secret
+from app.services.time_service import now_utc
 from conftest import PNG_BYTES, admin_headers, app_headers
 
 
@@ -79,6 +80,26 @@ def _make_web_ledger_with_role(client: TestClient, role: str) -> str:
         member.role = role
         db.commit()
     return ledger_id
+
+
+def _insert_confirmed_expense(ledger_id: str, merchant: str = "Viewer Export Cafe") -> None:
+    now = now_utc()
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id=ledger_id,
+                amount_cents=850,
+                merchant=merchant,
+                category="餐饮",
+                note="",
+                source="test",
+                status="confirmed",
+                created_at=now,
+                updated_at=now,
+                confirmed_at=now,
+            )
+        )
+        db.commit()
 
 
 def _assert_permission_denied(response, *, label: str) -> None:
@@ -196,6 +217,24 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
     for label, path, data in requests:
         response = web_client.post(path, data=data, follow_redirects=False)
         _assert_permission_denied(response, label=label)
+
+
+def test_viewer_can_export_confirmed_csv_from_api_and_web(web_client: TestClient) -> None:
+    ledger_id, _, viewer_token = _make_role_token(web_client, "viewer")
+    _insert_confirmed_expense(ledger_id)
+
+    api_export = web_client.get(
+        "/api/expenses/export.csv",
+        headers=_bearer(viewer_token),
+    )
+    assert api_export.status_code == 200, api_export.text
+    assert api_export.headers["content-type"].startswith("text/csv")
+    assert "Viewer Export Cafe" in api_export.text
+
+    web_export = web_client.get(f"/web/export.csv?ledger_id={ledger_id}")
+    assert web_export.status_code == 200, web_export.text
+    assert web_export.headers["content-type"].startswith("text/csv")
+    assert "Viewer Export Cafe" in web_export.text
 
 
 def test_role_change_to_viewer_blocks_existing_token_writes(client: TestClient) -> None:

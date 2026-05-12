@@ -145,6 +145,7 @@ internal fun rememberLocalImage(path: String): ImageBitmap? {
 @Composable
 internal fun CategoryRuleCard(
     rule: CategoryRule,
+    readOnly: Boolean = false,
     onToggleRule: (CategoryRule) -> Unit,
     onEditRule: () -> Unit,
     onDeleteRule: () -> Unit,
@@ -162,15 +163,17 @@ internal fun CategoryRuleCard(
                 text = "优先级 ${rule.priority} · ${if (rule.enabled) "已启用" else "已停用"}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onToggleRule(rule) }) {
-                    Text(if (rule.enabled) "停用" else "启用")
-                }
-                OutlinedButton(onClick = onEditRule) {
-                    Text("编辑")
-                }
-                OutlinedButton(onClick = onDeleteRule) {
-                    Text("删除")
+            if (!readOnly) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onToggleRule(rule) }) {
+                        Text(if (rule.enabled) "停用" else "启用")
+                    }
+                    OutlinedButton(onClick = onEditRule) {
+                        Text("编辑")
+                    }
+                    OutlinedButton(onClick = onDeleteRule) {
+                        Text("删除")
+                    }
                 }
             }
         }

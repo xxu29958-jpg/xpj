@@ -14,22 +14,27 @@ import kotlinx.coroutines.launch
  */
 
 fun PendingViewModel.openQuickCategory(expense: Expense) {
+    if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.QuickCategory(expense), message = null) }
 }
 
 fun PendingViewModel.openQuickMerchant(expense: Expense) {
+    if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.QuickMerchant(expense), message = null) }
 }
 
 fun PendingViewModel.openMissingAmount(expense: Expense) {
+    if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.MissingAmount(expense), message = null) }
 }
 
 fun PendingViewModel.openDuplicateAction(expense: Expense) {
+    if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.Duplicate(expense), message = null) }
 }
 
 fun PendingViewModel.openBulkConfirm() {
+    if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.BulkConfirm, message = null) }
 }
 
@@ -38,6 +43,7 @@ fun PendingViewModel.closeSheet() {
 }
 
 fun PendingViewModel.saveQuickCategory(expenseId: Long, category: String) {
+    if (blockReadOnlyWrite(closeSheet = true)) return
     patchExpense(
         expenseId = expenseId,
         draft = blankDraft().copy(category = category.trim()),
@@ -47,6 +53,7 @@ fun PendingViewModel.saveQuickCategory(expenseId: Long, category: String) {
 }
 
 fun PendingViewModel.saveQuickMerchant(expenseId: Long, merchant: String) {
+    if (blockReadOnlyWrite(closeSheet = true)) return
     val cleaned = merchant.trim()
     if (cleaned.isEmpty()) {
         _uiState.update { it.copy(message = "请输入商家名称。") }
@@ -61,6 +68,7 @@ fun PendingViewModel.saveQuickMerchant(expenseId: Long, merchant: String) {
 }
 
 fun PendingViewModel.saveAmountDraft(expenseId: Long, amountCents: Long) {
+    if (blockReadOnlyWrite(closeSheet = true)) return
     if (amountCents <= 0L) {
         _uiState.update { it.copy(message = "金额必须大于 0。") }
         return
@@ -74,6 +82,7 @@ fun PendingViewModel.saveAmountDraft(expenseId: Long, amountCents: Long) {
 }
 
 fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, amountCents: Long) {
+    if (blockReadOnlyWrite(closeSheet = true)) return
     if (amountCents <= 0L) {
         _uiState.update { it.copy(message = "金额必须大于 0。") }
         return
@@ -126,6 +135,7 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, amountCents: Long) {
 }
 
 fun PendingViewModel.confirmReadyExpenses() {
+    if (blockReadOnlyWrite(closeSheet = true)) return
     val state = _uiState.value
     if (state.bulkConfirm.running) return
     val ready = state.items.filter {
@@ -200,6 +210,7 @@ private fun PendingViewModel.patchExpense(
     successMessage: String,
     failureMessageFallback: String,
 ) {
+    if (blockReadOnlyWrite(closeSheet = true)) return
     if (expenseId in _uiState.value.actionInProgressIds) return
     viewModelScope.launch {
         _uiState.update {

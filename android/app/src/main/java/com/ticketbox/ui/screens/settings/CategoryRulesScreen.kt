@@ -104,6 +104,7 @@ import kotlinx.coroutines.withContext
 fun CategoryRulesScreen(
     rules: List<CategoryRule>,
     busy: Boolean,
+    readOnly: Boolean,
     onBack: () -> Unit,
     onCreateRule: (String, String, Int) -> Unit,
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
@@ -145,103 +146,117 @@ fun CategoryRulesScreen(
         subtitle = categoryRuleSummary(rules),
         onBack = onBack,
     ) {
-        SettingsSection(title = if (editingRule == null) "新增规则" else "编辑规则", icon = Icons.Filled.Category) {
-            SoftPanel(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    OutlinedTextField(
-                        value = keyword,
-                        onValueChange = { keyword = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("商家关键词") },
-                        placeholder = { Text("OpenAI") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = category,
-                        onValueChange = { category = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("推荐分类") },
-                        placeholder = { Text("AI订阅") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = priorityText,
-                        onValueChange = { priorityText = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("优先级") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                    )
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !busy,
-                        onClick = {
-                            val priority = priorityText.toIntOrNull()
-                            if (keyword.isBlank() || category.isBlank()) {
-                                localMessage = "请填写关键词和分类。"
-                                return@Button
-                            }
-                            if (priority == null) {
-                                localMessage = "优先级必须是数字。"
-                                return@Button
-                            }
-                            localMessage = null
-                            val currentEditing = editingRule
-                            if (currentEditing == null) {
-                                onCreateRule(keyword, category, priority)
-                            } else {
-                                onUpdateRule(currentEditing, keyword, category, priority)
-                            }
-                            keyword = ""
-                            category = ""
-                            priorityText = "10"
-                            editingRule = null
-                        },
+        if (!readOnly) {
+            SettingsSection(title = if (editingRule == null) "新增规则" else "编辑规则", icon = Icons.Filled.Category) {
+                SoftPanel(containerAlpha = 0.96f) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text(if (busy) "处理中" else if (editingRule == null) "添加规则" else "保存规则")
-                    }
-                    if (editingRule != null) {
-                        OutlinedButton(
+                        OutlinedTextField(
+                            value = keyword,
+                            onValueChange = { keyword = it },
                             modifier = Modifier.fillMaxWidth(),
+                            label = { Text("商家关键词") },
+                            placeholder = { Text("OpenAI") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = category,
+                            onValueChange = { category = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("推荐分类") },
+                            placeholder = { Text("AI订阅") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = priorityText,
+                            onValueChange = { priorityText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("优先级") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                        )
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !busy,
                             onClick = {
+                                val priority = priorityText.toIntOrNull()
+                                if (keyword.isBlank() || category.isBlank()) {
+                                    localMessage = "请填写关键词和分类。"
+                                    return@Button
+                                }
+                                if (priority == null) {
+                                    localMessage = "优先级必须是数字。"
+                                    return@Button
+                                }
+                                localMessage = null
+                                val currentEditing = editingRule
+                                if (currentEditing == null) {
+                                    onCreateRule(keyword, category, priority)
+                                } else {
+                                    onUpdateRule(currentEditing, keyword, category, priority)
+                                }
                                 keyword = ""
                                 category = ""
                                 priorityText = "10"
                                 editingRule = null
-                                localMessage = null
                             },
                         ) {
-                            Text("取消编辑")
+                            Text(if (busy) "处理中" else if (editingRule == null) "添加规则" else "保存规则")
                         }
-                    }
-                    localMessage?.let {
-                        Text(it, color = MaterialTheme.colorScheme.secondary)
+                        if (editingRule != null) {
+                            OutlinedButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    keyword = ""
+                                    category = ""
+                                    priorityText = "10"
+                                    editingRule = null
+                                    localMessage = null
+                                },
+                            ) {
+                                Text("取消编辑")
+                            }
+                        }
+                        localMessage?.let {
+                            Text(it, color = MaterialTheme.colorScheme.secondary)
+                        }
                     }
                 }
             }
-        }
-        if (rules.isEmpty()) {
+        } else {
             Text(
-                text = "暂无分类规则。添加后，自动识别会优先参考这些关键词。",
+                text = "当前角色为只读，无法修改账本。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        } else {
-            rules.forEach { rule ->
-                CategoryRuleCard(
-                    rule = rule,
-                    onToggleRule = onToggleRule,
-                    onEditRule = {
-                        editingRule = rule
-                        keyword = rule.keyword
-                        category = rule.category
-                        priorityText = rule.priority.toString()
-                        localMessage = null
-                    },
-                    onDeleteRule = { deletingRule = rule },
-                )
+        }
+        SettingsSection(title = "规则列表", icon = Icons.Filled.Category) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (rules.isEmpty()) {
+                    Text(
+                        text = "暂无分类规则。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    rules.forEach { rule ->
+                        CategoryRuleCard(
+                            rule = rule,
+                            readOnly = readOnly,
+                            onToggleRule = onToggleRule,
+                            onEditRule = {
+                                if (!readOnly) {
+                                    editingRule = rule
+                                    keyword = rule.keyword
+                                    category = rule.category
+                                    priorityText = rule.priority.toString()
+                                    localMessage = null
+                                }
+                            },
+                            onDeleteRule = { if (!readOnly) deletingRule = rule },
+                        )
+                    }
+                }
             }
         }
     }

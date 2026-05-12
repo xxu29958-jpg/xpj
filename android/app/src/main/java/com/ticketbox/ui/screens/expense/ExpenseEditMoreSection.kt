@@ -32,6 +32,7 @@ internal fun ExpenseEditMoreSection(
     onToggleRawText: () -> Unit,
     ocrRunning: Boolean,
     saving: Boolean,
+    readOnly: Boolean = false,
     onRetryOcr: () -> Unit,
 ) {
     SoftPanel(containerAlpha = 0.98f) {
@@ -63,6 +64,7 @@ internal fun ExpenseEditMoreSection(
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("标签") },
                     placeholder = { Text("真香、必要支出") },
+                    enabled = !readOnly,
                 )
                 OutlinedTextField(
                     value = valueScoreText,
@@ -71,6 +73,7 @@ internal fun ExpenseEditMoreSection(
                     label = { Text("值不值评分，1-5") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
+                    enabled = !readOnly,
                 )
                 OutlinedTextField(
                     value = regretScoreText,
@@ -79,16 +82,19 @@ internal fun ExpenseEditMoreSection(
                     label = { Text("后悔指数，1-5") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
+                    enabled = !readOnly,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onToggleRawText) {
                         Text(if (rawTextExpanded) "收起识别原文" else "查看识别原文")
                     }
-                    OutlinedButton(
-                        enabled = !ocrRunning && !saving,
-                        onClick = onRetryOcr,
-                    ) {
-                        Text(if (ocrRunning) "识别中" else "重新识别")
+                    if (!readOnly) {
+                        OutlinedButton(
+                            enabled = !ocrRunning && !saving,
+                            onClick = onRetryOcr,
+                        ) {
+                            Text(if (ocrRunning) "识别中" else "重新识别")
+                        }
                     }
                 }
                 if (rawTextExpanded) {

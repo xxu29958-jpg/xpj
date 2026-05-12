@@ -41,6 +41,41 @@ data class LedgerSwitchResponseDto(
     val deviceName: String,
 )
 
+data class LedgerMemberDto(
+    @param:Json(name = "member_id")
+    val memberId: Long,
+    @param:Json(name = "account_public_id")
+    val accountPublicId: String,
+    @param:Json(name = "account_name")
+    val accountName: String,
+    val role: String,
+    @param:Json(name = "created_at")
+    val createdAt: String?,
+    @param:Json(name = "disabled_at")
+    val disabledAt: String?,
+    @param:Json(name = "is_self")
+    val isSelf: Boolean,
+)
+
+data class LedgerMemberListResponseDto(
+    val members: List<LedgerMemberDto>,
+)
+
+data class InvitationPreviewRequestDto(
+    @param:Json(name = "invite_token")
+    val inviteToken: String,
+)
+
+data class InvitationPreviewResponseDto(
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
+    @param:Json(name = "ledger_name")
+    val ledgerName: String,
+    val role: String,
+    @param:Json(name = "expires_at")
+    val expiresAt: String?,
+)
+
 /**
  * v0.4-beta1 family-ledger invitation accept request.
  *

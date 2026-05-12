@@ -55,7 +55,7 @@ fun LedgerScreen(
         }
     }
 
-    if (showManualSheet) {
+    if (showManualSheet && !state.readOnly) {
         ModalBottomSheet(onDismissRequest = { showManualSheet = false }) {
             ManualExpenseSheet(
                 categories = state.categories,
@@ -97,7 +97,7 @@ fun LedgerScreen(
                 state = state,
                 onOpenMonthPicker = { showMonthPicker = true },
                 onOpenTools = { showLedgerTools = true },
-                onManualAdd = { showManualSheet = true },
+                onManualAdd = { if (!state.readOnly) showManualSheet = true },
                 onCategoryChange = onCategoryChange,
             )
         }
@@ -107,7 +107,7 @@ fun LedgerScreen(
                     state = state,
                     onClearFilters = onClearFilters,
                     onSync = onSync,
-                    onManualAdd = { showManualSheet = true },
+                    onManualAdd = { if (!state.readOnly) showManualSheet = true },
                 )
             }
         }

@@ -6,7 +6,7 @@
   按分类汇总当月（{{ target_month }}）已确认账单，并展示各分类下未处理的待确认条数。
   共 {{ rule_count }} 条<a href="/web/rules{{ q }}">分类规则</a>。
   {% if uncategorized_pending %}
-  当前还有 <a href="/web/categories/uncategorized{{ q }}"><b>{{ uncategorized_pending }}</b> 条</a>未分类的待确认账单待整理。
+  当前还有 <a href="/web/categories/uncategorized{{ q }}"><b>{{ uncategorized_pending }}</b> 条</a>未分类的待确认账单{% if can_write %}待整理{% else %}可查看{% endif %}。
   {% endif %}
 </p>
 
@@ -46,9 +46,9 @@
         <td class="num">{{ row.pending_count }}</td>
         <td>
           {% if row.is_uncategorized and row.pending_count %}
-          <a href="/web/categories/uncategorized{{ q }}">整理待确认</a>
+          <a href="/web/categories/uncategorized{{ q }}">{% if can_write %}整理待确认{% else %}查看未分类{% endif %}</a>
           {% else %}
-          <a href="/web/rules{{ q }}">编辑规则</a>
+          <a href="/web/rules{{ q }}">{% if can_write %}编辑规则{% else %}查看规则{% endif %}</a>
           {% endif %}
         </td>
       </tr>

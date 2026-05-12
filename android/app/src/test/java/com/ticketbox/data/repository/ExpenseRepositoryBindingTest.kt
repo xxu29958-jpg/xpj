@@ -1,5 +1,8 @@
 package com.ticketbox.data.repository
 
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.ExpenseEntity
 import com.ticketbox.data.local.TicketboxSettingsStore
@@ -22,9 +25,16 @@ import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.security.SessionTokenStore
+import com.ticketbox.viewmodel.SettingsViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -33,6 +43,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ExpenseRepositoryBindingTest {
     @Test
     fun bindSavesSessionAndIdentityBeforeConfirmedRestoreFailure() = runTest {
@@ -87,6 +98,109 @@ class ExpenseRepositoryBindingTest {
         assertEquals("高德", dao.getConfirmed("owner").single().merchant)
         assertEquals("session-token", apiFactory.tokenValues.last())
     }
+
+    @Test
+    fun authCheckRefreshesStoredIdentityAndRole() = runTest {
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "member",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val apiService = FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+            checkAuthResult = AuthCheckDto(
+                status = "ok",
+                accountName = "我",
+                ledgerId = "family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "viewer",
+                scope = "app",
+            ),
+        )
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.testConnection().getOrThrow()
+
+        assertEquals("family", settingsStore.activeLedgerId())
+        assertEquals("家庭账本", settingsStore.ledgerName())
+        assertEquals("viewer", settingsStore.role())
+        assertTrue(!repository.canModifyLedger())
+    }
+
+    @Test
+    fun settingsRefreshesIdentityChangedByInvitationAccept() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val viewModelStore = ViewModelStore()
+        try {
+            val settingsStore = FakeTicketboxSettingsStore().apply {
+                saveServerUrl("https://api.zen70.cn")
+                saveIdentity(
+                    accountName = "我",
+                    ledgerId = "old",
+                    ledgerName = "旧账本",
+                    deviceName = "旧设备",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
+            }
+            val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+            val repository = ExpenseRepository(
+                expenseDao = FakeExpenseDao(),
+                apiClient = FakeApiServiceFactory(
+                    FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0),
+                ),
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+                deviceNameProvider = { "Android Test Device" },
+            )
+            val viewModel = ViewModelProvider(
+                viewModelStore,
+                object : ViewModelProvider.Factory {
+                    @Suppress("UNCHECKED_CAST")
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        return SettingsViewModel(repository, settingsStore) as T
+                    }
+                },
+            )[SettingsViewModel::class.java]
+
+            settingsStore.saveIdentity(
+                accountName = "2468",
+                ledgerId = "family",
+                ledgerName = "家庭账本",
+                deviceName = "9753",
+                role = "viewer",
+                boundAt = "2026-05-13T00:00:00Z",
+            )
+
+            viewModel.refreshLocalBindingState()
+
+            val state = viewModel.uiState.value
+            assertEquals("2468", state.accountName)
+            assertEquals("家庭账本", state.ledgerName)
+            assertEquals("9753", state.deviceName)
+            assertEquals("viewer", state.role)
+        } finally {
+            viewModelStore.clear()
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+        }
+    }
 }
 
 private class FakeApiServiceFactory(
@@ -103,6 +217,7 @@ private class FakeApiServiceFactory(
 private class FakeApiService(
     private val events: MutableList<String>,
     private var confirmedFailuresRemaining: Int,
+    private val checkAuthResult: AuthCheckDto? = null,
 ) : ApiService {
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -135,7 +250,7 @@ private class FakeApiService(
         )
     }
 
-    override suspend fun checkAuth(): AuthCheckDto = unsupported()
+    override suspend fun checkAuth(): AuthCheckDto = checkAuthResult ?: unsupported()
 
     override suspend fun pendingExpenses(): List<ExpenseDto> = unsupported()
 
@@ -165,7 +280,7 @@ private class FakeApiService(
 
     override suspend fun duplicates(): List<ExpenseDto> = unsupported()
 
-    override suspend fun categoryRules(): List<CategoryRuleDto> = unsupported()
+    override suspend fun categoryRules(): List<CategoryRuleDto> = emptyList()
 
     override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = unsupported()
 
@@ -173,7 +288,20 @@ private class FakeApiService(
 
     override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
 
-    override suspend fun serverSettings(): ServerSettingsDto = unsupported()
+    override suspend fun serverSettings(): ServerSettingsDto = ServerSettingsDto(
+        accountName = "我",
+        ledgerName = "旧账本",
+        deviceName = "旧设备",
+        role = "owner",
+        status = "ok",
+        storageStatus = "ok",
+        pendingCount = 0,
+        confirmedCount = 0,
+        rejectedCount = 0,
+        suspectedDuplicateCount = 0,
+        uploadStorageBytes = 0,
+        latestUploadAt = null,
+    )
 
     override suspend fun monthlyStats(month: String?, timezone: String?): MonthlyStatsDto = unsupported()
 
@@ -186,6 +314,14 @@ private class FakeApiService(
     override suspend fun createLedger(request: com.ticketbox.data.remote.dto.LedgerCreateRequestDto): com.ticketbox.data.remote.dto.LedgerDto = unsupported()
 
     override suspend fun switchLedger(ledgerId: String): com.ticketbox.data.remote.dto.LedgerSwitchResponseDto = unsupported()
+
+    override suspend fun ledgerMembers(
+        ledgerId: String,
+    ): com.ticketbox.data.remote.dto.LedgerMemberListResponseDto = unsupported()
+
+    override suspend fun previewInvitation(
+        request: com.ticketbox.data.remote.dto.InvitationPreviewRequestDto,
+    ): com.ticketbox.data.remote.dto.InvitationPreviewResponseDto = unsupported()
 
     override suspend fun acceptInvitation(
         request: com.ticketbox.data.remote.dto.InvitationAcceptRequestDto,

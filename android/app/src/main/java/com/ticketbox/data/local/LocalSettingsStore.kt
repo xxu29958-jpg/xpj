@@ -164,7 +164,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         activeLedgerIdFlow.value = null
     }
 
-    suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
+    override suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
         backgroundStore.saveBackgroundSettings(settings)
     }
 
@@ -172,27 +172,27 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         backgroundStore.clearBackground()
     }
 
-    suspend fun saveBackgroundImagePath(path: String) {
+    override suspend fun saveBackgroundImagePath(path: String) {
         backgroundStore.saveBackgroundImagePath(path)
     }
 
-    suspend fun clearBackgroundImage() {
+    override suspend fun clearBackgroundImage() {
         clearBackground()
     }
 
-    suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
+    override suspend fun setBackgroundCropMode(mode: BackgroundCropMode) {
         backgroundStore.setBackgroundCropMode(mode)
     }
 
-    suspend fun setImmersionMode(mode: ImmersionMode) {
+    override suspend fun setImmersionMode(mode: ImmersionMode) {
         backgroundStore.setImmersionMode(mode)
     }
 
-    suspend fun setParallaxEnabled(enabled: Boolean) {
+    override suspend fun setParallaxEnabled(enabled: Boolean) {
         backgroundStore.setParallaxEnabled(enabled)
     }
 
-    suspend fun setReduceMotion(enabled: Boolean) {
+    override suspend fun setReduceMotion(enabled: Boolean) {
         backgroundStore.setReduceMotion(enabled)
     }
 

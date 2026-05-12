@@ -1,7 +1,7 @@
 import java.util.Properties
 
-val ticketboxVersionCode = 30003
-val ticketboxVersionName = "0.3.3"
+val ticketboxVersionCode = 50000
+val ticketboxVersionName = "0.5.0a1"
 
 // Server URL precedence:
 //   1. ENV: TICKETBOX_SERVER_URL

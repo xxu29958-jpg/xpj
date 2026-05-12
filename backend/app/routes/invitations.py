@@ -1,8 +1,9 @@
-"""Family-ledger invitation & member HTTP routes (v0.4-beta1).
+"""Family-ledger invitation & member HTTP routes.
 
 * ``POST /api/ledgers/{ledger_id}/invitations`` — owner mints invite token
 * ``GET  /api/ledgers/{ledger_id}/invitations`` — owner lists invites
 * ``POST /api/ledgers/{ledger_id}/invitations/{public_id}/revoke`` — owner
+* ``POST /api/invitations/preview`` — public; inspect target ledger before accept
 * ``POST /api/invitations/accept`` — public; invitee claims token
 * ``GET  /api/ledgers/{ledger_id}/members`` — any member of the ledger
 * ``POST /api/ledgers/{ledger_id}/members/{member_id}/role`` — owner changes member/viewer
@@ -16,7 +17,7 @@ ledger A cannot administer ledger B.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
@@ -28,21 +29,30 @@ from app.schemas import (
     InvitationCreateRequest,
     InvitationCreateResponse,
     InvitationListResponse,
+    InvitationPreviewRequest,
+    InvitationPreviewResponse,
     InvitationSummaryResponse,
+    LedgerAuditListResponse,
+    LedgerAuditResponse,
     LedgerMemberListResponse,
     LedgerMemberResponse,
     LedgerMemberRoleUpdateRequest,
+    OwnerTransferResponse,
 )
 from app.services import permission_service
 from app.services.invitation_service import (
     InvitationSummary,
+    LedgerAuditSummary,
     MemberSummary,
     accept_invitation,
     create_invitation,
     disable_member,
+    list_audit_logs,
     list_invitations,
     list_members,
+    preview_invitation,
     revoke_invitation,
+    transfer_ledger_owner,
     update_member_role,
 )
 from app.tenants import AuthContext
@@ -74,6 +84,25 @@ def _to_member_response(summary: MemberSummary) -> LedgerMemberResponse:
         created_at=summary.created_at,
         disabled_at=summary.disabled_at,
         is_self=summary.is_self,
+    )
+
+
+def _to_audit_response(summary: LedgerAuditSummary) -> LedgerAuditResponse:
+    return LedgerAuditResponse(
+        public_id=summary.public_id,
+        ledger_id=summary.ledger_id,
+        action=summary.action,
+        actor_account_public_id=summary.actor_account_public_id,
+        actor_account_name=summary.actor_account_name,
+        target_account_public_id=summary.target_account_public_id,
+        target_account_name=summary.target_account_name,
+        target_member_id=summary.target_member_id,
+        invitation_public_id=summary.invitation_public_id,
+        previous_role=summary.previous_role,
+        new_role=summary.new_role,
+        result=summary.result,
+        detail=summary.detail,
+        created_at=summary.created_at,
     )
 
 
@@ -139,8 +168,30 @@ def revoke_invitation_endpoint(
 ) -> InvitationSummaryResponse:
     _require_same_ledger(auth, ledger_id)
     permission_service.require_manage_members(auth)
-    summary = revoke_invitation(db, ledger_id=ledger_id, public_id=public_id)
+    summary = revoke_invitation(
+        db,
+        ledger_id=ledger_id,
+        public_id=public_id,
+        actor_account_id=auth.account_id,
+    )
     return _to_invitation_response(summary)
+
+
+@router.post(
+    "/api/invitations/preview",
+    response_model=InvitationPreviewResponse,
+)
+def preview_invitation_endpoint(
+    payload: InvitationPreviewRequest,
+    db: Session = Depends(get_db),
+) -> InvitationPreviewResponse:
+    result = preview_invitation(db, invite_token=payload.invite_token)
+    return InvitationPreviewResponse(
+        ledger_id=result.ledger_id,
+        ledger_name=result.ledger_name,
+        role=result.role,
+        expires_at=result.expires_at,
+    )
 
 
 @router.post(
@@ -209,6 +260,31 @@ def update_member_role_endpoint(
 
 
 @router.post(
+    "/api/ledgers/{ledger_id}/members/{member_id}/transfer-owner",
+    response_model=OwnerTransferResponse,
+)
+def transfer_owner_endpoint(
+    ledger_id: str,
+    member_id: int,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> OwnerTransferResponse:
+    _require_same_ledger(auth, ledger_id)
+    permission_service.require_manage_members(auth)
+    result = transfer_ledger_owner(
+        db,
+        ledger_id=ledger_id,
+        member_id=member_id,
+        requester_account_id=auth.account_id,
+    )
+    return OwnerTransferResponse(
+        ledger_id=ledger_id,
+        previous_owner=_to_member_response(result.previous_owner),
+        new_owner=_to_member_response(result.new_owner),
+    )
+
+
+@router.post(
     "/api/ledgers/{ledger_id}/members/{member_id}/disable",
     response_model=LedgerMemberResponse,
 )
@@ -227,3 +303,19 @@ def disable_member_endpoint(
         requester_account_id=auth.account_id,
     )
     return _to_member_response(summary)
+
+
+@router.get(
+    "/api/ledgers/{ledger_id}/audit",
+    response_model=LedgerAuditListResponse,
+)
+def list_audit_endpoint(
+    ledger_id: str,
+    limit: int = Query(default=100, ge=1, le=200),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> LedgerAuditListResponse:
+    _require_same_ledger(auth, ledger_id)
+    permission_service.require_manage_members(auth)
+    summaries = list_audit_logs(db, ledger_id=ledger_id, limit=limit)
+    return LedgerAuditListResponse(items=[_to_audit_response(s) for s in summaries])

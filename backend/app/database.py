@@ -212,12 +212,48 @@ def migrate_upload_paths_to_tenant_dirs() -> None:
                     )
 
 
+def _validate_family_role_data(connection, table_names: set[str]) -> None:
+    """Reject legacy SQLite rows that would bypass role CHECK constraints.
+
+    SQLite cannot add CHECK constraints to an existing table with ALTER TABLE.
+    Older valid databases stay compatible; malformed rows fail fast on startup
+    instead of producing undefined permission behavior.
+    """
+
+    if "ledger_members" in table_names:
+        invalid_members = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM ledger_members "
+                    "WHERE role NOT IN ('owner', 'member', 'viewer')"
+                )
+            ).scalar_one()
+        )
+        if invalid_members:
+            raise RuntimeError("Invalid legacy data: ledger_members.role contains unsupported values")
+    if "invitations" in table_names:
+        invalid_invitations = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM invitations "
+                    "WHERE role NOT IN ('member', 'viewer')"
+                )
+            ).scalar_one()
+        )
+        if invalid_invitations:
+            raise RuntimeError("Invalid legacy data: invitations.role contains unsupported values")
+
+
 def migrate_sqlite_schema() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
 
     inspector = inspect(engine)
-    if "expenses" not in inspector.get_table_names():
+    table_names = set(inspector.get_table_names())
+    with engine.begin() as connection:
+        _validate_family_role_data(connection, table_names)
+
+    if "expenses" not in table_names:
         return
 
     existing_columns = {column["name"] for column in inspector.get_columns("expenses")}
@@ -303,7 +339,7 @@ def migrate_sqlite_schema() -> None:
             text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_duplicate_status ON expenses (tenant_id, duplicate_status)")
         )
 
-        if "category_rules" in inspector.get_table_names():
+        if "category_rules" in table_names:
             category_rule_columns = {column["name"] for column in inspector.get_columns("category_rules")}
             if "tenant_id" not in category_rule_columns:
                 connection.execute(
@@ -320,7 +356,7 @@ def migrate_sqlite_schema() -> None:
                 )
             )
 
-        if "duplicate_ignores" in inspector.get_table_names():
+        if "duplicate_ignores" in table_names:
             duplicate_ignore_columns = {column["name"] for column in inspector.get_columns("duplicate_ignores")}
             if "tenant_id" not in duplicate_ignore_columns:
                 connection.execute(
@@ -353,7 +389,7 @@ def migrate_sqlite_schema() -> None:
 
         # v0.3.1-alpha2: backfill upload_links.public_id for rows created
         # before the column existed.
-        if "upload_links" in inspector.get_table_names():
+        if "upload_links" in table_names:
             upload_link_columns = {
                 column["name"] for column in inspector.get_columns("upload_links")
             }

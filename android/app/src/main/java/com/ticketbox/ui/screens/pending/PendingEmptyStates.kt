@@ -150,6 +150,7 @@ internal fun LoadingPendingState() {
 @Composable
 internal fun EmptyPendingState(
     uploading: Boolean,
+    readOnly: Boolean,
     showUploadGuide: Boolean,
     onToggleGuide: () -> Unit,
     onRefresh: () -> Unit,
@@ -160,7 +161,11 @@ internal fun EmptyPendingState(
     ) {
         AppSectionHeader(
             title = "待处理",
-            subtitle = "上传截图后，会出现在这里等你确认",
+            subtitle = if (readOnly) {
+                "当前角色可查看待确认账单，不能新增或修改"
+            } else {
+                "上传截图后，会出现在这里等你确认"
+            },
         )
         AppEmptyStateCard {
             Row(
@@ -175,7 +180,11 @@ internal fun EmptyPendingState(
                 ) {
                     Text("还没有待确认账单", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
-                        text = "截图上传后不会自动入账，你确认后才会记录。",
+                        text = if (readOnly) {
+                            "当前账本没有需要查看的待确认账单。"
+                        } else {
+                            "截图上传后不会自动入账，你确认后才会记录。"
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -183,20 +192,22 @@ internal fun EmptyPendingState(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AppSecondaryButton(
-                text = if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令",
-                modifier = Modifier.weight(1.25f),
-                leadingIcon = Icons.Filled.Info,
-                onClick = onToggleGuide,
-            )
+            if (!readOnly) {
+                AppSecondaryButton(
+                    text = if (showUploadGuide) "收起 iPhone 方法" else "iPhone 快捷指令",
+                    modifier = Modifier.weight(1.25f),
+                    leadingIcon = Icons.Filled.Info,
+                    onClick = onToggleGuide,
+                )
+            }
             AppSecondaryButton(
                 text = "刷新",
-                modifier = Modifier.weight(0.75f),
+                modifier = Modifier.weight(if (readOnly) 1f else 0.75f),
                 enabled = !uploading,
                 onClick = onRefresh,
             )
         }
-        if (showUploadGuide) {
+        if (showUploadGuide && !readOnly) {
             AppGlassCard(containerAlpha = 0.94f) {
                 Column(
                     modifier = Modifier.padding(16.dp),

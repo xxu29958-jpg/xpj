@@ -20,6 +20,7 @@ data class ExpenseEditUiState(
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
+    val readOnly: Boolean = false,
     val imageLoading: Boolean = false,
     val ocrRunning: Boolean = false,
     val saving: Boolean = false,
@@ -35,7 +36,9 @@ class ExpenseEditViewModel(
         const val IMAGE_LOG_TAG = "TicketboxImage"
     }
 
-    private val _uiState = MutableStateFlow(ExpenseEditUiState())
+    private val _uiState = MutableStateFlow(
+        ExpenseEditUiState(readOnly = !repository.canModifyLedger()),
+    )
     val uiState: StateFlow<ExpenseEditUiState> = _uiState.asStateFlow()
 
     init {
@@ -91,6 +94,7 @@ class ExpenseEditViewModel(
     }
 
     fun save(draft: ExpenseDraft) {
+        if (blockReadOnlyWrite()) return
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, message = null) }
             repository.updateExpense(expenseId, draft)
@@ -102,6 +106,7 @@ class ExpenseEditViewModel(
     }
 
     fun confirm(draft: ExpenseDraft) {
+        if (blockReadOnlyWrite()) return
         if (draft.amountCents == null) {
             _uiState.update { it.copy(message = "请先填写金额。") }
             return
@@ -123,6 +128,7 @@ class ExpenseEditViewModel(
     }
 
     fun reject() {
+        if (blockReadOnlyWrite()) return
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, message = null) }
             repository.rejectExpense(expenseId)
@@ -132,6 +138,7 @@ class ExpenseEditViewModel(
     }
 
     fun retryOcr() {
+        if (blockReadOnlyWrite()) return
         viewModelScope.launch {
             _uiState.update { it.copy(ocrRunning = true, message = null) }
             repository.retryOcr(expenseId)
@@ -145,6 +152,7 @@ class ExpenseEditViewModel(
     }
 
     fun markNotDuplicate() {
+        if (blockReadOnlyWrite()) return
         viewModelScope.launch {
             repository.markNotDuplicate(expenseId)
                 .onSuccess { expense ->
@@ -152,5 +160,14 @@ class ExpenseEditViewModel(
                 }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "暂时没处理成功，请稍后再试。") } }
         }
+    }
+
+    private fun blockReadOnlyWrite(): Boolean {
+        if (repository.canModifyLedger()) {
+            _uiState.update { it.copy(readOnly = false) }
+            return false
+        }
+        _uiState.update { it.copy(readOnly = true, saving = false, ocrRunning = false, message = READ_ONLY_LEDGER_MESSAGE) }
+        return true
     }
 }

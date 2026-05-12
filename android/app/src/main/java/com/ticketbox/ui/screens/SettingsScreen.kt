@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.appearance.background.BackgroundImageStore
 import com.ticketbox.ui.screens.settings.AboutScreen
 import com.ticketbox.ui.screens.settings.AppearanceScreen
@@ -26,6 +27,7 @@ import com.ticketbox.ui.screens.settings.BackgroundGalleryScreen
 import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.CategoryRulesScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
+import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
@@ -59,6 +61,7 @@ fun SettingsScreen(
     showAdvancedTools: Boolean = false,
     ledgerRepository: LedgerRepository? = null,
     activeLedgerId: String? = null,
+    onBindingChanged: () -> Unit = {},
     onLedgerSwitched: () -> Unit = {},
 ) {
     var route by remember { mutableStateOf<SettingsRoute>(SettingsRoute.Root) }
@@ -108,6 +111,7 @@ fun SettingsScreen(
             onOpenDataExport = { route = SettingsRoute.DataExport },
             onOpenSecurity = { route = SettingsRoute.SecurityPrivacy },
             onOpenLedgers = { route = SettingsRoute.Ledgers },
+            onOpenFamilyMembers = { route = SettingsRoute.FamilyMembers },
             onOpenJoinFamilyLedger = { route = SettingsRoute.JoinFamilyLedger },
             onOpenAbout = { route = SettingsRoute.About },
         )
@@ -188,6 +192,7 @@ fun SettingsScreen(
         SettingsRoute.CategoryRules -> CategoryRulesScreen(
             rules = state.categoryRules,
             busy = state.busy,
+            readOnly = !ledgerRoleCanModify(state.role),
             onBack = { route = SettingsRoute.Root },
             onCreateRule = onCreateRule,
             onUpdateRule = onUpdateRule,
@@ -225,6 +230,19 @@ fun SettingsScreen(
             }
         }
 
+        SettingsRoute.FamilyMembers -> {
+            val repo = ledgerRepository
+            if (repo != null) {
+                FamilyMembersScreen(
+                    repository = repo,
+                    activeLedgerId = activeLedgerId,
+                    onBack = { route = SettingsRoute.Root },
+                )
+            } else {
+                route = SettingsRoute.Root
+            }
+        }
+
         SettingsRoute.JoinFamilyLedger -> {
             val repo = ledgerRepository
             if (repo != null) {
@@ -235,6 +253,7 @@ fun SettingsScreen(
                         // After a successful accept, jump to the ledger
                         // picker so the user can see the joined ledger as
                         // active and other binding-aware screens refresh.
+                        onBindingChanged()
                         onLedgerSwitched()
                         route = SettingsRoute.Ledgers
                     },

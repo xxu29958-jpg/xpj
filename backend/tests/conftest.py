@@ -11,13 +11,15 @@ from fastapi.testclient import TestClient
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+TEST_RUN_ID = f"pid_{os.getpid()}"
 TEST_UPLOAD_TOKEN = "pytest-upload-token"
 TEST_APP_TOKEN = "pytest-app-token"
 TEST_ADMIN_TOKEN = "pytest-admin-token"
 TEST_TENANT_UPLOAD_TOKEN = "pytest-tenant-upload-token"
 TEST_TENANT_APP_TOKEN = "pytest-tenant-app-token"
-TEST_DB_PATH = BACKEND_ROOT / "data" / "pytest_test.db"
-TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / "pytest_test"
+TEST_DB_PATH = BACKEND_ROOT / "data" / f"pytest_test_{TEST_RUN_ID}.db"
+TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
+TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 CURRENT_APP_TOKEN = ""
 CURRENT_ADMIN_TOKEN = ""
 CURRENT_UPLOAD_KEY = ""
@@ -30,8 +32,8 @@ os.environ.update(
         "UPLOAD_TOKEN": TEST_UPLOAD_TOKEN,
         "APP_TOKEN": TEST_APP_TOKEN,
         "ADMIN_TOKEN": TEST_ADMIN_TOKEN,
-        "DATABASE_URL": "sqlite:///data/pytest_test.db",
-        "UPLOAD_DIR": "uploads/pytest_test",
+        "DATABASE_URL": f"sqlite:///data/{TEST_DB_PATH.name}",
+        "UPLOAD_DIR": TEST_UPLOAD_RELATIVE,
         "MAX_UPLOAD_SIZE_MB": "10",
         "DELETE_IMAGE_AFTER_CONFIRM": "false",
         "GENERATE_THUMBNAIL": "true",
@@ -157,6 +159,21 @@ def reset_runtime() -> None:
     shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
     init_db()
     _seed_test_identity_tokens()
+
+
+def _cleanup_test_runtime() -> None:
+    engine.dispose()
+    shutil.rmtree(TEST_UPLOAD_DIR, ignore_errors=True)
+    for suffix in ("", "-journal", "-wal", "-shm"):
+        path = TEST_DB_PATH.with_name(f"{TEST_DB_PATH.name}{suffix}")
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    _cleanup_test_runtime()
 
 
 @pytest.fixture()

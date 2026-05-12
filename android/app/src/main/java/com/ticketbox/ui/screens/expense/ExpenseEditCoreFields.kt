@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 internal fun ExpenseEditAmountField(
     amountText: String,
     onAmountChange: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
     OutlinedTextField(
         value = amountText,
@@ -26,6 +27,7 @@ internal fun ExpenseEditAmountField(
         placeholder = { Text("36.80") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
+        enabled = enabled,
     )
 }
 
@@ -33,6 +35,7 @@ internal fun ExpenseEditAmountField(
 internal fun ExpenseEditMerchantField(
     merchant: String,
     onMerchantChange: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
     OutlinedTextField(
         value = merchant,
@@ -40,6 +43,7 @@ internal fun ExpenseEditMerchantField(
         modifier = Modifier.fillMaxWidth(),
         label = { Text("商家") },
         singleLine = true,
+        enabled = enabled,
     )
 }
 
@@ -48,6 +52,7 @@ internal fun ExpenseEditCategoryField(
     category: String,
     categories: List<String>,
     onCategoryChange: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
     OutlinedTextField(
         value = category,
@@ -55,6 +60,7 @@ internal fun ExpenseEditCategoryField(
         modifier = Modifier.fillMaxWidth(),
         label = { Text("分类") },
         singleLine = true,
+        enabled = enabled,
     )
     if (categories.isNotEmpty()) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -62,6 +68,7 @@ internal fun ExpenseEditCategoryField(
                 SelectableCategoryChip(
                     selected = category == item,
                     label = item,
+                    enabled = enabled,
                     onClick = { onCategoryChange(item) },
                 )
             }
@@ -73,12 +80,14 @@ internal fun ExpenseEditCategoryField(
 internal fun ExpenseEditNoteField(
     note: String,
     onNoteChange: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
     OutlinedTextField(
         value = note,
         onValueChange = onNoteChange,
         modifier = Modifier.fillMaxWidth(),
         label = { Text("备注") },
+        enabled = enabled,
     )
 }
 

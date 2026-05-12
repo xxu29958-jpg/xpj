@@ -399,6 +399,7 @@ private fun MainShell(
                         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
                         ledgerRepository = ledgerRepository,
                         activeLedgerId = ledgerRepository.activeLedgerId(),
+                        onBindingChanged = settingsViewModel::refreshLocalBindingState,
                         onLedgerSwitched = settingsViewModel::sync,
                     )
                 }

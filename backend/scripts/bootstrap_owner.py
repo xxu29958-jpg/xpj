@@ -15,7 +15,7 @@ from app.services.identity_service import bootstrap_owner  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Bootstrap v0.3 owner identity.")
+    parser = argparse.ArgumentParser(description="Bootstrap owner identity.")
     parser.add_argument("--account-name", default="我")
     parser.add_argument("--ledger-name", default="我的小票夹")
     parser.add_argument("--device-name", default="Windows 后端")
@@ -39,7 +39,7 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     owner_text = "\n".join(
         [
-            "小票夹 v0.3 Owner Bootstrap",
+            "小票夹 Owner Bootstrap",
             f"owner account: {result.account_name}",
             f"default ledger: {result.ledger_name} ({result.ledger_id})",
             f"bootstrap device: {result.device_name}",

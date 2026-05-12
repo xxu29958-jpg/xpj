@@ -2,6 +2,8 @@ package com.ticketbox.data.remote
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import kotlin.test.Test
@@ -53,5 +55,57 @@ class ApiDtoContractTest {
         assertEquals(348120L, dto.uploadSizeBytes)
         assertEquals(86L, dto.durationMs)
         assertEquals(24L, dto.timingMs?.get("db_create_ms"))
+    }
+
+    @Test
+    fun ledgerMemberListParsesCurrentServerShape() {
+        val dto = requireNotNull(
+            moshi.adapter(LedgerMemberListResponseDto::class.java).fromJson(
+                """
+                {
+                  "members": [
+                    {
+                      "member_id": 1,
+                      "account_public_id": "acc_1",
+                      "account_name": "阿方",
+                      "role": "owner",
+                      "created_at": "2026-05-01T00:00:00Z",
+                      "disabled_at": null,
+                      "is_self": true
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(1L, dto.members.single().memberId)
+        assertEquals("acc_1", dto.members.single().accountPublicId)
+        assertEquals("阿方", dto.members.single().accountName)
+        assertEquals("owner", dto.members.single().role)
+        assertEquals("2026-05-01T00:00:00Z", dto.members.single().createdAt)
+        assertEquals(null, dto.members.single().disabledAt)
+        assertEquals(true, dto.members.single().isSelf)
+    }
+
+    @Test
+    fun invitationPreviewParsesCurrentServerShape() {
+        val dto = requireNotNull(
+            moshi.adapter(InvitationPreviewResponseDto::class.java).fromJson(
+                """
+                {
+                  "ledger_id": "L_family",
+                  "ledger_name": "家庭账本",
+                  "role": "viewer",
+                  "expires_at": "2026-05-20T00:00:00Z"
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("L_family", dto.ledgerId)
+        assertEquals("家庭账本", dto.ledgerName)
+        assertEquals("viewer", dto.role)
+        assertEquals("2026-05-20T00:00:00Z", dto.expiresAt)
     }
 }

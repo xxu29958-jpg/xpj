@@ -37,7 +37,7 @@
 
   <div class="bulk-bar">
     <label class="bulk-check">
-      <input type="checkbox" id="bulk-select-all"> 当前页全选
+      <input type="checkbox" id="bulk-select-all" {% if not can_write %}disabled{% endif %}> 当前页全选
     </label>
     {% if can_write %}
     <div class="bulk-actions">
@@ -57,7 +57,7 @@
               onclick="return confirm('忽略所选账单？');">批量忽略</button>
     </div>
     {% else %}
-    <div class="bulk-actions"><span class="meta">只读角色，无法批量操作。</span></div>
+    <div class="bulk-actions"><span class="readonly-inline">只读角色，无法批量操作。</span></div>
     {% endif %}
   </div>
 
@@ -80,7 +80,7 @@
       {% for e in expenses %}
         <tr class="transaction-row {{ 'is-duplicate' if e.is_duplicate else '' }}">
           <td>
-            <input type="checkbox" class="bulk-row" name="expense_ids" value="{{ e.id }}">
+            <input type="checkbox" class="bulk-row" name="expense_ids" value="{{ e.id }}" {% if not can_write %}disabled{% endif %}>
           </td>
           <td>
             {% if e.has_image %}

@@ -12,6 +12,7 @@ from conftest import (
     BACKEND_ROOT,
     PNG_BYTES,
     TEST_UPLOAD_DIR,
+    TEST_UPLOAD_RELATIVE,
     app_headers,
     gray_app_headers,
     gray_upload_headers,
@@ -35,7 +36,7 @@ def test_android_app_upload_uses_app_token_and_current_tenant(
     assert owner_pending.status_code == 200
     assert [item["id"] for item in owner_pending.json()] == [owner_id]
     assert owner_pending.json()[0]["image_path"].startswith(
-        "uploads/pytest_test/owner/"
+        f"{TEST_UPLOAD_RELATIVE}/owner/"
     )
 
     tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
@@ -54,7 +55,7 @@ def test_android_app_upload_uses_app_token_and_current_tenant(
     assert tester_pending.status_code == 200
     assert [item["id"] for item in tester_pending.json()] == [tester_id]
     assert tester_pending.json()[0]["image_path"].startswith(
-        "uploads/pytest_test/tester_1/"
+        f"{TEST_UPLOAD_RELATIVE}/tester_1/"
     )
 
     owner_pending = client.get("/api/expenses/pending", headers=app_headers())
@@ -116,9 +117,9 @@ def test_legacy_upload_paths_migrate_into_current_tenant_dir(
     with SessionLocal() as db:
         migrated = db.get(Expense, expense_id)
         assert migrated is not None
-        assert migrated.image_path.startswith("uploads/pytest_test/owner/2026/05/")
+        assert migrated.image_path.startswith(f"{TEST_UPLOAD_RELATIVE}/owner/2026/05/")
         assert migrated.thumbnail_path.startswith(
-            "uploads/pytest_test/owner/2026/05/thumbs/"
+            f"{TEST_UPLOAD_RELATIVE}/owner/2026/05/thumbs/"
         )
         migrated_image_path = BACKEND_ROOT / migrated.image_path
         migrated_thumb_path = BACKEND_ROOT / migrated.thumbnail_path
@@ -343,13 +344,13 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     tester_detail = client.get(
         f"/api/expenses/{tester_id}", headers=gray_app_headers()
     ).json()
-    assert owner_detail["image_path"].startswith("uploads/pytest_test/owner/")
-    assert tester_detail["image_path"].startswith("uploads/pytest_test/tester_1/")
+    assert owner_detail["image_path"].startswith(f"{TEST_UPLOAD_RELATIVE}/owner/")
+    assert tester_detail["image_path"].startswith(f"{TEST_UPLOAD_RELATIVE}/tester_1/")
     if owner_detail["thumbnail_path"]:
-        assert owner_detail["thumbnail_path"].startswith("uploads/pytest_test/owner/")
+        assert owner_detail["thumbnail_path"].startswith(f"{TEST_UPLOAD_RELATIVE}/owner/")
     if tester_detail["thumbnail_path"]:
         assert tester_detail["thumbnail_path"].startswith(
-            "uploads/pytest_test/tester_1/"
+            f"{TEST_UPLOAD_RELATIVE}/tester_1/"
         )
 
     owner_pending = client.get("/api/expenses/pending", headers=app_headers())

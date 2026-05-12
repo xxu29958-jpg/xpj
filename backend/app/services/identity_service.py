@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, PairingCode, UploadLink
+from app.services import permission_service
 from app.services.time_service import ensure_utc, now_utc, to_iso
 from app.tenants import AuthContext, DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, Tenant, configured_tenants
 
@@ -183,6 +184,8 @@ def _ensure_ledger(db: Session, *, ledger_id: str, name: str, owner_account: Acc
 
 
 def _ensure_membership(db: Session, ledger_id: str, account_id: int, role: str) -> LedgerMember:
+    if not permission_service.is_valid_role(role):
+        raise AppError("ledger_member_role_invalid", status_code=422)
     member = db.scalar(
         select(LedgerMember)
         .where(LedgerMember.ledger_id == ledger_id)

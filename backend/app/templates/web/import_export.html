@@ -41,7 +41,7 @@
     <button type="submit" class="btn btn-secondary">预览</button>
   </form>
   {% else %}
-  <p class="meta">只读角色无法导入。</p>
+  <p class="readonly-inline">只读角色无法导入。</p>
   {% endif %}
 </section>
 
@@ -84,13 +84,15 @@
     </tbody>
   </table>
 
-  {% if preview.valid_count %}
+  {% if preview.valid_count and can_write %}
   <form method="post" action="/web/import/confirm" class="form-inline">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="payload" value="{{ confirm_payload|e }}">
     <button type="submit" class="btn btn-primary">导入 {{ preview.valid_count }} 条到待确认</button>
     <a href="/web/import{{ q }}" class="btn btn-secondary">放弃</a>
   </form>
+  {% elif preview.valid_count %}
+  <p class="readonly-inline">只读角色只能预览 CSV，不能导入到待确认。</p>
   {% else %}
   <p class="meta">没有可导入的行，请修正 CSV 后重新预览。</p>
   {% endif %}

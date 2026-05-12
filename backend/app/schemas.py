@@ -105,6 +105,17 @@ class InvitationAcceptRequest(BaseModel):
     platform: str = Field(min_length=1, max_length=32)
 
 
+class InvitationPreviewRequest(BaseModel):
+    invite_token: str = Field(min_length=1, max_length=128)
+
+
+class InvitationPreviewResponse(BaseModel):
+    ledger_id: str
+    ledger_name: str
+    role: str
+    expires_at: str | None = None
+
+
 class InvitationAcceptResponse(BaseModel):
     session_token: str
     account_name: str
@@ -130,6 +141,33 @@ class LedgerMemberListResponse(BaseModel):
 
 class LedgerMemberRoleUpdateRequest(BaseModel):
     role: str = Field(min_length=1, max_length=32)
+
+
+class LedgerAuditResponse(BaseModel):
+    public_id: str
+    ledger_id: str
+    action: str
+    actor_account_public_id: str | None = None
+    actor_account_name: str | None = None
+    target_account_public_id: str | None = None
+    target_account_name: str | None = None
+    target_member_id: int | None = None
+    invitation_public_id: str | None = None
+    previous_role: str | None = None
+    new_role: str | None = None
+    result: str
+    detail: str | None = None
+    created_at: str | None = None
+
+
+class LedgerAuditListResponse(BaseModel):
+    items: list[LedgerAuditResponse]
+
+
+class OwnerTransferResponse(BaseModel):
+    ledger_id: str
+    previous_owner: LedgerMemberResponse
+    new_owner: LedgerMemberResponse
 
 
 class BootstrapOwnerRequest(BaseModel):

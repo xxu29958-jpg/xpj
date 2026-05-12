@@ -78,6 +78,7 @@ import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.appearance.AppearanceDefaults
 import com.ticketbox.ui.appearance.BackgroundCatalog
 import com.ticketbox.ui.appearance.BuiltInBackground
@@ -125,7 +126,11 @@ internal fun AccountStatusCard(
     val displayAccount = serverSettings?.accountName?.takeIf { it.isNotBlank() } ?: accountName?.takeIf { it.isNotBlank() } ?: "我"
     val displayLedger = serverSettings?.ledgerName?.takeIf { it.isNotBlank() } ?: ledgerName?.takeIf { it.isNotBlank() } ?: "我的小票夹"
     val displayDevice = serverSettings?.deviceName?.takeIf { it.isNotBlank() } ?: deviceName?.takeIf { it.isNotBlank() } ?: "当前设备"
-    val displayRole = serverSettings?.role?.takeIf { it.isNotBlank() } ?: role?.takeIf { it.isNotBlank() } ?: "owner"
+    val displayRole = ledgerRoleLabel(
+        serverSettings?.role?.takeIf { it.isNotBlank() }
+            ?: role?.takeIf { it.isNotBlank() }
+            ?: "owner",
+    )
     SoftPanel(containerAlpha = 0.96f) {
         Column(
             modifier = Modifier.padding(12.dp),

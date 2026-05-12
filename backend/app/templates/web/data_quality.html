@@ -3,6 +3,9 @@
 {% block content %}
 <h1>数据体检</h1>
 <p class="page-hint">读取自当前账本「{{ selected_ledger_name }}」。所有数字均为只读统计，刷新本页可重新计算。</p>
+{% if not can_write %}
+<div class="readonly-callout">只读角色可以查看体检结果；需要修改账单、处理重复项或新增规则时，请联系拥有者或成员。</div>
+{% endif %}
 
 <div class="summary-grid">
   <div class="summary-card primary">
@@ -55,32 +58,32 @@
     {% if summary.missing_amount > 0 %}
     <li>
       <strong>{{ summary.missing_amount }} 条缺金额：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_amount">去补金额 →</a>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_amount">{% if can_write %}去补金额{% else %}查看缺金额{% endif %} →</a>
     </li>
     {% endif %}
     {% if summary.missing_merchant > 0 %}
     <li>
       <strong>{{ summary.missing_merchant }} 条缺商家：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_merchant">去补商家 →</a>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=missing_merchant">{% if can_write %}去补商家{% else %}查看缺商家{% endif %} →</a>
     </li>
     {% endif %}
     {% if summary.suspected_duplicates > 0 %}
     <li>
       <strong>{{ summary.suspected_duplicates }} 条疑似重复：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=duplicate">去人工裁决 →</a>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=duplicate">{% if can_write %}去人工裁决{% else %}查看疑似重复{% endif %} →</a>
     </li>
     {% endif %}
     {% if summary.ready_to_confirm > 0 %}
     <li>
       <strong>{{ summary.ready_to_confirm }} 条可批量确认：</strong>
-      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">去待确认 →</a>
-      <span class="hint">需手动勾选，slice 2 不自动确认</span>
+      <a href="/web/pending?ledger_id={{ selected_ledger_id }}&amp;filter=ready">{% if can_write %}去待确认{% else %}查看可确认项{% endif %} →</a>
+      <span class="hint">{% if can_write %}需手动勾选，slice 2 不自动确认{% else %}只读角色不能确认{% endif %}</span>
     </li>
     {% endif %}
     {% if summary.missing_category > 0 %}
     <li>
       <strong>{{ summary.missing_category }} 条未分类：</strong>
-      <a href="/web/rules?ledger_id={{ selected_ledger_id }}">新增分类规则 →</a>
+      <a href="/web/rules?ledger_id={{ selected_ledger_id }}">{% if can_write %}新增分类规则{% else %}查看分类规则{% endif %} →</a>
     </li>
     {% endif %}
     {% if summary.pending_total == 0 and summary.missing_category == 0 and summary.suspected_duplicates == 0 %}

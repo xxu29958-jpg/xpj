@@ -41,17 +41,17 @@
 <div class="page">
   <div class="ledger-context-bar">
     <span class="ledger-pill {{ 'is-default' if selected_ledger_is_default else 'is-secondary' }}">
-      {% if selected_ledger_is_default %}个人账本{% else %}家庭/其他账本{% endif %} · {{ selected_ledger_name }}
+      {% if selected_ledger_is_default %}个人账本{% else %}共享账本{% endif %} · {{ selected_ledger_name }}
     </span>
     {% set _role = selected_ledger_role or 'owner' %}
     <span class="ledger-role-chip ledger-role-{{ _role }}" title="当前账本中你的角色">
-      {% if _role == 'owner' %}所有者{% elif _role == 'member' %}成员（可写）{% elif _role == 'viewer' %}只读{% else %}{{ _role }}{% endif %}
+      {% if _role == 'owner' %}拥有者{% elif _role == 'member' %}成员{% elif _role == 'viewer' %}只读{% else %}{{ _role }}{% endif %}
     </span>
     <span class="ledger-context-hint">仅本机 · 公网无法访问 · 按 ledger 隔离</span>
   </div>
   {% if _role == 'viewer' %}
-  <div class="viewer-banner" style="background:#fef3c7;border-left:4px solid #f59e0b;padding:8px 12px;margin:8px 0 12px;font-size:13px;color:#78350f">
-    你在此账本是<strong>只读角色</strong>，仅能查看；新建/编辑/确认/拒绝按钮已隐藏。
+  <div class="readonly-callout">
+    你在此账本是<strong>只读角色</strong>，仅能查看；新建、编辑、确认、忽略、导入和规则改写等操作已隐藏或禁用。
   </div>
   {% endif %}
   {% block content %}{% endblock %}

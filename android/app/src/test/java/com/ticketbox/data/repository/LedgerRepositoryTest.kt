@@ -13,9 +13,13 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
+import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
+import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberDto
+import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
@@ -37,6 +41,7 @@ import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -116,6 +121,7 @@ class LedgerRepositoryTest {
         assertEquals("L_house", summary.ledgerId)
         assertEquals(newToken, tokenStore.getToken())
         assertEquals("L_house", store.activeLedgerId())
+        assertEquals("viewer", store.capturedRole)
         // Only the target ledger's rows are wiped; the other ledger keeps its cache.
         assertNull(dao.find(2))
         assertNotNull(dao.find(1))
@@ -200,6 +206,88 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun previewInvitationReturnsTargetWithoutReplacingExistingBinding() = runTest {
+        val ledgerName = "家庭共同账本" + "很长".repeat(20)
+        val api = StubApi(
+            previewResult = InvitationPreviewResponseDto(
+                ledgerId = "L_family",
+                ledgerName = ledgerName,
+                role = "viewer",
+                expiresAt = "2026-05-20T00:00:00Z",
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "旧账号",
+                ledgerId = "L_old",
+                ledgerName = "旧账本",
+                deviceName = "Old Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val preview = repo.previewInvitation("  inv_PREVIEW  ").getOrThrow()
+
+        assertEquals("L_family", preview.ledgerId)
+        assertEquals(ledgerName, preview.ledgerName)
+        assertEquals("viewer", preview.role)
+        assertEquals("2026-05-20T00:00:00Z", preview.expiresAt)
+        assertEquals("inv_PREVIEW", api.previewRequests.single().inviteToken)
+        assertEquals("old-token", tokenStore.getToken())
+        assertEquals("L_old", store.activeLedgerId())
+        assertEquals("旧账号", store.accountName())
+        assertEquals("owner", store.role())
+    }
+
+    @Test
+    fun previewInvitationRejectsBlankTokenWithChineseMessage() = runTest {
+        val repo = makeRepo()
+        val failure = repo.previewInvitation("   ").exceptionOrNull()
+        assertNotNull(failure)
+        assertTrue(failure.message!!.contains("邀请明文"))
+    }
+
+    @Test
+    fun previewInvitationNetworkFailurePreservesExistingBinding() = runTest {
+        val api = StubApi(previewError = IOException("timeout"))
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "旧账号",
+                ledgerId = "L_old",
+                ledgerName = "旧账本",
+                deviceName = "Old Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val failure = repo.previewInvitation("inv_TIMEOUT").exceptionOrNull()
+
+        assertNotNull(failure)
+        assertEquals("网络连接失败，请检查电脑端服务。", failure.message)
+        assertEquals("old-token", tokenStore.getToken())
+        assertEquals("L_old", store.activeLedgerId())
+        assertEquals("旧账号", store.accountName())
+    }
+
+    @Test
     fun acceptInvitationRejectsBlankTokenWithChineseMessage() = runTest {
         val repo = makeRepo()
         val failure = repo.acceptInvitation(
@@ -240,6 +328,60 @@ class LedgerRepositoryTest {
         assertNull(store.capturedAccountName)
     }
 
+    @Test
+    fun refreshFamilyMembersMapsServerFieldsToDomain() = runTest {
+        val api = StubApi(
+            membersResult = LedgerMemberListResponseDto(
+                members = listOf(
+                    LedgerMemberDto(
+                        memberId = 1,
+                        accountPublicId = "acc_owner",
+                        accountName = "阿方",
+                        role = "owner",
+                        createdAt = "2026-05-01T00:00:00Z",
+                        disabledAt = null,
+                        isSelf = true,
+                    ),
+                    LedgerMemberDto(
+                        memberId = 2,
+                        accountPublicId = "acc_viewer",
+                        accountName = "",
+                        role = "viewer",
+                        createdAt = null,
+                        disabledAt = "2026-05-02T00:00:00Z",
+                        isSelf = false,
+                    ),
+                ),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveActiveLedger("L_family", "家庭账本")
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val members = repo.refreshFamilyMembers().getOrThrow()
+
+        assertEquals("L_family", api.memberLedgerRequests.single())
+        assertEquals(listOf("阿方", "未命名成员"), members.map { it.displayName })
+        assertEquals(listOf("owner", "viewer"), members.map { it.role })
+        assertTrue(members.first().isSelf)
+        assertTrue(members.last().isDisabled)
+    }
+
+    @Test
+    fun refreshFamilyMembersRejectsMissingActiveLedger() = runTest {
+        val repo = makeRepo()
+        val failure = repo.refreshFamilyMembers(null).exceptionOrNull()
+        assertNotNull(failure)
+        assertTrue(failure.message!!.contains("当前账本"))
+    }
+
     private fun makeRepo(): LedgerRepository {
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
@@ -275,8 +417,13 @@ private class StubApi(
     var createResult: LedgerDto? = null,
     var switchResult: LedgerSwitchResponseDto? = null,
     var switchError: Throwable? = null,
+    var membersResult: LedgerMemberListResponseDto? = null,
+    var previewResult: InvitationPreviewResponseDto? = null,
+    var previewError: Throwable? = null,
     var acceptResult: InvitationAcceptResponseDto? = null,
     var acceptError: Throwable? = null,
+    val memberLedgerRequests: MutableList<String> = mutableListOf(),
+    val previewRequests: MutableList<InvitationPreviewRequestDto> = mutableListOf(),
     val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf(),
 ) : ApiService {
     override suspend fun listLedgers(): LedgerListResponseDto {
@@ -297,6 +444,19 @@ private class StubApi(
     override suspend fun switchLedger(ledgerId: String): LedgerSwitchResponseDto {
         switchError?.let { throw it }
         return switchResult ?: error("Unexpected switch call")
+    }
+
+    override suspend fun ledgerMembers(ledgerId: String): LedgerMemberListResponseDto {
+        memberLedgerRequests += ledgerId
+        return membersResult ?: error("Unexpected members call")
+    }
+
+    override suspend fun previewInvitation(
+        request: InvitationPreviewRequestDto,
+    ): InvitationPreviewResponseDto {
+        previewRequests += request
+        previewError?.let { throw it }
+        return previewResult ?: error("Unexpected preview call")
     }
 
     override suspend fun acceptInvitation(request: InvitationAcceptRequestDto): InvitationAcceptResponseDto {
@@ -354,7 +514,7 @@ private class LedgerFakeSettingsStore : TicketboxSettingsStore {
     override fun monthlyBudgetCents(): Long? = null
     override fun saveMonthlyBudgetCents(amountCents: Long?) = Unit
     override fun lastConfirmedSyncAt(): String? = null
-    override fun accountName(): String? = null
+    override fun accountName(): String? = capturedAccountName
     override fun ledgerName(): String? = ledgerName
     override fun activeLedgerId(): String? = ledgerIdFlow.value
     override fun activeLedgerName(): String? = ledgerName
@@ -365,9 +525,9 @@ private class LedgerFakeSettingsStore : TicketboxSettingsStore {
         this.ledgerName = ledgerName
     }
     override fun saveAvailableLedgersJson(json: String?) { ledgersJson = json }
-    override fun deviceName(): String? = null
-    override fun role(): String? = null
-    override fun boundAt(): String? = null
+    override fun deviceName(): String? = capturedDeviceName
+    override fun role(): String? = capturedRole
+    override fun boundAt(): String? = capturedBoundAt
     override fun saveIdentity(
         accountName: String,
         ledgerId: String,

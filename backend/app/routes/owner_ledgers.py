@@ -45,6 +45,18 @@ def _require_local(request: Request) -> None:
 LocalOnly = Depends(_require_local)
 
 
+def _put_member_page_data(ctx: dict, db: Session, *, ledger_id: str, owner_id: int) -> None:
+    members = invitation_service.list_members(
+        db, ledger_id=ledger_id, requester_account_id=owner_id
+    )
+    ctx["members"] = members
+    ctx["invitations"] = invitation_service.list_invitations(db, ledger_id=ledger_id)
+    ctx["audit_logs"] = invitation_service.list_audit_logs(db, ledger_id=ledger_id)
+    ctx["can_manage_members"] = any(
+        row.is_self and row.role == "owner" and row.disabled_at is None for row in members
+    )
+
+
 @router.get("/ledgers", response_class=HTMLResponse)
 def owner_ledgers_get(
     request: Request,
@@ -113,15 +125,14 @@ def owner_ledger_members_get(
         ctx["error"] = "账本不存在或已归档。"
         ctx["members"] = []
         ctx["invitations"] = []
+        ctx["audit_logs"] = []
+        ctx["can_manage_members"] = False
         ctx["new_invitation_token"] = None
         return templates.TemplateResponse(
             request=request, name="ledger_members.html", context=ctx
         )
     owner_id = svc.get_owner_account_id(db)
-    ctx["members"] = invitation_service.list_members(
-        db, ledger_id=ledger_id, requester_account_id=owner_id or 0
-    )
-    ctx["invitations"] = invitation_service.list_invitations(db, ledger_id=ledger_id)
+    _put_member_page_data(ctx, db, ledger_id=ledger_id, owner_id=owner_id or 0)
     ctx["error"] = None
     ctx["new_invitation_token"] = None
     return templates.TemplateResponse(
@@ -155,10 +166,7 @@ def owner_ledger_invite_post(
         ctx = _base(request, db)
         ctx["ledger_id"] = ledger_id
         ctx["ledger_name"] = _ledger_name(db, ledger_id)
-        ctx["members"] = invitation_service.list_members(
-            db, ledger_id=ledger_id, requester_account_id=owner_id
-        )
-        ctx["invitations"] = invitation_service.list_invitations(db, ledger_id=ledger_id)
+        _put_member_page_data(ctx, db, ledger_id=ledger_id, owner_id=owner_id)
         ctx["error"] = exc.message
         ctx["new_invitation_token"] = None
         return templates.TemplateResponse(
@@ -167,10 +175,7 @@ def owner_ledger_invite_post(
     ctx = _base(request, db)
     ctx["ledger_id"] = ledger_id
     ctx["ledger_name"] = _ledger_name(db, ledger_id)
-    ctx["members"] = invitation_service.list_members(
-        db, ledger_id=ledger_id, requester_account_id=owner_id
-    )
-    ctx["invitations"] = invitation_service.list_invitations(db, ledger_id=ledger_id)
+    _put_member_page_data(ctx, db, ledger_id=ledger_id, owner_id=owner_id)
     ctx["error"] = None
     ctx["new_invitation_token"] = result.invite_token
     return templates.TemplateResponse(
@@ -189,7 +194,15 @@ def owner_ledger_invite_revoke_post(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     try:
-        invitation_service.revoke_invitation(db, ledger_id=ledger_id, public_id=public_id)
+        owner_id = svc.get_owner_account_id(db)
+        if owner_id is None:
+            raise AppError("server_error", status_code=500)
+        invitation_service.revoke_invitation(
+            db,
+            ledger_id=ledger_id,
+            public_id=public_id,
+            actor_account_id=owner_id,
+        )
     except AppError:
         # Idempotent UI: ignore unknown/already-revoked.
         pass
@@ -223,10 +236,41 @@ def owner_ledger_member_role_post(
         ctx = _base(request, db)
         ctx["ledger_id"] = ledger_id
         ctx["ledger_name"] = _ledger_name(db, ledger_id)
-        ctx["members"] = invitation_service.list_members(
-            db, ledger_id=ledger_id, requester_account_id=owner_id
+        _put_member_page_data(ctx, db, ledger_id=ledger_id, owner_id=owner_id)
+        ctx["error"] = exc.message
+        ctx["new_invitation_token"] = None
+        return templates.TemplateResponse(
+            request=request, name="ledger_members.html", context=ctx
         )
-        ctx["invitations"] = invitation_service.list_invitations(db, ledger_id=ledger_id)
+    return RedirectResponse(url=f"/owner/ledgers/{ledger_id}/members", status_code=303)
+
+
+@router.post(
+    "/ledgers/{ledger_id}/members/{member_id}/transfer-owner",
+    response_class=HTMLResponse,
+)
+def owner_ledger_member_transfer_owner_post(
+    request: Request,
+    ledger_id: str,
+    member_id: int,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    owner_id = svc.get_owner_account_id(db)
+    if owner_id is None:
+        raise AppError("server_error", status_code=500)
+    try:
+        invitation_service.transfer_ledger_owner(
+            db,
+            ledger_id=ledger_id,
+            member_id=member_id,
+            requester_account_id=owner_id,
+        )
+    except AppError as exc:
+        ctx = _base(request, db)
+        ctx["ledger_id"] = ledger_id
+        ctx["ledger_name"] = _ledger_name(db, ledger_id)
+        _put_member_page_data(ctx, db, ledger_id=ledger_id, owner_id=owner_id)
         ctx["error"] = exc.message
         ctx["new_invitation_token"] = None
         return templates.TemplateResponse(
@@ -260,10 +304,7 @@ def owner_ledger_member_disable_post(
         ctx = _base(request, db)
         ctx["ledger_id"] = ledger_id
         ctx["ledger_name"] = _ledger_name(db, ledger_id)
-        ctx["members"] = invitation_service.list_members(
-            db, ledger_id=ledger_id, requester_account_id=owner_id
-        )
-        ctx["invitations"] = invitation_service.list_invitations(db, ledger_id=ledger_id)
+        _put_member_page_data(ctx, db, ledger_id=ledger_id, owner_id=owner_id)
         ctx["error"] = exc.message
         ctx["new_invitation_token"] = None
         return templates.TemplateResponse(

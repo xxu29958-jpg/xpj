@@ -70,6 +70,7 @@ internal fun PendingTop(
     pendingCount: Int,
     duplicateCount: Int,
     uploading: Boolean,
+    readOnly: Boolean,
     onUploadScreenshot: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -133,9 +134,13 @@ internal fun PendingTop(
 
         PrimaryCtaButton(
             modifier = Modifier.fillMaxWidth(),
-            enabled = !uploading,
+            enabled = !uploading && !readOnly,
             icon = Icons.Filled.AddPhotoAlternate,
-            text = if (uploading) "正在上传截图" else "上传截图",
+            text = when {
+                readOnly -> "只读角色不能上传"
+                uploading -> "正在上传截图"
+                else -> "上传截图"
+            },
             onClick = onUploadScreenshot,
         )
     }

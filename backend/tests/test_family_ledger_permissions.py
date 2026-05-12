@@ -127,6 +127,8 @@ def test_viewer_cannot_create_invitation(client: TestClient) -> None:
         json={"role": "member"},
     )
     assert resp.status_code == 403
+    assert resp.json()["error"] == "permission_denied"
+    assert resp.json()["message"] == "当前角色为只读，无法修改账本。"
 
 
 def test_cannot_invite_with_owner_role(client: TestClient) -> None:
@@ -154,6 +156,63 @@ def _mint(client: TestClient, family_id: str, family_app: str, role: str = "memb
     )
     assert resp.status_code == 201, resp.json()
     return resp.json()["invite_token"]
+
+
+def test_preview_invitation_returns_target_without_consuming_token(client: TestClient) -> None:
+    ledger_name = "家庭共同账本" + "很长" * 20
+    family_id = _create_family_ledger(client, name=ledger_name)
+    family_app = _switch_to(client, family_id, app_headers())
+    invite = _mint(client, family_id, family_app, role="viewer")
+
+    preview = client.post(
+        "/api/invitations/preview",
+        json={"invite_token": invite},
+    )
+    assert preview.status_code == 200, preview.json()
+    body = preview.json()
+    assert body["ledger_id"] == family_id
+    assert body["ledger_name"] == ledger_name
+    assert body["role"] == "viewer"
+    assert body["expires_at"] is not None
+
+    with SessionLocal() as db:
+        invitation = db.scalar(
+            select(Invitation).where(Invitation.token_hash == hash_secret(invite))
+        )
+        assert invitation is not None
+        assert invitation.used_at is None
+        assert invitation.used_by_account_id is None
+
+    accepted = client.post(
+        "/api/invitations/accept",
+        json={
+            "invite_token": invite,
+            "account_name": "只读成员",
+            "device_name": "Preview-Phone",
+            "platform": "android",
+        },
+    )
+    assert accepted.status_code == 200, accepted.json()
+    assert accepted.json()["role"] == "viewer"
+
+
+def test_preview_used_invitation_is_invalid(client: TestClient) -> None:
+    family_id = _create_family_ledger(client)
+    family_app = _switch_to(client, family_id, app_headers())
+    invite = _mint(client, family_id, family_app)
+
+    accepted = client.post(
+        "/api/invitations/accept",
+        json={"invite_token": invite, "account_name": "A", "device_name": "d1", "platform": "android"},
+    )
+    assert accepted.status_code == 200
+
+    preview = client.post(
+        "/api/invitations/preview",
+        json={"invite_token": invite},
+    )
+    assert preview.status_code == 400
+    assert preview.json()["error"] == "invitation_invalid"
 
 
 def test_accept_invitation_issues_app_token_and_membership(client: TestClient) -> None:

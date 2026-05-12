@@ -92,6 +92,7 @@ fun ExpenseEditScreen(
     var showLargeImage by remember(currentExpense.id) { mutableStateOf(false) }
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() } ?: "第一版为空"
     val previewImage = state.fullImage ?: state.thumbnail
+    val readOnly = state.readOnly
 
     if (showDatePicker) {
         ExpenseEditDatePicker(
@@ -167,6 +168,7 @@ fun ExpenseEditScreen(
             previewImage = previewImage,
             imageLoading = state.imageLoading,
             ocrRunning = state.ocrRunning,
+            readOnly = readOnly,
             showLargeImage = showLargeImage,
             onToggleLargeImage = {
                 if (!showLargeImage && state.fullImage == null) {
@@ -191,8 +193,10 @@ fun ExpenseEditScreen(
 
         if (currentExpense.duplicateStatus == "suspected") {
             DuplicateNotice(reason = currentExpense.duplicateReason)
-            OutlinedButton(onClick = onKeepDuplicate) {
-                Text("不是重复，保留")
+            if (!readOnly) {
+                OutlinedButton(onClick = onKeepDuplicate) {
+                    Text("不是重复，保留")
+                }
             }
         }
 
@@ -203,19 +207,23 @@ fun ExpenseEditScreen(
         ExpenseEditAmountField(
             amountText = amountText,
             onAmountChange = { amountText = it },
+            enabled = !readOnly,
         )
         ExpenseEditMerchantField(
             merchant = merchant,
             onMerchantChange = { merchant = it },
+            enabled = !readOnly,
         )
         ExpenseEditCategoryField(
             category = category,
             categories = state.categories,
             onCategoryChange = { category = it },
+            enabled = !readOnly,
         )
         ExpenseEditNoteField(
             note = note,
             onNoteChange = { note = it },
+            enabled = !readOnly,
         )
         ExpenseDateField(
             expenseTime = expenseTime,
@@ -223,6 +231,7 @@ fun ExpenseEditScreen(
             onPickTime = { showTimePicker = true },
             onUseNow = { expenseTime = nowUtcIso() },
             onClear = { expenseTime = "" },
+            enabled = !readOnly,
         )
         ExpenseEditSourceInfo(
             source = currentExpense.source,
@@ -243,6 +252,7 @@ fun ExpenseEditScreen(
             onToggleRawText = { rawTextExpanded = !rawTextExpanded },
             ocrRunning = state.ocrRunning,
             saving = state.saving,
+            readOnly = readOnly,
             onRetryOcr = onRetryOcr,
         )
 
@@ -255,6 +265,7 @@ fun ExpenseEditScreen(
 
         ExpenseEditPrimaryActions(
             saving = state.saving,
+            allowSave = !readOnly,
             onBack = onDone,
             onSave = {
                 val draft = draftOrMessage() ?: return@ExpenseEditPrimaryActions
@@ -264,8 +275,8 @@ fun ExpenseEditScreen(
 
         ExpenseEditConfirmActions(
             saving = state.saving,
-            allowConfirm = allowConfirm,
-            allowReject = allowReject,
+            allowConfirm = allowConfirm && !readOnly,
+            allowReject = allowReject && !readOnly,
             onConfirm = {
                 val draft = draftOrMessage() ?: return@ExpenseEditConfirmActions
                 if (draft.amountCents == null) {
