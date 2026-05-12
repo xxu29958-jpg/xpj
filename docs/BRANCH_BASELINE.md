@@ -28,11 +28,10 @@
 
 | 分支 | PR | 状态 | 与 `main` 关系 | 结论 |
 | --- | --- | --- | --- | --- |
-| `main` | - | baseline | `2660c94` | 当前可靠主线 |
+| `main` | - | baseline | `c6caddd` | 当前可靠主线 |
 | `v0.4-beta1-family-ledger-foundation` | #17 merged | tree 与 `main` 同步，commit graph 分叉 | 保留：用于 beta1 切片历史和回溯，不再 merge 回 `main` |
 | `v0.4-alpha2-tri-surface-ui` | #12 closed obsolete | diverged，branch-only 4 | 过期 PR；能力已被后续主线吸收，不要合并 |
 | `v0.4-alpha3-smart-ledger-engine` | #13 closed obsolete | diverged，branch-only 9 | 过期 PR；能力已被 #14-#17 和当前主线吸收，不要合并 |
-| `codex/split-large-files` | #7 merged | branch-only 4 已确认吸收 / 超越 | 删除：不合并、不保留，避免误把旧分支合回主线 |
 | `codex/docs-reality-sync` | #3 merged | behind，ahead 0 | 已进主线，可标历史 |
 | `codex/gray-release-tenant-ux` | #2 merged | behind，ahead 0 | 已进主线，可标历史 |
 | `codex/readme-gray-baseline` | #4 merged | behind，ahead 0 | 已进主线，可标历史 |
