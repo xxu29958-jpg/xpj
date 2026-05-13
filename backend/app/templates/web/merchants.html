@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}商家治理 — 小票夹{% endblock %}
+{% block content %}
+<h1>商家治理</h1>
+<p class="meta">商家别名只用于规则匹配和后续治理；不会覆盖原始账单商家，也不会批量改写历史账单。</p>
+{% if not can_write %}
+<div class="readonly-callout">只读角色可以查看商家别名，但不能新增、启停或删除。</div>
+{% endif %}
+
+{% if flash_message %}
+<div class="card flash">{{ flash_message }}</div>
+{% endif %}
+
+<div class="grid two-col">
+  {% if can_write %}
+  <section class="card">
+    <h2>新增商家别名</h2>
+    <form method="post" action="/web/merchants/aliases/create" class="form-stack">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <label>标准商家
+        <input type="text" name="canonical_merchant" required placeholder="如：星巴克">
+      </label>
+      <label>别名
+        <input type="text" name="alias" required placeholder="如：STARBUCKS 国贸店">
+      </label>
+      <button type="submit" class="btn btn-primary">添加别名</button>
+    </form>
+  </section>
+  {% else %}
+  <section class="card">
+    <h2>新增商家别名</h2>
+    <p class="meta">只读角色无法新增商家别名。</p>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>使用边界</h2>
+    <ul class="meta">
+      <li>同一账本内，一个别名只能指向一个标准商家。</li>
+      <li>不同账本可以有各自的别名规则，互不串账。</li>
+      <li>分类规则会把启用的别名一起纳入匹配。</li>
+    </ul>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-header">
+    <h2>当前别名（{{ aliases|length }} 条）</h2>
+    <a class="btn btn-secondary" href="/web/rules{{ q }}">查看分类规则</a>
+  </div>
+  {% if aliases %}
+  <table class="transaction-table">
+    <thead>
+      <tr>
+        <th>标准商家</th>
+        <th>别名</th>
+        <th>标准键</th>
+        <th>别名键</th>
+        <th style="width:80px">状态</th>
+        <th style="width:180px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for item in aliases %}
+      <tr>
+        <td>{{ item.canonical_merchant }}</td>
+        <td>{{ item.alias }}</td>
+        <td><code>{{ item.canonical_key }}</code></td>
+        <td><code>{{ item.alias_key }}</code></td>
+        <td>
+          {% if item.enabled %}<span class="status-chip ok">启用</span>
+          {% else %}<span class="status-chip muted">停用</span>{% endif %}
+        </td>
+        <td>
+          {% if can_write %}
+          <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle" style="display:inline">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button type="submit" class="btn btn-secondary">
+              {% if item.enabled %}停用{% else %}启用{% endif %}
+            </button>
+          </form>
+          <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete" style="display:inline"
+                onsubmit="return confirm('删除商家别名 [{{ item.alias }}]？');">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button type="submit" class="btn btn-danger">删除</button>
+          </form>
+          {% else %}
+          <span class="readonly-inline">只读</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">还没有商家别名</div>
+    <div class="empty-state-hint">添加后，分类规则可用标准商家命中不同写法的商家名。</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

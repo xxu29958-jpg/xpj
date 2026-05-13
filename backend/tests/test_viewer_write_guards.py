@@ -200,6 +200,13 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
         ("rules delete", "/web/rules/999/delete", {"ledger_id": ledger_id}),
         ("rules apply pending", "/web/rules/apply-pending", {"ledger_id": ledger_id}),
         (
+            "merchant alias create",
+            "/web/merchants/aliases/create",
+            {"ledger_id": ledger_id, "canonical_merchant": "星巴克", "alias": "STARBUCKS"},
+        ),
+        ("merchant alias toggle", "/web/merchants/aliases/missing/toggle", {"ledger_id": ledger_id}),
+        ("merchant alias delete", "/web/merchants/aliases/missing/delete", {"ledger_id": ledger_id}),
+        (
             "csv import confirm",
             "/web/import/confirm",
             {"ledger_id": ledger_id, "payload": import_payload},

@@ -18,6 +18,7 @@ from app.routes import web_categories
 from app.routes import web_data_quality
 from app.routes import web_duplicates
 from app.routes import web_import_export
+from app.routes import web_merchants
 from app.routes import web_pending
 from app.routes import web_recurring
 from app.routes import web_rules as web_rules_routes
@@ -76,6 +77,7 @@ app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)
 app.include_router(web_import_export.router)
 app.include_router(web_recurring.router)
+app.include_router(web_merchants.router)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
