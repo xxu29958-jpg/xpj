@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
-from app.models import Account, Device, Expense, Ledger, RecurringItem, UploadLink
+from app.models import Account, Device, Expense, RecurringItem, UploadLink
 from app.services.admin_service import (
     DeviceSummary,
     UploadLinkSecret,
@@ -268,23 +268,18 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
 
     upload_status = "ok" if cfg.upload_dir.is_dir() else "missing"
 
-    pending_count = int(
-        db.scalar(select(func.count()).select_from(Expense).where(Expense.status == "pending")) or 0
-    )
-    confirmed_count = int(
-        db.scalar(select(func.count()).select_from(Expense).where(Expense.status == "confirmed")) or 0
-    )
-
     account = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
     ledger_choices = list_console_ledger_choices(db)
     primary_ledger = ledger_choices[0] if ledger_choices else None
+    visible_ledger_ids = _visible_console_ledger_ids(db)
+
+    pending_count = _expense_status_count(db, tenant_ids=visible_ledger_ids, status="pending")
+    confirmed_count = _expense_status_count(db, tenant_ids=visible_ledger_ids, status="confirmed")
 
     active_devices = int(
         db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_(None))) or 0
     )
-    active_links = int(
-        db.scalar(select(func.count()).select_from(UploadLink).where(UploadLink.revoked_at.is_(None))) or 0
-    )
+    active_links = _active_upload_link_count(db, ledger_ids=visible_ledger_ids)
 
     primary_tenant_id = primary_ledger.ledger_id if primary_ledger else DEFAULT_TENANT_ID
     try:
@@ -333,7 +328,10 @@ def do_rename_device(db: Session, public_id: str, new_name: str) -> DeviceSummar
 
 
 def get_upload_links(db: Session) -> list[UploadLinkSummary]:
-    return list_upload_links(db)
+    visible_ids = _visible_console_ledger_ids(db)
+    if not visible_ids:
+        return []
+    return [link for link in list_upload_links(db) if link.ledger_id in visible_ids]
 
 
 def do_create_upload_link(
@@ -343,14 +341,17 @@ def do_create_upload_link(
 
 
 def do_rotate_upload_link(db: Session, public_id: str) -> tuple[UploadLinkSummary, UploadLinkSecret]:
+    _ensure_visible_upload_link(db, public_id=public_id)
     return rotate_upload_link(db, public_id=public_id)
 
 
 def do_revoke_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
+    _ensure_visible_upload_link(db, public_id=public_id)
     return revoke_upload_link(db, public_id=public_id)
 
 
 def do_delete_upload_link(db: Session, public_id: str) -> None:
+    _ensure_visible_upload_link(db, public_id=public_id)
     delete_upload_link(db, public_id=public_id)
 
 
@@ -379,8 +380,48 @@ def do_create_pairing_code(
 
 
 def get_default_ledger_id(db: Session) -> str | None:
-    ledger = db.scalar(select(Ledger).where(Ledger.archived_at.is_(None)).order_by(Ledger.id.asc()).limit(1))
-    return ledger.ledger_id if ledger else None
+    choices = list_console_ledger_choices(db)
+    if not choices:
+        return None
+    default = next((ledger for ledger in choices if ledger.is_default), None)
+    return (default or choices[0]).ledger_id
+
+
+def _visible_console_ledger_ids(db: Session) -> set[str]:
+    return {ledger.ledger_id for ledger in list_console_ledger_choices(db)}
+
+
+def _expense_status_count(db: Session, *, tenant_ids: set[str], status: str) -> int:
+    if not tenant_ids:
+        return 0
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id.in_(tenant_ids), Expense.status == status)
+        )
+        or 0
+    )
+
+
+def _active_upload_link_count(db: Session, *, ledger_ids: set[str]) -> int:
+    if not ledger_ids:
+        return 0
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(UploadLink)
+            .where(UploadLink.ledger_id.in_(ledger_ids), UploadLink.revoked_at.is_(None))
+        )
+        or 0
+    )
+
+
+def _ensure_visible_upload_link(db: Session, *, public_id: str) -> None:
+    link = db.scalar(select(UploadLink).where(UploadLink.public_id == public_id).limit(1))
+    visible_ids = _visible_console_ledger_ids(db)
+    if link is None or link.ledger_id not in visible_ids:
+        raise AppError("invalid_request", "上传链接不存在。", status_code=404)
 
 
 def get_owner_account_id(db: Session) -> int | None:

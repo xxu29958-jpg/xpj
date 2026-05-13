@@ -163,6 +163,17 @@ data class CategoryRule(
             !tagContains.isNullOrBlank()
 }
 
+data class MerchantAlias(
+    val publicId: String,
+    val canonicalMerchant: String,
+    val canonicalKey: String,
+    val alias: String,
+    val aliasKey: String,
+    val enabled: Boolean,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
 data class RuleApplicationBatch(
     val publicId: String,
     val status: String,

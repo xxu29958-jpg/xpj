@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
@@ -32,6 +33,7 @@ data class SettingsUiState(
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
+    val merchantAliases: List<MerchantAlias> = emptyList(),
     val ruleApplications: List<RuleApplicationBatch> = emptyList(),
     val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
     val lastUploadAt: String? = null,
@@ -50,6 +52,7 @@ class SettingsViewModel(
 
     init {
         loadCategoryRules()
+        loadMerchantAliases()
         loadRuleApplications()
         loadServerSettings()
         observeBackgroundSettings()
@@ -257,6 +260,14 @@ class SettingsViewModel(
         }
     }
 
+    fun loadMerchantAliases() {
+        viewModelScope.launch {
+            repository.merchantAliases()
+                .onSuccess { aliases -> _uiState.update { it.copy(merchantAliases = aliases.sortedMerchantAliases()) } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "商家别名暂时打不开。") } }
+        }
+    }
+
     fun loadRuleApplications() {
         viewModelScope.launch {
             repository.ruleApplications()
@@ -347,6 +358,67 @@ class SettingsViewModel(
                         state.copy(
                             categoryRules = state.categoryRules.filterNot { it.id == rule.id },
                             message = "分类规则已删除",
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
+        }
+    }
+
+    fun createMerchantAlias(canonicalMerchant: String, alias: String) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null) }
+            repository.createMerchantAlias(canonicalMerchant = canonicalMerchant, alias = alias)
+                .onSuccess { created ->
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantAliases = (state.merchantAliases + created).sortedMerchantAliases(),
+                            busy = false,
+                            message = "商家别名已添加",
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有添加成功，请稍后再试。") } }
+        }
+    }
+
+    fun toggleMerchantAlias(alias: MerchantAlias) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
+        viewModelScope.launch {
+            repository.updateMerchantAlias(alias.publicId, enabled = !alias.enabled)
+                .onSuccess { updated ->
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantAliases = state.merchantAliases
+                                .map { if (it.publicId == updated.publicId) updated else it }
+                                .sortedMerchantAliases(),
+                            message = if (updated.enabled) "商家别名已启用" else "商家别名已停用",
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有更新成功，请稍后再试。") } }
+        }
+    }
+
+    fun deleteMerchantAlias(alias: MerchantAlias) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
+        viewModelScope.launch {
+            repository.deleteMerchantAlias(alias.publicId)
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantAliases = state.merchantAliases.filterNot { it.publicId == alias.publicId },
+                            message = "商家别名已删除",
                         )
                     }
                 }
@@ -496,3 +568,10 @@ class SettingsViewModel(
         _uiState.update { it.copy(message = message) }
     }
 }
+
+private fun List<MerchantAlias>.sortedMerchantAliases(): List<MerchantAlias> =
+    sortedWith(
+        compareByDescending<MerchantAlias> { it.enabled }
+            .thenBy { it.canonicalKey }
+            .thenBy { it.aliasKey },
+    )

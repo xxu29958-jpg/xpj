@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -32,6 +33,7 @@ import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
+import com.ticketbox.ui.screens.settings.MerchantAliasesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
@@ -54,6 +56,9 @@ fun SettingsScreen(
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
     onToggleRule: (CategoryRule) -> Unit,
     onDeleteRule: (CategoryRule) -> Unit,
+    onCreateMerchantAlias: (String, String) -> Unit,
+    onToggleMerchantAlias: (MerchantAlias) -> Unit,
+    onDeleteMerchantAlias: (MerchantAlias) -> Unit,
     onPreviewApplyConfirmedRules: () -> Unit,
     onConfirmApplyConfirmedRules: () -> Unit,
     onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
@@ -115,6 +120,7 @@ fun SettingsScreen(
             onOpenServer = { route = SettingsRoute.Server },
             onOpenAppearance = { route = SettingsRoute.Appearance },
             onOpenCategoryRules = { route = SettingsRoute.CategoryRules },
+            onOpenMerchantAliases = { route = SettingsRoute.MerchantAliases },
             onOpenDataExport = { route = SettingsRoute.DataExport },
             onOpenNotifications = { route = SettingsRoute.NotificationPreferences },
             onOpenSecurity = { route = SettingsRoute.SecurityPrivacy },
@@ -211,6 +217,17 @@ fun SettingsScreen(
             onPreviewApplyConfirmedRules = onPreviewApplyConfirmedRules,
             onConfirmApplyConfirmedRules = onConfirmApplyConfirmedRules,
             onRollbackRuleApplication = onRollbackRuleApplication,
+        )
+
+        SettingsRoute.MerchantAliases -> MerchantAliasesScreen(
+            aliases = state.merchantAliases,
+            busy = state.busy,
+            readOnly = !ledgerRoleCanModify(state.role),
+            message = state.message,
+            onBack = { route = SettingsRoute.Root },
+            onCreateAlias = onCreateMerchantAlias,
+            onToggleAlias = onToggleMerchantAlias,
+            onDeleteAlias = onDeleteMerchantAlias,
         )
 
         SettingsRoute.DataExport -> DataExportScreen(

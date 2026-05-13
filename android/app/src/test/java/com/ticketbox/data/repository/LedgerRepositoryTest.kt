@@ -25,6 +25,9 @@ import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
+import com.ticketbox.data.remote.dto.MerchantAliasDto
+import com.ticketbox.data.remote.dto.MerchantAliasListDto
+import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
@@ -727,6 +730,13 @@ private class StubApi(
     override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = unsupported()
     override suspend fun updateCategoryRule(id: Long, request: CategoryRuleRequest): CategoryRuleDto = unsupported()
     override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
+    override suspend fun merchantAliases(): MerchantAliasListDto = unsupported()
+    override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto = unsupported()
+    override suspend fun updateMerchantAlias(
+        publicId: String,
+        request: MerchantAliasRequest,
+    ): MerchantAliasDto = unsupported()
+    override suspend fun deleteMerchantAlias(publicId: String): StatusDto = unsupported()
     override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = unsupported()
     override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto = unsupported()
     override suspend fun applyConfirmedRules(

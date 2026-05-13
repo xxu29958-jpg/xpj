@@ -18,6 +18,9 @@ import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
+import com.ticketbox.data.remote.dto.MerchantAliasDto
+import com.ticketbox.data.remote.dto.MerchantAliasListDto
+import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
@@ -147,6 +150,21 @@ interface ApiService {
 
     @DELETE("api/rules/categories/{id}")
     suspend fun deleteCategoryRule(@Path("id") id: Long): StatusDto
+
+    @GET("api/merchants/aliases")
+    suspend fun merchantAliases(): MerchantAliasListDto
+
+    @POST("api/merchants/aliases")
+    suspend fun createMerchantAlias(@Body request: MerchantAliasRequest): MerchantAliasDto
+
+    @PATCH("api/merchants/aliases/{publicId}")
+    suspend fun updateMerchantAlias(
+        @Path("publicId") publicId: String,
+        @Body request: MerchantAliasRequest,
+    ): MerchantAliasDto
+
+    @DELETE("api/merchants/aliases/{publicId}")
+    suspend fun deleteMerchantAlias(@Path("publicId") publicId: String): StatusDto
 
     @GET("api/rules/applications")
     suspend fun ruleApplications(

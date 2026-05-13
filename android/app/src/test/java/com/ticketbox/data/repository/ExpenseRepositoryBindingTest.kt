@@ -15,6 +15,9 @@ import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
+import com.ticketbox.data.remote.dto.MerchantAliasDto
+import com.ticketbox.data.remote.dto.MerchantAliasListDto
+import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
@@ -399,6 +402,42 @@ class ExpenseRepositoryBindingTest {
         assertEquals("batch-1", apiService.rollbackPublicIds.single())
         assertEquals(1, rollback.changed)
     }
+
+    @Test
+    fun merchantAliasCrudTrimsInputAndUsesPublicIds() = runTest {
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val listed = repository.merchantAliases().getOrThrow()
+        val created = repository.createMerchantAlias(" 星巴克 ", " Starbucks ").getOrThrow()
+        val disabled = repository.updateMerchantAlias(created.publicId, enabled = false).getOrThrow()
+        repository.deleteMerchantAlias(" ${created.publicId} ").getOrThrow()
+
+        assertEquals("alias-1", listed.single().publicId)
+        assertEquals("星巴克", apiService.merchantAliasRequests.first().canonicalMerchant)
+        assertEquals("Starbucks", apiService.merchantAliasRequests.first().alias)
+        assertEquals("alias-created", apiService.merchantAliasPatchTargets.single())
+        assertEquals(false, apiService.merchantAliasRequests.last().enabled)
+        assertEquals(false, disabled.enabled)
+        assertEquals(listOf("alias-created"), apiService.merchantAliasDeleteTargets)
+    }
 }
 
 private class FakeApiServiceFactory(
@@ -424,6 +463,9 @@ private class FakeApiService(
     var lastConfirmedTag: String? = null
     val applyConfirmedRequests = mutableListOf<RuleApplyConfirmedRequestDto>()
     val rollbackPublicIds = mutableListOf<String>()
+    val merchantAliasRequests = mutableListOf<MerchantAliasRequest>()
+    val merchantAliasPatchTargets = mutableListOf<String>()
+    val merchantAliasDeleteTargets = mutableListOf<String>()
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -529,6 +571,52 @@ private class FakeApiService(
     override suspend fun updateCategoryRule(id: Long, request: CategoryRuleRequest): CategoryRuleDto = unsupported()
 
     override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
+
+    override suspend fun merchantAliases(): MerchantAliasListDto = MerchantAliasListDto(
+        items = listOf(
+            merchantAliasDto(
+                publicId = "alias-1",
+                canonicalMerchant = "星巴克",
+                canonicalKey = "星巴克",
+                alias = "Starbucks",
+                aliasKey = "starbucks",
+                enabled = true,
+            ),
+        ),
+    )
+
+    override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto {
+        merchantAliasRequests += request
+        return merchantAliasDto(
+            publicId = "alias-created",
+            canonicalMerchant = requireNotNull(request.canonicalMerchant),
+            canonicalKey = requireNotNull(request.canonicalMerchant),
+            alias = requireNotNull(request.alias),
+            aliasKey = requireNotNull(request.alias).lowercase(),
+            enabled = request.enabled ?: true,
+        )
+    }
+
+    override suspend fun updateMerchantAlias(
+        publicId: String,
+        request: MerchantAliasRequest,
+    ): MerchantAliasDto {
+        merchantAliasPatchTargets += publicId
+        merchantAliasRequests += request
+        return merchantAliasDto(
+            publicId = publicId,
+            canonicalMerchant = request.canonicalMerchant ?: "星巴克",
+            canonicalKey = request.canonicalMerchant ?: "星巴克",
+            alias = request.alias ?: "Starbucks",
+            aliasKey = request.alias?.lowercase() ?: "starbucks",
+            enabled = request.enabled ?: true,
+        )
+    }
+
+    override suspend fun deleteMerchantAlias(publicId: String): StatusDto {
+        merchantAliasDeleteTargets += publicId
+        return StatusDto("ok")
+    }
 
     override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = RuleApplicationListDto(
         items = listOf(
@@ -659,6 +747,24 @@ private class FakeApiService(
     override suspend fun acceptInvitation(
         request: com.ticketbox.data.remote.dto.InvitationAcceptRequestDto,
     ): com.ticketbox.data.remote.dto.InvitationAcceptResponseDto = unsupported()
+
+    private fun merchantAliasDto(
+        publicId: String,
+        canonicalMerchant: String,
+        canonicalKey: String,
+        alias: String,
+        aliasKey: String,
+        enabled: Boolean,
+    ): MerchantAliasDto = MerchantAliasDto(
+        publicId = publicId,
+        canonicalMerchant = canonicalMerchant,
+        canonicalKey = canonicalKey,
+        alias = alias,
+        aliasKey = aliasKey,
+        enabled = enabled,
+        createdAt = "2026-05-13T00:00:00Z",
+        updatedAt = "2026-05-13T00:05:00Z",
+    )
 
     private fun confirmedExpenseDto(): ExpenseDto {
         return ExpenseDto(

@@ -257,6 +257,118 @@ def test_owner_rule_application_audit_is_read_only_and_ledger_scoped(
     assert "00000000-0000-0000-0000-000000000000" not in dashboard.text
     assert "ledger_id=external_first" not in dashboard.text
 
+    forbidden = local_client.get("/owner/rule-applications?ledger_id=external_first")
+    assert forbidden.status_code == 403
+
+
+def test_owner_dashboard_counts_visible_ledgers_only(local_client: TestClient) -> None:
+    from app.database import SessionLocal
+    from app.models import Account, Expense, Ledger
+    from app.services import owner_console_service as svc
+    from app.services.time_service import now_utc
+
+    with SessionLocal() as db:
+        baseline = svc.get_index_vm(db)
+        now = now_utc()
+        external = Account(display_name="外部统计账号", created_at=now)
+        db.add(external)
+        db.flush()
+        db.add(
+            Ledger(
+                id=-101,
+                ledger_id="external_dashboard_counts",
+                name="外部统计账本",
+                owner_account_id=external.id,
+                created_at=now,
+            )
+        )
+        db.add_all(
+            [
+                Expense(
+                    tenant_id="external_dashboard_counts",
+                    amount_cents=100,
+                    merchant="外部待确认",
+                    status="pending",
+                    created_at=now,
+                    updated_at=now,
+                ),
+                Expense(
+                    tenant_id="external_dashboard_counts",
+                    amount_cents=200,
+                    merchant="外部已入账",
+                    status="confirmed",
+                    created_at=now,
+                    updated_at=now,
+                    confirmed_at=now,
+                ),
+            ]
+        )
+        db.commit()
+
+    with SessionLocal() as db:
+        after = svc.get_index_vm(db)
+
+    assert after.pending_count == baseline.pending_count
+    assert after.confirmed_count == baseline.confirmed_count
+
+    dashboard = local_client.get("/owner")
+    assert dashboard.status_code == 200
+    assert "外部统计账本" not in dashboard.text
+
+
+def test_owner_upload_links_default_and_list_are_ledger_scoped(
+    local_client: TestClient,
+) -> None:
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models import Account, Ledger, UploadLink
+    from app.services import owner_console_service as svc
+    from app.services.admin_service import create_upload_link
+    from app.services.time_service import now_utc
+
+    with SessionLocal() as db:
+        now = now_utc()
+        external = Account(display_name="外部上传账号", created_at=now)
+        db.add(external)
+        db.flush()
+        db.add(
+            Ledger(
+                id=-102,
+                ledger_id="external_upload_first",
+                name="外部上传账本",
+                owner_account_id=external.id,
+                created_at=now,
+            )
+        )
+        db.flush()
+        create_upload_link(
+            db,
+            ledger_id="external_upload_first",
+            admin_account_id=external.id,
+            default_timezone="Asia/Shanghai",
+        )
+        visible_ids = {ledger.ledger_id for ledger in svc.list_console_ledger_choices(db)}
+        before_ids = set(db.scalars(select(UploadLink.public_id)).all())
+
+    list_page = local_client.get("/owner/upload-links")
+    assert list_page.status_code == 200
+    assert "外部上传账本" not in list_page.text
+
+    created = local_client.post("/owner/upload-links")
+    assert created.status_code == 200
+
+    with SessionLocal() as db:
+        created_links = [
+            link
+            for link in db.scalars(select(UploadLink).order_by(UploadLink.id.asc())).all()
+            if link.public_id not in before_ids
+        ]
+
+    assert len(created_links) == 1
+    assert created_links[0].ledger_id in visible_ids
+    assert created_links[0].ledger_id != "external_upload_first"
+
 
 def test_owner_settings_page_remote_rejected(client: TestClient) -> None:
     resp = client.get("/owner/settings")

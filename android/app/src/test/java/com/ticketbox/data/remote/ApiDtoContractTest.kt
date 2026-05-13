@@ -6,6 +6,8 @@ import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
+import com.ticketbox.data.remote.dto.MerchantAliasListDto
+import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
@@ -191,6 +193,39 @@ class ApiDtoContractTest {
         assertEquals(1000L, dto.amountMinCents)
         assertEquals("pytest", dto.sourceContains)
         assertEquals("真香", dto.tagContains)
+    }
+
+    @Test
+    fun merchantAliasListParsesCurrentServerShapeAndSerializesPatch() {
+        val dto = requireNotNull(
+            moshi.adapter(MerchantAliasListDto::class.java).fromJson(
+                """
+                {
+                  "items": [
+                    {
+                      "public_id": "alias-1",
+                      "canonical_merchant": "星巴克",
+                      "canonical_key": "星巴克",
+                      "alias": "Starbucks",
+                      "alias_key": "starbucks",
+                      "enabled": true,
+                      "created_at": "2026-05-13T00:00:00Z",
+                      "updated_at": "2026-05-13T00:05:00Z"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val patchJson = moshi.adapter(MerchantAliasRequest::class.java).toJson(
+            MerchantAliasRequest(enabled = false),
+        )
+
+        val item = dto.items.single()
+        assertEquals("alias-1", item.publicId)
+        assertEquals("星巴克", item.canonicalMerchant)
+        assertEquals("starbucks", item.aliasKey)
+        assertEquals("""{"enabled":false}""", patchJson)
     }
 
     @Test

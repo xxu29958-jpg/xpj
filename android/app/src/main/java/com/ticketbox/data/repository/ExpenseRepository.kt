@@ -11,6 +11,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
@@ -23,6 +24,7 @@ import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.LifestyleStats
+import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
@@ -70,6 +72,8 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         "rule_not_found" -> "分类规则不存在。"
         "rule_in_use" -> "分类规则仍在使用，不能删除。"
         "permission_denied" -> "当前角色为只读，无法修改账本。"
+        "merchant_alias_not_found" -> "商家别名不存在。"
+        "merchant_alias_conflict" -> "商家别名已指向其他商家。"
         "recurring_candidate_not_found" -> "没有找到可确认的固定支出候选。"
         "recurring_item_not_found" -> "固定支出不存在。"
         "recurring_frequency_invalid" -> "固定支出设置不正确。"
@@ -597,6 +601,49 @@ class ExpenseRepository(
 
     suspend fun deleteCategoryRule(id: Long): Result<Unit> = safeCall {
         api().deleteCategoryRule(id)
+        Unit
+    }
+
+    suspend fun merchantAliases(): Result<List<MerchantAlias>> = safeCall {
+        api().merchantAliases().items.map { it.toDomain() }
+    }
+
+    suspend fun createMerchantAlias(canonicalMerchant: String, alias: String): Result<MerchantAlias> = safeCall {
+        val cleanCanonical = canonicalMerchant.trim()
+        val cleanAlias = alias.trim()
+        require(cleanCanonical.isNotBlank()) { "请输入标准商家名。" }
+        require(cleanAlias.isNotBlank()) { "请输入别名。" }
+        api().createMerchantAlias(
+            MerchantAliasRequest(
+                canonicalMerchant = cleanCanonical,
+                alias = cleanAlias,
+                enabled = true,
+            ),
+        ).toDomain()
+    }
+
+    suspend fun updateMerchantAlias(
+        publicId: String,
+        canonicalMerchant: String? = null,
+        alias: String? = null,
+        enabled: Boolean? = null,
+    ): Result<MerchantAlias> = safeCall {
+        val cleanPublicId = publicId.trim()
+        require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
+        api().updateMerchantAlias(
+            cleanPublicId,
+            MerchantAliasRequest(
+                canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() },
+                alias = alias?.trim()?.takeIf { it.isNotBlank() },
+                enabled = enabled,
+            ),
+        ).toDomain()
+    }
+
+    suspend fun deleteMerchantAlias(publicId: String): Result<Unit> = safeCall {
+        val cleanPublicId = publicId.trim()
+        require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
+        api().deleteMerchantAlias(cleanPublicId)
         Unit
     }
 

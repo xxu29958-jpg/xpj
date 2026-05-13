@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.FrequentMerchantDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
+import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidateItemDto
@@ -23,6 +24,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
+import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.RecurringCandidate
@@ -205,6 +207,17 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
     amountMaxCents = amountMaxCents,
     sourceContains = sourceContains,
     tagContains = tagContains,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+fun MerchantAliasDto.toDomain(): MerchantAlias = MerchantAlias(
+    publicId = publicId,
+    canonicalMerchant = canonicalMerchant,
+    canonicalKey = canonicalKey,
+    alias = alias,
+    aliasKey = aliasKey,
+    enabled = enabled,
     createdAt = createdAt,
     updatedAt = updatedAt,
 )

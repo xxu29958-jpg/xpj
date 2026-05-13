@@ -112,6 +112,7 @@ fun SettingsRootScreen(
     onOpenServer: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenCategoryRules: () -> Unit,
+    onOpenMerchantAliases: () -> Unit,
     onOpenDataExport: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSecurity: () -> Unit,
@@ -157,6 +158,12 @@ fun SettingsRootScreen(
             subtitle = "商家关键词和自动分类建议",
             icon = Icons.Filled.Category,
             onClick = onOpenCategoryRules,
+        )
+        SettingsEntryRow(
+            title = "商家别名",
+            subtitle = "把不同写法归到同一商家",
+            icon = Icons.Filled.Tune,
+            onClick = onOpenMerchantAliases,
         )
         SettingsEntryRow(
             title = "数据与导出",
