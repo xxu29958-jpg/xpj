@@ -411,6 +411,39 @@ class CategoryRuleResponse(BaseModel):
         return to_iso(value)
 
 
+class MerchantAliasCreateRequest(BaseModel):
+    canonical_merchant: str = Field(min_length=1, max_length=255)
+    alias: str = Field(min_length=1, max_length=255)
+    enabled: bool = True
+
+
+class MerchantAliasUpdateRequest(BaseModel):
+    canonical_merchant: str | None = Field(default=None, min_length=1, max_length=255)
+    alias: str | None = Field(default=None, min_length=1, max_length=255)
+    enabled: bool | None = None
+
+
+class MerchantAliasResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: str
+    canonical_merchant: str
+    canonical_key: str
+    alias: str
+    alias_key: str
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class MerchantAliasListResponse(BaseModel):
+    items: list[MerchantAliasResponse]
+
+
 class LifestyleStatsResponse(BaseModel):
     month: str
     ai_subscription_amount_cents: int

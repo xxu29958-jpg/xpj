@@ -7,6 +7,10 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule, Expense
 from app.services.category_service import normalize_category
+from app.services.merchant_alias_service import (
+    canonical_merchant_for,
+    enabled_merchant_alias_map,
+)
 from app.services.time_service import now_utc
 
 
@@ -69,9 +73,10 @@ def seed_default_rules(db: Session, tenant_id: str) -> None:
 
 
 def classify_expense(db: Session, expense: Expense) -> Expense:
-    haystack = " ".join(
-        part for part in [expense.merchant or "", expense.raw_text or "", expense.note or ""] if part
-    ).lower()
+    alias_map = enabled_merchant_alias_map(db, tenant_id=expense.tenant_id)
+    haystack = _casefold_join(
+        [*_merchant_context(expense, alias_map), expense.raw_text or "", expense.note or ""]
+    )
     if not haystack:
         return expense
 
@@ -81,7 +86,7 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
         .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
     )
     for rule in rules:
-        if rule.keyword.lower() in haystack:
+        if rule.keyword.casefold() in haystack:
             expense.category = normalize_category(rule.category)
             return expense
     return expense
@@ -157,22 +162,28 @@ def delete_rule(db: Session, rule: CategoryRule) -> None:
 _AUTO_FILLABLE_CATEGORIES = {"其他", "未分类", ""}
 
 
-def _haystack_for(expense: Expense, match_field: str) -> str:
+def _casefold_join(parts: list[str]) -> str:
+    return " ".join(part for part in parts if part).casefold()
+
+
+def _merchant_context(expense: Expense, alias_map: dict[str, str]) -> list[str]:
+    raw = expense.merchant or ""
+    canonical = canonical_merchant_for(raw, alias_map=alias_map)
+    if canonical and canonical != raw:
+        return [raw, canonical]
+    return [raw]
+
+
+def _haystack_for(expense: Expense, match_field: str, alias_map: dict[str, str]) -> str:
     field = (match_field or "merchant").strip().lower()
     if field == "merchant":
-        return (expense.merchant or "").lower()
+        return _casefold_join(_merchant_context(expense, alias_map))
     if field in {"raw_text", "raw"}:
-        return (expense.raw_text or "").lower()
+        return (expense.raw_text or "").casefold()
     # "any" or unrecognized → match against merchant + raw_text + note
-    return " ".join(
-        part
-        for part in [
-            expense.merchant or "",
-            expense.raw_text or "",
-            expense.note or "",
-        ]
-        if part
-    ).lower()
+    return _casefold_join(
+        [*_merchant_context(expense, alias_map), expense.raw_text or "", expense.note or ""]
+    )
 
 
 def _is_auto_fillable_category(value: str | None) -> bool:
@@ -195,7 +206,7 @@ def preview_rule_for_pending(
     keyword_clean = (keyword or "").strip()
     if not keyword_clean:
         raise AppError("invalid_request", status_code=422)
-    needle = keyword_clean.lower()
+    needle = keyword_clean.casefold()
     field_label = {"merchant": "商家", "raw_text": "原文", "any": "原文/备注/商家"}.get(
         (match_field or "merchant").strip().lower(), "商家"
     )
@@ -206,11 +217,12 @@ def preview_rule_for_pending(
         .where(Expense.status == "pending")
         .order_by(Expense.created_at.desc(), Expense.id.desc())
     )
+    alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
     matched: list[dict] = []
     matched_count = 0
     capped = max(1, min(int(limit or 10), 50))
     for expense in pending:
-        if needle not in _haystack_for(expense, match_field):
+        if needle not in _haystack_for(expense, match_field, alias_map):
             continue
         matched_count += 1
         if len(matched) >= capped:
@@ -254,24 +266,17 @@ def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
     if not rules:
         return len(pending), 0
 
+    alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
     changed = 0
     now = now_utc()
     for expense in pending:
         if not _is_auto_fillable_category(expense.category):
             continue
-        haystack = " ".join(
-            part
-            for part in [
-                expense.merchant or "",
-                expense.raw_text or "",
-                expense.note or "",
-            ]
-            if part
-        ).lower()
+        haystack = _haystack_for(expense, "any", alias_map)
         if not haystack:
             continue
         for rule in rules:
-            if rule.keyword.lower() in haystack:
+            if rule.keyword.casefold() in haystack:
                 new_category = normalize_category(rule.category)
                 if new_category and new_category != expense.category:
                     expense.category = new_category

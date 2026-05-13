@@ -13,9 +13,9 @@ def ledger_filter(model: type[ModelT], tenant_id: str) -> ColumnElement[bool]:
     """Return the mandatory ledger predicate for tenant-scoped ORM models.
 
     The database column is still named ``tenant_id`` for compatibility, but its
-    runtime meaning is ``ledger_id``. New Expense/CategoryRule/DuplicateIgnore/
-    RecurringItem queries should use this helper or an equivalent explicit
-    ``Model.tenant_id == tenant_id`` predicate.
+    runtime meaning is ``ledger_id``. New Expense/CategoryRule/MerchantAlias/
+    DuplicateIgnore/RecurringItem queries should use this helper or an
+    equivalent explicit ``Model.tenant_id == tenant_id`` predicate.
     """
     column = getattr(model, "tenant_id", None)
     if column is None:

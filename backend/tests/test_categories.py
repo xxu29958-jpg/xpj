@@ -80,6 +80,7 @@ def test_normalize_merchant_basic() -> None:
     assert normalize_merchant("   ") == ""
     # Zero-width characters get scrubbed.
     assert normalize_merchant("Star\u200bbucks") == "star bucks"
+    assert normalize_merchant("星巴克（自动）") == "星巴克"
 
 
 def test_display_merchant_preserves_case() -> None:

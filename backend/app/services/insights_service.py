@@ -15,30 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Expense
+from app.services.merchant_service import normalize_merchant
 from app.services.time_service import ensure_utc, local_month_label
-
-
-# --- Merchant normalization MVP (T21) -------------------------------------
-# First version: simple casefold + trim + strip common suffixes/prefixes.
-# Does NOT introduce a MerchantAlias schema. Used only by insights for now.
-_MERCHANT_TRIM_TOKENS = (
-    "（自动）",
-    "(自动)",
-    "(Auto)",
-    "（Auto）",
-)
-
-
-def normalize_merchant(value: str | None) -> str:
-    if not value:
-        return ""
-    text = value.strip()
-    if not text:
-        return ""
-    for token in _MERCHANT_TRIM_TOKENS:
-        if text.endswith(token):
-            text = text[: -len(token)].rstrip()
-    return text.casefold()
 
 
 def _display_merchant(values: Iterable[str]) -> str:

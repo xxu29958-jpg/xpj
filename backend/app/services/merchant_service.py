@@ -6,6 +6,7 @@ First version is intentionally conservative:
 * fold ASCII case (lowercase) for grouping
 * collapse runs of any unicode whitespace into a single ASCII space
 * strip a small set of zero-width / BOM characters that sneak in from OCR
+* strip known automatic marker suffixes used by payment notifications
 
 We deliberately do **not** create a ``MerchantAlias`` table, do not
 overwrite ``Expense.merchant``, and do not run fuzzy matching. The
@@ -22,6 +23,12 @@ import re
 _ZERO_WIDTH = "\u200b\u200c\u200d\ufeff\u00a0"
 _TRANSLATE = {ord(ch): " " for ch in _ZERO_WIDTH}
 _WHITESPACE_RE = re.compile(r"\s+", re.UNICODE)
+_MERCHANT_TRIM_TOKENS = (
+    "（自动）",
+    "(自动)",
+    "(Auto)",
+    "（Auto）",
+)
 
 
 def normalize_merchant(raw: str | None) -> str:
@@ -34,6 +41,12 @@ def normalize_merchant(raw: str | None) -> str:
         return ""
     cleaned = raw.translate(_TRANSLATE)
     cleaned = _WHITESPACE_RE.sub(" ", cleaned).strip()
+    if not cleaned:
+        return ""
+    for token in _MERCHANT_TRIM_TOKENS:
+        if cleaned.endswith(token):
+            cleaned = cleaned[: -len(token)].rstrip()
+            break
     if not cleaned:
         return ""
     return cleaned.casefold()

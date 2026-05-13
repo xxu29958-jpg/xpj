@@ -104,7 +104,7 @@ def _needs_pre_v03_backup(db_path: Path) -> bool:
 
 
 def seed_identity_data() -> None:
-    from app.models import CategoryRule, DuplicateIgnore, Expense
+    from app.models import CategoryRule, DuplicateIgnore, Expense, MerchantAlias
     from app.services.identity_service import ensure_identity_for_existing_ledger_ids, ensure_identity_seed
 
     with SessionLocal() as db:
@@ -114,6 +114,8 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(Expense.tenant_id).distinct()) if value)
         if inspect(engine).has_table("category_rules"):
             ids.update(str(value) for value in db.scalars(select(CategoryRule.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("merchant_aliases"):
+            ids.update(str(value) for value in db.scalars(select(MerchantAlias.tenant_id).distinct()) if value)
         if inspect(engine).has_table("duplicate_ignores"):
             ids.update(str(value) for value in db.scalars(select(DuplicateIgnore.tenant_id).distinct()) if value)
         if ids:
@@ -360,6 +362,20 @@ def migrate_sqlite_schema() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_category_rules_tenant_priority_id "
                     "ON category_rules (tenant_id, priority, id)"
+                )
+            )
+
+        if "merchant_aliases" in table_names:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_merchant_aliases_tenant_canonical "
+                    "ON merchant_aliases (tenant_id, canonical_key)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_merchant_aliases_tenant_alias_key "
+                    "ON merchant_aliases (tenant_id, alias_key)"
                 )
             )
 

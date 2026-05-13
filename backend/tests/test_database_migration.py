@@ -121,6 +121,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "category_rules" in inspector.get_table_names()
     assert "duplicate_ignores" in inspector.get_table_names()
     assert "ledger_audit_logs" in inspector.get_table_names()
+    assert "merchant_aliases" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
     assert {
         "tenant_id",
@@ -131,7 +132,11 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     }.issubset(_expense_columns())
     assert "ix_ledger_audit_logs_ledger_created_at" in _indexes("ledger_audit_logs")
     assert "ix_expenses_tenant_draft_idempotency_key" in _indexes("expenses")
+    assert "ix_merchant_aliases_tenant_alias_key" in _indexes("merchant_aliases")
+    assert "ix_merchant_aliases_tenant_canonical" in _indexes("merchant_aliases")
     assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
+    merchant_alias_sql = _table_create_sql("merchant_aliases")
+    assert "uq_merchant_aliases_tenant_alias_key" in merchant_alias_sql
     recurring_sql = _table_create_sql("recurring_items")
     assert "ck_recurring_items_frequency_valid" in recurring_sql
     assert "ck_recurring_items_status_valid" in recurring_sql
