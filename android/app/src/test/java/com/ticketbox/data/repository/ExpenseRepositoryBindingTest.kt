@@ -20,6 +20,9 @@ import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.PairResponseDto
+import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
+import com.ticketbox.data.remote.dto.RecurringItemDto
+import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
@@ -360,6 +363,15 @@ private class FakeApiService(
 
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
+    override suspend fun recurringItems(status: String?, includeArchived: Boolean): RecurringItemListResponseDto = unsupported()
+    override suspend fun confirmRecurringCandidate(
+        request: RecurringCandidateConfirmRequestDto,
+        timezone: String?,
+    ): RecurringItemDto = unsupported()
+    override suspend fun recurringItem(publicId: String): RecurringItemDto = unsupported()
+    override suspend fun pauseRecurringItem(publicId: String): RecurringItemDto = unsupported()
+    override suspend fun resumeRecurringItem(publicId: String): RecurringItemDto = unsupported()
+    override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = unsupported()
 
     override suspend fun listLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto = unsupported()

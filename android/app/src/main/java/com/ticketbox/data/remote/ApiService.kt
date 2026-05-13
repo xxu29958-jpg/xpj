@@ -23,7 +23,10 @@ import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
+import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
+import com.ticketbox.data.remote.dto.RecurringItemDto
+import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
@@ -150,6 +153,30 @@ interface ApiService {
     suspend fun recurringCandidates(
         @Query("timezone") timezone: String? = null,
     ): RecurringCandidatesResponseDto
+
+    @GET("api/recurring/items")
+    suspend fun recurringItems(
+        @Query("status") status: String? = null,
+        @Query("include_archived") includeArchived: Boolean = false,
+    ): RecurringItemListResponseDto
+
+    @POST("api/recurring/from-candidate")
+    suspend fun confirmRecurringCandidate(
+        @Body request: RecurringCandidateConfirmRequestDto,
+        @Query("timezone") timezone: String? = null,
+    ): RecurringItemDto
+
+    @GET("api/recurring/items/{publicId}")
+    suspend fun recurringItem(@Path("publicId") publicId: String): RecurringItemDto
+
+    @POST("api/recurring/items/{publicId}/pause")
+    suspend fun pauseRecurringItem(@Path("publicId") publicId: String): RecurringItemDto
+
+    @POST("api/recurring/items/{publicId}/resume")
+    suspend fun resumeRecurringItem(@Path("publicId") publicId: String): RecurringItemDto
+
+    @POST("api/recurring/items/{publicId}/archive")
+    suspend fun archiveRecurringItem(@Path("publicId") publicId: String): RecurringItemDto
 
     @GET("api/insights/data-quality")
     suspend fun dataQualitySummary(): DataQualitySummaryDto

@@ -21,6 +21,8 @@ class BackendErrorMessageMapperTest {
         assertEquals("账本版本过旧，请重启电脑上的小票夹后再试。", backendErrorUserMessage("route_not_found", "接口不存在。"))
         assertEquals("操作方式不正确，请更新 App 后再试。", backendErrorUserMessage("method_not_allowed", "请求方法不允许。"))
         assertEquals("当前角色为只读，无法修改账本。", backendErrorUserMessage("permission_denied", "当前角色无权进行此操作。"))
+        assertEquals("固定支出不存在。", backendErrorUserMessage("recurring_item_not_found", "Not found"))
+        assertEquals("固定支出已归档，不能继续修改。", backendErrorUserMessage("recurring_item_archived", "Archived"))
     }
 
     @Test

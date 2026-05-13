@@ -139,6 +139,12 @@ Authorization: Bearer <admin_token>
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, Android domain tests | gray/internal |
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
+| `/api/recurring/items` | GET | `backend/app/routes/recurring.py` | `recurringItems(status,includeArchived)` | query `status/include_archived` | `RecurringItemListResponseDto` | Session Token | `backend/tests/test_recurring_items.py`, `ApiDtoContractTest` | v0.6 固定支出列表 |
+| `/api/recurring/from-candidate` | POST | `backend/app/routes/recurring.py` | `confirmRecurringCandidate(request,timezone)` | `RecurringCandidateConfirmRequest`；query `timezone` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 候选确认成固定支出 |
+| `/api/recurring/items/{public_id}` | GET | `backend/app/routes/recurring.py` | `recurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token | `backend/tests/test_recurring_items.py` | 固定支出详情 |
+| `/api/recurring/items/{public_id}/pause` | POST | `backend/app/routes/recurring.py` | `pauseRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 暂停固定支出 |
+| `/api/recurring/items/{public_id}/resume` | POST | `backend/app/routes/recurring.py` | `resumeRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 恢复固定支出 |
+| `/api/recurring/items/{public_id}/archive` | POST | `backend/app/routes/recurring.py` | `archiveRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 归档固定支出 |
 | `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
 | `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
 | `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
@@ -991,6 +997,88 @@ timezone=Asia/Shanghai
     }
   ]
 }
+```
+
+## 固定支出
+
+> v0.6 起提供。固定支出由用户从 recurring candidates 手动确认生成；不会自动入账，也不会自动创建 pending。
+
+### GET /api/recurring/items
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+查询参数：
+
+```text
+status=active|paused|archived，可选
+include_archived=true|false，默认 false
+```
+
+返回：
+
+```json
+{
+  "items": [
+    {
+      "public_id": "recurring-1",
+      "ledger_id": "owner",
+      "merchant": "ChatGPT Plus",
+      "merchant_key": "chatgpt plus",
+      "frequency": "monthly",
+      "baseline_amount_cents": 20000,
+      "last_amount_cents": 20000,
+      "occurrence_count": 3,
+      "last_seen_at": "2026-05-05T12:00:00Z",
+      "next_expected_date": "2026-06-05",
+      "status": "active",
+      "confidence": "high",
+      "source": "candidate",
+      "created_at": "2026-05-13T00:00:00Z",
+      "updated_at": "2026-05-13T00:00:00Z",
+      "paused_at": null,
+      "archived_at": null
+    }
+  ]
+}
+```
+
+### POST /api/recurring/from-candidate
+
+把当前账本内仍然有效的 recurring candidate 确认为正式固定支出。仅 `owner` / `member` 可调用，`viewer` 返回 `permission_denied`。
+
+```json
+{
+  "merchant": "ChatGPT Plus",
+  "amount_cents": 20000,
+  "occurrence_count": 3,
+  "last_seen_at": "2026-05-05T12:00:00Z",
+  "confidence": "high",
+  "frequency": "monthly",
+  "next_expected_date": "2026-06-05"
+}
+```
+
+同一账本、商家归一名和频率重复确认时返回既有记录，不重复创建。
+
+### GET /api/recurring/items/{public_id}
+
+读取当前账本内的固定支出详情。跨账本读取返回 `recurring_item_not_found`。
+
+### POST /api/recurring/items/{public_id}/pause
+### POST /api/recurring/items/{public_id}/resume
+### POST /api/recurring/items/{public_id}/archive
+
+固定支出状态机：
+
+```text
+active -> paused
+paused -> active
+active/paused -> archived
+archived 不允许恢复或暂停
 ```
 
 ## 维护

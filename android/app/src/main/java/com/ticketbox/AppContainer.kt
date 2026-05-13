@@ -6,6 +6,7 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.security.SecureTokenStore
 
 class AppContainer(context: Context) {
@@ -27,5 +28,11 @@ class AppContainer(context: Context) {
         settingsStore = settingsStore,
         tokenStore = tokenStore,
         expenseDao = database.expenseDao(),
+    )
+
+    val recurringRepository = RecurringRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
     )
 }

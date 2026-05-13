@@ -49,6 +49,11 @@ ERROR_MESSAGES = {
     "owner_transfer_requires_owner": "只有当前 owner 可以转让账本。",
     "owner_transfer_self": "不能把 owner 转让给自己。",
     "owner_transfer_target_invalid": "只能转让给当前账本的活跃非 owner 成员。",
+    "recurring_candidate_not_found": "没有找到可确认的固定支出候选。",
+    "recurring_item_not_found": "固定支出不存在。",
+    "recurring_frequency_invalid": "固定支出周期暂不支持。",
+    "recurring_status_invalid": "固定支出状态无效。",
+    "recurring_item_archived": "固定支出已归档，不能继续修改。",
 }
 
 

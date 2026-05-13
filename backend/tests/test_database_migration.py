@@ -121,8 +121,13 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "category_rules" in inspector.get_table_names()
     assert "duplicate_ignores" in inspector.get_table_names()
     assert "ledger_audit_logs" in inspector.get_table_names()
+    assert "recurring_items" in inspector.get_table_names()
     assert {"tenant_id", "public_id", "thumbnail_path", "duplicate_status"}.issubset(_expense_columns())
     assert "ix_ledger_audit_logs_ledger_created_at" in _indexes("ledger_audit_logs")
+    assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
+    recurring_sql = _table_create_sql("recurring_items")
+    assert "ck_recurring_items_frequency_valid" in recurring_sql
+    assert "ck_recurring_items_status_valid" in recurring_sql
     with engine.begin() as connection:
         owner_rules = connection.execute(
             text("SELECT COUNT(*) FROM category_rules WHERE tenant_id = 'owner'")
