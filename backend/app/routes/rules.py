@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -13,6 +13,8 @@ from app.schemas import (
     CategoryRuleResponse,
     CategoryRuleUpdateRequest,
     RuleApplyPendingResponse,
+    RuleApplyPendingPreviewItem,
+    RuleApplyPendingPreviewResponse,
     RulePreviewItem,
     RulePreviewRequest,
     RulePreviewResponse,
@@ -23,6 +25,7 @@ from app.services.classify_service import (
     create_rule,
     delete_rule,
     list_rules,
+    preview_apply_rules_to_pending,
     preview_rule_for_pending,
     update_rule,
 )
@@ -125,4 +128,26 @@ def post_rule_apply_pending(
     return RuleApplyPendingResponse(
         pending_scanned=pending_scanned,
         changed_count=changed_count,
+    )
+
+
+@router.post("/apply-pending/preview", response_model=RuleApplyPendingPreviewResponse)
+def post_rule_apply_pending_preview(
+    limit: int = Query(default=20, ge=1, le=50),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RuleApplyPendingPreviewResponse:
+    result = preview_apply_rules_to_pending(
+        db,
+        tenant_id=auth.tenant_id,
+        limit=limit,
+    )
+    return RuleApplyPendingPreviewResponse(
+        pending_scanned=result["pending_scanned"],
+        changed_count=result["changed_count"],
+        items=[RuleApplyPendingPreviewItem(**item) for item in result["items"]],
+        skipped_non_default_category=result["skipped_non_default_category"],
+        no_match_count=result["no_match_count"],
+        unchanged_count=result["unchanged_count"],
+        conflict_count=result["conflict_count"],
     )

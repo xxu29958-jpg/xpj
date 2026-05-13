@@ -190,6 +190,23 @@ def _is_auto_fillable_category(value: str | None) -> bool:
     return normalize_category(value or "") in _AUTO_FILLABLE_CATEGORIES
 
 
+def _matching_rule_category(
+    expense: Expense,
+    rules: list[CategoryRule],
+    alias_map: dict[str, str],
+) -> tuple[CategoryRule, str] | None:
+    haystack = _haystack_for(expense, "any", alias_map)
+    if not haystack:
+        return None
+    for rule in rules:
+        if rule.keyword.casefold() in haystack:
+            category = normalize_category(rule.category)
+            if category:
+                return rule, category
+            return None
+    return None
+
+
 def preview_rule_for_pending(
     db: Session,
     *,
@@ -240,6 +257,72 @@ def preview_rule_for_pending(
     return matched_count, matched
 
 
+def preview_apply_rules_to_pending(
+    db: Session,
+    *,
+    tenant_id: str,
+    limit: int = 20,
+) -> dict:
+    pending = list(
+        db.scalars(
+            ledger_scoped_select(Expense, tenant_id)
+            .where(Expense.status == "pending")
+            .order_by(Expense.created_at.desc(), Expense.id.desc())
+        )
+    )
+    rules = list(
+        db.scalars(
+            ledger_scoped_select(CategoryRule, tenant_id)
+            .where(CategoryRule.enabled == True)  # noqa: E712
+            .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
+        )
+    )
+    alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
+    capped = max(1, min(int(limit or 20), 50))
+
+    changed_count = 0
+    skipped_non_default_category = 0
+    no_match_count = 0
+    unchanged_count = 0
+    items: list[dict] = []
+    for expense in pending:
+        current_category = normalize_category(expense.category or "其他")
+        if not _is_auto_fillable_category(expense.category):
+            skipped_non_default_category += 1
+            continue
+        match = _matching_rule_category(expense, rules, alias_map)
+        if match is None:
+            no_match_count += 1
+            continue
+        rule, suggested_category = match
+        if suggested_category == current_category:
+            unchanged_count += 1
+            continue
+        changed_count += 1
+        if len(items) >= capped:
+            continue
+        items.append(
+            {
+                "id": expense.id,
+                "merchant": expense.merchant,
+                "current_category": current_category,
+                "suggested_category": suggested_category,
+                "rule_keyword": rule.keyword,
+                "reason": f"规则[{rule.keyword}] 将分类改为 {suggested_category}",
+            }
+        )
+
+    return {
+        "pending_scanned": len(pending),
+        "changed_count": changed_count,
+        "items": items,
+        "skipped_non_default_category": skipped_non_default_category,
+        "no_match_count": no_match_count,
+        "unchanged_count": unchanged_count,
+        "conflict_count": 0,
+    }
+
+
 def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
     """Re-run rule classification on all pending expenses for this tenant.
 
@@ -272,17 +355,14 @@ def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
     for expense in pending:
         if not _is_auto_fillable_category(expense.category):
             continue
-        haystack = _haystack_for(expense, "any", alias_map)
-        if not haystack:
+        match = _matching_rule_category(expense, rules, alias_map)
+        if match is None:
             continue
-        for rule in rules:
-            if rule.keyword.casefold() in haystack:
-                new_category = normalize_category(rule.category)
-                if new_category and new_category != expense.category:
-                    expense.category = new_category
-                    expense.updated_at = now
-                    changed += 1
-                break
+        _, new_category = match
+        if new_category != normalize_category(expense.category):
+            expense.category = new_category
+            expense.updated_at = now
+            changed += 1
     if changed:
         db.commit()
     return len(pending), changed

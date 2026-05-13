@@ -91,6 +91,56 @@ def test_rule_preview_caps_items_by_limit(client: TestClient) -> None:
 # --- T18 Rules Apply Pending ---------------------------------------------
 
 
+def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
+    client: TestClient,
+) -> None:
+    default_id = upload_png(client)
+    _set_pending_merchant(client, default_id, "Starbucks 上海")
+    custom_id = upload_png(client)
+    custom = client.patch(
+        f"/api/expenses/{custom_id}",
+        headers=app_headers(),
+        json={"merchant": "Starbucks 手动分类", "category": "交通", "amount_cents": 1000},
+    )
+    assert custom.status_code == 200
+
+    response = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    assert response.status_code == 200
+
+    preview = client.post(
+        "/api/rules/apply-pending/preview?limit=10",
+        headers=app_headers(),
+    )
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["pending_scanned"] >= 2
+    assert body["changed_count"] == 1
+    assert body["skipped_non_default_category"] == 1
+    assert body["conflict_count"] == 0
+    assert body["items"] == [
+        {
+            "id": default_id,
+            "merchant": "Starbucks 上海",
+            "current_category": "其他",
+            "suggested_category": "餐饮",
+            "rule_keyword": "Starbucks",
+            "reason": "规则[Starbucks] 将分类改为 餐饮",
+        }
+    ]
+
+    with SessionLocal() as db:
+        default = db.scalar(select(Expense).where(Expense.id == default_id))
+        custom_expense = db.scalar(select(Expense).where(Expense.id == custom_id))
+        assert default is not None
+        assert custom_expense is not None
+        assert default.category == "其他"
+        assert custom_expense.category == "交通"
+
+
 def test_rule_apply_pending_updates_category(client: TestClient) -> None:
     pending_id = upload_png(client)
     _set_pending_merchant(client, pending_id, "Starbucks 上海")
@@ -256,6 +306,7 @@ def test_alpha3_endpoints_no_secret_leak(client: TestClient) -> None:
     upload_png(client)
     for path, method, body in [
         ("/api/rules/preview", "POST", {"keyword": "x", "target_category": "餐饮"}),
+        ("/api/rules/apply-pending/preview", "POST", None),
         ("/api/rules/apply-pending", "POST", None),
         ("/api/insights/recurring-candidates", "GET", None),
     ]:

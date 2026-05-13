@@ -480,6 +480,25 @@ class RuleApplyPendingResponse(BaseModel):
     changed_count: int
 
 
+class RuleApplyPendingPreviewItem(BaseModel):
+    id: int
+    merchant: str | None
+    current_category: str
+    suggested_category: str
+    rule_keyword: str
+    reason: str
+
+
+class RuleApplyPendingPreviewResponse(BaseModel):
+    pending_scanned: int
+    changed_count: int
+    items: list[RuleApplyPendingPreviewItem]
+    skipped_non_default_category: int
+    no_match_count: int
+    unchanged_count: int
+    conflict_count: int = 0
+
+
 # v0.4-alpha3 — Recurring candidates (read-only insights)
 class RecurringCandidateItem(BaseModel):
     merchant: str
