@@ -89,7 +89,48 @@
 </div>
 
 <div class="card">
-  <h2>固定支出候选</h2>
+  <h2>正式固定支出</h2>
+  {% if recurring_formal %}
+  <p class="meta">这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。</p>
+  <table class="transaction-table">
+    <thead>
+      <tr>
+        <th>商家</th>
+        <th style="width:120px;text-align:right">上次金额</th>
+        <th style="width:120px">下次预计</th>
+        <th style="width:90px">状态</th>
+        <th style="width:90px">提醒</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in recurring_formal %}
+      <tr>
+        <td>{{ r.merchant }}</td>
+        <td class="amount">¥{{ r.amount_yuan }}</td>
+        <td>{{ r.next_expected_date or '—' }}</td>
+        <td>
+          {% if r.status == 'active' %}<span class="status-chip ok">活跃</span>
+          {% elif r.status == 'paused' %}<span class="status-chip warn">暂停</span>
+          {% else %}<span class="status-chip muted">{{ r.status }}</span>{% endif %}
+        </td>
+        <td>
+          {% if r.anomaly_status == 'higher_than_average' %}<span class="status-chip warn">本月偏高</span>
+          {% else %}<span class="status-chip muted">正常</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">还没有正式固定支出</div>
+    <div class="empty-state-hint">在固定支出页确认候选后，这里会展示正式记录。</div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>固定支出候选（未确认）</h2>
   {% if recurring_candidates %}
   <p class="meta">近几个月在同一商家出现、金额接近的支出。仅作提示，不会自动入账。</p>
   <table class="transaction-table">
@@ -130,8 +171,4 @@
   <p>预算功能会在后续版本开启。当前不会自动扣预算，也不会自动入账。</p>
 </div>
 
-<div class="card placeholder-card">
-  <h2>固定支出（Placeholder）</h2>
-  <p>可能是固定支出的消费，后续会在这里提醒。当前不会自动判断，也不会自动入账。</p>
-</div>
 {% endblock %}

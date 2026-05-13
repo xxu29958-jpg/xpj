@@ -22,6 +22,8 @@ from app.errors import AppError
 from app.network_boundary import require_owner_console_local
 from app.services import owner_console_service as owner_svc
 from app.services.expense_service import list_pending
+from app.services.insights_service import recurring_candidates
+from app.services.recurring_service import list_recurring_items
 from app.services.stats_service import monthly_stats
 from app.version import BACKEND_VERSION
 
@@ -197,6 +199,10 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     )
     month = datetime.now().strftime("%Y-%m")
     stats = monthly_stats(db, month, ledger_id)
+    recurring_rows = list_recurring_items(db, tenant_id=ledger_id, include_archived=False)
+    active_recurring = sum(1 for item in recurring_rows if item.status == "active")
+    paused_recurring = sum(1 for item in recurring_rows if item.status == "paused")
+    candidate_count = len(recurring_candidates(db, tenant_id=ledger_id))
     return {
         "pending_count": pending_count,
         "needs_amount_count": needs_amount,
@@ -205,4 +211,7 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
         "month": month,
         "total_amount_yuan": _amount_yuan(int(stats["total_amount_cents"])),
         "confirmed_count": int(stats["count"]),
+        "recurring_active_count": active_recurring,
+        "recurring_paused_count": paused_recurring,
+        "recurring_candidate_count": candidate_count,
     }

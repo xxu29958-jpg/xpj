@@ -23,6 +23,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.insights_service import recurring_candidates
+from app.services.recurring_service import list_recurring_items, recurring_amount_anomalies
 from app.services.stats_service import monthly_stats
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -91,6 +92,29 @@ def web_stats(
         for item in rc_items[:5]
     ]
 
+    recurring_items = list_recurring_items(db, tenant_id=selected_id, include_archived=False)
+    anomalies = recurring_amount_anomalies(
+        db,
+        tenant_id=selected_id,
+        items=recurring_items,
+        month=month,
+        timezone_name="Asia/Shanghai",
+    )
+    recurring_formal = []
+    for item in recurring_items[:8]:
+        anomaly = anomalies.get(item.public_id)
+        recurring_formal.append(
+            {
+                "merchant": item.merchant_name,
+                "amount_yuan": _amount_yuan(item.last_amount_cents),
+                "status": item.status,
+                "next_expected_date": item.next_expected_date.isoformat()
+                if item.next_expected_date
+                else "",
+                "anomaly_status": anomaly.anomaly_status if anomaly else "none",
+            }
+        )
+
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["month"] = month
     ctx["total_amount_yuan"] = _amount_yuan(int(stats["total_amount_cents"]))
@@ -98,4 +122,5 @@ def web_stats(
     ctx["by_category"] = by_category
     ctx["top_expenses"] = top_rows
     ctx["recurring_candidates"] = recurring
+    ctx["recurring_formal"] = recurring_formal
     return templates.TemplateResponse(request=request, name="stats.html", context=ctx)

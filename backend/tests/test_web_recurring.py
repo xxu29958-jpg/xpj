@@ -54,6 +54,22 @@ def _first_recurring_public_id() -> str:
         return item.public_id
 
 
+def _confirm_candidate(web_client: TestClient) -> None:
+    response = web_client.post(
+        "/web/recurring/confirm-candidate",
+        data={
+            "ledger_id": "owner",
+            "merchant": "ChatGPT Plus",
+            "amount_cents": "20000",
+            "occurrence_count": "3",
+            "last_seen_at": "2026-05-05T12:00:00Z",
+            "confidence": "high",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+
 def test_web_recurring_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/recurring").status_code == 403
     assert client.post("/web/recurring/confirm-candidate").status_code == 403
@@ -76,19 +92,7 @@ def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> N
     page = web_client.get("/web/recurring?ledger_id=owner")
     assert page.status_code == 200
 
-    confirmed = web_client.post(
-        "/web/recurring/confirm-candidate",
-        data={
-            "ledger_id": "owner",
-            "merchant": "ChatGPT Plus",
-            "amount_cents": "20000",
-            "occurrence_count": "3",
-            "last_seen_at": "2026-05-05T12:00:00Z",
-            "confidence": "high",
-        },
-        follow_redirects=False,
-    )
-    assert confirmed.status_code == 303
+    _confirm_candidate(web_client)
 
     public_id = _first_recurring_public_id()
     paused = web_client.post(
@@ -114,6 +118,23 @@ def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> N
     assert archived.status_code == 303
     with SessionLocal() as db:
         assert db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id)) == "archived"
+
+
+def test_web_stats_distinguishes_formal_recurring_from_candidates(web_client: TestClient) -> None:
+    _seed_candidate()
+    before = web_client.get("/web")
+    assert before.status_code == 200
+    assert "正式固定支出" in before.text
+    assert "1 个候选未确认" in before.text
+
+    _confirm_candidate(web_client)
+
+    stats = web_client.get("/web/stats?ledger_id=owner&month=2026-05")
+    assert stats.status_code == 200
+    assert "正式固定支出" in stats.text
+    assert "固定支出候选（未确认）" in stats.text
+    assert "ChatGPT Plus" in stats.text
+    assert "只做提醒和对比，不会自动入账" in stats.text
 
 
 def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:
