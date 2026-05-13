@@ -526,6 +526,65 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     assert "其他" in restored.text
 
 
+def test_web_rules_apply_confirmed_requires_preview_then_applies(
+    web_client: TestClient,
+) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "9.00", "Historical Starbucks")
+    confirmed = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert confirmed.status_code in {303, 307}
+
+    created = web_client.post(
+        "/web/rules/create",
+        data={
+            "keyword": "Historical Starbucks",
+            "category": "餐饮",
+            "priority": "1",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code in {303, 307}
+
+    direct = web_client.post(
+        "/web/rules/apply-confirmed",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert direct.status_code in {303, 307}
+    assert "confirmed_preview=1" in direct.headers["location"]
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "其他" in detail.text
+
+    preview = web_client.get("/web/rules?ledger_id=owner&confirmed_preview=1")
+    assert preview.status_code == 200
+    assert "历史账单规则预览" in preview.text
+    assert "Historical Starbucks" in preview.text
+    assert "确认应用到已确认" in preview.text
+    token_match = re.search(r'name="preview_token" value="([0-9a-f]+)"', preview.text)
+    assert token_match, preview.text[:1000]
+
+    applied = web_client.post(
+        "/web/rules/apply-confirmed",
+        data={
+            "ledger_id": "owner",
+            "preview_confirmed": "yes",
+            "preview_token": token_match.group(1),
+        },
+        follow_redirects=False,
+    )
+    assert applied.status_code in {303, 307}
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "餐饮" in detail.text
+
+    page = web_client.get("/web/rules?ledger_id=owner")
+    assert page.status_code == 200
+    assert "已应用历史" in page.text
+
+
 # ----- v0.7 /web/merchants page -------------------------------------------
 
 def test_web_merchants_local_returns_200(web_client: TestClient) -> None:

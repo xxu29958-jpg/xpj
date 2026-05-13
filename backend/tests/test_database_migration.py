@@ -19,6 +19,10 @@ def _expense_columns() -> set[str]:
     return {column["name"] for column in inspect(engine).get_columns("expenses")}
 
 
+def _table_columns(table_name: str) -> set[str]:
+    return {column["name"] for column in inspect(engine).get_columns(table_name)}
+
+
 def _indexes(table_name: str) -> set[str]:
     return {index["name"] for index in inspect(engine).get_indexes(table_name)}
 
@@ -149,6 +153,13 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_rule_application_batches_tenant_status" in _indexes("rule_application_batches")
     assert "ix_rule_application_changes_tenant_batch" in _indexes("rule_application_changes")
     assert "ix_rule_application_changes_tenant_expense" in _indexes("rule_application_changes")
+    assert {
+        "amount_min_cents",
+        "amount_max_cents",
+        "source_contains",
+        "tag_contains",
+    }.issubset(_table_columns("category_rules"))
+    assert "ix_category_rules_tenant_enabled_priority" in _indexes("category_rules")
     merchant_alias_sql = _table_create_sql("merchant_aliases")
     assert "uq_merchant_aliases_tenant_alias_key" in merchant_alias_sql
     tags_sql = _table_create_sql("tags")
@@ -387,6 +398,13 @@ def test_missing_tenant_id_backfills_owner_for_expenses_rules_and_duplicate_igno
         rule_tenant = connection.execute(text("SELECT tenant_id FROM category_rules WHERE keyword = '老规则'")).scalar_one()
         ignore = connection.execute(text("SELECT tenant_id, kind FROM duplicate_ignores WHERE expense_id = 1")).mappings().one()
     assert rule_tenant == "owner"
+    assert {
+        "amount_min_cents",
+        "amount_max_cents",
+        "source_contains",
+        "tag_contains",
+    }.issubset(_table_columns("category_rules"))
+    assert "ix_category_rules_tenant_enabled_priority" in _indexes("category_rules")
     assert ignore["tenant_id"] == "owner"
     assert ignore["kind"] == "manual"
 

@@ -26,6 +26,20 @@
       <label>优先级（越小越优先）
         <input type="number" name="priority" value="100" min="0" max="9999">
       </label>
+      <div class="grid two-col compact">
+        <label>金额下限（元，可选）
+          <input type="number" name="amount_min_yuan" min="0" step="0.01" placeholder="如：10.00">
+        </label>
+        <label>金额上限（元，可选）
+          <input type="number" name="amount_max_yuan" min="0" step="0.01" placeholder="如：200.00">
+        </label>
+      </div>
+      <label>来源包含（可选）
+        <input type="text" name="source_contains" placeholder="如：微信 / 手动记账">
+      </label>
+      <label>标签等于（可选）
+        <input type="text" name="tag_contains" placeholder="如：真香">
+      </label>
       <button type="submit" class="btn btn-primary">添加规则</button>
     </form>
   </section>
@@ -148,6 +162,84 @@
 
 <section class="card">
   <div class="card-header">
+    <h2>历史账单规则预览</h2>
+    <form method="get" action="/web/rules" style="display:inline">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="confirmed_preview" value="1">
+      <button type="submit" class="btn btn-secondary">预览已确认影响</button>
+    </form>
+  </div>
+  <p class="meta">历史账单默认只 dry-run。确认应用只处理「其他/未分类」的已确认账单，并记录可回滚批次。</p>
+  {% if confirmed_bulk_preview %}
+  <div class="summary-grid compact">
+    <div class="summary-card primary">
+      <div class="summary-card-label">将改写</div>
+      <div class="summary-card-num">{{ confirmed_bulk_preview.changed_count }}</div>
+      <div class="summary-card-hint">已确认分类</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">扫描</div>
+      <div class="summary-card-num">{{ confirmed_bulk_preview.confirmed_scanned }}</div>
+      <div class="summary-card-hint">已确认账单</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">跳过</div>
+      <div class="summary-card-num">{{ confirmed_bulk_preview.skipped_non_default_category }}</div>
+      <div class="summary-card-hint">已有分类</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">未命中</div>
+      <div class="summary-card-num">{{ confirmed_bulk_preview.no_match_count }}</div>
+      <div class="summary-card-hint">没有规则命中</div>
+    </div>
+  </div>
+  {% if confirmed_bulk_preview.scan_limit_reached %}
+  <div class="status-chip warn">本次只扫描前 {{ confirmed_bulk_preview.scan_limit }} 条，确认后可再次预览剩余账单。</div>
+  {% endif %}
+  {% if confirmed_bulk_preview['items'] %}
+  <table class="transaction-table compact">
+    <thead><tr><th>ID</th><th>商家</th><th>当前分类</th><th>将改为</th><th>规则</th></tr></thead>
+    <tbody>
+    {% for it in confirmed_bulk_preview['items'] %}
+      <tr>
+        <td>{{ it.id }}</td>
+        <td>{{ it.merchant or '—' }}</td>
+        <td>{{ it.current_category }}</td>
+        <td><span class="category-badge">{{ it.suggested_category }}</span></td>
+        <td>{{ it.rule_keyword }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">没有需要改写的已确认账单</div>
+    <div class="empty-state-hint">只有仍为「其他/未分类」的历史账单会进入确认应用。</div>
+  </div>
+  {% endif %}
+  {% if can_write and confirmed_bulk_preview.changed_count > 0 %}
+  <form method="post" action="/web/rules/apply-confirmed" style="margin-top:12px">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="preview_confirmed" value="yes">
+    <input type="hidden" name="preview_token" value="{{ confirmed_bulk_preview.preview_token }}">
+    <button type="submit" class="btn btn-danger"
+            onclick="return confirm('确认把规则应用到这些已确认历史账单？操作会被记录，可从规则应用记录回滚。')">
+      确认应用到已确认
+    </button>
+  </form>
+  {% elif not can_write %}
+  <span class="readonly-inline">只读角色无法应用规则。</span>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">历史账单必须先 dry-run</div>
+    <div class="empty-state-hint">预览会展示影响数量和样本，确认后才会改写。</div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-header">
     <h2>规则应用记录</h2>
     <span class="meta">最近 {{ rule_applications|length }} 次</span>
   </div>
@@ -169,6 +261,7 @@
         <td><code>{{ batch.public_id[:8] }}</code></td>
         <td>
           {% if batch.status == 'rolled_back' %}<span class="status-chip muted">已回滚</span>
+          {% elif batch.status == 'applied_confirmed' %}<span class="status-chip ok">已应用历史</span>
           {% else %}<span class="status-chip ok">已应用</span>{% endif %}
         </td>
         <td>{{ batch.changed_count }}</td>
@@ -210,6 +303,7 @@
         <th style="width:60px">优先级</th>
         <th>关键词</th>
         <th>分类</th>
+        <th>条件</th>
         <th style="width:80px">状态</th>
         <th style="width:180px">操作</th>
       </tr>
@@ -220,6 +314,14 @@
         <td>{{ r.priority }}</td>
         <td><code>{{ r.keyword }}</code></td>
         <td><span class="category-badge">{{ r.category }}</span></td>
+        <td>
+          {% set conditions = [] %}
+          {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ¥%.2f' % (r.amount_min_cents / 100)) %}{% endif %}
+          {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ¥%.2f' % (r.amount_max_cents / 100)) %}{% endif %}
+          {% if r.source_contains %}{% set _ = conditions.append('来源含“' ~ r.source_contains ~ '”') %}{% endif %}
+          {% if r.tag_contains %}{% set _ = conditions.append('标签“' ~ r.tag_contains ~ '”') %}{% endif %}
+          {{ conditions|join(' · ') if conditions else '—' }}
+        </td>
         <td>
           {% if r.enabled %}<span class="status-chip ok">启用</span>
           {% else %}<span class="status-chip muted">停用</span>{% endif %}

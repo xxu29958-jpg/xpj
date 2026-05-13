@@ -149,8 +149,60 @@ data class CategoryRule(
     val category: String,
     val enabled: Boolean,
     val priority: Int,
+    val amountMinCents: Long?,
+    val amountMaxCents: Long?,
+    val sourceContains: String?,
+    val tagContains: String?,
     val createdAt: String,
     val updatedAt: String,
+) {
+    val hasConditions: Boolean =
+        amountMinCents != null ||
+            amountMaxCents != null ||
+            !sourceContains.isNullOrBlank() ||
+            !tagContains.isNullOrBlank()
+}
+
+data class RuleApplicationBatch(
+    val publicId: String,
+    val status: String,
+    val pendingScanned: Int,
+    val changedCount: Int,
+    val createdAt: String,
+    val rolledBackAt: String?,
+) {
+    val isRolledBack: Boolean = status == "rolled_back" || rolledBackAt != null
+}
+
+data class RuleApplicationRollback(
+    val publicId: String,
+    val status: String,
+    val changed: Int,
+    val skipped: Int,
+    val rolledBackAt: String?,
+)
+
+data class RuleApplyPreviewItem(
+    val id: Long,
+    val merchant: String?,
+    val currentCategory: String,
+    val suggestedCategory: String,
+    val ruleKeyword: String,
+    val reason: String,
+)
+
+data class RuleApplyConfirmedResult(
+    val dryRun: Boolean,
+    val confirmedScanned: Int,
+    val changedCount: Int,
+    val items: List<RuleApplyPreviewItem>,
+    val skippedNonDefaultCategory: Int,
+    val noMatchCount: Int,
+    val unchangedCount: Int,
+    val conflictCount: Int,
+    val scanLimitReached: Boolean,
+    val scanLimit: Int,
+    val previewToken: String?,
 )
 
 class ProtectedImage(

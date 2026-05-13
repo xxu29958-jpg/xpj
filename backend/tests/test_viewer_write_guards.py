@@ -199,6 +199,7 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
         ("rules toggle", "/web/rules/999/toggle", {"ledger_id": ledger_id}),
         ("rules delete", "/web/rules/999/delete", {"ledger_id": ledger_id}),
         ("rules apply pending", "/web/rules/apply-pending", {"ledger_id": ledger_id}),
+        ("rules apply confirmed", "/web/rules/apply-confirmed", {"ledger_id": ledger_id, "preview_confirmed": "yes"}),
         (
             "rules rollback",
             "/web/rules/applications/missing/rollback",

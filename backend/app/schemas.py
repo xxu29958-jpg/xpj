@@ -397,6 +397,10 @@ class CategoryRuleCreateRequest(BaseModel):
     category: str
     enabled: bool = True
     priority: int = 100
+    amount_min_cents: int | None = Field(default=None, ge=0)
+    amount_max_cents: int | None = Field(default=None, ge=0)
+    source_contains: str | None = None
+    tag_contains: str | None = None
 
 
 class CategoryRuleUpdateRequest(BaseModel):
@@ -404,6 +408,10 @@ class CategoryRuleUpdateRequest(BaseModel):
     category: str | None = None
     enabled: bool | None = None
     priority: int | None = None
+    amount_min_cents: int | None = Field(default=None, ge=0)
+    amount_max_cents: int | None = Field(default=None, ge=0)
+    source_contains: str | None = None
+    tag_contains: str | None = None
 
 
 class CategoryRuleResponse(BaseModel):
@@ -414,6 +422,10 @@ class CategoryRuleResponse(BaseModel):
     category: str
     enabled: bool
     priority: int
+    amount_min_cents: int | None = None
+    amount_max_cents: int | None = None
+    source_contains: str | None = None
+    tag_contains: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -489,10 +501,13 @@ class RulePreviewResponse(BaseModel):
 class RuleApplyPendingResponse(BaseModel):
     pending_scanned: int
     changed_count: int
+    scan_limit_reached: bool = False
+    scan_limit: int = 0
 
 
 class RuleApplyConfirmedRequest(BaseModel):
     confirm: bool = False
+    preview_token: str | None = None
 
 
 class RuleApplicationBatchResponse(BaseModel):
@@ -543,6 +558,8 @@ class RuleApplyPendingPreviewResponse(BaseModel):
     no_match_count: int
     unchanged_count: int
     conflict_count: int = 0
+    scan_limit_reached: bool = False
+    scan_limit: int = 0
 
 
 class RuleApplyConfirmedResponse(BaseModel):
@@ -554,6 +571,9 @@ class RuleApplyConfirmedResponse(BaseModel):
     no_match_count: int = 0
     unchanged_count: int = 0
     conflict_count: int = 0
+    scan_limit_reached: bool = False
+    scan_limit: int = 0
+    preview_token: str | None = None
 
 
 # v0.4-alpha3 — Recurring candidates (read-only insights)

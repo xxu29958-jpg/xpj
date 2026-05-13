@@ -10,6 +10,8 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.RuleApplicationBatch
+import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +32,8 @@ data class SettingsUiState(
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
+    val ruleApplications: List<RuleApplicationBatch> = emptyList(),
+    val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
     val lastUploadAt: String? = null,
     val lastConfirmedSyncAt: String? = null,
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
@@ -46,6 +50,7 @@ class SettingsViewModel(
 
     init {
         loadCategoryRules()
+        loadRuleApplications()
         loadServerSettings()
         observeBackgroundSettings()
     }
@@ -252,6 +257,14 @@ class SettingsViewModel(
         }
     }
 
+    fun loadRuleApplications() {
+        viewModelScope.launch {
+            repository.ruleApplications()
+                .onSuccess { applications -> _uiState.update { it.copy(ruleApplications = applications) } }
+                .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "规则应用记录暂时打不开。") } }
+        }
+    }
+
     fun createCategoryRule(keyword: String, category: String, priority: Int) {
         if (!canModifyCurrentLedger()) {
             _uiState.update { it.copy(role = repository.currentLedgerRole(), busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
@@ -338,6 +351,81 @@ class SettingsViewModel(
                     }
                 }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
+        }
+    }
+
+    fun previewApplyConfirmedRules() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null) }
+            repository.previewApplyConfirmedRules()
+                .onSuccess { preview ->
+                    _uiState.update {
+                        it.copy(
+                            confirmedRulesPreview = preview,
+                            busy = false,
+                            message = if (preview.changedCount == 0) {
+                                "已确认账单暂无可更新分类。"
+                            } else {
+                                "找到 ${preview.changedCount} 笔可更新账单。"
+                            },
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有完成预览，请稍后再试。") } }
+        }
+    }
+
+    fun confirmApplyConfirmedRules() {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
+        viewModelScope.launch {
+            val previewToken = _uiState.value.confirmedRulesPreview?.previewToken
+            if (previewToken.isNullOrBlank()) {
+                _uiState.update { it.copy(busy = false, message = "请先预览影响范围。") }
+                return@launch
+            }
+            _uiState.update { it.copy(busy = true, message = null) }
+            repository.confirmApplyConfirmedRules(previewToken)
+                .onSuccess { result ->
+                    repository.ruleApplications()
+                        .onSuccess { applications ->
+                            _uiState.update { it.copy(ruleApplications = applications) }
+                        }
+                    _uiState.update {
+                        it.copy(
+                            confirmedRulesPreview = result,
+                            busy = false,
+                            message = if (result.changedCount == 0) "没有账单需要更新。" else "已更新 ${result.changedCount} 笔账单分类。",
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有应用成功，请稍后再试。") } }
+        }
+    }
+
+    fun rollbackRuleApplication(application: RuleApplicationBatch) {
+        if (!canModifyCurrentLedger()) {
+            _uiState.update { it.copy(role = repository.currentLedgerRole(), busy = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(busy = true, message = null) }
+            repository.rollbackRuleApplication(application.publicId)
+                .onSuccess { rollback ->
+                    repository.ruleApplications()
+                        .onSuccess { applications ->
+                            _uiState.update { it.copy(ruleApplications = applications) }
+                        }
+                    _uiState.update {
+                        it.copy(
+                            busy = false,
+                            message = "已回退 ${rollback.changed} 笔分类，跳过 ${rollback.skipped} 笔。",
+                        )
+                    }
+                }
+                .onFailure { error -> _uiState.update { it.copy(busy = false, message = error.message ?: "没有回退成功，请稍后再试。") } }
         }
     }
 

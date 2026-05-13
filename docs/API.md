@@ -135,9 +135,14 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/{id}/thumbnail` | GET | `backend/app/routes/expenses.py` | `expenseThumbnail(id)` | path `id` | streaming image | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
 | `/api/duplicates` | GET | `backend/app/routes/duplicates.py` | `duplicates()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/rules/categories` | GET | `backend/app/routes/rules.py` | `categoryRules()` | 无 | `List<CategoryRuleDto>` | Session Token | `backend/tests/test_expenses.py` | internal/高级入口 |
-| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_expenses.py` | internal/高级入口 |
-| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token | `backend/tests/test_expenses.py` | internal/高级入口 |
+| `/api/rules/categories` | POST | `backend/app/routes/rules.py` | `createCategoryRule(request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ApiDtoContractTest` | v0.7 条件规则字段 |
+| `/api/rules/categories/{id}` | PATCH | `backend/app/routes/rules.py` | `updateCategoryRule(id,request)` | `CategoryRuleRequest` | `CategoryRuleDto` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py` | v0.7 条件规则字段 |
 | `/api/rules/categories/{id}` | DELETE | `backend/app/routes/rules.py` | `deleteCategoryRule(id)` | path `id` | `StatusDto` | Session Token | `backend/tests/test_expenses.py`, `ApiDtoContractTest` | internal/高级入口 |
+| `/api/rules/apply-pending/preview` | POST | `backend/app/routes/rules.py` | 无 | query `limit/max_scan` | `RuleApplyPendingPreviewResponse` | Session Token | `backend/tests/test_alpha3_engine.py` | dry-run；默认最多扫描 500 条可自动填充账单 |
+| `/api/rules/apply-pending` | POST | `backend/app/routes/rules.py` | 无 | query `max_scan` | `RuleApplyPendingResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `backend/tests/test_viewer_write_guards.py` | 只改待确认账单的默认分类 |
+| `/api/rules/apply-confirmed` | POST | `backend/app/routes/rules.py` | `applyConfirmedRules(request)` | `RuleApplyConfirmedRequest`；query `limit/max_scan` | `RuleApplyConfirmedResponse` | Session Token；`confirm=true` 需 owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | dry-run 默认；确认必须带 `preview_token` |
+| `/api/rules/applications` | GET | `backend/app/routes/rules.py` | `ruleApplications(limit)` | query `limit` | `RuleApplicationListResponse` | Session Token | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 最近规则应用批次 |
+| `/api/rules/applications/{public_id}/rollback` | POST | `backend/app/routes/rules.py` | `rollbackRuleApplication(publicId)` | path `public_id` | `RuleApplicationRollbackResponse` | Session Token，owner/member 写权限 | `backend/tests/test_alpha3_engine.py`, `ExpenseRepositoryBindingTest` | 回滚未被手动改过的批次变更 |
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/tag/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
@@ -904,9 +909,15 @@ Authorization: Bearer <session_token>
   "keyword": "OpenAI",
   "category": "AI订阅",
   "enabled": true,
-  "priority": 5
+  "priority": 5,
+  "amount_min_cents": 1000,
+  "amount_max_cents": 50000,
+  "source_contains": "pytest",
+  "tag_contains": "订阅"
 }
 ```
+
+`amount_min_cents`、`amount_max_cents`、`source_contains`、`tag_contains` 都是可选条件。规则必须先命中关键词，再同时满足这些条件才会改写分类。
 
 仅 `owner` / `member` 可新增、修改、删除或应用分类规则；`viewer` 对这些写入口返回：
 
@@ -950,6 +961,44 @@ Authorization: Bearer <session_token>
   "status": "ok"
 }
 ```
+
+### POST /api/rules/apply-confirmed
+
+默认是 dry-run，不写数据库：
+
+```json
+{
+  "confirm": false
+}
+```
+
+响应包含 `preview_token`。真正写入已确认历史账单时必须带回同一个 token：
+
+```json
+{
+  "confirm": true,
+  "preview_token": "<dry-run 返回的 preview_token>"
+}
+```
+
+如果规则、别名或候选账单在预览后发生变化，确认写入返回：
+
+```json
+{
+  "error": "preview_stale",
+  "message": "预览已过期，请重新预览后再确认。"
+}
+```
+
+`apply-pending` 与 `apply-confirmed` 默认只扫描前 500 条仍可自动填充分类的账单，最大 1000。响应中的 `scan_limit_reached=true` 表示还有剩余候选账单，需要再次预览并应用。
+
+### GET /api/rules/applications
+
+返回最近规则应用批次，用于审计和回滚入口。
+
+### POST /api/rules/applications/{public_id}/rollback
+
+回滚指定批次中尚未被用户手动改写的账单分类。已改变到其他分类的账单会跳过。
 
 ## 设置
 

@@ -69,6 +69,10 @@ def post_category_rule(
         category=payload.category,
         enabled=payload.enabled,
         priority=payload.priority,
+        amount_min_cents=payload.amount_min_cents,
+        amount_max_cents=payload.amount_max_cents,
+        source_contains=payload.source_contains,
+        tag_contains=payload.tag_contains,
     )
 
 
@@ -132,17 +136,21 @@ def post_rule_preview(
 @router.post("/apply-pending", response_model=RuleApplyPendingResponse)
 def post_rule_apply_pending(
     auth: AuthContext = Depends(get_current_writer_context),
+    max_scan: int = Query(default=500, ge=1, le=1000),
     db: Session = Depends(get_db),
 ) -> RuleApplyPendingResponse:
-    pending_scanned, changed_count = apply_rules_to_pending(
+    pending_scanned, changed_count, scan_limit_reached = apply_rules_to_pending(
         db,
         tenant_id=auth.tenant_id,
         actor_account_id=auth.account_id,
         actor_device_id=auth.device_id,
+        max_scan=max_scan,
     )
     return RuleApplyPendingResponse(
         pending_scanned=pending_scanned,
         changed_count=changed_count,
+        scan_limit_reached=scan_limit_reached,
+        scan_limit=max_scan,
     )
 
 
@@ -184,6 +192,7 @@ def post_rule_application_rollback(
 @router.post("/apply-pending/preview", response_model=RuleApplyPendingPreviewResponse)
 def post_rule_apply_pending_preview(
     limit: int = Query(default=20, ge=1, le=50),
+    max_scan: int = Query(default=500, ge=1, le=1000),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RuleApplyPendingPreviewResponse:
@@ -191,6 +200,7 @@ def post_rule_apply_pending_preview(
         db,
         tenant_id=auth.tenant_id,
         limit=limit,
+        max_scan=max_scan,
     )
     return RuleApplyPendingPreviewResponse(
         pending_scanned=result["pending_scanned"],
@@ -200,6 +210,8 @@ def post_rule_apply_pending_preview(
         no_match_count=result["no_match_count"],
         unchanged_count=result["unchanged_count"],
         conflict_count=result["conflict_count"],
+        scan_limit_reached=result["scan_limit_reached"],
+        scan_limit=result["scan_limit"],
     )
 
 
@@ -207,6 +219,7 @@ def post_rule_apply_pending_preview(
 def post_rule_apply_confirmed(
     payload: RuleApplyConfirmedRequest | None = None,
     limit: int = Query(default=20, ge=1, le=50),
+    max_scan: int = Query(default=500, ge=1, le=1000),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RuleApplyConfirmedResponse:
@@ -216,6 +229,7 @@ def post_rule_apply_confirmed(
             db,
             tenant_id=auth.tenant_id,
             limit=limit,
+            max_scan=max_scan,
         )
         return RuleApplyConfirmedResponse(
             dry_run=True,
@@ -226,17 +240,33 @@ def post_rule_apply_confirmed(
             no_match_count=result["no_match_count"],
             unchanged_count=result["unchanged_count"],
             conflict_count=result["conflict_count"],
+            scan_limit_reached=result["scan_limit_reached"],
+            scan_limit=result["scan_limit"],
+            preview_token=result["preview_token"],
         )
 
     require_write_expense(auth)
-    confirmed_scanned, changed_count = apply_rules_to_confirmed(
+    if not payload.preview_token:
+        raise AppError("preview_required", "请先预览历史账单影响范围，再确认应用。", status_code=409)
+    current_preview = preview_apply_rules_to_confirmed(
+        db,
+        tenant_id=auth.tenant_id,
+        limit=limit,
+        max_scan=max_scan,
+    )
+    if current_preview["preview_token"] != payload.preview_token:
+        raise AppError("preview_stale", "预览已过期，请重新预览后再确认。", status_code=409)
+    confirmed_scanned, changed_count, scan_limit_reached = apply_rules_to_confirmed(
         db,
         tenant_id=auth.tenant_id,
         actor_account_id=auth.account_id,
         actor_device_id=auth.device_id,
+        max_scan=max_scan,
     )
     return RuleApplyConfirmedResponse(
         dry_run=False,
         confirmed_scanned=confirmed_scanned,
         changed_count=changed_count,
+        scan_limit_reached=scan_limit_reached,
+        scan_limit=max_scan,
     )

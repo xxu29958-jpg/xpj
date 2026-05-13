@@ -5,6 +5,8 @@ Split from ``web_app.py`` in v0.4-alpha3 slice 2.
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
@@ -23,11 +25,13 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.classify_service import (
+    apply_rules_to_confirmed,
     apply_rules_to_pending,
     create_rule,
     delete_rule,
     list_rule_applications,
     list_rules,
+    preview_apply_rules_to_confirmed,
     preview_apply_rules_to_pending,
     preview_rule_for_pending,
     rollback_rule_application,
@@ -37,6 +41,20 @@ from app.services.classify_service import (
 router = APIRouter(prefix="/web", tags=["web"])
 
 
+def _parse_optional_amount_cents(raw: str) -> int | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        amount = Decimal(text)
+    except InvalidOperation as exc:
+        raise AppError("invalid_request", "金额条件不是合法数字。", status_code=422) from exc
+    cents = int((amount * Decimal("100")).to_integral_value())
+    if cents < 0:
+        raise AppError("invalid_request", "金额条件不能为负数。", status_code=422)
+    return cents
+
+
 @router.get("/rules", response_class=HTMLResponse)
 def web_rules(
     request: Request,
@@ -44,6 +62,7 @@ def web_rules(
     preview_keyword: str = "",
     preview_category: str = "",
     apply_preview: bool = False,
+    confirmed_preview: bool = False,
     msg: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -79,12 +98,20 @@ def web_rules(
             tenant_id=selected_id,
             limit=20,
         )
+    confirmed_bulk_preview = None
+    if confirmed_preview:
+        confirmed_bulk_preview = preview_apply_rules_to_confirmed(
+            db,
+            tenant_id=selected_id,
+            limit=20,
+        )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["rules"] = rules
     ctx["rule_applications"] = rule_applications
     ctx["preview"] = preview
     ctx["preview_error"] = preview_error
     ctx["bulk_preview"] = bulk_preview
+    ctx["confirmed_bulk_preview"] = confirmed_bulk_preview
     ctx["preview_keyword"] = preview_keyword
     ctx["preview_category"] = preview_category
     ctx["flash_message"] = msg
@@ -97,6 +124,10 @@ def web_rules_create(
     keyword: str = Form(""),
     category: str = Form(""),
     priority: int = Form(100),
+    amount_min_yuan: str = Form(""),
+    amount_max_yuan: str = Form(""),
+    source_contains: str = Form(""),
+    tag_contains: str = Form(""),
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -112,6 +143,10 @@ def web_rules_create(
             category=category,
             enabled=True,
             priority=priority,
+            amount_min_cents=_parse_optional_amount_cents(amount_min_yuan),
+            amount_max_cents=_parse_optional_amount_cents(amount_max_yuan),
+            source_contains=source_contains,
+            tag_contains=tag_contains,
         )
         msg = f"已新增规则：{keyword.strip()} → {category.strip()}"
     except AppError as exc:
@@ -216,8 +251,42 @@ def web_rules_apply_pending(
             url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
             status_code=303,
         )
-    pending_scanned, changed_count = apply_rules_to_pending(db, tenant_id=selected_id)
-    msg = f"扫描了 {pending_scanned} 条待确认；改写了 {changed_count} 条分类。"
+    pending_scanned, changed_count, limited = apply_rules_to_pending(db, tenant_id=selected_id)
+    suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
+    msg = f"扫描了 {pending_scanned} 条待确认；改写了 {changed_count} 条分类。{suffix}"
+    return RedirectResponse(
+        url=_with_ledger("/web/rules", selected_id, msg=msg),
+        status_code=303,
+    )
+
+
+@router.post("/rules/apply-confirmed", response_class=HTMLResponse)
+def web_rules_apply_confirmed(
+    ledger_id: str = Form(""),
+    preview_confirmed: str = Form(""),
+    preview_token: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
+    if preview_confirmed != "yes":
+        msg = "历史账单修改必须先预览影响范围，再确认应用。"
+        return RedirectResponse(
+            url=_with_ledger("/web/rules", selected_id, confirmed_preview="1", msg=msg),
+            status_code=303,
+        )
+    current_preview = preview_apply_rules_to_confirmed(db, tenant_id=selected_id)
+    if not preview_token or current_preview["preview_token"] != preview_token:
+        msg = "历史账单预览已过期，请重新预览后再确认应用。"
+        return RedirectResponse(
+            url=_with_ledger("/web/rules", selected_id, confirmed_preview="1", msg=msg),
+            status_code=303,
+        )
+    confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(db, tenant_id=selected_id)
+    suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
+    msg = f"扫描了 {confirmed_scanned} 条已确认；改写了 {changed_count} 条分类。{suffix}"
     return RedirectResponse(
         url=_with_ledger("/web/rules", selected_id, msg=msg),
         status_code=303,

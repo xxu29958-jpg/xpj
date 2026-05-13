@@ -19,6 +19,7 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.appearance.background.BackgroundImageStore
 import com.ticketbox.ui.screens.settings.AboutScreen
@@ -53,6 +54,9 @@ fun SettingsScreen(
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
     onToggleRule: (CategoryRule) -> Unit,
     onDeleteRule: (CategoryRule) -> Unit,
+    onPreviewApplyConfirmedRules: () -> Unit,
+    onConfirmApplyConfirmedRules: () -> Unit,
+    onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
     onSkinChange: (AppSkin) -> Unit,
     onApplyBackgroundSettings: (BackgroundSettings) -> Unit,
     onClearBackgroundImage: () -> Unit,
@@ -202,6 +206,11 @@ fun SettingsScreen(
             onUpdateRule = onUpdateRule,
             onToggleRule = onToggleRule,
             onDeleteRule = onDeleteRule,
+            applications = state.ruleApplications,
+            confirmedPreview = state.confirmedRulesPreview,
+            onPreviewApplyConfirmedRules = onPreviewApplyConfirmedRules,
+            onConfirmApplyConfirmedRules = onConfirmApplyConfirmedRules,
+            onRollbackRuleApplication = onRollbackRuleApplication,
         )
 
         SettingsRoute.DataExport -> DataExportScreen(

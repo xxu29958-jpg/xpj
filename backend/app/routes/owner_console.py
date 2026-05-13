@@ -15,6 +15,7 @@ Navigation:
     POST /owner/upload-links        — create new upload link
     POST /owner/upload-links/{id}/rotate  — rotate key (one-shot reveal)
     POST /owner/upload-links/{id}/revoke  — revoke link
+    GET  /owner/rule-applications   — read-only rule batch audit overview
     GET  /owner/diagnostics         — diagnostics page
 """
 
@@ -116,6 +117,7 @@ def owner_index(
     ctx = _base(request, db)
     ctx.update(vm.__dict__)
     ctx["ledger_health"] = svc.list_ledger_health(db)
+    ctx["rule_audit"] = svc.get_rule_application_audit(db, ledger_id=None, limit=5)
     try:
         from app.services import windows_task_status_service as wts
 
@@ -123,6 +125,19 @@ def owner_index(
     except Exception:
         ctx["windows_tasks"] = []
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
+
+
+@router.get("/rule-applications", response_class=HTMLResponse)
+def owner_rule_applications(
+    request: Request,
+    ledger_id: str | None = None,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    audit = svc.get_rule_application_audit(db, ledger_id=ledger_id, limit=20)
+    ctx = _base(request, db)
+    ctx["rule_audit"] = audit
+    return templates.TemplateResponse(request=request, name="rule_applications.html", context=ctx)
 
 
 # ── devices ──────────────────────────────────────────────────────────────────

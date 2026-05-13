@@ -1,6 +1,6 @@
 # Windows 长期运行 Runbook
 
-**当前版本：v0.5.0a1（阶段：Household 权限与家庭协作 hardening）**
+**当前版本：v0.7.0a1（阶段：Rules / Tags / Merchant 治理）**
 
 ## Owner Console
 

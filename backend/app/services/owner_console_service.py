@@ -79,6 +79,26 @@ class RecurringOpsVM:
     notification_incomplete_count: int
 
 
+@dataclass
+class RuleApplicationAuditRow:
+    ledger_id: str
+    ledger_name: str
+    public_id: str
+    status: str
+    pending_scanned: int
+    changed_count: int
+    created_at: object
+    rolled_back_at: object | None
+
+
+@dataclass
+class RuleApplicationAuditVM:
+    ledger_choices: list[LedgerSummary]
+    selected_ledger_id: str | None
+    selected_ledger_name: str | None
+    rows: list[RuleApplicationAuditRow]
+
+
 def _owner_ledger_ids(db: Session) -> list[str]:
     owner_id = get_owner_account_id(db)
     if owner_id is None:
@@ -184,6 +204,59 @@ def get_recurring_ops(db: Session) -> RecurringOpsVM:
     )
 
 
+def get_rule_application_audit(
+    db: Session,
+    *,
+    ledger_id: str | None = None,
+    limit: int = 20,
+) -> RuleApplicationAuditVM:
+    """Recent rule application batches for the Owner Console.
+
+    This is a read-only audit view. It intentionally reuses the existing rule
+    application list service and only allows ledgers the local owner account
+    can already manage from the console.
+    """
+    from app.services.classify_service import list_rule_applications
+
+    choices = list_console_ledger_choices(db)
+    if not choices:
+        return RuleApplicationAuditVM(
+            ledger_choices=[],
+            selected_ledger_id=None,
+            selected_ledger_name=None,
+            rows=[],
+        )
+
+    by_id = {row.ledger_id: row for row in choices}
+    if ledger_id:
+        selected = by_id.get(ledger_id)
+        if selected is None:
+            raise AppError("ledger_forbidden", "请选择一个有权限的账本。", status_code=403)
+    else:
+        selected = choices[0]
+
+    batches = list_rule_applications(db, tenant_id=selected.ledger_id, limit=limit)
+    rows = [
+        RuleApplicationAuditRow(
+            ledger_id=selected.ledger_id,
+            ledger_name=selected.name,
+            public_id=batch.public_id,
+            status=batch.status,
+            pending_scanned=batch.pending_scanned,
+            changed_count=batch.changed_count,
+            created_at=batch.created_at,
+            rolled_back_at=batch.rolled_back_at,
+        )
+        for batch in batches
+    ]
+    return RuleApplicationAuditVM(
+        ledger_choices=choices,
+        selected_ledger_id=selected.ledger_id,
+        selected_ledger_name=selected.name,
+        rows=rows,
+    )
+
+
 def get_index_vm(db: Session) -> ConsoleIndexVM:
     cfg = get_settings()
     db_status = "ok"
@@ -203,7 +276,8 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
     )
 
     account = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
-    ledger = db.scalar(select(Ledger).where(Ledger.archived_at.is_(None)).order_by(Ledger.id.asc()).limit(1))
+    ledger_choices = list_console_ledger_choices(db)
+    primary_ledger = ledger_choices[0] if ledger_choices else None
 
     active_devices = int(
         db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_(None))) or 0
@@ -212,7 +286,7 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
         db.scalar(select(func.count()).select_from(UploadLink).where(UploadLink.revoked_at.is_(None))) or 0
     )
 
-    primary_tenant_id = ledger.ledger_id if ledger else DEFAULT_TENANT_ID
+    primary_tenant_id = primary_ledger.ledger_id if primary_ledger else DEFAULT_TENANT_ID
     try:
         dq_summary: DataQualitySummary | None = data_quality_summary(
             db, tenant_id=primary_tenant_id
@@ -233,7 +307,7 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
         pending_count=pending_count,
         confirmed_count=confirmed_count,
         account_name=account.display_name if account else "（未初始化）",
-        ledger_name=ledger.name if ledger else "（未初始化）",
+        ledger_name=primary_ledger.name if primary_ledger else "（未初始化）",
         active_device_count=active_devices,
         active_upload_link_count=active_links,
         dq_summary=dq_summary,

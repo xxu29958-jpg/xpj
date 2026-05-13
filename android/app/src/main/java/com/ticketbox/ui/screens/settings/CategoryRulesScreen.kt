@@ -77,6 +77,9 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.RuleApplicationBatch
+import com.ticketbox.domain.model.RuleApplyConfirmedResult
+import com.ticketbox.domain.model.RuleApplyPreviewItem
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.ui.appearance.AppearanceDefaults
 import com.ticketbox.ui.appearance.BackgroundCatalog
@@ -110,12 +113,18 @@ fun CategoryRulesScreen(
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
     onToggleRule: (CategoryRule) -> Unit,
     onDeleteRule: (CategoryRule) -> Unit,
+    applications: List<RuleApplicationBatch>,
+    confirmedPreview: RuleApplyConfirmedResult?,
+    onPreviewApplyConfirmedRules: () -> Unit,
+    onConfirmApplyConfirmedRules: () -> Unit,
+    onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
 ) {
     var keyword by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var priorityText by remember { mutableStateOf("10") }
     var editingRule by remember { mutableStateOf<CategoryRule?>(null) }
     var deletingRule by remember { mutableStateOf<CategoryRule?>(null) }
+    var rollbackApplication by remember { mutableStateOf<RuleApplicationBatch?>(null) }
     var localMessage by remember { mutableStateOf<String?>(null) }
 
     deletingRule?.let { rule ->
@@ -135,6 +144,29 @@ fun CategoryRulesScreen(
             },
             dismissButton = {
                 TextButton(onClick = { deletingRule = null }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    rollbackApplication?.let { application ->
+        AlertDialog(
+            onDismissRequest = { rollbackApplication = null },
+            title = { Text("回退这次应用？") },
+            text = { Text("会尽量恢复这次规则应用前的分类，已经手动改过的账单会跳过。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        rollbackApplication = null
+                        onRollbackRuleApplication(application)
+                    },
+                ) {
+                    Text("回退", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { rollbackApplication = null }) {
                     Text("取消")
                 }
             },
@@ -256,6 +288,151 @@ fun CategoryRulesScreen(
                             onDeleteRule = { if (!readOnly) deletingRule = rule },
                         )
                     }
+                }
+            }
+        }
+        SettingsSection(title = "已入账应用", icon = Icons.Filled.RestartAlt) {
+            ConfirmedRuleApplyPanel(
+                preview = confirmedPreview,
+                busy = busy,
+                readOnly = readOnly,
+                onPreview = onPreviewApplyConfirmedRules,
+                onConfirm = onConfirmApplyConfirmedRules,
+            )
+        }
+        SettingsSection(title = "最近应用记录", icon = Icons.Filled.RestartAlt) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (applications.isEmpty()) {
+                    Text(
+                        text = "暂无应用记录。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    applications.forEach { application ->
+                        RuleApplicationCard(
+                            application = application,
+                            readOnly = readOnly,
+                            busy = busy,
+                            onRollback = { rollbackApplication = application },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConfirmedRuleApplyPanel(
+    preview: RuleApplyConfirmedResult?,
+    busy: Boolean,
+    readOnly: Boolean,
+    onPreview: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    SoftPanel(containerAlpha = 0.98f) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "先预览已入账账单中可被规则更新的分类，再手动确认应用。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            preview?.let { result ->
+                Text(
+                    text = "扫描 ${result.confirmedScanned} 笔 · 可更新 ${result.changedCount} 笔 · 未命中 ${result.noMatchCount} 笔",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (result.scanLimitReached) {
+                    Text(
+                        text = "本次只扫描前 ${result.scanLimit} 笔。",
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+                result.items.take(5).forEach { item ->
+                    RuleApplyPreviewRow(item)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = onPreview,
+                ) {
+                    Text(if (busy) "处理中" else "预览")
+                }
+                Button(
+                    enabled = !busy && !readOnly && (preview?.changedCount ?: 0) > 0,
+                    onClick = onConfirm,
+                ) {
+                    Text("确认应用")
+                }
+            }
+            if (readOnly) {
+                Text(
+                    text = "当前角色为只读，不能应用到已入账账单。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RuleApplyPreviewRow(item: RuleApplyPreviewItem) {
+    SoftPanel(containerAlpha = 0.82f) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = item.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${item.currentCategory} -> ${item.suggestedCategory} · ${item.ruleKeyword}",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RuleApplicationCard(
+    application: RuleApplicationBatch,
+    readOnly: Boolean,
+    busy: Boolean,
+    onRollback: () -> Unit,
+) {
+    SoftPanel(containerAlpha = 0.98f) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (application.isRolledBack) "已回退" else "已应用",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = "${application.changedCount} 笔",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                text = "扫描 ${application.pendingScanned} 笔 · ${displayTime(application.createdAt)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            application.rolledBackAt?.let {
+                Text(
+                    text = "回退时间：${displayTime(it)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (!readOnly && !application.isRolledBack) {
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = onRollback,
+                ) {
+                    Text("回退")
                 }
             }
         }

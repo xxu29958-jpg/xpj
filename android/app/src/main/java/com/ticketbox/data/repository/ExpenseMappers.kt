@@ -11,6 +11,10 @@ import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidateItemDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
+import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
+import com.ticketbox.data.remote.dto.RuleApplyPreviewItemDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.TagStatsDto
 import com.ticketbox.domain.model.CategoryRule
@@ -23,6 +27,10 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.DataQualitySummary
+import com.ticketbox.domain.model.RuleApplicationBatch
+import com.ticketbox.domain.model.RuleApplicationRollback
+import com.ticketbox.domain.model.RuleApplyConfirmedResult
+import com.ticketbox.domain.model.RuleApplyPreviewItem
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.TagStats
 import com.ticketbox.domain.model.normalizeExpenseCategory
@@ -193,8 +201,52 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
     category = normalizeExpenseCategory(category),
     enabled = enabled,
     priority = priority,
+    amountMinCents = amountMinCents,
+    amountMaxCents = amountMaxCents,
+    sourceContains = sourceContains,
+    tagContains = tagContains,
     createdAt = createdAt,
     updatedAt = updatedAt,
+)
+
+fun RuleApplicationBatchDto.toDomain(): RuleApplicationBatch = RuleApplicationBatch(
+    publicId = publicId,
+    status = status,
+    pendingScanned = pendingScanned,
+    changedCount = changedCount,
+    createdAt = createdAt,
+    rolledBackAt = rolledBackAt,
+)
+
+fun RuleApplicationRollbackDto.toDomain(): RuleApplicationRollback = RuleApplicationRollback(
+    publicId = publicId,
+    status = status,
+    changed = changed,
+    skipped = skipped,
+    rolledBackAt = rolledBackAt,
+)
+
+fun RuleApplyPreviewItemDto.toDomain(): RuleApplyPreviewItem = RuleApplyPreviewItem(
+    id = id,
+    merchant = merchant,
+    currentCategory = normalizeExpenseCategory(currentCategory),
+    suggestedCategory = normalizeExpenseCategory(suggestedCategory),
+    ruleKeyword = ruleKeyword,
+    reason = reason,
+)
+
+fun RuleApplyConfirmedResponseDto.toDomain(): RuleApplyConfirmedResult = RuleApplyConfirmedResult(
+    dryRun = dryRun,
+    confirmedScanned = confirmedScanned,
+    changedCount = changedCount,
+    items = items.map { it.toDomain() },
+    skippedNonDefaultCategory = skippedNonDefaultCategory,
+    noMatchCount = noMatchCount,
+    unchangedCount = unchangedCount,
+    conflictCount = conflictCount,
+    scanLimitReached = scanLimitReached,
+    scanLimit = scanLimit,
+    previewToken = previewToken,
 )
 
 fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(

@@ -117,7 +117,7 @@ def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
     )
     assert preview.status_code == 200
     body = preview.json()
-    assert body["pending_scanned"] >= 2
+    assert body["pending_scanned"] == 1
     assert body["changed_count"] == 1
     assert body["skipped_non_default_category"] == 1
     assert body["conflict_count"] == 0
@@ -345,13 +345,38 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
         expense_time=datetime(2026, 5, 5, 12, 0, tzinfo=UTC),
         confirmed_at=datetime(2026, 5, 5, 12, 0, tzinfo=UTC),
     )
+    non_matching_id = insert_confirmed_expense(
+        amount_cents=6200,
+        merchant="ConfirmedApplyCafe",
+        category="其他",
+        expense_time=datetime(2026, 5, 5, 12, 5, tzinfo=UTC),
+        confirmed_at=datetime(2026, 5, 5, 12, 5, tzinfo=UTC),
+    )
+    with SessionLocal() as db:
+        target = db.scalar(select(Expense).where(Expense.id == confirmed_id))
+        other = db.scalar(select(Expense).where(Expense.id == non_matching_id))
+        assert target is not None and other is not None
+        target.tags = "真香"
+        other.tags = "必要"
+        db.commit()
     created = client.post(
         "/api/rules/categories",
         headers=app_headers(),
-        json={"keyword": "ConfirmedApplyCafe", "category": "餐饮", "enabled": True, "priority": 1},
+        json={
+            "keyword": "ConfirmedApplyCafe",
+            "category": "餐饮",
+            "enabled": True,
+            "priority": 1,
+            "amount_min_cents": 1000,
+            "amount_max_cents": 5000,
+            "source_contains": "pytest",
+            "tag_contains": "真香",
+        },
     )
     assert created.status_code == 200
     rule_id = created.json()["id"]
+    assert created.json()["amount_min_cents"] == 1000
+    assert created.json()["tag_contains"] == "真香"
 
     preview = client.post("/api/rules/apply-confirmed", headers=app_headers())
 
@@ -361,16 +386,20 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
     assert body["confirmed_scanned"] >= 1
     assert body["changed_count"] == 1
     assert body["items"][0]["id"] == confirmed_id
+    assert body["preview_token"]
     with SessionLocal() as db:
         expense = db.scalar(select(Expense).where(Expense.id == confirmed_id))
+        other = db.scalar(select(Expense).where(Expense.id == non_matching_id))
         assert expense is not None
         assert expense.category == "其他"
+        assert other is not None
+        assert other.category == "其他"
         assert db.scalar(select(RuleApplicationBatch).where(RuleApplicationBatch.tenant_id == "owner")) is None
 
     response = client.post(
         "/api/rules/apply-confirmed",
         headers=app_headers(),
-        json={"confirm": True},
+        json={"confirm": True, "preview_token": body["preview_token"]},
     )
 
     assert response.status_code == 200
@@ -378,9 +407,12 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
     assert response.json()["changed_count"] == 1
     with SessionLocal() as db:
         expense = db.scalar(select(Expense).where(Expense.id == confirmed_id))
+        other = db.scalar(select(Expense).where(Expense.id == non_matching_id))
         assert expense is not None
         assert expense.category == "餐饮"
         assert expense.status == "confirmed"
+        assert other is not None
+        assert other.category == "其他"
         batch = db.scalar(select(RuleApplicationBatch).where(RuleApplicationBatch.tenant_id == "owner"))
         assert batch is not None
         assert batch.status == "applied_confirmed"
@@ -397,6 +429,100 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
         assert change.rule_id == rule_id
         assert change.before_category == "其他"
         assert change.after_category == "餐饮"
+
+
+def test_rule_apply_confirmed_reports_scan_limit(client: TestClient) -> None:
+    for index in range(2):
+        insert_confirmed_expense(
+            amount_cents=4200,
+            merchant=f"LimitCafe {index}",
+            category="其他",
+            expense_time=datetime(2026, 5, 5, 12, index, tzinfo=UTC),
+            confirmed_at=datetime(2026, 5, 5, 12, index, tzinfo=UTC),
+        )
+    created = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "LimitCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    assert created.status_code == 200
+
+    preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=app_headers())
+    first_apply = client.post(
+        "/api/rules/apply-confirmed?max_scan=1",
+        headers=app_headers(),
+        json={"confirm": True, "preview_token": preview.json()["preview_token"]},
+    )
+    second_preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=app_headers())
+    second_apply = client.post(
+        "/api/rules/apply-confirmed?max_scan=1",
+        headers=app_headers(),
+        json={"confirm": True, "preview_token": second_preview.json()["preview_token"]},
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["scan_limit"] == 1
+    assert preview.json()["scan_limit_reached"] is True
+    assert preview.json()["confirmed_scanned"] == 1
+    assert first_apply.status_code == 200
+    assert first_apply.json()["scan_limit_reached"] is True
+    assert first_apply.json()["changed_count"] == 1
+    assert second_preview.status_code == 200
+    assert second_apply.status_code == 200
+    assert second_apply.json()["scan_limit_reached"] is False
+    assert second_apply.json()["changed_count"] == 1
+
+
+def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient) -> None:
+    confirmed_id = insert_confirmed_expense(
+        amount_cents=4200,
+        merchant="StalePreviewCafe",
+        category="其他",
+        expense_time=datetime(2026, 5, 5, 12, 0, tzinfo=UTC),
+        confirmed_at=datetime(2026, 5, 5, 12, 0, tzinfo=UTC),
+    )
+    created = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "StalePreviewCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    assert created.status_code == 200
+    rule_id = created.json()["id"]
+
+    preview = client.post("/api/rules/apply-confirmed", headers=app_headers())
+    assert preview.status_code == 200
+    token = preview.json()["preview_token"]
+
+    changed_rule = client.patch(
+        f"/api/rules/categories/{rule_id}",
+        headers=app_headers(),
+        json={"category": "交通"},
+    )
+    assert changed_rule.status_code == 200
+
+    stale_apply = client.post(
+        "/api/rules/apply-confirmed",
+        headers=app_headers(),
+        json={"confirm": True, "preview_token": token},
+    )
+    assert stale_apply.status_code == 409
+    assert stale_apply.json()["error"] == "preview_stale"
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == confirmed_id))
+        assert expense is not None
+        assert expense.category == "其他"
+
+    fresh_preview = client.post("/api/rules/apply-confirmed", headers=app_headers())
+    fresh_apply = client.post(
+        "/api/rules/apply-confirmed",
+        headers=app_headers(),
+        json={"confirm": True, "preview_token": fresh_preview.json()["preview_token"]},
+    )
+    assert fresh_apply.status_code == 200
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == confirmed_id))
+        assert expense is not None
+        assert expense.category == "交通"
 
 
 def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
@@ -443,10 +569,12 @@ def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
         headers=app_headers(),
         json={"confirm": True},
     )
+    tester_preview = client.post("/api/rules/apply-confirmed", headers=gray_app_headers())
+    assert tester_preview.status_code == 200
     tester_apply = client.post(
         "/api/rules/apply-confirmed",
         headers=gray_app_headers(),
-        json={"confirm": True},
+        json={"confirm": True, "preview_token": tester_preview.json()["preview_token"]},
     )
 
     assert owner_denied.status_code == 403

@@ -12,6 +12,7 @@ import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.PairRequestDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.CategoryRule
@@ -27,6 +28,9 @@ import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.DataQualitySummary
+import com.ticketbox.domain.model.RuleApplicationBatch
+import com.ticketbox.domain.model.RuleApplicationRollback
+import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.mergeExpenseCategories
@@ -594,6 +598,40 @@ class ExpenseRepository(
     suspend fun deleteCategoryRule(id: Long): Result<Unit> = safeCall {
         api().deleteCategoryRule(id)
         Unit
+    }
+
+    suspend fun ruleApplications(limit: Int = 8): Result<List<RuleApplicationBatch>> = safeCall {
+        api().ruleApplications(limit = limit.coerceIn(1, 20)).items.map { it.toDomain() }
+    }
+
+    suspend fun previewApplyConfirmedRules(): Result<RuleApplyConfirmedResult> = safeCall {
+        api().applyConfirmedRules(
+            request = RuleApplyConfirmedRequestDto(confirm = false),
+        ).toDomain()
+    }
+
+    suspend fun confirmApplyConfirmedRules(previewToken: String): Result<RuleApplyConfirmedResult> = safeCall {
+        val cleanPreviewToken = previewToken.trim()
+        require(cleanPreviewToken.isNotBlank()) { "请先预览影响范围。" }
+        val service = api()
+        val result = service.applyConfirmedRules(
+            request = RuleApplyConfirmedRequestDto(confirm = true, previewToken = cleanPreviewToken),
+        ).toDomain()
+        if (result.changedCount > 0) {
+            syncConfirmedFromService(service)
+        }
+        result
+    }
+
+    suspend fun rollbackRuleApplication(publicId: String): Result<RuleApplicationRollback> = safeCall {
+        val cleanPublicId = publicId.trim()
+        require(cleanPublicId.isNotBlank()) { "请选择一条应用记录。" }
+        val service = api()
+        val result = service.rollbackRuleApplication(cleanPublicId).toDomain()
+        if (result.changed > 0) {
+            syncConfirmedFromService(service)
+        }
+        result
     }
 
     suspend fun serverSettings(): Result<ServerSettings> = safeCall {

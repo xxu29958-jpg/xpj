@@ -163,6 +163,14 @@ internal fun CategoryRuleCard(
                 text = "优先级 ${rule.priority} · ${if (rule.enabled) "已启用" else "已停用"}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val conditionText = categoryRuleConditionText(rule)
+            if (conditionText != null) {
+                Text(
+                    text = conditionText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             if (!readOnly) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { onToggleRule(rule) }) {
@@ -178,6 +186,17 @@ internal fun CategoryRuleCard(
             }
         }
     }
+}
+
+private fun categoryRuleConditionText(rule: CategoryRule): String? {
+    if (!rule.hasConditions) return null
+    val parts = buildList {
+        rule.amountMinCents?.let { add("金额 >= ${formatAmount(it)}") }
+        rule.amountMaxCents?.let { add("金额 <= ${formatAmount(it)}") }
+        rule.sourceContains?.takeIf { it.isNotBlank() }?.let { add("来源含 $it") }
+        rule.tagContains?.takeIf { it.isNotBlank() }?.let { add("标签 $it") }
+    }
+    return parts.joinToString(" · ")
 }
 
 internal fun categoryRuleSummary(rules: List<CategoryRule>): String {

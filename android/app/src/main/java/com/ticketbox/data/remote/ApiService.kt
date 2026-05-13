@@ -30,6 +30,10 @@ import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.PairResponseDto
+import com.ticketbox.data.remote.dto.RuleApplicationListDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
@@ -143,6 +147,23 @@ interface ApiService {
 
     @DELETE("api/rules/categories/{id}")
     suspend fun deleteCategoryRule(@Path("id") id: Long): StatusDto
+
+    @GET("api/rules/applications")
+    suspend fun ruleApplications(
+        @Query("limit") limit: Int = 20,
+    ): RuleApplicationListDto
+
+    @POST("api/rules/applications/{publicId}/rollback")
+    suspend fun rollbackRuleApplication(
+        @Path("publicId") publicId: String,
+    ): RuleApplicationRollbackDto
+
+    @POST("api/rules/apply-confirmed")
+    suspend fun applyConfirmedRules(
+        @Body request: RuleApplyConfirmedRequestDto = RuleApplyConfirmedRequestDto(),
+        @Query("limit") limit: Int = 20,
+        @Query("max_scan") maxScan: Int = 500,
+    ): RuleApplyConfirmedResponseDto
 
     @GET("api/settings/server")
     suspend fun serverSettings(): ServerSettingsDto

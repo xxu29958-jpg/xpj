@@ -24,6 +24,12 @@ import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
+import com.ticketbox.data.remote.dto.RuleApplicationListDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
+import com.ticketbox.data.remote.dto.RuleApplyPreviewItemDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
@@ -329,6 +335,70 @@ class ExpenseRepositoryBindingTest {
         assertEquals("wechat", apiService.lastNotificationDraftRequest?.source)
         assertEquals(emptyList(), dao.getConfirmed("owner"))
     }
+
+    @Test
+    fun ruleGovernancePreviewAndConfirmUseConfirmedEndpointAndRefreshCache() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val preview = repository.previewApplyConfirmedRules().getOrThrow()
+        val confirmed = repository.confirmApplyConfirmedRules(requireNotNull(preview.previewToken)).getOrThrow()
+
+        assertTrue(preview.dryRun)
+        assertEquals(1, preview.changedCount)
+        assertEquals(listOf(false, true), apiService.applyConfirmedRequests.map { it.confirm })
+        assertEquals(listOf(null, "preview-token"), apiService.applyConfirmedRequests.map { it.previewToken })
+        assertEquals(1, confirmed.changedCount)
+        assertEquals("高德", dao.getConfirmed("owner").single().merchant)
+    }
+
+    @Test
+    fun ruleApplicationRollbackPostsPublicIdAndRefreshesHistory() = runTest {
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val applications = repository.ruleApplications().getOrThrow()
+        val rollback = repository.rollbackRuleApplication(" batch-1 ").getOrThrow()
+
+        assertEquals("batch-1", applications.single().publicId)
+        assertEquals("batch-1", apiService.rollbackPublicIds.single())
+        assertEquals(1, rollback.changed)
+    }
 }
 
 private class FakeApiServiceFactory(
@@ -352,6 +422,8 @@ private class FakeApiService(
     var lastConfirmedMonth: String? = null
     var lastConfirmedCategory: String? = null
     var lastConfirmedTag: String? = null
+    val applyConfirmedRequests = mutableListOf<RuleApplyConfirmedRequestDto>()
+    val rollbackPublicIds = mutableListOf<String>()
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -457,6 +529,60 @@ private class FakeApiService(
     override suspend fun updateCategoryRule(id: Long, request: CategoryRuleRequest): CategoryRuleDto = unsupported()
 
     override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
+
+    override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = RuleApplicationListDto(
+        items = listOf(
+            RuleApplicationBatchDto(
+                publicId = "batch-1",
+                status = "applied",
+                pendingScanned = 9,
+                changedCount = 1,
+                createdAt = "2026-05-13T00:00:00Z",
+                rolledBackAt = null,
+            ),
+        ),
+    )
+
+    override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto {
+        rollbackPublicIds += publicId
+        return RuleApplicationRollbackDto(
+            publicId = publicId,
+            status = "rolled_back",
+            changed = 1,
+            skipped = 0,
+            rolledBackAt = "2026-05-13T00:05:00Z",
+        )
+    }
+
+    override suspend fun applyConfirmedRules(
+        request: RuleApplyConfirmedRequestDto,
+        limit: Int,
+        maxScan: Int,
+    ): RuleApplyConfirmedResponseDto {
+        applyConfirmedRequests += request
+        return RuleApplyConfirmedResponseDto(
+            dryRun = !request.confirm,
+            confirmedScanned = 9,
+            changedCount = 1,
+            items = if (request.confirm) {
+                emptyList()
+            } else {
+                listOf(
+                    RuleApplyPreviewItemDto(
+                        id = 9,
+                        merchant = "高德",
+                        currentCategory = "其他",
+                        suggestedCategory = "交通",
+                        ruleKeyword = "高德",
+                        reason = "merchant matched",
+                    ),
+                )
+            },
+            noMatchCount = 8,
+            scanLimit = maxScan,
+            previewToken = if (request.confirm) null else "preview-token",
+        )
+    }
 
     override suspend fun serverSettings(): ServerSettingsDto = serverSettingsResult ?: ServerSettingsDto(
         accountName = "我",

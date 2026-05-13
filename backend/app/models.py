@@ -271,6 +271,10 @@ class CategoryRule(Base):
     category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False, index=True)
+    amount_min_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_max_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tag_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
@@ -373,6 +377,7 @@ class DuplicateIgnore(Base):
 
 
 Index("ix_category_rules_tenant_priority_id", CategoryRule.tenant_id, CategoryRule.priority, CategoryRule.id)
+Index("ix_category_rules_tenant_enabled_priority", CategoryRule.tenant_id, CategoryRule.enabled, CategoryRule.priority, CategoryRule.id)
 Index("ix_rule_application_batches_tenant_created_at", RuleApplicationBatch.tenant_id, RuleApplicationBatch.created_at)
 Index("ix_rule_application_batches_tenant_status", RuleApplicationBatch.tenant_id, RuleApplicationBatch.status)
 Index("ix_rule_application_changes_tenant_batch", RuleApplicationChange.tenant_id, RuleApplicationChange.batch_id)

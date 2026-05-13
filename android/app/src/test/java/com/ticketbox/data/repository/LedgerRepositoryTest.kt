@@ -34,6 +34,10 @@ import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.RuleApplicationListDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
@@ -723,6 +727,13 @@ private class StubApi(
     override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = unsupported()
     override suspend fun updateCategoryRule(id: Long, request: CategoryRuleRequest): CategoryRuleDto = unsupported()
     override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
+    override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = unsupported()
+    override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto = unsupported()
+    override suspend fun applyConfirmedRules(
+        request: RuleApplyConfirmedRequestDto,
+        limit: Int,
+        maxScan: Int,
+    ): RuleApplyConfirmedResponseDto = unsupported()
     override suspend fun serverSettings(): ServerSettingsDto = unsupported()
     override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = unsupported()
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()

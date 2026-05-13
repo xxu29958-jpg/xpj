@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}规则应用审计 — 小票夹{% endblock %}
+{% block content %}
+<h1>规则应用审计</h1>
+
+<div class="alert alert-info">
+  本页只展示分类规则批量应用的最近记录，按账本隔离；规则编辑、应用和回滚仍在正常规则治理页面处理。
+</div>
+
+<div class="card">
+  <h2>选择账本</h2>
+  {% if not rule_audit.ledger_choices %}
+  <p class="meta">服务未初始化，请先运行 <code>bootstrap_dev_owner.ps1</code>。</p>
+  {% else %}
+  <form method="get" action="/owner/rule-applications">
+    <label style="font-size:13px">账本：
+      <select name="ledger_id" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px">
+        {% for ledger in rule_audit.ledger_choices %}
+        <option value="{{ ledger.ledger_id }}" {% if ledger.ledger_id == rule_audit.selected_ledger_id %}selected{% endif %}>
+          {{ ledger.name }}{% if ledger.is_default %}（默认）{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-secondary" style="margin-left:8px">切换</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>最近批次{% if rule_audit.selected_ledger_name %} · {{ rule_audit.selected_ledger_name }}{% endif %}</h2>
+  {% if not rule_audit.rows %}
+  <p class="meta">当前账本暂无规则应用批次。</p>
+  {% else %}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>创建时间</th>
+        <th>批次</th>
+        <th>状态</th>
+        <th style="text-align:right">扫描账单</th>
+        <th style="text-align:right">变更账单</th>
+        <th>回滚时间</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for batch in rule_audit.rows %}
+      <tr>
+        <td>{{ batch.created_at|owner_datetime }}</td>
+        <td><code>{{ batch.public_id }}</code></td>
+        <td>
+          {% if batch.status == 'rolled_back' %}<span class="status-chip status-muted">已回滚</span>
+          {% elif batch.status == 'applied_confirmed' %}<span class="status-chip status-success">已应用历史</span>
+          {% elif batch.status == 'applied' %}<span class="status-chip status-success">已应用待确认</span>
+          {% else %}<span class="status-chip status-muted">{{ batch.status }}</span>{% endif %}
+        </td>
+        <td style="text-align:right">{{ batch.pending_scanned }}</td>
+        <td style="text-align:right">{{ batch.changed_count }}</td>
+        <td>{{ batch.rolled_back_at|owner_datetime }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

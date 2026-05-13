@@ -364,6 +364,17 @@ def migrate_sqlite_schema() -> None:
                 connection.execute(
                     text(f"ALTER TABLE category_rules ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'")
                 )
+            category_rule_additions = {
+                "amount_min_cents": "INTEGER",
+                "amount_max_cents": "INTEGER",
+                "source_contains": "VARCHAR(64)",
+                "tag_contains": "VARCHAR(64)",
+            }
+            for column_name, column_type in category_rule_additions.items():
+                if column_name not in category_rule_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE category_rules ADD COLUMN {column_name} {column_type}")
+                    )
             connection.execute(
                 text("UPDATE category_rules SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
                 {"tenant_id": DEFAULT_TENANT_ID},
@@ -372,6 +383,12 @@ def migrate_sqlite_schema() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_category_rules_tenant_priority_id "
                     "ON category_rules (tenant_id, priority, id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_category_rules_tenant_enabled_priority "
+                    "ON category_rules (tenant_id, enabled, priority, id)"
                 )
             )
 

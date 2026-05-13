@@ -183,6 +183,81 @@ def test_owner_settings_api_inspector_lists_owner_routes(local_client: TestClien
     assert "/api/admin" in resp.text
 
 
+def test_owner_rule_application_audit_is_read_only_and_ledger_scoped(
+    local_client: TestClient,
+) -> None:
+    from app.database import SessionLocal
+    from app.models import Account, Ledger, RuleApplicationBatch
+    from app.services.time_service import now_utc
+
+    with SessionLocal() as db:
+        external = Account(display_name="外部账号", created_at=now_utc())
+        db.add(external)
+        db.flush()
+        db.add(
+            Ledger(
+                id=-100,
+                ledger_id="external_first",
+                name="外部账本",
+                owner_account_id=external.id,
+                created_at=now_utc(),
+            )
+        )
+        db.add(
+            RuleApplicationBatch(
+                public_id="00000000-0000-0000-0000-000000000000",
+                tenant_id="external_first",
+                status="applied_confirmed",
+                pending_scanned=99,
+                changed_count=99,
+                created_at=now_utc(),
+            )
+        )
+        db.add(
+            RuleApplicationBatch(
+                public_id="11111111-1111-1111-1111-111111111111",
+                tenant_id="owner",
+                status="applied_confirmed",
+                pending_scanned=12,
+                changed_count=3,
+                created_at=now_utc(),
+            )
+        )
+        db.add(
+            RuleApplicationBatch(
+                public_id="22222222-2222-2222-2222-222222222222",
+                tenant_id="tester_1",
+                status="rolled_back",
+                pending_scanned=8,
+                changed_count=2,
+                created_at=now_utc(),
+                rolled_back_at=now_utc(),
+            )
+        )
+        db.commit()
+
+    owner_page = local_client.get("/owner/rule-applications?ledger_id=owner")
+    assert owner_page.status_code == 200
+    assert "规则应用审计" in owner_page.text
+    assert "已应用历史" in owner_page.text
+    assert "11111111-1111-1111-1111-111111111111" in owner_page.text
+    assert "22222222-2222-2222-2222-222222222222" not in owner_page.text
+    assert "/rollback" not in owner_page.text
+    assert 'method="post"' not in owner_page.text.lower()
+
+    gray_page = local_client.get("/owner/rule-applications?ledger_id=tester_1")
+    assert gray_page.status_code == 200
+    assert "22222222-2222-2222-2222-222222222222" in gray_page.text
+    assert "11111111-1111-1111-1111-111111111111" not in gray_page.text
+
+    dashboard = local_client.get("/owner")
+    assert dashboard.status_code == 200
+    assert "规则应用审计" in dashboard.text
+    assert "/owner/rule-applications" in dashboard.text
+    assert "00000000-0000-0000-0000-000000000000" not in dashboard.text
+    assert "ledger_id=external_first" not in dashboard.text
+
+
 def test_owner_settings_page_remote_rejected(client: TestClient) -> None:
     resp = client.get("/owner/settings")
     assert resp.status_code == 403
