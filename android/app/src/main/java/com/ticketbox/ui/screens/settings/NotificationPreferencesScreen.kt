@@ -50,7 +50,7 @@ fun NotificationPreferencesScreen(
                         subtitle = if (readOnly) {
                             "当前角色为只读，不能生成自动草稿。"
                         } else if (listenerAuthorized) {
-                            "系统授权已开启；只上传金额、商家、时间等结构化字段。"
+                            "系统授权已开启；只上传来源、金额、商家、分类和时间。"
                         } else {
                             "需要先在系统设置里显式授权；关闭后不会读取通知。"
                         },

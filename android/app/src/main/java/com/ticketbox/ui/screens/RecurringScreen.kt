@@ -74,7 +74,7 @@ fun RecurringScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AppPageHeader(
                     title = "固定支出",
-                    subtitle = "候选先确认，正式记录只提醒不自动入账",
+                    subtitle = "候选需手动确认；正式记录只做提醒和对比，不会自动入账。",
                 ) {
                     SafeBadge()
                 }
@@ -278,9 +278,14 @@ private fun RecurringCandidatesCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "候选",
+                text = "固定支出候选（未确认）",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black,
+            )
+            Text(
+                text = "根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
             )
             if (candidates.isEmpty()) {
                 Text(

@@ -92,7 +92,7 @@
 {% if recurring_ops %}
 <div class="card">
   <h2>Recurring / 通知草稿状态</h2>
-  <p class="hint">只读运维视图：正式固定支出和 Android 通知草稿仍需在 /web 或 App 中处理。</p>
+  <p class="hint">只读运维视图：正式固定支出只做提醒和对比，不会自动入账；Android 通知草稿只上传结构化字段，不上传通知原文。</p>
   <div class="stat-grid">
     <div class="stat">
       <div class="num">{{ recurring_ops.active_count }}</div>
