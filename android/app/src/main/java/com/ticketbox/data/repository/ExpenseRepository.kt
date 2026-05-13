@@ -23,6 +23,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.DataQualitySummary
@@ -70,6 +71,7 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         "recurring_frequency_invalid" -> "固定支出设置不正确。"
         "recurring_status_invalid" -> "固定支出设置不正确。"
         "recurring_item_archived" -> "固定支出已归档，不能继续修改。"
+        "notification_source_invalid" -> "通知来源暂不支持。"
         "server_error" -> "暂时处理不了，请稍后再试。"
         "invalid_request" -> "请求参数不正确。"
         "route_not_found" -> "账本版本过旧，请重启电脑上的小票夹后再试。"
@@ -393,6 +395,10 @@ class ExpenseRepository(
     suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = safeCall {
         require(draft.amountCents != null) { "请先填写金额。" }
         cacheIfConfirmed(api().createManualExpense(draft.toRequest())).toDomain()
+    }
+
+    suspend fun createNotificationDraft(draft: NotificationDraft): Result<Expense> = safeCall {
+        api().createNotificationDraft(draft.toRequest()).toDomain()
     }
 
     override suspend fun confirmExpense(id: Long): Result<Expense> = safeCall {

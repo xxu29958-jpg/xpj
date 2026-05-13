@@ -114,6 +114,16 @@ data class ExpenseUpdateRequest(
     val regretScore: Int?,
 )
 
+data class NotificationDraftRequestDto(
+    val source: String,
+    @param:Json(name = "amount_cents")
+    val amountCents: Long?,
+    val merchant: String?,
+    val category: String?,
+    @param:Json(name = "expense_time")
+    val expenseTime: String?,
+)
+
 data class PaginatedExpensesDto(
     val items: List<ExpenseDto>,
     val page: Int,

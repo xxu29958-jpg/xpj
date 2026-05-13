@@ -5,12 +5,14 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
+import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class ApiDtoContractTest {
     private val moshi = Moshi.Builder()
@@ -58,6 +60,25 @@ class ApiDtoContractTest {
         assertEquals(348120L, dto.uploadSizeBytes)
         assertEquals(86L, dto.durationMs)
         assertEquals(24L, dto.timingMs?.get("db_create_ms"))
+    }
+
+    @Test
+    fun notificationDraftRequestSerializesStructuredFieldsOnly() {
+        val json = moshi.adapter(NotificationDraftRequestDto::class.java).toJson(
+            NotificationDraftRequestDto(
+                source = "wechat",
+                amountCents = 2680,
+                merchant = "星巴克",
+                category = "餐饮",
+                expenseTime = "2026-05-13T10:05:00Z",
+            ),
+        )
+
+        assertEquals(
+            """{"source":"wechat","amount_cents":2680,"merchant":"星巴克","category":"餐饮","expense_time":"2026-05-13T10:05:00Z"}""",
+            json,
+        )
+        assertFalse(json.contains("raw_text"))
     }
 
     @Test

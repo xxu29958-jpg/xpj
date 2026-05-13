@@ -23,6 +23,7 @@ class BackendErrorMessageMapperTest {
         assertEquals("当前角色为只读，无法修改账本。", backendErrorUserMessage("permission_denied", "当前角色无权进行此操作。"))
         assertEquals("固定支出不存在。", backendErrorUserMessage("recurring_item_not_found", "Not found"))
         assertEquals("固定支出已归档，不能继续修改。", backendErrorUserMessage("recurring_item_archived", "Archived"))
+        assertEquals("通知来源暂不支持。", backendErrorUserMessage("notification_source_invalid", "Unsupported"))
     }
 
     @Test

@@ -17,6 +17,7 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
+import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.PairResponseDto
@@ -27,6 +28,8 @@ import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.NotificationDraft
+import com.ticketbox.domain.model.NotificationDraftSource
 import com.ticketbox.security.SessionTokenStore
 import com.ticketbox.viewmodel.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
@@ -254,6 +257,47 @@ class ExpenseRepositoryBindingTest {
         assertEquals("家庭账本", settingsStore.ledgerName())
         assertEquals("viewer", settingsStore.role())
     }
+
+    @Test
+    fun notificationDraftUploadsStructuredFieldsOnlyAndDoesNotCachePending() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val result = repository.createNotificationDraft(
+            NotificationDraft(
+                source = NotificationDraftSource.WeChat,
+                amountCents = 2680,
+                merchant = " 星巴克 ",
+                category = "吃饭",
+                expenseTime = "2026-05-13T10:05:00Z",
+            ),
+        ).getOrThrow()
+
+        assertEquals("pending", result.status)
+        assertEquals("通知草稿:微信", result.source)
+        assertEquals("星巴克", apiService.lastNotificationDraftRequest?.merchant)
+        assertEquals("餐饮", apiService.lastNotificationDraftRequest?.category)
+        assertEquals("wechat", apiService.lastNotificationDraftRequest?.source)
+        assertEquals(emptyList(), dao.getConfirmed("owner"))
+    }
 }
 
 private class FakeApiServiceFactory(
@@ -273,6 +317,8 @@ private class FakeApiService(
     private val checkAuthResult: AuthCheckDto? = null,
     private val serverSettingsResult: ServerSettingsDto? = null,
 ) : ApiService {
+    var lastNotificationDraftRequest: NotificationDraftRequestDto? = null
+
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
             sessionToken = "session-token",
@@ -315,6 +361,36 @@ private class FakeApiService(
     override suspend fun exportCsv(month: String?, category: String?, timezone: String?): Response<ResponseBody> = unsupported()
 
     override suspend fun createManualExpense(request: ExpenseUpdateRequest): ExpenseDto = unsupported()
+
+    override suspend fun createNotificationDraft(request: NotificationDraftRequestDto): ExpenseDto {
+        lastNotificationDraftRequest = request
+        return ExpenseDto(
+            id = 12,
+            publicId = "8f939f48-e646-4afb-b54f-7bb6b536d9ef",
+            amountCents = request.amountCents,
+            merchant = request.merchant,
+            category = request.category ?: "其他",
+            note = "",
+            source = "通知草稿:微信",
+            imagePath = null,
+            thumbnailPath = null,
+            imageHash = null,
+            rawText = "",
+            confidence = null,
+            duplicateStatus = "none",
+            duplicateOfId = null,
+            duplicateReason = null,
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+            status = "pending",
+            expenseTime = request.expenseTime,
+            createdAt = "2026-05-13T10:05:00Z",
+            updatedAt = "2026-05-13T10:05:00Z",
+            confirmedAt = null,
+            rejectedAt = null,
+        )
+    }
 
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = unsupported()
 

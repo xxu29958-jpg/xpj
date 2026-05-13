@@ -38,6 +38,22 @@ data class ExpenseDraft(
     val regretScore: Int?,
 )
 
+enum class NotificationDraftSource(val apiValue: String) {
+    WeChat("wechat"),
+    Alipay("alipay"),
+    BankSms("bank_sms"),
+    BankApp("bank_app"),
+    Other("other"),
+}
+
+data class NotificationDraft(
+    val source: NotificationDraftSource,
+    val amountCents: Long?,
+    val merchant: String?,
+    val category: String?,
+    val expenseTime: String?,
+)
+
 data class CategoryStats(
     val category: String,
     val amountCents: Long,

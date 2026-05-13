@@ -20,6 +20,7 @@ import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
+import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.PairRequestDto
@@ -82,6 +83,9 @@ interface ApiService {
 
     @POST("api/expenses/manual")
     suspend fun createManualExpense(@Body request: ExpenseUpdateRequest): ExpenseDto
+
+    @POST("api/expenses/notification-drafts")
+    suspend fun createNotificationDraft(@Body request: NotificationDraftRequestDto): ExpenseDto
 
     @Multipart
     @POST("api/app/upload-screenshot")

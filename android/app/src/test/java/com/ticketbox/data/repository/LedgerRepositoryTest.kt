@@ -704,6 +704,9 @@ private class StubApi(
     override suspend fun months(timezone: String?): MonthsDto = unsupported()
     override suspend fun exportCsv(month: String?, category: String?, timezone: String?): Response<ResponseBody> = unsupported()
     override suspend fun createManualExpense(request: ExpenseUpdateRequest): ExpenseDto = unsupported()
+    override suspend fun createNotificationDraft(
+        request: com.ticketbox.data.remote.dto.NotificationDraftRequestDto,
+    ): ExpenseDto = unsupported()
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = unsupported()
     override suspend fun updateExpense(id: Long, request: ExpenseUpdateRequest): ExpenseDto = unsupported()
     override suspend fun confirmExpense(id: Long): ExpenseDto = unsupported()

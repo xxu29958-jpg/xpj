@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.FrequentMerchantDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
+import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidateItemDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
@@ -18,6 +19,7 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.ServerSettings
@@ -118,6 +120,14 @@ fun ExpenseDraft.toRequest(): ExpenseUpdateRequest = ExpenseUpdateRequest(
     tags = tags,
     valueScore = valueScore,
     regretScore = regretScore,
+)
+
+fun NotificationDraft.toRequest(): NotificationDraftRequestDto = NotificationDraftRequestDto(
+    source = source.apiValue,
+    amountCents = amountCents,
+    merchant = merchant?.trim()?.takeIf { it.isNotBlank() },
+    category = normalizeExpenseCategory(category),
+    expenseTime = expenseTime,
 )
 
 fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(
