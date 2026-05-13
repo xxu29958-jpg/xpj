@@ -104,7 +104,7 @@ def _needs_pre_v03_backup(db_path: Path) -> bool:
 
 
 def seed_identity_data() -> None:
-    from app.models import CategoryRule, DuplicateIgnore, Expense, MerchantAlias
+    from app.models import CategoryRule, DuplicateIgnore, Expense, ExpenseTag, MerchantAlias, Tag
     from app.services.identity_service import ensure_identity_for_existing_ledger_ids, ensure_identity_seed
 
     with SessionLocal() as db:
@@ -116,6 +116,10 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(CategoryRule.tenant_id).distinct()) if value)
         if inspect(engine).has_table("merchant_aliases"):
             ids.update(str(value) for value in db.scalars(select(MerchantAlias.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("tags"):
+            ids.update(str(value) for value in db.scalars(select(Tag.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("expense_tags"):
+            ids.update(str(value) for value in db.scalars(select(ExpenseTag.tenant_id).distinct()) if value)
         if inspect(engine).has_table("duplicate_ignores"):
             ids.update(str(value) for value in db.scalars(select(DuplicateIgnore.tenant_id).distinct()) if value)
         if ids:
@@ -127,10 +131,12 @@ def seed_runtime_data() -> None:
     from app.services.category_service import normalize_existing_expense_categories
     from app.services.classify_service import seed_default_rules
     from app.services.identity_service import ledger_ids
+    from app.services.tag_service import backfill_expense_tags
 
     with SessionLocal() as db:
         for ledger_id in ledger_ids(db):
             normalize_existing_expense_categories(db, ledger_id)
+            backfill_expense_tags(db, ledger_id)
             seed_default_rules(db, ledger_id)
 
 
@@ -376,6 +382,40 @@ def migrate_sqlite_schema() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_merchant_aliases_tenant_alias_key "
                     "ON merchant_aliases (tenant_id, alias_key)"
+                )
+            )
+
+        if "tags" in table_names:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_tags_tenant_key "
+                    "ON tags (tenant_id, key)"
+                )
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_tags_tenant_key ON tags (tenant_id, key)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_tags_tenant_name ON tags (tenant_id, name)")
+            )
+
+        if "expense_tags" in table_names:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_tags_tenant_expense_tag "
+                    "ON expense_tags (tenant_id, expense_id, tag_id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_expense_tags_tenant_expense "
+                    "ON expense_tags (tenant_id, expense_id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_expense_tags_tenant_tag "
+                    "ON expense_tags (tenant_id, tag_id)"
                 )
             )
 

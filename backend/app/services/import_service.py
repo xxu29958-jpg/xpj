@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Expense
 from app.services.category_service import normalize_category
+from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
 
 
@@ -182,6 +183,7 @@ def import_rows(
     """
     inserted = 0
     now = now_utc()
+    created: list[Expense] = []
     for row in rows:
         if not row.is_valid or row.amount_cents is None:
             continue
@@ -192,14 +194,18 @@ def import_rows(
             category=row.category or "其他",
             note=row.note or "",
             source=row.source or DEFAULT_SOURCE,
-            tags=row.tags or None,
+            tags=normalize_tags(row.tags),
             expense_time=row.expense_time,
             status="pending",
             created_at=now,
             updated_at=now,
         )
         db.add(expense)
+        created.append(expense)
         inserted += 1
     if inserted:
+        db.flush()
+        for expense in created:
+            sync_expense_tags(db, expense)
         db.commit()
     return inserted

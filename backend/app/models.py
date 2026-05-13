@@ -295,6 +295,33 @@ class MerchantAlias(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_tags_tenant_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class ExpenseTag(Base):
+    __tablename__ = "expense_tags"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "expense_id", "tag_id", name="uq_expense_tags_tenant_expense_tag"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    expense_id: Mapped[int] = mapped_column(Integer, ForeignKey("expenses.id"), nullable=False, index=True)
+    tag_id: Mapped[int] = mapped_column(Integer, ForeignKey("tags.id"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
 class DuplicateIgnore(Base):
     __tablename__ = "duplicate_ignores"
     __table_args__ = (
@@ -312,4 +339,8 @@ class DuplicateIgnore(Base):
 Index("ix_category_rules_tenant_priority_id", CategoryRule.tenant_id, CategoryRule.priority, CategoryRule.id)
 Index("ix_merchant_aliases_tenant_canonical", MerchantAlias.tenant_id, MerchantAlias.canonical_key)
 Index("ix_merchant_aliases_tenant_alias_key", MerchantAlias.tenant_id, MerchantAlias.alias_key)
+Index("ix_tags_tenant_key", Tag.tenant_id, Tag.key)
+Index("ix_tags_tenant_name", Tag.tenant_id, Tag.name)
+Index("ix_expense_tags_tenant_expense", ExpenseTag.tenant_id, ExpenseTag.expense_id)
+Index("ix_expense_tags_tenant_tag", ExpenseTag.tenant_id, ExpenseTag.tag_id)
 Index("ix_duplicate_ignores_tenant_pair_kind", DuplicateIgnore.tenant_id, DuplicateIgnore.expense_id, DuplicateIgnore.duplicate_of_id, DuplicateIgnore.kind)

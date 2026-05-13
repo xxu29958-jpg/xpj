@@ -71,6 +71,7 @@ def _insert_legacy_expense(
     thumbnail_path: str | None = None,
     tenant_id: str | None = None,
     public_id: str | None = None,
+    tags: str | None = None,
 ) -> int:
     columns = _expense_columns()
     values = {
@@ -96,6 +97,8 @@ def _insert_legacy_expense(
         values["tenant_id"] = tenant_id
     if "public_id" in columns:
         values["public_id"] = public_id
+    if "tags" in columns:
+        values["tags"] = tags
 
     keys = [key for key in values if key in columns]
     placeholders = ", ".join(f":{key}" for key in keys)
@@ -122,6 +125,8 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "duplicate_ignores" in inspector.get_table_names()
     assert "ledger_audit_logs" in inspector.get_table_names()
     assert "merchant_aliases" in inspector.get_table_names()
+    assert "tags" in inspector.get_table_names()
+    assert "expense_tags" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
     assert {
         "tenant_id",
@@ -134,9 +139,16 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_expenses_tenant_draft_idempotency_key" in _indexes("expenses")
     assert "ix_merchant_aliases_tenant_alias_key" in _indexes("merchant_aliases")
     assert "ix_merchant_aliases_tenant_canonical" in _indexes("merchant_aliases")
+    assert "ix_tags_tenant_key" in _indexes("tags")
+    assert "ix_expense_tags_tenant_expense" in _indexes("expense_tags")
+    assert "ix_expense_tags_tenant_tag" in _indexes("expense_tags")
     assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
     merchant_alias_sql = _table_create_sql("merchant_aliases")
     assert "uq_merchant_aliases_tenant_alias_key" in merchant_alias_sql
+    tags_sql = _table_create_sql("tags")
+    assert "uq_tags_tenant_key" in tags_sql
+    expense_tags_sql = _table_create_sql("expense_tags")
+    assert "uq_expense_tags_tenant_expense_tag" in expense_tags_sql
     recurring_sql = _table_create_sql("recurring_items")
     assert "ck_recurring_items_frequency_valid" in recurring_sql
     assert "ck_recurring_items_status_valid" in recurring_sql
@@ -240,6 +252,36 @@ def test_v01_schema_migrates_without_losing_expense_data() -> None:
     assert {"tenant_id", "public_id", "thumbnail_path", "tags", "image_deleted_at"}.issubset(_expense_columns())
     assert "ix_expenses_public_id" in _indexes("expenses")
     assert "ledger_audit_logs" in inspect(engine).get_table_names()
+
+
+def test_legacy_expense_tags_backfill_normalized_relation_rows() -> None:
+    _reset_empty_database()
+    _create_v01_expenses_table()
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE expenses ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT 'owner'"))
+        connection.execute(text("ALTER TABLE expenses ADD COLUMN tags TEXT"))
+    expense_id = _insert_legacy_expense(
+        amount_cents=3680,
+        status="confirmed",
+        tenant_id="owner",
+        tags="  真香，AI，真香 ",
+    )
+
+    init_db()
+
+    migrated = _fetch_expense(expense_id)
+    assert migrated["tags"] == "真香, AI"
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT tags.name FROM tags "
+                "JOIN expense_tags ON expense_tags.tag_id = tags.id "
+                "WHERE tags.tenant_id = 'owner' AND expense_tags.expense_id = :expense_id "
+                "ORDER BY tags.name"
+            ),
+            {"expense_id": expense_id},
+        ).all()
+    assert {str(row[0]) for row in rows} == {"真香", "AI"}
 
 
 def test_pre_v03_backup_is_not_recreated_after_identity_migration() -> None:

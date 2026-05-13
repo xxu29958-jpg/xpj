@@ -52,6 +52,7 @@ def web_export_csv(
     ledger_id: str = "",
     month: str | None = None,
     category: str | None = None,
+    tag: str | None = None,
     timezone: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -63,6 +64,7 @@ def web_export_csv(
         tenant_id=selected_id,
         month=month,
         category=category,
+        tag=tag,
         timezone_name=timezone,
     )
     filename = f"ticketbox-{selected_id}"

@@ -10,8 +10,9 @@ from sqlalchemy import Select, false, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Expense
+from app.models import Expense, ExpenseTag, Tag
 from app.services.category_service import merge_categories, normalize_category
+from app.services.tag_service import tag_key
 from app.services.time_service import (
     ensure_utc,
     local_month_bounds_utc,
@@ -51,11 +52,22 @@ def _confirmed_query(
     tenant_id: str,
     month: str | None = None,
     category: str | None = None,
+    tag: str | None = None,
     timezone_name: str | None = None,
 ) -> Select[tuple[Expense]]:
     query = _base_confirmed_query(tenant_id)
     if category:
         query = query.where(Expense.category == normalize_category(category))
+    tag_filter = tag_key(tag)
+    if tag_filter:
+        tagged_expense_ids = (
+            select(ExpenseTag.expense_id)
+            .join(Tag, Tag.id == ExpenseTag.tag_id)
+            .where(ExpenseTag.tenant_id == tenant_id)
+            .where(Tag.tenant_id == tenant_id)
+            .where(Tag.key == tag_filter)
+        )
+        query = query.where(Expense.id.in_(tagged_expense_ids))
     if month:
         bounds = _stat_month_bounds(month, timezone_name)
         if bounds is None:
@@ -77,6 +89,7 @@ def _filtered_confirmed(
     tenant_id: str,
     month: str | None = None,
     category: str | None = None,
+    tag: str | None = None,
     timezone_name: str | None = None,
 ) -> list[Expense]:
     return list(
@@ -86,6 +99,7 @@ def _filtered_confirmed(
                     tenant_id=tenant_id,
                     month=month,
                     category=category,
+                    tag=tag,
                     timezone_name=timezone_name,
                 )
             )
@@ -130,6 +144,7 @@ def export_confirmed_csv(
     tenant_id: str,
     month: str | None = None,
     category: str | None = None,
+    tag: str | None = None,
     timezone_name: str | None = None,
 ) -> str:
     expenses = _filtered_confirmed(
@@ -137,6 +152,7 @@ def export_confirmed_csv(
         tenant_id=tenant_id,
         month=month,
         category=category,
+        tag=tag,
         timezone_name=timezone_name,
     )
     output = StringIO()
@@ -183,8 +199,35 @@ def export_confirmed_csv(
     return output.getvalue()
 
 
+def _tag_stats_for_filtered_query(db: Session, tenant_id: str, filtered) -> list[dict]:
+    rows = db.execute(
+        select(
+            Tag.name,
+            func.coalesce(func.sum(filtered.c.amount_cents), 0),
+            func.count(filtered.c.id),
+        )
+        .select_from(filtered)
+        .join(
+            ExpenseTag,
+            (ExpenseTag.expense_id == filtered.c.id)
+            & (ExpenseTag.tenant_id == tenant_id),
+        )
+        .join(Tag, (Tag.id == ExpenseTag.tag_id) & (Tag.tenant_id == tenant_id))
+        .group_by(Tag.name)
+    )
+    stats = [
+        {"tag": str(tag), "amount_cents": int(amount or 0), "count": int(count or 0)}
+        for tag, amount, count in rows
+    ]
+    return sorted(stats, key=lambda item: int(item["amount_cents"]), reverse=True)
+
+
 def monthly_stats(
-    db: Session, month: str, tenant_id: str, timezone_name: str | None = None
+    db: Session,
+    month: str,
+    tenant_id: str,
+    timezone_name: str | None = None,
+    tag: str | None = None,
 ) -> dict:
     by_category: dict[str, dict[str, int | str]] = defaultdict(
         lambda: {"category": "", "amount_cents": 0, "count": 0}
@@ -199,19 +242,22 @@ def monthly_stats(
             "total_amount_cents": 0,
             "count": 0,
             "by_category": [],
+            "by_tag": [],
         }
-    start_utc, end_utc = bounds
+    filtered = _confirmed_query(
+        tenant_id=tenant_id,
+        month=month,
+        tag=tag,
+        timezone_name=timezone_name,
+    ).subquery()
     rows = db.execute(
         select(
-            Expense.category,
-            func.coalesce(func.sum(Expense.amount_cents), 0),
-            func.count(Expense.id),
+            filtered.c.category,
+            func.coalesce(func.sum(filtered.c.amount_cents), 0),
+            func.count(filtered.c.id),
         )
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(_stat_time_expr() >= start_utc)
-        .where(_stat_time_expr() < end_utc)
-        .group_by(Expense.category)
+        .select_from(filtered)
+        .group_by(filtered.c.category)
     )
     for category_value, amount_value, count_value in rows:
         amount = int(amount_value or 0)
@@ -233,6 +279,7 @@ def monthly_stats(
             key=lambda item: int(item["amount_cents"]),
             reverse=True,
         ),
+        "by_tag": _tag_stats_for_filtered_query(db, tenant_id, filtered),
     }
 
 

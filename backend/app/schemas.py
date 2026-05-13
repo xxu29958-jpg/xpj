@@ -360,7 +360,17 @@ class CategoryStatsResponse(BaseModel):
     count: int
 
 
+class TagStatsResponse(BaseModel):
+    tag: str
+    amount_cents: int
+    count: int
+
+
 class CategoriesResponse(BaseModel):
+    items: list[str]
+
+
+class TagsResponse(BaseModel):
     items: list[str]
 
 
@@ -373,6 +383,7 @@ class MonthlyStatsResponse(BaseModel):
     total_amount_cents: int
     count: int
     by_category: list[CategoryStatsResponse]
+    by_tag: list[TagStatsResponse] = Field(default_factory=list)
 
 
 class OcrRetryResponse(BaseModel):

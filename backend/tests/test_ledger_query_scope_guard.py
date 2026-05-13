@@ -12,8 +12,10 @@ LEDGER_SCOPED_MODELS = {
     "CategoryRule",
     "DuplicateIgnore",
     "Expense",
+    "ExpenseTag",
     "MerchantAlias",
     "RecurringItem",
+    "Tag",
 }
 SCOPE_COLUMNS = {"tenant_id", "ledger_id"}
 SCOPE_HELPERS = {"add_ledger_scope", "ledger_filter", "ledger_scoped_select"}

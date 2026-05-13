@@ -35,6 +35,7 @@ from app.services.ocr_service import (
 )
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.stats_service import _confirmed_ordered, _confirmed_query
+from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 
 
@@ -248,7 +249,7 @@ def create_manual_expense(
         created_at=now,
         updated_at=now,
         confirmed_at=now,
-        tags=_clean_optional_text(payload.tags),
+        tags=normalize_tags(payload.tags),
         value_score=payload.value_score,
         regret_score=payload.regret_score,
     )
@@ -256,6 +257,7 @@ def create_manual_expense(
         classify_expense(db, expense)
     db.add(expense)
     db.flush()
+    sync_expense_tags(db, expense)
     mark_duplicate_status(db, expense)
     db.commit()
     db.refresh(expense)
@@ -343,13 +345,18 @@ def list_confirmed(
     page_size: int = 50,
     month: str | None = None,
     category: str | None = None,
+    tag: str | None = None,
     timezone_name: str | None = None,
 ) -> tuple[list[Expense], int]:
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
 
     query = _confirmed_query(
-        tenant_id=tenant_id, month=month, category=category, timezone_name=timezone_name
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_name=timezone_name,
     )
     total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
     expenses = list(
@@ -379,7 +386,7 @@ def update_expense(
     if "expense_time" in updates:
         expense.expense_time = ensure_utc(updates["expense_time"])
     if "tags" in updates:
-        expense.tags = _clean_optional_text(updates["tags"])
+        expense.tags = normalize_tags(updates["tags"])
     if "value_score" in updates:
         expense.value_score = updates["value_score"]
     if "regret_score" in updates:
@@ -397,6 +404,8 @@ def update_expense(
 
     if any(field in updates for field in {"amount_cents", "merchant", "expense_time"}):
         mark_duplicate_status(db, expense)
+    if "tags" in updates:
+        sync_expense_tags(db, expense)
 
     expense.updated_at = now_utc()
     db.commit()
@@ -417,6 +426,7 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     expense.status = "confirmed"
     expense.confirmed_at = now
     expense.updated_at = now
+    sync_expense_tags(db, expense)
     cleanup_after_confirm(expense)
     db.commit()
     db.refresh(expense)

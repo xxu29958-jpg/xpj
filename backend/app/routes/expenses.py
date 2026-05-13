@@ -15,6 +15,7 @@ from app.schemas import (
     ExpenseUpdateRequest,
     MonthsResponse,
     PaginatedExpensesResponse,
+    TagsResponse,
 )
 from app.services.expense_service import (
     confirm_expense,
@@ -32,6 +33,7 @@ from app.services.expense_service import (
 )
 from app.services.file_service import resolve_protected_image
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
+from app.services.tag_service import list_tags
 from app.tenants import AuthContext
 
 
@@ -73,6 +75,7 @@ def get_confirmed_expenses(
     page_size: int = Query(default=50, ge=1, le=200),
     month: str | None = None,
     category: str | None = None,
+    tag: str | None = None,
     timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
@@ -84,6 +87,7 @@ def get_confirmed_expenses(
         page_size=page_size,
         month=month,
         category=category,
+        tag=tag,
         timezone_name=timezone,
     )
     return PaginatedExpensesResponse(items=items, page=page, page_size=page_size, total=total)
@@ -95,6 +99,14 @@ def get_expense_categories(
     db: Session = Depends(get_db),
 ) -> CategoriesResponse:
     return CategoriesResponse(items=list_categories(db, auth.tenant_id))
+
+
+@router.get("/tags", response_model=TagsResponse)
+def get_expense_tags(
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> TagsResponse:
+    return TagsResponse(items=list_tags(db, auth.tenant_id))
 
 
 @router.get("/months", response_model=MonthsResponse)
@@ -110,6 +122,7 @@ def get_expense_months(
 def get_expenses_csv(
     month: str | None = None,
     category: str | None = None,
+    tag: str | None = None,
     timezone: str | None = None,
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
@@ -119,6 +132,7 @@ def get_expenses_csv(
         tenant_id=auth.tenant_id,
         month=month,
         category=category,
+        tag=tag,
         timezone_name=timezone,
     )
     filename = "ticketbox-expenses"
