@@ -249,11 +249,13 @@ class PendingViewModelReviewActionsTest {
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
 
+        vm.openDuplicateAction(target)
         vm.markNotDuplicate(target)
         advanceUntilIdle()
 
         val state = vm.uiState.value
         assertEquals("none", state.items.single().duplicateStatus)
+        assertEquals(PendingSheet.None, state.activeSheet)
         assertEquals("已保留这条账单", state.message)
     }
 
@@ -265,10 +267,12 @@ class PendingViewModelReviewActionsTest {
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
 
+        vm.openDuplicateAction(target)
         vm.reject(target)
         advanceUntilIdle()
 
         assertTrue(vm.uiState.value.items.isEmpty())
+        assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
         assertEquals("已删除", vm.uiState.value.message)
     }
 

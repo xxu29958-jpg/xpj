@@ -240,6 +240,7 @@ class PendingViewModel(
                             items = state.items.filterNot { it.id == rejected.id },
                             thumbnails = state.thumbnails - rejected.id,
                             actionInProgressIds = state.actionInProgressIds - rejected.id,
+                            activeSheet = PendingSheet.None,
                             message = "已删除",
                         )
                     }
@@ -265,7 +266,9 @@ class PendingViewModel(
                     _uiState.update { state ->
                         state.copy(
                             items = state.items.map { if (it.id == updated.id) updated else it },
-                            actionInProgressIds = state.actionInProgressIds - updated.id,                            message = "已保留这条账单",
+                            actionInProgressIds = state.actionInProgressIds - updated.id,
+                            activeSheet = PendingSheet.None,
+                            message = "已保留这条账单",
                         )
                     }
                 }

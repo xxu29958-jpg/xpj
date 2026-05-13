@@ -37,6 +37,7 @@ android {
         targetSdk = 36
         versionCode = ticketboxVersionCode
         versionName = ticketboxVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         resValue("string", "app_version_name", ticketboxVersionName)
         resValue("integer", "app_version_code", ticketboxVersionCode.toString())
@@ -152,4 +153,7 @@ dependencies {
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.coroutines.test)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
