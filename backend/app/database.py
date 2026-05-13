@@ -268,6 +268,7 @@ def migrate_sqlite_schema() -> None:
         "value_score": "INTEGER",
         "regret_score": "INTEGER",
         "ocr_draft_fields": "TEXT",
+        "draft_idempotency_key": "VARCHAR(128)",
         "image_deleted_at": "DATETIME",
         "thumbnail_deleted_at": "DATETIME",
     }
@@ -332,6 +333,12 @@ def migrate_sqlite_schema() -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_amount_merchant "
                 "ON expenses (tenant_id, status, amount_cents, merchant)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_expenses_tenant_draft_idempotency_key "
+                "ON expenses (tenant_id, draft_idempotency_key)"
             )
         )
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_image_hash ON expenses (tenant_id, image_hash)"))

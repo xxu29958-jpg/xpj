@@ -54,6 +54,7 @@ ERROR_MESSAGES = {
     "recurring_frequency_invalid": "固定支出周期暂不支持。",
     "recurring_status_invalid": "固定支出状态无效。",
     "recurring_item_archived": "固定支出已归档，不能继续修改。",
+    "notification_source_invalid": "通知来源暂不支持。",
 }
 
 

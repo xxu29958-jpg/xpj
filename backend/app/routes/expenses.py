@@ -9,6 +9,7 @@ from app.database import get_db
 from app.schemas import (
     CategoriesResponse,
     ExpenseManualCreateRequest,
+    NotificationDraftCreateRequest,
     ExpenseRecognizeTextRequest,
     ExpenseResponse,
     ExpenseUpdateRequest,
@@ -18,6 +19,7 @@ from app.schemas import (
 from app.services.expense_service import (
     confirm_expense,
     create_manual_expense,
+    create_notification_draft,
     ensure_thumbnail_file,
     get_expense,
     list_confirmed,
@@ -54,6 +56,15 @@ def post_manual_expense(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return create_manual_expense(db, payload, auth.tenant_id)
+
+
+@router.post("/notification-drafts", response_model=ExpenseResponse)
+def post_notification_draft(
+    payload: NotificationDraftCreateRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ExpenseResponse:
+    return create_notification_draft(db, payload, auth.tenant_id)
 
 
 @router.get("/confirmed", response_model=PaginatedExpensesResponse)

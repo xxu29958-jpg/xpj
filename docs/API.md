@@ -121,7 +121,8 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, smoke | gray/internal 导出 |
-| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
+| `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseManualCreateRequest` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_expenses.py` | gray/internal |
+| `/api/expenses/notification-drafts` | POST | `backend/app/routes/expenses.py` | 后续 Android 通知草稿入口 | `NotificationDraftCreateRequest` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_notification_drafts.py` | v0.6；结构化草稿，不上传通知原文 |
 | `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
 | `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
@@ -576,6 +577,37 @@ Authorization: Bearer <session_token>
 - `source` 固定为 `手动记账`。
 - `status` 固定为 `confirmed`。
 - 不保存图片路径，不暴露本机路径。
+
+### POST /api/expenses/notification-drafts
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+用于 v0.6 Android 通知监听后的结构化草稿创建。只允许上传解析后的结构化字段，不接受通知原文；创建结果固定为 `pending`，后续仍需用户确认入账。
+
+请求体：
+
+```json
+{
+  "source": "wechat",
+  "merchant": "星巴克",
+  "amount_cents": 2680,
+  "category": "餐饮",
+  "expense_time": "2026-05-13T10:05:00Z"
+}
+```
+
+规则：
+
+- `source` 仅支持 `wechat` / `alipay` / `bank_sms` / `bank_app` / `other`。
+- 请求体禁止 `raw_text` 等原文类字段；校验失败返回 `invalid_request`。
+- 后端按当前账本、来源、商家、金额、30 分钟时间窗口计算幂等键；重复请求返回同一条草稿，不重复生成 pending。
+- `viewer` 返回 `permission_denied`。
+- 不保存图片路径，不自动确认，不更新固定支出记录。
 
 ### GET /api/expenses/confirmed
 

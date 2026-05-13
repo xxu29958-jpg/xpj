@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -10,6 +12,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import (
     ExpenseManualCreateRequest,
+    NotificationDraftCreateRequest,
     ExpenseRecognizeTextRequest,
     ExpenseUpdateRequest,
 )
@@ -36,6 +39,14 @@ from app.services.time_service import ensure_utc, now_utc
 
 
 EDITABLE_STATUSES = {"pending", "confirmed"}
+NOTIFICATION_DRAFT_WINDOW_MINUTES = 30
+NOTIFICATION_DRAFT_SOURCE_LABELS = {
+    "wechat": "微信",
+    "alipay": "支付宝",
+    "bank_sms": "银行短信",
+    "bank_app": "银行 App",
+    "other": "其他通知",
+}
 
 
 def _clean_optional_text(value: str | None) -> str | None:
@@ -53,6 +64,56 @@ def _clean_text(value: str | None) -> str:
 
 def _clean_category(value: str | None) -> str:
     return normalize_category(value)
+
+
+def _clean_notification_source(value: str) -> str:
+    cleaned = value.strip().lower().replace("-", "_")
+    if cleaned not in NOTIFICATION_DRAFT_SOURCE_LABELS:
+        raise AppError("notification_source_invalid", status_code=422)
+    return cleaned
+
+
+def _notification_window_key(expense_time, *, fallback_now) -> str:
+    when = ensure_utc(expense_time or fallback_now)
+    minute = (when.minute // NOTIFICATION_DRAFT_WINDOW_MINUTES) * NOTIFICATION_DRAFT_WINDOW_MINUTES
+    bucket = when.replace(minute=minute, second=0, microsecond=0)
+    return bucket.isoformat()
+
+
+def _notification_draft_key(
+    *,
+    source: str,
+    merchant: str | None,
+    amount_cents: int | None,
+    expense_time,
+    now,
+) -> str:
+    merchant_key = _clean_optional_text(merchant) or ""
+    material = "|".join(
+        [
+            "notification",
+            source,
+            merchant_key.casefold(),
+            str(amount_cents) if amount_cents is not None else "",
+            _notification_window_key(expense_time, fallback_now=now),
+        ]
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str | None:
+    fields: set[str] = set()
+    if payload.amount_cents is not None:
+        fields.add("amount_cents")
+    if _clean_optional_text(payload.merchant):
+        fields.add("merchant")
+    if payload.expense_time is not None:
+        fields.add("expense_time")
+    if _clean_optional_text(payload.category):
+        fields.add("category")
+    if not fields:
+        return None
+    return json.dumps(sorted(fields), ensure_ascii=False)
 
 
 def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | None:
@@ -196,6 +257,60 @@ def create_manual_expense(
     db.add(expense)
     db.flush()
     mark_duplicate_status(db, expense)
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def create_notification_draft(
+    db: Session,
+    payload: NotificationDraftCreateRequest,
+    tenant_id: str,
+) -> Expense:
+    now = now_utc()
+    source = _clean_notification_source(payload.source)
+    idempotency_key = _notification_draft_key(
+        source=source,
+        merchant=payload.merchant,
+        amount_cents=payload.amount_cents,
+        expense_time=payload.expense_time,
+        now=now,
+    )
+    existing = db.scalar(
+        ledger_scoped_select(Expense, tenant_id).where(
+            Expense.draft_idempotency_key == idempotency_key
+        )
+    )
+    if existing is not None:
+        return existing
+
+    source_label = NOTIFICATION_DRAFT_SOURCE_LABELS[source]
+    expense = Expense(
+        tenant_id=tenant_id,
+        amount_cents=payload.amount_cents,
+        merchant=_clean_optional_text(payload.merchant),
+        category=_clean_category(payload.category),
+        note="",
+        source=f"通知草稿:{source_label}",
+        image_path=None,
+        thumbnail_path=None,
+        image_hash=None,
+        raw_text="",
+        confidence=None,
+        ocr_draft_fields=_notification_draft_fields(payload),
+        draft_idempotency_key=idempotency_key,
+        status="pending",
+        expense_time=ensure_utc(payload.expense_time) if payload.expense_time else None,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(expense)
+    db.flush()
+    if expense.category == "其他":
+        classify_expense(db, expense)
+    if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
+        mark_duplicate_status(db, expense)
+    expense.updated_at = now_utc()
     db.commit()
     db.refresh(expense)
     return expense

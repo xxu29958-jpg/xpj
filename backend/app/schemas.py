@@ -279,6 +279,16 @@ class ExpenseManualCreateRequest(BaseModel):
     regret_score: int | None = Field(default=None, ge=1, le=5)
 
 
+class NotificationDraftCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(min_length=1, max_length=32)
+    amount_cents: int | None = Field(default=None, ge=0)
+    merchant: str | None = Field(default=None, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
+    expense_time: datetime | None = None
+
+
 class ExpenseUpdateRequest(BaseModel):
     amount_cents: int | None = Field(default=None, ge=0)
     merchant: str | None = None
