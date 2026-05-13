@@ -26,9 +26,11 @@ from app.services.classify_service import (
     apply_rules_to_pending,
     create_rule,
     delete_rule,
+    list_rule_applications,
     list_rules,
     preview_apply_rules_to_pending,
     preview_rule_for_pending,
+    rollback_rule_application,
     update_rule,
 )
 
@@ -49,6 +51,7 @@ def web_rules(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
     rules = list_rules(db, selected_id)
+    rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=8)
     preview = None
     preview_error = None
     if preview_keyword.strip():
@@ -78,6 +81,7 @@ def web_rules(
         )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["rules"] = rules
+    ctx["rule_applications"] = rule_applications
     ctx["preview"] = preview
     ctx["preview_error"] = preview_error
     ctx["bulk_preview"] = bulk_preview
@@ -112,6 +116,31 @@ def web_rules_create(
         msg = f"已新增规则：{keyword.strip()} → {category.strip()}"
     except AppError as exc:
         msg = "新增失败：" + (exc.message or "请检查关键词与分类。")
+    return RedirectResponse(
+        url=_with_ledger("/web/rules", selected_id, msg=msg),
+        status_code=303,
+    )
+
+
+@router.post("/rules/applications/{public_id}/rollback", response_class=HTMLResponse)
+def web_rules_application_rollback(
+    public_id: str,
+    ledger_id: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
+    try:
+        _batch, changed, skipped = rollback_rule_application(
+            db,
+            tenant_id=selected_id,
+            public_id=public_id,
+        )
+        msg = f"已回滚规则应用：恢复 {changed} 条，跳过 {skipped} 条。"
+    except AppError as exc:
+        msg = "回滚失败：" + (exc.message or "规则应用批次不存在。")
     return RedirectResponse(
         url=_with_ledger("/web/rules", selected_id, msg=msg),
         status_code=303,

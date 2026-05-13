@@ -148,6 +148,58 @@
 
 <section class="card">
   <div class="card-header">
+    <h2>规则应用记录</h2>
+    <span class="meta">最近 {{ rule_applications|length }} 次</span>
+  </div>
+  <p class="meta">只记录真实改写的批次。回滚只会恢复仍停留在当时目标分类的账单，手动改过的会跳过。</p>
+  {% if rule_applications %}
+  <table class="transaction-table compact">
+    <thead>
+      <tr>
+        <th>批次</th>
+        <th style="width:90px">状态</th>
+        <th style="width:90px">改写</th>
+        <th style="width:90px">扫描</th>
+        <th style="width:150px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for batch in rule_applications %}
+      <tr>
+        <td><code>{{ batch.public_id[:8] }}</code></td>
+        <td>
+          {% if batch.status == 'rolled_back' %}<span class="status-chip muted">已回滚</span>
+          {% else %}<span class="status-chip ok">已应用</span>{% endif %}
+        </td>
+        <td>{{ batch.changed_count }}</td>
+        <td>{{ batch.pending_scanned }}</td>
+        <td>
+          {% if can_write and batch.status != 'rolled_back' %}
+          <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" style="display:inline"
+                onsubmit="return confirm('回滚这次规则应用？只会恢复未被手动改过的账单。');">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button type="submit" class="btn btn-danger">回滚</button>
+          </form>
+          {% elif not can_write %}
+          <span class="readonly-inline">只读</span>
+          {% else %}
+          <span class="readonly-inline">无需操作</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">还没有规则应用记录</div>
+    <div class="empty-state-hint">通过上方预览并确认应用后，这里会出现可回滚的批次。</div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-header">
     <h2>当前规则（{{ rules|length }} 条）</h2>
     <span class="meta">批量应用入口已移到上方预览区。</span>
   </div>

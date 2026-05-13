@@ -12,6 +12,8 @@ from app.schemas import (
     CategoryRuleCreateRequest,
     CategoryRuleResponse,
     CategoryRuleUpdateRequest,
+    RuleApplyConfirmedRequest,
+    RuleApplyConfirmedResponse,
     RuleApplyPendingResponse,
     RuleApplicationListResponse,
     RuleApplicationRollbackResponse,
@@ -24,16 +26,19 @@ from app.schemas import (
     StatusResponse,
 )
 from app.services.classify_service import (
+    apply_rules_to_confirmed,
     apply_rules_to_pending,
     create_rule,
     delete_rule,
     list_rule_applications,
     list_rules,
+    preview_apply_rules_to_confirmed,
     preview_apply_rules_to_pending,
     preview_rule_for_pending,
     rollback_rule_application,
     update_rule,
 )
+from app.services.permission_service import require_write_expense
 from app.tenants import AuthContext
 
 
@@ -195,4 +200,43 @@ def post_rule_apply_pending_preview(
         no_match_count=result["no_match_count"],
         unchanged_count=result["unchanged_count"],
         conflict_count=result["conflict_count"],
+    )
+
+
+@router.post("/apply-confirmed", response_model=RuleApplyConfirmedResponse)
+def post_rule_apply_confirmed(
+    payload: RuleApplyConfirmedRequest | None = None,
+    limit: int = Query(default=20, ge=1, le=50),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RuleApplyConfirmedResponse:
+    confirmed = bool(payload and payload.confirm)
+    if not confirmed:
+        result = preview_apply_rules_to_confirmed(
+            db,
+            tenant_id=auth.tenant_id,
+            limit=limit,
+        )
+        return RuleApplyConfirmedResponse(
+            dry_run=True,
+            confirmed_scanned=result["confirmed_scanned"],
+            changed_count=result["changed_count"],
+            items=[RuleApplyPendingPreviewItem(**item) for item in result["items"]],
+            skipped_non_default_category=result["skipped_non_default_category"],
+            no_match_count=result["no_match_count"],
+            unchanged_count=result["unchanged_count"],
+            conflict_count=result["conflict_count"],
+        )
+
+    require_write_expense(auth)
+    confirmed_scanned, changed_count = apply_rules_to_confirmed(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
+    )
+    return RuleApplyConfirmedResponse(
+        dry_run=False,
+        confirmed_scanned=confirmed_scanned,
+        changed_count=changed_count,
     )

@@ -263,10 +263,39 @@ def preview_apply_rules_to_pending(
     tenant_id: str,
     limit: int = 20,
 ) -> dict:
-    pending = list(
+    return _preview_apply_rules_to_status(
+        db,
+        tenant_id=tenant_id,
+        status="pending",
+        limit=limit,
+    )
+
+
+def preview_apply_rules_to_confirmed(
+    db: Session,
+    *,
+    tenant_id: str,
+    limit: int = 20,
+) -> dict:
+    return _preview_apply_rules_to_status(
+        db,
+        tenant_id=tenant_id,
+        status="confirmed",
+        limit=limit,
+    )
+
+
+def _preview_apply_rules_to_status(
+    db: Session,
+    *,
+    tenant_id: str,
+    status: str,
+    limit: int,
+) -> dict:
+    expenses = list(
         db.scalars(
             ledger_scoped_select(Expense, tenant_id)
-            .where(Expense.status == "pending")
+            .where(Expense.status == status)
             .order_by(Expense.created_at.desc(), Expense.id.desc())
         )
     )
@@ -285,7 +314,7 @@ def preview_apply_rules_to_pending(
     no_match_count = 0
     unchanged_count = 0
     items: list[dict] = []
-    for expense in pending:
+    for expense in expenses:
         current_category = normalize_category(expense.category or "其他")
         if not _is_auto_fillable_category(expense.category):
             skipped_non_default_category += 1
@@ -313,7 +342,9 @@ def preview_apply_rules_to_pending(
         )
 
     return {
-        "pending_scanned": len(pending),
+        "scanned": len(expenses),
+        "pending_scanned": len(expenses),
+        "confirmed_scanned": len(expenses),
         "changed_count": changed_count,
         "items": items,
         "skipped_non_default_category": skipped_non_default_category,
@@ -398,6 +429,81 @@ def apply_rules_to_pending(
             )
         db.commit()
     return len(pending), len(changes)
+
+
+def apply_rules_to_confirmed(
+    db: Session,
+    *,
+    tenant_id: str,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
+) -> tuple[int, int]:
+    """Apply category rules to confirmed historical rows for this tenant.
+
+    This is intentionally separate from pending application because confirmed
+    rows are historical data. It only touches confirmed expenses whose category
+    is still auto-fillable (其他 / 未分类 / 空), and callers must require an
+    explicit confirmation before invoking this mutating service.
+    """
+    confirmed = list(
+        db.scalars(
+            ledger_scoped_select(Expense, tenant_id)
+            .where(Expense.status == "confirmed")
+        )
+    )
+    rules = list(
+        db.scalars(
+            ledger_scoped_select(CategoryRule, tenant_id)
+            .where(CategoryRule.enabled == True)  # noqa: E712
+            .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
+        )
+    )
+    if not rules:
+        return len(confirmed), 0
+
+    alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
+    changes: list[tuple[Expense, CategoryRule, str, str]] = []
+    now = now_utc()
+    for expense in confirmed:
+        if not _is_auto_fillable_category(expense.category):
+            continue
+        match = _matching_rule_category(expense, rules, alias_map)
+        if match is None:
+            continue
+        rule, new_category = match
+        before_category = normalize_category(expense.category)
+        if new_category != before_category:
+            expense.category = new_category
+            expense.updated_at = now
+            changes.append((expense, rule, before_category, new_category))
+    if changes:
+        batch = RuleApplicationBatch(
+            tenant_id=tenant_id,
+            status="applied_confirmed",
+            pending_scanned=len(confirmed),
+            changed_count=len(changes),
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
+            created_at=now,
+        )
+        db.add(batch)
+        db.flush()
+        for expense, rule, before_category, after_category in changes:
+            db.add(
+                RuleApplicationChange(
+                    tenant_id=tenant_id,
+                    batch_id=batch.id,
+                    expense_id=expense.id,
+                    rule_id=rule.id,
+                    matched_keyword=rule.keyword,
+                    before_category=before_category,
+                    after_category=after_category,
+                    status="applied",
+                    created_at=now,
+                )
+            )
+        db.commit()
+    return len(confirmed), len(changes)
 
 
 def list_rule_applications(

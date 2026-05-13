@@ -468,7 +468,7 @@ def test_web_rules_preview_does_not_mutate(web_client: TestClient) -> None:
     assert "其他" in detail.text
 
 
-def test_web_rules_apply_pending_requires_preview_then_applies(
+def test_web_rules_apply_pending_audit_and_rollback_integration(
     web_client: TestClient,
 ) -> None:
     expense_id = _seed_pending_with_amount(web_client, "9.00", "Starbucks 上海")
@@ -507,6 +507,23 @@ def test_web_rules_apply_pending_requires_preview_then_applies(
     assert applied.status_code in {303, 307}
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "餐饮" in detail.text
+
+    page = web_client.get("/web/rules?ledger_id=owner")
+    assert page.status_code == 200
+    assert "规则应用记录" in page.text
+    assert "已应用" in page.text
+    assert "回滚" in page.text
+    batch_match = re.search(r"/web/rules/applications/([^/]+)/rollback", page.text)
+    assert batch_match, page.text[:1000]
+
+    rolled_back = web_client.post(
+        f"/web/rules/applications/{batch_match.group(1)}/rollback",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert rolled_back.status_code in {303, 307}
+    restored = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "其他" in restored.text
 
 
 # ----- v0.7 /web/merchants page -------------------------------------------

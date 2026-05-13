@@ -491,6 +491,10 @@ class RuleApplyPendingResponse(BaseModel):
     changed_count: int
 
 
+class RuleApplyConfirmedRequest(BaseModel):
+    confirm: bool = False
+
+
 class RuleApplicationBatchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -538,6 +542,17 @@ class RuleApplyPendingPreviewResponse(BaseModel):
     skipped_non_default_category: int
     no_match_count: int
     unchanged_count: int
+    conflict_count: int = 0
+
+
+class RuleApplyConfirmedResponse(BaseModel):
+    dry_run: bool
+    confirmed_scanned: int
+    changed_count: int
+    items: list[RuleApplyPendingPreviewItem] = Field(default_factory=list)
+    skipped_non_default_category: int = 0
+    no_match_count: int = 0
+    unchanged_count: int = 0
     conflict_count: int = 0
 
 
