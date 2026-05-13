@@ -179,6 +179,28 @@ def test_recurring_items_are_ledger_isolated(client: TestClient) -> None:
     assert gray_detail.json()["error"] == "recurring_item_not_found"
 
 
+def test_recurring_items_mark_current_month_amount_anomaly(client: TestClient) -> None:
+    item = _confirm_candidate(client)
+    expensive_monthly_charge = datetime(2026, 5, 13, 12, 0, tzinfo=UTC)
+    insert_confirmed_expense(
+        amount_cents=28000,
+        merchant="ChatGPT Plus",
+        category="AI订阅",
+        expense_time=expensive_monthly_charge,
+        confirmed_at=expensive_monthly_charge,
+    )
+
+    listed = client.get("/api/recurring/items?month=2026-05&timezone=UTC", headers=app_headers())
+    assert listed.status_code == 200, listed.json()
+    current = listed.json()["items"][0]
+    assert current["public_id"] == item["public_id"]
+    assert current["anomaly_status"] == "higher_than_average"
+    assert current["current_month_amount_cents"] == 28000
+    assert current["historical_average_amount_cents"] == 20000
+    assert current["amount_delta_percent"] == 40
+    assert current["last_amount_cents"] == 20000
+
+
 def test_recurring_status_filter_and_invalid_candidate_errors(client: TestClient) -> None:
     now = now_utc()
     with SessionLocal() as db:

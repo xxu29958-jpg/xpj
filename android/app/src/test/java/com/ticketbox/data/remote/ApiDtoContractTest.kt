@@ -202,6 +202,10 @@ class ApiDtoContractTest {
                       "status": "active",
                       "confidence": "high",
                       "source": "candidate",
+                      "anomaly_status": "higher_than_average",
+                      "current_month_amount_cents": 28000,
+                      "historical_average_amount_cents": 20000,
+                      "amount_delta_percent": 40,
                       "created_at": "2026-05-13T00:00:00Z",
                       "updated_at": "2026-05-13T00:00:00Z",
                       "paused_at": null,
@@ -220,5 +224,8 @@ class ApiDtoContractTest {
         assertEquals(20000L, item.baselineAmountCents)
         assertEquals("2026-06-05", item.nextExpectedDate)
         assertEquals("active", item.status)
+        assertEquals("higher_than_average", item.anomalyStatus)
+        assertEquals(28000L, item.currentMonthAmountCents)
+        assertEquals(40, item.amountDeltaPercent)
     }
 }

@@ -480,6 +480,10 @@ class RecurringItemResponse(BaseModel):
     status: str
     confidence: str | None = None
     source: str
+    anomaly_status: str = "none"
+    current_month_amount_cents: int | None = None
+    historical_average_amount_cents: int | None = None
+    amount_delta_percent: int | None = None
     created_at: datetime
     updated_at: datetime
     paused_at: datetime | None = None

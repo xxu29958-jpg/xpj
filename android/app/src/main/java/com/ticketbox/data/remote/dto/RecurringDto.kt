@@ -38,6 +38,14 @@ data class RecurringItemDto(
     val status: String,
     val confidence: String?,
     val source: String,
+    @param:Json(name = "anomaly_status")
+    val anomalyStatus: String = "none",
+    @param:Json(name = "current_month_amount_cents")
+    val currentMonthAmountCents: Long? = null,
+    @param:Json(name = "historical_average_amount_cents")
+    val historicalAverageAmountCents: Long? = null,
+    @param:Json(name = "amount_delta_percent")
+    val amountDeltaPercent: Int? = null,
     @param:Json(name = "created_at")
     val createdAt: String,
     @param:Json(name = "updated_at")

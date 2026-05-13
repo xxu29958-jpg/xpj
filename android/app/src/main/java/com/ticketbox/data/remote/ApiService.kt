@@ -158,6 +158,8 @@ interface ApiService {
     suspend fun recurringItems(
         @Query("status") status: String? = null,
         @Query("include_archived") includeArchived: Boolean = false,
+        @Query("month") month: String? = null,
+        @Query("timezone") timezone: String? = null,
     ): RecurringItemListResponseDto
 
     @POST("api/recurring/from-candidate")
@@ -167,7 +169,11 @@ interface ApiService {
     ): RecurringItemDto
 
     @GET("api/recurring/items/{publicId}")
-    suspend fun recurringItem(@Path("publicId") publicId: String): RecurringItemDto
+    suspend fun recurringItem(
+        @Path("publicId") publicId: String,
+        @Query("month") month: String? = null,
+        @Query("timezone") timezone: String? = null,
+    ): RecurringItemDto
 
     @POST("api/recurring/items/{publicId}/pause")
     suspend fun pauseRecurringItem(@Path("publicId") publicId: String): RecurringItemDto

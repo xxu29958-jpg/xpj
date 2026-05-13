@@ -1,20 +1,30 @@
 from __future__ import annotations
 
 from calendar import monthrange
+from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import RecurringItem
+from app.models import Expense, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.insights_service import normalize_merchant, recurring_candidates
-from app.services.time_service import ensure_utc, now_utc
+from app.services.time_service import current_month, ensure_utc, local_month_bounds_utc, now_utc
 
 
 VALID_FREQUENCIES = {"monthly"}
 VALID_STATUSES = {"active", "paused", "archived"}
+ANOMALY_THRESHOLD_PERCENT = 30
+
+
+@dataclass(frozen=True)
+class RecurringAmountAnomaly:
+    anomaly_status: str = "none"
+    current_month_amount_cents: int | None = None
+    historical_average_amount_cents: int | None = None
+    amount_delta_percent: int | None = None
 
 
 def _clean_frequency(value: str | None) -> str:
@@ -77,7 +87,11 @@ def _existing_item(
     )
 
 
-def recurring_item_response(item: RecurringItem) -> RecurringItemResponse:
+def recurring_item_response(
+    item: RecurringItem,
+    anomaly: RecurringAmountAnomaly | None = None,
+) -> RecurringItemResponse:
+    amount_anomaly = anomaly or RecurringAmountAnomaly()
     return RecurringItemResponse(
         public_id=item.public_id,
         ledger_id=item.tenant_id,
@@ -92,11 +106,86 @@ def recurring_item_response(item: RecurringItem) -> RecurringItemResponse:
         status=item.status,
         confidence=item.confidence,
         source=item.source,
+        anomaly_status=amount_anomaly.anomaly_status,
+        current_month_amount_cents=amount_anomaly.current_month_amount_cents,
+        historical_average_amount_cents=amount_anomaly.historical_average_amount_cents,
+        amount_delta_percent=amount_anomaly.amount_delta_percent,
         created_at=item.created_at,
         updated_at=item.updated_at,
         paused_at=item.paused_at,
         archived_at=item.archived_at,
     )
+
+
+def recurring_amount_anomalies(
+    db: Session,
+    *,
+    tenant_id: str,
+    items: list[RecurringItem],
+    month: str | None = None,
+    timezone_name: str | None = None,
+    threshold_percent: int = ANOMALY_THRESHOLD_PERCENT,
+) -> dict[str, RecurringAmountAnomaly]:
+    active_items = [item for item in items if item.status == "active"]
+    merchant_keys = {item.merchant_key for item in active_items}
+    merchant_names = {item.merchant_name for item in active_items}
+    if not merchant_keys:
+        return {}
+
+    bounds = local_month_bounds_utc(month or current_month(timezone_name), timezone_name)
+    if bounds is None:
+        return {}
+    start_utc, end_utc = bounds
+
+    history_amounts: dict[str, list[int]] = {key: [] for key in merchant_keys}
+    current_entries: dict[str, list[tuple[datetime, int]]] = {key: [] for key in merchant_keys}
+    expenses = db.scalars(
+        select(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status == "confirmed")
+        .where(Expense.merchant.is_not(None))
+        .where(Expense.amount_cents.is_not(None))
+        .where(
+            or_(
+                Expense.merchant.in_(merchant_names),
+                func.lower(func.trim(Expense.merchant)).in_(merchant_keys),
+            )
+        )
+    )
+    for expense in expenses:
+        key = normalize_merchant(expense.merchant)
+        if key not in merchant_keys:
+            continue
+        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        if when is None:
+            continue
+        amount = int(expense.amount_cents or 0)
+        if amount <= 0:
+            continue
+        if start_utc <= when < end_utc:
+            current_entries[key].append((when, amount))
+        elif when < start_utc:
+            history_amounts[key].append(amount)
+
+    anomalies: dict[str, RecurringAmountAnomaly] = {}
+    for item in active_items:
+        current = current_entries.get(item.merchant_key) or []
+        if not current:
+            continue
+        latest_amount = sorted(current, key=lambda pair: pair[0])[-1][1]
+        history = history_amounts.get(item.merchant_key) or []
+        average_amount = int(round(sum(history) / len(history))) if history else int(item.baseline_amount_cents)
+        if average_amount <= 0:
+            continue
+        delta_percent = int(round((latest_amount - average_amount) * 100 / average_amount))
+        status = "higher_than_average" if delta_percent >= threshold_percent else "none"
+        anomalies[item.public_id] = RecurringAmountAnomaly(
+            anomaly_status=status,
+            current_month_amount_cents=latest_amount,
+            historical_average_amount_cents=average_amount,
+            amount_delta_percent=delta_percent,
+        )
+    return anomalies
 
 
 def confirm_recurring_candidate(

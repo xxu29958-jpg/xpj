@@ -91,17 +91,27 @@ class RecurringRepository(
         }
     }
 
-    suspend fun items(status: String? = null, includeArchived: Boolean = false): Result<List<RecurringItem>> =
+    suspend fun items(
+        status: String? = null,
+        includeArchived: Boolean = false,
+        month: String? = null,
+    ): Result<List<RecurringItem>> =
         safeCall {
             api().recurringItems(
                 status = status?.trim()?.ifBlank { null },
                 includeArchived = includeArchived,
+                month = month?.trim()?.ifBlank { null },
+                timezone = currentTimezoneId(),
             ).items.map { it.toDomain() }
         }
 
-    suspend fun detail(publicId: String): Result<RecurringItem> = safeCall {
+    suspend fun detail(publicId: String, month: String? = null): Result<RecurringItem> = safeCall {
         require(publicId.isNotBlank()) { "固定支出不存在。" }
-        api().recurringItem(publicId.trim()).toDomain()
+        api().recurringItem(
+            publicId = publicId.trim(),
+            month = month?.trim()?.ifBlank { null },
+            timezone = currentTimezoneId(),
+        ).toDomain()
     }
 
     suspend fun confirmCandidate(

@@ -363,12 +363,17 @@ private class FakeApiService(
 
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
-    override suspend fun recurringItems(status: String?, includeArchived: Boolean): RecurringItemListResponseDto = unsupported()
+    override suspend fun recurringItems(
+        status: String?,
+        includeArchived: Boolean,
+        month: String?,
+        timezone: String?,
+    ): RecurringItemListResponseDto = unsupported()
     override suspend fun confirmRecurringCandidate(
         request: RecurringCandidateConfirmRequestDto,
         timezone: String?,
     ): RecurringItemDto = unsupported()
-    override suspend fun recurringItem(publicId: String): RecurringItemDto = unsupported()
+    override suspend fun recurringItem(publicId: String, month: String?, timezone: String?): RecurringItemDto = unsupported()
     override suspend fun pauseRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun resumeRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = unsupported()

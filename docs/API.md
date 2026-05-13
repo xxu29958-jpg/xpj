@@ -139,9 +139,9 @@ Authorization: Bearer <admin_token>
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, Android domain tests | gray/internal |
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
-| `/api/recurring/items` | GET | `backend/app/routes/recurring.py` | `recurringItems(status,includeArchived)` | query `status/include_archived` | `RecurringItemListResponseDto` | Session Token | `backend/tests/test_recurring_items.py`, `ApiDtoContractTest` | v0.6 固定支出列表 |
+| `/api/recurring/items` | GET | `backend/app/routes/recurring.py` | `recurringItems(status,includeArchived,month,timezone)` | query `status/include_archived/month/timezone` | `RecurringItemListResponseDto` | Session Token | `backend/tests/test_recurring_items.py`, `ApiDtoContractTest` | v0.6 固定支出列表 |
 | `/api/recurring/from-candidate` | POST | `backend/app/routes/recurring.py` | `confirmRecurringCandidate(request,timezone)` | `RecurringCandidateConfirmRequest`；query `timezone` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 候选确认成固定支出 |
-| `/api/recurring/items/{public_id}` | GET | `backend/app/routes/recurring.py` | `recurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token | `backend/tests/test_recurring_items.py` | 固定支出详情 |
+| `/api/recurring/items/{public_id}` | GET | `backend/app/routes/recurring.py` | `recurringItem(publicId,month,timezone)` | path `public_id`；query `month/timezone` | `RecurringItemDto` | Session Token | `backend/tests/test_recurring_items.py` | 固定支出详情 |
 | `/api/recurring/items/{public_id}/pause` | POST | `backend/app/routes/recurring.py` | `pauseRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 暂停固定支出 |
 | `/api/recurring/items/{public_id}/resume` | POST | `backend/app/routes/recurring.py` | `resumeRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 恢复固定支出 |
 | `/api/recurring/items/{public_id}/archive` | POST | `backend/app/routes/recurring.py` | `archiveRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 归档固定支出 |
@@ -1016,6 +1016,8 @@ Authorization: Bearer <session_token>
 ```text
 status=active|paused|archived，可选
 include_archived=true|false，默认 false
+month=YYYY-MM，可选，用于异常金额检测；未传时按当前月
+timezone=Asia/Shanghai，可选
 ```
 
 返回：
@@ -1037,6 +1039,10 @@ include_archived=true|false，默认 false
       "status": "active",
       "confidence": "high",
       "source": "candidate",
+      "anomaly_status": "none",
+      "current_month_amount_cents": 20000,
+      "historical_average_amount_cents": 20000,
+      "amount_delta_percent": 0,
       "created_at": "2026-05-13T00:00:00Z",
       "updated_at": "2026-05-13T00:00:00Z",
       "paused_at": null,
@@ -1063,6 +1069,8 @@ include_archived=true|false，默认 false
 ```
 
 同一账本、商家归一名和频率重复确认时返回既有记录，不重复创建。
+
+异常金额检测只在读取 recurring items 时计算，不更新账单、不更新固定支出记录，也不自动生成 pending。当前口径：指定月份内该商家最新一笔金额比历史均值高 30% 或以上时，`anomaly_status = "higher_than_average"`。
 
 ### GET /api/recurring/items/{public_id}
 

@@ -22,6 +22,10 @@ class RecurringMappersTest {
             status = "active",
             confidence = "high",
             source = "candidate",
+            anomalyStatus = "higher_than_average",
+            currentMonthAmountCents = 28000,
+            historicalAverageAmountCents = 20000,
+            amountDeltaPercent = 40,
             createdAt = "2026-05-13T00:00:00Z",
             updatedAt = "2026-05-13T00:00:00Z",
             pausedAt = null,
@@ -34,6 +38,9 @@ class RecurringMappersTest {
         assertEquals(20000L, item.baselineAmountCents)
         assertEquals("2026-06-05", item.nextExpectedDate)
         assertEquals("active", item.status)
+        assertEquals("higher_than_average", item.anomalyStatus)
+        assertEquals(28000L, item.currentMonthAmountCents)
+        assertEquals(40, item.amountDeltaPercent)
     }
 
     @Test

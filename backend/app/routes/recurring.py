@@ -16,6 +16,7 @@ from app.services.recurring_service import (
     get_recurring_item,
     list_recurring_items,
     pause_recurring_item,
+    recurring_amount_anomalies,
     recurring_item_response,
     resume_recurring_item,
 )
@@ -32,6 +33,8 @@ router = APIRouter(
 def get_recurring_items(
     status: str | None = None,
     include_archived: bool = False,
+    month: str | None = None,
+    timezone: str | None = Query(default=None),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemListResponse:
@@ -41,7 +44,16 @@ def get_recurring_items(
         status=status,
         include_archived=include_archived,
     )
-    return RecurringItemListResponse(items=[recurring_item_response(item) for item in items])
+    anomalies = recurring_amount_anomalies(
+        db,
+        tenant_id=auth.tenant_id,
+        items=items,
+        month=month,
+        timezone_name=timezone,
+    )
+    return RecurringItemListResponse(
+        items=[recurring_item_response(item, anomalies.get(item.public_id)) for item in items]
+    )
 
 
 @router.post("/from-candidate", response_model=RecurringItemResponse)
@@ -63,10 +75,20 @@ def post_recurring_from_candidate(
 @router.get("/items/{public_id}", response_model=RecurringItemResponse)
 def get_recurring_item_detail(
     public_id: str,
+    month: str | None = None,
+    timezone: str | None = Query(default=None),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(get_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id))
+    item = get_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id)
+    anomalies = recurring_amount_anomalies(
+        db,
+        tenant_id=auth.tenant_id,
+        items=[item],
+        month=month,
+        timezone_name=timezone,
+    )
+    return recurring_item_response(item, anomalies.get(item.public_id))
 
 
 @router.post("/items/{public_id}/pause", response_model=RecurringItemResponse)
