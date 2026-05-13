@@ -1,15 +1,14 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.ui.test.TicketboxComposeTestActivity
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import org.junit.Assert.assertEquals
@@ -19,7 +18,7 @@ import org.junit.Test
 
 class ExpenseEditScreenContractTest {
     @get:Rule
-    val composeRule = createAndroidComposeRule<TicketboxComposeTestActivity>()
+    val composeRule = createComposeRule()
 
     @Test
     fun expenseTimeAndMoreSectionClicksStayStableAndSubmitDraft() {
@@ -53,8 +52,8 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("取消").performClick()
 
         composeRule.onNodeWithText("展开").performScrollTo().performClick()
-        composeRule.onNodeWithText("标签").assertIsDisplayed()
-        composeRule.onNodeWithText("qa").performTextReplacement("家庭")
+        composeRule.onNodeWithText("标签").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("qa").performScrollTo().performTextReplacement("家庭")
         composeRule.onNodeWithText("值不值评分，1-5").performScrollTo()
         composeRule.onNodeWithText("查看识别原文").performScrollTo().performClick()
         composeRule.onNodeWithText("重新识别").performScrollTo().performClick()
