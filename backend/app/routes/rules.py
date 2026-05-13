@@ -13,8 +13,11 @@ from app.schemas import (
     CategoryRuleResponse,
     CategoryRuleUpdateRequest,
     RuleApplyPendingResponse,
+    RuleApplicationListResponse,
+    RuleApplicationRollbackResponse,
     RuleApplyPendingPreviewItem,
     RuleApplyPendingPreviewResponse,
+    RuleApplicationBatchResponse,
     RulePreviewItem,
     RulePreviewRequest,
     RulePreviewResponse,
@@ -24,9 +27,11 @@ from app.services.classify_service import (
     apply_rules_to_pending,
     create_rule,
     delete_rule,
+    list_rule_applications,
     list_rules,
     preview_apply_rules_to_pending,
     preview_rule_for_pending,
+    rollback_rule_application,
     update_rule,
 )
 from app.tenants import AuthContext
@@ -124,10 +129,50 @@ def post_rule_apply_pending(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RuleApplyPendingResponse:
-    pending_scanned, changed_count = apply_rules_to_pending(db, tenant_id=auth.tenant_id)
+    pending_scanned, changed_count = apply_rules_to_pending(
+        db,
+        tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id,
+        actor_device_id=auth.device_id,
+    )
     return RuleApplyPendingResponse(
         pending_scanned=pending_scanned,
         changed_count=changed_count,
+    )
+
+
+@router.get("/applications", response_model=RuleApplicationListResponse)
+def get_rule_applications(
+    limit: int = Query(default=20, ge=1, le=100),
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> RuleApplicationListResponse:
+    batches = list_rule_applications(db, tenant_id=auth.tenant_id, limit=limit)
+    return RuleApplicationListResponse(
+        items=[RuleApplicationBatchResponse.model_validate(batch) for batch in batches]
+    )
+
+
+@router.post(
+    "/applications/{public_id}/rollback",
+    response_model=RuleApplicationRollbackResponse,
+)
+def post_rule_application_rollback(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> RuleApplicationRollbackResponse:
+    batch, changed, skipped = rollback_rule_application(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+    )
+    return RuleApplicationRollbackResponse(
+        public_id=batch.public_id,
+        status=batch.status,
+        changed=changed,
+        skipped=skipped,
+        rolled_back_at=batch.rolled_back_at,
     )
 
 

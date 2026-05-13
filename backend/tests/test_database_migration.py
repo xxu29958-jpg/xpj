@@ -128,6 +128,8 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "tags" in inspector.get_table_names()
     assert "expense_tags" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
+    assert "rule_application_batches" in inspector.get_table_names()
+    assert "rule_application_changes" in inspector.get_table_names()
     assert {
         "tenant_id",
         "public_id",
@@ -143,6 +145,10 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_expense_tags_tenant_expense" in _indexes("expense_tags")
     assert "ix_expense_tags_tenant_tag" in _indexes("expense_tags")
     assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
+    assert "ix_rule_application_batches_tenant_created_at" in _indexes("rule_application_batches")
+    assert "ix_rule_application_batches_tenant_status" in _indexes("rule_application_batches")
+    assert "ix_rule_application_changes_tenant_batch" in _indexes("rule_application_changes")
+    assert "ix_rule_application_changes_tenant_expense" in _indexes("rule_application_changes")
     merchant_alias_sql = _table_create_sql("merchant_aliases")
     assert "uq_merchant_aliases_tenant_alias_key" in merchant_alias_sql
     tags_sql = _table_create_sql("tags")

@@ -15,6 +15,8 @@ LEDGER_SCOPED_MODELS = {
     "ExpenseTag",
     "MerchantAlias",
     "RecurringItem",
+    "RuleApplicationBatch",
+    "RuleApplicationChange",
     "Tag",
 }
 SCOPE_COLUMNS = {"tenant_id", "ledger_id"}

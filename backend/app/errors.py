@@ -26,6 +26,7 @@ ERROR_MESSAGES = {
     "amount_required": "请先填写金额。",
     "image_not_found": "图片不存在或已被清理。",
     "rule_not_found": "分类规则不存在。",
+    "rule_application_not_found": "规则应用批次不存在。",
     "rule_in_use": "分类规则仍在使用，不能删除。",
     "admin_api_local_only": "管理接口仅允许本机访问。",
     "server_error": "服务器开小差了，请稍后再试。",

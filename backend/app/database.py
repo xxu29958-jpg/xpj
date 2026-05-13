@@ -104,7 +104,7 @@ def _needs_pre_v03_backup(db_path: Path) -> bool:
 
 
 def seed_identity_data() -> None:
-    from app.models import CategoryRule, DuplicateIgnore, Expense, ExpenseTag, MerchantAlias, Tag
+    from app.models import CategoryRule, DuplicateIgnore, Expense, ExpenseTag, MerchantAlias, RuleApplicationBatch, RuleApplicationChange, Tag
     from app.services.identity_service import ensure_identity_for_existing_ledger_ids, ensure_identity_seed
 
     with SessionLocal() as db:
@@ -122,6 +122,10 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(ExpenseTag.tenant_id).distinct()) if value)
         if inspect(engine).has_table("duplicate_ignores"):
             ids.update(str(value) for value in db.scalars(select(DuplicateIgnore.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("rule_application_batches"):
+            ids.update(str(value) for value in db.scalars(select(RuleApplicationBatch.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("rule_application_changes"):
+            ids.update(str(value) for value in db.scalars(select(RuleApplicationChange.tenant_id).distinct()) if value)
         if ids:
             ensure_identity_for_existing_ledger_ids(db, ids)
         db.commit()
@@ -368,6 +372,34 @@ def migrate_sqlite_schema() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_category_rules_tenant_priority_id "
                     "ON category_rules (tenant_id, priority, id)"
+                )
+            )
+
+        if "rule_application_batches" in table_names:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_rule_application_batches_tenant_created_at "
+                    "ON rule_application_batches (tenant_id, created_at)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_rule_application_batches_tenant_status "
+                    "ON rule_application_batches (tenant_id, status)"
+                )
+            )
+
+        if "rule_application_changes" in table_names:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_rule_application_changes_tenant_batch "
+                    "ON rule_application_changes (tenant_id, batch_id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_rule_application_changes_tenant_expense "
+                    "ON rule_application_changes (tenant_id, expense_id)"
                 )
             )
 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import CategoryRule, Expense
+from app.models import CategoryRule, Expense, RuleApplicationBatch, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
@@ -323,7 +323,13 @@ def preview_apply_rules_to_pending(
     }
 
 
-def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
+def apply_rules_to_pending(
+    db: Session,
+    *,
+    tenant_id: str,
+    actor_account_id: int | None = None,
+    actor_device_id: int | None = None,
+) -> tuple[int, int]:
     """Re-run rule classification on all pending expenses for this tenant.
 
     Only changes category when the current category is in
@@ -350,7 +356,7 @@ def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
         return len(pending), 0
 
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    changed = 0
+    changes: list[tuple[Expense, CategoryRule, str, str]] = []
     now = now_utc()
     for expense in pending:
         if not _is_auto_fillable_category(expense.category):
@@ -358,11 +364,103 @@ def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
         match = _matching_rule_category(expense, rules, alias_map)
         if match is None:
             continue
-        _, new_category = match
-        if new_category != normalize_category(expense.category):
+        rule, new_category = match
+        before_category = normalize_category(expense.category)
+        if new_category != before_category:
             expense.category = new_category
             expense.updated_at = now
-            changed += 1
-    if changed:
+            changes.append((expense, rule, before_category, new_category))
+    if changes:
+        batch = RuleApplicationBatch(
+            tenant_id=tenant_id,
+            status="applied",
+            pending_scanned=len(pending),
+            changed_count=len(changes),
+            actor_account_id=actor_account_id,
+            actor_device_id=actor_device_id,
+            created_at=now,
+        )
+        db.add(batch)
+        db.flush()
+        for expense, rule, before_category, after_category in changes:
+            db.add(
+                RuleApplicationChange(
+                    tenant_id=tenant_id,
+                    batch_id=batch.id,
+                    expense_id=expense.id,
+                    rule_id=rule.id,
+                    matched_keyword=rule.keyword,
+                    before_category=before_category,
+                    after_category=after_category,
+                    status="applied",
+                    created_at=now,
+                )
+            )
         db.commit()
-    return len(pending), changed
+    return len(pending), len(changes)
+
+
+def list_rule_applications(
+    db: Session,
+    *,
+    tenant_id: str,
+    limit: int = 20,
+) -> list[RuleApplicationBatch]:
+    capped = max(1, min(int(limit or 20), 100))
+    return list(
+        db.scalars(
+            ledger_scoped_select(RuleApplicationBatch, tenant_id)
+            .order_by(RuleApplicationBatch.created_at.desc(), RuleApplicationBatch.id.desc())
+            .limit(capped)
+        )
+    )
+
+
+def rollback_rule_application(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+) -> tuple[RuleApplicationBatch, int, int]:
+    batch = db.scalar(
+        ledger_scoped_select(RuleApplicationBatch, tenant_id).where(
+            RuleApplicationBatch.public_id == public_id
+        )
+    )
+    if batch is None:
+        raise AppError("rule_application_not_found", "规则应用批次不存在。", status_code=404)
+
+    changes = list(
+        db.scalars(
+            ledger_scoped_select(RuleApplicationChange, tenant_id)
+            .where(RuleApplicationChange.batch_id == batch.id)
+            .order_by(RuleApplicationChange.id.asc())
+        )
+    )
+    now = now_utc()
+    changed = 0
+    skipped = 0
+    for change in changes:
+        if change.status != "applied":
+            skipped += 1
+            continue
+        expense = db.scalar(
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id == change.expense_id)
+        )
+        if expense is None or normalize_category(expense.category) != change.after_category:
+            change.status = "skipped"
+            change.rolled_back_at = now
+            skipped += 1
+            continue
+        expense.category = change.before_category
+        expense.updated_at = now
+        change.status = "rolled_back"
+        change.rolled_back_at = now
+        changed += 1
+
+    if batch.status != "rolled_back":
+        batch.status = "rolled_back"
+        batch.rolled_back_at = now
+    db.commit()
+    db.refresh(batch)
+    return batch, changed, skipped

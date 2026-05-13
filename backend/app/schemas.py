@@ -491,6 +491,37 @@ class RuleApplyPendingResponse(BaseModel):
     changed_count: int
 
 
+class RuleApplicationBatchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: str
+    status: str
+    pending_scanned: int
+    changed_count: int
+    created_at: datetime
+    rolled_back_at: datetime | None = None
+
+    @field_serializer("created_at", "rolled_back_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class RuleApplicationListResponse(BaseModel):
+    items: list[RuleApplicationBatchResponse]
+
+
+class RuleApplicationRollbackResponse(BaseModel):
+    public_id: str
+    status: str
+    changed: int
+    skipped: int
+    rolled_back_at: datetime | None = None
+
+    @field_serializer("rolled_back_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
 class RuleApplyPendingPreviewItem(BaseModel):
     id: int
     merchant: str | None

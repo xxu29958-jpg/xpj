@@ -8,8 +8,8 @@ from sqlalchemy import select
 
 from api_contract_helpers import insert_confirmed_expense, upload_png
 from app.database import SessionLocal
-from app.models import Expense
-from conftest import app_headers
+from app.models import Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
+from conftest import app_headers, gray_app_headers
 
 
 # --- T17 Rules Preview ----------------------------------------------------
@@ -166,6 +166,207 @@ def test_rule_apply_pending_updates_category(client: TestClient) -> None:
     assert target is not None
     assert target["category"] == "餐饮"
     assert target["status"] == "pending"  # NOT auto-confirmed
+
+
+def test_rule_apply_pending_creates_application_batch_and_changes(
+    client: TestClient,
+) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "AuditCafe 上海")
+    created = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "AuditCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    assert created.status_code == 200
+    rule_id = created.json()["id"]
+
+    response = client.post("/api/rules/apply-pending", headers=app_headers())
+
+    assert response.status_code == 200
+    assert response.json()["changed_count"] == 1
+    with SessionLocal() as db:
+        batch = db.scalar(select(RuleApplicationBatch).where(RuleApplicationBatch.tenant_id == "owner"))
+        assert batch is not None
+        assert batch.public_id
+        assert batch.status == "applied"
+        assert batch.changed_count == 1
+        assert batch.actor_account_id is not None
+        assert batch.actor_device_id is not None
+        change = db.scalar(
+            select(RuleApplicationChange)
+            .where(RuleApplicationChange.tenant_id == "owner")
+            .where(RuleApplicationChange.batch_id == batch.id)
+        )
+        assert change is not None
+        assert change.expense_id == pending_id
+        assert change.rule_id == rule_id
+        assert change.matched_keyword == "AuditCafe"
+        assert change.before_category == "其他"
+        assert change.after_category == "餐饮"
+        assert change.status == "applied"
+
+    listed = client.get("/api/rules/applications", headers=app_headers())
+    assert listed.status_code == 200
+    item = listed.json()["items"][0]
+    assert item["public_id"] == batch.public_id
+    assert item["status"] == "applied"
+    assert item["changed_count"] == 1
+
+
+def test_rule_apply_pending_without_changes_creates_no_application_batch(
+    client: TestClient,
+) -> None:
+    upload_png(client)
+
+    response = client.post("/api/rules/apply-pending", headers=app_headers())
+
+    assert response.status_code == 200
+    assert response.json()["changed_count"] == 0
+    applications = client.get("/api/rules/applications", headers=app_headers())
+    assert applications.status_code == 200
+    assert applications.json()["items"] == []
+
+
+def test_rule_application_rollback_reverts_only_matching_after_category(
+    client: TestClient,
+) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "RollbackCafe")
+    client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "RollbackCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    applied = client.post("/api/rules/apply-pending", headers=app_headers())
+    assert applied.status_code == 200
+    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+
+    rollback = client.post(
+        f"/api/rules/applications/{batch_id}/rollback",
+        headers=app_headers(),
+    )
+
+    assert rollback.status_code == 200
+    assert rollback.json()["changed"] == 1
+    assert rollback.json()["skipped"] == 0
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        assert expense.category == "其他"
+        change = db.scalar(select(RuleApplicationChange).where(RuleApplicationChange.expense_id == pending_id))
+        assert change is not None
+        assert change.status == "rolled_back"
+        assert change.rolled_back_at is not None
+
+
+def test_rule_application_second_rollback_skips_already_handled_changes(
+    client: TestClient,
+) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "SecondRollbackCafe")
+    client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "SecondRollbackCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    client.post("/api/rules/apply-pending", headers=app_headers())
+    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+    first = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+    assert first.status_code == 200
+    assert first.json()["changed"] == 1
+
+    second = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+
+    assert second.status_code == 200
+    assert second.json()["changed"] == 0
+    assert second.json()["skipped"] == 1
+
+
+def test_rule_application_rollback_skips_manual_category_edits(
+    client: TestClient,
+) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "ManualEditCafe")
+    client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "ManualEditCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    client.post("/api/rules/apply-pending", headers=app_headers())
+    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+    manual = client.patch(
+        f"/api/expenses/{pending_id}",
+        headers=app_headers(),
+        json={"category": "交通"},
+    )
+    assert manual.status_code == 200
+
+    rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+
+    assert rollback.status_code == 200
+    assert rollback.json()["changed"] == 0
+    assert rollback.json()["skipped"] == 1
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        assert expense.category == "交通"
+        change = db.scalar(select(RuleApplicationChange).where(RuleApplicationChange.expense_id == pending_id))
+        assert change is not None
+        assert change.status == "skipped"
+
+
+def test_rule_applications_are_not_visible_or_rollbackable_cross_ledger(
+    client: TestClient,
+) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "PrivateRuleCafe")
+    client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "PrivateRuleCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    client.post("/api/rules/apply-pending", headers=app_headers())
+    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+
+    gray_list = client.get("/api/rules/applications", headers=gray_app_headers())
+    gray_rollback = client.post(
+        f"/api/rules/applications/{batch_id}/rollback",
+        headers=gray_app_headers(),
+    )
+
+    assert gray_list.status_code == 200
+    assert all(item["public_id"] != batch_id for item in gray_list.json()["items"])
+    assert gray_rollback.status_code == 404
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        assert expense.category == "餐饮"
+
+
+def test_viewer_cannot_rollback_rule_application(client: TestClient) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "ViewerRollbackCafe")
+    client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "ViewerRollbackCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    client.post("/api/rules/apply-pending", headers=app_headers())
+    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+    with SessionLocal() as db:
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
+        assert member is not None
+        member.role = "viewer"
+        db.commit()
+
+    response = client.post(
+        f"/api/rules/applications/{batch_id}/rollback",
+        headers=app_headers(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "permission_denied"
 
 
 def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient) -> None:
