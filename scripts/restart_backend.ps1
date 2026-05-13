@@ -25,8 +25,8 @@ if (-not (Test-Path -LiteralPath $StartScript)) {
 }
 
 Write-Host "停止后端 (port $Port)..."
-$stopArgs = @("-Port", $Port)
-if ($Force) { $stopArgs += "-Force" }
+$stopArgs = @{ Port = $Port }
+if ($Force) { $stopArgs["Force"] = $true }
 & $StopScript @stopArgs
 
 Start-Sleep -Seconds 1
