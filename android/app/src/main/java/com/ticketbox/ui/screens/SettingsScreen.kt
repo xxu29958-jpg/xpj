@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.appearance.background.BackgroundImageStore
 import com.ticketbox.ui.screens.settings.AboutScreen
@@ -30,6 +31,7 @@ import com.ticketbox.ui.screens.settings.DataExportScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
+import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
@@ -46,6 +48,7 @@ fun SettingsScreen(
     onSync: () -> Unit,
     onClearCache: () -> Unit,
     onSaveMonthlyBudget: (Long?) -> Unit,
+    onSaveNotificationPreferences: (NotificationPreferences) -> Unit,
     onCreateRule: (String, String, Int) -> Unit,
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
     onToggleRule: (CategoryRule) -> Unit,
@@ -109,6 +112,7 @@ fun SettingsScreen(
             onOpenAppearance = { route = SettingsRoute.Appearance },
             onOpenCategoryRules = { route = SettingsRoute.CategoryRules },
             onOpenDataExport = { route = SettingsRoute.DataExport },
+            onOpenNotifications = { route = SettingsRoute.NotificationPreferences },
             onOpenSecurity = { route = SettingsRoute.SecurityPrivacy },
             onOpenLedgers = { route = SettingsRoute.Ledgers },
             onOpenFamilyMembers = { route = SettingsRoute.FamilyMembers },
@@ -206,6 +210,12 @@ fun SettingsScreen(
             onSync = onSync,
             onClearCache = onClearCache,
             onSaveMonthlyBudget = onSaveMonthlyBudget,
+        )
+
+        SettingsRoute.NotificationPreferences -> NotificationPreferencesScreen(
+            preferences = state.notificationPreferences,
+            onBack = { route = SettingsRoute.Root },
+            onSave = onSaveNotificationPreferences,
         )
 
         SettingsRoute.SecurityPrivacy -> SecurityPrivacyScreen(

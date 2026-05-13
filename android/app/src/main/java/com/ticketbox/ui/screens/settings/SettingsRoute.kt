@@ -16,6 +16,7 @@ sealed class SettingsRoute {
     ) : SettingsRoute()
     data object CategoryRules : SettingsRoute()
     data object DataExport : SettingsRoute()
+    data object NotificationPreferences : SettingsRoute()
     data object SecurityPrivacy : SettingsRoute()
     data object Ledgers : SettingsRoute()
     data object FamilyMembers : SettingsRoute()

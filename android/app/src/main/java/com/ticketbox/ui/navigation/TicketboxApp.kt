@@ -409,6 +409,7 @@ private fun MainShell(
                         onSync = settingsViewModel::sync,
                         onClearCache = settingsViewModel::clearLocalCache,
                         onSaveMonthlyBudget = settingsViewModel::saveMonthlyBudget,
+                        onSaveNotificationPreferences = settingsViewModel::saveNotificationPreferences,
                         onCreateRule = settingsViewModel::createCategoryRule,
                         onUpdateRule = settingsViewModel::updateCategoryRule,
                         onToggleRule = settingsViewModel::toggleCategoryRule,

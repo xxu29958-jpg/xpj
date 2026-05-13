@@ -9,6 +9,7 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ data class SettingsUiState(
     val role: String? = null,
     val boundAt: String? = null,
     val monthlyBudgetCents: Long? = null,
+    val notificationPreferences: NotificationPreferences = NotificationPreferences(),
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
@@ -76,6 +78,7 @@ class SettingsViewModel(
             role = localRole,
             boundAt = settingsStore.boundAt(),
             monthlyBudgetCents = settingsStore.monthlyBudgetCents(),
+            notificationPreferences = settingsStore.notificationPreferences(),
             serverSettings = serverSettings?.copy(
                 accountName = localAccountName ?: serverSettings.accountName,
                 ledgerName = localLedgerName ?: serverSettings.ledgerName,
@@ -218,6 +221,16 @@ class SettingsViewModel(
                 } else {
                     "月预算已保存"
                 },
+            )
+        }
+    }
+
+    fun saveNotificationPreferences(preferences: NotificationPreferences) {
+        settingsStore.saveNotificationPreferences(preferences)
+        _uiState.update {
+            it.copy(
+                notificationPreferences = preferences,
+                message = "通知偏好已保存",
             )
         }
     }

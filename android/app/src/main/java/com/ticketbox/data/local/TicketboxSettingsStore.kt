@@ -3,6 +3,7 @@ package com.ticketbox.data.local
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.NotificationPreferences
 import kotlinx.coroutines.flow.Flow
 
 interface TicketboxSettingsStore {
@@ -15,6 +16,12 @@ interface TicketboxSettingsStore {
     fun monthlyBudgetCents(): Long?
 
     fun saveMonthlyBudgetCents(amountCents: Long?)
+
+    fun notificationPreferences(): NotificationPreferences = NotificationPreferences()
+
+    fun saveNotificationPreferences(preferences: NotificationPreferences) {
+        unsupportedSettingsWrite()
+    }
 
     suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
         unsupportedSettingsWrite()

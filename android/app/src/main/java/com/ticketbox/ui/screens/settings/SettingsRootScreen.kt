@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.RestartAlt
@@ -112,6 +113,7 @@ fun SettingsRootScreen(
     onOpenAppearance: () -> Unit,
     onOpenCategoryRules: () -> Unit,
     onOpenDataExport: () -> Unit,
+    onOpenNotifications: () -> Unit,
     onOpenSecurity: () -> Unit,
     onOpenLedgers: () -> Unit = {},
     onOpenFamilyMembers: () -> Unit = {},
@@ -161,6 +163,12 @@ fun SettingsRootScreen(
             subtitle = "月度预算、本地缓存、表格导出说明",
             icon = Icons.Filled.FileDownload,
             onClick = onOpenDataExport,
+        )
+        SettingsEntryRow(
+            title = "通知与提醒",
+            subtitle = "待确认、大额和固定支出提醒开关",
+            icon = Icons.Filled.Notifications,
+            onClick = onOpenNotifications,
         )
         SettingsEntryRow(
             title = "安全与隐私",

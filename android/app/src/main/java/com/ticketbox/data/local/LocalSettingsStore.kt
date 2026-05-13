@@ -6,6 +6,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.domain.model.NotificationPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -42,6 +43,21 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             } else {
                 putLong(KEY_MONTHLY_BUDGET_CENTS, amountCents)
             }
+        }
+    }
+
+    override fun notificationPreferences(): NotificationPreferences =
+        NotificationPreferences(
+            pendingDraftReminders = prefs.getBoolean(KEY_NOTIFY_PENDING_DRAFTS, false),
+            largeAmountAlerts = prefs.getBoolean(KEY_NOTIFY_LARGE_AMOUNT, false),
+            recurringReminders = prefs.getBoolean(KEY_NOTIFY_RECURRING, false),
+        )
+
+    override fun saveNotificationPreferences(preferences: NotificationPreferences) {
+        prefs.edit {
+            putBoolean(KEY_NOTIFY_PENDING_DRAFTS, preferences.pendingDraftReminders)
+            putBoolean(KEY_NOTIFY_LARGE_AMOUNT, preferences.largeAmountAlerts)
+            putBoolean(KEY_NOTIFY_RECURRING, preferences.recurringReminders)
         }
     }
 
@@ -210,6 +226,9 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_BOUND_AT = "bound_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
         const val KEY_LAST_UPLOAD_AT = "last_upload_at"
+        const val KEY_NOTIFY_PENDING_DRAFTS = "notify_pending_drafts"
+        const val KEY_NOTIFY_LARGE_AMOUNT = "notify_large_amount"
+        const val KEY_NOTIFY_RECURRING = "notify_recurring"
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
         const val NO_BUDGET = -1L
