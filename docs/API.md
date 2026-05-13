@@ -152,6 +152,8 @@ Authorization: Bearer <admin_token>
 | `/api/recurring/items/{public_id}/pause` | POST | `backend/app/routes/recurring.py` | `pauseRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 暂停固定支出 |
 | `/api/recurring/items/{public_id}/resume` | POST | `backend/app/routes/recurring.py` | `resumeRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 恢复固定支出 |
 | `/api/recurring/items/{public_id}/archive` | POST | `backend/app/routes/recurring.py` | `archiveRecurringItem(publicId)` | path `public_id` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 归档固定支出 |
+| `/api/budgets/monthly` | GET | `backend/app/routes/budgets.py` | 后续 Android/Web 接入 | query `month/timezone` | `BudgetMonthlyResponse` | Session Token | `backend/tests/test_budgets.py` | v0.8 月度预算 Dashboard；viewer 可读 |
+| `/api/budgets/monthly/{month}` | PUT | `backend/app/routes/budgets.py` | 后续 Android/Web 接入 | `BudgetMonthlyUpdateRequest`；query `timezone` | `BudgetMonthlyResponse` | Session Token，owner/member 写权限 | `backend/tests/test_budgets.py` | v0.8 月度预算配置；预算只提示不阻断记账 |
 | `/api/maintenance/cleanup-images` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
 | `/api/maintenance/cleanup-rejected` | POST | `backend/app/routes/maintenance.py` | 无 | 无 | `MaintenanceCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
 | `/api/maintenance/cleanup-orphans` | POST | `backend/app/routes/maintenance.py` | 无 | query `dry_run` | `MaintenanceOrphanCleanupResponse` | Admin Token | `backend/tests/test_maintenance.py`, smoke | admin |
@@ -1108,6 +1110,99 @@ timezone=Asia/Shanghai
   ]
 }
 ```
+
+## 预算
+
+> v0.8 起提供服务端账本预算基线。预算只生成提示和 Dashboard 数据，不阻断上传、手动记账、确认或规则应用。
+
+### GET /api/budgets/monthly
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+查询参数：
+
+```text
+month=2026-05
+timezone=Asia/Shanghai
+```
+
+返回：
+
+```json
+{
+  "ledger_id": "owner",
+  "month": "2026-05",
+  "configured": true,
+  "total_amount_cents": 100000,
+  "rollover_amount_cents": 5000,
+  "fixed_amount_cents": 6800,
+  "non_monthly_amount_cents": 15000,
+  "flex_budget_cents": 83200,
+  "spent_amount_cents": 15500,
+  "excluded_amount_cents": 9900,
+  "remaining_amount_cents": 89500,
+  "overspent_amount_cents": 0,
+  "excluded_categories": ["医疗"],
+  "excluded_breakdown": [
+    {
+      "category": "医疗",
+      "amount_cents": 9900,
+      "count": 1
+    }
+  ],
+  "category_budgets": [
+    {
+      "category": "餐饮",
+      "amount_cents": 10000,
+      "spent_amount_cents": 12000,
+      "remaining_amount_cents": -2000,
+      "overspent_amount_cents": 2000
+    }
+  ],
+  "updated_at": "2026-05-14T08:00:00Z"
+}
+```
+
+口径：
+
+- `fixed_amount_cents` 来自当前账本 active/monthly 固定支出的 `baseline_amount_cents`。
+- `spent_amount_cents` 只统计当前账本、指定月份、confirmed 账单，时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
+- `excluded_categories` 对应分类的 confirmed 金额进入 `excluded_amount_cents` / `excluded_breakdown`，不计入顶层 `spent_amount_cents`。
+- `remaining_amount_cents = total_amount_cents + rollover_amount_cents - spent_amount_cents`。
+- `flex_budget_cents = max(total_amount_cents + rollover_amount_cents - fixed_amount_cents - non_monthly_amount_cents, 0)`。
+
+### PUT /api/budgets/monthly/{month}
+
+仅 `owner` / `member` 可调用；`viewer` 返回 `permission_denied`。同一账本同一月份重复调用会更新既有记录，并以本次请求的 `category_budgets` 替换该月分类预算。
+
+```json
+{
+  "total_amount_cents": 100000,
+  "non_monthly_amount_cents": 15000,
+  "rollover_amount_cents": 5000,
+  "excluded_categories": ["医疗"],
+  "category_budgets": [
+    {
+      "category": "餐饮",
+      "amount_cents": 10000
+    },
+    {
+      "category": "交通",
+      "amount_cents": 5000
+    }
+  ]
+}
+```
+
+校验：
+
+- `month` 必须是 `YYYY-MM` 且月份有效。
+- 金额字段使用分，`total_amount_cents`、`non_monthly_amount_cents`、分类预算金额不能为负；`rollover_amount_cents` 允许为负，用于表达上月超支带入。
+- 分类会按现有分类归一规则处理；归一后重复的分类预算返回 `invalid_request`。
 
 ## 固定支出
 

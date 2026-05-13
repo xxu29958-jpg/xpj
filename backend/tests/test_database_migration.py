@@ -132,6 +132,8 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "tags" in inspector.get_table_names()
     assert "expense_tags" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
+    assert "budgets" in inspector.get_table_names()
+    assert "budget_categories" in inspector.get_table_names()
     assert "rule_application_batches" in inspector.get_table_names()
     assert "rule_application_changes" in inspector.get_table_names()
     assert {
@@ -149,6 +151,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_expense_tags_tenant_expense" in _indexes("expense_tags")
     assert "ix_expense_tags_tenant_tag" in _indexes("expense_tags")
     assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
+    assert "ix_budgets_tenant_month" in _indexes("budgets")
+    assert "ix_budget_categories_tenant_month" in _indexes("budget_categories")
+    assert "ix_budget_categories_tenant_category" in _indexes("budget_categories")
     assert "ix_rule_application_batches_tenant_created_at" in _indexes("rule_application_batches")
     assert "ix_rule_application_batches_tenant_status" in _indexes("rule_application_batches")
     assert "ix_rule_application_changes_tenant_batch" in _indexes("rule_application_changes")
@@ -169,6 +174,12 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     recurring_sql = _table_create_sql("recurring_items")
     assert "ck_recurring_items_frequency_valid" in recurring_sql
     assert "ck_recurring_items_status_valid" in recurring_sql
+    budget_sql = _table_create_sql("budgets")
+    assert "ck_budgets_total_non_negative" in budget_sql
+    assert "uq_budgets_tenant_month" in budget_sql
+    budget_categories_sql = _table_create_sql("budget_categories")
+    assert "ck_budget_categories_amount_non_negative" in budget_categories_sql
+    assert "uq_budget_categories_tenant_month_category" in budget_categories_sql
     with engine.begin() as connection:
         owner_rules = connection.execute(
             text("SELECT COUNT(*) FROM category_rules WHERE tenant_id = 'owner'")

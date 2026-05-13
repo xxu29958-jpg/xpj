@@ -1,7 +1,7 @@
 import java.util.Properties
 
-val ticketboxVersionCode = 70000
-val ticketboxVersionName = "0.7.0a1"
+val ticketboxVersionCode = 80000
+val ticketboxVersionName = "0.8.0a1"
 val ticketboxRequireLocalUnlock = false
 
 // Server URL precedence:

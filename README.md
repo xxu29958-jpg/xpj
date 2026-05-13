@@ -1,12 +1,12 @@
 # 小票夹
 
-**当前版本：v0.5.0a1**（阶段：**Household 权限与家庭协作 hardening**；基线 = v0.4-alpha3 RC + v0.4-beta1 家庭账本基础）
+**当前版本：v0.8.0a1**（阶段：**Budget / 月度可花后端基线**；基线 = v0.7 Rules / Tags / Merchant 治理）
 
-> 🚩 **v0.5.0a1 当前验证**：后端全量 `pytest` 340 passed，Android `testGrayDebugUnitTest` / `assembleGrayDebug` / `assembleInternalDebug` / `assembleGrayRelease` / `assembleInternalRelease` / `lintGrayDebug` 通过，真机安装显示 `versionName=0.5.0a1`、`versionCode=50000`。详见 [V0_5_HOUSEHOLD_MODEL.md](docs/V0_5_HOUSEHOLD_MODEL.md)。
+> 🚩 **v0.8.0a1 当前进度**：后端已加入服务端账本预算模型、月度预算 Dashboard API、viewer 写保护和代表性集成测试。Android 预算页、`/web` Budget/Dashboard 和 `/owner` 状态卡仍是后续 v0.8 收口项。
 
-下一里程碑：把 v0.5 hardening 打成可提交 RC：提交前完成 release 构建/签名面检查、必要真机走查和版本报告。
+下一里程碑：把 v0.8 后端预算 API 接入 Android / `/web` / `/owner`，再做截图基线、真机走查和版本报告。
 
-小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
+小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 开始服务端预算和月度可花。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 
 ```text
 iPhone UploadLink 或 Android 上传截图
@@ -54,9 +54,9 @@ docs/      架构、API、安全、部署和后续规划文档
 
 当前已经实现：
 
-- `backend/`：FastAPI、SQLite、SQLAlchemy、账号/账本/设备身份表、Pairing Code、UploadLink、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、服务器状态、可插拔 OCR 入口、图片清理维护接口，以及家庭成员审计 / owner 转让 / viewer 写保护。
+- `backend/`：FastAPI、SQLite、SQLAlchemy、账号/账本/设备身份表、Pairing Code、UploadLink、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、服务器状态、可插拔 OCR 入口、图片清理维护接口，以及家庭成员审计 / owner 转让 / viewer 写保护。
 - `android/`：灰度用户版和内部联调版、Pairing Code 绑定、Keystore session token、身份卡、指纹解锁、待确认、Android 上传截图、编辑、账本、手动记一笔、统计、设置、Room confirmed 缓存恢复、受保护图片预览、重复保留、OCR retry、CSV 导出、分类规则管理、家庭成员查看、邀请预览和只读 UX。
-- `docs/`：v0.3 身份切换、v0.5 Household 模型、架构、API、安全、工程规范、第二版路线和关键决策。
+- `docs/`：v0.3 身份切换、v0.5 Household 模型、v0.8 预算路线、架构、API、安全、工程规范、第二版路线和关键决策。
 
 ## 后端启动
 

@@ -9,6 +9,8 @@ APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 SCAN_ROOTS = (APP_ROOT / "routes", APP_ROOT / "services")
 
 LEDGER_SCOPED_MODELS = {
+    "Budget",
+    "BudgetCategory",
     "CategoryRule",
     "DuplicateIgnore",
     "Expense",
@@ -42,18 +44,7 @@ class QuerySite:
     snippet: str
 
 
-EXEMPTIONS = (
-    ScopeExemption(
-        path="services/owner_console_service.py",
-        function="get_index_vm",
-        model="Expense",
-        occurrences=2,
-        reason=(
-            "Owner Console index is loopback-only and intentionally shows "
-            "global pending/confirmed counters before a ledger is selected."
-        ),
-    ),
-)
+EXEMPTIONS: tuple[ScopeExemption, ...] = ()
 
 
 def test_ledger_scoped_orm_queries_are_explicitly_filtered() -> None:

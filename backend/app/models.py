@@ -262,6 +262,54 @@ Index("ix_recurring_items_tenant_status_next", RecurringItem.tenant_id, Recurrin
 Index("ix_recurring_items_tenant_merchant", RecurringItem.tenant_id, RecurringItem.merchant_key)
 
 
+class Budget(Base):
+    __tablename__ = "budgets"
+    __table_args__ = (
+        CheckConstraint("total_amount_cents >= 0", name="ck_budgets_total_non_negative"),
+        CheckConstraint("non_monthly_amount_cents >= 0", name="ck_budgets_non_monthly_non_negative"),
+        CheckConstraint("length(month) = 7", name="ck_budgets_month_format"),
+        UniqueConstraint("tenant_id", "month", name="uq_budgets_tenant_month"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    total_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    non_monthly_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rollover_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    excluded_categories: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+class BudgetCategory(Base):
+    __tablename__ = "budget_categories"
+    __table_args__ = (
+        CheckConstraint("amount_cents >= 0", name="ck_budget_categories_amount_non_negative"),
+        CheckConstraint("length(month) = 7", name="ck_budget_categories_month_format"),
+        UniqueConstraint("tenant_id", "month", "category", name="uq_budget_categories_tenant_month_category"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_budgets_tenant_month", Budget.tenant_id, Budget.month)
+Index("ix_budget_categories_tenant_month", BudgetCategory.tenant_id, BudgetCategory.month)
+Index("ix_budget_categories_tenant_category", BudgetCategory.tenant_id, BudgetCategory.category)
+
+
 class CategoryRule(Base):
     __tablename__ = "category_rules"
 
