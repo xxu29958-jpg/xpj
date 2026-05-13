@@ -182,6 +182,29 @@ def _is_under_path(candidate: Path, root: Path) -> bool:
     return True
 
 
+def _is_legacy_unscoped_upload(candidate: Path, upload_dir: Path) -> bool:
+    """Allow pre-v0.3 paths shaped as uploads/YYYY/MM/file.
+
+    New uploads are ledger-scoped under uploads/<ledger_id>/YYYY/MM. Legacy
+    rows without a ledger prefix must remain readable, but a row for one ledger
+    must not be able to point at another ledger's scoped directory.
+    """
+    try:
+        parts = candidate.relative_to(upload_dir).parts
+    except ValueError:
+        return False
+    if len(parts) < 3:
+        return False
+    year, month = parts[0], parts[1]
+    return (
+        len(year) == 4
+        and year.isdigit()
+        and len(month) == 2
+        and month.isdigit()
+        and 1 <= int(month) <= 12
+    )
+
+
 def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[Path, str]:
     """Resolve a relative image path that the caller has already authorized.
 
@@ -214,6 +237,12 @@ def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[
     settings = get_settings()
     candidate = (BACKEND_ROOT / raw).resolve()
     if not _is_under_path(candidate, settings.upload_dir):
+        raise AppError("image_not_found", status_code=404)
+
+    tenant_dir = _tenant_upload_dir(tenant_id)
+    if not _is_under_path(candidate, tenant_dir) and not _is_legacy_unscoped_upload(
+        candidate, settings.upload_dir
+    ):
         raise AppError("image_not_found", status_code=404)
 
     if not candidate.is_file():

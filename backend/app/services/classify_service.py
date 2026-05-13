@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule, Expense
 from app.services.category_service import normalize_category
 from app.services.time_service import now_utc
@@ -75,8 +76,7 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
         return expense
 
     rules = db.scalars(
-        select(CategoryRule)
-        .where(CategoryRule.tenant_id == expense.tenant_id)
+        ledger_scoped_select(CategoryRule, expense.tenant_id)
         .where(CategoryRule.enabled == True)  # noqa: E712
         .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
     )
@@ -90,8 +90,7 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
 def list_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
     return list(
         db.scalars(
-            select(CategoryRule)
-            .where(CategoryRule.tenant_id == tenant_id)
+            ledger_scoped_select(CategoryRule, tenant_id)
             .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
         )
     )
@@ -203,8 +202,7 @@ def preview_rule_for_pending(
     suggested = normalize_category(target_category) if target_category else None
 
     pending = db.scalars(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
+        ledger_scoped_select(Expense, tenant_id)
         .where(Expense.status == "pending")
         .order_by(Expense.created_at.desc(), Expense.id.desc())
     )
@@ -242,15 +240,13 @@ def apply_rules_to_pending(db: Session, *, tenant_id: str) -> tuple[int, int]:
     """
     pending = list(
         db.scalars(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
+            ledger_scoped_select(Expense, tenant_id)
             .where(Expense.status == "pending")
         )
     )
     rules = list(
         db.scalars(
-            select(CategoryRule)
-            .where(CategoryRule.tenant_id == tenant_id)
+            ledger_scoped_select(CategoryRule, tenant_id)
             .where(CategoryRule.enabled == True)  # noqa: E712
             .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
         )

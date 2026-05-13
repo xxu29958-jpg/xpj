@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
 from app.models import CategoryRule
 from app.schemas import (
     CategoryRuleCreateRequest,
@@ -66,7 +66,11 @@ def patch_category_rule(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
-    rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == auth.tenant_id))
+    rule = db.scalar(
+        ledger_scoped_select(CategoryRule, auth.tenant_id).where(
+            CategoryRule.id == rule_id
+        )
+    )
     if rule is None:
         raise AppError("rule_not_found", status_code=404)
     return update_rule(db, rule, **payload.model_dump(exclude_unset=True))
@@ -78,7 +82,11 @@ def delete_category_rule(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
-    rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id).where(CategoryRule.tenant_id == auth.tenant_id))
+    rule = db.scalar(
+        ledger_scoped_select(CategoryRule, auth.tenant_id).where(
+            CategoryRule.id == rule_id
+        )
+    )
     if rule is None:
         raise AppError("rule_not_found", status_code=404)
     delete_rule(db, rule)

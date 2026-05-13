@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import (
     ExpenseManualCreateRequest,
@@ -132,9 +133,7 @@ def enrich_pending_expense(
 
     with SessionLocal() as db:
         expense = db.scalar(
-            select(Expense)
-            .where(Expense.id == expense_id)
-            .where(Expense.tenant_id == tenant_id)
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
         )
         if expense is None or expense.status != "pending":
             return
@@ -204,9 +203,7 @@ def create_manual_expense(
 
 def get_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     expense = db.scalar(
-        select(Expense)
-        .where(Expense.id == expense_id)
-        .where(Expense.tenant_id == tenant_id)
+        ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
     )
     if expense is None:
         raise AppError("expense_not_found", status_code=404)
@@ -216,8 +213,7 @@ def get_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
 def list_pending(db: Session, tenant_id: str) -> list[Expense]:
     return list(
         db.scalars(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
+            ledger_scoped_select(Expense, tenant_id)
             .where(Expense.status == "pending")
             .order_by(Expense.created_at.desc(), Expense.id.desc())
         )

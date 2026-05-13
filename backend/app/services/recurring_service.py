@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.insights_service import normalize_merchant, recurring_candidates
@@ -79,8 +80,7 @@ def _existing_item(
     frequency: str,
 ) -> RecurringItem | None:
     return db.scalar(
-        select(RecurringItem)
-        .where(RecurringItem.tenant_id == tenant_id)
+        ledger_scoped_select(RecurringItem, tenant_id)
         .where(RecurringItem.merchant_key == merchant_key)
         .where(RecurringItem.frequency == frequency)
         .limit(1)
@@ -253,7 +253,7 @@ def list_recurring_items(
     status: str | None = None,
     include_archived: bool = False,
 ) -> list[RecurringItem]:
-    statement = select(RecurringItem).where(RecurringItem.tenant_id == tenant_id)
+    statement = ledger_scoped_select(RecurringItem, tenant_id)
     if status:
         statement = statement.where(RecurringItem.status == _clean_status(status))
     elif not include_archived:
@@ -268,8 +268,7 @@ def list_recurring_items(
 
 def get_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
     item = db.scalar(
-        select(RecurringItem)
-        .where(RecurringItem.tenant_id == tenant_id)
+        ledger_scoped_select(RecurringItem, tenant_id)
         .where(RecurringItem.public_id == public_id)
         .limit(1)
     )

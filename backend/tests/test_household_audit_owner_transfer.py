@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models import Ledger, LedgerAuditLog, LedgerMember
+from app.models import AuthToken, Ledger, LedgerAuditLog, LedgerMember
+from app.services.identity_service import hash_secret
 from conftest import admin_headers, app_headers
 
 
@@ -60,6 +61,11 @@ def _member_id_for_role(client: TestClient, ledger_id: str, token: str, role: st
     resp = client.get(f"/api/ledgers/{ledger_id}/members", headers=_bearer(token))
     assert resp.status_code == 200, resp.json()
     return int(next(row for row in resp.json()["members"] if row["role"] == role)["member_id"])
+
+
+def _assert_permission_denied(response, *, label: str) -> None:
+    assert response.status_code == 403, label
+    assert response.json()["error"] == "permission_denied", label
 
 
 def _active_owner_count(ledger_id: str) -> int:
@@ -172,6 +178,14 @@ def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: Te
     )
     assert new_owner_allowed.status_code == 201, new_owner_allowed.json()
 
+    new_owner_role_change = client.post(
+        f"/api/ledgers/{ledger_id}/members/{body['previous_owner']['member_id']}/role",
+        headers=_bearer(member_token),
+        json={"role": "viewer"},
+    )
+    assert new_owner_role_change.status_code == 200, new_owner_role_change.json()
+    assert new_owner_role_change.json()["role"] == "viewer"
+
     with SessionLocal() as db:
         ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id))
         target = db.scalar(select(LedgerMember).where(LedgerMember.id == member_id))
@@ -184,6 +198,170 @@ def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: Te
     assert len(transfer_rows) == 1
     assert transfer_rows[0]["previous_role"] == "member"
     assert transfer_rows[0]["new_role"] == "owner"
+
+
+def test_member_and_viewer_cannot_call_owner_member_management(client: TestClient) -> None:
+    ledger_id = _create_family_ledger(client)
+    owner_token = _switch_to(client, ledger_id, app_headers())
+
+    member_token = _accept_invitation(
+        client,
+        _mint_invitation(client, ledger_id, owner_token, role="member"),
+        account_name="成员",
+        device_name="Member-Phone",
+    )
+    viewer_token = _accept_invitation(
+        client,
+        _mint_invitation(client, ledger_id, owner_token, role="viewer"),
+        account_name="只读",
+        device_name="Viewer-Phone",
+    )
+    member_id = _member_id_for_role(client, ledger_id, owner_token, "member")
+    viewer_id = _member_id_for_role(client, ledger_id, owner_token, "viewer")
+
+    for label, token in [("member", member_token), ("viewer", viewer_token)]:
+        # Listing members is read access, but management actions remain owner-only.
+        listing = client.get(f"/api/ledgers/{ledger_id}/members", headers=_bearer(token))
+        assert listing.status_code == 200, listing.json()
+
+        _assert_permission_denied(
+            client.post(
+                f"/api/ledgers/{ledger_id}/members/{member_id}/transfer-owner",
+                headers=_bearer(token),
+            ),
+            label=f"{label} transfer owner",
+        )
+        _assert_permission_denied(
+            client.post(
+                f"/api/ledgers/{ledger_id}/members/{viewer_id}/role",
+                headers=_bearer(token),
+                json={"role": "member"},
+            ),
+            label=f"{label} role change",
+        )
+        _assert_permission_denied(
+            client.post(
+                f"/api/ledgers/{ledger_id}/members/{viewer_id}/disable",
+                headers=_bearer(token),
+            ),
+            label=f"{label} disable member",
+        )
+        _assert_permission_denied(
+            client.post(
+                f"/api/ledgers/{ledger_id}/invitations",
+                headers=_bearer(token),
+                json={"role": "member"},
+            ),
+            label=f"{label} create invitation",
+        )
+        _assert_permission_denied(
+            client.get(f"/api/ledgers/{ledger_id}/audit", headers=_bearer(token)),
+            label=f"{label} audit list",
+        )
+
+    assert _active_owner_count(ledger_id) == 1
+
+
+def test_auth_token_role_is_resolved_from_current_ledger_member(client: TestClient) -> None:
+    ledger_id = _create_family_ledger(client)
+    owner_token = _switch_to(client, ledger_id, app_headers())
+    member_token = _accept_invitation(
+        client,
+        _mint_invitation(client, ledger_id, owner_token, role="member"),
+        account_name="角色缓存验证",
+    )
+
+    with SessionLocal() as db:
+        token_row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(member_token)))
+        assert token_row is not None
+        assert not hasattr(token_row, "role")
+        member = db.scalar(
+            select(LedgerMember)
+            .where(LedgerMember.ledger_id == ledger_id)
+            .where(LedgerMember.account_id == token_row.account_id)
+        )
+        assert member is not None
+        member.role = "viewer"
+        db.commit()
+
+    check_viewer = client.get("/api/auth/check", headers=_bearer(member_token))
+    assert check_viewer.status_code == 200
+    assert check_viewer.json()["role"] == "viewer"
+
+    with SessionLocal() as db:
+        token_row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(member_token)))
+        assert token_row is not None
+        member = db.scalar(
+            select(LedgerMember)
+            .where(LedgerMember.ledger_id == ledger_id)
+            .where(LedgerMember.account_id == token_row.account_id)
+        )
+        assert member is not None
+        member.role = "member"
+        db.commit()
+
+    check_member = client.get("/api/auth/check", headers=_bearer(member_token))
+    assert check_member.status_code == 200
+    assert check_member.json()["role"] == "member"
+
+
+def test_role_downgrade_makes_existing_token_read_only_immediately(client: TestClient) -> None:
+    ledger_id = _create_family_ledger(client)
+    owner_token = _switch_to(client, ledger_id, app_headers())
+    member_token = _accept_invitation(
+        client,
+        _mint_invitation(client, ledger_id, owner_token, role="member"),
+        account_name="降级成员",
+    )
+    member_id = _member_id_for_role(client, ledger_id, owner_token, "member")
+
+    write_before = client.post(
+        "/api/expenses/manual",
+        headers=_bearer(member_token),
+        json={
+            "amount_cents": 1280,
+            "merchant": "降级前可写",
+            "category": "生活",
+            "note": "",
+            "expense_time": None,
+        },
+    )
+    assert write_before.status_code == 200, write_before.json()
+
+    changed = client.post(
+        f"/api/ledgers/{ledger_id}/members/{member_id}/role",
+        headers=_bearer(owner_token),
+        json={"role": "viewer"},
+    )
+    assert changed.status_code == 200, changed.json()
+
+    check = client.get("/api/auth/check", headers=_bearer(member_token))
+    assert check.status_code == 200
+    assert check.json()["role"] == "viewer"
+
+    read_after = client.get("/api/expenses/confirmed", headers=_bearer(member_token))
+    assert read_after.status_code == 200, read_after.json()
+
+    write_after = client.post(
+        "/api/expenses/manual",
+        headers=_bearer(member_token),
+        json={
+            "amount_cents": 990,
+            "merchant": "降级后不应写入",
+            "category": "生活",
+            "note": "",
+            "expense_time": None,
+        },
+    )
+    _assert_permission_denied(write_after, label="demoted member manual expense")
+
+    _assert_permission_denied(
+        client.post(
+            f"/api/ledgers/{ledger_id}/members/{member_id}/transfer-owner",
+            headers=_bearer(member_token),
+        ),
+        label="demoted member transfer owner",
+    )
 
 
 def test_owner_transfer_invalid_target_does_not_change_owner(client: TestClient) -> None:
