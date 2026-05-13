@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.LocalSettingsStore
+import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.security.SecureTokenStore
@@ -22,14 +23,24 @@ fun appViewModelFactory(
 fun repositoryViewModelFactory(
     repository: ExpenseRepository,
     recurringRepository: RecurringRepository,
+    budgetRepository: BudgetActions? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(repository)
             LedgerViewModel::class.java -> LedgerViewModel(repository)
-            StatsViewModel::class.java -> StatsViewModel(repository, recurringRepository)
+            StatsViewModel::class.java -> StatsViewModel(repository, recurringRepository, budgetRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun budgetViewModelFactory(
+    repository: BudgetActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return BudgetViewModel(repository) as T
     }
 }
 

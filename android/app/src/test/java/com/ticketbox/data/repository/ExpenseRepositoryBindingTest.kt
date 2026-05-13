@@ -9,6 +9,8 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.AuthCheckDto
+import com.ticketbox.data.remote.dto.BudgetMonthlyDto
+import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.CategoriesDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
@@ -692,6 +694,12 @@ private class FakeApiService(
     override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = unsupported()
 
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
+    override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto = unsupported()
+    override suspend fun updateMonthlyBudget(
+        month: String,
+        request: BudgetMonthlyUpdateRequestDto,
+        timezone: String?,
+    ): BudgetMonthlyDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
     override suspend fun recurringItems(
         status: String?,

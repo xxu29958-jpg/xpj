@@ -89,6 +89,40 @@
 </div>
 {% endif %}
 
+{% if budget_status %}
+<div class="card">
+  <h2>预算状态 · {{ budget_status.ledger_name }}</h2>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="num">{% if budget_status.configured %}¥{{ budget_status.total_amount_yuan }}{% else %}未配置{% endif %}</div>
+      <div class="label">月度预算</div>
+    </div>
+    <div class="stat">
+      <div class="num">¥{{ budget_status.spent_amount_yuan }}</div>
+      <div class="label">已花</div>
+    </div>
+    <div class="stat">
+      <div class="num">
+        {% if budget_status.is_over_budget %}¥{{ budget_status.overspent_amount_yuan }}{% else %}¥{{ budget_status.remaining_amount_yuan }}{% endif %}
+      </div>
+      <div class="label">{% if budget_status.is_over_budget %}超支{% else %}剩余{% endif %}</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ budget_status.spent_percent }}%</div>
+      <div class="label">预算进度</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ budget_status.category_over_count }}</div>
+      <div class="label">分类超支</div>
+    </div>
+  </div>
+  <div class="quick-links" style="margin-top:12px">
+    <span>{{ budget_status.month }}</span>
+    <a href="/web/budgets?ledger_id={{ budget_status.ledger_id }}&amp;month={{ budget_status.month }}" target="_blank">打开预算</a>
+  </div>
+</div>
+{% endif %}
+
 {% if recurring_ops %}
 <div class="card">
   <h2>Recurring / 通知草稿状态</h2>

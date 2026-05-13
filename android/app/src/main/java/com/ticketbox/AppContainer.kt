@@ -4,6 +4,7 @@ import android.content.Context
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
+import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.RecurringRepository
@@ -31,6 +32,12 @@ class AppContainer(context: Context) {
     )
 
     val recurringRepository = RecurringRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+    )
+
+    val budgetRepository = BudgetRepository(
         apiClient = apiClient,
         settingsStore = settingsStore,
         tokenStore = tokenStore,

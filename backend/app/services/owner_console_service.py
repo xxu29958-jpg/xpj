@@ -38,6 +38,7 @@ from app.services.identity_service import (
     PairingCodeResult,
     create_pairing_code,
 )
+from app.services.budget_service import get_monthly_budget
 from app.services.ledger_service import (
     LedgerSummary,
     create_ledger as ledger_service_create_ledger,
@@ -46,7 +47,33 @@ from app.services.ledger_service import (
 )
 from app.tenants import DEFAULT_TENANT_ID
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
-from app.services.time_service import now_utc
+from app.services.time_service import current_month, now_utc
+
+
+OWNER_CONSOLE_TIMEZONE = "Asia/Shanghai"
+
+
+def _amount_yuan(amount_cents: int) -> str:
+    return f"{int(amount_cents) / 100:.2f}"
+
+
+@dataclass
+class BudgetStatusVM:
+    ledger_id: str
+    ledger_name: str
+    month: str
+    configured: bool
+    total_amount_cents: int
+    spent_amount_cents: int
+    remaining_amount_cents: int
+    overspent_amount_cents: int
+    spent_percent: int
+    is_over_budget: bool
+    category_over_count: int
+    total_amount_yuan: str
+    spent_amount_yuan: str
+    remaining_amount_yuan: str
+    overspent_amount_yuan: str
 
 
 @dataclass
@@ -64,6 +91,7 @@ class ConsoleIndexVM:
     active_upload_link_count: int
     dq_summary: DataQualitySummary | None = None
     recurring_ops: RecurringOpsVM | None = None
+    budget_status: BudgetStatusVM | None = None
     primary_tenant_id: str = DEFAULT_TENANT_ID
 
 
@@ -292,6 +320,10 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
         recurring_ops: RecurringOpsVM | None = get_recurring_ops(db)
     except Exception:
         recurring_ops = None
+    try:
+        budget_status = _budget_status_for_primary_ledger(db, primary_ledger)
+    except Exception:
+        budget_status = None
 
     return ConsoleIndexVM(
         backend_version=BACKEND_VERSION,
@@ -307,7 +339,49 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
         active_upload_link_count=active_links,
         dq_summary=dq_summary,
         recurring_ops=recurring_ops,
+        budget_status=budget_status,
         primary_tenant_id=primary_tenant_id,
+    )
+
+
+def _budget_status_for_primary_ledger(
+    db: Session,
+    primary_ledger: LedgerSummary | None,
+) -> BudgetStatusVM | None:
+    if primary_ledger is None:
+        return None
+    month = current_month(OWNER_CONSOLE_TIMEZONE)
+    budget = get_monthly_budget(
+        db,
+        tenant_id=primary_ledger.ledger_id,
+        month=month,
+        timezone_name=OWNER_CONSOLE_TIMEZONE,
+    )
+    available_amount_cents = int(budget.total_amount_cents) + int(budget.rollover_amount_cents)
+    spent_amount_cents = int(budget.spent_amount_cents)
+    spent_percent = (
+        round(spent_amount_cents / available_amount_cents * 100)
+        if available_amount_cents > 0
+        else 0
+    )
+    remaining_amount_cents = int(budget.remaining_amount_cents)
+    overspent_amount_cents = int(budget.overspent_amount_cents)
+    return BudgetStatusVM(
+        ledger_id=primary_ledger.ledger_id,
+        ledger_name=primary_ledger.name,
+        month=month,
+        configured=bool(budget.configured),
+        total_amount_cents=available_amount_cents,
+        spent_amount_cents=spent_amount_cents,
+        remaining_amount_cents=remaining_amount_cents,
+        overspent_amount_cents=overspent_amount_cents,
+        spent_percent=spent_percent,
+        is_over_budget=overspent_amount_cents > 0 or remaining_amount_cents < 0,
+        category_over_count=sum(1 for item in budget.category_budgets if item.overspent_amount_cents > 0),
+        total_amount_yuan=_amount_yuan(available_amount_cents),
+        spent_amount_yuan=_amount_yuan(spent_amount_cents),
+        remaining_amount_yuan=_amount_yuan(remaining_amount_cents),
+        overspent_amount_yuan=_amount_yuan(overspent_amount_cents),
     )
 
 

@@ -50,7 +50,6 @@ fun SettingsScreen(
     onRefreshServerSettings: () -> Unit,
     onSync: () -> Unit,
     onClearCache: () -> Unit,
-    onSaveMonthlyBudget: (Long?) -> Unit,
     onSaveNotificationPreferences: (NotificationPreferences) -> Unit,
     onCreateRule: (String, String, Int) -> Unit,
     onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
@@ -235,7 +234,6 @@ fun SettingsScreen(
             onBack = { route = SettingsRoute.Root },
             onSync = onSync,
             onClearCache = onClearCache,
-            onSaveMonthlyBudget = onSaveMonthlyBudget,
         )
 
         SettingsRoute.NotificationPreferences -> NotificationPreferencesScreen(

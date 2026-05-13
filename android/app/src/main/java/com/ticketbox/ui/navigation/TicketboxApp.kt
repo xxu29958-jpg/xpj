@@ -9,6 +9,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Category
@@ -35,6 +36,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.RecurringRepository
@@ -49,6 +51,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.components.AppBottomNav
 import com.ticketbox.ui.components.AppBottomNavItem
 import com.ticketbox.ui.screens.BindServerScreen
+import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LoginScreen
@@ -60,12 +63,14 @@ import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
+import com.ticketbox.viewmodel.BudgetViewModel
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.LedgerViewModel
 import com.ticketbox.viewmodel.PendingViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.SettingsViewModel
 import com.ticketbox.viewmodel.StatsViewModel
+import com.ticketbox.viewmodel.budgetViewModelFactory
 import com.ticketbox.viewmodel.closeSheet
 import com.ticketbox.viewmodel.confirmReadyExpenses
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
@@ -92,6 +97,7 @@ private enum class BottomTab(
     Pending("pending", "待确认", Icons.Default.CheckCircle),
     Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
     Stats("stats", "统计", Icons.Default.BarChart),
+    Budget("budget", "预算", Icons.Filled.AccountBalanceWallet),
     Recurring("recurring", "固定", Icons.Filled.Category),
     Settings("settings", "设置", Icons.Default.Settings),
 }
@@ -101,6 +107,7 @@ fun TicketboxApp(
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
     recurringRepository: RecurringRepository,
+    budgetRepository: BudgetRepository,
     appViewModelFactory: ViewModelProvider.Factory,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
@@ -130,6 +137,7 @@ fun TicketboxApp(
             repository = repository,
             ledgerRepository = ledgerRepository,
             recurringRepository = recurringRepository,
+            budgetRepository = budgetRepository,
             settingsViewModelFactory = settingsViewModelFactory,
             biometricAuthManager = biometricAuthManager,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
@@ -144,6 +152,7 @@ private fun TicketboxContent(
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
     recurringRepository: RecurringRepository,
+    budgetRepository: BudgetRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
     onAuthMessageShown: () -> Unit,
@@ -192,6 +201,7 @@ private fun TicketboxContent(
         repository = repository,
         ledgerRepository = ledgerRepository,
         recurringRepository = recurringRepository,
+        budgetRepository = budgetRepository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
         backgroundSettings = appState.backgroundSettings,
@@ -209,6 +219,7 @@ private fun MainShell(
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
     recurringRepository: RecurringRepository,
+    budgetRepository: BudgetRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
     backgroundSettings: BackgroundSettings,
@@ -219,7 +230,7 @@ private fun MainShell(
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
-    val repositoryFactory = repositoryViewModelFactory(repository, recurringRepository)
+    val repositoryFactory = repositoryViewModelFactory(repository, recurringRepository, budgetRepository)
     val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -383,6 +394,26 @@ private fun MainShell(
                         onRefresh = statsViewModel::refresh,
                     )
                 }
+                BottomTab.Budget -> {
+                    val budgetViewModel: BudgetViewModel = viewModel(
+                        factory = budgetViewModelFactory(budgetRepository),
+                    )
+                    val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
+                    BudgetScreen(
+                        state = state,
+                        onRefresh = budgetViewModel::refresh,
+                        onPreviousMonth = budgetViewModel::previousMonth,
+                        onNextMonth = budgetViewModel::nextMonth,
+                        onTotalAmountChange = budgetViewModel::updateTotalAmount,
+                        onRolloverAmountChange = budgetViewModel::updateRolloverAmount,
+                        onNonMonthlyAmountChange = budgetViewModel::updateNonMonthlyAmount,
+                        onExcludedCategoriesChange = budgetViewModel::updateExcludedCategories,
+                        onCategoryRowChange = budgetViewModel::updateCategoryRow,
+                        onAddCategoryRow = budgetViewModel::addCategoryRow,
+                        onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
+                        onSave = budgetViewModel::save,
+                    )
+                }
                 BottomTab.Recurring -> {
                     val recurringViewModel: RecurringViewModel = viewModel(
                         factory = recurringViewModelFactory(recurringRepository),
@@ -410,7 +441,6 @@ private fun MainShell(
                         onRefreshServerSettings = settingsViewModel::refreshServerSettings,
                         onSync = settingsViewModel::sync,
                         onClearCache = settingsViewModel::clearLocalCache,
-                        onSaveMonthlyBudget = settingsViewModel::saveMonthlyBudget,
                         onSaveNotificationPreferences = settingsViewModel::saveNotificationPreferences,
                         onCreateRule = settingsViewModel::createCategoryRule,
                         onUpdateRule = settingsViewModel::updateCategoryRule,
@@ -448,6 +478,7 @@ private val BottomTab.surfaceRole: SurfaceRole
         BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
         BottomTab.Stats -> SurfaceRole.Stats
+        BottomTab.Budget -> SurfaceRole.Stats
         BottomTab.Recurring -> SurfaceRole.Stats
         BottomTab.Settings -> SurfaceRole.Settings
     }

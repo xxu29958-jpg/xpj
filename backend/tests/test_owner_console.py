@@ -316,6 +316,89 @@ def test_owner_dashboard_counts_visible_ledgers_only(local_client: TestClient) -
     assert "外部统计账本" not in dashboard.text
 
 
+def test_owner_dashboard_renders_unconfigured_budget_status(local_client: TestClient) -> None:
+    body = local_client.get("/owner").text
+    assert "预算状态" in body
+    assert "未配置" in body
+    assert "/web/budgets?ledger_id=owner" in body
+
+
+def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
+    local_client: TestClient,
+) -> None:
+    from app.services.time_service import current_month
+
+    month = current_month("Asia/Shanghai")
+    created = local_client.post(
+        "/api/expenses/manual",
+        headers=cf.app_headers(),
+        json={
+            "amount_cents": 12000,
+            "merchant": "预算状态餐饮",
+            "category": "餐饮",
+            "expense_time": f"{month}-05T12:00:00Z",
+        },
+    )
+    assert created.status_code == 200, created.json()
+    budget = local_client.put(
+        f"/api/budgets/monthly/{month}?timezone=Asia/Shanghai",
+        headers=cf.app_headers(),
+        json={
+            "total_amount_cents": 100000,
+            "category_budgets": [{"category": "餐饮", "amount_cents": 10000}],
+        },
+    )
+    assert budget.status_code == 200, budget.json()
+
+    body = local_client.get("/owner").text
+    assert "预算状态" in body
+    assert "¥1000.00" in body
+    assert "¥120.00" in body
+    assert "¥880.00" in body
+    assert "12%" in body
+    assert "分类超支" in body
+    assert f"/web/budgets?ledger_id=owner&amp;month={month}" in body
+
+
+def test_owner_dashboard_budget_status_hides_external_ledger_budget(
+    local_client: TestClient,
+) -> None:
+    from app.database import SessionLocal
+    from app.models import Account, Budget, Ledger
+    from app.services.time_service import current_month, now_utc
+
+    month = current_month("Asia/Shanghai")
+    with SessionLocal() as db:
+        now = now_utc()
+        external = Account(display_name="外部预算账号", created_at=now)
+        db.add(external)
+        db.flush()
+        db.add(
+            Ledger(
+                id=-109,
+                ledger_id="external_budget_status",
+                name="外部预算账本",
+                owner_account_id=external.id,
+                created_at=now,
+            )
+        )
+        db.add(
+            Budget(
+                tenant_id="external_budget_status",
+                month=month,
+                total_amount_cents=999999,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+
+    body = local_client.get("/owner").text
+    assert "预算状态" in body
+    assert "外部预算账本" not in body
+    assert "9999.99" not in body
+
+
 def test_owner_upload_links_default_and_list_are_ledger_scoped(
     local_client: TestClient,
 ) -> None:

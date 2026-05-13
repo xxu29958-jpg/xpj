@@ -21,6 +21,7 @@ class MainActivity : FragmentActivity() {
                 repository = container.expenseRepository,
                 ledgerRepository = container.ledgerRepository,
                 recurringRepository = container.recurringRepository,
+                budgetRepository = container.budgetRepository,
                 appViewModelFactory = appViewModelFactory(
                     repository = container.expenseRepository,
                     settingsStore = container.settingsStore,

@@ -1,0 +1,266 @@
+package com.ticketbox.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.repository.BudgetActions
+import com.ticketbox.domain.model.BudgetCategoryDraft
+import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.time.YearMonth
+
+data class BudgetCategoryInput(
+    val category: String = "",
+    val amount: String = "",
+)
+
+data class BudgetFormState(
+    val totalAmount: String = "",
+    val rolloverAmount: String = "",
+    val nonMonthlyAmount: String = "",
+    val excludedCategories: String = "",
+    val categoryRows: List<BudgetCategoryInput> = listOf(BudgetCategoryInput()),
+)
+
+data class BudgetUiState(
+    val month: String = YearMonth.now().toString(),
+    val loading: Boolean = false,
+    val saving: Boolean = false,
+    val message: String? = null,
+    val canModify: Boolean = true,
+    val budget: BudgetMonthly? = null,
+    val form: BudgetFormState = BudgetFormState(),
+)
+
+class BudgetViewModel(
+    private val repository: BudgetActions,
+    initialMonth: String = YearMonth.now().toString(),
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(
+        BudgetUiState(
+            month = initialMonth,
+            canModify = repository.canModifyLedger(),
+        ),
+    )
+    val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            val month = _uiState.value.month
+            _uiState.update { it.copy(loading = true, message = null, canModify = repository.canModifyLedger()) }
+            repository.monthlyBudget(month)
+                .onSuccess { budget ->
+                    _uiState.update {
+                        it.copy(
+                            loading = false,
+                            budget = budget,
+                            form = budget.toFormState(),
+                            canModify = repository.canModifyLedger(),
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            loading = false,
+                            message = error.message ?: "预算暂时打不开，请稍后再试。",
+                            canModify = repository.canModifyLedger(),
+                        )
+                    }
+                }
+        }
+    }
+
+    fun previousMonth() {
+        changeMonth(-1)
+    }
+
+    fun nextMonth() {
+        changeMonth(1)
+    }
+
+    fun updateTotalAmount(value: String) {
+        updateForm { it.copy(totalAmount = value) }
+    }
+
+    fun updateRolloverAmount(value: String) {
+        updateForm { it.copy(rolloverAmount = value) }
+    }
+
+    fun updateNonMonthlyAmount(value: String) {
+        updateForm { it.copy(nonMonthlyAmount = value) }
+    }
+
+    fun updateExcludedCategories(value: String) {
+        updateForm { it.copy(excludedCategories = value) }
+    }
+
+    fun updateCategoryRow(index: Int, category: String, amount: String) {
+        updateForm { form ->
+            val rows = form.categoryRows.toMutableList()
+            if (index !in rows.indices) return@updateForm form
+            rows[index] = rows[index].copy(category = category, amount = amount)
+            form.copy(categoryRows = rows)
+        }
+    }
+
+    fun addCategoryRow() {
+        updateForm { it.copy(categoryRows = it.categoryRows + BudgetCategoryInput()) }
+    }
+
+    fun removeCategoryRow(index: Int) {
+        updateForm { form ->
+            val rows = form.categoryRows.toMutableList()
+            if (index !in rows.indices) return@updateForm form
+            rows.removeAt(index)
+            form.copy(categoryRows = rows.ifEmpty { listOf(BudgetCategoryInput()) })
+        }
+    }
+
+    fun save() {
+        if (!repository.canModifyLedger()) {
+            _uiState.update { it.copy(canModify = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
+        val month = _uiState.value.month
+        val update = parseBudgetUpdate(_uiState.value.form)
+            .getOrElse { error ->
+                _uiState.update { it.copy(message = error.message ?: "预算内容不正确。") }
+                return
+            }
+        viewModelScope.launch {
+            _uiState.update { it.copy(saving = true, message = null, canModify = repository.canModifyLedger()) }
+            repository.saveMonthlyBudget(month, update)
+                .onSuccess { budget ->
+                    _uiState.update {
+                        it.copy(
+                            saving = false,
+                            budget = budget,
+                            form = budget.toFormState(),
+                            message = "预算已保存。",
+                            canModify = repository.canModifyLedger(),
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            saving = false,
+                            message = error.message ?: "预算没有保存成功。",
+                            canModify = repository.canModifyLedger(),
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun changeMonth(delta: Long) {
+        val current = runCatching { YearMonth.parse(_uiState.value.month) }
+            .getOrDefault(YearMonth.now())
+        _uiState.update {
+            it.copy(
+                month = current.plusMonths(delta).toString(),
+                budget = null,
+                form = BudgetFormState(),
+                message = null,
+            )
+        }
+        refresh()
+    }
+
+    private fun updateForm(transform: (BudgetFormState) -> BudgetFormState) {
+        _uiState.update { it.copy(form = transform(it.form), message = null) }
+    }
+}
+
+private fun BudgetMonthly.toFormState(): BudgetFormState {
+    if (!configured) {
+        return BudgetFormState()
+    }
+    return BudgetFormState(
+        totalAmount = amountInput(totalAmountCents),
+        rolloverAmount = amountInput(rolloverAmountCents),
+        nonMonthlyAmount = amountInput(nonMonthlyAmountCents),
+        excludedCategories = excludedCategories.joinToString("，"),
+        categoryRows = categoryBudgets
+            .map { BudgetCategoryInput(category = it.category, amount = amountInput(it.amountCents)) }
+            .ifEmpty { listOf(BudgetCategoryInput()) },
+    )
+}
+
+private fun parseBudgetUpdate(form: BudgetFormState): Result<BudgetMonthlyUpdate> = runCatching {
+    val total = parseRequiredCents(form.totalAmount, "请输入月度总预算。")
+    require(total > 0L) { "月度总预算必须大于 0。" }
+    val rollover = parseOptionalCents(form.rolloverAmount, allowNegative = true, label = "结转")
+    val nonMonthly = parseOptionalCents(form.nonMonthlyAmount, allowNegative = false, label = "非月度预留")
+    val rows = form.categoryRows.mapNotNull { row ->
+        val category = row.category.trim()
+        val amountText = row.amount.trim()
+        if (category.isBlank() && amountText.isBlank()) return@mapNotNull null
+        require(category.isNotBlank()) { "请输入分类名称。" }
+        BudgetCategoryDraft(
+            category = category,
+            amountCents = parseRequiredCents(amountText, "请输入分类预算金额。").also {
+                require(it >= 0L) { "分类预算不能为负数。" }
+            },
+        )
+    }
+    BudgetMonthlyUpdate(
+        totalAmountCents = total,
+        nonMonthlyAmountCents = nonMonthly,
+        rolloverAmountCents = rollover,
+        excludedCategories = splitCategories(form.excludedCategories),
+        categoryBudgets = rows,
+    )
+}
+
+private fun splitCategories(value: String): List<String> {
+    val seen = linkedSetOf<String>()
+    Regex("[,，;；\\n]+")
+        .split(value)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .forEach { seen += it }
+    return seen.toList()
+}
+
+private fun parseRequiredCents(value: String, blankMessage: String): Long {
+    val trimmed = value.trim()
+    require(trimmed.isNotBlank()) { blankMessage }
+    return parseCents(trimmed) ?: throw IllegalArgumentException("金额格式不正确。")
+}
+
+private fun parseOptionalCents(value: String, allowNegative: Boolean, label: String): Long {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) return 0L
+    val amount = parseCents(trimmed) ?: throw IllegalArgumentException("$label 金额格式不正确。")
+    require(allowNegative || amount >= 0L) { "$label 不能为负数。" }
+    return amount
+}
+
+private fun parseCents(value: String): Long? {
+    return runCatching {
+        BigDecimal(value)
+            .multiply(BigDecimal(100))
+            .setScale(0, RoundingMode.HALF_UP)
+            .longValueExact()
+    }.getOrNull()
+}
+
+private fun amountInput(amountCents: Long): String {
+    if (amountCents == 0L) return ""
+    return BigDecimal(amountCents)
+        .divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+        .stripTrailingZeros()
+        .toPlainString()
+}

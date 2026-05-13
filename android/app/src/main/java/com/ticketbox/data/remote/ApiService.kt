@@ -1,6 +1,8 @@
 package com.ticketbox.data.remote
 
 import com.ticketbox.data.remote.dto.AuthCheckDto
+import com.ticketbox.data.remote.dto.BudgetMonthlyDto
+import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.CategoriesDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
@@ -53,6 +55,7 @@ import retrofit2.http.PATCH
 import retrofit2.http.Part
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.PUT
 import retrofit2.http.Query
 import retrofit2.http.Streaming
 
@@ -198,6 +201,19 @@ interface ApiService {
         @Query("month") month: String? = null,
         @Query("timezone") timezone: String? = null,
     ): LifestyleStatsDto
+
+    @GET("api/budgets/monthly")
+    suspend fun monthlyBudget(
+        @Query("month") month: String,
+        @Query("timezone") timezone: String? = null,
+    ): BudgetMonthlyDto
+
+    @PUT("api/budgets/monthly/{month}")
+    suspend fun updateMonthlyBudget(
+        @Path("month") month: String,
+        @Body request: BudgetMonthlyUpdateRequestDto,
+        @Query("timezone") timezone: String? = null,
+    ): BudgetMonthlyDto
 
     @GET("api/insights/recurring-candidates")
     suspend fun recurringCandidates(

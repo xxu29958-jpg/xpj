@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.domain.model.BudgetProgress
@@ -20,6 +21,7 @@ import com.ticketbox.domain.model.monthlyCategoryInsight
 import com.ticketbox.domain.model.monthlyStatsFromConfirmedExpenses
 import com.ticketbox.domain.model.monthlySpendingComparison
 import com.ticketbox.domain.model.recentDailySpending
+import com.ticketbox.domain.model.toBudgetProgress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,10 +50,12 @@ data class StatsUiState(
 class StatsViewModel(
     private val repository: ExpenseRepository,
     private val recurringRepository: RecurringRepository,
+    private val budgetRepository: BudgetActions? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
     private var confirmedCache: List<Expense> = emptyList()
+    private val budgetCache = mutableMapOf<String, BudgetProgress?>()
 
     init {
         loadMonths()
@@ -91,7 +95,7 @@ class StatsViewModel(
                         stats = visibleStats,
                         dailyTrend = recentDailySpending(visibleExpenses),
                         monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
-                        budgetProgress = monthlyBudgetProgress(visibleStats, repository.monthlyBudgetCents()),
+                        budgetProgress = budgetProgressFor(it.month, visibleStats),
                         categoryInsight = monthlyCategoryInsight(visibleStats),
                     )
                 }
@@ -113,7 +117,7 @@ class StatsViewModel(
                 stats = localStats,
                 dailyTrend = recentDailySpending(visibleExpenses),
                 monthComparison = monthlySpendingComparison(visibleExpenses, value),
-                budgetProgress = monthlyBudgetProgress(localStats, repository.monthlyBudgetCents()),
+                budgetProgress = budgetProgressFor(value, localStats),
                 categoryInsight = monthlyCategoryInsight(localStats),
             )
         }
@@ -135,7 +139,7 @@ class StatsViewModel(
                 stats = localStats,
                 dailyTrend = recentDailySpending(visibleExpenses),
                 monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
-                budgetProgress = monthlyBudgetProgress(localStats, repository.monthlyBudgetCents()),
+                budgetProgress = budgetProgressFor(it.month, localStats),
                 categoryInsight = monthlyCategoryInsight(localStats),
             )
         }
@@ -147,7 +151,18 @@ class StatsViewModel(
             _uiState.update { it.copy(loading = true, message = null) }
             val month = _uiState.value.month.trim().ifBlank { null }
             val tag = _uiState.value.selectedTag.trim().ifBlank { null }
-            val budgetCents = repository.monthlyBudgetCents()
+            val selectedMonth = month ?: YearMonth.now().toString()
+            budgetRepository?.let { budgetRepo ->
+                launch {
+                    budgetRepo.monthlyBudget(selectedMonth)
+                        .onSuccess { budget ->
+                            budgetCache[selectedMonth] = budget.toBudgetProgress()
+                            _uiState.update {
+                                it.copy(budgetProgress = budgetProgressFor(it.month, it.stats))
+                            }
+                        }
+                }
+            }
             // Fire-and-forget recurring reads; stats should remain usable if this section fails.
             launch {
                 recurringRepository.items(includeArchived = false, month = month)
@@ -177,7 +192,7 @@ class StatsViewModel(
                                 it.copy(
                                     stats = stats,
                                     lifestyleStats = lifestyle,
-                                    budgetProgress = monthlyBudgetProgress(stats, budgetCents),
+                                    budgetProgress = budgetProgressFor(stats.month, stats),
                                     categoryInsight = monthlyCategoryInsight(stats),
                                     loading = false,
                                 )
@@ -187,7 +202,7 @@ class StatsViewModel(
                             _uiState.update {
                                 it.copy(
                                     stats = stats,
-                                    budgetProgress = monthlyBudgetProgress(stats, budgetCents),
+                                    budgetProgress = budgetProgressFor(stats.month, stats),
                                     categoryInsight = monthlyCategoryInsight(stats),
                                     loading = false,
                                     message = error.message ?: "生活统计暂时打不开，请稍后再试。",
@@ -203,7 +218,7 @@ class StatsViewModel(
                         val visibleStats = fallbackStats ?: it.stats
                         it.copy(
                             stats = visibleStats,
-                            budgetProgress = monthlyBudgetProgress(visibleStats, budgetCents),
+                            budgetProgress = budgetProgressFor(month ?: it.month, visibleStats),
                             categoryInsight = monthlyCategoryInsight(visibleStats),
                             loading = false,
                             message = if (fallbackStats != null) {
@@ -215,5 +230,12 @@ class StatsViewModel(
                     }
                 }
         }
+    }
+
+    private fun budgetProgressFor(month: String, stats: MonthlyStats?): BudgetProgress? {
+        if (budgetRepository != null && budgetCache.containsKey(month)) {
+            return budgetCache[month]
+        }
+        return monthlyBudgetProgress(stats, repository.monthlyBudgetCents())
     }
 }
