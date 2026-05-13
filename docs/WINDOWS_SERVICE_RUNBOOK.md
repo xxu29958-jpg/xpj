@@ -1,6 +1,6 @@
 # Windows 长期运行 Runbook
 
-**当前版本：v0.8.0a1（阶段：Budget / 月度可花后端基线）**
+**当前版本：v0.8.0a1（阶段：Budget / 月度可花三端基线）**
 
 ## Owner Console
 

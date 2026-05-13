@@ -1,10 +1,10 @@
 # 小票夹
 
-**当前版本：v0.8.0a1**（阶段：**Budget / 月度可花后端基线**；基线 = v0.7 Rules / Tags / Merchant 治理）
+**当前版本：v0.8.0a1**（阶段：**Budget / 月度可花三端基线**；基线 = v0.7 Rules / Tags / Merchant 治理）
 
-> 🚩 **v0.8.0a1 当前进度**：后端已加入服务端账本预算模型、月度预算 Dashboard API、viewer 写保护和代表性集成测试。Android 预算页、`/web` Budget/Dashboard 和 `/owner` 状态卡仍是后续 v0.8 收口项。
+> 🚩 **v0.8.0a1 当前进度**：后端已加入服务端账本预算模型、月度预算 Dashboard API、viewer 写保护和代表性集成测试；Android 已接入服务端预算页并让统计页优先使用服务端预算；`/web` 已有预算 Dashboard；`/owner` 已有只读预算状态卡。
 
-下一里程碑：把 v0.8 后端预算 API 接入 Android / `/web` / `/owner`，再做截图基线、真机走查和版本报告。
+下一里程碑：补齐 v0.8 截图基线、已绑定真机预算页走查和版本报告，再决定是否进入 v0.8 RC。
 
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 开始服务端预算和月度可花。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 

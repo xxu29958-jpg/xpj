@@ -45,11 +45,15 @@ class BudgetRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
-    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> = safeCall {
-        api().monthlyBudget(
-            month = requireMonth(month),
-            timezone = currentTimezoneId(),
-        ).toDomain()
+    override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
+        val cleanMonth = validatedMonth(month)
+            .getOrElse { return Result.failure(it) }
+        return safeCall {
+            api().monthlyBudget(
+                month = cleanMonth,
+                timezone = currentTimezoneId(),
+            ).toDomain()
+        }
     }
 
     override suspend fun saveMonthlyBudget(
@@ -59,9 +63,11 @@ class BudgetRepository(
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
+        val cleanMonth = validatedMonth(month)
+            .getOrElse { return Result.failure(it) }
         return safeCall {
             api().updateMonthlyBudget(
-                month = requireMonth(month),
+                month = cleanMonth,
                 request = update.toRequest(),
                 timezone = currentTimezoneId(),
             ).toDomain()
@@ -126,6 +132,14 @@ class BudgetRepository(
 }
 
 private val MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")
+
+private fun validatedMonth(month: String): Result<String> {
+    return runCatching { requireMonth(month) }
+        .fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { Result.failure(RepositoryException(it.message ?: "预算月份不正确。")) },
+        )
+}
 
 private fun requireMonth(month: String): String {
     val cleanMonth = month.trim()

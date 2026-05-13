@@ -167,7 +167,7 @@ fun SettingsRootScreen(
         )
         SettingsEntryRow(
             title = "数据与导出",
-            subtitle = "月度预算、本地缓存、表格导出说明",
+            subtitle = "本地缓存、表格导出说明",
             icon = Icons.Filled.FileDownload,
             onClick = onOpenDataExport,
         )

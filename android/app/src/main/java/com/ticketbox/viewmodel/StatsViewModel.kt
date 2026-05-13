@@ -233,8 +233,8 @@ class StatsViewModel(
     }
 
     private fun budgetProgressFor(month: String, stats: MonthlyStats?): BudgetProgress? {
-        if (budgetRepository != null && budgetCache.containsKey(month)) {
-            return budgetCache[month]
+        if (budgetRepository != null) {
+            return if (budgetCache.containsKey(month)) budgetCache[month] else null
         }
         return monthlyBudgetProgress(stats, repository.monthlyBudgetCents())
     }
