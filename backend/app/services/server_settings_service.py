@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import BACKEND_ROOT, get_settings
 from app.models import Expense
 from app.services.time_service import to_iso
+from app.tenants import DEFAULT_TENANT_ID
 
 
 def _upload_storage_bytes(db: Session, tenant_id: str) -> int:
@@ -54,7 +55,9 @@ def server_settings_snapshot(
     storage_bytes = _upload_storage_bytes(db, ledger_id)
     return {
         "account_name": account_name,
+        "ledger_id": ledger_id,
         "ledger_name": ledger_name,
+        "ledger_is_default": ledger_id == DEFAULT_TENANT_ID,
         "device_name": device_name,
         "role": role,
         "status": "ok",

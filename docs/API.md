@@ -910,7 +910,9 @@ Authorization: Bearer <session_token>
 ```json
 {
   "account_name": "Owner",
+  "ledger_id": "owner",
   "ledger_name": "我的小票夹",
+  "ledger_is_default": true,
   "device_name": "小米 15 Pro",
   "role": "owner",
   "status": "ok",

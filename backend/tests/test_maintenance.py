@@ -30,7 +30,9 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(
     assert response.status_code == 200
     payload = response.json()
     assert payload["account_name"] == "我"
+    assert payload["ledger_id"] == "owner"
     assert payload["ledger_name"] == "我的小票夹"
+    assert payload["ledger_is_default"] is True
     assert payload["device_name"] == "pytest-android"
     assert payload["role"] == "owner"
     assert payload["status"] == "ok"

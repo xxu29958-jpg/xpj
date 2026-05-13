@@ -79,6 +79,7 @@ import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.ledgerRoleLabel
+import com.ticketbox.domain.model.ledgerScopeLabel
 import com.ticketbox.ui.appearance.AppearanceDefaults
 import com.ticketbox.ui.appearance.BackgroundCatalog
 import com.ticketbox.ui.appearance.BuiltInBackground
@@ -131,6 +132,7 @@ internal fun AccountStatusCard(
             ?: role?.takeIf { it.isNotBlank() }
             ?: "owner",
     )
+    val ledgerScope = serverSettings?.ledgerIsDefault?.let { ledgerScopeLabel(it) }
     SoftPanel(containerAlpha = 0.96f) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -157,7 +159,13 @@ internal fun AccountStatusCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                StatusPill(connected = serverSettings != null)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ledgerScope?.let { AccountLedgerScopePill(text = it) }
+                    StatusPill(connected = serverSettings != null)
+                }
             }
             AccountInfoLine(text = "当前账号：$displayAccount")
             AccountInfoLine(text = "当前设备：$displayDevice")
@@ -190,6 +198,20 @@ internal fun AccountStatusCard(
             }
         }
     }
+}
+
+@Composable
+private fun AccountLedgerScopePill(text: String) {
+    val visuals = LocalThemeVisuals.current
+    Text(
+        text = text,
+        color = visuals.primary,
+        style = MaterialTheme.typography.labelMedium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(visuals.chipSelected.copy(alpha = 0.68f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

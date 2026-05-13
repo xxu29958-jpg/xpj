@@ -184,7 +184,7 @@
           {% else %}{{ item.action }}{% endif %}
         </td>
         <td class="text-break" style="padding:8px 10px">{{ item.actor_account_name or '—' }}</td>
-        <td class="text-break" style="padding:8px 10px">{{ item.target_account_name or item.invitation_public_id or '—' }}</td>
+        <td class="text-break" style="padding:8px 10px">{{ item.target_account_name or ('邀请' if item.invitation_public_id else '—') }}</td>
         <td style="padding:8px 10px">
           {% if item.previous_role or item.new_role %}
             {% if item.previous_role == 'owner' %}拥有者{% elif item.previous_role == 'member' %}成员{% elif item.previous_role == 'viewer' %}只读{% else %}{{ item.previous_role or '—' }}{% endif %}

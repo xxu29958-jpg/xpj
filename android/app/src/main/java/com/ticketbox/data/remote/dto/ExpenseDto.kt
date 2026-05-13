@@ -187,8 +187,12 @@ data class FrequentMerchantDto(
 data class ServerSettingsDto(
     @param:Json(name = "account_name")
     val accountName: String,
+    @param:Json(name = "ledger_id")
+    val ledgerId: String? = null,
     @param:Json(name = "ledger_name")
     val ledgerName: String,
+    @param:Json(name = "ledger_is_default")
+    val ledgerIsDefault: Boolean? = null,
     @param:Json(name = "device_name")
     val deviceName: String,
     val role: String,

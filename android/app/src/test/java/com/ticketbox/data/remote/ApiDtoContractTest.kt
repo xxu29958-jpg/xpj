@@ -5,6 +5,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
+import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import kotlin.test.Test
@@ -56,6 +57,35 @@ class ApiDtoContractTest {
         assertEquals(348120L, dto.uploadSizeBytes)
         assertEquals(86L, dto.durationMs)
         assertEquals(24L, dto.timingMs?.get("db_create_ms"))
+    }
+
+    @Test
+    fun serverSettingsDtoParsesLedgerScopeFields() {
+        val dto = requireNotNull(
+            moshi.adapter(ServerSettingsDto::class.java).fromJson(
+                """
+                {
+                  "account_name": "我",
+                  "ledger_id": "owner",
+                  "ledger_name": "我的小票夹",
+                  "ledger_is_default": true,
+                  "device_name": "Pixel",
+                  "role": "owner",
+                  "status": "ok",
+                  "storage_status": "normal",
+                  "pending_count": 0,
+                  "confirmed_count": 3,
+                  "rejected_count": 0,
+                  "suspected_duplicate_count": 0,
+                  "upload_storage_bytes": 128,
+                  "latest_upload_at": "2026-05-13T00:00:00Z"
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("owner", dto.ledgerId)
+        assertEquals(true, dto.ledgerIsDefault)
     }
 
     @Test

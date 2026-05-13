@@ -137,7 +137,9 @@ class ProtectedImage(
 
 data class ServerSettings(
     val accountName: String,
+    val ledgerId: String?,
     val ledgerName: String,
+    val ledgerIsDefault: Boolean?,
     val deviceName: String,
     val role: String,
     val status: String,

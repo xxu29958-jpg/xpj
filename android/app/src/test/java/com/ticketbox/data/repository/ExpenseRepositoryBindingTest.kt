@@ -201,6 +201,56 @@ class ExpenseRepositoryBindingTest {
             Dispatchers.resetMain()
         }
     }
+
+    @Test
+    fun serverSettingsDoesNotPersistMismatchedLedgerSnapshot() = runTest {
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "viewer",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val apiService = FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+            serverSettingsResult = ServerSettingsDto(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                ledgerIsDefault = true,
+                deviceName = "Pixel",
+                role = "owner",
+                status = "ok",
+                storageStatus = "normal",
+                pendingCount = 0,
+                confirmedCount = 0,
+                rejectedCount = 0,
+                suspectedDuplicateCount = 0,
+                uploadStorageBytes = 0,
+                latestUploadAt = null,
+            ),
+        )
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val settings = repository.serverSettings().getOrThrow()
+
+        assertEquals("owner", settings.ledgerId)
+        assertEquals("family", settingsStore.activeLedgerId())
+        assertEquals("家庭账本", settingsStore.ledgerName())
+        assertEquals("viewer", settingsStore.role())
+    }
 }
 
 private class FakeApiServiceFactory(
@@ -218,6 +268,7 @@ private class FakeApiService(
     private val events: MutableList<String>,
     private var confirmedFailuresRemaining: Int,
     private val checkAuthResult: AuthCheckDto? = null,
+    private val serverSettingsResult: ServerSettingsDto? = null,
 ) : ApiService {
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -288,9 +339,11 @@ private class FakeApiService(
 
     override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
 
-    override suspend fun serverSettings(): ServerSettingsDto = ServerSettingsDto(
+    override suspend fun serverSettings(): ServerSettingsDto = serverSettingsResult ?: ServerSettingsDto(
         accountName = "我",
+        ledgerId = "old",
         ledgerName = "旧账本",
+        ledgerIsDefault = false,
         deviceName = "旧设备",
         role = "owner",
         status = "ok",

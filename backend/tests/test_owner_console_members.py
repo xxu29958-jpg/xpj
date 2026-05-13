@@ -145,6 +145,7 @@ def test_invitation_create_revokes_and_lists(local_client: TestClient) -> None:
     after = local_client.get(f"/owner/ledgers/{lid}/members")
     assert "已撤销" in after.text
     assert "撤销邀请" in after.text
+    assert public_id not in after.text
 
 
 def test_disable_member_endpoint(local_client: TestClient) -> None:

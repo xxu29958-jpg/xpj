@@ -210,13 +210,17 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) 
     owner_payload = owner_settings.json()
     tester_payload = tester_settings.json()
     assert owner_payload["account_name"] == "我"
+    assert owner_payload["ledger_id"] == "owner"
     assert owner_payload["ledger_name"] == "我的小票夹"
+    assert owner_payload["ledger_is_default"] is True
     assert owner_payload["device_name"] == "pytest-android"
     assert owner_payload["role"] == "owner"
     assert owner_payload["confirmed_count"] == 1
     assert owner_payload["pending_count"] == 0
     assert tester_payload["account_name"] == "我"
+    assert tester_payload["ledger_id"] == "tester_1"
     assert tester_payload["ledger_name"] == "灰度用户1"
+    assert tester_payload["ledger_is_default"] is False
     assert tester_payload["device_name"] == "pytest-gray-android"
     assert tester_payload["role"] == "owner"
     assert tester_payload["confirmed_count"] == 0

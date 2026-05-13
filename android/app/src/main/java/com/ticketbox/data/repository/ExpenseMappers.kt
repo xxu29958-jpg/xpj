@@ -180,7 +180,9 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
 
 fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
     accountName = accountName,
+    ledgerId = ledgerId,
     ledgerName = ledgerName,
+    ledgerIsDefault = ledgerIsDefault,
     deviceName = deviceName,
     role = role,
     status = status,

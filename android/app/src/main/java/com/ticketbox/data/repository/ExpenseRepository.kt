@@ -209,6 +209,7 @@ class ExpenseRepository(
         val expected = expectedLedgerId ?: return
         val ledgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() } ?: return
         if (ledgerId != expected) return
+        if (settings.ledgerId != null && settings.ledgerId != expected) return
         settingsStore.saveIdentity(
             accountName = settings.accountName,
             ledgerId = ledgerId,

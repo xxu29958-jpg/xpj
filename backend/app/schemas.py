@@ -488,7 +488,9 @@ class MaintenanceOrphanCleanupResponse(BaseModel):
 
 class ServerSettingsResponse(BaseModel):
     account_name: str
+    ledger_id: str
     ledger_name: str
+    ledger_is_default: bool
     device_name: str
     role: str
     status: str
