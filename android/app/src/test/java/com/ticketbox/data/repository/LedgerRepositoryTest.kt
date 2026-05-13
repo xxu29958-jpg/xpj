@@ -36,6 +36,7 @@ import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
+import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.security.SessionTokenStore
@@ -698,11 +699,13 @@ private class StubApi(
         pageSize: Int,
         month: String?,
         category: String?,
+        tag: String?,
         timezone: String?,
     ): PaginatedExpensesDto = unsupported()
     override suspend fun categories(): CategoriesDto = unsupported()
+    override suspend fun tags(): TagsDto = unsupported()
     override suspend fun months(timezone: String?): MonthsDto = unsupported()
-    override suspend fun exportCsv(month: String?, category: String?, timezone: String?): Response<ResponseBody> = unsupported()
+    override suspend fun exportCsv(month: String?, category: String?, tag: String?, timezone: String?): Response<ResponseBody> = unsupported()
     override suspend fun createManualExpense(request: ExpenseUpdateRequest): ExpenseDto = unsupported()
     override suspend fun createNotificationDraft(
         request: com.ticketbox.data.remote.dto.NotificationDraftRequestDto,
@@ -721,7 +724,7 @@ private class StubApi(
     override suspend fun updateCategoryRule(id: Long, request: CategoryRuleRequest): CategoryRuleDto = unsupported()
     override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
     override suspend fun serverSettings(): ServerSettingsDto = unsupported()
-    override suspend fun monthlyStats(month: String?, timezone: String?): MonthlyStatsDto = unsupported()
+    override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = unsupported()
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
     override suspend fun recurringItems(

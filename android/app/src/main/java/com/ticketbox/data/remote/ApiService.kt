@@ -32,6 +32,7 @@ import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
+import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
@@ -64,11 +65,15 @@ interface ApiService {
         @Query("page_size") pageSize: Int = 50,
         @Query("month") month: String? = null,
         @Query("category") category: String? = null,
+        @Query("tag") tag: String? = null,
         @Query("timezone") timezone: String? = null,
     ): PaginatedExpensesDto
 
     @GET("api/expenses/categories")
     suspend fun categories(): CategoriesDto
+
+    @GET("api/expenses/tags")
+    suspend fun tags(): TagsDto
 
     @GET("api/expenses/months")
     suspend fun months(@Query("timezone") timezone: String? = null): MonthsDto
@@ -78,6 +83,7 @@ interface ApiService {
     suspend fun exportCsv(
         @Query("month") month: String? = null,
         @Query("category") category: String? = null,
+        @Query("tag") tag: String? = null,
         @Query("timezone") timezone: String? = null,
     ): Response<ResponseBody>
 
@@ -144,6 +150,7 @@ interface ApiService {
     @GET("api/stats/monthly")
     suspend fun monthlyStats(
         @Query("month") month: String? = null,
+        @Query("tag") tag: String? = null,
         @Query("timezone") timezone: String? = null,
     ): MonthlyStatsDto
 

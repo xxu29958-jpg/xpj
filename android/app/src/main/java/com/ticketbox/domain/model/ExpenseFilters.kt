@@ -8,6 +8,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
+private val TAG_SPLIT_REGEX = Regex("[,，;；\\n]+")
+
 fun filterConfirmedExpenses(
     expenses: List<Expense>,
     month: String,
@@ -140,6 +142,20 @@ fun monthlyStatsFromConfirmedExpenses(
         }
         .filter { it.amountCents > 0L && it.count > 0 }
         .sortedByDescending { it.amountCents }
+    val byTag = matched
+        .flatMap { expense ->
+            expense.normalizedTagNames().map { tag -> tag to expense }
+        }
+        .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+        .map { (tag, items) ->
+            TagStats(
+                tag = tag,
+                amountCents = items.sumOf { it.amountCents ?: 0L },
+                count = items.size,
+            )
+        }
+        .filter { it.amountCents > 0L && it.count > 0 }
+        .sortedByDescending { it.amountCents }
 
     val total = byCategory.sumOf { it.amountCents }
     val count = byCategory.sumOf { it.count }
@@ -152,7 +168,17 @@ fun monthlyStatsFromConfirmedExpenses(
         totalAmountCents = total,
         count = count,
         byCategory = byCategory,
+        byTag = byTag,
     )
+}
+
+private fun Expense.normalizedTagNames(): List<String> {
+    val raw = tags ?: return emptyList()
+    val seen = mutableSetOf<String>()
+    return TAG_SPLIT_REGEX.split(raw)
+        .map { it.trim().replace(Regex("\\s+"), " ") }
+        .filter { it.isNotBlank() }
+        .filter { seen.add(it.lowercase()) }
 }
 
 fun monthlyBudgetProgress(

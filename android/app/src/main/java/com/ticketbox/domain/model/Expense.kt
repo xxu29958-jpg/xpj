@@ -60,6 +60,12 @@ data class CategoryStats(
     val count: Int,
 )
 
+data class TagStats(
+    val tag: String,
+    val amountCents: Long,
+    val count: Int,
+)
+
 data class CategoryInsight(
     val topCategory: String,
     val topAmountCents: Long,
@@ -74,6 +80,7 @@ data class MonthlyStats(
     val totalAmountCents: Long,
     val count: Int,
     val byCategory: List<CategoryStats>,
+    val byTag: List<TagStats> = emptyList(),
 )
 
 data class FrequentMerchant(

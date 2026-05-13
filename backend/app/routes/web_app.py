@@ -12,6 +12,7 @@ import them from this module.
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -77,6 +78,7 @@ def web_confirmed(
     request: Request,
     page: int = 1,
     month: str | None = None,
+    tag: str | None = None,
     ledger_id: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -85,16 +87,28 @@ def web_confirmed(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
     page_size = 50
     expenses, total = list_confirmed(
-        db, tenant_id=selected_id, page=page, page_size=page_size, month=month
+        db,
+        tenant_id=selected_id,
+        page=page,
+        page_size=page_size,
+        month=month,
+        tag=tag,
     )
     items = [_expense_view(e) for e in expenses]
     total_pages = max(1, (total + page_size - 1) // page_size)
+    pager_params = {"ledger_id": selected_id}
+    if month:
+        pager_params["month"] = month
+    if tag:
+        pager_params["tag"] = tag
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["expenses"] = items
     ctx["page"] = page
     ctx["total_pages"] = total_pages
     ctx["total"] = total
     ctx["month"] = month or ""
+    ctx["tag"] = tag or ""
+    ctx["pager_query"] = urlencode(pager_params)
     return templates.TemplateResponse(request=request, name="confirmed.html", context=ctx)
 
 

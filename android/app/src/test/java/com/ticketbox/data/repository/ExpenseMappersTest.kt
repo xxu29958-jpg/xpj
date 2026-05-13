@@ -1,6 +1,11 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.CategoryStatsDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.MonthlyStatsDto
+import com.ticketbox.data.remote.dto.TagStatsDto
+import com.ticketbox.domain.model.CategoryStats
+import com.ticketbox.domain.model.TagStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -30,6 +35,20 @@ class ExpenseMappersTest {
         ).toDomain()
 
         assertEquals("餐饮", expense.category)
+    }
+
+    @Test
+    fun mapsMonthlyTagStatsFromServer() {
+        val stats = MonthlyStatsDto(
+            month = "2026-05",
+            totalAmountCents = 15_800,
+            count = 3,
+            byCategory = listOf(CategoryStatsDto(category = "吃饭", amountCents = 15_800, count = 3)),
+            byTag = listOf(TagStatsDto(tag = "真香", amountCents = 12_000, count = 2)),
+        ).toDomain()
+
+        assertEquals(listOf(CategoryStats("餐饮", 15_800, 3)), stats.byCategory)
+        assertEquals(listOf(TagStats("真香", 12_000, 2)), stats.byTag)
     }
 
     private fun expenseDto(publicId: String?, category: String = "其他"): ExpenseDto {

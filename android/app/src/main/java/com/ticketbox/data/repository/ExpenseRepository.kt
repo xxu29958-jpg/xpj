@@ -454,6 +454,7 @@ class ExpenseRepository(
                 pageSize = pageSize,
                 month = month,
                 category = category,
+                tag = null,
                 timezone = currentTimezoneId(),
             )
             total = response.total
@@ -488,6 +489,10 @@ class ExpenseRepository(
         mergeExpenseCategories(api().categories().items)
     }
 
+    suspend fun tags(): Result<List<String>> = safeCall {
+        api().tags().items
+    }
+
     suspend fun months(): Result<List<String>> = safeCall {
         api().months(timezone = currentTimezoneId()).items
     }
@@ -495,7 +500,7 @@ class ExpenseRepository(
     suspend fun exportConfirmedCsv(month: String? = null, category: String? = null): Result<CsvExport> = safeCall {
         val cleanMonth = month?.trim()?.ifBlank { null }
         val cleanCategory = category?.trim()?.ifBlank { null }
-        val response = api().exportCsv(month = cleanMonth, category = cleanCategory, timezone = currentTimezoneId())
+        val response = api().exportCsv(month = cleanMonth, category = cleanCategory, tag = null, timezone = currentTimezoneId())
         if (!response.isSuccessful) {
             throw RepositoryException(parseErrorMessage(response.code(), response.errorBody()?.string()))
         }
@@ -518,7 +523,7 @@ class ExpenseRepository(
             .flatMapLatest { id -> expenseDao.observeConfirmed(id).map { rows -> rows.map { it.toDomain() } } }
 
     suspend fun monthlyStats(month: String? = null): Result<MonthlyStats> = safeCall {
-        api().monthlyStats(month = month, timezone = currentTimezoneId()).toDomain()
+        api().monthlyStats(month = month, tag = null, timezone = currentTimezoneId()).toDomain()
     }
 
     suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats> = safeCall {

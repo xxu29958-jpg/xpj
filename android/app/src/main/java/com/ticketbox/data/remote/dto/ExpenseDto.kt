@@ -139,7 +139,18 @@ data class CategoryStatsDto(
     val count: Int,
 )
 
+data class TagStatsDto(
+    val tag: String,
+    @param:Json(name = "amount_cents")
+    val amountCents: Long,
+    val count: Int,
+)
+
 data class CategoriesDto(
+    val items: List<String>,
+)
+
+data class TagsDto(
     val items: List<String>,
 )
 
@@ -154,6 +165,8 @@ data class MonthlyStatsDto(
     val count: Int,
     @param:Json(name = "by_category")
     val byCategory: List<CategoryStatsDto>,
+    @param:Json(name = "by_tag")
+    val byTag: List<TagStatsDto> = emptyList(),
 )
 
 data class CategoryRuleDto(

@@ -9,8 +9,13 @@
     <label>切换月份：
       <input type="text" name="month" value="{{ month }}" pattern="\d{4}-\d{2}">
     </label>
+    <label>标签：
+      <input type="text" name="tag" value="{{ tag }}" placeholder="真香">
+    </label>
     <button type="submit" class="btn btn-secondary">查看</button>
+    {% if tag %}<a class="btn btn-link" href="/web/stats?ledger_id={{ selected_ledger_id }}&month={{ month }}">清除标签</a>{% endif %}
   </form>
+  {% if tag %}<div class="meta">当前统计范围：标签「{{ tag }}」。</div>{% endif %}
 </div>
 
 <div class="summary-grid">

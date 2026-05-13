@@ -237,9 +237,9 @@ class ExpenseFiltersTest {
     @Test
     fun buildsMonthlyStatsFromLocalConfirmedCache() {
         val items = listOf(
-            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200, tags = "真香，AI，真香"),
             expense(id = 2, category = "餐饮", expenseTime = null, confirmedAt = "2026-05-04T04:20:00Z", amountCents = 2300),
-            expense(id = 3, category = "购物", expenseTime = "2026-05-05T04:20:00Z", amountCents = 9900),
+            expense(id = 3, category = "购物", expenseTime = "2026-05-05T04:20:00Z", amountCents = 9900, tags = "必要"),
             expense(id = 4, category = "交通", expenseTime = "2026-04-30T04:20:00Z", amountCents = 400),
         )
 
@@ -259,6 +259,14 @@ class ExpenseFiltersTest {
                 CategoryStats(category = "餐饮", amountCents = 3_500, count = 2),
             ),
             stats.byCategory,
+        )
+        assertEquals(
+            listOf(
+                TagStats(tag = "必要", amountCents = 9_900, count = 1),
+                TagStats(tag = "真香", amountCents = 1_200, count = 1),
+                TagStats(tag = "AI", amountCents = 1_200, count = 1),
+            ),
+            stats.byTag,
         )
     }
 

@@ -12,6 +12,7 @@ import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidateItemDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
+import com.ticketbox.data.remote.dto.TagStatsDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.Expense
@@ -23,6 +24,7 @@ import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.ServerSettings
+import com.ticketbox.domain.model.TagStats
 import com.ticketbox.domain.model.normalizeExpenseCategory
 
 fun ExpenseDto.toDomain(): Expense = Expense(
@@ -135,10 +137,17 @@ fun MonthlyStatsDto.toDomain(): MonthlyStats = MonthlyStats(
     totalAmountCents = totalAmountCents,
     count = count,
     byCategory = byCategory.map { it.toDomain() },
+    byTag = byTag.map { it.toDomain() },
 )
 
 fun CategoryStatsDto.toDomain(): CategoryStats = CategoryStats(
     category = normalizeExpenseCategory(category),
+    amountCents = amountCents,
+    count = count,
+)
+
+fun TagStatsDto.toDomain(): TagStats = TagStats(
+    tag = tag,
     amountCents = amountCents,
     count = count,
 )

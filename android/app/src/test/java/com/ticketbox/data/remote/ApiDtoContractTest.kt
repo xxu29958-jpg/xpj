@@ -5,6 +5,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
+import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
@@ -108,6 +109,30 @@ class ApiDtoContractTest {
 
         assertEquals("owner", dto.ledgerId)
         assertEquals(true, dto.ledgerIsDefault)
+    }
+
+    @Test
+    fun monthlyStatsDtoParsesTagStats() {
+        val dto = requireNotNull(
+            moshi.adapter(MonthlyStatsDto::class.java).fromJson(
+                """
+                {
+                  "month": "2026-05",
+                  "total_amount_cents": 15800,
+                  "count": 3,
+                  "by_category": [
+                    {"category": "餐饮", "amount_cents": 15800, "count": 3}
+                  ],
+                  "by_tag": [
+                    {"tag": "真香", "amount_cents": 12000, "count": 2}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("真香", dto.byTag.single().tag)
+        assertEquals(12000L, dto.byTag.single().amountCents)
     }
 
     @Test

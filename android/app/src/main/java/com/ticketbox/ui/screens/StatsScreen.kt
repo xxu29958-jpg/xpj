@@ -29,6 +29,7 @@ import com.ticketbox.ui.screens.stats.RecurringItemsSummaryCard
 import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsMonthChip
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
+import com.ticketbox.ui.screens.stats.TagStatsCard
 import com.ticketbox.viewmodel.StatsUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -111,6 +112,15 @@ fun StatsScreen(
                         categories = visibleCategories,
                         totalAmountCents = stats.totalAmountCents,
                         insight = state.categoryInsight,
+                    )
+                }
+            }
+            val visibleTags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
+            if (visibleTags.isNotEmpty()) {
+                item {
+                    TagStatsCard(
+                        tags = visibleTags,
+                        totalAmountCents = stats.totalAmountCents,
                     )
                 }
             }

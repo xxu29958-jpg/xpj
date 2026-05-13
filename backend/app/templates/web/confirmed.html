@@ -9,9 +9,13 @@
     <label>月份（YYYY-MM）：
       <input type="text" name="month" value="{{ month }}" placeholder="2026-05" pattern="\d{4}-\d{2}">
     </label>
+    <label>标签：
+      <input type="text" name="tag" value="{{ tag }}" placeholder="真香">
+    </label>
     <button type="submit" class="btn btn-secondary">筛选</button>
-    {% if month %}<a class="btn btn-link" href="/web/confirmed{{ q }}">清除</a>{% endif %}
+    {% if month or tag %}<a class="btn btn-link" href="/web/confirmed{{ q }}">清除</a>{% endif %}
   </form>
+  {% if tag %}<div class="meta">当前仅显示标签「{{ tag }}」的账单。</div>{% endif %}
 </div>
 
 {% if expenses %}
@@ -58,11 +62,11 @@
   {% if total_pages > 1 %}
   <div class="pagination">
     {% if page > 1 %}
-      <a class="btn btn-secondary" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&page={{ page - 1 }}{% if month %}&month={{ month }}{% endif %}">上一页</a>
+      <a class="btn btn-secondary" href="/web/confirmed?{{ pager_query }}&page={{ page - 1 }}">上一页</a>
     {% endif %}
     <span>第 {{ page }} / {{ total_pages }} 页</span>
     {% if page < total_pages %}
-      <a class="btn btn-secondary" href="/web/confirmed?ledger_id={{ selected_ledger_id }}&page={{ page + 1 }}{% if month %}&month={{ month }}{% endif %}">下一页</a>
+      <a class="btn btn-secondary" href="/web/confirmed?{{ pager_query }}&page={{ page + 1 }}">下一页</a>
     {% endif %}
   </div>
   {% endif %}

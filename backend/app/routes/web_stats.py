@@ -9,7 +9,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -24,7 +23,7 @@ from app.routes.web_common import (
 )
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items, recurring_amount_anomalies
-from app.services.stats_service import monthly_stats
+from app.services.stats_service import _confirmed_query, monthly_stats
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -33,6 +32,7 @@ router = APIRouter(prefix="/web", tags=["web"])
 def web_stats(
     request: Request,
     month: str | None = None,
+    tag: str | None = None,
     ledger_id: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -41,7 +41,7 @@ def web_stats(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
     if not month:
         month = datetime.now().strftime("%Y-%m")
-    stats = monthly_stats(db, month, selected_id)
+    stats = monthly_stats(db, month, selected_id, tag=tag)
 
     by_category = [
         {
@@ -54,16 +54,12 @@ def web_stats(
 
     top_rows: list[dict[str, str]] = []
     top_query = (
-        select(Expense)
-        .where(Expense.tenant_id == selected_id)
-        .where(Expense.status == "confirmed")
+        _confirmed_query(tenant_id=selected_id, month=month, tag=tag)
         .where(Expense.amount_cents.is_not(None))
         .order_by(Expense.amount_cents.desc())
-        .limit(10)
+        .limit(5)
     )
     for e in db.scalars(top_query).all():
-        if e.expense_time and e.expense_time.strftime("%Y-%m") != month:
-            continue
         top_rows.append(
             {
                 "merchant": e.merchant or "未填写商家",
@@ -72,8 +68,6 @@ def web_stats(
                 "expense_time": e.expense_time.strftime("%Y-%m-%d") if e.expense_time else "",
             }
         )
-        if len(top_rows) >= 5:
-            break
 
     try:
         rc_items = recurring_candidates(
@@ -117,6 +111,7 @@ def web_stats(
 
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["month"] = month
+    ctx["tag"] = tag or ""
     ctx["total_amount_yuan"] = _amount_yuan(int(stats["total_amount_cents"]))
     ctx["count"] = int(stats["count"])
     ctx["by_category"] = by_category
