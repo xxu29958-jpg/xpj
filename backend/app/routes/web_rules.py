@@ -27,6 +27,7 @@ from app.services.classify_service import (
     create_rule,
     delete_rule,
     list_rules,
+    preview_apply_rules_to_pending,
     preview_rule_for_pending,
     update_rule,
 )
@@ -40,6 +41,7 @@ def web_rules(
     ledger_id: str = "",
     preview_keyword: str = "",
     preview_category: str = "",
+    apply_preview: bool = False,
     msg: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -67,10 +69,18 @@ def web_rules(
             }
         except AppError as exc:
             preview_error = exc.message
+    bulk_preview = None
+    if apply_preview:
+        bulk_preview = preview_apply_rules_to_pending(
+            db,
+            tenant_id=selected_id,
+            limit=20,
+        )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["rules"] = rules
     ctx["preview"] = preview
     ctx["preview_error"] = preview_error
+    ctx["bulk_preview"] = bulk_preview
     ctx["preview_keyword"] = preview_keyword
     ctx["preview_category"] = preview_category
     ctx["flash_message"] = msg
@@ -164,12 +174,19 @@ def web_rules_delete(
 @router.post("/rules/apply-pending", response_class=HTMLResponse)
 def web_rules_apply_pending(
     ledger_id: str = Form(""),
+    preview_confirmed: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
     _require_selected_ledger_write(options, selected_id)
+    if preview_confirmed != "yes":
+        msg = "请先预览影响范围，再确认应用规则。"
+        return RedirectResponse(
+            url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
+            status_code=303,
+        )
     pending_scanned, changed_count = apply_rules_to_pending(db, tenant_id=selected_id)
     msg = f"扫描了 {pending_scanned} 条待确认；改写了 {changed_count} 条分类。"
     return RedirectResponse(

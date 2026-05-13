@@ -468,9 +468,42 @@ def test_web_rules_preview_does_not_mutate(web_client: TestClient) -> None:
     assert "其他" in detail.text
 
 
-def test_web_rules_apply_pending_redirects(web_client: TestClient) -> None:
-    resp = web_client.post(
+def test_web_rules_apply_pending_requires_preview_then_applies(
+    web_client: TestClient,
+) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "9.00", "Starbucks 上海")
+    created = web_client.post(
+        "/web/rules/create",
+        data={
+            "keyword": "Starbucks",
+            "category": "餐饮",
+            "priority": "1",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code in {303, 307}
+
+    direct = web_client.post(
         "/web/rules/apply-pending",
         data={"ledger_id": "owner"}, follow_redirects=False,
     )
-    assert resp.status_code in {303, 307}
+    assert direct.status_code in {303, 307}
+    assert "apply_preview=1" in direct.headers["location"]
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "其他" in detail.text
+
+    preview = web_client.get("/web/rules?ledger_id=owner&apply_preview=1")
+    assert preview.status_code == 200
+    assert "将改写" in preview.text
+    assert "Starbucks 上海" in preview.text
+    assert "确认应用到待确认" in preview.text
+
+    applied = web_client.post(
+        "/web/rules/apply-pending",
+        data={"ledger_id": "owner", "preview_confirmed": "yes"},
+        follow_redirects=False,
+    )
+    assert applied.status_code in {303, 307}
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "餐饮" in detail.text

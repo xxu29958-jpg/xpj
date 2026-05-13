@@ -61,7 +61,7 @@
         <tr>
           <td>{{ it.id }}</td>
           <td>{{ it.merchant or '—' }}</td>
-          <td>{{ it.category or '—' }}</td>
+          <td>{{ it.current_category or '—' }}</td>
           <td>{{ it.reason }}</td>
         </tr>
       {% endfor %}
@@ -74,18 +74,82 @@
 
 <section class="card">
   <div class="card-header">
-    <h2>当前规则（{{ rules|length }} 条）</h2>
-    {% if can_write %}
-    <form method="post" action="/web/rules/apply-pending" style="display:inline">
+    <h2>批量应用前预览</h2>
+    <form method="get" action="/web/rules" style="display:inline">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <button type="submit" class="btn btn-primary"
-              onclick="return confirm('对所有「其他/未分类」的待确认账单跑一次规则改写分类？')">
-        一键应用到待确认
-      </button>
+      <input type="hidden" name="apply_preview" value="1">
+      <button type="submit" class="btn btn-secondary">预览影响范围</button>
     </form>
-    {% else %}
-    <span class="readonly-inline">只读角色无法一键应用规则。</span>
-    {% endif %}
+  </div>
+  <p class="meta">批量应用只会改写「其他/未分类」的待确认账单；不会自动确认，也不会回写已确认记录。</p>
+  {% if bulk_preview %}
+  <div class="summary-grid compact">
+    <div class="summary-card primary">
+      <div class="summary-card-label">将改写</div>
+      <div class="summary-card-num">{{ bulk_preview.changed_count }}</div>
+      <div class="summary-card-hint">待确认分类</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">扫描</div>
+      <div class="summary-card-num">{{ bulk_preview.pending_scanned }}</div>
+      <div class="summary-card-hint">待确认账单</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">跳过</div>
+      <div class="summary-card-num">{{ bulk_preview.skipped_non_default_category }}</div>
+      <div class="summary-card-hint">已有手动分类</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">未命中</div>
+      <div class="summary-card-num">{{ bulk_preview.no_match_count }}</div>
+      <div class="summary-card-hint">没有规则命中</div>
+    </div>
+  </div>
+  {% if bulk_preview['items'] %}
+  <table class="transaction-table compact">
+    <thead><tr><th>ID</th><th>商家</th><th>当前分类</th><th>将改为</th><th>规则</th></tr></thead>
+    <tbody>
+    {% for it in bulk_preview['items'] %}
+      <tr>
+        <td>{{ it.id }}</td>
+        <td>{{ it.merchant or '—' }}</td>
+        <td>{{ it.current_category }}</td>
+        <td><span class="category-badge">{{ it.suggested_category }}</span></td>
+        <td>{{ it.rule_keyword }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">没有需要改写的待确认账单</div>
+    <div class="empty-state-hint">可以先新增规则，或保留现有分类。</div>
+  </div>
+  {% endif %}
+  {% if can_write and bulk_preview.changed_count > 0 %}
+  <form method="post" action="/web/rules/apply-pending" style="margin-top:12px">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="preview_confirmed" value="yes">
+    <button type="submit" class="btn btn-primary"
+            onclick="return confirm('已预览影响范围，确认把规则应用到这些待确认账单？')">
+      确认应用到待确认
+    </button>
+  </form>
+  {% elif not can_write %}
+  <span class="readonly-inline">只读角色无法应用规则。</span>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state-title">先预览，再批量应用</div>
+    <div class="empty-state-hint">预览会列出将改写的账单样本和跳过原因。</div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-header">
+    <h2>当前规则（{{ rules|length }} 条）</h2>
+    <span class="meta">批量应用入口已移到上方预览区。</span>
   </div>
   {% if rules %}
   <table class="transaction-table">
