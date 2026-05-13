@@ -20,6 +20,7 @@ class MainActivity : FragmentActivity() {
             TicketboxApp(
                 repository = container.expenseRepository,
                 ledgerRepository = container.ledgerRepository,
+                recurringRepository = container.recurringRepository,
                 appViewModelFactory = appViewModelFactory(
                     repository = container.expenseRepository,
                     settingsStore = container.settingsStore,

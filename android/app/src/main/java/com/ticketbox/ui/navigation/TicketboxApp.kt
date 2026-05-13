@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -36,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -51,6 +53,7 @@ import com.ticketbox.ui.screens.ExpenseEditScreen
 import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LoginScreen
 import com.ticketbox.ui.screens.PendingScreen
+import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -60,6 +63,7 @@ import com.ticketbox.viewmodel.AppViewModel
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.LedgerViewModel
 import com.ticketbox.viewmodel.PendingViewModel
+import com.ticketbox.viewmodel.RecurringViewModel
 import com.ticketbox.viewmodel.SettingsViewModel
 import com.ticketbox.viewmodel.StatsViewModel
 import com.ticketbox.viewmodel.closeSheet
@@ -71,6 +75,7 @@ import com.ticketbox.viewmodel.openMissingAmount
 import com.ticketbox.viewmodel.openQuickCategory
 import com.ticketbox.viewmodel.openQuickMerchant
 import com.ticketbox.viewmodel.repositoryViewModelFactory
+import com.ticketbox.viewmodel.recurringViewModelFactory
 import com.ticketbox.viewmodel.saveAmountAndConfirm
 import com.ticketbox.viewmodel.saveAmountDraft
 import com.ticketbox.viewmodel.saveQuickCategory
@@ -87,6 +92,7 @@ private enum class BottomTab(
     Pending("pending", "待确认", Icons.Default.CheckCircle),
     Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
     Stats("stats", "统计", Icons.Default.BarChart),
+    Recurring("recurring", "固定", Icons.Filled.Category),
     Settings("settings", "设置", Icons.Default.Settings),
 }
 
@@ -94,6 +100,7 @@ private enum class BottomTab(
 fun TicketboxApp(
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
+    recurringRepository: RecurringRepository,
     appViewModelFactory: ViewModelProvider.Factory,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
@@ -122,6 +129,7 @@ fun TicketboxApp(
             appViewModel = appViewModel,
             repository = repository,
             ledgerRepository = ledgerRepository,
+            recurringRepository = recurringRepository,
             settingsViewModelFactory = settingsViewModelFactory,
             biometricAuthManager = biometricAuthManager,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
@@ -135,6 +143,7 @@ private fun TicketboxContent(
     appViewModel: AppViewModel,
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
+    recurringRepository: RecurringRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
     onAuthMessageShown: () -> Unit,
@@ -182,6 +191,7 @@ private fun TicketboxContent(
     MainShell(
         repository = repository,
         ledgerRepository = ledgerRepository,
+        recurringRepository = recurringRepository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
         backgroundSettings = appState.backgroundSettings,
@@ -198,6 +208,7 @@ private fun TicketboxContent(
 private fun MainShell(
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
+    recurringRepository: RecurringRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
     backgroundSettings: BackgroundSettings,
@@ -370,6 +381,20 @@ private fun MainShell(
                         onRefresh = statsViewModel::refresh,
                     )
                 }
+                BottomTab.Recurring -> {
+                    val recurringViewModel: RecurringViewModel = viewModel(
+                        factory = recurringViewModelFactory(recurringRepository),
+                    )
+                    val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
+                    RecurringScreen(
+                        state = state,
+                        onRefresh = recurringViewModel::refresh,
+                        onConfirmCandidate = recurringViewModel::confirmCandidate,
+                        onPause = recurringViewModel::pause,
+                        onResume = recurringViewModel::resume,
+                        onArchive = recurringViewModel::archive,
+                    )
+                }
                 BottomTab.Settings -> {
                     val settingsViewModel: SettingsViewModel = viewModel(
                         factory = settingsViewModelFactory,
@@ -414,6 +439,7 @@ private val BottomTab.surfaceRole: SurfaceRole
         BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
         BottomTab.Stats -> SurfaceRole.Stats
+        BottomTab.Recurring -> SurfaceRole.Stats
         BottomTab.Settings -> SurfaceRole.Settings
     }
 

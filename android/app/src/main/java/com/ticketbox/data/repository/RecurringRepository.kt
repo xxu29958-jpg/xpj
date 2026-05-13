@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,8 @@ class RecurringRepository(
     private var cachedApi: ApiService? = null
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
+
+    fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
     private fun api(): ApiService {
         val serverUrl = settingsStore.serverUrl()
@@ -104,6 +107,10 @@ class RecurringRepository(
                 timezone = currentTimezoneId(),
             ).items.map { it.toDomain() }
         }
+
+    suspend fun candidates(): Result<List<RecurringCandidate>> = safeCall {
+        api().recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
+    }
 
     suspend fun detail(publicId: String, month: String? = null): Result<RecurringItem> = safeCall {
         require(publicId.isNotBlank()) { "固定支出不存在。" }

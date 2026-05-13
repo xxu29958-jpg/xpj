@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.security.SecureTokenStore
 
 @Suppress("UNCHECKED_CAST")
@@ -28,6 +29,15 @@ fun repositoryViewModelFactory(
             StatsViewModel::class.java -> StatsViewModel(repository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun recurringViewModelFactory(
+    repository: RecurringRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return RecurringViewModel(repository) as T
     }
 }
 
