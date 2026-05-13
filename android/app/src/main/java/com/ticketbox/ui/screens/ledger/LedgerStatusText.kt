@@ -12,15 +12,17 @@ internal fun ledgerCombinedStatusLine(state: LedgerUiState): String {
     }
     val month = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
     val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
+    val tag = state.tagFilter.takeIf { it.isNotBlank() }?.let { " · 标签“$it”" }.orEmpty()
     val query = state.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
-    return "$syncText · 当前查看：$month · $category$query"
+    return "$syncText · 当前查看：$month · $category$tag$query"
 }
 
 internal fun ledgerFilterSummary(state: LedgerUiState): String {
     val month = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
     val category = state.categoryFilter.takeIf { it.isNotBlank() } ?: "全部分类"
+    val tag = state.tagFilter.takeIf { it.isNotBlank() }?.let { " · 标签“$it”" }.orEmpty()
     val query = state.query.takeIf { it.isNotBlank() }?.let { " · 搜索“$it”" }.orEmpty()
-    return "当前查看：$month · $category$query"
+    return "当前查看：$month · $category$tag$query"
 }
 
 internal fun ledgerSyncClock(value: String): String {

@@ -184,6 +184,24 @@ class ExpenseFiltersTest {
     }
 
     @Test
+    fun filtersByExactNormalizedTag() {
+        val items = listOf(
+            expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", tags = " 周末 ，AI"),
+            expense(id = 2, category = "购物", expenseTime = "2026-05-04T04:20:00Z", tags = "周末采购"),
+            expense(id = 3, category = "交通", expenseTime = "2026-05-05T04:20:00Z", tags = "ai"),
+        )
+
+        assertEquals(
+            listOf(1L),
+            filterConfirmedExpenses(items, month = "2026-05", category = "", tag = "周末").map { it.id },
+        )
+        assertEquals(
+            listOf(1L, 3L),
+            filterConfirmedExpenses(items, month = "2026-05", category = "", tag = "AI").map { it.id },
+        )
+    }
+
+    @Test
     fun buildsSevenDayTrendUsingExpenseTimeFallback() {
         val items = listOf(
             expense(id = 1, category = "餐饮", expenseTime = "2026-05-03T04:20:00Z", amountCents = 1200),
@@ -267,6 +285,24 @@ class ExpenseFiltersTest {
                 TagStats(tag = "AI", amountCents = 1_200, count = 1),
             ),
             stats.byTag,
+        )
+
+        val tagStats = monthlyStatsFromConfirmedExpenses(
+            expenses = items,
+            month = "2026-05",
+            tag = "真香",
+            zoneId = ZoneOffset.UTC,
+        )
+
+        checkNotNull(tagStats)
+        assertEquals(1_200, tagStats.totalAmountCents)
+        assertEquals(1, tagStats.count)
+        assertEquals(
+            listOf(
+                TagStats(tag = "真香", amountCents = 1_200, count = 1),
+                TagStats(tag = "AI", amountCents = 1_200, count = 1),
+            ),
+            tagStats.byTag,
         )
     }
 

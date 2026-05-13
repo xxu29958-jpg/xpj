@@ -364,6 +364,7 @@ private fun MainShell(
                         state = state,
                         onMonthChange = ledgerViewModel::setMonthFilter,
                         onCategoryChange = ledgerViewModel::setCategoryFilter,
+                        onTagChange = ledgerViewModel::setTagFilter,
                         onQueryChange = ledgerViewModel::setQuery,
                         onClearFilters = ledgerViewModel::clearFilters,
                         onSync = ledgerViewModel::sync,
@@ -378,6 +379,7 @@ private fun MainShell(
                     StatsScreen(
                         state = state,
                         onMonthChange = statsViewModel::setMonth,
+                        onTagChange = statsViewModel::setTag,
                         onRefresh = statsViewModel::refresh,
                     )
                 }

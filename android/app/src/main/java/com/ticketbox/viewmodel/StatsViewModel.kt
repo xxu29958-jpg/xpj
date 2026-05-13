@@ -14,6 +14,7 @@ import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.DataQualitySummary
+import com.ticketbox.domain.model.filterConfirmedExpenses
 import com.ticketbox.domain.model.monthlyBudgetProgress
 import com.ticketbox.domain.model.monthlyCategoryInsight
 import com.ticketbox.domain.model.monthlyStatsFromConfirmedExpenses
@@ -37,7 +38,9 @@ data class StatsUiState(
     val recurringCandidates: List<RecurringCandidate> = emptyList(),
     val dataQuality: DataQualitySummary? = null,
     val months: List<String> = emptyList(),
+    val tags: List<String> = emptyList(),
     val month: String = YearMonth.now().toString(),
+    val selectedTag: String = "",
     val loading: Boolean = false,
     val message: String? = null,
 )
@@ -52,6 +55,7 @@ class StatsViewModel(
 
     init {
         loadMonths()
+        loadTags()
         observeDailyTrend()
         refresh()
     }
@@ -63,17 +67,30 @@ class StatsViewModel(
         }
     }
 
+    private fun loadTags() {
+        viewModelScope.launch {
+            repository.tags()
+                .onSuccess { tags -> _uiState.update { it.copy(tags = tags) } }
+        }
+    }
+
     private fun observeDailyTrend() {
         viewModelScope.launch {
             repository.observeConfirmed().collect { expenses ->
                 confirmedCache = expenses
                 _uiState.update {
-                    val localStats = monthlyStatsFromConfirmedExpenses(expenses, it.month)
+                    val visibleExpenses = filterConfirmedExpenses(
+                        expenses = expenses,
+                        month = "",
+                        category = "",
+                        tag = it.selectedTag,
+                    )
+                    val localStats = monthlyStatsFromConfirmedExpenses(expenses, it.month, it.selectedTag)
                     val visibleStats = it.stats ?: localStats
                     it.copy(
                         stats = visibleStats,
-                        dailyTrend = recentDailySpending(expenses),
-                        monthComparison = monthlySpendingComparison(expenses, it.month),
+                        dailyTrend = recentDailySpending(visibleExpenses),
+                        monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
                         budgetProgress = monthlyBudgetProgress(visibleStats, repository.monthlyBudgetCents()),
                         categoryInsight = monthlyCategoryInsight(visibleStats),
                     )
@@ -84,11 +101,40 @@ class StatsViewModel(
 
     fun setMonth(value: String) {
         _uiState.update {
-            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, value)
+            val visibleExpenses = filterConfirmedExpenses(
+                expenses = confirmedCache,
+                month = "",
+                category = "",
+                tag = it.selectedTag,
+            )
+            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, value, it.selectedTag)
             it.copy(
                 month = value,
                 stats = localStats,
-                monthComparison = monthlySpendingComparison(confirmedCache, value),
+                dailyTrend = recentDailySpending(visibleExpenses),
+                monthComparison = monthlySpendingComparison(visibleExpenses, value),
+                budgetProgress = monthlyBudgetProgress(localStats, repository.monthlyBudgetCents()),
+                categoryInsight = monthlyCategoryInsight(localStats),
+            )
+        }
+        refresh()
+    }
+
+    fun setTag(value: String) {
+        val cleanTag = value.trim()
+        _uiState.update {
+            val visibleExpenses = filterConfirmedExpenses(
+                expenses = confirmedCache,
+                month = "",
+                category = "",
+                tag = cleanTag,
+            )
+            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, it.month, cleanTag)
+            it.copy(
+                selectedTag = cleanTag,
+                stats = localStats,
+                dailyTrend = recentDailySpending(visibleExpenses),
+                monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
                 budgetProgress = monthlyBudgetProgress(localStats, repository.monthlyBudgetCents()),
                 categoryInsight = monthlyCategoryInsight(localStats),
             )
@@ -100,6 +146,7 @@ class StatsViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, message = null) }
             val month = _uiState.value.month.trim().ifBlank { null }
+            val tag = _uiState.value.selectedTag.trim().ifBlank { null }
             val budgetCents = repository.monthlyBudgetCents()
             // Fire-and-forget recurring reads; stats should remain usable if this section fails.
             launch {
@@ -121,11 +168,11 @@ class StatsViewModel(
                         _uiState.update { it.copy(dataQuality = summary) }
                     }
             }
-            repository.monthlyStats(month)
+            repository.monthlyStats(month = month, tag = tag)
                 .onSuccess { stats ->
                     repository.lifestyleStats(month)
                         .onSuccess { lifestyle ->
-                            repository.syncConfirmed(month)
+                            repository.syncConfirmed(month = month, category = null, tag = tag)
                             _uiState.update {
                                 it.copy(
                                     stats = stats,
@@ -151,7 +198,7 @@ class StatsViewModel(
                 .onFailure { error ->
                     _uiState.update {
                         val fallbackStats = month?.let { value ->
-                            monthlyStatsFromConfirmedExpenses(confirmedCache, value)
+                            monthlyStatsFromConfirmedExpenses(confirmedCache, value, tag.orEmpty())
                         }
                         val visibleStats = fallbackStats ?: it.stats
                         it.copy(

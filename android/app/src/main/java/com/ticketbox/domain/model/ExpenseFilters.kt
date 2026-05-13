@@ -14,11 +14,14 @@ fun filterConfirmedExpenses(
     expenses: List<Expense>,
     month: String,
     category: String,
+    tag: String = "",
     query: String = "",
     zoneId: ZoneId = ZoneId.systemDefault(),
 ): List<Expense> {
     val cleanMonth = month.trim()
     val cleanCategory = category.trim()
+    val cleanTag = tag.trim()
+    val cleanTagKey = cleanTag.lowercase()
     val cleanQuery = query.trim().lowercase()
     val targetMonth = cleanMonth
         .takeIf { it.isNotBlank() }
@@ -30,6 +33,7 @@ fun filterConfirmedExpenses(
         val expenseMonth = expense.ledgerLocalDate(zoneId)?.let { YearMonth.from(it) }
         val monthMatched = targetMonth == null || expenseMonth == targetMonth
         val categoryMatched = cleanCategory.isBlank() || expense.category == cleanCategory
+        val tagMatched = cleanTag.isBlank() || expense.normalizedTagNames().any { it.lowercase() == cleanTagKey }
         val queryMatched = cleanQuery.isBlank() || listOfNotNull(
             expense.merchant,
             expense.category,
@@ -37,7 +41,7 @@ fun filterConfirmedExpenses(
             expense.tags,
             expense.source,
         ).any { it.lowercase().contains(cleanQuery) }
-        monthMatched && categoryMatched && queryMatched
+        monthMatched && categoryMatched && tagMatched && queryMatched
     }
 }
 
@@ -117,6 +121,7 @@ fun monthlySpendingComparison(
 fun monthlyStatsFromConfirmedExpenses(
     expenses: List<Expense>,
     month: String,
+    tag: String = "",
     zoneId: ZoneId = ZoneId.systemDefault(),
 ): MonthlyStats? {
     val targetMonth = runCatching { YearMonth.parse(month.trim()) }.getOrNull() ?: return null
@@ -124,6 +129,7 @@ fun monthlyStatsFromConfirmedExpenses(
         expenses = expenses,
         month = targetMonth.toString(),
         category = "",
+        tag = tag,
         zoneId = zoneId,
     ).filter { it.amountCents != null }
 

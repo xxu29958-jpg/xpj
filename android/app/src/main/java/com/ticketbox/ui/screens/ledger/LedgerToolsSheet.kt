@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -17,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.screens.CategoryFilterRow
+import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.viewmodel.LedgerUiState
 
 @Composable
@@ -24,13 +27,14 @@ internal fun LedgerToolsSheet(
     state: LedgerUiState,
     canExport: Boolean,
     onCategoryChange: (String) -> Unit,
+    onTagChange: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     onClearFilters: () -> Unit,
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val hasUserFilters = state.categoryFilter.isNotBlank() || state.query.isNotBlank()
+    val hasUserFilters = state.categoryFilter.isNotBlank() || state.tagFilter.isNotBlank() || state.query.isNotBlank()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -52,6 +56,13 @@ internal fun LedgerToolsSheet(
             selectedCategory = state.categoryFilter,
             onCategoryChange = onCategoryChange,
         )
+        if (state.tags.isNotEmpty() || state.tagFilter.isNotBlank()) {
+            TagFilterRow(
+                tags = state.tags,
+                selectedTag = state.tagFilter,
+                onTagChange = onTagChange,
+            )
+        }
         OutlinedTextField(
             value = state.query,
             onValueChange = onQueryChange,
@@ -96,6 +107,37 @@ internal fun LedgerToolsSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+    }
+}
+
+@Composable
+private fun TagFilterRow(
+    tags: List<String>,
+    selectedTag: String,
+    onTagChange: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = "标签",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                SelectableFilterChip(
+                    selected = selectedTag.isBlank(),
+                    label = "全部标签",
+                    onClick = { onTagChange("") },
+                )
+            }
+            items(tags, key = { it }) { tag ->
+                SelectableFilterChip(
+                    selected = selectedTag == tag,
+                    label = "#$tag",
+                    onClick = { onTagChange(tag) },
+                )
+            }
         }
     }
 }

@@ -107,6 +107,36 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
+    fun confirmedSyncForwardsSelectedTagFilter() = runTest {
+        val events = mutableListOf<String>()
+        val settingsStore = FakeTicketboxSettingsStore(events).apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events, confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.syncConfirmed(month = "2026-05", category = "餐饮", tag = "AI").getOrThrow()
+
+        assertEquals("2026-05", apiService.lastConfirmedMonth)
+        assertEquals("餐饮", apiService.lastConfirmedCategory)
+        assertEquals("AI", apiService.lastConfirmedTag)
+    }
+
+    @Test
     fun authCheckRefreshesStoredIdentityAndRole() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
@@ -319,6 +349,9 @@ private class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
 ) : ApiService {
     var lastNotificationDraftRequest: NotificationDraftRequestDto? = null
+    var lastConfirmedMonth: String? = null
+    var lastConfirmedCategory: String? = null
+    var lastConfirmedTag: String? = null
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -340,6 +373,9 @@ private class FakeApiService(
         timezone: String?,
     ): PaginatedExpensesDto {
         events += "syncConfirmed"
+        lastConfirmedMonth = month
+        lastConfirmedCategory = category
+        lastConfirmedTag = tag
         if (confirmedFailuresRemaining > 0) {
             confirmedFailuresRemaining -= 1
             throw IOException("restore unavailable")

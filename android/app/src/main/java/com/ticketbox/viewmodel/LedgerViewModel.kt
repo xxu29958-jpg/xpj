@@ -19,11 +19,13 @@ import java.time.YearMonth
 data class LedgerUiState(
     val items: List<Expense> = emptyList(),
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
+    val tags: List<String> = emptyList(),
     val months: List<String> = emptyList(),
     val readOnly: Boolean = false,
     val exportFile: CsvExport? = null,
     val monthFilter: String = YearMonth.now().toString(),
     val categoryFilter: String = "",
+    val tagFilter: String = "",
     val query: String = "",
     val lastSyncAt: String? = null,
     val syncing: Boolean = false,
@@ -46,6 +48,7 @@ class LedgerViewModel(
 
     init {
         loadCategories()
+        loadTags()
         loadMonths()
         viewModelScope.launch {
             repository.observeConfirmed().collect { expenses ->
@@ -71,11 +74,19 @@ class LedgerViewModel(
         }
     }
 
+    private fun loadTags() {
+        viewModelScope.launch {
+            repository.tags()
+                .onSuccess { tags -> _uiState.update { it.copy(tags = tags) } }
+        }
+    }
+
     private fun filterItems(expenses: List<Expense>, state: LedgerUiState): List<Expense> {
         return filterConfirmedExpenses(
             expenses = expenses,
             month = state.monthFilter,
             category = state.categoryFilter,
+            tag = state.tagFilter,
             query = state.query,
         )
     }
@@ -92,6 +103,12 @@ class LedgerViewModel(
         }
     }
 
+    fun setTagFilter(value: String) {
+        _uiState.update { state ->
+            state.copy(tagFilter = value, items = filterItems(allConfirmed, state.copy(tagFilter = value)))
+        }
+    }
+
     fun setQuery(value: String) {
         _uiState.update { state ->
             state.copy(query = value, items = filterItems(allConfirmed, state.copy(query = value)))
@@ -100,7 +117,7 @@ class LedgerViewModel(
 
     fun clearFilters() {
         _uiState.update { state ->
-            val next = state.copy(monthFilter = "", categoryFilter = "", query = "")
+            val next = state.copy(monthFilter = "", categoryFilter = "", tagFilter = "", query = "")
             next.copy(items = filterItems(allConfirmed, next))
         }
     }
@@ -112,6 +129,7 @@ class LedgerViewModel(
             repository.syncConfirmed(
                 month = filters.monthFilter.trim().ifBlank { null },
                 category = filters.categoryFilter.trim().ifBlank { null },
+                tag = filters.tagFilter.trim().ifBlank { null },
             )
                 .onSuccess {
                     _uiState.update {
@@ -143,6 +161,7 @@ class LedgerViewModel(
             repository.exportConfirmedCsv(
                 month = filters.monthFilter,
                 category = filters.categoryFilter,
+                tag = filters.tagFilter,
             )
                 .onSuccess { exportFile ->
                     _uiState.update {
@@ -169,12 +188,14 @@ class LedgerViewModel(
             repository.createManualExpense(draft)
                 .onSuccess { expense ->
                     loadCategories()
+                    loadTags()
                     loadMonths()
                     _uiState.update { state ->
                         val next = state.copy(
                             creatingManual = false,
                             monthFilter = expenseLedgerMonth(expense) ?: state.monthFilter,
                             categoryFilter = "",
+                            tagFilter = "",
                             message = "已记入账本",
                         )
                         next.copy(items = filterItems(allConfirmed, next))

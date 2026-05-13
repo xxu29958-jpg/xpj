@@ -62,6 +62,7 @@ private fun LedgerInlineFilters(
     onCategoryChange: (String) -> Unit,
 ) {
     val hasQuery = state.query.isNotBlank()
+    val hasTag = state.tagFilter.isNotBlank()
     val quickCategories = remember(state.categories) { state.categories.take(2) }
     val selectedOutsideQuick = state.categoryFilter.isNotBlank() && state.categoryFilter !in quickCategories
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -110,6 +111,22 @@ private fun LedgerInlineFilters(
                     null
                 },
             )
+        }
+        if (hasTag) {
+            item {
+                AppFilterChip(
+                    selected = true,
+                    onClick = onOpenTools,
+                    label = "#${state.tagFilter}",
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    },
+                )
+            }
         }
         item {
             AppFilterChip(

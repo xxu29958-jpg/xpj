@@ -441,6 +441,7 @@ class ExpenseRepository(
         service: ApiService,
         month: String? = null,
         category: String? = null,
+        tag: String? = null,
         replaceCache: Boolean = false,
         recordSyncTimestamp: Boolean = true,
     ): List<Expense> {
@@ -454,7 +455,7 @@ class ExpenseRepository(
                 pageSize = pageSize,
                 month = month,
                 category = category,
-                tag = null,
+                tag = tag,
                 timezone = currentTimezoneId(),
             )
             total = response.total
@@ -481,8 +482,12 @@ class ExpenseRepository(
         return collected
     }
 
-    suspend fun syncConfirmed(month: String? = null, category: String? = null): Result<List<Expense>> = safeCall {
-        syncConfirmedFromService(api(), month, category)
+    suspend fun syncConfirmed(
+        month: String? = null,
+        category: String? = null,
+        tag: String? = null,
+    ): Result<List<Expense>> = safeCall {
+        syncConfirmedFromService(api(), month, category, tag)
     }
 
     override suspend fun categories(): Result<List<String>> = safeCall {
@@ -497,10 +502,20 @@ class ExpenseRepository(
         api().months(timezone = currentTimezoneId()).items
     }
 
-    suspend fun exportConfirmedCsv(month: String? = null, category: String? = null): Result<CsvExport> = safeCall {
+    suspend fun exportConfirmedCsv(
+        month: String? = null,
+        category: String? = null,
+        tag: String? = null,
+    ): Result<CsvExport> = safeCall {
         val cleanMonth = month?.trim()?.ifBlank { null }
         val cleanCategory = category?.trim()?.ifBlank { null }
-        val response = api().exportCsv(month = cleanMonth, category = cleanCategory, tag = null, timezone = currentTimezoneId())
+        val cleanTag = tag?.trim()?.ifBlank { null }
+        val response = api().exportCsv(
+            month = cleanMonth,
+            category = cleanCategory,
+            tag = cleanTag,
+            timezone = currentTimezoneId(),
+        )
         if (!response.isSuccessful) {
             throw RepositoryException(parseErrorMessage(response.code(), response.errorBody()?.string()))
         }
@@ -508,6 +523,7 @@ class ExpenseRepository(
         val fileName = buildString {
             append("ticketbox-expenses")
             if (cleanMonth != null) append("-").append(cleanMonth)
+            if (cleanTag != null) append("-tag-").append(cleanTag.toFileNameSegment())
             append(".csv")
         }
         CsvExport(fileName = fileName, bytes = body.use { it.bytes() })
@@ -522,8 +538,8 @@ class ExpenseRepository(
             .distinctUntilChanged()
             .flatMapLatest { id -> expenseDao.observeConfirmed(id).map { rows -> rows.map { it.toDomain() } } }
 
-    suspend fun monthlyStats(month: String? = null): Result<MonthlyStats> = safeCall {
-        api().monthlyStats(month = month, tag = null, timezone = currentTimezoneId()).toDomain()
+    suspend fun monthlyStats(month: String? = null, tag: String? = null): Result<MonthlyStats> = safeCall {
+        api().monthlyStats(month = month, tag = tag?.trim()?.ifBlank { null }, timezone = currentTimezoneId()).toDomain()
     }
 
     suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats> = safeCall {
@@ -625,4 +641,11 @@ internal fun defaultAndroidDeviceName(): String {
         .filter { it.isNotBlank() }
         .joinToString(" ")
         .ifBlank { "Android 设备" }
+}
+
+private fun String.toFileNameSegment(): String {
+    return trim()
+        .replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_")
+        .take(40)
+        .ifBlank { "tag" }
 }

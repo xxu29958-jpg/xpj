@@ -2,7 +2,14 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -11,10 +18,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.displayMonthLabel
@@ -37,6 +46,7 @@ import com.ticketbox.viewmodel.StatsUiState
 fun StatsScreen(
     state: StatsUiState,
     onMonthChange: (String) -> Unit,
+    onTagChange: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
@@ -73,6 +83,10 @@ fun StatsScreen(
                     selectedMonth = state.month,
                     onClick = { showMonthPicker = true },
                 )
+                StatsTagFilterRow(
+                    state = state,
+                    onTagChange = onTagChange,
+                )
             }
         }
         state.message?.let {
@@ -85,8 +99,12 @@ fun StatsScreen(
             item {
                 StatsOverviewCard(
                     stats = stats,
-                    recent7DaysAmountCents = state.lifestyleStats?.recent7DaysAmountCents
-                        ?: state.dailyTrend.sumOf { it.amountCents },
+                    recent7DaysAmountCents = if (state.selectedTag.isBlank()) {
+                        state.lifestyleStats?.recent7DaysAmountCents
+                            ?: state.dailyTrend.sumOf { it.amountCents }
+                    } else {
+                        state.dailyTrend.sumOf { it.amountCents }
+                    },
                     comparison = state.monthComparison,
                 )
             }
@@ -152,6 +170,57 @@ fun StatsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StatsTagFilterRow(
+    state: StatsUiState,
+    onTagChange: (String) -> Unit,
+) {
+    val tags = (state.tags + state.stats?.byTag.orEmpty().map { it.tag })
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+        .let { items ->
+            if (state.selectedTag.isBlank() || items.any { it.equals(state.selectedTag, ignoreCase = true) }) {
+                items
+            } else {
+                listOf(state.selectedTag) + items
+            }
+        }
+        .take(12)
+    if (tags.isEmpty() && state.selectedTag.isBlank()) {
+        return
+    }
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            AppFilterChip(
+                selected = state.selectedTag.isBlank(),
+                onClick = { onTagChange("") },
+                label = "全部标签",
+            )
+        }
+        items(tags, key = { it }) { tag ->
+            val selected = state.selectedTag.equals(tag, ignoreCase = true)
+            AppFilterChip(
+                selected = selected,
+                onClick = { onTagChange(if (selected) "" else tag) },
+                label = "#$tag",
+                trailingIcon = if (selected) {
+                    {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "清除标签筛选",
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    }
+                } else {
+                    null
+                },
+            )
         }
     }
 }

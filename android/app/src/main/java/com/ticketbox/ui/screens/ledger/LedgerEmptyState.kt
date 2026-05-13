@@ -36,15 +36,17 @@ internal fun EmptyLedgerState(
 ) {
     val hasMonth = state.monthFilter.isNotBlank()
     val hasCategory = state.categoryFilter.isNotBlank()
-    val hasActiveFilters = hasMonth || hasCategory || state.query.isNotBlank()
+    val hasTag = state.tagFilter.isNotBlank()
+    val hasActiveFilters = hasMonth || hasCategory || hasTag || state.query.isNotBlank()
     val title = when {
+        hasTag -> "暂无 #${state.tagFilter} 标签账单"
         hasMonth && hasCategory -> "${displayMonthLabel(state.monthFilter)} 暂无 ${state.categoryFilter} 分类账单"
         hasMonth -> "${displayMonthLabel(state.monthFilter)} 暂无已确认账单"
         hasCategory -> "暂无 ${state.categoryFilter} 分类账单"
         else -> "本地还没有已确认账单"
     }
     val body = when {
-        hasMonth || hasCategory -> "可以切换月份、选择全部分类，或先更新账本。"
+        hasMonth || hasCategory || hasTag -> "可以切换月份、分类或标签，或先更新账本。"
         state.readOnly -> "当前角色可查看已入账记录，不能手动记账。"
         else -> "在待确认页确认几笔账单后，账本会在这里显示。"
     }
