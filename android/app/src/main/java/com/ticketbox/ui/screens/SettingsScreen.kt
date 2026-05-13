@@ -214,6 +214,7 @@ fun SettingsScreen(
 
         SettingsRoute.NotificationPreferences -> NotificationPreferencesScreen(
             preferences = state.notificationPreferences,
+            readOnly = !ledgerRoleCanModify(state.role),
             onBack = { route = SettingsRoute.Root },
             onSave = onSaveNotificationPreferences,
         )

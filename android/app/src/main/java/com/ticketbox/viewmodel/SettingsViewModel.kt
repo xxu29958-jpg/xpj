@@ -226,11 +226,20 @@ class SettingsViewModel(
     }
 
     fun saveNotificationPreferences(preferences: NotificationPreferences) {
-        settingsStore.saveNotificationPreferences(preferences)
+        val savedPreferences = if (canModifyCurrentLedger()) {
+            preferences
+        } else {
+            preferences.copy(autoCaptureEnabled = false)
+        }
+        settingsStore.saveNotificationPreferences(savedPreferences)
         _uiState.update {
             it.copy(
-                notificationPreferences = preferences,
-                message = "通知偏好已保存",
+                notificationPreferences = savedPreferences,
+                message = if (preferences.autoCaptureEnabled && !savedPreferences.autoCaptureEnabled) {
+                    READ_ONLY_LEDGER_MESSAGE
+                } else {
+                    "通知偏好已保存"
+                },
             )
         }
     }

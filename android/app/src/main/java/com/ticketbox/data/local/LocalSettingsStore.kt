@@ -48,6 +48,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun notificationPreferences(): NotificationPreferences =
         NotificationPreferences(
+            autoCaptureEnabled = prefs.getBoolean(KEY_NOTIFY_AUTO_CAPTURE, false),
             pendingDraftReminders = prefs.getBoolean(KEY_NOTIFY_PENDING_DRAFTS, false),
             largeAmountAlerts = prefs.getBoolean(KEY_NOTIFY_LARGE_AMOUNT, false),
             recurringReminders = prefs.getBoolean(KEY_NOTIFY_RECURRING, false),
@@ -55,6 +56,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun saveNotificationPreferences(preferences: NotificationPreferences) {
         prefs.edit {
+            putBoolean(KEY_NOTIFY_AUTO_CAPTURE, preferences.autoCaptureEnabled)
             putBoolean(KEY_NOTIFY_PENDING_DRAFTS, preferences.pendingDraftReminders)
             putBoolean(KEY_NOTIFY_LARGE_AMOUNT, preferences.largeAmountAlerts)
             putBoolean(KEY_NOTIFY_RECURRING, preferences.recurringReminders)
@@ -226,6 +228,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_BOUND_AT = "bound_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
         const val KEY_LAST_UPLOAD_AT = "last_upload_at"
+        const val KEY_NOTIFY_AUTO_CAPTURE = "notify_auto_capture"
         const val KEY_NOTIFY_PENDING_DRAFTS = "notify_pending_drafts"
         const val KEY_NOTIFY_LARGE_AMOUNT = "notify_large_amount"
         const val KEY_NOTIFY_RECURRING = "notify_recurring"

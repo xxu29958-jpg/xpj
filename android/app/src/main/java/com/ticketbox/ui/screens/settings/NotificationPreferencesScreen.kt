@@ -7,32 +7,81 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.notification.NotificationListenerStatus
 import com.ticketbox.ui.components.SoftPanel
 
 @Composable
 fun NotificationPreferencesScreen(
     preferences: NotificationPreferences,
+    readOnly: Boolean,
     onBack: () -> Unit,
     onSave: (NotificationPreferences) -> Unit,
 ) {
     fun update(updated: NotificationPreferences) {
         onSave(updated)
     }
+    val context = LocalContext.current
+    val listenerAuthorized = NotificationListenerStatus.isEnabled(context)
 
     SettingsPageFrame(
         title = "通知与提醒",
         subtitle = "通知只生成待确认草稿或提醒，不会自动入账。",
         onBack = onBack,
     ) {
+        SettingsSection(title = "通知自动草稿", icon = Icons.Filled.Notifications) {
+            SoftPanel(containerAlpha = 0.96f) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    NotificationSwitchLine(
+                        title = "本机解析支付通知",
+                        subtitle = if (readOnly) {
+                            "当前角色为只读，不能生成自动草稿。"
+                        } else if (listenerAuthorized) {
+                            "系统授权已开启；只上传金额、商家、时间等结构化字段。"
+                        } else {
+                            "需要先在系统设置里显式授权；关闭后不会读取通知。"
+                        },
+                        checked = preferences.autoCaptureEnabled && !readOnly,
+                        enabled = !readOnly,
+                        onCheckedChange = {
+                            update(preferences.copy(autoCaptureEnabled = it))
+                        },
+                    )
+                    Button(
+                        onClick = {
+                            context.startActivity(NotificationListenerStatus.settingsIntent())
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(if (listenerAuthorized) "查看系统授权" else "打开系统授权")
+                    }
+                    Text(
+                        text = if (readOnly) {
+                            "当前角色为只读，通知监听服务不会生成草稿。"
+                        } else if (preferences.autoCaptureEnabled) {
+                            "自动草稿仍需在待确认页手动确认，绝不会自动入账。"
+                        } else {
+                            "当前已关闭自动草稿，通知监听服务不会上传任何内容。"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
         SettingsSection(title = "提醒开关", icon = Icons.Filled.Notifications) {
             SoftPanel(containerAlpha = 0.96f) {
                 Column(
@@ -78,7 +127,7 @@ fun NotificationPreferencesScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "后续开启通知监听前，会先要求你在系统设置中显式授权，并且可以在这里一键关闭提醒。",
+                        text = "支付通知只在本机解析，上传字段限定为来源、金额、商家、分类和时间。系统授权和 App 开关任一关闭，都会停止自动草稿。",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -93,6 +142,7 @@ private fun NotificationSwitchLine(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
@@ -117,6 +167,10 @@ private fun NotificationSwitchLine(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange,
+        )
     }
 }
