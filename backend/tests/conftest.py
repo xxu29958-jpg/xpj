@@ -185,7 +185,9 @@ def client() -> TestClient:
     # the network_boundary helper.
     from app.network_boundary import require_admin_network_boundary
     app.dependency_overrides[require_admin_network_boundary] = lambda: None
-    with TestClient(app) as test_client:
+    test_client = TestClient(app)
+    try:
         yield test_client
-    app.dependency_overrides.clear()
-    reset_runtime()
+    finally:
+        test_client.close()
+        app.dependency_overrides.clear()

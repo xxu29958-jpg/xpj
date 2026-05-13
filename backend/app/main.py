@@ -14,6 +14,7 @@ from app.routes import admin as admin_routes
 from app.routes import owner_console
 from app.routes import owner_ledgers
 from app.routes import web_app
+from app.routes import web_budgets
 from app.routes import web_categories
 from app.routes import web_data_quality
 from app.routes import web_duplicates
@@ -73,6 +74,7 @@ app.include_router(web_app.router)
 app.include_router(web_pending.router)
 app.include_router(web_rules_routes.router)
 app.include_router(web_stats.router)
+app.include_router(web_budgets.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)

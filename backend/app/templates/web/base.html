@@ -14,6 +14,7 @@
   <a href="/web/pending{{ q }}" {% if '/pending' in request.url.path %}class="active"{% endif %}>待确认</a>
   <a href="/web/confirmed{{ q }}" {% if '/confirmed' in request.url.path %}class="active"{% endif %}>已确认</a>
   <a href="/web/stats{{ q }}" {% if '/stats' in request.url.path %}class="active"{% endif %}>报表</a>
+  <a href="/web/budgets{{ q }}" {% if '/budgets' in request.url.path %}class="active"{% endif %}>预算</a>
   <a href="/web/recurring{{ q }}" {% if '/recurring' in request.url.path %}class="active"{% endif %}>固定支出</a>
   <a href="/web/data-quality{{ q }}" {% if '/data-quality' in request.url.path %}class="active"{% endif %}>数据体检</a>
   <a href="/web/duplicates{{ q }}" {% if '/duplicates' in request.url.path %}class="active"{% endif %}>重复</a>
