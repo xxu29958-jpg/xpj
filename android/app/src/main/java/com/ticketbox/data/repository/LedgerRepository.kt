@@ -12,11 +12,13 @@ import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
+import com.ticketbox.data.remote.dto.LedgerAuditDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.InvitationPreview
+import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.OwnerTransferResult
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
@@ -122,6 +124,15 @@ class LedgerRepository(
             "当前账本还没有准备好。"
         }
         api().ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
+    }
+
+    suspend fun refreshFamilyAudit(
+        ledgerId: String? = activeLedgerId(),
+        limit: Int = AUDIT_DEFAULT_LIMIT,
+    ): Result<List<LedgerAuditEntry>> = wrap {
+        val targetLedgerId = requireActiveLedger(ledgerId)
+        val safeLimit = limit.coerceIn(1, AUDIT_MAX_LIMIT)
+        api().ledgerAudit(targetLedgerId, safeLimit).items.map { it.toLedgerAuditEntry() }
     }
 
     suspend fun updateFamilyMemberRole(
@@ -273,6 +284,8 @@ class LedgerRepository(
 
     private companion object {
         const val LEDGER_NAME_MAX_LEN = 60
+        const val AUDIT_DEFAULT_LIMIT = 50
+        const val AUDIT_MAX_LIMIT = 200
     }
 }
 
@@ -293,6 +306,18 @@ internal fun LedgerMemberDto.toFamilyMember(): FamilyMember = FamilyMember(
     joinedAt = createdAt,
     disabledAt = disabledAt,
     isSelf = isSelf,
+)
+
+internal fun LedgerAuditDto.toLedgerAuditEntry(): LedgerAuditEntry = LedgerAuditEntry(
+    publicId = publicId,
+    action = action,
+    actorName = actorAccountName?.takeIf { it.isNotBlank() },
+    targetName = targetAccountName?.takeIf { it.isNotBlank() },
+    targetMemberId = targetMemberId,
+    previousRole = previousRole?.takeIf { it.isNotBlank() },
+    newRole = newRole?.takeIf { it.isNotBlank() },
+    result = result,
+    createdAt = createdAt,
 )
 
 private fun InvitationPreviewResponseDto.toInvitationPreview(): InvitationPreview = InvitationPreview(

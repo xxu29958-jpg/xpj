@@ -15,6 +15,7 @@ import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
+import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
@@ -164,6 +165,12 @@ interface ApiService {
 
     @GET("api/ledgers/{ledgerId}/members")
     suspend fun ledgerMembers(@Path("ledgerId") ledgerId: String): LedgerMemberListResponseDto
+
+    @GET("api/ledgers/{ledgerId}/audit")
+    suspend fun ledgerAudit(
+        @Path("ledgerId") ledgerId: String,
+        @Query("limit") limit: Int = 100,
+    ): LedgerAuditListResponseDto
 
     @POST("api/ledgers/{ledgerId}/members/{memberId}/role")
     suspend fun updateLedgerMemberRole(

@@ -15,6 +15,8 @@ import com.ticketbox.data.remote.dto.InvitationAcceptRequestDto
 import com.ticketbox.data.remote.dto.InvitationAcceptResponseDto
 import com.ticketbox.data.remote.dto.InvitationPreviewRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
+import com.ticketbox.data.remote.dto.LedgerAuditDto
+import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
@@ -385,6 +387,62 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun refreshFamilyAuditMapsServerFieldsAndClampsLimit() = runTest {
+        val api = StubApi(
+            auditResult = LedgerAuditListResponseDto(
+                items = listOf(
+                    LedgerAuditDto(
+                        publicId = "audit-1",
+                        ledgerId = "L_family",
+                        action = "member_role_changed",
+                        actorAccountPublicId = "acc_owner",
+                        actorAccountName = "阿方",
+                        targetAccountPublicId = "acc_member",
+                        targetAccountName = "",
+                        targetMemberId = 2,
+                        invitationPublicId = null,
+                        previousRole = "member",
+                        newRole = "viewer",
+                        result = "success",
+                        detail = "hidden-detail",
+                        createdAt = "2026-05-13T00:00:00Z",
+                    ),
+                ),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveActiveLedger("L_family", "家庭账本")
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val audit = repo.refreshFamilyAudit(limit = 500).getOrThrow()
+
+        assertEquals(listOf("L_family" to 200), api.auditRequests)
+        assertEquals("audit-1", audit.single().publicId)
+        assertEquals("member_role_changed", audit.single().action)
+        assertEquals("阿方", audit.single().actorName)
+        assertNull(audit.single().targetName)
+        assertEquals(2L, audit.single().targetMemberId)
+        assertEquals("member", audit.single().previousRole)
+        assertEquals("viewer", audit.single().newRole)
+        assertEquals("success", audit.single().result)
+    }
+
+    @Test
+    fun refreshFamilyAuditRejectsMissingActiveLedger() = runTest {
+        val repo = makeRepo()
+        val failure = repo.refreshFamilyAudit(null).exceptionOrNull()
+        assertNotNull(failure)
+        assertTrue(failure.message!!.contains("当前账本"))
+    }
+
+    @Test
     fun updateFamilyMemberRolePostsTrimmedRoleAndMapsResponse() = runTest {
         val api = StubApi(
             roleUpdateResult = LedgerMemberDto(
@@ -545,6 +603,7 @@ private class StubApi(
     var switchResult: LedgerSwitchResponseDto? = null,
     var switchError: Throwable? = null,
     var membersResult: LedgerMemberListResponseDto? = null,
+    var auditResult: LedgerAuditListResponseDto? = null,
     var roleUpdateResult: LedgerMemberDto? = null,
     var disableResult: LedgerMemberDto? = null,
     var transferResult: OwnerTransferResponseDto? = null,
@@ -553,6 +612,7 @@ private class StubApi(
     var acceptResult: InvitationAcceptResponseDto? = null,
     var acceptError: Throwable? = null,
     val memberLedgerRequests: MutableList<String> = mutableListOf(),
+    val auditRequests: MutableList<Pair<String, Int>> = mutableListOf(),
     val roleUpdateTargets: MutableList<Pair<String, Long>> = mutableListOf(),
     val roleUpdateRequests: MutableList<LedgerMemberRoleUpdateRequestDto> = mutableListOf(),
     val disableTargets: MutableList<Pair<String, Long>> = mutableListOf(),
@@ -583,6 +643,11 @@ private class StubApi(
     override suspend fun ledgerMembers(ledgerId: String): LedgerMemberListResponseDto {
         memberLedgerRequests += ledgerId
         return membersResult ?: error("Unexpected members call")
+    }
+
+    override suspend fun ledgerAudit(ledgerId: String, limit: Int): LedgerAuditListResponseDto {
+        auditRequests += ledgerId to limit
+        return auditResult ?: error("Unexpected audit call")
     }
 
     override suspend fun updateLedgerMemberRole(

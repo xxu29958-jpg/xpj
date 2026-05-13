@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -33,6 +34,9 @@ import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
+import com.ticketbox.domain.model.LedgerAuditEntry
+import com.ticketbox.domain.model.ledgerAuditActionLabel
+import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.displayTime
@@ -48,18 +52,38 @@ fun FamilyMembersScreen(
 ) {
     val scope = rememberCoroutineScope()
     var members by remember { mutableStateOf<List<FamilyMember>>(emptyList()) }
+    var auditItems by remember { mutableStateOf<List<LedgerAuditEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    var auditLoading by remember { mutableStateOf(false) }
     var busyMemberId by remember { mutableStateOf<Long?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<FamilyMemberAction?>(null) }
-    val canManageMembers = currentRole == LEDGER_ROLE_OWNER
+    val canManageMembers = currentRole == LEDGER_ROLE_OWNER &&
+        repository.currentLedgerRole() == LEDGER_ROLE_OWNER
 
-    suspend fun refresh() {
+    suspend fun refresh(includeAudit: Boolean = true) {
         loading = true
         message = null
-        repository.refreshFamilyMembers(activeLedgerId)
+        val memberResult = repository.refreshFamilyMembers(activeLedgerId)
             .onSuccess { members = it }
             .onFailure { message = it.message ?: "成员列表暂时打不开。" }
+        val shouldLoadAudit = includeAudit &&
+            currentRole == LEDGER_ROLE_OWNER &&
+            repository.currentLedgerRole() == LEDGER_ROLE_OWNER
+        if (shouldLoadAudit) {
+            auditLoading = true
+            repository.refreshFamilyAudit(activeLedgerId, limit = 20)
+                .onSuccess { auditItems = it }
+                .onFailure {
+                    auditItems = emptyList()
+                    if (memberResult.isSuccess) {
+                        message = it.message ?: "成员记录暂时打不开。"
+                    }
+                }
+            auditLoading = false
+        } else {
+            auditItems = emptyList()
+        }
         loading = false
     }
 
@@ -89,7 +113,7 @@ fun FamilyMembersScreen(
         }
         result
             .onSuccess { success ->
-                refresh()
+                refresh(includeAudit = action !is FamilyMemberAction.TransferOwner)
                 message = success
                 onMembershipChanged()
             }
@@ -146,7 +170,43 @@ fun FamilyMembersScreen(
                         onClick = { scope.launch { refresh() } },
                         enabled = !loading && busyMemberId == null,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (loading) "刷新中…" else "刷新成员") }
+                    ) {
+                        Text(
+                            if (loading) {
+                                "刷新中…"
+                            } else if (canManageMembers) {
+                                "刷新成员和记录"
+                            } else {
+                                "刷新成员"
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (canManageMembers) {
+            SettingsSection(title = "成员记录", icon = Icons.Filled.Info) {
+                SoftPanel(containerAlpha = 0.96f) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (auditItems.isEmpty() && !auditLoading) {
+                            Text(
+                                text = "还没有成员变更记录。",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        auditItems.forEach { item ->
+                            LedgerAuditRow(item = item)
+                        }
+                        if (auditLoading) {
+                            Text(
+                                text = "正在刷新成员记录…",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -155,6 +215,53 @@ fun FamilyMembersScreen(
                 text = it,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LedgerAuditRow(item: LedgerAuditEntry) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = ledgerAuditActionLabel(item.action),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = ledgerAuditResultLabel(item.result),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+        }
+        Text(
+            text = displayTime(item.createdAt),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "操作者：${item.actorName ?: "系统"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "目标：${item.targetName ?: "未记录"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        roleChangeText(item)?.let { text ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -293,6 +400,16 @@ private fun FamilyRoleChip(role: String) {
 
 private val FamilyMember.canBeManaged: Boolean
     get() = !isSelf && !isDisabled && role != LEDGER_ROLE_OWNER
+
+private fun roleChangeText(item: LedgerAuditEntry): String? {
+    val before = item.previousRole?.let { ledgerRoleLabel(it) }
+    val after = item.newRole?.let { ledgerRoleLabel(it) }
+    return when {
+        before != null && after != null -> "角色：$before → $after"
+        after != null -> "角色：$after"
+        else -> null
+    }
+}
 
 private sealed class FamilyMemberAction(open val member: FamilyMember) {
     data class ChangeRole(

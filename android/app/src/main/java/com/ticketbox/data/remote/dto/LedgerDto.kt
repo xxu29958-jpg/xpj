@@ -61,6 +61,38 @@ data class LedgerMemberListResponseDto(
     val members: List<LedgerMemberDto>,
 )
 
+data class LedgerAuditDto(
+    @param:Json(name = "public_id")
+    val publicId: String,
+    @param:Json(name = "ledger_id")
+    val ledgerId: String,
+    val action: String,
+    @param:Json(name = "actor_account_public_id")
+    val actorAccountPublicId: String?,
+    @param:Json(name = "actor_account_name")
+    val actorAccountName: String?,
+    @param:Json(name = "target_account_public_id")
+    val targetAccountPublicId: String?,
+    @param:Json(name = "target_account_name")
+    val targetAccountName: String?,
+    @param:Json(name = "target_member_id")
+    val targetMemberId: Long?,
+    @param:Json(name = "invitation_public_id")
+    val invitationPublicId: String?,
+    @param:Json(name = "previous_role")
+    val previousRole: String?,
+    @param:Json(name = "new_role")
+    val newRole: String?,
+    val result: String,
+    val detail: String?,
+    @param:Json(name = "created_at")
+    val createdAt: String?,
+)
+
+data class LedgerAuditListResponseDto(
+    val items: List<LedgerAuditDto>,
+)
+
 data class LedgerMemberRoleUpdateRequestDto(
     val role: String,
 )

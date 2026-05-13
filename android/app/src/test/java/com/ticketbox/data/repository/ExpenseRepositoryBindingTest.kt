@@ -319,6 +319,11 @@ private class FakeApiService(
         ledgerId: String,
     ): com.ticketbox.data.remote.dto.LedgerMemberListResponseDto = unsupported()
 
+    override suspend fun ledgerAudit(
+        ledgerId: String,
+        limit: Int,
+    ): com.ticketbox.data.remote.dto.LedgerAuditListResponseDto = unsupported()
+
     override suspend fun updateLedgerMemberRole(
         ledgerId: String,
         memberId: Long,
