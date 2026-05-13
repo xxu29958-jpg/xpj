@@ -89,6 +89,45 @@
 </div>
 {% endif %}
 
+{% if recurring_ops %}
+<div class="card">
+  <h2>Recurring / 通知草稿状态</h2>
+  <p class="hint">只读运维视图：正式固定支出和 Android 通知草稿仍需在 /web 或 App 中处理。</p>
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="num">{{ recurring_ops.active_count }}</div>
+      <div class="label">固定支出活跃</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ recurring_ops.paused_count }}</div>
+      <div class="label">固定支出暂停</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ recurring_ops.due_soon_count }}</div>
+      <div class="label">7 天内预计</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ recurring_ops.overdue_count }}</div>
+      <div class="label">已过预计日</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ recurring_ops.notification_pending_count }}</div>
+      <div class="label">通知草稿待确认</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ recurring_ops.notification_incomplete_count }}</div>
+      <div class="label">草稿缺字段</div>
+    </div>
+  </div>
+  <div class="quick-links" style="margin-top:12px">
+    <span>近 24 小时通知草稿：{{ recurring_ops.notification_recent_24h_count }}</span>
+    <span>已归档固定支出：{{ recurring_ops.archived_count }}</span>
+    <a href="/web/recurring?ledger_id={{ primary_tenant_id }}" target="_blank">查看固定支出</a>
+    <a href="/web/pending?ledger_id={{ primary_tenant_id }}" target="_blank">查看待确认</a>
+  </div>
+</div>
+{% endif %}
+
 {% if windows_tasks %}
 <div class="card">
   <h2>Windows 计划任务</h2>
