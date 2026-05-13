@@ -21,12 +21,13 @@ fun appViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun repositoryViewModelFactory(
     repository: ExpenseRepository,
+    recurringRepository: RecurringRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(repository)
             LedgerViewModel::class.java -> LedgerViewModel(repository)
-            StatsViewModel::class.java -> StatsViewModel(repository)
+            StatsViewModel::class.java -> StatsViewModel(repository, recurringRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
     }

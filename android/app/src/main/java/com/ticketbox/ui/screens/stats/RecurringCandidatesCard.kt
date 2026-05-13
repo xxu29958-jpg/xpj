@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.LocalThemeVisuals
@@ -38,7 +39,7 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "可能是固定支出",
+                    text = "固定支出候选（未确认）",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                 )
@@ -49,7 +50,7 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
                 )
             }
             Text(
-                text = "根据最近账单识别，仅供参考，不会自动入账。",
+                text = "根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -59,6 +60,88 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
                 }
                 RecurringCandidateRow(candidate)
             }
+        }
+    }
+}
+
+@Composable
+internal fun RecurringItemsSummaryCard(items: List<RecurringItem>) {
+    if (items.isEmpty()) return
+    val visuals = LocalThemeVisuals.current
+    AppGlassCard(containerAlpha = 0.94f) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "正式固定支出",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    text = "${items.count { it.status == "active" }} 活跃",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+            Text(
+                text = "这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            items.take(5).forEachIndexed { index, item ->
+                if (index > 0) {
+                    HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
+                }
+                RecurringItemSummaryRow(item)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecurringItemSummaryRow(item: RecurringItem) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = item.merchant.ifBlank { "未填写商家" },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = formatAmount(item.lastAmountCents),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RecurringStatusChip(item.status)
+            Text(
+                text = recurringItemMeta(item),
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -107,6 +190,29 @@ private fun RecurringCandidateRow(candidate: RecurringCandidate) {
 }
 
 @Composable
+private fun RecurringStatusChip(status: String) {
+    val visuals = LocalThemeVisuals.current
+    val (label, bg) = when (status) {
+        "active" -> "活跃" to visuals.chipSelected
+        "paused" -> "暂停" to visuals.glassTint.copy(alpha = 0.85f)
+        else -> status to visuals.chipUnselected.copy(alpha = 0.85f)
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(bg)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
 private fun ConfidenceChip(confidence: String) {
     val visuals = LocalThemeVisuals.current
     val (label, bg) = when (confidence.lowercase()) {
@@ -127,4 +233,15 @@ private fun ConfidenceChip(confidence: String) {
             fontWeight = FontWeight.SemiBold,
         )
     }
+}
+
+private fun recurringItemMeta(item: RecurringItem): String {
+    val next = item.nextExpectedDate?.let { "下次 $it" } ?: "下次未估算"
+    val count = "${item.occurrenceCount} 次"
+    val anomaly = if (item.anomalyStatus == "higher_than_average") {
+        " · 本月偏高 ${item.amountDeltaPercent ?: 0}%"
+    } else {
+        ""
+    }
+    return "$next · $count$anomaly"
 }

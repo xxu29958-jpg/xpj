@@ -219,7 +219,7 @@ private fun MainShell(
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
-    val repositoryFactory = repositoryViewModelFactory(repository)
+    val repositoryFactory = repositoryViewModelFactory(repository, recurringRepository)
     val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
     val snackbarHostState = remember { SnackbarHostState() }
 

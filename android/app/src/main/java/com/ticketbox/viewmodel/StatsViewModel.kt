@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.Expense
@@ -11,6 +12,7 @@ import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.RecurringCandidate
+import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.domain.model.monthlyBudgetProgress
 import com.ticketbox.domain.model.monthlyCategoryInsight
@@ -31,6 +33,7 @@ data class StatsUiState(
     val monthComparison: MonthComparison? = null,
     val budgetProgress: BudgetProgress? = null,
     val categoryInsight: CategoryInsight? = null,
+    val recurringItems: List<RecurringItem> = emptyList(),
     val recurringCandidates: List<RecurringCandidate> = emptyList(),
     val dataQuality: DataQualitySummary? = null,
     val months: List<String> = emptyList(),
@@ -41,6 +44,7 @@ data class StatsUiState(
 
 class StatsViewModel(
     private val repository: ExpenseRepository,
+    private val recurringRepository: RecurringRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
@@ -97,9 +101,15 @@ class StatsViewModel(
             _uiState.update { it.copy(loading = true, message = null) }
             val month = _uiState.value.month.trim().ifBlank { null }
             val budgetCents = repository.monthlyBudgetCents()
-            // Fire-and-forget recurring candidates; failure is non-fatal.
+            // Fire-and-forget recurring reads; stats should remain usable if this section fails.
             launch {
-                repository.recurringCandidates()
+                recurringRepository.items(includeArchived = false, month = month)
+                    .onSuccess { items ->
+                        _uiState.update { it.copy(recurringItems = items) }
+                    }
+            }
+            launch {
+                recurringRepository.candidates()
                     .onSuccess { items ->
                         _uiState.update { it.copy(recurringCandidates = items) }
                     }

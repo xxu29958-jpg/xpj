@@ -25,6 +25,7 @@ import com.ticketbox.ui.screens.stats.LifestyleCard
 import com.ticketbox.ui.screens.stats.PendingOverviewCard
 import com.ticketbox.ui.screens.stats.RecentTrendCard
 import com.ticketbox.ui.screens.stats.RecurringCandidatesCard
+import com.ticketbox.ui.screens.stats.RecurringItemsSummaryCard
 import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsMonthChip
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
@@ -119,6 +120,11 @@ fun StatsScreen(
             state.dataQuality?.let { dq ->
                 item {
                     PendingOverviewCard(dq)
+                }
+            }
+            if (state.recurringItems.isNotEmpty()) {
+                item {
+                    RecurringItemsSummaryCard(state.recurringItems)
                 }
             }
             if (state.recurringCandidates.isNotEmpty()) {
