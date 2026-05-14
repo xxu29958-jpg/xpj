@@ -23,6 +23,8 @@ data class ThemeVisuals(
     val warningTint: Color,
     val warmMist: Color,
     val coolMist: Color,
+    val surfaceRaised: Color,
+    val focusRing: Color,
 )
 
 val LocalThemeVisuals = compositionLocalOf { themeVisualsForSkin(AppSkin.Default) }
@@ -52,6 +54,8 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             warningTint = Color(0xFFE0A24F),
             warmMist = Color(0xFFF1E2C9),
             coolMist = Color(0xFFA6C2B1),
+            surfaceRaised = Color(0xFFFFFFFF),
+            focusRing = Color(0xFF185B4F),
         )
         AppSkin.Harbor -> ThemeVisuals(
             primary = Color(0xFF245D78),
@@ -76,6 +80,8 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             warningTint = Color(0xFFD5A35D),
             warmMist = Color(0xFFF0DDC0),
             coolMist = Color(0xFF9FC9D8),
+            surfaceRaised = Color(0xFFFFFFFF),
+            focusRing = Color(0xFF245D78),
         )
         AppSkin.Pomelo -> ThemeVisuals(
             primary = Color(0xFFE6981B),
@@ -100,6 +106,8 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             warningTint = Color(0xFFE6981B),
             warmMist = Color(0xFFFFD994),
             coolMist = Color(0xFFDCE8D9),
+            surfaceRaised = Color(0xFFFFFFFF),
+            focusRing = Color(0xFFCE7F12),
         )
         AppSkin.Berry -> ThemeVisuals(
             primary = Color(0xFFA83C5A),
@@ -124,6 +132,8 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             warningTint = Color(0xFFC58A4D),
             warmMist = Color(0xFFF1D4C3),
             coolMist = Color(0xFFD7E4DD),
+            surfaceRaised = Color(0xFFFFFFFF),
+            focusRing = Color(0xFFA83C5A),
         )
         AppSkin.Night -> ThemeVisuals(
             primary = Color(0xFF2BB49A),
@@ -148,6 +158,8 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             warningTint = Color(0xFFD2A46E),
             warmMist = Color(0xFF4D3617),
             coolMist = Color(0xFF2BB49A),
+            surfaceRaised = Color(0xFF13313A),
+            focusRing = Color(0xFF2BB49A),
         )
     }
 }

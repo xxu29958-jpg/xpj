@@ -1,42 +1,9 @@
-/* /web styling — v0.4-alpha2 Tri-surface UI/UX
- * 不引入任何前端框架。设计 token 与 /owner 共享语义。
+/* /web styling — v0.9 三端 token 共享
+ * 不引入任何前端框架。设计 token 与 /owner 共享语义，统一在 ../shared/tokens.css。
+ * 五套主题 (pine / pomelo / harbor / berry / night) 通过 <html data-theme="..."> 切换。
+ * 未设置 data-theme 时 :root 默认 = harbor，与 Android AppSkin.Default 对齐。
  */
-
-:root {
-    --bg-app: #f5f6fa;
-    --bg-card: #ffffff;
-    --bg-nav: #1e293b;
-    --bg-surface-2: #f8fafc;
-    --fg-default: #1e293b;
-    --fg-muted: #64748b;
-    --fg-meta: #94a3b8;
-    --fg-primary: #3b82f6;
-    --fg-primary-strong: #2563eb;
-    --fg-success: #16a34a;
-    --fg-warn: #b45309;
-    --fg-danger: #b91c1c;
-
-    --pill-default-bg: #dbeafe;
-    --pill-default-fg: #1d4ed8;
-    --pill-secondary-bg: #fef3c7;
-    --pill-secondary-fg: #92400e;
-
-    --chip-pending-bg: #e0e7ff;
-    --chip-pending-fg: #3730a3;
-    --chip-warn-bg: #fef3c7;
-    --chip-warn-fg: #92400e;
-    --chip-ok-bg: #dcfce7;
-    --chip-ok-fg: #166534;
-    --chip-muted-bg: #f1f5f9;
-    --chip-muted-fg: #475569;
-
-    --border-card: #e2e8f0;
-    --border-input: #cbd5e1;
-
-    --radius-card: 10px;
-    --radius-input: 6px;
-    --shadow-card: 0 1px 3px rgba(0,0,0,.06);
-}
+@import url("../shared/tokens.css");
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 

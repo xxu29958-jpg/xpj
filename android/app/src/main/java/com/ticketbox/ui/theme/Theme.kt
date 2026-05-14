@@ -33,7 +33,15 @@ import androidx.compose.ui.unit.dp
 import android.view.View
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.design.LocalChartTokens
+import com.ticketbox.ui.design.LocalDashboardCardTokens
+import com.ticketbox.ui.design.LocalGoalTokens
+import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.ui.design.backgroundVisualsForSkin
+import com.ticketbox.ui.design.chartTokensForSkin
+import com.ticketbox.ui.design.dashboardCardTokensForSkin
+import com.ticketbox.ui.design.goalTokensForSkin
+import com.ticketbox.ui.design.stateTokensForSkin
 
 private val PineScheme = lightColorScheme(
     primary = Color(0xFF0E5C4F),
@@ -202,6 +210,10 @@ fun TicketboxTheme(
             CompositionLocalProvider(
                 LocalContentColor provides MaterialTheme.colorScheme.onBackground,
                 LocalThemeVisuals provides themeVisualsForSkin(skin),
+                LocalStateTokens provides stateTokensForSkin(skin),
+                LocalChartTokens provides chartTokensForSkin(skin),
+                LocalGoalTokens provides goalTokensForSkin(skin),
+                LocalDashboardCardTokens provides dashboardCardTokensForSkin(skin),
             ) {
                 content()
             }
