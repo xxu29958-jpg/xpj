@@ -15,6 +15,8 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
 $BackendStartScript = Join-Path $BackendRoot "scripts\start_backend.ps1"
+$BackendRestartScript = Join-Path $ProjectRoot "scripts\restart_backend.ps1"
+$BackendVersionFile = Join-Path $BackendRoot "app\version.py"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 $Failures = New-Object System.Collections.Generic.List[string]
 
@@ -33,6 +35,61 @@ function Resolve-SessionToken {
         return $processValue.Trim()
     }
     return ""
+}
+
+function Get-ExpectedBackendVersion {
+    if (-not (Test-Path -LiteralPath $BackendVersionFile)) {
+        return ""
+    }
+
+    $content = Get-Content -LiteralPath $BackendVersionFile -Raw -Encoding UTF8
+    $match = [regex]::Match($content, "BACKEND_VERSION\s*=\s*[""']([^""']+)[""']")
+    if ($match.Success) {
+        return $match.Groups[1].Value
+    }
+
+    return ""
+}
+
+function Get-LocalBackendHealth {
+    try {
+        return Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 5
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-BackendSourceStamp {
+    $appDir = Join-Path $BackendRoot "app"
+    if (-not (Test-Path -LiteralPath $appDir)) {
+        return $null
+    }
+
+    $latest = Get-ChildItem -LiteralPath $appDir -Recurse -File -Filter "*.py" |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    if ($latest) {
+        return $latest.LastWriteTimeUtc
+    }
+
+    return $null
+}
+
+function Test-ListenerLoadedCurrentSource {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    $sourceStamp = Get-BackendSourceStamp
+    if (-not $sourceStamp) {
+        return $true
+    }
+
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $process -or -not $process.StartTime) {
+        return $false
+    }
+
+    return $process.StartTime.ToUniversalTime() -ge $sourceStamp
 }
 
 function Test-Endpoint {
@@ -74,10 +131,29 @@ function Wait-Endpoint {
 
 function Start-BackendIfNeeded {
     Write-Step "检查 FastAPI 后端"
+    $expectedVersion = Get-ExpectedBackendVersion
+    if (-not $expectedVersion) {
+        throw "未能解析后端版本：$BackendVersionFile"
+    }
+
     $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if ($listener) {
-        Write-Host "OK   127.0.0.1:$Port 已监听，pid=$($listener.OwningProcess)"
+        $health = Get-LocalBackendHealth
+        $runningVersion = if ($health) { [string]$health.backend_version } else { "" }
+        $loadedCurrentSource = Test-ListenerLoadedCurrentSource -ProcessId $listener.OwningProcess
+        if ($health -and $health.status -eq "ok" -and $runningVersion -eq $expectedVersion -and $loadedCurrentSource) {
+            Write-Host "OK   127.0.0.1:$Port 已监听，pid=$($listener.OwningProcess)，backend_version=$runningVersion"
+            return
+        }
+
+        if (-not (Test-Path -LiteralPath $BackendRestartScript)) {
+            throw "127.0.0.1:$Port 已监听但版本不一致，且找不到重启脚本：$BackendRestartScript"
+        }
+
+        Write-Host "WARN 127.0.0.1:$Port 已监听但不是当前后端代码，pid=$($listener.OwningProcess)，expected=$expectedVersion running=$runningVersion loaded_current_source=$loadedCurrentSource"
+        Write-Host "重启后端以加载当前代码：$BackendRestartScript"
+        & $BackendRestartScript -Port $Port
         return
     }
 

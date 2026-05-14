@@ -13,6 +13,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
+$BackendVersionFile = Join-Path $BackendRoot "app\version.py"
 $EnvPath = Join-Path $BackendRoot ".env"
 $DbPath = Join-Path $BackendRoot "data\ticketbox.db"
 $BackupDir = Join-Path $BackendRoot "backups"
@@ -44,6 +45,20 @@ function Resolve-SessionToken {
     if ($processValue -and $processValue.Trim().Length -gt 0) {
         return $processValue.Trim()
     }
+    return ""
+}
+
+function Get-ExpectedBackendVersion {
+    if (-not (Test-Path -LiteralPath $BackendVersionFile)) {
+        return ""
+    }
+
+    $content = Get-Content -LiteralPath $BackendVersionFile -Raw -Encoding UTF8
+    $match = [regex]::Match($content, "BACKEND_VERSION\s*=\s*[""']([^""']+)[""']")
+    if ($match.Success) {
+        return $match.Groups[1].Value
+    }
+
     return ""
 }
 
@@ -135,7 +150,12 @@ else {
     Add-Row -Target $Summary -Name "最近备份" -Status "WARN" -Detail "暂无 SQLite 备份"
 }
 
-Invoke-JsonCheck -Name "本机健康检查" -Uri "http://127.0.0.1:$Port/api/health" -Target $Details | Out-Null
+$expectedBackendVersion = Get-ExpectedBackendVersion
+$localHealth = Invoke-JsonCheck -Name "本机健康检查" -Uri "http://127.0.0.1:$Port/api/health" -Target $Details
+if ($localHealth -and $expectedBackendVersion -and [string]$localHealth.backend_version -ne $expectedBackendVersion) {
+    Add-Row -Target $Summary -Name "后端版本" -Status "FAIL" -Detail "expected=$expectedBackendVersion running=$($localHealth.backend_version)"
+    Add-Row -Target $Details -Name "后端版本" -Status "FAIL" -Detail "请运行 scripts\restart_backend.ps1 后重试"
+}
 $publicHealth = Invoke-JsonCheck -Name "公网健康检查" -Uri "$BaseUrl/api/health" -Target $Details
 if ($publicHealth) {
     Add-Row -Target $Summary -Name "外网访问" -Status "OK" -Detail "正常"

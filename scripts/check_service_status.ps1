@@ -13,6 +13,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
+$BackendVersionFile = Join-Path $BackendRoot "app\version.py"
 $LogDir = Join-Path $BackendRoot "logs"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 $Failures = New-Object System.Collections.Generic.List[string]
@@ -25,6 +26,20 @@ function Resolve-SessionToken {
     if ($processValue -and $processValue.Trim().Length -gt 0) {
         return $processValue.Trim()
     }
+    return ""
+}
+
+function Get-ExpectedBackendVersion {
+    if (-not (Test-Path -LiteralPath $BackendVersionFile)) {
+        return ""
+    }
+
+    $content = Get-Content -LiteralPath $BackendVersionFile -Raw -Encoding UTF8
+    $match = [regex]::Match($content, "BACKEND_VERSION\s*=\s*[""']([^""']+)[""']")
+    if ($match.Success) {
+        return $match.Groups[1].Value
+    }
+
     return ""
 }
 
@@ -44,6 +59,34 @@ function Test-Endpoint {
         Write-Host "FAIL $Name $($_.Exception.Message)"
         $Failures.Add($Name)
         return $false
+    }
+}
+
+function Test-HealthEndpoint {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$ExpectedBackendVersion
+    )
+
+    try {
+        $response = Invoke-RestMethod -Uri $Uri -TimeoutSec 10
+        $json = $response | ConvertTo-Json -Compress
+        if ($response.status -ne "ok") {
+            Write-Host "FAIL $Name status=$($response.status) $json"
+            $Failures.Add($Name)
+            return
+        }
+        if ([string]$response.backend_version -ne $ExpectedBackendVersion) {
+            Write-Host "FAIL $Name 后端版本不一致 expected=$ExpectedBackendVersion running=$($response.backend_version) $json"
+            $Failures.Add($Name)
+            return
+        }
+        Write-Host "OK   $Name $json"
+    }
+    catch {
+        Write-Host "FAIL $Name $($_.Exception.Message)"
+        $Failures.Add($Name)
     }
 }
 
@@ -88,8 +131,12 @@ Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel -ErrorAct
     Format-Table -AutoSize
 
 Write-Host "接口检查："
-Test-Endpoint -Name "local health " -Uri "http://127.0.0.1:$Port/api/health" | Out-Null
-Test-Endpoint -Name "public health" -Uri "$BaseUrl/api/health" | Out-Null
+$expectedBackendVersion = Get-ExpectedBackendVersion
+if (-not $expectedBackendVersion) {
+    throw "未能解析后端版本：$BackendVersionFile"
+}
+Test-HealthEndpoint -Name "local health " -Uri "http://127.0.0.1:$Port/api/health" -ExpectedBackendVersion $expectedBackendVersion
+Test-HealthEndpoint -Name "public health" -Uri "$BaseUrl/api/health" -ExpectedBackendVersion $expectedBackendVersion
 
 $resolvedSessionToken = Resolve-SessionToken
 if (-not $SkipPublicAuth -and $resolvedSessionToken.Length -gt 0) {

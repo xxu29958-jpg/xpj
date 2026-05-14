@@ -18,6 +18,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
+$BackendVersionFile = Join-Path $BackendRoot "app\version.py"
 $InstallScript = Join-Path $ProjectRoot "android\scripts\install_debug_apk.ps1"
 
 function Resolve-SecretValue {
@@ -66,6 +67,20 @@ function Invoke-Json {
     catch {
         throw "请求失败：$Uri。$($_.Exception.Message)"
     }
+}
+
+function Get-ExpectedBackendVersion {
+    if (-not (Test-Path -LiteralPath $BackendVersionFile)) {
+        return ""
+    }
+
+    $content = Get-Content -LiteralPath $BackendVersionFile -Raw -Encoding UTF8
+    $match = [regex]::Match($content, "BACKEND_VERSION\s*=\s*[""']([^""']+)[""']")
+    if ($match.Success) {
+        return $match.Groups[1].Value
+    }
+
+    return ""
 }
 
 function Invoke-TestUpload {
@@ -230,6 +245,13 @@ if (-not $SkipBackend) {
     $health = Invoke-Json -Uri "$baseUrl/api/health"
     if ($health.status -ne "ok") {
         throw "健康检查未返回 ok。"
+    }
+    $expectedBackendVersion = Get-ExpectedBackendVersion
+    if (-not $expectedBackendVersion) {
+        throw "未能解析后端版本：$BackendVersionFile"
+    }
+    if ([string]$health.backend_version -ne $expectedBackendVersion) {
+        throw "后端版本不一致：expected=$expectedBackendVersion running=$($health.backend_version)。请先重启后端。"
     }
     Write-Host "后端健康检查通过：$baseUrl"
 
