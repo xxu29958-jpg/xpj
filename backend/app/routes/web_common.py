@@ -10,21 +10,28 @@ formatting.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.network_boundary import require_owner_console_local
+from app.models import AuthToken, Device, Expense
+from app.services import backup_service
+from app.services.budget_service import get_monthly_budget
+from app.services.dashboard_service import list_dashboard_cards
+from app.services.goal_service import list_goals
 from app.services import owner_console_service as owner_svc
 from app.services.expense_service import list_pending
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
 from app.services.stats_service import monthly_stats
+from app.services.time_service import current_month, now_utc
 from app.version import BACKEND_VERSION
 
 
@@ -197,13 +204,52 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     suspected = sum(
         1 for e in pending_rows if (getattr(e, "duplicate_status", None) or "") == "suspected"
     )
-    month = datetime.now().strftime("%Y-%m")
+    month = current_month("Asia/Shanghai")
     stats = monthly_stats(db, month, ledger_id)
     recurring_rows = list_recurring_items(db, tenant_id=ledger_id, include_archived=False)
     active_recurring = sum(1 for item in recurring_rows if item.status == "active")
     paused_recurring = sum(1 for item in recurring_rows if item.status == "paused")
     candidate_count = len(recurring_candidates(db, tenant_id=ledger_id))
+    budget = get_monthly_budget(db, tenant_id=ledger_id, month=month, timezone_name="Asia/Shanghai")
+    goals = list_goals(db, tenant_id=ledger_id, month=month, timezone_name="Asia/Shanghai")
+    goal_risk_count = sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"})
+    now = now_utc()
+    week_ago = now - timedelta(days=7)
+    recent_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == ledger_id)
+            .where(Expense.created_at >= week_ago)
+        )
+        or 0
+    )
+    active_device_count = int(
+        db.scalar(
+            select(func.count(func.distinct(Device.id)))
+            .select_from(Device)
+            .join(AuthToken, AuthToken.device_id == Device.id)
+            .where(AuthToken.ledger_id == ledger_id)
+            .where(AuthToken.revoked_at.is_(None))
+            .where(Device.revoked_at.is_(None))
+        )
+        or 0
+    )
+    latest_backup = backup_service.latest_backup()
+    backup_age_days = None
+    if latest_backup is not None:
+        backup_age_days = max(0, (now.astimezone() - latest_backup.created_at).days)
+    layout = list_dashboard_cards(db, tenant_id=ledger_id, surface="web")
     return {
+        "layout": [
+            {
+                "key": item.key,
+                "title": item.title,
+                "visible": item.visible,
+                "position": item.position,
+            }
+            for item in layout.items
+        ],
         "pending_count": pending_count,
         "needs_amount_count": needs_amount,
         "needs_merchant_count": needs_merchant,
@@ -214,4 +260,15 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
         "recurring_active_count": active_recurring,
         "recurring_paused_count": paused_recurring,
         "recurring_candidate_count": candidate_count,
+        "budget_configured": budget.configured,
+        "budget_total_yuan": _amount_yuan(int(budget.total_amount_cents)),
+        "budget_remaining_yuan": _amount_yuan(int(budget.remaining_amount_cents)),
+        "budget_overspent_yuan": _amount_yuan(int(budget.overspent_amount_cents)),
+        "budget_is_over": budget.remaining_amount_cents < 0,
+        "goals_count": len(goals),
+        "goals_risk_count": goal_risk_count,
+        "recent_count": recent_count,
+        "active_device_count": active_device_count,
+        "backup_available": latest_backup is not None,
+        "backup_age_days": backup_age_days,
     }

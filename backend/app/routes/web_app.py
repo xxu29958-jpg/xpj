@@ -32,7 +32,9 @@ from app.routes.web_common import (
     templates,
     _require_local,  # re-exported for tests
 )
+from app.schemas import DashboardCardUpdateRequest, DashboardCardsUpdateRequest
 from app.schemas import ExpenseUpdateRequest
+from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 from app.services.expense_service import (
     confirm_expense,
     ensure_thumbnail_file,
@@ -71,6 +73,106 @@ def web_root_slash(
     if ledger_id:
         target = _with_ledger(target, ledger_id)
     return RedirectResponse(url=target, status_code=303)
+
+
+def _dashboard_cards_context(db: Session, selected_id: str) -> list[dict]:
+    cards = list_dashboard_cards(db, tenant_id=selected_id, surface="web")
+    return [
+        {
+            "key": item.key,
+            "title": item.title,
+            "visible": item.visible,
+            "position": item.position,
+        }
+        for item in cards.items
+    ]
+
+
+def _dashboard_cards_payload(
+    *,
+    card_key: list[str],
+    card_position: list[int],
+    visible_key: list[str],
+) -> DashboardCardsUpdateRequest:
+    if len(card_key) != len(card_position):
+        raise AppError("invalid_request", "卡片顺序数据不完整。", status_code=422)
+    visible = set(visible_key)
+    seen: set[str] = set()
+    cards: list[DashboardCardUpdateRequest] = []
+    for key, position in zip(card_key, card_position, strict=True):
+        cleaned_key = key.strip()
+        if not cleaned_key or cleaned_key in seen:
+            raise AppError("invalid_request", "卡片数据不正确。", status_code=422)
+        seen.add(cleaned_key)
+        cards.append(
+            DashboardCardUpdateRequest(
+                key=cleaned_key,
+                visible=cleaned_key in visible,
+                position=position,
+            )
+        )
+    return DashboardCardsUpdateRequest(cards=cards)
+
+
+@router.get("/dashboard/cards", response_class=HTMLResponse)
+def web_dashboard_cards_get(
+    request: Request,
+    ledger_id: str | None = None,
+    msg: str | None = None,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx["dashboard_cards"] = _dashboard_cards_context(db, selected_id)
+    ctx["message"] = msg
+    return templates.TemplateResponse(request=request, name="dashboard_cards.html", context=ctx)
+
+
+@router.post("/dashboard/cards/save", response_class=HTMLResponse)
+def web_dashboard_cards_save(
+    ledger_id: str = Form(default=""),
+    card_key: list[str] = Form(default=[]),
+    card_position: list[int] = Form(default=[]),
+    visible_key: list[str] = Form(default=[]),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
+    payload = _dashboard_cards_payload(
+        card_key=card_key,
+        card_position=card_position,
+        visible_key=visible_key,
+    )
+    update_dashboard_cards(db, tenant_id=selected_id, surface="web", payload=payload)
+    return RedirectResponse(
+        url=_with_ledger("/web/dashboard/cards", selected_id, msg="Dashboard 卡片已保存。"),
+        status_code=303,
+    )
+
+
+@router.post("/dashboard/cards/reset", response_class=HTMLResponse)
+def web_dashboard_cards_reset(
+    ledger_id: str = Form(default=""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
+    update_dashboard_cards(
+        db,
+        tenant_id=selected_id,
+        surface="web",
+        payload=DashboardCardsUpdateRequest(cards=[]),
+    )
+    return RedirectResponse(
+        url=_with_ledger("/web/dashboard/cards", selected_id, msg="已恢复默认卡片。"),
+        status_code=303,
+    )
 
 
 @router.get("/confirmed", response_class=HTMLResponse)

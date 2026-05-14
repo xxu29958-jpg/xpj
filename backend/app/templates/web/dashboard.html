@@ -1,40 +1,97 @@
 {% extends "base.html" %}
 {% block title %}仪表盘 — 小票夹{% endblock %}
 {% block content %}
-<h1>仪表盘</h1>
+<div class="page-header-row">
+  <div>
+    <h1>仪表盘</h1>
+    <p class="page-hint">按当前账本的卡片顺序展示；隐藏项不会影响对应功能页面。</p>
+  </div>
+  <a class="btn btn-secondary" href="/web/dashboard/cards{{ q }}">卡片设置</a>
+</div>
 
-<div class="summary-grid">
-  <div class="summary-card">
-    <div class="summary-card-label">待确认截图</div>
-    <div class="summary-card-num">{{ cards.pending_count }}</div>
-    <div class="summary-card-hint">{% if can_write %}需要你确认才进入账本{% else %}只读查看，不能确认入账{% endif %}</div>
-  </div>
-  <div class="summary-card {{ 'warn' if cards.needs_amount_count > 0 else '' }}">
-    <div class="summary-card-label">缺金额</div>
-    <div class="summary-card-num">{{ cards.needs_amount_count }}</div>
-    <div class="summary-card-hint">{% if can_write %}没有金额无法确认入账{% else %}可查看，不能补填{% endif %}</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-card-label">缺商家</div>
-    <div class="summary-card-num">{{ cards.needs_merchant_count }}</div>
-    <div class="summary-card-hint">仍可入账，识别结果只是草稿</div>
-  </div>
-  <div class="summary-card {{ 'warn' if cards.suspected_duplicate_count > 0 else '' }}">
-    <div class="summary-card-label">疑似重复</div>
-    <div class="summary-card-num">{{ cards.suspected_duplicate_count }}</div>
-    <div class="summary-card-hint">只是提示，不会自动忽略</div>
-  </div>
-  <div class="summary-card primary">
-    <div class="summary-card-label">{{ cards.month }} 已入账</div>
-    <div class="summary-card-num">¥{{ cards.total_amount_yuan or '0.00' }}</div>
-    <div class="summary-card-hint">共 {{ cards.confirmed_count }} 笔</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-card-label">正式固定支出</div>
-    <div class="summary-card-num">{{ cards.recurring_active_count }}</div>
-    <div class="summary-card-hint">{{ cards.recurring_candidate_count }} 个候选未确认{% if cards.recurring_paused_count %} · {{ cards.recurring_paused_count }} 个暂停{% endif %}</div>
+{% set visible_cards = namespace(count=0) %}
+<div class="dashboard-card-grid">
+  {% for item in cards.layout %}
+    {% if item.visible %}
+      {% set visible_cards.count = visible_cards.count + 1 %}
+      {% if item.key == 'pending' %}
+      <a class="dashboard-card-tile {{ 'is-warning' if cards.needs_amount_count or cards.suspected_duplicate_count else '' }}" data-dashboard-card="pending" href="/web/pending{{ q }}">
+        <div class="dashboard-card-label">{{ item.title }}</div>
+        <div class="dashboard-card-num">{{ cards.pending_count }}</div>
+        <div class="dashboard-card-hint">
+          {% if can_write %}待确认截图{% else %}只读查看{% endif %}
+          {% if cards.needs_amount_count %} · {{ cards.needs_amount_count }} 缺金额{% endif %}
+          {% if cards.needs_merchant_count %} · {{ cards.needs_merchant_count }} 缺商家{% endif %}
+          {% if cards.suspected_duplicate_count %} · {{ cards.suspected_duplicate_count }} 疑似重复{% endif %}
+        </div>
+      </a>
+      {% elif item.key == 'monthly_spend' %}
+      <a class="dashboard-card-tile is-primary" data-dashboard-card="monthly_spend" href="/web/confirmed{{ q }}">
+        <div class="dashboard-card-label">{{ cards.month }} 已入账</div>
+        <div class="dashboard-card-num">¥{{ cards.total_amount_yuan or '0.00' }}</div>
+        <div class="dashboard-card-hint">共 {{ cards.confirmed_count }} 笔已确认</div>
+      </a>
+      {% elif item.key == 'reports' %}
+      <a class="dashboard-card-tile" data-dashboard-card="reports" href="/web/reports{{ q }}">
+        <div class="dashboard-card-label">{{ item.title }}</div>
+        <div class="dashboard-card-num">{{ cards.confirmed_count }}</div>
+        <div class="dashboard-card-hint">趋势、商家 Top、分类环比</div>
+      </a>
+      {% elif item.key == 'budget' %}
+      <a class="dashboard-card-tile {{ 'is-danger' if cards.budget_is_over else '' }}" data-dashboard-card="budget" href="/web/budgets{{ q }}">
+        <div class="dashboard-card-label">{{ item.title }}</div>
+        {% if cards.budget_configured %}
+        <div class="dashboard-card-num">{% if cards.budget_is_over %}超 ¥{{ cards.budget_overspent_yuan }}{% else %}¥{{ cards.budget_remaining_yuan }}{% endif %}</div>
+        <div class="dashboard-card-hint">预算 ¥{{ cards.budget_total_yuan }} · {% if cards.budget_is_over %}已超支{% else %}剩余额度{% endif %}</div>
+        {% else %}
+        <div class="dashboard-card-num">未配置</div>
+        <div class="dashboard-card-hint">设置月预算后展示进度</div>
+        {% endif %}
+      </a>
+      {% elif item.key == 'goals' %}
+      <a class="dashboard-card-tile {{ 'is-warning' if cards.goals_risk_count else '' }}" data-dashboard-card="goals" href="/web/goals{{ q }}">
+        <div class="dashboard-card-label">{{ item.title }}</div>
+        <div class="dashboard-card-num">{{ cards.goals_count }}</div>
+        <div class="dashboard-card-hint">{% if cards.goals_risk_count %}{{ cards.goals_risk_count }} 个接近或超过目标{% else %}本月目标稳定{% endif %}</div>
+      </a>
+      {% elif item.key == 'recurring' %}
+      <a class="dashboard-card-tile" data-dashboard-card="recurring" href="/web/recurring{{ q }}">
+        <div class="dashboard-card-label">正式固定支出</div>
+        <div class="dashboard-card-num">{{ cards.recurring_active_count }}</div>
+        <div class="dashboard-card-hint">{{ cards.recurring_candidate_count }} 个候选未确认{% if cards.recurring_paused_count %} · {{ cards.recurring_paused_count }} 个暂停{% endif %}</div>
+      </a>
+      {% elif item.key == 'recent_uploads' %}
+      <a class="dashboard-card-tile" data-dashboard-card="recent_uploads" href="/web/pending{{ q }}">
+        <div class="dashboard-card-label">{{ item.title }}</div>
+        <div class="dashboard-card-num">{{ cards.recent_count }}</div>
+        <div class="dashboard-card-hint">最近 7 天新增截图和账单草稿</div>
+      </a>
+      {% elif item.key == 'backup_status' %}
+      <a class="dashboard-card-tile {{ 'is-warning' if not cards.backup_available else '' }}" data-dashboard-card="backup_status" href="/owner/backups">
+        <div class="dashboard-card-label">{{ item.title }}</div>
+        <div class="dashboard-card-num">{% if cards.backup_available %}正常{% else %}未备份{% endif %}</div>
+        <div class="dashboard-card-hint">{% if cards.backup_age_days is not none %}最近备份 {{ cards.backup_age_days }} 天前{% else %}建议在管理后台创建备份{% endif %}</div>
+      </a>
+      {% elif item.key == 'device_status' %}
+      <a class="dashboard-card-tile" data-dashboard-card="device_status" href="/owner/ledgers">
+        <div class="dashboard-card-label">{{ item.title }}</div>
+        <div class="dashboard-card-num">{{ cards.active_device_count }}</div>
+        <div class="dashboard-card-hint">当前账本仍有效的设备令牌</div>
+      </a>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+</div>
+
+{% if visible_cards.count == 0 %}
+<div class="card empty-state">
+  <div class="empty-state-title">当前仪表盘没有可见卡片</div>
+  <div class="empty-state-hint">进入卡片设置恢复默认展示，或重新勾选需要的卡片。</div>
+  <div class="actions empty-state-actions">
+    <a class="btn btn-secondary" href="/web/dashboard/cards{{ q }}">打开卡片设置</a>
   </div>
 </div>
+{% endif %}
 
 <div class="card">
   <h2>快捷操作</h2>
@@ -43,6 +100,7 @@
     <a class="btn btn-secondary" href="/web/confirmed{{ q }}">查看已确认</a>
     <a class="btn btn-secondary" href="/web/stats{{ q }}">查看报表</a>
     <a class="btn btn-secondary" href="/web/recurring{{ q }}">{% if can_write %}管理固定支出{% else %}查看固定支出{% endif %}</a>
+    <a class="btn btn-secondary" href="/web/dashboard/cards{{ q }}">卡片设置</a>
     <a class="btn btn-link" href="/owner/ledgers">管理账本</a>
   </div>
   <p class="meta">
