@@ -9,10 +9,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -98,9 +96,12 @@ private enum class BottomTab(
     Pending("pending", "待确认", Icons.Default.CheckCircle),
     Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
     Stats("stats", "统计", Icons.Default.BarChart),
-    Budget("budget", "预算", Icons.Filled.AccountBalanceWallet),
-    Recurring("recurring", "固定", Icons.Filled.Category),
     Settings("settings", "设置", Icons.Default.Settings),
+}
+
+private enum class StatsSecondaryPage {
+    Budget,
+    Recurring,
 }
 
 @Composable
@@ -235,6 +236,7 @@ private fun MainShell(
     onBindingCleared: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
+    var statsSecondaryPage by remember { mutableStateOf<StatsSecondaryPage?>(null) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
     var dashboardCardsRevision by remember { mutableStateOf(0) }
     var expenseEditCompletionRevision by remember { mutableStateOf(0) }
@@ -244,7 +246,11 @@ private fun MainShell(
         budgetRepository = budgetRepository,
         reportsRepository = reportsRepository,
     )
-    val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
+    val currentRole = when {
+        editingExpense != null -> SurfaceRole.Edit
+        statsSecondaryPage != null -> SurfaceRole.Stats
+        else -> selectedTab.surfaceRole
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(startupMessage) {
@@ -290,13 +296,15 @@ private fun MainShell(
             contentWindowInsets = WindowInsets(0.dp),
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
-                AppBottomNav(
-                    items = BottomTab.entries.map { it.toBottomNavItem() },
-                    selectedKey = selectedTab.key,
-                    onSelect = { item ->
-                        BottomTab.entries.firstOrNull { it.key == item.key }?.let { selectedTab = it }
-                    },
-                )
+                if (statsSecondaryPage == null) {
+                    AppBottomNav(
+                        items = BottomTab.entries.map { it.toBottomNavItem() },
+                        selectedKey = selectedTab.key,
+                        onSelect = { item ->
+                            BottomTab.entries.firstOrNull { it.key == item.key }?.let { selectedTab = it }
+                        },
+                    )
+                }
             },
         ) { innerPadding ->
             Box(
@@ -304,6 +312,50 @@ private fun MainShell(
                     .fillMaxSize()
                     .consumeWindowInsets(innerPadding),
             ) {
+                val activeStatsSecondaryPage = statsSecondaryPage
+                if (activeStatsSecondaryPage != null) {
+                    when (activeStatsSecondaryPage) {
+                        StatsSecondaryPage.Budget -> {
+                            val budgetViewModel: BudgetViewModel = viewModel(
+                                factory = budgetViewModelFactory(budgetRepository),
+                            )
+                            val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
+                            BudgetScreen(
+                                state = state,
+                                onRefresh = budgetViewModel::refresh,
+                                onPreviousMonth = budgetViewModel::previousMonth,
+                                onNextMonth = budgetViewModel::nextMonth,
+                                onTotalAmountChange = budgetViewModel::updateTotalAmount,
+                                onRolloverAmountChange = budgetViewModel::updateRolloverAmount,
+                                onNonMonthlyAmountChange = budgetViewModel::updateNonMonthlyAmount,
+                                onExcludedCategoriesChange = budgetViewModel::updateExcludedCategories,
+                                onCategoryRowChange = budgetViewModel::updateCategoryRow,
+                                onAddCategoryRow = budgetViewModel::addCategoryRow,
+                                onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
+                                onSave = budgetViewModel::save,
+                                onBack = { statsSecondaryPage = null },
+                            )
+                        }
+
+                        StatsSecondaryPage.Recurring -> {
+                            val recurringViewModel: RecurringViewModel = viewModel(
+                                factory = recurringViewModelFactory(recurringRepository),
+                            )
+                            val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
+                            RecurringScreen(
+                                state = state,
+                                onRefresh = recurringViewModel::refresh,
+                                onConfirmCandidate = recurringViewModel::confirmCandidate,
+                                onPause = recurringViewModel::pause,
+                                onResume = recurringViewModel::resume,
+                                onArchive = recurringViewModel::archive,
+                                onBack = { statsSecondaryPage = null },
+                            )
+                        }
+                    }
+                    return@Box
+                }
+
                 when (selectedTab) {
                 BottomTab.Pending -> {
                     val pendingViewModel: PendingViewModel = viewModel(factory = repositoryFactory)
@@ -425,40 +477,8 @@ private fun MainShell(
                         onMonthChange = statsViewModel::setMonth,
                         onTagChange = statsViewModel::setTag,
                         onRefresh = statsViewModel::refresh,
-                    )
-                }
-                BottomTab.Budget -> {
-                    val budgetViewModel: BudgetViewModel = viewModel(
-                        factory = budgetViewModelFactory(budgetRepository),
-                    )
-                    val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
-                    BudgetScreen(
-                        state = state,
-                        onRefresh = budgetViewModel::refresh,
-                        onPreviousMonth = budgetViewModel::previousMonth,
-                        onNextMonth = budgetViewModel::nextMonth,
-                        onTotalAmountChange = budgetViewModel::updateTotalAmount,
-                        onRolloverAmountChange = budgetViewModel::updateRolloverAmount,
-                        onNonMonthlyAmountChange = budgetViewModel::updateNonMonthlyAmount,
-                        onExcludedCategoriesChange = budgetViewModel::updateExcludedCategories,
-                        onCategoryRowChange = budgetViewModel::updateCategoryRow,
-                        onAddCategoryRow = budgetViewModel::addCategoryRow,
-                        onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
-                        onSave = budgetViewModel::save,
-                    )
-                }
-                BottomTab.Recurring -> {
-                    val recurringViewModel: RecurringViewModel = viewModel(
-                        factory = recurringViewModelFactory(recurringRepository),
-                    )
-                    val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
-                    RecurringScreen(
-                        state = state,
-                        onRefresh = recurringViewModel::refresh,
-                        onConfirmCandidate = recurringViewModel::confirmCandidate,
-                        onPause = recurringViewModel::pause,
-                        onResume = recurringViewModel::resume,
-                        onArchive = recurringViewModel::archive,
+                        onOpenBudget = { statsSecondaryPage = StatsSecondaryPage.Budget },
+                        onOpenRecurring = { statsSecondaryPage = StatsSecondaryPage.Recurring },
                     )
                 }
                 BottomTab.Settings -> {
@@ -513,8 +533,6 @@ private val BottomTab.surfaceRole: SurfaceRole
         BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
         BottomTab.Stats -> SurfaceRole.Stats
-        BottomTab.Budget -> SurfaceRole.Stats
-        BottomTab.Recurring -> SurfaceRole.Stats
         BottomTab.Settings -> SurfaceRole.Settings
     }
 

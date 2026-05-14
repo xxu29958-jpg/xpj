@@ -1,15 +1,20 @@
 package com.ticketbox.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.Button
@@ -55,15 +60,28 @@ fun BudgetScreen(
     onAddCategoryRow: () -> Unit,
     onRemoveCategoryRow: (Int) -> Unit,
     onSave: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
+    BackHandler(enabled = onBack != null) {
+        onBack?.invoke()
+    }
+
     AppScrollableContent(
         role = AppPageRole.Stats,
         isRefreshing = state.loading,
         onRefresh = onRefresh,
+        hasBottomBar = onBack == null,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(if (onBack == null) 12.dp else 8.dp)) {
+                onBack?.let {
+                    TextButton(onClick = it) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("返回统计")
+                    }
+                }
                 AppPageHeader(
                     title = "预算",
                     subtitle = "${state.month} 月度可花额度",

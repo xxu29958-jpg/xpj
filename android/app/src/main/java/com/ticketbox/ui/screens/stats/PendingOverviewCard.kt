@@ -33,8 +33,8 @@ internal fun PendingOverviewCard(summary: DataQualitySummary) {
     }
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -52,20 +52,24 @@ internal fun PendingOverviewCard(summary: DataQualitySummary) {
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCell(Modifier.weight(1f), "待确认", summary.pendingTotal)
-                MetricCell(Modifier.weight(1f), "可直接确认", summary.readyToConfirm)
+            val visibleMetrics = pendingOverviewMetrics(summary)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                visibleMetrics.take(3).forEach { metric ->
+                    MetricCell(Modifier.weight(1f), metric.label, metric.value)
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCell(Modifier.weight(1f), "缺金额", summary.missingAmount)
-                MetricCell(Modifier.weight(1f), "缺商家", summary.missingMerchant)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCell(Modifier.weight(1f), "未分类", summary.missingCategory)
-                MetricCell(Modifier.weight(1f), "疑似重复", summary.suspectedDuplicates)
+            if (visibleMetrics.size > 3) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    visibleMetrics.drop(3).take(3).forEach { metric ->
+                        MetricCell(Modifier.weight(1f), metric.label, metric.value)
+                    }
+                    repeat(3 - visibleMetrics.drop(3).take(3).size) {
+                        Box(modifier = Modifier.weight(1f))
+                    }
+                }
             }
             Text(
-                text = "去“待确认”页处理这些账单，整理后这里会清零。",
+                text = "去待确认页处理，整理后这里会清零。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -104,4 +108,21 @@ private fun MetricCell(
             )
         }
     }
+}
+
+private data class PendingOverviewMetric(
+    val label: String,
+    val value: Int,
+)
+
+private fun pendingOverviewMetrics(summary: DataQualitySummary): List<PendingOverviewMetric> {
+    val metrics = mutableListOf(
+        PendingOverviewMetric("待确认", summary.pendingTotal),
+        PendingOverviewMetric("可确认", summary.readyToConfirm),
+    )
+    if (summary.missingAmount > 0) metrics += PendingOverviewMetric("缺金额", summary.missingAmount)
+    if (summary.missingMerchant > 0) metrics += PendingOverviewMetric("缺商家", summary.missingMerchant)
+    if (summary.missingCategory > 0) metrics += PendingOverviewMetric("未分类", summary.missingCategory)
+    if (summary.suspectedDuplicates > 0) metrics += PendingOverviewMetric("重复", summary.suspectedDuplicates)
+    return metrics.take(6)
 }

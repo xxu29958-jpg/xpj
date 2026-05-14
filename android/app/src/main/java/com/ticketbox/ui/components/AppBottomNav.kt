@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.LocalThemeVisuals
@@ -62,11 +63,16 @@ fun AppBottomNav(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 items.forEach { item ->
-                    AppBottomNavItemView(
-                        item = item,
-                        selected = item.key == selectedKey,
-                        onClick = { onSelect(item) },
-                    )
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppBottomNavItemView(
+                            item = item,
+                            selected = item.key == selectedKey,
+                            onClick = { onSelect(item) },
+                        )
+                    }
                 }
             }
         }
@@ -109,6 +115,8 @@ private fun AppBottomNavItemView(
                 color = content,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     } else {
@@ -131,6 +139,8 @@ private fun AppBottomNavItemView(
                 color = content,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

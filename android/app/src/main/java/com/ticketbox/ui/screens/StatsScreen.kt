@@ -2,10 +2,16 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChipDefaults
@@ -32,6 +38,7 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.displayMonthLabel
@@ -50,6 +57,7 @@ import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsMonthChip
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.TagStatsCard
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.StatsUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +67,8 @@ fun StatsScreen(
     onMonthChange: (String) -> Unit,
     onTagChange: (String) -> Unit,
     onRefresh: () -> Unit,
+    onOpenBudget: () -> Unit,
+    onOpenRecurring: () -> Unit,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
 
@@ -80,13 +90,13 @@ fun StatsScreen(
         role = AppPageRole.Stats,
         isRefreshing = state.loading,
         onRefresh = onRefresh,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AppPageHeader(
                     title = "统计",
-                    subtitle = "不是财务报表，是生活消费感知",
+                    subtitle = "生活消费感知",
                 ) {
                     SafeBadge()
                 }
@@ -100,6 +110,12 @@ fun StatsScreen(
                 )
             }
         }
+        item {
+            StatsSecondaryEntryRow(
+                onOpenBudget = onOpenBudget,
+                onOpenRecurring = onOpenRecurring,
+            )
+        }
         state.message?.let {
             item { Text(it, color = MaterialTheme.colorScheme.secondary) }
         }
@@ -109,14 +125,11 @@ fun StatsScreen(
         state.dashboardCardsMessage?.let {
             item { Text(it, color = MaterialTheme.colorScheme.secondary) }
         }
-        if (state.reportsLoading && state.selectedTag.isBlank()) {
-            item { Text("动态图表更新中…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
         val stats = state.stats
         if (stats == null) {
             item { EmptyStatsCard(onRefresh = onRefresh) }
         } else {
-            val visibleDashboardKeys = visibleDashboardCardKeys(state.dashboardCards)
+            val visibleDashboardKeys = orderedStatsDashboardKeys(visibleDashboardCardKeys(state.dashboardCards))
             val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
             val visibleTags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
             var renderedCard = false
@@ -248,6 +261,89 @@ fun StatsScreen(
                         body = "可以在设置 > 首页卡片中恢复默认卡片。",
                     )
                 }
+            }
+        }
+    }
+}
+
+private fun orderedStatsDashboardKeys(keys: List<String>): List<String> {
+    val preferredOrder = listOf(
+        DASHBOARD_CARD_MONTHLY_SPEND,
+        DASHBOARD_CARD_REPORTS,
+        DASHBOARD_CARD_BUDGET,
+        DASHBOARD_CARD_PENDING,
+        DASHBOARD_CARD_GOALS,
+        DASHBOARD_CARD_RECURRING,
+        DASHBOARD_CARD_RECENT_UPLOADS,
+    )
+    return preferredOrder.filter { it in keys } + keys.filter { it !in preferredOrder }
+}
+
+@Composable
+private fun StatsSecondaryEntryRow(
+    onOpenBudget: () -> Unit,
+    onOpenRecurring: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        StatsSecondaryEntryCard(
+            title = "预算",
+            subtitle = "月度可花额度",
+            icon = Icons.Filled.AccountBalanceWallet,
+            onClick = onOpenBudget,
+            modifier = Modifier.weight(1f),
+        )
+        StatsSecondaryEntryCard(
+            title = "固定支出",
+            subtitle = "周期账单提醒",
+            icon = Icons.Filled.Category,
+            onClick = onOpenRecurring,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun StatsSecondaryEntryCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val visuals = LocalThemeVisuals.current
+    AppGlassCard(
+        modifier = modifier.clickable(onClick = onClick),
+        containerAlpha = 0.96f,
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = visuals.primary,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
             }
         }
     }
