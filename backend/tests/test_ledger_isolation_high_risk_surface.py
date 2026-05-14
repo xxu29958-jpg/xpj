@@ -262,8 +262,11 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
         files={
             "csv_file": (
                 "tester.csv",
-                b"amount_cents,merchant,category,expense_time,source\n"
-                b"777,TesterImportedOnly,TesterWebCategory,2026-01-06T00:00:00+00:00,CSV\n",
+                (
+                    b"amount_cents,merchant,category,expense_time,source\n"
+                    b"777,TesterImportedOnly,TesterWebCategory,2026-01-06T00:00:00+00:00,CSV\n"
+                    b"bad,TesterImportError,TesterWebCategory,2026-01-07T00:00:00+00:00,CSV\n"
+                ),
                 "text/csv",
             )
         },
@@ -272,6 +275,32 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     assert imported_preview.status_code == 303
     location = imported_preview.headers["location"]
     batch_path = location.split("?", 1)[0]
+
+    owner_batch = local_web_client.get(f"{batch_path}?ledger_id=owner")
+    assert owner_batch.status_code == 404
+    assert owner_batch.json()["error"] == "import_batch_not_found"
+
+    owner_apply = local_web_client.post(
+        f"{batch_path}/apply",
+        data={"ledger_id": "owner", "batch_size": "500"},
+        follow_redirects=False,
+    )
+    assert owner_apply.status_code == 404
+    assert owner_apply.json()["error"] == "import_batch_not_found"
+
+    owner_errors = local_web_client.get(f"{batch_path}/errors.csv?ledger_id=owner")
+    assert owner_errors.status_code == 404
+    assert owner_errors.json()["error"] == "import_batch_not_found"
+
+    owner_pending_before_tester_apply = local_web_client.get(
+        "/api/expenses/pending", headers=app_headers()
+    )
+    assert owner_pending_before_tester_apply.status_code == 200
+    assert all(
+        row["merchant"] != "TesterImportedOnly"
+        for row in owner_pending_before_tester_apply.json()
+    )
+
     imported = local_web_client.post(
         f"{batch_path}/apply",
         data={"ledger_id": "tester_1", "batch_size": "500"},

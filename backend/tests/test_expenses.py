@@ -189,6 +189,65 @@ def test_ocr_retry_and_recognize_text_only_update_pending_draft(
     assert confirmed.json()["total"] == 0
 
 
+def test_recognize_text_then_confirm_enters_stats_and_export(
+    client: TestClient,
+) -> None:
+    expense_id = upload_png(client)
+    raw_text = "\n".join(
+        [
+            "账单详情",
+            "好想来零食乐园",
+            "-17.89",
+            "交易成功",
+            "订单金额",
+            "18.00",
+            "碰一下立减",
+            "-0.11",
+            "支付时间",
+            "2026-05-0521:38:13",
+        ]
+    )
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["amount_cents"] == 1789
+    assert payload["merchant"] == "好想来零食乐园"
+    assert payload["category"] == "餐饮"
+
+    pending_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert pending_stats.status_code == 200, pending_stats.json()
+    assert pending_stats.json()["total_amount_cents"] == 0
+
+    pending_export = client.get(
+        "/api/expenses/export.csv?month=2026-05&category=餐饮",
+        headers=app_headers(),
+    )
+    assert pending_export.status_code == 200, pending_export.text
+    assert "好想来零食乐园" not in pending_export.text
+
+    confirmed = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    assert confirmed.status_code == 200, confirmed.json()
+    assert confirmed.json()["status"] == "confirmed"
+
+    confirmed_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert confirmed_stats.status_code == 200, confirmed_stats.json()
+    assert confirmed_stats.json()["total_amount_cents"] == 1789
+
+    confirmed_export = client.get(
+        "/api/expenses/export.csv?month=2026-05&category=餐饮",
+        headers=app_headers(),
+    )
+    assert confirmed_export.status_code == 200, confirmed_export.text
+    assert "好想来零食乐园" in confirmed_export.text
+    assert "1789" in confirmed_export.text
+
+
 def test_recognize_text_does_not_overwrite_user_filled_fields(
     client: TestClient,
 ) -> None:
