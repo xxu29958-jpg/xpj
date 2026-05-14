@@ -38,6 +38,22 @@ def test_v1_migration_readiness_creates_pre_v1_backup(client) -> None:
         _delete_backup(report.backup_created)
 
 
+def test_v1_migration_readiness_requires_latest_backup_to_be_pre_v1(client) -> None:
+    del client
+    manual_backup = backup_service.create_manual_backup()
+    try:
+        report = build_v1_migration_readiness_report(create_backup=False)
+
+        assert report.ready is False
+        assert report.latest_backup == manual_backup.file_name
+        assert report.latest_backup_kind == "manual"
+        checks = {check.code: check for check in report.checks}
+        assert checks["backup_available"].status == "error"
+        assert "pre-v1.0" in checks["backup_available"].message
+    finally:
+        _delete_backup(manual_backup.file_name)
+
+
 def test_v1_migration_readiness_fails_when_v09_schema_is_missing(client) -> None:
     del client
     with engine.begin() as connection:
@@ -49,3 +65,18 @@ def test_v1_migration_readiness_fails_when_v09_schema_is_missing(client) -> None
     checks = {check.code: check for check in report.checks}
     assert checks["v09_tables"].status == "error"
     assert "dashboard_card_preferences" in checks["v09_tables"].message
+
+
+def test_v1_migration_readiness_requires_family_permission_baseline_tables(client) -> None:
+    del client
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE ledger_audit_logs"))
+        connection.execute(text("DROP TABLE invitations"))
+
+    report = build_v1_migration_readiness_report(create_backup=False)
+
+    assert report.ready is False
+    checks = {check.code: check for check in report.checks}
+    assert checks["v09_tables"].status == "error"
+    assert "invitations" in checks["v09_tables"].message
+    assert "ledger_audit_logs" in checks["v09_tables"].message

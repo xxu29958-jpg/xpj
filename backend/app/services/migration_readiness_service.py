@@ -30,6 +30,8 @@ REQUIRED_V09_TABLES = {
     "auth_tokens",
     "upload_links",
     "pairing_codes",
+    "invitations",
+    "ledger_audit_logs",
     "expenses",
     "category_rules",
     "duplicate_ignores",
@@ -152,9 +154,17 @@ def build_v1_migration_readiness_report(*, create_backup: bool = False) -> Migra
 
     latest_backup = backup_service.latest_backup()
     if latest_backup is None:
-        checks.append(_check("backup_available", "error", "迁移前必须先创建数据库备份。"))
+        checks.append(_check("backup_available", "error", "迁移前必须先创建 pre-v1.0 数据库备份。"))
+    elif latest_backup.kind != "pre-v1.0":
+        checks.append(
+            _check(
+                "backup_available",
+                "error",
+                "最新数据库备份必须是 pre-v1.0 类型；请重新运行 --create-backup。",
+            )
+        )
     else:
-        checks.append(_check("backup_available", "ok", "已找到可用于回滚的数据库备份。"))
+        checks.append(_check("backup_available", "ok", "已找到最新的 pre-v1.0 回滚备份。"))
 
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())

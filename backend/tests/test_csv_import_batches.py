@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
+from app.errors import AppError
 from app.services.csv_import_batch_service import (
+    _claim_apply_lease,
     apply_csv_import_batch,
     create_csv_import_batch,
     list_csv_import_rows,
@@ -16,8 +19,8 @@ from conftest import app_headers, gray_app_headers
 
 
 def _csv_bytes(row_count: int) -> BytesIO:
-    lines = ["amount_yuan,merchant,category,note,tags"]
-    lines.extend(f"{index}.00,Merchant {index},餐饮,note {index},外卖" for index in range(1, row_count + 1))
+    lines = ["amount_yuan,merchant,category,note"]
+    lines.extend(f"{index}.00,Merchant {index},餐饮,note {index}" for index in range(1, row_count + 1))
     return BytesIO(("\n".join(lines) + "\n").encode("utf-8"))
 
 
@@ -36,10 +39,10 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
             db,
             tenant_id="owner",
             file_name="large.csv",
-            file_obj=_csv_bytes(1005),
+            file_obj=_csv_bytes(10_000),
         )
-        assert batch.total_rows == 1005
-        assert batch.valid_rows == 1005
+        assert batch.total_rows == 10_000
+        assert batch.valid_rows == 10_000
         assert batch.error_rows == 0
 
         second_page = list_csv_import_rows(
@@ -49,28 +52,33 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
             page=2,
             page_size=500,
         )
-        assert second_page.total == 1005
+        assert second_page.total == 10_000
         assert len(second_page.items) == 500
         assert second_page.items[0].line_number == 502
 
-        first_apply = apply_csv_import_batch(
+        last_page = list_csv_import_rows(
             db,
             tenant_id="owner",
             public_id=batch.public_id,
-            batch_size=700,
+            page=20,
+            page_size=500,
         )
-        assert first_apply.inserted_count == 700
-        assert first_apply.remaining_valid_rows == 305
+        assert len(last_page.items) == 500
+        assert last_page.items[0].line_number == 9502
 
-        second_apply = apply_csv_import_batch(
-            db,
-            tenant_id="owner",
-            public_id=batch.public_id,
-            batch_size=700,
-        )
-        assert second_apply.inserted_count == 305
-        assert second_apply.remaining_valid_rows == 0
-        assert second_apply.batch.status == "applied"
+        inserted_count = 0
+        for expected_remaining in range(9000, -1, -1000):
+            applied = apply_csv_import_batch(
+                db,
+                tenant_id="owner",
+                public_id=batch.public_id,
+                batch_size=1000,
+            )
+            inserted_count += applied.inserted_count
+            assert applied.inserted_count == 1000
+            assert applied.remaining_valid_rows == expected_remaining
+        assert inserted_count == 10_000
+        assert applied.batch.status == "applied"
 
         third_apply = apply_csv_import_batch(
             db,
@@ -87,7 +95,37 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
             .where(Expense.tenant_id == "owner")
             .where(Expense.source == "CSV导入")
         )
-        assert inserted == 1005
+        assert inserted == 10_000
+
+
+def test_csv_import_apply_lease_is_atomically_claimed(client: TestClient) -> None:
+    del client
+    with SessionLocal() as setup_db:
+        batch = create_csv_import_batch(
+            setup_db,
+            tenant_id="owner",
+            file_name="lease.csv",
+            file_obj=_csv_bytes(2),
+        )
+        public_id = batch.public_id
+
+    with SessionLocal() as first_db, SessionLocal() as second_db:
+        claimed = _claim_apply_lease(first_db, tenant_id="owner", public_id=public_id)
+        assert claimed.status == "applying"
+        assert claimed.locked_until is not None
+
+        with pytest.raises(AppError) as exc_info:
+            _claim_apply_lease(second_db, tenant_id="owner", public_id=public_id)
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.error == "invalid_request"
+
+    with SessionLocal() as db:
+        inserted = db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == "owner")
+        )
+        assert inserted == 0
 
 
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient) -> None:

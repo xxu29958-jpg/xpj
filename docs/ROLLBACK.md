@@ -53,4 +53,4 @@ cd E:\projects\xiaopiaojia\backend
 backend\backups\ticketbox-pre-v1.0-YYYYMMDD-HHMMSS.db
 ```
 
-返回 JSON 中 `ready=true` 才表示当前库具备 v0.9 基线表、关键索引和回滚备份。`ready=false` 时不得继续做 v1.0 破坏式迁移；先按 `checks` 中的错误修复当前库或恢复到可升级基线。
+返回 JSON 中 `ready=true` 才表示当前库具备 v0.9 基线表、关键索引，且最新备份是 `pre-v1.0` 类型回滚备份。`ready=false` 时不得继续做 v1.0 破坏式迁移；先按 `checks` 中的错误修复当前库或恢复到可升级基线。

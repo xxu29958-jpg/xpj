@@ -6,7 +6,7 @@ from io import StringIO, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -19,7 +19,7 @@ from app.schemas import (
 )
 from app.services.import_service import DEFAULT_SOURCE, parse_csv_row
 from app.services.tag_service import normalize_tags, sync_expense_tags
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc, now_utc
 
 
 MAX_CSV_IMPORT_ROWS = 20_000
@@ -147,16 +147,7 @@ def apply_csv_import_batch(
     public_id: str,
     batch_size: int,
 ) -> CsvImportApplyResponse:
-    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
-    now = now_utc()
-    if batch.locked_until is not None and batch.locked_until > now:
-        raise AppError("invalid_request", "导入批次正在应用中，请稍后重试。", status_code=409)
-
-    batch.locked_until = now + timedelta(minutes=APPLY_LEASE_MINUTES)
-    batch.status = "applying"
-    batch.updated_at = now
-    db.commit()
-
+    batch = _claim_apply_lease(db, tenant_id=tenant_id, public_id=public_id)
     inserted = 0
     try:
         rows = list(
@@ -225,6 +216,38 @@ def apply_csv_import_batch(
         batch.updated_at = now_utc()
         db.commit()
         raise
+
+
+def _claim_apply_lease(db: Session, *, tenant_id: str, public_id: str) -> CsvImportBatch:
+    now = now_utc()
+    result = db.execute(
+        update(CsvImportBatch)
+        .where(CsvImportBatch.tenant_id == tenant_id)
+        .where(CsvImportBatch.public_id == public_id)
+        .where(
+            or_(
+                CsvImportBatch.locked_until.is_(None),
+                CsvImportBatch.locked_until <= now,
+            )
+        )
+        .values(
+            locked_until=now + timedelta(minutes=APPLY_LEASE_MINUTES),
+            status="applying",
+            updated_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+        locked_until = ensure_utc(batch.locked_until)
+        if locked_until is not None and locked_until > now:
+            raise AppError("invalid_request", "导入批次正在应用中，请稍后重试。", status_code=409)
+        raise AppError("invalid_request", "导入批次状态已变更，请重试。", status_code=409)
+
+    db.commit()
+    db.expire_all()
+    return get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
 
 
 def build_csv_import_errors_csv(
