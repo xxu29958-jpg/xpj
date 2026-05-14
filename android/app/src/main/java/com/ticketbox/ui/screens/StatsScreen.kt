@@ -35,6 +35,8 @@ import com.ticketbox.ui.screens.stats.PendingOverviewCard
 import com.ticketbox.ui.screens.stats.RecentTrendCard
 import com.ticketbox.ui.screens.stats.RecurringCandidatesCard
 import com.ticketbox.ui.screens.stats.RecurringItemsSummaryCard
+import com.ticketbox.ui.screens.stats.GoalsSummaryCard
+import com.ticketbox.ui.screens.stats.ReportsInsightCard
 import com.ticketbox.ui.screens.stats.StatsMetricGrid
 import com.ticketbox.ui.screens.stats.StatsMonthChip
 import com.ticketbox.ui.screens.stats.StatsOverviewCard
@@ -92,6 +94,12 @@ fun StatsScreen(
         state.message?.let {
             item { Text(it, color = MaterialTheme.colorScheme.secondary) }
         }
+        state.reportsMessage?.let {
+            item { Text(it, color = MaterialTheme.colorScheme.secondary) }
+        }
+        if (state.reportsLoading && state.selectedTag.isBlank()) {
+            item { Text("动态图表更新中…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
         val stats = state.stats
         if (stats == null) {
             item { EmptyStatsCard(onRefresh = onRefresh) }
@@ -144,6 +152,18 @@ fun StatsScreen(
             }
             item {
                 RecentTrendCard(state.dailyTrend)
+            }
+            if (state.selectedTag.isBlank()) {
+                state.reportsOverview?.let { overview ->
+                    item {
+                        ReportsInsightCard(overview)
+                    }
+                }
+                if (state.reportGoals.isNotEmpty()) {
+                    item {
+                        GoalsSummaryCard(state.reportGoals)
+                    }
+                }
             }
             state.dataQuality?.let { dq ->
                 item {

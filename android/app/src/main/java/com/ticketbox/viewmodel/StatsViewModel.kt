@@ -5,13 +5,18 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.CategoryInsight
+import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.ReportGranularity
+import com.ticketbox.domain.model.ReportsOverview
+import com.ticketbox.domain.model.ReportsOverviewQuery
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.DataQualitySummary
@@ -38,6 +43,10 @@ data class StatsUiState(
     val categoryInsight: CategoryInsight? = null,
     val recurringItems: List<RecurringItem> = emptyList(),
     val recurringCandidates: List<RecurringCandidate> = emptyList(),
+    val reportsOverview: ReportsOverview? = null,
+    val reportGoals: List<Goal> = emptyList(),
+    val reportsLoading: Boolean = false,
+    val reportsMessage: String? = null,
     val dataQuality: DataQualitySummary? = null,
     val months: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
@@ -51,6 +60,7 @@ class StatsViewModel(
     private val repository: ExpenseRepository,
     private val recurringRepository: RecurringRepository,
     private val budgetRepository: BudgetActions? = null,
+    private val reportsRepository: ReportsActions? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
@@ -119,6 +129,10 @@ class StatsViewModel(
                 monthComparison = monthlySpendingComparison(visibleExpenses, value),
                 budgetProgress = budgetProgressFor(value, localStats),
                 categoryInsight = monthlyCategoryInsight(localStats),
+                reportsOverview = null,
+                reportGoals = emptyList(),
+                reportsLoading = false,
+                reportsMessage = null,
             )
         }
         refresh()
@@ -141,6 +155,10 @@ class StatsViewModel(
                 monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
                 budgetProgress = budgetProgressFor(it.month, localStats),
                 categoryInsight = monthlyCategoryInsight(localStats),
+                reportsOverview = if (cleanTag.isBlank()) it.reportsOverview else null,
+                reportGoals = if (cleanTag.isBlank()) it.reportGoals else emptyList(),
+                reportsLoading = if (cleanTag.isBlank()) it.reportsLoading else false,
+                reportsMessage = if (cleanTag.isBlank()) it.reportsMessage else null,
             )
         }
         refresh()
@@ -152,6 +170,7 @@ class StatsViewModel(
             val month = _uiState.value.month.trim().ifBlank { null }
             val tag = _uiState.value.selectedTag.trim().ifBlank { null }
             val selectedMonth = month ?: YearMonth.now().toString()
+            val shouldLoadReports = tag == null
             budgetRepository?.let { budgetRepo ->
                 launch {
                     budgetRepo.monthlyBudget(selectedMonth)
@@ -182,6 +201,20 @@ class StatsViewModel(
                     .onSuccess { summary ->
                         _uiState.update { it.copy(dataQuality = summary) }
                     }
+            }
+            reportsRepository?.let { reportsRepo ->
+                if (shouldLoadReports) {
+                    loadReports(reportsRepo, selectedMonth)
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            reportsOverview = null,
+                            reportGoals = emptyList(),
+                            reportsLoading = false,
+                            reportsMessage = null,
+                        )
+                    }
+                }
             }
             repository.monthlyStats(month = month, tag = tag)
                 .onSuccess { stats ->
@@ -229,6 +262,35 @@ class StatsViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    private fun loadReports(reportsRepo: ReportsActions, month: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(reportsLoading = true, reportsMessage = null) }
+            val overviewResult = reportsRepo.reportsOverview(
+                ReportsOverviewQuery(
+                    month = month,
+                    granularity = ReportGranularity.Day,
+                ),
+            )
+            val goalsResult = reportsRepo.goals(month = month)
+            val currentState = _uiState.value
+            if (currentState.month != month || currentState.selectedTag.isNotBlank()) {
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    reportsOverview = overviewResult.getOrNull(),
+                    reportGoals = goalsResult.getOrDefault(emptyList()),
+                    reportsLoading = false,
+                    reportsMessage = when {
+                        overviewResult.isFailure && goalsResult.isFailure -> "动态图表暂时打不开，稍后再试。"
+                        overviewResult.isFailure -> "趋势图暂时打不开，稍后再试。"
+                        else -> null
+                    },
+                )
+            }
         }
     }
 

@@ -150,6 +150,7 @@ dependencies {
 
     implementation(libs.androidx.biometric)
     implementation(libs.coroutines.android)
+    implementation(libs.vico.compose.m3)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.coroutines.test)

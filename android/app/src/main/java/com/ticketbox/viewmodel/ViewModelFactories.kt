@@ -6,6 +6,7 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.security.SecureTokenStore
 
 @Suppress("UNCHECKED_CAST")
@@ -24,12 +25,13 @@ fun repositoryViewModelFactory(
     repository: ExpenseRepository,
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetActions? = null,
+    reportsRepository: ReportsActions? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(repository)
             LedgerViewModel::class.java -> LedgerViewModel(repository)
-            StatsViewModel::class.java -> StatsViewModel(repository, recurringRepository, budgetRepository)
+            StatsViewModel::class.java -> StatsViewModel(repository, recurringRepository, budgetRepository, reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
     }

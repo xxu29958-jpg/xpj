@@ -1,6 +1,6 @@
 # 依赖管理
 
-小票夹依赖策略是“稳定、可维护、可复现”，不要为了追新引入 alpha、beta、rc 或来源不明的库。
+小票夹依赖策略是“稳定、可维护、可复现”，不要为了追新引入 alpha、beta、rc、next、canary 或来源不明的库。
 
 ## 基本规则
 
@@ -25,7 +25,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_dependency_ver
 - 查询 Android 库、Gradle 插件在 Google Maven 和 Maven Central 的 `maven-metadata.xml`。
 - 读取后端 requirements。
 - 查询 PyPI JSON API。
-- 排除 alpha、beta、rc、snapshot、dev、eap、preview 等预发布版本。
+- 排除 alpha、beta、rc、snapshot、dev、eap、preview、next、canary 等预发布版本。
 - 只报告结果，不自动升级。
 
 如果需要让落后依赖直接失败：

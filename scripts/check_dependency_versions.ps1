@@ -33,7 +33,7 @@ function Test-StableVersion {
     }
 
     $normalized = $Version.ToLowerInvariant()
-    if ($normalized -match "(alpha|beta|snapshot|eap|preview)") {
+    if ($normalized -match "(alpha|beta|snapshot|eap|preview|next|canary)") {
         return $false
     }
     if ($normalized -match "(^|[0-9._-])(a|b)[0-9]+") {
@@ -337,7 +337,7 @@ $warnings = 0
 
 Write-Host "小票夹依赖版本审计"
 Write-Host "项目根目录：$($ProjectRoot.Path)"
-Write-Host "策略：默认只比较稳定版本，排除 alpha/beta/rc/snapshot/dev/eap/preview。"
+Write-Host "策略：默认只比较稳定版本，排除 alpha/beta/rc/snapshot/dev/eap/preview/next/canary。"
 
 $catalogPath = Join-Path $ProjectRoot "android/gradle/libs.versions.toml"
 if (Test-Path -LiteralPath $catalogPath) {

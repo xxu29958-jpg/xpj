@@ -40,6 +40,7 @@ import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -108,6 +109,7 @@ fun TicketboxApp(
     ledgerRepository: LedgerRepository,
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetRepository,
+    reportsRepository: ReportsActions,
     appViewModelFactory: ViewModelProvider.Factory,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
@@ -138,6 +140,7 @@ fun TicketboxApp(
             ledgerRepository = ledgerRepository,
             recurringRepository = recurringRepository,
             budgetRepository = budgetRepository,
+            reportsRepository = reportsRepository,
             settingsViewModelFactory = settingsViewModelFactory,
             biometricAuthManager = biometricAuthManager,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
@@ -153,6 +156,7 @@ private fun TicketboxContent(
     ledgerRepository: LedgerRepository,
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetRepository,
+    reportsRepository: ReportsActions,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
     onAuthMessageShown: () -> Unit,
@@ -202,6 +206,7 @@ private fun TicketboxContent(
         ledgerRepository = ledgerRepository,
         recurringRepository = recurringRepository,
         budgetRepository = budgetRepository,
+        reportsRepository = reportsRepository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
         backgroundSettings = appState.backgroundSettings,
@@ -220,6 +225,7 @@ private fun MainShell(
     ledgerRepository: LedgerRepository,
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetRepository,
+    reportsRepository: ReportsActions,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
     backgroundSettings: BackgroundSettings,
@@ -230,7 +236,12 @@ private fun MainShell(
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
-    val repositoryFactory = repositoryViewModelFactory(repository, recurringRepository, budgetRepository)
+    val repositoryFactory = repositoryViewModelFactory(
+        repository = repository,
+        recurringRepository = recurringRepository,
+        budgetRepository = budgetRepository,
+        reportsRepository = reportsRepository,
+    )
     val currentRole = editingExpense?.let { SurfaceRole.Edit } ?: selectedTab.surfaceRole
     val snackbarHostState = remember { SnackbarHostState() }
 
