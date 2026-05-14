@@ -107,6 +107,7 @@ class PendingViewModel(
                         it.copy(
                             items = expenses,
                             thumbnails = it.thumbnails.filterKeys { id -> id in ids },
+                            activeSheet = reconcileActiveSheet(it.activeSheet, expenses),
                             readOnly = isReadOnly(),
                             loading = false,
                         )
@@ -281,5 +282,19 @@ class PendingViewModel(
                     }
                 }
         }
+    }
+}
+
+internal fun reconcileActiveSheet(sheet: PendingSheet, items: List<Expense>): PendingSheet {
+    if (sheet is PendingSheet.None || sheet is PendingSheet.BulkConfirm) return sheet
+    val latestById = items.associateBy { it.id }
+    return when (sheet) {
+        is PendingSheet.QuickCategory -> latestById[sheet.expense.id]?.let(PendingSheet::QuickCategory) ?: PendingSheet.None
+        is PendingSheet.QuickMerchant -> latestById[sheet.expense.id]?.let(PendingSheet::QuickMerchant) ?: PendingSheet.None
+        is PendingSheet.MissingAmount -> latestById[sheet.expense.id]?.let(PendingSheet::MissingAmount) ?: PendingSheet.None
+        is PendingSheet.Duplicate -> latestById[sheet.expense.id]?.let(PendingSheet::Duplicate) ?: PendingSheet.None
+        is PendingSheet.None,
+        is PendingSheet.BulkConfirm,
+        -> sheet
     }
 }

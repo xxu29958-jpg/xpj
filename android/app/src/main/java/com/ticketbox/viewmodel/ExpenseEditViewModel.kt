@@ -208,6 +208,14 @@ class ExpenseEditViewModel(
         }
     }
 
+    fun consumeDone(): Boolean {
+        val wasDone = _uiState.value.done
+        if (wasDone) {
+            _uiState.update { it.copy(done = false) }
+        }
+        return wasDone
+    }
+
     private fun blockReadOnlyWrite(): Boolean {
         if (repository.canModifyLedger()) {
             _uiState.update { it.copy(readOnly = false) }

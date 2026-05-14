@@ -65,4 +65,21 @@ class FormattersTest {
         assertEquals("1 KB", formatStorageSize(1024))
         assertEquals("1 MB", formatStorageSize(1024 * 1024))
     }
+
+    @Test
+    fun previewDecodeSampleSizeKeepsSmallImagesAtFullResolution() {
+        assertEquals(
+            1,
+            previewDecodeSampleSize(width = 1080, height = 2400, maxLongSide = 4096, maxPixels = 4_000_000),
+        )
+    }
+
+    @Test
+    fun previewDecodeSampleSizeCapsLargeImagesByLongSideAndPixels() {
+        val sampleSize = previewDecodeSampleSize(width = 8000, height = 6000, maxLongSide = 2048, maxPixels = 4_000_000)
+
+        assertEquals(4, sampleSize)
+        assertTrue((8000 / sampleSize).toLong() * (6000 / sampleSize).toLong() <= 4_000_000)
+        assertTrue(8000 / sampleSize <= 2048)
+    }
 }

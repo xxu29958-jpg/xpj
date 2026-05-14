@@ -318,6 +318,25 @@ class PendingViewModelReviewActionsTest {
         assertEquals(PendingSheet.BulkConfirm, vm.uiState.value.activeSheet)
     }
 
+    @Test
+    fun reconcileActiveSheetUsesLatestExpenseSnapshot() = review {
+        val stale = expense(id = 60L, category = "其他")
+        val latest = stale.copy(category = "交通", updatedAt = "2025-01-01T00:01:00Z")
+
+        val reconciled = reconcileActiveSheet(PendingSheet.QuickCategory(stale), listOf(latest))
+
+        assertEquals(PendingSheet.QuickCategory(latest), reconciled)
+    }
+
+    @Test
+    fun reconcileActiveSheetClosesWhenExpenseLeavesPendingList() = review {
+        val stale = expense(id = 61L, amountCents = null)
+
+        val reconciled = reconcileActiveSheet(PendingSheet.MissingAmount(stale), emptyList())
+
+        assertEquals(PendingSheet.None, reconciled)
+    }
+
     private fun expense(
         id: Long,
         amountCents: Long? = 100L,

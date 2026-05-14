@@ -237,6 +237,7 @@ private fun MainShell(
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
     var dashboardCardsRevision by remember { mutableStateOf(0) }
+    var expenseEditCompletionRevision by remember { mutableStateOf(0) }
     val repositoryFactory = repositoryViewModelFactory(
         repository = repository,
         recurringRepository = recurringRepository,
@@ -272,7 +273,12 @@ private fun MainShell(
                 onRetryOcr = editViewModel::retryOcr,
                 onLoadFullImage = editViewModel::loadFullImage,
                 onKeepDuplicate = editViewModel::markNotDuplicate,
-                onDone = { editingExpense = null },
+                onDone = {
+                    if (editViewModel.consumeDone()) {
+                        expenseEditCompletionRevision += 1
+                    }
+                    editingExpense = null
+                },
                 allowConfirm = expense.status == "pending",
                 allowReject = expense.status == "pending",
             )
@@ -304,6 +310,11 @@ private fun MainShell(
                     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
                     val context = LocalContext.current
                     val uploadScope = rememberCoroutineScope()
+                    LaunchedEffect(expenseEditCompletionRevision) {
+                        if (expenseEditCompletionRevision > 0) {
+                            pendingViewModel.refresh()
+                        }
+                    }
                     val imagePickerLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.PickVisualMedia(),
                     ) { uri ->
@@ -358,6 +369,11 @@ private fun MainShell(
                     val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
                     val context = LocalContext.current
                     var pendingExport by remember { mutableStateOf<CsvExport?>(null) }
+                    LaunchedEffect(expenseEditCompletionRevision) {
+                        if (expenseEditCompletionRevision > 0) {
+                            ledgerViewModel.sync()
+                        }
+                    }
                     val exportLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.CreateDocument("text/csv"),
                     ) { uri ->
