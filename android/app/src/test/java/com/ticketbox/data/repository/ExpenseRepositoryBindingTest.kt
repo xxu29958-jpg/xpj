@@ -16,6 +16,10 @@ import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.GoalCreateRequestDto
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.GoalListResponseDto
+import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasListDto
@@ -29,6 +33,7 @@ import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
@@ -694,6 +699,35 @@ private class FakeApiService(
     override suspend fun monthlyStats(month: String?, tag: String?, timezone: String?): MonthlyStatsDto = unsupported()
 
     override suspend fun lifestyleStats(month: String?, timezone: String?): LifestyleStatsDto = unsupported()
+    override suspend fun reportsOverview(
+        month: String?,
+        granularity: String,
+        topN: Int,
+        merchantCategory: String?,
+        rankingMetric: String,
+        timezone: String?,
+    ): ReportsOverviewDto = unsupported()
+    override suspend fun reportsOverviewCsv(
+        month: String?,
+        granularity: String,
+        topN: Int,
+        merchantCategory: String?,
+        rankingMetric: String,
+        timezone: String?,
+    ): Response<ResponseBody> = unsupported()
+    override suspend fun goals(
+        month: String?,
+        includeArchived: Boolean,
+        timezone: String?,
+    ): GoalListResponseDto = unsupported()
+    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?): GoalDto = unsupported()
+    override suspend fun goal(publicId: String, timezone: String?): GoalDto = unsupported()
+    override suspend fun updateGoal(
+        publicId: String,
+        request: GoalUpdateRequestDto,
+        timezone: String?,
+    ): GoalDto = unsupported()
+    override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto = unsupported()
     override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto = unsupported()
     override suspend fun updateMonthlyBudget(
         month: String,

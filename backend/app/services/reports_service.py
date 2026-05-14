@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from io import StringIO
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -12,12 +14,13 @@ from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import add_ledger_scope
 from app.models import Expense
-from app.services.category_service import normalize_category
+from app.services.category_service import LEGACY_CATEGORY_ALIASES, normalize_category
 from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.time_service import local_month_bounds_utc, safe_zone
 
 ReportGranularity = Literal["day", "week", "month"]
+ReportRankingMetric = Literal["amount", "count"]
 
 
 def _stat_time_expr():
@@ -206,6 +209,17 @@ def _canonical_display(merchant: str, alias_map: dict[str, str]) -> str:
     return canonical or display
 
 
+def _category_filter_values(category: str | None) -> set[str]:
+    normalized = normalize_category(category)
+    values = {normalized}
+    values.update(
+        legacy
+        for legacy, canonical in LEGACY_CATEGORY_ALIASES.items()
+        if canonical == normalized
+    )
+    return values
+
+
 def _merchant_ranking(
     db: Session,
     *,
@@ -213,6 +227,8 @@ def _merchant_ranking(
     start_utc: datetime,
     end_utc: datetime,
     top_n: int,
+    category: str | None,
+    ranking_metric: ReportRankingMetric,
 ) -> list[dict]:
     stat_time = _stat_time_expr()
     statement = (
@@ -229,6 +245,10 @@ def _merchant_ranking(
         .where(stat_time >= start_utc)
         .where(stat_time < end_utc)
     )
+    if category:
+        statement = statement.where(
+            Expense.category.in_(_category_filter_values(category))
+        )
     rows = db.execute(statement)
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
     buckets: dict[str, dict[str, int | str]] = defaultdict(
@@ -241,9 +261,22 @@ def _merchant_ranking(
         bucket["merchant"] = display
         bucket["amount_cents"] = int(bucket["amount_cents"]) + int(amount_value or 0)
         bucket["count"] = int(bucket["count"]) + int(count_value or 0)
+    if ranking_metric == "count":
+        return sorted(
+            buckets.values(),
+            key=lambda item: (
+                -int(item["count"]),
+                -int(item["amount_cents"]),
+                str(item["merchant"]),
+            ),
+        )[:top_n]
     return sorted(
         buckets.values(),
-        key=lambda item: (-int(item["amount_cents"]), -int(item["count"]), str(item["merchant"])),
+        key=lambda item: (
+            -int(item["amount_cents"]),
+            -int(item["count"]),
+            str(item["merchant"]),
+        ),
     )[:top_n]
 
 
@@ -340,9 +373,14 @@ def reports_overview(
     timezone_name: str | None = None,
     granularity: ReportGranularity = "day",
     top_n: int = 8,
+    merchant_category: str | None = None,
+    ranking_metric: ReportRankingMetric = "amount",
 ) -> dict:
     _parse_month(month)
     timezone_key, zone = _resolve_timezone(timezone_name)
+    normalized_merchant_category = (
+        normalize_category(merchant_category) if merchant_category else None
+    )
     current_start_utc, current_end_utc = _month_bounds(month, timezone_key)
     previous_month = _shift_month(month, -1)
     previous_start_utc, previous_end_utc = _month_bounds(previous_month, timezone_key)
@@ -367,6 +405,8 @@ def reports_overview(
         "previous_month": previous_month,
         "previous_total_amount_cents": previous_total,
         "previous_count": previous_count,
+        "merchant_category": normalized_merchant_category,
+        "ranking_metric": ranking_metric,
         "trend": _trend_points(
             db,
             tenant_id=tenant_id,
@@ -381,6 +421,8 @@ def reports_overview(
             start_utc=current_start_utc,
             end_utc=current_end_utc,
             top_n=top_n,
+            category=merchant_category,
+            ranking_metric=ranking_metric,
         ),
         "category_comparison": _category_comparison(
             db,
@@ -391,3 +433,94 @@ def reports_overview(
             previous_end_utc=previous_end_utc,
         ),
     }
+
+
+def export_reports_overview_csv(
+    db: Session,
+    *,
+    month: str,
+    tenant_id: str,
+    timezone_name: str | None = None,
+    granularity: ReportGranularity = "day",
+    top_n: int = 8,
+    merchant_category: str | None = None,
+    ranking_metric: ReportRankingMetric = "amount",
+) -> str:
+    overview = reports_overview(
+        db,
+        month=month,
+        tenant_id=tenant_id,
+        timezone_name=timezone_name,
+        granularity=granularity,
+        top_n=top_n,
+        merchant_category=merchant_category,
+        ranking_metric=ranking_metric,
+    )
+    output = StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(["section", "field", "value"])
+    for field in [
+        "month",
+        "timezone",
+        "granularity",
+        "total_amount_cents",
+        "count",
+        "previous_month",
+        "previous_total_amount_cents",
+        "previous_count",
+        "merchant_category",
+        "ranking_metric",
+    ]:
+        value = overview.get(field)
+        writer.writerow(["summary", field, "" if value is None else value])
+    writer.writerow([])
+    writer.writerow(["section", "bucket", "label", "amount_cents", "count"])
+    for point in overview["trend"]:
+        writer.writerow(
+            [
+                "trend",
+                point["bucket"],
+                point["label"],
+                point["amount_cents"],
+                point["count"],
+            ]
+        )
+    writer.writerow([])
+    writer.writerow(["section", "rank", "merchant", "amount_cents", "count"])
+    for index, item in enumerate(overview["merchant_ranking"], start=1):
+        writer.writerow(
+            [
+                "merchant_ranking",
+                index,
+                item["merchant"],
+                item["amount_cents"],
+                item["count"],
+            ]
+        )
+    writer.writerow([])
+    writer.writerow(
+        [
+            "section",
+            "category",
+            "amount_cents",
+            "count",
+            "previous_amount_cents",
+            "previous_count",
+            "delta_amount_cents",
+            "delta_count",
+        ]
+    )
+    for item in overview["category_comparison"]:
+        writer.writerow(
+            [
+                "category_comparison",
+                item["category"],
+                item["amount_cents"],
+                item["count"],
+                item["previous_amount_cents"],
+                item["previous_count"],
+                item["delta_amount_cents"],
+                item["delta_count"],
+            ]
+        )
+    return output.getvalue()

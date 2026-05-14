@@ -418,6 +418,8 @@ class ReportsOverviewResponse(BaseModel):
     previous_month: str
     previous_total_amount_cents: int
     previous_count: int
+    merchant_category: str | None = None
+    ranking_metric: str
     trend: list[ReportTrendPointResponse]
     merchant_ranking: list[ReportMerchantRankingResponse]
     category_comparison: list[ReportCategoryComparisonResponse]

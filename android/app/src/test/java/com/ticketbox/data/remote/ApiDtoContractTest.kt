@@ -6,6 +6,9 @@ import com.ticketbox.data.remote.dto.BudgetCategoryRequestDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
+import com.ticketbox.data.remote.dto.GoalCreateRequestDto
+import com.ticketbox.data.remote.dto.GoalListResponseDto
+import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
@@ -14,6 +17,7 @@ import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
@@ -468,5 +472,105 @@ class ApiDtoContractTest {
             """{"total_amount_cents":500000,"non_monthly_amount_cents":30000,"rollover_amount_cents":-20000,"excluded_categories":["医疗"],"category_budgets":[{"category":"餐饮","amount_cents":120000}]}""",
             requestJson,
         )
+    }
+
+    @Test
+    fun reportsOverviewParsesCurrentServerShape() {
+        val dto = requireNotNull(
+            moshi.adapter(ReportsOverviewDto::class.java).fromJson(
+                """
+                {
+                  "month": "2026-05",
+                  "timezone": "Asia/Shanghai",
+                  "granularity": "day",
+                  "total_amount_cents": 4200,
+                  "count": 3,
+                  "previous_month": "2026-04",
+                  "previous_total_amount_cents": 500,
+                  "previous_count": 1,
+                  "merchant_category": "餐饮",
+                  "ranking_metric": "count",
+                  "trend": [
+                    {"bucket": "2026-05-01", "label": "05-01", "amount_cents": 1200, "count": 1}
+                  ],
+                  "merchant_ranking": [
+                    {"merchant": "星巴克", "amount_cents": 2000, "count": 2}
+                  ],
+                  "category_comparison": [
+                    {
+                      "category": "餐饮",
+                      "amount_cents": 2000,
+                      "count": 2,
+                      "previous_amount_cents": 500,
+                      "previous_count": 1,
+                      "delta_amount_cents": 1500,
+                      "delta_count": 1
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("2026-05", dto.month)
+        assertEquals("餐饮", dto.merchantCategory)
+        assertEquals("count", dto.rankingMetric)
+        assertEquals(1200L, dto.trend.single().amountCents)
+        assertEquals("星巴克", dto.merchantRanking.single().merchant)
+        assertEquals(1500L, dto.categoryComparison.single().deltaAmountCents)
+    }
+
+    @Test
+    fun goalsParseCurrentServerShapeAndSerializeRequests() {
+        val dto = requireNotNull(
+            moshi.adapter(GoalListResponseDto::class.java).fromJson(
+                """
+                {
+                  "items": [
+                    {
+                      "public_id": "goal-1",
+                      "ledger_id": "owner",
+                      "name": "本月餐饮",
+                      "goal_type": "spending_limit",
+                      "period": "monthly",
+                      "month": "2026-05",
+                      "category": "餐饮",
+                      "target_amount_cents": 80000,
+                      "spent_amount_cents": 64000,
+                      "remaining_amount_cents": 16000,
+                      "progress_percent": 80,
+                      "progress_state": "near_limit",
+                      "status": "active",
+                      "created_at": "2026-05-13T00:00:00Z",
+                      "updated_at": "2026-05-13T00:00:00Z",
+                      "archived_at": null
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val createJson = moshi.adapter(GoalCreateRequestDto::class.java).toJson(
+            GoalCreateRequestDto(
+                name = "本月餐饮",
+                month = "2026-05",
+                category = "餐饮",
+                targetAmountCents = 80000,
+            ),
+        )
+        val updateJson = moshi.adapter(GoalUpdateRequestDto::class.java).toJson(
+            GoalUpdateRequestDto(targetAmountCents = 90000),
+        )
+
+        val goal = dto.items.single()
+        assertEquals("goal-1", goal.publicId)
+        assertEquals("owner", goal.ledgerId)
+        assertEquals("near_limit", goal.progressState)
+        assertEquals(80, goal.progressPercent)
+        assertEquals(
+            """{"name":"本月餐饮","month":"2026-05","target_amount_cents":80000,"category":"餐饮","goal_type":"spending_limit","period":"monthly"}""",
+            createJson,
+        )
+        assertEquals("""{"target_amount_cents":90000}""", updateJson)
     }
 }

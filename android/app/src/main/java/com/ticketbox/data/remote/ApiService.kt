@@ -8,6 +8,10 @@ import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.GoalCreateRequestDto
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.GoalListResponseDto
+import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
@@ -35,6 +39,7 @@ import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.PairResponseDto
+import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
@@ -201,6 +206,59 @@ interface ApiService {
         @Query("month") month: String? = null,
         @Query("timezone") timezone: String? = null,
     ): LifestyleStatsDto
+
+    @GET("api/reports/overview")
+    suspend fun reportsOverview(
+        @Query("month") month: String? = null,
+        @Query("granularity") granularity: String = "day",
+        @Query("top_n") topN: Int = 8,
+        @Query("merchant_category") merchantCategory: String? = null,
+        @Query("ranking_metric") rankingMetric: String = "amount",
+        @Query("timezone") timezone: String? = null,
+    ): ReportsOverviewDto
+
+    @GET("api/reports/overview.csv")
+    @Streaming
+    suspend fun reportsOverviewCsv(
+        @Query("month") month: String? = null,
+        @Query("granularity") granularity: String = "day",
+        @Query("top_n") topN: Int = 8,
+        @Query("merchant_category") merchantCategory: String? = null,
+        @Query("ranking_metric") rankingMetric: String = "amount",
+        @Query("timezone") timezone: String? = null,
+    ): Response<ResponseBody>
+
+    @GET("api/goals")
+    suspend fun goals(
+        @Query("month") month: String? = null,
+        @Query("include_archived") includeArchived: Boolean = false,
+        @Query("timezone") timezone: String? = null,
+    ): GoalListResponseDto
+
+    @POST("api/goals")
+    suspend fun createGoal(
+        @Body request: GoalCreateRequestDto,
+        @Query("timezone") timezone: String? = null,
+    ): GoalDto
+
+    @GET("api/goals/{publicId}")
+    suspend fun goal(
+        @Path("publicId") publicId: String,
+        @Query("timezone") timezone: String? = null,
+    ): GoalDto
+
+    @PATCH("api/goals/{publicId}")
+    suspend fun updateGoal(
+        @Path("publicId") publicId: String,
+        @Body request: GoalUpdateRequestDto,
+        @Query("timezone") timezone: String? = null,
+    ): GoalDto
+
+    @POST("api/goals/{publicId}/archive")
+    suspend fun archiveGoal(
+        @Path("publicId") publicId: String,
+        @Query("timezone") timezone: String? = null,
+    ): GoalDto
 
     @GET("api/budgets/monthly")
     suspend fun monthlyBudget(

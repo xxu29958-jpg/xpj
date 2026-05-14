@@ -146,7 +146,8 @@ Authorization: Bearer <admin_token>
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/tag/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
-| `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比；viewer 可读 |
+| `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/merchant_category/ranking_metric/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比；viewer 可读 |
+| `/api/reports/overview.csv` | GET | `backend/app/routes/reports.py` | v0.9 Reports Export | query 同 `/api/reports/overview` | streaming `text/csv` | Session Token | `backend/tests/test_reports.py` | v0.9 结构化报表 CSV；viewer 可读 |
 | `/api/goals` | GET | `backend/app/routes/goals.py` | v0.9 Goals | query `month/include_archived/timezone` | `GoalListResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标列表和进度；viewer 可读 |
 | `/api/goals` | POST | `backend/app/routes/goals.py` | v0.9 Goals | `GoalCreateRequest`；query `timezone` | `GoalResponse` | Session Token，owner/member 写权限 | `backend/tests/test_goals.py` | v0.9 创建月度支出目标 |
 | `/api/goals/{public_id}` | GET | `backend/app/routes/goals.py` | v0.9 Goals | path `public_id`；query `timezone` | `GoalResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标详情和进度；viewer 可读 |
@@ -1135,6 +1136,8 @@ Authorization: Bearer <session_token>
 month=2026-05
 granularity=day|week|month，默认 day
 top_n=8，范围 1..20
+merchant_category=餐饮，可选；只过滤商家排行，不影响总额和分类对比
+ranking_metric=amount|count，默认 amount
 timezone=Asia/Shanghai
 ```
 
@@ -1143,7 +1146,7 @@ timezone=Asia/Shanghai
 - 只统计当前账本的 `confirmed` 账单。
 - 统计时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
 - `day` / `week` 按指定 `timezone` 的本地自然日和自然周分桶；`month` 返回截至目标月的 6 个月趋势。
-- 商家排行按当前月份聚合金额和笔数，并按已启用商家别名合并展示名。
+- 商家排行按当前月份聚合金额和笔数，并按已启用商家别名合并展示名；`merchant_category` 只过滤商家排行，`ranking_metric` 控制按金额或笔数排序。
 - 分类对比返回当前月、上月和差额；旧分类别名会按分类归一规则合并。
 - `viewer` 可读；接口不要求 writer 权限。
 
@@ -1159,6 +1162,8 @@ timezone=Asia/Shanghai
   "previous_month": "2026-04",
   "previous_total_amount_cents": 500,
   "previous_count": 1,
+  "merchant_category": null,
+  "ranking_metric": "amount",
   "trend": [
     {
       "bucket": "2026-05-01",
@@ -1187,6 +1192,25 @@ timezone=Asia/Shanghai
   ]
 }
 ```
+
+### GET /api/reports/overview.csv
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+查询参数同 `/api/reports/overview`。
+
+返回 `text/csv; charset=utf-8`，带 UTF-8 BOM 和下载文件名。CSV 分四段：
+
+- `summary`：月份、时区、粒度、总额、上月总额、商家排行过滤和排序参数。
+- `trend`：趋势桶、展示标签、金额、笔数。
+- `merchant_ranking`：排行名次、商家、金额、笔数。
+- `category_comparison`：分类本月、上月和差额。
+
+PNG 导出仍由 Android / `/web` 展示层完成；后端不渲染图表图片。
 
 ## 目标
 

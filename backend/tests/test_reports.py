@@ -144,6 +144,8 @@ def test_reports_overview_trends_rankings_and_category_comparison(
     assert payload["previous_month"] == "2026-04"
     assert payload["previous_total_amount_cents"] == 500
     assert payload["previous_count"] == 1
+    assert payload["merchant_category"] is None
+    assert payload["ranking_metric"] == "amount"
     assert payload["trend"][0] == {
         "bucket": "2026-05-01",
         "label": "05-01",
@@ -176,6 +178,69 @@ def test_reports_overview_trends_rankings_and_category_comparison(
             "delta_count": 1,
         },
     ]
+
+
+def test_reports_merchant_ranking_category_metric_and_csv_export(
+    client: TestClient,
+) -> None:
+    for _ in range(3):
+        _manual_expense(
+            client,
+            headers=app_headers(),
+            amount_cents=100,
+            merchant="A店",
+            category="餐饮",
+            expense_time="2026-05-02T00:30:00Z",
+        )
+    _manual_expense(
+        client,
+        headers=app_headers(),
+        amount_cents=1000,
+        merchant="B店",
+        category="吃饭",
+        expense_time="2026-05-03T00:30:00Z",
+    )
+    _manual_expense(
+        client,
+        headers=app_headers(),
+        amount_cents=2000,
+        merchant="交通店",
+        category="交通",
+        expense_time="2026-05-03T00:30:00Z",
+    )
+
+    response = client.get(
+        "/api/reports/overview?"
+        "month=2026-05&timezone=UTC&merchant_category=吃饭&ranking_metric=count&top_n=2",
+        headers=app_headers(),
+    )
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert payload["total_amount_cents"] == 3300
+    assert payload["merchant_category"] == "餐饮"
+    assert payload["ranking_metric"] == "count"
+    assert payload["merchant_ranking"] == [
+        {"merchant": "A店", "amount_cents": 300, "count": 3},
+        {"merchant": "B店", "amount_cents": 1000, "count": 1},
+    ]
+    assert "交通店" not in str(payload["merchant_ranking"])
+
+    _set_owner_ledger_role("viewer")
+    csv_response = client.get(
+        "/api/reports/overview.csv?"
+        "month=2026-05&timezone=UTC&granularity=week&merchant_category=餐饮"
+        "&ranking_metric=count&top_n=1",
+        headers=app_headers(),
+    )
+    assert csv_response.status_code == 200, csv_response.text
+    assert csv_response.headers["content-type"].startswith("text/csv")
+    assert "ticketbox-reports-overview-2026-05-week.csv" in csv_response.headers[
+        "content-disposition"
+    ]
+    assert csv_response.text.startswith("\ufeffsection,field,value")
+    assert "summary,ranking_metric,count" in csv_response.text
+    assert "merchant_ranking,1,A店,300,3" in csv_response.text
+    assert "category_comparison,交通,2000,1" in csv_response.text
 
 
 def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
