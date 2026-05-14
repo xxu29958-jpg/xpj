@@ -22,6 +22,8 @@ from app.routes import web_import_export
 from app.routes import web_merchants
 from app.routes import web_pending
 from app.routes import web_recurring
+from app.routes import web_goals
+from app.routes import web_reports
 from app.routes import web_rules as web_rules_routes
 from app.routes import web_stats
 from app.schemas import HealthResponse
@@ -78,6 +80,8 @@ app.include_router(web_pending.router)
 app.include_router(web_rules_routes.router)
 app.include_router(web_stats.router)
 app.include_router(web_budgets.router)
+app.include_router(web_reports.router)
+app.include_router(web_goals.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)

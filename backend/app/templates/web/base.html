@@ -13,7 +13,9 @@
   <a href="/web{{ q }}" {% if request.url.path in ['/web', '/web/'] %}class="active"{% endif %}>仪表盘</a>
   <a href="/web/pending{{ q }}" {% if '/pending' in request.url.path %}class="active"{% endif %}>待确认</a>
   <a href="/web/confirmed{{ q }}" {% if '/confirmed' in request.url.path %}class="active"{% endif %}>已确认</a>
-  <a href="/web/stats{{ q }}" {% if '/stats' in request.url.path %}class="active"{% endif %}>报表</a>
+  <a href="/web/reports{{ q }}" {% if '/reports' in request.url.path %}class="active"{% endif %}>动态报表</a>
+  <a href="/web/goals{{ q }}" {% if '/goals' in request.url.path %}class="active"{% endif %}>目标</a>
+  <a href="/web/stats{{ q }}" {% if '/stats' in request.url.path %}class="active"{% endif %}>月度统计</a>
   <a href="/web/budgets{{ q }}" {% if '/budgets' in request.url.path %}class="active"{% endif %}>预算</a>
   <a href="/web/recurring{{ q }}" {% if '/recurring' in request.url.path %}class="active"{% endif %}>固定支出</a>
   <a href="/web/data-quality{{ q }}" {% if '/data-quality' in request.url.path %}class="active"{% endif %}>数据体检</a>
