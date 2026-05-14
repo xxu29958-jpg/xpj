@@ -199,7 +199,7 @@ fun StatsScreen(
                     }
 
                     DASHBOARD_CARD_GOALS -> {
-                        if (state.selectedTag.isBlank() && state.reportGoals.isNotEmpty()) {
+                        if (state.selectedTag.isBlank()) {
                             renderedCard = true
                             item {
                                 GoalsSummaryCard(state.reportGoals)

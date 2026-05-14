@@ -94,6 +94,13 @@ def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient) ->
 
 
 def test_dashboard_cards_validation_and_viewer_write_guard(client: TestClient) -> None:
+    invalid_surface = client.get(
+        "/api/dashboard/cards?surface=owner",
+        headers=app_headers(),
+    )
+    assert invalid_surface.status_code == 422
+    assert invalid_surface.json()["error"] == "invalid_request"
+
     unknown = client.put(
         "/api/dashboard/cards?surface=web",
         headers=app_headers(),

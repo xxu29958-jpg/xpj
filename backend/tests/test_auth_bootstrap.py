@@ -28,7 +28,7 @@ def test_health_and_auth_contract(client: TestClient) -> None:
     assert health_body["status"] == "ok"
     # v0.3.1-alpha2: health surfaces version + identity schema info but must
     # not leak absolute filesystem paths.
-    assert health_body["backend_version"] == "0.8.0a1"
+    assert health_body["backend_version"] == "0.9.0a1"
     assert health_body["identity_schema"] == "v0.3"
     assert health_body["database_status"] in {"ok", "missing"}
     assert health_body["upload_dir_status"] in {"ok", "missing"}

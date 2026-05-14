@@ -167,6 +167,14 @@ td.amount { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: 
 .btn-success:hover { background: #15803d; }
 .btn-secondary { background: #fff; color: #334155; border-color: var(--border-input); }
 .btn-secondary:hover { background: var(--bg-surface-2); }
+.btn:disabled,
+.btn[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.56;
+    filter: grayscale(0.2);
+}
+.btn:disabled:hover,
+.btn[aria-disabled="true"]:hover { background: #fff; }
 .btn-danger   { background: #fee2e2; color: var(--fg-danger); border-color: #fecaca; }
 .btn-danger:hover { background: #fecaca; }
 .btn-link     { background: transparent; color: var(--fg-primary); padding: 6px 8px; }

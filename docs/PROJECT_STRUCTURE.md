@@ -46,23 +46,33 @@ backend\
       auth.py
       bootstrap.py
       admin.py
+      budgets.py
+      dashboard.py
       owner_console.py
       duplicates.py
       expenses.py
+      goals.py
       maintenance.py
+      reports.py
       rules.py
       settings.py
       stats.py
       uploads.py
+      web_app.py
+      web_reports.py
+      web_goals.py
     services\
       admin_service.py
       owner_console_service.py
       category_service.py
       classify_service.py
       cleanup_service.py
+      budget_service.py
+      dashboard_service.py
       duplicate_service.py
       expense_service.py
       file_service.py
+      goal_service.py
       ocr_service.py
       receipt_parse_service.py
       receipt_parse_amount.py
@@ -70,6 +80,7 @@ backend\
       receipt_parse_time.py
       receipt_parse_category.py
       server_settings_service.py
+      reports_service.py
       stats_service.py
       thumb_service.py
       time_service.py
@@ -83,9 +94,20 @@ backend\
         pairing.html
         upload_links.html
         diagnostics.html
+      web\
+        dashboard.html
+        reports.html
+        goals.html
     static\
       owner\
         owner.css
+      shared\
+        tokens.css
+      web\
+        web.css
+        reports.js
+        vendor\
+          echarts.min.js
     log_sanitize.py
     version.py
   data\
@@ -105,6 +127,11 @@ backend\
     test_tenant_isolation.py
     test_stats_filters.py
     test_maintenance.py
+    test_reports.py
+    test_goals.py
+    test_dashboard_cards.py
+    test_v09_reports_goals_integration.py
+    test_web_reports_goals.py
   scripts\
     backup_database.ps1
     export_confirmed.ps1
@@ -198,4 +225,4 @@ docs\
 
 ## 当前初始化范围
 
-后端已经包含稳定闭环和灰度版增量 API：账本隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、生活化统计和窄维护清理接口，并有 pytest API 契约测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、自定义背景与沉浸模式、受保护图片预览、重复保留、OCR retry、生活化统计、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。
+后端已经包含稳定闭环和灰度版增量 API：账本隔离、受保护缩略图、Android 上传、OCR retry 入口、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、v0.9 Reports、Goals、Dashboard 卡片配置、生活化统计和窄维护清理接口，并有 pytest API 契约测试、v0.9 集成测试与 smoke 测试。Android 已拆成 `gray` 和 `internal` 两个 flavor，包含 Compose 工程、ViewModel、Repository、Retrofit、Room、Keystore、BiometricPrompt、Photo Picker 上传、自定义背景与沉浸模式、受保护图片预览、重复保留、OCR retry、生活化统计、报表图表、Goals 摘要、Dashboard 卡片管理、分类规则管理和本地单元测试。内部联调能力只进入 `internal` 版。

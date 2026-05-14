@@ -209,6 +209,15 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
         category="交通",
         expense_time="2026-05-03T00:30:00Z",
     )
+    _insert_expense(
+        tenant_id="tester_1",
+        amount_cents=9900,
+        merchant="灰度报表导出不应串入",
+        category="餐饮",
+        status="confirmed",
+        expense_time=datetime(2026, 5, 3, 0, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 5, 3, 0, 31, tzinfo=UTC),
+    )
 
     response = client.get(
         "/api/reports/overview?"
@@ -242,6 +251,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     assert "summary,ranking_metric,count" in csv_response.text
     assert "merchant_ranking,1,A店,300,3" in csv_response.text
     assert "category_comparison,交通,2000,1" in csv_response.text
+    assert "灰度报表导出不应串入" not in csv_response.text
 
 
 def test_reports_daily_trend_uses_bounded_aggregate_query_shape(

@@ -5,7 +5,17 @@
 (function () {
   'use strict';
 
+  function disableExport(reason) {
+    var button = document.getElementById('reports-export-png');
+    if (!button) return;
+    button.disabled = true;
+    button.setAttribute('aria-disabled', 'true');
+    button.title = reason;
+    button.textContent = 'PNG 预览不可用';
+  }
+
   if (typeof window.echarts === 'undefined') {
+    disableExport('图表组件没有加载，仍可查看页面数据和导出 CSV。');
     return;
   }
 

@@ -238,7 +238,7 @@ URL: https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
 - API 不返回 Windows 本机真实路径。
 - 上传失败不残留文件。
 
-**是否阻断灰度**：是。真实图片样本不过，不进入 v0.3-alpha 真机验收。
+**是否阻断灰度**：是。真实图片样本不过，不进入当前版本真机验收。
 
 **证据路径**：样本清单截图 + Android 待确认页截图 + 后端测试输出
 
@@ -254,7 +254,7 @@ URL: https://api.你的域名.com/u/<upload_key>?tz=Asia/Shanghai
 
 **执行命令/动作**：
 
-如果使用 PR artifact 作为 `v0.3.0-alpha1` 真机验收包，先执行 artifact 门禁：
+如果使用 PR artifact 作为当前版本真机验收包，先执行 artifact 门禁：
 
 ```powershell
 cd E:\projects\xiaopiaojia
@@ -263,8 +263,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.
   -ExpectedCommit <commit_sha>
 ```
 
-脚本通过后，使用 `artifacts\rc-gate\<run-id>\v0.3.0-alpha1-handoff-checklist.md` 作为发包清单。
-未生成 manifest 和 handoff checklist 的 artifact，不得称为 `v0.3.0-alpha1`。
+脚本通过后，使用 `artifacts\rc-gate\<run-id>\<release-candidate>-handoff-checklist.md` 作为发包清单。
+未生成 manifest 和 handoff checklist 的 artifact，不得称为当前版本验收包。
 
 ```powershell
 cd E:\projects\xiaopiaojia\android
@@ -357,7 +357,7 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 1. 后端确认至少有 1 笔 confirmed 账单。
 2. 生成新的 Pairing Code。
-3. 卸载 Android App，重新安装 `v0.3.0-alpha1` gray 包。
+3. 卸载 Android App，重新安装当前版本 gray 包。
 4. 首次打开 App，输入服务器地址和 Pairing Code。
 5. 绑定成功后进入"账本"页，确认历史 confirmed 账单出现。
 6. 停止本机后端或让手机断网。

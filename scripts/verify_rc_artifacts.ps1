@@ -5,9 +5,9 @@
     [Parameter(Mandatory = $true)]
     [string]$ExpectedCommit,
 
-    [string]$ReleaseCandidateName = "v0.3.0-alpha1",
-    [string]$ExpectedVersionName = "0.3.0-alpha1",
-    [int]$ExpectedVersionCode = 30001,
+    [string]$ReleaseCandidateName = "v0.9.0a1",
+    [string]$ExpectedVersionName = "0.9.0a1",
+    [int]$ExpectedVersionCode = 90000,
     [string]$OutputDir = ""
 )
 
@@ -170,8 +170,8 @@ if ($gray.version_name -eq $internal.version_name) {
 if ($gray.sha256 -eq $internal.sha256) {
     throw "gray/internal APK sha256 相同，疑似 artifact 取错。"
 }
-if ($gray.version_name -notmatch "rc[0-9]+$") {
-    throw "gray 版本名不是 RC 版本，不能称为 $ReleaseCandidateName。"
+if (-not $ReleaseCandidateName.StartsWith("v$ExpectedVersionName")) {
+    throw "ReleaseCandidateName 必须以 v$ExpectedVersionName 开头。"
 }
 
 $manifest = [ordered]@{
@@ -187,15 +187,15 @@ $manifest = [ordered]@{
     }
     artifacts = @($gray, $internal)
     token_handoff = [ordered]@{
-        gray_android_user_receives = "tenant app_token only"
-        ios_shortcut_user_receives = "tenant upload_token only"
-        internal_owner_receives = "internal APK and owner-maintained credentials only"
+        gray_android_user_receives = "server URL and one-time Pairing Code only"
+        ios_shortcut_user_receives = "full UploadLink URL only for the target shortcut setup"
+        internal_owner_receives = "internal APK plus owner-maintained admin/session credentials only"
         must_not_send = @(
             "backend .env",
-            "TENANTS_JSON full token table",
-            "ADMIN_TOKEN",
-            "other tenants app_token/upload_token",
-            "CI logs or screenshots containing tokens",
+            "admin token",
+            "session token",
+            "UploadLink for other ledgers",
+            "CI logs or screenshots containing credentials",
             "keystore files or signing passwords"
         )
     }
@@ -220,17 +220,17 @@ $checklist = @(
     "",
     "## 访问口令发放对象",
     "",
-    "- Android gray 用户：只发对应 tenant 的 app_token。",
-    "- iPhone 快捷指令用户：只发对应 tenant 的 upload_token。",
-    "- 服务拥有者：internal APK 和维护凭据只在服务拥有者手里。",
+    "- Android gray 用户：只发服务地址和一次性 Pairing Code。",
+    "- iPhone 快捷指令用户：只在配置对应快捷指令时提供完整 UploadLink URL。",
+    "- 服务拥有者：internal APK、admin token 和维护凭据只在服务拥有者手里。",
     "",
     "## 不能发的内容",
     "",
     "- backend .env",
-    "- TENANTS_JSON 完整 token 表",
-    "- ADMIN_TOKEN",
-    "- 其他 tenant 的 app_token / upload_token",
-    "- 含 token 的日志、截图、CI 输出",
+    "- admin token",
+    "- session token",
+    "- 其他账本或设备的 UploadLink",
+    "- 含凭证的日志、截图、CI 输出",
     "- keystore 文件或签名密码",
     "",
     "## 门禁结论",

@@ -111,7 +111,6 @@ internal fun GoalsSummaryCard(
     modifier: Modifier = Modifier,
 ) {
     val visibleGoals = goals.filterNot { it.isArchived }.take(4)
-    if (visibleGoals.isEmpty()) return
 
     AppGlassCard(modifier = modifier, containerAlpha = 0.94f) {
         Column(
@@ -119,8 +118,16 @@ internal fun GoalsSummaryCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("月度目标", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-            visibleGoals.forEach { goal ->
-                GoalProgressRow(goal)
+            if (visibleGoals.isEmpty()) {
+                Text(
+                    text = "本月还没有目标。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                visibleGoals.forEach { goal ->
+                    GoalProgressRow(goal)
+                }
             }
         }
     }

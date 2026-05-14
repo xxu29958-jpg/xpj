@@ -1,12 +1,12 @@
 # 小票夹
 
-**当前版本：v0.8.0a1**（阶段：**Budget / 月度可花三端基线**；基线 = v0.7 Rules / Tags / Merchant 治理）
+**当前版本：v0.9.0a1**（阶段：**Reports / Goals / Chart UX 收口**；基线 = v0.8 Budget / 月度可花三端基线）
 
-> 🚩 **v0.8.0a1 当前进度**：后端已加入服务端账本预算模型、月度预算 Dashboard API、viewer 写保护和代表性集成测试；Android 已接入服务端预算页并让统计页优先使用服务端预算；`/web` 已有预算 Dashboard；`/owner` 已有只读预算状态卡；已补齐预算截图基线和已绑定真机走查。
+> 🚩 **v0.9.0a1 当前进度**：后端已加入服务端 Reports、Goals 和 Dashboard 卡片配置 API；Android 统计页接入真实报表、Goals 和 Dashboard 卡片设置，并按 ADR 引入 Vico 图表展示层；`/web` Reports 接入自托管 ECharts 且保留无 JS 回退；`/owner` 跟随三端设计 token 做视觉收口。v0.9 不改变账本核心闭环、身份契约或后端统计口径。
 
-下一里程碑：开始 [v0.9 Reports / Goals / Chart UX 设计与实现](docs/V0_9_DESIGN_FUNCTION_TABLE.md)；v0.8 不再扩大预算模型范围。
+下一里程碑：进入 v1.0 后端数据能力地基，优先处理商品级小票、家庭拆账、10k CSV 导入和 v0.x -> v1.0 迁移 / 回滚工具。
 
-小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 开始服务端预算和月度可花。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
+小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 完成服务端预算和月度可花；v0.9 完成报表、Goals、Dashboard 卡片和图表 UX 收口。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 
 ```text
 iPhone UploadLink 或 Android 上传截图
@@ -45,6 +45,7 @@ iPhone UploadLink 或 Android 上传截图
 - [错误码文案映射](docs/ERROR_MESSAGE_MAPPING.md)
 - [v0.8 Budget 收口报告](docs/V0_8_BUDGET_REPORT.md)
 - [v0.9 设计包功能表](docs/V0_9_DESIGN_FUNCTION_TABLE.md)
+- [v0.9 Reports / Goals 收口报告](docs/V0_9_REPORT.md)
 
 ## 项目组成
 
@@ -56,9 +57,9 @@ docs/      架构、API、安全、部署和后续规划文档
 
 当前已经实现：
 
-- `backend/`：FastAPI、SQLite、SQLAlchemy、账号/账本/设备身份表、Pairing Code、UploadLink、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、服务器状态、可插拔 OCR 入口、图片清理维护接口，以及家庭成员审计 / owner 转让 / viewer 写保护。
-- `android/`：灰度用户版和内部联调版、Pairing Code 绑定、Keystore session token、身份卡、指纹解锁、待确认、Android 上传截图、编辑、账本、手动记一笔、统计、设置、Room confirmed 缓存恢复、受保护图片预览、重复保留、OCR retry、CSV 导出、分类规则管理、家庭成员查看、邀请预览和只读 UX。
-- `docs/`：v0.3 身份切换、v0.5 Household 模型、v0.8 预算路线、架构、API、安全、工程规范、第二版路线和关键决策。
+- `backend/`：FastAPI、SQLite、SQLAlchemy、账号/账本/设备身份表、Pairing Code、UploadLink、上传、账单、统计、受保护图片、缩略图、重复检测、分类规则、固定支出、标签、商家别名、服务端预算、Reports、Goals、Dashboard 卡片配置、服务器状态、可插拔 OCR 入口、图片清理维护接口，以及家庭成员审计 / owner 转让 / viewer 写保护。
+- `android/`：灰度用户版和内部联调版、Pairing Code 绑定、Keystore session token、身份卡、指纹解锁、待确认、Android 上传截图、编辑、账本、手动记一笔、统计、报表图表、Goals、Dashboard 卡片设置、Room confirmed 缓存恢复、受保护图片预览、重复保留、OCR retry、CSV 导出、分类规则管理、家庭成员查看、邀请预览和只读 UX。
+- `docs/`：v0.3 身份切换、v0.5 Household 模型、v0.8 预算路线、v0.9 Reports / Goals / Chart UX、架构、API、安全、工程规范、第二版路线和关键决策。
 
 ## 后端启动
 

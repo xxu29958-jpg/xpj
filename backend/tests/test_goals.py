@@ -206,10 +206,25 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient) -> None:
         },
     )
     assert gray_goal.status_code == 201, gray_goal.json()
+    gray_public_id = gray_goal.json()["public_id"]
 
     gray_list = client.get("/api/goals?month=2026-05", headers=gray_app_headers())
     assert gray_list.status_code == 200, gray_list.json()
     assert [item["name"] for item in gray_list.json()["items"]] == ["Gray Goal"]
+
+    gray_reads_owner_goal = client.get(
+        f"/api/goals/{owner_public_id}",
+        headers=gray_app_headers(),
+    )
+    assert gray_reads_owner_goal.status_code == 404
+    assert gray_reads_owner_goal.json()["error"] == "goal_not_found"
+
+    owner_reads_gray_goal = client.get(
+        f"/api/goals/{gray_public_id}",
+        headers=app_headers(),
+    )
+    assert owner_reads_gray_goal.status_code == 404
+    assert owner_reads_gray_goal.json()["error"] == "goal_not_found"
 
     _set_owner_ledger_role("viewer")
     viewer_read = client.get("/api/goals?month=2026-05", headers=app_headers())

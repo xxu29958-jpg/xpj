@@ -162,17 +162,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify_rc_artifacts.
 - gray 包名为 `com.ticketbox`。
 - internal 包名为 `com.ticketbox.internal`。
 - gray/internal 包名必须不同。
-- gray 版本名必须是 `0.3.0-alpha1`。
-- internal 版本名必须是 `0.3.0-alpha1-internal`。
+- gray 版本名必须等于当前发布版本，例如 `0.9.0a1`。
+- internal 版本名必须等于当前发布版本加 `-internal`，例如 `0.9.0a1-internal`。
 - gray/internal 版本名必须不同。
-- gray/internal `versionCode` 必须是 `30001`。
+- gray/internal `versionCode` 必须等于当前发布版本号约定，例如 `90000`。
 - gray/internal APK 的 SHA256 必须分别记录，且不能相同。
 
 脚本通过后会生成：
 
 ```text
-artifacts/rc-gate/<run-id>/v0.3.0-alpha1-artifact-manifest.json
-artifacts/rc-gate/<run-id>/v0.3.0-alpha1-handoff-checklist.md
+artifacts/rc-gate/<run-id>/v0.9.0a1-artifact-manifest.json
+artifacts/rc-gate/<run-id>/v0.9.0a1-handoff-checklist.md
 ```
 
 manifest 记录：
@@ -194,4 +194,4 @@ handoff checklist 必须写清楚：
 - 服务拥有者才持有 internal APK、admin token 和维护凭据。
 - 不得发出 `backend\.env`、admin token、session token、UploadLink、含凭证的日志/截图/CI 输出、keystore 或签名密码。
 
-没有通过 `scripts\verify_rc_artifacts.ps1`，不得把任何包称为 `v0.3.0-alpha1`。
+没有通过 `scripts\verify_rc_artifacts.ps1`，不得把任何包称为当前发布候选版本。
