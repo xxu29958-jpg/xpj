@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.Group
@@ -111,6 +112,7 @@ fun SettingsRootScreen(
     showAdvancedTools: Boolean,
     onOpenServer: () -> Unit,
     onOpenAppearance: () -> Unit,
+    onOpenDashboardCards: () -> Unit,
     onOpenCategoryRules: () -> Unit,
     onOpenMerchantAliases: () -> Unit,
     onOpenDataExport: () -> Unit,
@@ -152,6 +154,12 @@ fun SettingsRootScreen(
             subtitle = "主题皮肤、自定义背景、沉浸强度",
             icon = Icons.Filled.Palette,
             onClick = onOpenAppearance,
+        )
+        SettingsEntryRow(
+            title = "首页卡片",
+            subtitle = "调整统计页卡片显示、隐藏和排序",
+            icon = Icons.Filled.DashboardCustomize,
+            onClick = onOpenDashboardCards,
         )
         SettingsEntryRow(
             title = "分类规则",

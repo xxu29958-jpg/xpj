@@ -123,6 +123,24 @@ enum class DashboardSurface(val apiValue: String) {
     Web("web");
 }
 
+const val DASHBOARD_CARD_PENDING = "pending"
+const val DASHBOARD_CARD_MONTHLY_SPEND = "monthly_spend"
+const val DASHBOARD_CARD_REPORTS = "reports"
+const val DASHBOARD_CARD_BUDGET = "budget"
+const val DASHBOARD_CARD_GOALS = "goals"
+const val DASHBOARD_CARD_RECURRING = "recurring"
+const val DASHBOARD_CARD_RECENT_UPLOADS = "recent_uploads"
+
+val DefaultAndroidDashboardCardKeys: List<String> = listOf(
+    DASHBOARD_CARD_PENDING,
+    DASHBOARD_CARD_MONTHLY_SPEND,
+    DASHBOARD_CARD_REPORTS,
+    DASHBOARD_CARD_BUDGET,
+    DASHBOARD_CARD_GOALS,
+    DASHBOARD_CARD_RECURRING,
+    DASHBOARD_CARD_RECENT_UPLOADS,
+)
+
 data class DashboardCard(
     val key: String,
     val title: String,
@@ -140,3 +158,18 @@ data class DashboardCardUpdate(
     val visible: Boolean,
     val position: Int,
 )
+
+fun visibleDashboardCardKeys(cards: List<DashboardCard>): List<String> {
+    if (cards.isEmpty()) {
+        return DefaultAndroidDashboardCardKeys
+    }
+    val defaultOrder = DefaultAndroidDashboardCardKeys.withIndex().associate { it.value to it.index }
+    return cards
+        .filter { it.visible }
+        .sortedWith(
+            compareBy<DashboardCard> { it.position }
+                .thenBy { defaultOrder[it.key] ?: Int.MAX_VALUE }
+                .thenBy { it.key },
+        )
+        .map { it.key }
+}

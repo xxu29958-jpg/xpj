@@ -14,6 +14,7 @@ sealed class SettingsRoute {
     data class BackgroundCrop(
         val sourcePath: String,
     ) : SettingsRoute()
+    data object DashboardCards : SettingsRoute()
     data object CategoryRules : SettingsRoute()
     data object MerchantAliases : SettingsRoute()
     data object DataExport : SettingsRoute()

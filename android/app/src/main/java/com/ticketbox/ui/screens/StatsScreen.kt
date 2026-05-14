@@ -20,6 +20,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
+import com.ticketbox.domain.model.DASHBOARD_CARD_GOALS
+import com.ticketbox.domain.model.DASHBOARD_CARD_MONTHLY_SPEND
+import com.ticketbox.domain.model.DASHBOARD_CARD_PENDING
+import com.ticketbox.domain.model.DASHBOARD_CARD_RECENT_UPLOADS
+import com.ticketbox.domain.model.DASHBOARD_CARD_RECURRING
+import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
+import com.ticketbox.domain.model.visibleDashboardCardKeys
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
@@ -33,6 +41,7 @@ import com.ticketbox.ui.screens.stats.FrequentMerchantsCard
 import com.ticketbox.ui.screens.stats.LifestyleCard
 import com.ticketbox.ui.screens.stats.PendingOverviewCard
 import com.ticketbox.ui.screens.stats.RecentTrendCard
+import com.ticketbox.ui.screens.stats.RecentUploadCard
 import com.ticketbox.ui.screens.stats.RecurringCandidatesCard
 import com.ticketbox.ui.screens.stats.RecurringItemsSummaryCard
 import com.ticketbox.ui.screens.stats.GoalsSummaryCard
@@ -97,6 +106,9 @@ fun StatsScreen(
         state.reportsMessage?.let {
             item { Text(it, color = MaterialTheme.colorScheme.secondary) }
         }
+        state.dashboardCardsMessage?.let {
+            item { Text(it, color = MaterialTheme.colorScheme.secondary) }
+        }
         if (state.reportsLoading && state.selectedTag.isBlank()) {
             item { Text("动态图表更新中…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
@@ -104,90 +116,137 @@ fun StatsScreen(
         if (stats == null) {
             item { EmptyStatsCard(onRefresh = onRefresh) }
         } else {
-            item {
-                StatsOverviewCard(
-                    stats = stats,
-                    recent7DaysAmountCents = if (state.selectedTag.isBlank()) {
-                        state.lifestyleStats?.recent7DaysAmountCents
-                            ?: state.dailyTrend.sumOf { it.amountCents }
-                    } else {
-                        state.dailyTrend.sumOf { it.amountCents }
-                    },
-                    comparison = state.monthComparison,
-                )
-            }
-            item {
-                StatsMetricGrid(
-                    stats = stats,
-                    lifestyle = state.lifestyleStats,
-                    insight = state.categoryInsight,
-                    budget = state.budgetProgress,
-                )
-            }
+            val visibleDashboardKeys = visibleDashboardCardKeys(state.dashboardCards)
             val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
-            if (visibleCategories.isEmpty()) {
+            val visibleTags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
+            var renderedCard = false
+
+            visibleDashboardKeys.forEach { key ->
+                when (key) {
+                    DASHBOARD_CARD_PENDING -> {
+                        state.dataQuality?.let { dq ->
+                            renderedCard = true
+                            item {
+                                PendingOverviewCard(dq)
+                            }
+                        }
+                    }
+
+                    DASHBOARD_CARD_MONTHLY_SPEND -> {
+                        renderedCard = true
+                        item {
+                            StatsOverviewCard(
+                                stats = stats,
+                                recent7DaysAmountCents = if (state.selectedTag.isBlank()) {
+                                    state.lifestyleStats?.recent7DaysAmountCents
+                                        ?: state.dailyTrend.sumOf { it.amountCents }
+                                } else {
+                                    state.dailyTrend.sumOf { it.amountCents }
+                                },
+                                comparison = state.monthComparison,
+                            )
+                        }
+                    }
+
+                    DASHBOARD_CARD_REPORTS -> {
+                        renderedCard = true
+                        if (visibleCategories.isEmpty()) {
+                            item {
+                                EmptyStatsCard(
+                                    title = "${displayMonthLabel(stats.month)} 暂无分类支出",
+                                    body = "确认几笔账单后，这里会显示分类占比。",
+                                )
+                            }
+                        } else {
+                            item {
+                                CategoryStructureCard(
+                                    categories = visibleCategories,
+                                    totalAmountCents = stats.totalAmountCents,
+                                    insight = state.categoryInsight,
+                                )
+                            }
+                        }
+                        if (visibleTags.isNotEmpty()) {
+                            item {
+                                TagStatsCard(
+                                    tags = visibleTags,
+                                    totalAmountCents = stats.totalAmountCents,
+                                )
+                            }
+                        }
+                        item {
+                            RecentTrendCard(state.dailyTrend)
+                        }
+                        if (state.selectedTag.isBlank()) {
+                            state.reportsOverview?.let { overview ->
+                                item {
+                                    ReportsInsightCard(overview)
+                                }
+                            }
+                        }
+                    }
+
+                    DASHBOARD_CARD_BUDGET -> {
+                        renderedCard = true
+                        item {
+                            StatsMetricGrid(
+                                stats = stats,
+                                lifestyle = state.lifestyleStats,
+                                insight = state.categoryInsight,
+                                budget = state.budgetProgress,
+                            )
+                        }
+                    }
+
+                    DASHBOARD_CARD_GOALS -> {
+                        if (state.selectedTag.isBlank() && state.reportGoals.isNotEmpty()) {
+                            renderedCard = true
+                            item {
+                                GoalsSummaryCard(state.reportGoals)
+                            }
+                        }
+                    }
+
+                    DASHBOARD_CARD_RECURRING -> {
+                        if (state.recurringItems.isNotEmpty()) {
+                            renderedCard = true
+                            item {
+                                RecurringItemsSummaryCard(state.recurringItems)
+                            }
+                        }
+                        if (state.recurringCandidates.isNotEmpty()) {
+                            renderedCard = true
+                            item {
+                                RecurringCandidatesCard(state.recurringCandidates)
+                            }
+                        }
+                    }
+
+                    DASHBOARD_CARD_RECENT_UPLOADS -> {
+                        renderedCard = true
+                        item {
+                            RecentUploadCard(state.lastUploadAt)
+                        }
+                        state.lifestyleStats?.let { lifestyle ->
+                            item {
+                                LifestyleCard(lifestyle)
+                            }
+                            if (lifestyle.frequentMerchants.isNotEmpty()) {
+                                item {
+                                    FrequentMerchantsCard(lifestyle.frequentMerchants)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!renderedCard) {
                 item {
                     EmptyStatsCard(
-                        title = "${displayMonthLabel(stats.month)} 暂无分类支出",
-                        body = "确认几笔账单后，这里会显示分类占比。",
+                        title = "首页卡片已全部隐藏",
+                        body = "可以在设置 > 首页卡片中恢复默认卡片。",
                     )
-                }
-            } else {
-                item {
-                    CategoryStructureCard(
-                        categories = visibleCategories,
-                        totalAmountCents = stats.totalAmountCents,
-                        insight = state.categoryInsight,
-                    )
-                }
-            }
-            val visibleTags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
-            if (visibleTags.isNotEmpty()) {
-                item {
-                    TagStatsCard(
-                        tags = visibleTags,
-                        totalAmountCents = stats.totalAmountCents,
-                    )
-                }
-            }
-            item {
-                RecentTrendCard(state.dailyTrend)
-            }
-            if (state.selectedTag.isBlank()) {
-                state.reportsOverview?.let { overview ->
-                    item {
-                        ReportsInsightCard(overview)
-                    }
-                }
-                if (state.reportGoals.isNotEmpty()) {
-                    item {
-                        GoalsSummaryCard(state.reportGoals)
-                    }
-                }
-            }
-            state.dataQuality?.let { dq ->
-                item {
-                    PendingOverviewCard(dq)
-                }
-            }
-            if (state.recurringItems.isNotEmpty()) {
-                item {
-                    RecurringItemsSummaryCard(state.recurringItems)
-                }
-            }
-            if (state.recurringCandidates.isNotEmpty()) {
-                item {
-                    RecurringCandidatesCard(state.recurringCandidates)
-                }
-            }
-            state.lifestyleStats?.let { lifestyle ->
-                item {
-                    LifestyleCard(lifestyle)
-                }
-                if (lifestyle.frequentMerchants.isNotEmpty()) {
-                    item {
-                        FrequentMerchantsCard(lifestyle.frequentMerchants)
-                    }
                 }
             }
         }

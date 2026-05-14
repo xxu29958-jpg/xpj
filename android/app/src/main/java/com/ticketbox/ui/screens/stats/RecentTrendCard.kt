@@ -15,9 +15,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -61,6 +63,29 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun RecentUploadCard(lastUploadAt: String?) {
+    AppGlassCard(containerAlpha = 0.92f) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("最近上传", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text(
+                text = lastUploadAt?.let { displayTime(it) } ?: "还没有上传记录",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "用于确认手机端和电脑端最近一次上传状态。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

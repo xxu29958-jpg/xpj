@@ -40,6 +40,7 @@
     </form>
   </div>
   {% if links %}
+  <div class="table-scroll">
   <table>
     <thead>
       <tr>
@@ -49,6 +50,7 @@
         <th style="white-space:nowrap">时区</th>
         <th style="white-space:nowrap">最近使用</th>
         <th style="white-space:nowrap">状态</th>
+        <th style="white-space:nowrap">掩码路径</th>
         <th>操作</th>
       </tr>
     </thead>
@@ -94,6 +96,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
     <p style="color:#64748b;text-align:center;padding:24px">暂无上传链接，点击「新建」创建一个。</p>
   {% endif %}

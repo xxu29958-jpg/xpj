@@ -8,6 +8,8 @@ import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.DailySpend
+import com.ticketbox.domain.model.DashboardCard
+import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.Goal
@@ -45,6 +47,10 @@ data class StatsUiState(
     val recurringCandidates: List<RecurringCandidate> = emptyList(),
     val reportsOverview: ReportsOverview? = null,
     val reportGoals: List<Goal> = emptyList(),
+    val lastUploadAt: String? = null,
+    val dashboardCards: List<DashboardCard> = emptyList(),
+    val dashboardCardsLoading: Boolean = false,
+    val dashboardCardsMessage: String? = null,
     val reportsLoading: Boolean = false,
     val reportsMessage: String? = null,
     val dataQuality: DataQualitySummary? = null,
@@ -166,7 +172,13 @@ class StatsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    message = null,
+                    lastUploadAt = repository.lastUploadAt(),
+                )
+            }
             val month = _uiState.value.month.trim().ifBlank { null }
             val tag = _uiState.value.selectedTag.trim().ifBlank { null }
             val selectedMonth = month ?: YearMonth.now().toString()
@@ -203,6 +215,7 @@ class StatsViewModel(
                     }
             }
             reportsRepository?.let { reportsRepo ->
+                loadDashboardCards(reportsRepo)
                 if (shouldLoadReports) {
                     loadReports(reportsRepo, selectedMonth)
                 } else {
@@ -259,6 +272,35 @@ class StatsViewModel(
                             } else {
                                 error.message ?: "统计暂时打不开，请稍后再试。"
                             },
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun loadDashboardCards(reportsRepo: ReportsActions) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    dashboardCardsLoading = true,
+                    dashboardCardsMessage = null,
+                )
+            }
+            reportsRepo.dashboardCards(DashboardSurface.Android)
+                .onSuccess { cards ->
+                    _uiState.update {
+                        it.copy(
+                            dashboardCards = cards.items,
+                            dashboardCardsLoading = false,
+                            dashboardCardsMessage = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            dashboardCardsLoading = false,
+                            dashboardCardsMessage = error.message ?: "首页卡片设置暂时打不开，已显示默认顺序。",
                         )
                     }
                 }

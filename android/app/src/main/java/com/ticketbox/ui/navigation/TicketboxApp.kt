@@ -236,6 +236,7 @@ private fun MainShell(
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
+    var dashboardCardsRevision by remember { mutableStateOf(0) }
     val repositoryFactory = repositoryViewModelFactory(
         repository = repository,
         recurringRepository = recurringRepository,
@@ -398,6 +399,11 @@ private fun MainShell(
                 BottomTab.Stats -> {
                     val statsViewModel: StatsViewModel = viewModel(factory = repositoryFactory)
                     val state by statsViewModel.uiState.collectAsStateWithLifecycle()
+                    LaunchedEffect(dashboardCardsRevision) {
+                        if (dashboardCardsRevision > 0) {
+                            statsViewModel.refresh()
+                        }
+                    }
                     StatsScreen(
                         state = state,
                         onMonthChange = statsViewModel::setMonth,
@@ -473,9 +479,11 @@ private fun MainShell(
                         onBindingCleared = onBindingCleared,
                         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
                         ledgerRepository = ledgerRepository,
+                        reportsRepository = reportsRepository,
                         activeLedgerId = ledgerRepository.activeLedgerId(),
                         onBindingChanged = settingsViewModel::refreshLocalBindingState,
                         onLedgerSwitched = settingsViewModel::sync,
+                        onDashboardCardsChanged = { dashboardCardsRevision += 1 },
                     )
                 }
             }

@@ -298,7 +298,6 @@ private fun GoalUpdate.validated(): Result<GoalUpdate> {
 
 private fun List<DashboardCardUpdate>.validatedDashboardUpdates(): Result<List<DashboardCardUpdate>> {
     return runCatching {
-        require(isNotEmpty()) { "请选择至少一张卡片。" }
         val clean = map {
             val key = it.key.trim()
             require(key.isNotBlank()) { "卡片类型不正确。" }

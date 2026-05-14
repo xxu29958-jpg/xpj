@@ -74,6 +74,9 @@ def test_owner_pairing_page_opens(local_client: TestClient) -> None:
 def test_owner_upload_links_list_masked(local_client: TestClient) -> None:
     resp = local_client.get("/owner/upload-links")
     assert resp.status_code == 200
+    assert "data-owner" in resp.text
+    assert 'class="table-scroll"' in resp.text
+    assert "掩码路径" in resp.text
     # Full upload keys start with 'upl_'; must NOT appear in persistent list HTML
     import re
 

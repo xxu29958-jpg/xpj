@@ -137,6 +137,18 @@ class ReportsRepositoryTest {
     }
 
     @Test
+    fun emptyDashboardUpdateResetsServerPreferences() = runTest {
+        val api = ReportsApiHandler()
+        val repository = repository(api)
+
+        val result = repository.updateDashboardCards(emptyList(), DashboardSurface.Android)
+
+        assertTrue(result.isSuccess)
+        assertTrue(api.updateDashboardCardCalls.single().request.cards.isEmpty())
+        assertEquals("android", api.updateDashboardCardCalls.single().surface)
+    }
+
+    @Test
     fun backendPermissionDeniedMapsToReadOnlyMessage() = runTest {
         val api = ReportsApiHandler().apply {
             createGoalError = HttpException(

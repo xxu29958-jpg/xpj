@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
+import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.AppSkin
@@ -30,6 +31,7 @@ import com.ticketbox.ui.screens.settings.BackgroundGalleryScreen
 import com.ticketbox.ui.screens.settings.BackgroundPreviewScreen
 import com.ticketbox.ui.screens.settings.CategoryRulesScreen
 import com.ticketbox.ui.screens.settings.DataExportScreen
+import com.ticketbox.ui.screens.settings.DashboardCardsScreen
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.JoinFamilyLedgerScreen
@@ -71,9 +73,11 @@ fun SettingsScreen(
     onBindingCleared: () -> Unit,
     showAdvancedTools: Boolean = false,
     ledgerRepository: LedgerRepository? = null,
+    reportsRepository: ReportsActions? = null,
     activeLedgerId: String? = null,
     onBindingChanged: () -> Unit = {},
     onLedgerSwitched: () -> Unit = {},
+    onDashboardCardsChanged: () -> Unit = {},
 ) {
     var route by remember { mutableStateOf<SettingsRoute>(SettingsRoute.Root) }
     val context = LocalContext.current
@@ -118,6 +122,7 @@ fun SettingsScreen(
             showAdvancedTools = showAdvancedTools,
             onOpenServer = { route = SettingsRoute.Server },
             onOpenAppearance = { route = SettingsRoute.Appearance },
+            onOpenDashboardCards = { route = SettingsRoute.DashboardCards },
             onOpenCategoryRules = { route = SettingsRoute.CategoryRules },
             onOpenMerchantAliases = { route = SettingsRoute.MerchantAliases },
             onOpenDataExport = { route = SettingsRoute.DataExport },
@@ -201,6 +206,20 @@ fun SettingsScreen(
                 route = SettingsRoute.Appearance
             },
         )
+
+        SettingsRoute.DashboardCards -> {
+            val repo = reportsRepository
+            if (repo != null) {
+                DashboardCardsScreen(
+                    repository = repo,
+                    readOnly = !ledgerRoleCanModify(state.role),
+                    onBack = { route = SettingsRoute.Root },
+                    onSaved = onDashboardCardsChanged,
+                )
+            } else {
+                route = SettingsRoute.Root
+            }
+        }
 
         SettingsRoute.CategoryRules -> CategoryRulesScreen(
             rules = state.categoryRules,
