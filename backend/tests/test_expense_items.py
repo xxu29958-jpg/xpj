@@ -68,6 +68,29 @@ def _replace_items(
     return response.json()
 
 
+def _recognize_receipt_items(
+    client: TestClient,
+    expense_id: int,
+    *,
+    item_lines: list[str] | None = None,
+) -> dict[str, object]:
+    raw_text = "\n".join(
+        [
+            "星巴克",
+            *(item_lines or ["拿铁 1杯 5.00", "三明治 1份 7.50"]),
+            "订单金额 12.50",
+            "支付成功",
+        ]
+    )
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": raw_text},
+    )
+    assert response.status_code == 200, response.json()
+    return response.json()
+
+
 def _demote_owner_ledger_to_viewer() -> None:
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
@@ -109,6 +132,99 @@ def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: Tes
     assert payload["items_total_amount_cents"] == 1500
     assert payload["mismatch_cents"] == 0
     assert [item["name"] for item in payload["items"]] == ["咖啡豆"]
+
+
+def test_expense_items_mismatch_does_not_change_stats_or_export(client: TestClient) -> None:
+    expense_id = _create_manual_expense(client, amount_cents=1500)
+    replaced = _replace_items(client, expense_id)
+    assert replaced["items_total_amount_cents"] == 1250
+    assert replaced["mismatch_cents"] == 250
+
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert stats.status_code == 200, stats.json()
+    assert stats.json()["total_amount_cents"] == 1500
+
+    exported = client.get(
+        "/api/expenses/export.csv?month=2026-05&category=餐饮",
+        headers=app_headers(),
+    )
+    assert exported.status_code == 200, exported.text
+    assert "Receipt Cafe" in exported.text
+    assert "1500" in exported.text
+    assert "1250" not in exported.text
+
+
+def test_recognize_text_creates_ocr_draft_items(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    recognized = _recognize_receipt_items(client, expense_id)
+    assert recognized["status"] == "pending"
+    assert recognized["amount_cents"] == 1250
+
+    listed = client.get(f"/api/expenses/{expense_id}/items", headers=app_headers())
+    assert listed.status_code == 200, listed.json()
+    payload = listed.json()
+    assert payload["parent_amount_cents"] == 1250
+    assert payload["items_total_amount_cents"] == 1250
+    assert payload["mismatch_cents"] == 0
+    assert [item["name"] for item in payload["items"]] == ["拿铁", "三明治"]
+    assert [item["quantity_text"] for item in payload["items"]] == ["1杯", "1份"]
+    assert [item["amount_cents"] for item in payload["items"]] == [500, 750]
+    assert all(item["is_ocr_draft"] is True for item in payload["items"])
+
+
+def test_recognize_text_replaces_existing_ocr_draft_items(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    _recognize_receipt_items(client, expense_id)
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={
+            "raw_text": "\n".join(
+                [
+                    "便利店",
+                    "矿泉水 1瓶 2.00",
+                    "饭团 1个 6.00",
+                    "订单金额 8.00",
+                    "支付成功",
+                ]
+            )
+        },
+    )
+    assert response.status_code == 200, response.json()
+
+    listed = client.get(f"/api/expenses/{expense_id}/items", headers=app_headers())
+    assert listed.status_code == 200, listed.json()
+    payload = listed.json()
+    assert [item["name"] for item in payload["items"]] == ["矿泉水", "饭团"]
+    assert [item["amount_cents"] for item in payload["items"]] == [200, 600]
+    assert all(item["is_ocr_draft"] is True for item in payload["items"])
+
+
+def test_recognize_text_does_not_overwrite_manual_items(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    _recognize_receipt_items(client, expense_id)
+
+    manual = client.put(
+        f"/api/expenses/{expense_id}/items",
+        headers=app_headers(),
+        json={"items": [{"name": "用户确认明细", "amount_cents": 1250, "category": "餐饮"}]},
+    )
+    assert manual.status_code == 200, manual.json()
+    assert manual.json()["items"][0]["is_ocr_draft"] is False
+
+    _recognize_receipt_items(
+        client,
+        expense_id,
+        item_lines=["矿泉水 1瓶 2.00", "饭团 1个 6.00"],
+    )
+
+    listed = client.get(f"/api/expenses/{expense_id}/items", headers=app_headers())
+    assert listed.status_code == 200, listed.json()
+    payload = listed.json()
+    assert [item["name"] for item in payload["items"]] == ["用户确认明细"]
+    assert payload["items"][0]["is_ocr_draft"] is False
 
 
 def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: TestClient) -> None:

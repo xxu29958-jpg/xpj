@@ -838,6 +838,8 @@ Authorization: Bearer <session_token>
 
 返回指定账单的明细行。明细行是 v1.0 的独立子资源，不并入 `ExpenseResponse`，不会改变账单确认、统计、预算或导出结果。跨账本读取返回 `expense_not_found`。viewer 可读。
 
+OCR 或 `recognize-text` 能从足够明确的小票文本中生成 `is_ocr_draft=true` 的明细行；后续 OCR 可替换旧 OCR 草稿明细，但不会覆盖用户通过 `PUT /api/expenses/{id}/items` 写入的手工明细。
+
 返回示例：
 
 ```json
@@ -991,6 +993,7 @@ Authorization: Bearer <session_token>
 
 - 从文本规则中提取 `amount_cents`、`merchant`、`expense_time`、`category` 和 `confidence`。
 - 保存 `raw_text`。
+- 对 `pending` 账单，如果文本中存在明确的商品行，会生成 OCR 草稿明细；已存在手工明细时不会覆盖。
 - 不自动确认入账。
 
 ### POST /api/expenses/{id}/mark-not-duplicate

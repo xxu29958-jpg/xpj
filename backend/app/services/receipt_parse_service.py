@@ -6,10 +6,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import re
 from typing import Protocol, TypeVar
 
 from app.services.receipt_parse_rules import (
     BANK_KEYWORDS,
+    CATEGORY_HINT_RULES,
     DISCOUNT_AMOUNT_LABELS,
     LABELED_AMOUNT_PATTERN,
     MERCHANT_LABEL_PATTERN,
@@ -22,12 +25,24 @@ from app.services.receipt_parse_rules import (
 
 
 @dataclass(frozen=True)
+class ParsedReceiptItem:
+    name: str
+    amount_cents: int | None = None
+    quantity_text: str | None = None
+    unit_price_cents: int | None = None
+    category: str | None = None
+    raw_text: str | None = None
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
 class ParsedReceipt:
     amount_cents: int | None = None
     merchant: str | None = None
     expense_time: datetime | None = None
     category: str | None = None
     confidence: float | None = None
+    items: tuple[ParsedReceiptItem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -127,6 +142,48 @@ class _CategoryCandidate:
     source: str
     evidence: tuple[str, ...] = ()
     dimensions: _ScoreDimensions | None = None
+
+
+ITEM_LINE_PATTERN = re.compile(
+    r"^(?P<name>[A-Za-z\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff（）()·+\-/&\s]{0,80}?)"
+    r"(?:\s+(?P<quantity>(?:[xX×]\s*)?\d+(?:\.\d+)?\s*(?:份|杯|个|件|盒|袋|瓶|包|次|斤|克|kg|g)?))?"
+    r"\s+(?:¥|￥)?(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元)?$"
+)
+ITEM_NOISE_KEYWORDS = (
+    "交易",
+    "支付",
+    "付款",
+    "消费",
+    "订单",
+    "金额",
+    "合计",
+    "总计",
+    "实付",
+    "应付",
+    "优惠",
+    "立减",
+    "红包",
+    "抵扣",
+    "奖励",
+    "券",
+    "找零",
+    "收款",
+    "付款方式",
+    "支付方式",
+    "银行卡",
+    "储蓄卡",
+    "信用卡",
+    "尾号",
+    "交易时间",
+    "支付时间",
+    "创建时间",
+    "下单时间",
+    "订单号",
+    "商家订单号",
+    "账单详情",
+    "交易提醒",
+    "动账提醒",
+)
 
 
 class _RankedCandidate(Protocol):
@@ -348,6 +405,87 @@ def _is_payment_sheet_amount(
     )
 
 
+def _parse_receipt_items(
+    context: _ReceiptContext, parent_amount_cents: int | None
+) -> tuple[ParsedReceiptItem, ...]:
+    if context.profile == "bank_reminder":
+        return ()
+
+    items: list[ParsedReceiptItem] = []
+    for line in context.lines:
+        item = _parse_receipt_item_line(line)
+        if item is not None:
+            items.append(item)
+
+    if len(items) < 2:
+        return ()
+
+    item_total = sum(item.amount_cents or 0 for item in items)
+    if parent_amount_cents is not None and item_total > max(parent_amount_cents * 3, parent_amount_cents + 50_000):
+        return ()
+    return tuple(items[:200])
+
+
+def _parse_receipt_item_line(line: str) -> ParsedReceiptItem | None:
+    cleaned = " ".join(line.strip().split())
+    if not cleaned or any(keyword in cleaned for keyword in ITEM_NOISE_KEYWORDS):
+        return None
+    match = ITEM_LINE_PATTERN.match(cleaned)
+    if not match:
+        return None
+
+    amount_cents = _item_money_to_cents(match.group("amount"))
+    if amount_cents is None or amount_cents <= 0:
+        return None
+
+    name = _clean_item_name(match.group("name"))
+    if name is None:
+        return None
+
+    quantity_text = _clean_item_quantity(match.group("quantity"))
+    return ParsedReceiptItem(
+        name=name,
+        quantity_text=quantity_text,
+        amount_cents=amount_cents,
+        category=_category_for_item_name(name),
+        raw_text=cleaned,
+        confidence=0.72,
+    )
+
+
+def _clean_item_name(value: str) -> str | None:
+    cleaned = value.strip(" \t:-：")
+    if len(cleaned) < 2 or len(cleaned) > 80:
+        return None
+    if cleaned.isdigit():
+        return None
+    return cleaned
+
+
+def _clean_item_quantity(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.replace("×", "x").strip()
+    return cleaned or None
+
+
+def _category_for_item_name(name: str) -> str | None:
+    lowered = name.casefold()
+    for rule in CATEGORY_HINT_RULES:
+        if any(keyword.casefold() in lowered for keyword in rule.keywords):
+            return rule.category
+    return None
+
+
+def _item_money_to_cents(value: str) -> int | None:
+    try:
+        amount = Decimal(value.replace(",", "").strip())
+    except (InvalidOperation, ValueError):
+        return None
+    cents = (amount * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return int(cents)
+
+
 from app.services.receipt_parse_amount import (
     _amount_candidates,
     _calibrate_amount_candidates,
@@ -400,6 +538,7 @@ def parse_receipt_text(
         category_candidate=category_candidate,
         raw_text=text,
     )
+    items = _parse_receipt_items(context, amount_cents)
 
     return ParsedReceipt(
         amount_cents=amount_cents,
@@ -407,4 +546,5 @@ def parse_receipt_text(
         expense_time=expense_time,
         category=category,
         confidence=confidence,
+        items=items,
     )

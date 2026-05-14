@@ -33,6 +33,7 @@ from app.services.ocr_service import (
     retry_ocr,
     run_auto_ocr,
 )
+from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.stats_service import _confirmed_ordered, _confirmed_query
 from app.services.tag_service import normalize_tags, sync_expense_tags
@@ -130,6 +131,7 @@ def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
             expense.image_path, expense.tenant_id
         )
     run_auto_ocr(expense)
+    _replace_ocr_draft_items_from_text(db, expense, expense.raw_text or "")
     if expense.category == "其他":
         classify_expense(db, expense)
     if (
@@ -211,6 +213,9 @@ def enrich_pending_expense(
                 )
             for result in ocr_results:
                 apply_ocr_result(expense, result, timezone_name=timezone_name)
+                _replace_ocr_draft_items_from_text(
+                    db, expense, result.raw_text, timezone_name=timezone_name
+                )
             if expense.category == "其他":
                 classify_expense(db, expense)
             if (
@@ -469,12 +474,31 @@ def ensure_thumbnail_file(
     return resolved
 
 
+def _replace_ocr_draft_items_from_text(
+    db: Session,
+    expense: Expense,
+    raw_text: str,
+    *,
+    timezone_name: str | None = None,
+) -> None:
+    if expense.status != "pending":
+        return
+    parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
+    if not parsed.items:
+        return
+
+    from app.services.receipt_item_service import replace_ocr_draft_items
+
+    replace_ocr_draft_items(db, expense, parsed.items)
+
+
 def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "rejected":
         raise AppError("expense_not_found", status_code=404)
 
     retry_ocr(expense)
+    _replace_ocr_draft_items_from_text(db, expense, expense.raw_text or "")
     if expense.category == "其他":
         classify_expense(db, expense)
     if (
@@ -498,6 +522,7 @@ def recognize_expense_text(
 
     raw_text = payload.raw_text.strip()
     apply_ocr_result(expense, OcrResult(raw_text=raw_text, confidence=None))
+    _replace_ocr_draft_items_from_text(db, expense, raw_text)
     if expense.category == "其他":
         classify_expense(db, expense)
     if (
