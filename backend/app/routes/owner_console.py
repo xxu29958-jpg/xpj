@@ -477,6 +477,7 @@ def owner_settings_about(
 # ── backups ──────────────────────────────────────────────────────────────────
 
 from app.services import backup_service  # noqa: E402  (local import to keep ordering tidy)
+from app.services import migration_readiness_service  # noqa: E402
 
 
 def _format_size(size_bytes: int) -> str:
@@ -497,6 +498,36 @@ def _backup_view(entries: list[backup_service.BackupEntry]) -> list[dict]:
         }
         for entry in entries
     ]
+
+
+def _migration_readiness_view(
+    report: migration_readiness_service.MigrationReadinessReport,
+) -> dict:
+    return {
+        "target_version": report.target_version,
+        "backend_version": report.backend_version,
+        "identity_schema": report.identity_schema,
+        "database_kind": report.database_kind,
+        "ready": report.ready,
+        "backup_created": report.backup_created,
+        "latest_backup": report.latest_backup,
+        "latest_backup_kind": report.latest_backup_kind,
+        "checks": [
+            {
+                "code": check.code,
+                "status": check.status,
+                "message": check.message,
+                "badge_class": (
+                    "badge-ok"
+                    if check.status == "ok"
+                    else "badge-warn"
+                    if check.status == "warn"
+                    else "badge-err"
+                ),
+            }
+            for check in report.checks
+        ],
+    }
 
 
 @router.get("/backups", response_class=HTMLResponse)
@@ -534,4 +565,40 @@ def owner_backups_create(
     ctx["created_now"] = created
     ctx["error"] = error
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
+
+
+# ── v1.0 migration readiness ────────────────────────────────────────────────
+
+@router.get("/migration-readiness", response_class=HTMLResponse)
+def owner_migration_readiness_get(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    report = migration_readiness_service.build_v1_migration_readiness_report(
+        create_backup=False
+    )
+    ctx = _base(request, db)
+    ctx["migration"] = _migration_readiness_view(report)
+    ctx["created_now"] = None
+    return templates.TemplateResponse(
+        request=request, name="migration_readiness.html", context=ctx
+    )
+
+
+@router.post("/migration-readiness/pre-v1-backup", response_class=HTMLResponse)
+def owner_migration_readiness_create_pre_v1_backup(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    report = migration_readiness_service.build_v1_migration_readiness_report(
+        create_backup=True
+    )
+    ctx = _base(request, db)
+    ctx["migration"] = _migration_readiness_view(report)
+    ctx["created_now"] = report.backup_created
+    return templates.TemplateResponse(
+        request=request, name="migration_readiness.html", context=ctx
+    )
 

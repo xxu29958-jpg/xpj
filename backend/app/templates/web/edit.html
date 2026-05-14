@@ -6,6 +6,9 @@
 {% if error %}
 <div class="alert alert-danger">⚠️ {{ error }}</div>
 {% endif %}
+{% if message %}
+<div class="card flash">{{ message }}</div>
+{% endif %}
 
 <div class="card">
   <div class="edit-grid">
@@ -62,6 +65,115 @@
         {% endif %}
         <a href="/web/pending{{ q }}" class="btn btn-link">返回</a>
       </div>
+    </form>
+  </div>
+</div>
+
+<div class="grid two-col detail-sections">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>小票明细</h2>
+        <div class="meta">只记录本张小票的商品行，不改变账单金额、统计或导出。</div>
+      </div>
+    </div>
+    {% if items_error %}
+    <div class="alert alert-danger">⚠️ {{ items_error }}</div>
+    {% endif %}
+    <form method="post" action="/web/expenses/{{ expense.id }}/items/save">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <table class="transaction-table compact edit-subtable">
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th style="width:90px">数量</th>
+            <th style="width:110px">单价</th>
+            <th style="width:110px">金额</th>
+            <th style="width:100px">分类</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for item in receipt_items %}
+          <tr>
+            <td>
+              <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" {% if not can_write %}disabled{% endif %}>
+              {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}
+            </td>
+            <td><input type="text" name="item_quantity" value="{{ item.quantity_text }}" maxlength="64" placeholder="1份" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="item_unit_price_yuan" value="{{ item.unit_price_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="item_amount_yuan" value="{{ item.amount_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="item_category" value="{{ item.category }}" maxlength="64" placeholder="其他" {% if not can_write %}disabled{% endif %}></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if can_write %}
+      <div class="actions sub-actions">
+        <button type="submit" class="btn btn-secondary">保存明细</button>
+      </div>
+      {% else %}
+      <div class="readonly-inline">只读角色，无法修改小票明细。</div>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>家庭拆账</h2>
+        <div class="meta">拆账只作为家庭分摊记录，不改变入账金额、统计或导出。</div>
+      </div>
+    </div>
+    {% if splits_error %}
+    <div class="alert alert-danger">⚠️ {{ splits_error }}</div>
+    {% endif %}
+    {% if split_rows.total_yuan %}
+    <div class="reconcile-line">
+      账单 ¥{{ split_rows.parent_amount_yuan or '0.00' }} · 已拆 ¥{{ split_rows.total_yuan }}
+      {% if split_rows.mismatch_yuan and split_rows.mismatch_yuan != '0.00' %}
+      · 差额 ¥{{ split_rows.mismatch_yuan }}
+      {% endif %}
+    </div>
+    {% endif %}
+    <form method="post" action="/web/expenses/{{ expense.id }}/splits/save">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <table class="transaction-table compact edit-subtable">
+        <thead>
+          <tr>
+            <th>成员</th>
+            <th style="width:120px">金额</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for split in split_rows.rows %}
+          <tr>
+            <td>
+              <select name="split_member_id" {% if not can_write %}disabled{% endif %}>
+                <option value="">选择成员</option>
+                {% if split.disabled %}
+                <option value="{{ split.member_id }}" selected>{{ split.account_name }}（已停用）</option>
+                {% endif %}
+                {% for member in split_members %}
+                <option value="{{ member.member_id }}" {% if member.member_id == split.member_id %}selected{% endif %}>
+                  {{ member.account_name }} · {% if member.role == 'owner' %}拥有者{% elif member.role == 'member' %}成员{% else %}只读{% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input type="text" name="split_amount_yuan" value="{{ split.amount_yuan }}" inputmode="decimal" placeholder="0.00" {% if not can_write %}disabled{% endif %}></td>
+            <td><input type="text" name="split_note" value="{{ split.note }}" maxlength="200" placeholder="可选" {% if not can_write %}disabled{% endif %}></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if can_write %}
+      <div class="actions sub-actions">
+        <button type="submit" class="btn btn-secondary">保存拆账</button>
+      </div>
+      {% else %}
+      <div class="readonly-inline">只读角色，无法修改家庭拆账。</div>
+      {% endif %}
     </form>
   </div>
 </div>

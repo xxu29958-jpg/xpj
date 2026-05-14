@@ -40,6 +40,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditPrimaryActions
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
+import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
 import com.ticketbox.ui.screens.expense.OcrProgressCard
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
@@ -236,6 +237,15 @@ fun ExpenseEditScreen(
         ExpenseEditSourceInfo(
             source = currentExpense.source,
             confidence = currentExpense.confidence,
+        )
+
+        ExpenseEditV1DetailsSection(
+            expenseItems = state.expenseItems,
+            expenseSplits = state.expenseSplits,
+            itemsLoading = state.itemsLoading,
+            splitsLoading = state.splitsLoading,
+            itemsMessage = state.itemsMessage,
+            splitsMessage = state.splitsMessage,
         )
 
         ExpenseEditMoreSection(

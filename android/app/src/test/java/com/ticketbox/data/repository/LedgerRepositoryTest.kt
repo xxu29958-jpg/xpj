@@ -14,6 +14,10 @@ import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
@@ -728,6 +732,16 @@ private class StubApi(
     ): ExpenseDto = unsupported()
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = unsupported()
     override suspend fun updateExpense(id: Long, request: ExpenseUpdateRequest): ExpenseDto = unsupported()
+    override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = unsupported()
+    override suspend fun replaceExpenseItems(
+        id: Long,
+        request: ExpenseItemReplaceRequestDto,
+    ): ExpenseItemsResponseDto = unsupported()
+    override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto = unsupported()
+    override suspend fun replaceExpenseSplits(
+        id: Long,
+        request: ExpenseSplitReplaceRequestDto,
+    ): ExpenseSplitsResponseDto = unsupported()
     override suspend fun confirmExpense(id: Long): ExpenseDto = unsupported()
     override suspend fun rejectExpense(id: Long): ExpenseDto = unsupported()
     override suspend fun retryOcr(id: Long): ExpenseDto = unsupported()

@@ -9,6 +9,12 @@ import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.DashboardCardUpdateRequestDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
@@ -96,6 +102,112 @@ class ApiDtoContractTest {
             json,
         )
         assertFalse(json.contains("raw_text"))
+    }
+
+    @Test
+    fun expenseItemsParsesCurrentServerShapeAndSerializesReplace() {
+        val dto = requireNotNull(
+            moshi.adapter(ExpenseItemsResponseDto::class.java).fromJson(
+                """
+                {
+                  "expense_id": 1,
+                  "parent_amount_cents": 1500,
+                  "items_total_amount_cents": 1250,
+                  "mismatch_cents": 250,
+                  "items": [
+                    {
+                      "public_id": "item-1",
+                      "position": 0,
+                      "name": "拿铁",
+                      "quantity_text": "1杯",
+                      "unit_price_cents": 500,
+                      "amount_cents": 500,
+                      "category": "餐饮",
+                      "raw_text": "拿铁 1杯 5.00",
+                      "confidence": 0.92,
+                      "is_ocr_draft": true,
+                      "created_at": "2026-05-03T04:20:00Z",
+                      "updated_at": "2026-05-03T04:20:00Z"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val requestJson = moshi.adapter(ExpenseItemReplaceRequestDto::class.java).toJson(
+            ExpenseItemReplaceRequestDto(
+                items = listOf(
+                    ExpenseItemRequestDto(
+                        name = "拿铁",
+                        quantityText = "1杯",
+                        unitPriceCents = 500,
+                        amountCents = 500,
+                        category = "餐饮",
+                        rawText = "拿铁 1杯 5.00",
+                        confidence = 0.92,
+                    ),
+                ),
+            ),
+        )
+
+        val item = dto.items.single()
+        assertEquals("item-1", item.publicId)
+        assertEquals(250L, dto.mismatchCents)
+        assertEquals(true, item.isOcrDraft)
+        assertEquals(
+            """{"items":[{"name":"拿铁","quantity_text":"1杯","unit_price_cents":500,"amount_cents":500,"category":"餐饮","raw_text":"拿铁 1杯 5.00","confidence":0.92}]}""",
+            requestJson,
+        )
+    }
+
+    @Test
+    fun expenseSplitsParsesCurrentServerShapeAndSerializesReplace() {
+        val dto = requireNotNull(
+            moshi.adapter(ExpenseSplitsResponseDto::class.java).fromJson(
+                """
+                {
+                  "expense_id": 1,
+                  "parent_amount_cents": 10000,
+                  "splits_total_amount_cents": 9000,
+                  "mismatch_cents": 1000,
+                  "splits": [
+                    {
+                      "public_id": "split-1",
+                      "position": 0,
+                      "member_id": 12,
+                      "account_name": "我",
+                      "role": "owner",
+                      "amount_cents": 6000,
+                      "note": "我出大头",
+                      "disabled_at": null,
+                      "created_at": "2026-05-03T04:20:00Z",
+                      "updated_at": "2026-05-03T04:20:00Z"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val requestJson = moshi.adapter(ExpenseSplitReplaceRequestDto::class.java).toJson(
+            ExpenseSplitReplaceRequestDto(
+                splits = listOf(
+                    ExpenseSplitRequestDto(
+                        memberId = 12,
+                        amountCents = 6000,
+                        note = "我出大头",
+                    ),
+                ),
+            ),
+        )
+
+        val split = dto.splits.single()
+        assertEquals("split-1", split.publicId)
+        assertEquals(1000L, dto.mismatchCents)
+        assertEquals("owner", split.role)
+        assertEquals(
+            """{"splits":[{"member_id":12,"amount_cents":6000,"note":"我出大头"}]}""",
+            requestJson,
+        )
     }
 
     @Test

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}v1.0 迁移预检 — 小票夹{% endblock %}
+{% block content %}
+<h1>v1.0 迁移预检</h1>
+
+{% if created_now %}
+<div class="alert alert-success">
+  已创建 pre-v1.0 回滚备份：<code>{{ created_now }}</code>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>当前结论</h2>
+  <div class="kv-grid">
+    <span class="kv-key">目标版本</span>
+    <span class="kv-val">v{{ migration.target_version }}</span>
+    <span class="kv-key">后端版本</span>
+    <span class="kv-val">{{ migration.backend_version }}</span>
+    <span class="kv-key">身份契约</span>
+    <span class="kv-val">{{ migration.identity_schema }}</span>
+    <span class="kv-key">数据库类型</span>
+    <span class="kv-val">{{ migration.database_kind }}</span>
+    <span class="kv-key">最新备份</span>
+    <span class="kv-val">
+      {% if migration.latest_backup %}
+      <code>{{ migration.latest_backup }}</code>
+      <span class="badge {{ 'badge-ok' if migration.latest_backup_kind == 'pre-v1.0' else 'badge-warn' }}">{{ migration.latest_backup_kind }}</span>
+      {% else %}
+      <span class="badge badge-err">未找到</span>
+      {% endif %}
+    </span>
+    <span class="kv-key">迁移准备</span>
+    <span class="kv-val">
+      {% if migration.ready %}
+      <span class="badge badge-ok">可进入下一步</span>
+      {% else %}
+      <span class="badge badge-err">需要先处理</span>
+      {% endif %}
+    </span>
+  </div>
+  <form method="post" action="/owner/migration-readiness/pre-v1-backup" style="margin-top:14px">
+    <button type="submit" class="btn btn-primary">创建 pre-v1.0 备份并重新检查</button>
+  </form>
+  <p class="secret-note" style="margin-top:8px">
+    本页只读取 SQLite 结构、索引和备份状态；按钮只创建命名备份，不执行迁移、不恢复数据库、不下载文件。
+  </p>
+</div>
+
+<div class="card">
+  <h2>检查项</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="white-space:nowrap">状态</th>
+        <th style="white-space:nowrap">检查项</th>
+        <th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for check in migration.checks %}
+      <tr>
+        <td><span class="badge {{ check.badge_class }}">{{ check.status }}</span></td>
+        <td style="font-family:monospace;color:#475569;white-space:nowrap">{{ check.code }}</td>
+        <td>{{ check.message }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

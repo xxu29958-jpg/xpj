@@ -8,6 +8,8 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,10 +22,16 @@ data class ExpenseEditUiState(
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
+    val expenseItems: ExpenseItems? = null,
+    val expenseSplits: ExpenseSplits? = null,
     val readOnly: Boolean = false,
     val imageLoading: Boolean = false,
+    val itemsLoading: Boolean = false,
+    val splitsLoading: Boolean = false,
     val ocrRunning: Boolean = false,
     val saving: Boolean = false,
+    val itemsMessage: String? = null,
+    val splitsMessage: String? = null,
     val message: String? = null,
     val done: Boolean = false,
 )
@@ -44,6 +52,8 @@ class ExpenseEditViewModel(
     init {
         loadCategories()
         loadThumbnail()
+        loadExpenseItems()
+        loadExpenseSplits()
     }
 
     private fun loadCategories() {
@@ -73,6 +83,42 @@ class ExpenseEditViewModel(
                             }
                             _uiState.update { it.copy(imageLoading = false) }
                         }
+                }
+        }
+    }
+
+    private fun loadExpenseItems() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(itemsLoading = true, itemsMessage = null) }
+            repository.fetchExpenseItems(expenseId)
+                .onSuccess { items ->
+                    _uiState.update { it.copy(expenseItems = items, itemsLoading = false) }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            itemsLoading = false,
+                            itemsMessage = error.message ?: "小票明细暂时加载失败。",
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun loadExpenseSplits() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(splitsLoading = true, splitsMessage = null) }
+            repository.fetchExpenseSplits(expenseId)
+                .onSuccess { splits ->
+                    _uiState.update { it.copy(expenseSplits = splits, splitsLoading = false) }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            splitsLoading = false,
+                            splitsMessage = error.message ?: "家庭拆账暂时加载失败。",
+                        )
+                    }
                 }
         }
     }

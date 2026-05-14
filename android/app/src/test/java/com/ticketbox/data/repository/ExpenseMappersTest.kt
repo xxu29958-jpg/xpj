@@ -2,9 +2,15 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.CategoryStatsDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseSplitDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.TagStatsDto
 import com.ticketbox.domain.model.CategoryStats
+import com.ticketbox.domain.model.ExpenseItemDraft
+import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.TagStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,6 +55,88 @@ class ExpenseMappersTest {
 
         assertEquals(listOf(CategoryStats("餐饮", 15_800, 3)), stats.byCategory)
         assertEquals(listOf(TagStats("真香", 12_000, 2)), stats.byTag)
+    }
+
+    @Test
+    fun mapsExpenseItemsAndNormalizesCategory() {
+        val details = ExpenseItemsResponseDto(
+            expenseId = 1,
+            parentAmountCents = 1500,
+            itemsTotalAmountCents = 1250,
+            mismatchCents = 250,
+            items = listOf(
+                ExpenseItemDto(
+                    publicId = "item-1",
+                    position = 0,
+                    name = "拿铁",
+                    quantityText = "1杯",
+                    unitPriceCents = 500,
+                    amountCents = 500,
+                    category = "吃饭",
+                    rawText = "拿铁 1杯 5.00",
+                    confidence = 0.92,
+                    isOcrDraft = true,
+                    createdAt = "2026-05-03T04:20:00Z",
+                    updatedAt = "2026-05-03T04:20:00Z",
+                ),
+            ),
+        ).toDomain()
+
+        assertEquals(true, details.hasMismatch)
+        assertEquals("餐饮", details.items.single().category)
+        assertEquals(true, details.items.single().isOcrDraft)
+    }
+
+    @Test
+    fun mapsExpenseSplitsWithDisabledMemberSignal() {
+        val splits = ExpenseSplitsResponseDto(
+            expenseId = 1,
+            parentAmountCents = 10000,
+            splitsTotalAmountCents = 9000,
+            mismatchCents = 1000,
+            splits = listOf(
+                ExpenseSplitDto(
+                    publicId = "split-1",
+                    position = 0,
+                    memberId = 12,
+                    accountName = "家人",
+                    role = "member",
+                    amountCents = 6000,
+                    note = "一起吃饭",
+                    disabledAt = "2026-05-04T04:20:00Z",
+                    createdAt = "2026-05-03T04:20:00Z",
+                    updatedAt = "2026-05-03T04:20:00Z",
+                ),
+            ),
+        ).toDomain()
+
+        assertEquals(true, splits.hasMismatch)
+        assertEquals(true, splits.splits.single().isDisabledMember)
+        assertEquals("家人", splits.splits.single().accountName)
+    }
+
+    @Test
+    fun itemAndSplitDraftsTrimOptionalFields() {
+        val itemRequest = ExpenseItemDraft(
+            name = " 拿铁 ",
+            quantityText = " 1杯 ",
+            unitPriceCents = 500,
+            amountCents = 500,
+            category = " 吃饭 ",
+            rawText = " ",
+            confidence = null,
+        ).toRequest()
+        val splitRequest = ExpenseSplitDraft(
+            memberId = 12,
+            amountCents = 6000,
+            note = " 一起吃饭 ",
+        ).toRequest()
+
+        assertEquals("拿铁", itemRequest.name)
+        assertEquals("1杯", itemRequest.quantityText)
+        assertEquals("餐饮", itemRequest.category)
+        assertEquals(null, itemRequest.rawText)
+        assertEquals("一起吃饭", splitRequest.note)
     }
 
     private fun expenseDto(publicId: String?, category: String = "其他"): ExpenseDto {

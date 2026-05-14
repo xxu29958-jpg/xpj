@@ -7,6 +7,10 @@ import com.ticketbox.data.remote.dto.CategoriesDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
@@ -122,6 +126,24 @@ interface ApiService {
         @Path("id") id: Long,
         @Body request: ExpenseUpdateRequest,
     ): ExpenseDto
+
+    @GET("api/expenses/{id}/items")
+    suspend fun expenseItems(@Path("id") id: Long): ExpenseItemsResponseDto
+
+    @PUT("api/expenses/{id}/items")
+    suspend fun replaceExpenseItems(
+        @Path("id") id: Long,
+        @Body request: ExpenseItemReplaceRequestDto,
+    ): ExpenseItemsResponseDto
+
+    @GET("api/expenses/{id}/splits")
+    suspend fun expenseSplits(@Path("id") id: Long): ExpenseSplitsResponseDto
+
+    @PUT("api/expenses/{id}/splits")
+    suspend fun replaceExpenseSplits(
+        @Path("id") id: Long,
+        @Body request: ExpenseSplitReplaceRequestDto,
+    ): ExpenseSplitsResponseDto
 
     @POST("api/expenses/{id}/confirm")
     suspend fun confirmExpense(@Path("id") id: Long): ExpenseDto

@@ -17,6 +17,12 @@ import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemDto
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseSplitDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
@@ -47,6 +53,8 @@ import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.ExpenseItemDraft
+import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.NotificationDraftSource
 import com.ticketbox.security.SessionTokenStore
@@ -447,6 +455,99 @@ class ExpenseRepositoryBindingTest {
         assertEquals(false, disabled.enabled)
         assertEquals(listOf("alias-created"), apiService.merchantAliasDeleteTargets)
     }
+
+    @Test
+    fun expenseItemsAndSplitsUseV1DetailEndpoints() = runTest {
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "member",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val items = repository.fetchExpenseItems(9).getOrThrow()
+        val replacedItems = repository.replaceExpenseItems(
+            9,
+            listOf(
+                ExpenseItemDraft(
+                    name = " 拿铁 ",
+                    quantityText = " 1杯 ",
+                    unitPriceCents = 500,
+                    amountCents = 500,
+                    category = "吃饭",
+                    rawText = null,
+                    confidence = null,
+                ),
+            ),
+        ).getOrThrow()
+        val splits = repository.fetchExpenseSplits(9).getOrThrow()
+        val replacedSplits = repository.replaceExpenseSplits(
+            9,
+            listOf(ExpenseSplitDraft(memberId = 12, amountCents = 6000, note = " 一起吃饭 ")),
+        ).getOrThrow()
+
+        assertEquals(9L, apiService.itemFetchIds.single())
+        assertEquals(9L, apiService.itemReplaceIds.single())
+        assertEquals("拿铁", apiService.itemReplaceRequests.single().items.single().name)
+        assertEquals("餐饮", apiService.itemReplaceRequests.single().items.single().category)
+        assertEquals("item-1", items.items.single().publicId)
+        assertEquals("item-1", replacedItems.items.single().publicId)
+        assertEquals(9L, apiService.splitFetchIds.single())
+        assertEquals(9L, apiService.splitReplaceIds.single())
+        assertEquals("一起吃饭", apiService.splitReplaceRequests.single().splits.single().note)
+        assertEquals("split-1", splits.splits.single().publicId)
+        assertEquals("split-1", replacedSplits.splits.single().publicId)
+    }
+
+    @Test
+    fun viewerCannotReplaceExpenseItemsOrSplitsLocally() = runTest {
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "只读",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "viewer",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val itemResult = repository.replaceExpenseItems(
+            9,
+            listOf(ExpenseItemDraft("拿铁", null, null, 500, "餐饮", null, null)),
+        )
+        val splitResult = repository.replaceExpenseSplits(
+            9,
+            listOf(ExpenseSplitDraft(memberId = 12, amountCents = 500, note = null)),
+        )
+
+        assertEquals("当前角色为只读，无法修改账本。", itemResult.exceptionOrNull()?.message)
+        assertEquals("当前角色为只读，无法修改账本。", splitResult.exceptionOrNull()?.message)
+        assertTrue(apiService.itemReplaceRequests.isEmpty())
+        assertTrue(apiService.splitReplaceRequests.isEmpty())
+    }
 }
 
 private class FakeApiServiceFactory(
@@ -475,6 +576,12 @@ private class FakeApiService(
     val merchantAliasRequests = mutableListOf<MerchantAliasRequest>()
     val merchantAliasPatchTargets = mutableListOf<String>()
     val merchantAliasDeleteTargets = mutableListOf<String>()
+    val itemFetchIds = mutableListOf<Long>()
+    val itemReplaceIds = mutableListOf<Long>()
+    val itemReplaceRequests = mutableListOf<ExpenseItemReplaceRequestDto>()
+    val splitFetchIds = mutableListOf<Long>()
+    val splitReplaceIds = mutableListOf<Long>()
+    val splitReplaceRequests = mutableListOf<ExpenseSplitReplaceRequestDto>()
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -558,6 +665,34 @@ private class FakeApiService(
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = unsupported()
 
     override suspend fun updateExpense(id: Long, request: ExpenseUpdateRequest): ExpenseDto = unsupported()
+
+    override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
+        itemFetchIds += id
+        return expenseItemsResponse()
+    }
+
+    override suspend fun replaceExpenseItems(
+        id: Long,
+        request: ExpenseItemReplaceRequestDto,
+    ): ExpenseItemsResponseDto {
+        itemReplaceIds += id
+        itemReplaceRequests += request
+        return expenseItemsResponse()
+    }
+
+    override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto {
+        splitFetchIds += id
+        return expenseSplitsResponse()
+    }
+
+    override suspend fun replaceExpenseSplits(
+        id: Long,
+        request: ExpenseSplitReplaceRequestDto,
+    ): ExpenseSplitsResponseDto {
+        splitReplaceIds += id
+        splitReplaceRequests += request
+        return expenseSplitsResponse()
+    }
 
     override suspend fun confirmExpense(id: Long): ExpenseDto = unsupported()
 
@@ -813,6 +948,50 @@ private class FakeApiService(
         enabled = enabled,
         createdAt = "2026-05-13T00:00:00Z",
         updatedAt = "2026-05-13T00:05:00Z",
+    )
+
+    private fun expenseItemsResponse(): ExpenseItemsResponseDto = ExpenseItemsResponseDto(
+        expenseId = 9,
+        parentAmountCents = 1500,
+        itemsTotalAmountCents = 500,
+        mismatchCents = 1000,
+        items = listOf(
+            ExpenseItemDto(
+                publicId = "item-1",
+                position = 0,
+                name = "拿铁",
+                quantityText = "1杯",
+                unitPriceCents = 500,
+                amountCents = 500,
+                category = "吃饭",
+                rawText = null,
+                confidence = null,
+                isOcrDraft = false,
+                createdAt = "2026-05-13T00:00:00Z",
+                updatedAt = "2026-05-13T00:05:00Z",
+            ),
+        ),
+    )
+
+    private fun expenseSplitsResponse(): ExpenseSplitsResponseDto = ExpenseSplitsResponseDto(
+        expenseId = 9,
+        parentAmountCents = 1500,
+        splitsTotalAmountCents = 6000,
+        mismatchCents = -4500,
+        splits = listOf(
+            ExpenseSplitDto(
+                publicId = "split-1",
+                position = 0,
+                memberId = 12,
+                accountName = "家人",
+                role = "member",
+                amountCents = 6000,
+                note = "一起吃饭",
+                disabledAt = null,
+                createdAt = "2026-05-13T00:00:00Z",
+                updatedAt = "2026-05-13T00:05:00Z",
+            ),
+        ),
     )
 
     private fun confirmedExpenseDto(): ExpenseDto {

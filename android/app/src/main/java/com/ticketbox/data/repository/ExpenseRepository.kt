@@ -11,6 +11,8 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.PairRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
@@ -23,6 +25,10 @@ import com.ticketbox.domain.model.DiagnosticCheck
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseItemDraft
+import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.ExpenseSplitDraft
+import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MonthlyStats
@@ -398,6 +404,34 @@ class ExpenseRepository(
 
     override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = safeCall {
         cacheIfConfirmed(api().updateExpense(id, draft.toRequest())).toDomain()
+    }
+
+    suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = safeCall {
+        api().expenseItems(id).toDomain()
+    }
+
+    suspend fun replaceExpenseItems(id: Long, items: List<ExpenseItemDraft>): Result<ExpenseItems> = safeCall {
+        if (!canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        api().replaceExpenseItems(
+            id,
+            ExpenseItemReplaceRequestDto(items = items.map { it.toRequest() }),
+        ).toDomain()
+    }
+
+    suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = safeCall {
+        api().expenseSplits(id).toDomain()
+    }
+
+    suspend fun replaceExpenseSplits(id: Long, splits: List<ExpenseSplitDraft>): Result<ExpenseSplits> = safeCall {
+        if (!canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        api().replaceExpenseSplits(
+            id,
+            ExpenseSplitReplaceRequestDto(splits = splits.map { it.toRequest() }),
+        ).toDomain()
     }
 
     suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = safeCall {

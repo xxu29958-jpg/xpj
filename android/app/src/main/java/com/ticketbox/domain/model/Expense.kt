@@ -38,6 +38,75 @@ data class ExpenseDraft(
     val regretScore: Int?,
 )
 
+data class ExpenseItem(
+    val publicId: String,
+    val position: Int,
+    val name: String,
+    val quantityText: String?,
+    val unitPriceCents: Long?,
+    val amountCents: Long?,
+    val category: String,
+    val rawText: String?,
+    val confidence: Double?,
+    val isOcrDraft: Boolean,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+data class ExpenseItems(
+    val expenseId: Long,
+    val parentAmountCents: Long?,
+    val itemsTotalAmountCents: Long?,
+    val mismatchCents: Long?,
+    val items: List<ExpenseItem>,
+) {
+    val hasMismatch: Boolean
+        get() = mismatchCents != null && mismatchCents != 0L
+}
+
+data class ExpenseItemDraft(
+    val name: String,
+    val quantityText: String?,
+    val unitPriceCents: Long?,
+    val amountCents: Long?,
+    val category: String?,
+    val rawText: String?,
+    val confidence: Double?,
+)
+
+data class ExpenseSplit(
+    val publicId: String,
+    val position: Int,
+    val memberId: Long,
+    val accountName: String,
+    val role: String,
+    val amountCents: Long,
+    val note: String?,
+    val disabledAt: String?,
+    val createdAt: String,
+    val updatedAt: String,
+) {
+    val isDisabledMember: Boolean
+        get() = !disabledAt.isNullOrBlank()
+}
+
+data class ExpenseSplits(
+    val expenseId: Long,
+    val parentAmountCents: Long?,
+    val splitsTotalAmountCents: Long?,
+    val mismatchCents: Long?,
+    val splits: List<ExpenseSplit>,
+) {
+    val hasMismatch: Boolean
+        get() = mismatchCents != null && mismatchCents != 0L
+}
+
+data class ExpenseSplitDraft(
+    val memberId: Long,
+    val amountCents: Long,
+    val note: String?,
+)
+
 enum class NotificationDraftSource(val apiValue: String) {
     WeChat("wechat"),
     Alipay("alipay"),
