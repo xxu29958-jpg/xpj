@@ -38,6 +38,8 @@ import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
+import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
+import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
@@ -259,6 +261,17 @@ interface ApiService {
         @Path("publicId") publicId: String,
         @Query("timezone") timezone: String? = null,
     ): GoalDto
+
+    @GET("api/dashboard/cards")
+    suspend fun dashboardCards(
+        @Query("surface") surface: String = "android",
+    ): DashboardCardsResponseDto
+
+    @PUT("api/dashboard/cards")
+    suspend fun updateDashboardCards(
+        @Body request: DashboardCardsUpdateRequestDto,
+        @Query("surface") surface: String = "android",
+    ): DashboardCardsResponseDto
 
     @GET("api/budgets/monthly")
     suspend fun monthlyBudget(

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.database import init_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
-from app.routes import auth, bootstrap, budgets, duplicates, expenses, goals, insights, invitations, ledgers, maintenance, merchants, recurring, reports, rules, settings, stats, uploads
+from app.routes import auth, bootstrap, budgets, dashboard, duplicates, expenses, goals, insights, invitations, ledgers, maintenance, merchants, recurring, reports, rules, settings, stats, uploads
 from app.routes import admin as admin_routes
 from app.routes import owner_console
 from app.routes import owner_ledgers
@@ -62,6 +62,7 @@ app.include_router(invitations.router)
 app.include_router(recurring.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)
+app.include_router(dashboard.router)
 app.include_router(rules.router)
 app.include_router(settings.router)
 app.include_router(stats.router)

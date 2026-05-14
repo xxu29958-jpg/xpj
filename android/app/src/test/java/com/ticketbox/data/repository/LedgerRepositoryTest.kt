@@ -11,6 +11,8 @@ import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.CategoriesDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
+import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
@@ -783,6 +785,11 @@ private class StubApi(
         timezone: String?,
     ): GoalDto = unsupported()
     override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto = unsupported()
+    override suspend fun dashboardCards(surface: String): DashboardCardsResponseDto = unsupported()
+    override suspend fun updateDashboardCards(
+        request: DashboardCardsUpdateRequestDto,
+        surface: String,
+    ): DashboardCardsResponseDto = unsupported()
     override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto = unsupported()
     override suspend fun updateMonthlyBudget(
         month: String,

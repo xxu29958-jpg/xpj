@@ -6,6 +6,9 @@ import com.ticketbox.data.remote.dto.BudgetCategoryRequestDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
+import com.ticketbox.data.remote.dto.DashboardCardUpdateRequestDto
+import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
+import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
@@ -572,5 +575,38 @@ class ApiDtoContractTest {
             createJson,
         )
         assertEquals("""{"target_amount_cents":90000}""", updateJson)
+    }
+
+    @Test
+    fun dashboardCardsParseCurrentServerShapeAndSerializeUpdate() {
+        val dto = requireNotNull(
+            moshi.adapter(DashboardCardsResponseDto::class.java).fromJson(
+                """
+                {
+                  "surface": "web",
+                  "items": [
+                    {"key": "goals", "title": "目标", "visible": true, "position": 0},
+                    {"key": "reports", "title": "报表", "visible": false, "position": 1}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val requestJson = moshi.adapter(DashboardCardsUpdateRequestDto::class.java).toJson(
+            DashboardCardsUpdateRequestDto(
+                cards = listOf(
+                    DashboardCardUpdateRequestDto("goals", visible = true, position = 0),
+                    DashboardCardUpdateRequestDto("reports", visible = false, position = 1),
+                ),
+            ),
+        )
+
+        assertEquals("web", dto.surface)
+        assertEquals("goals", dto.items.first().key)
+        assertEquals(false, dto.items[1].visible)
+        assertEquals(
+            """{"cards":[{"key":"goals","visible":true,"position":0},{"key":"reports","visible":false,"position":1}]}""",
+            requestJson,
+        )
     }
 }

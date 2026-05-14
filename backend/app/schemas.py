@@ -468,6 +468,28 @@ class GoalListResponse(BaseModel):
     items: list[GoalResponse]
 
 
+class DashboardCardResponse(BaseModel):
+    key: str
+    title: str
+    visible: bool
+    position: int
+
+
+class DashboardCardsResponse(BaseModel):
+    surface: str
+    items: list[DashboardCardResponse]
+
+
+class DashboardCardUpdateRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=64)
+    visible: bool = True
+    position: int = Field(ge=0)
+
+
+class DashboardCardsUpdateRequest(BaseModel):
+    cards: list[DashboardCardUpdateRequest] = Field(default_factory=list)
+
+
 class OcrRetryResponse(BaseModel):
     id: int
     status: str

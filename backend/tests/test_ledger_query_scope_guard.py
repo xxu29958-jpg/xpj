@@ -12,6 +12,7 @@ LEDGER_SCOPED_MODELS = {
     "Budget",
     "BudgetCategory",
     "CategoryRule",
+    "DashboardCardPreference",
     "DuplicateIgnore",
     "Expense",
     "ExpenseTag",

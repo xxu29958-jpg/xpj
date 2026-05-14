@@ -135,6 +135,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "budgets" in inspector.get_table_names()
     assert "budget_categories" in inspector.get_table_names()
     assert "goals" in inspector.get_table_names()
+    assert "dashboard_card_preferences" in inspector.get_table_names()
     assert "rule_application_batches" in inspector.get_table_names()
     assert "rule_application_changes" in inspector.get_table_names()
     assert {
@@ -160,6 +161,12 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_goals_tenant_month_status" in _indexes("goals")
     assert "ix_goals_tenant_category_month" in _indexes("goals")
     assert "ix_goals_tenant_public_id" in _indexes("goals")
+    assert "ix_dashboard_cards_tenant_surface_position" in _indexes(
+        "dashboard_card_preferences"
+    )
+    assert "ix_dashboard_cards_tenant_surface_key" in _indexes(
+        "dashboard_card_preferences"
+    )
     assert "ix_rule_application_batches_tenant_created_at" in _indexes("rule_application_batches")
     assert "ix_rule_application_batches_tenant_status" in _indexes("rule_application_batches")
     assert "ix_rule_application_changes_tenant_batch" in _indexes("rule_application_changes")
@@ -191,6 +198,10 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ck_goals_period_valid" in goals_sql
     assert "ck_goals_status_valid" in goals_sql
     assert "ck_goals_target_positive" in goals_sql
+    dashboard_cards_sql = _table_create_sql("dashboard_card_preferences")
+    assert "ck_dashboard_cards_surface_valid" in dashboard_cards_sql
+    assert "ck_dashboard_cards_position_non_negative" in dashboard_cards_sql
+    assert "uq_dashboard_cards_tenant_surface_key" in dashboard_cards_sql
     with engine.begin() as connection:
         owner_rules = connection.execute(
             text("SELECT COUNT(*) FROM category_rules WHERE tenant_id = 'owner'")

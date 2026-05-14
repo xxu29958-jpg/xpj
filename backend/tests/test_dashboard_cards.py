@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models import LedgerMember
+from conftest import app_headers, gray_app_headers
+
+
+def _set_owner_ledger_role(role: str) -> None:
+    with SessionLocal() as db:
+        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
+        assert member is not None
+        member.role = role
+        db.commit()
+
+
+def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient) -> None:
+    default_android = client.get(
+        "/api/dashboard/cards?surface=android",
+        headers=app_headers(),
+    )
+    assert default_android.status_code == 200, default_android.json()
+    android_payload = default_android.json()
+    assert android_payload["surface"] == "android"
+    assert [item["key"] for item in android_payload["items"]][:3] == [
+        "pending",
+        "monthly_spend",
+        "reports",
+    ]
+
+    updated_web = client.put(
+        "/api/dashboard/cards?surface=web",
+        headers=app_headers(),
+        json={
+            "cards": [
+                {"key": "goals", "visible": True, "position": 0},
+                {"key": "reports", "visible": False, "position": 1},
+                {"key": "monthly_spend", "visible": True, "position": 2},
+            ]
+        },
+    )
+    assert updated_web.status_code == 200, updated_web.json()
+    web_items = updated_web.json()["items"]
+    assert [item["key"] for item in web_items[:3]] == [
+        "goals",
+        "reports",
+        "monthly_spend",
+    ]
+    assert web_items[1]["visible"] is False
+
+    android_after_web_update = client.get(
+        "/api/dashboard/cards?surface=android",
+        headers=app_headers(),
+    )
+    assert android_after_web_update.status_code == 200, android_after_web_update.json()
+    assert [item["key"] for item in android_after_web_update.json()["items"]][:3] == [
+        "pending",
+        "monthly_spend",
+        "reports",
+    ]
+
+    gray_web = client.get(
+        "/api/dashboard/cards?surface=web",
+        headers=gray_app_headers(),
+    )
+    assert gray_web.status_code == 200, gray_web.json()
+    assert [item["key"] for item in gray_web.json()["items"]][:3] == [
+        "pending",
+        "monthly_spend",
+        "reports",
+    ]
+    assert all(item["visible"] for item in gray_web.json()["items"])
+
+
+def test_dashboard_cards_validation_and_viewer_write_guard(client: TestClient) -> None:
+    unknown = client.put(
+        "/api/dashboard/cards?surface=web",
+        headers=app_headers(),
+        json={"cards": [{"key": "net_worth", "visible": True, "position": 0}]},
+    )
+    assert unknown.status_code == 422
+    assert unknown.json()["error"] == "invalid_request"
+
+    duplicate = client.put(
+        "/api/dashboard/cards?surface=web",
+        headers=app_headers(),
+        json={
+            "cards": [
+                {"key": "reports", "visible": True, "position": 0},
+                {"key": "reports", "visible": False, "position": 1},
+            ]
+        },
+    )
+    assert duplicate.status_code == 422
+    assert duplicate.json()["error"] == "invalid_request"
+
+    _set_owner_ledger_role("viewer")
+    viewer_read = client.get(
+        "/api/dashboard/cards?surface=web",
+        headers=app_headers(),
+    )
+    assert viewer_read.status_code == 200, viewer_read.json()
+
+    viewer_write = client.put(
+        "/api/dashboard/cards?surface=web",
+        headers=app_headers(),
+        json={"cards": [{"key": "reports", "visible": False, "position": 0}]},
+    )
+    assert viewer_write.status_code == 403
+    assert viewer_write.json()["error"] == "permission_denied"

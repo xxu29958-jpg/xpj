@@ -346,6 +346,41 @@ Index("ix_goals_tenant_category_month", Goal.tenant_id, Goal.category, Goal.mont
 Index("ix_goals_tenant_public_id", Goal.tenant_id, Goal.public_id)
 
 
+class DashboardCardPreference(Base):
+    __tablename__ = "dashboard_card_preferences"
+    __table_args__ = (
+        CheckConstraint("surface IN ('android', 'web')", name="ck_dashboard_cards_surface_valid"),
+        CheckConstraint("position >= 0", name="ck_dashboard_cards_position_non_negative"),
+        UniqueConstraint("tenant_id", "surface", "card_key", name="uq_dashboard_cards_tenant_surface_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    surface: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    card_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    visible: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index(
+    "ix_dashboard_cards_tenant_surface_position",
+    DashboardCardPreference.tenant_id,
+    DashboardCardPreference.surface,
+    DashboardCardPreference.position,
+)
+Index(
+    "ix_dashboard_cards_tenant_surface_key",
+    DashboardCardPreference.tenant_id,
+    DashboardCardPreference.surface,
+    DashboardCardPreference.card_key,
+)
+
+
 class CategoryRule(Base):
     __tablename__ = "category_rules"
 

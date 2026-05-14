@@ -148,6 +148,8 @@ Authorization: Bearer <admin_token>
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/merchant_category/ranking_metric/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比；viewer 可读 |
 | `/api/reports/overview.csv` | GET | `backend/app/routes/reports.py` | v0.9 Reports Export | query 同 `/api/reports/overview` | streaming `text/csv` | Session Token | `backend/tests/test_reports.py` | v0.9 结构化报表 CSV；viewer 可读 |
+| `/api/dashboard/cards` | GET | `backend/app/routes/dashboard.py` | v0.9 Dashboard Cards | query `surface=android|web` | `DashboardCardsResponse` | Session Token | `backend/tests/test_dashboard_cards.py` | v0.9 Dashboard 卡片顺序和显隐；viewer 可读 |
+| `/api/dashboard/cards` | PUT | `backend/app/routes/dashboard.py` | v0.9 Dashboard Cards | query `surface=android|web`；`DashboardCardsUpdateRequest` | `DashboardCardsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_dashboard_cards.py` | v0.9 保存 Dashboard 卡片顺序和显隐 |
 | `/api/goals` | GET | `backend/app/routes/goals.py` | v0.9 Goals | query `month/include_archived/timezone` | `GoalListResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标列表和进度；viewer 可读 |
 | `/api/goals` | POST | `backend/app/routes/goals.py` | v0.9 Goals | `GoalCreateRequest`；query `timezone` | `GoalResponse` | Session Token，owner/member 写权限 | `backend/tests/test_goals.py` | v0.9 创建月度支出目标 |
 | `/api/goals/{public_id}` | GET | `backend/app/routes/goals.py` | v0.9 Goals | path `public_id`；query `timezone` | `GoalResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标详情和进度；viewer 可读 |
@@ -1211,6 +1213,59 @@ Authorization: Bearer <session_token>
 - `category_comparison`：分类本月、上月和差额。
 
 PNG 导出仍由 Android / `/web` 展示层完成；后端不渲染图表图片。
+
+## Dashboard 卡片
+
+> v0.9 起提供 Dashboard 卡片顺序和显隐配置。该接口只保存展示偏好，不改变统计、预算、Goals 或账本数据口径；Android 和 `/web` 使用独立 `surface`。
+
+### GET /api/dashboard/cards
+
+查询参数：
+
+```text
+surface=android|web，默认 android
+```
+
+返回：
+
+```json
+{
+  "surface": "web",
+  "items": [
+    {
+      "key": "reports",
+      "title": "报表",
+      "visible": true,
+      "position": 0
+    }
+  ]
+}
+```
+
+规则：
+
+- 只读取当前账本的偏好；不接受 query 参数切换账本。
+- 首次读取返回服务端默认卡片库。
+- `viewer` 可读。
+
+### PUT /api/dashboard/cards
+
+仅 `owner` / `member` 可调用。请求：
+
+```json
+{
+  "cards": [
+    {"key": "goals", "visible": true, "position": 0},
+    {"key": "reports", "visible": false, "position": 1}
+  ]
+}
+```
+
+规则：
+
+- `key` 必须来自该 `surface` 的默认卡片库。
+- 重复 `key`、未知 `key` 或非法 `surface` 返回 `invalid_request`。
+- 未提交的默认卡片会保留默认显隐，并排在已保存偏好之后，便于后续新增卡片向前兼容。
 
 ## 目标
 
