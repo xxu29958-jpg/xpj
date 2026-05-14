@@ -50,6 +50,25 @@ def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient) ->
     ]
     assert web_items[1]["visible"] is False
 
+    updated_web_without_reports = client.put(
+        "/api/dashboard/cards?surface=web",
+        headers=app_headers(),
+        json={
+            "cards": [
+                {"key": "goals", "visible": True, "position": 0},
+                {"key": "monthly_spend", "visible": True, "position": 1},
+            ]
+        },
+    )
+    assert updated_web_without_reports.status_code == 200, updated_web_without_reports.json()
+    web_items_after_omission = updated_web_without_reports.json()["items"]
+    web_keys_after_omission = [item["key"] for item in web_items_after_omission]
+    reports_after_omission = next(item for item in web_items_after_omission if item["key"] == "reports")
+    assert web_keys_after_omission[:2] == ["goals", "monthly_spend"]
+    assert web_keys_after_omission.index("reports") > web_keys_after_omission.index("monthly_spend")
+    assert reports_after_omission["visible"] is True
+    assert reports_after_omission["position"] > web_items_after_omission[1]["position"]
+
     android_after_web_update = client.get(
         "/api/dashboard/cards?surface=android",
         headers=app_headers(),

@@ -135,6 +135,11 @@ def update_dashboard_cards(
 
     prefs = _preferences(db, tenant_id=tenant_id, surface=resolved_surface)
     now = now_utc()
+    for key, pref in list(prefs.items()):
+        if key not in seen:
+            db.delete(pref)
+            del prefs[key]
+
     for item in payload.cards:
         key = item.key.strip()
         pref = prefs.get(key)

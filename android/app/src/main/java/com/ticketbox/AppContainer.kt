@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.security.SecureTokenStore
 
 class AppContainer(context: Context) {
@@ -38,6 +39,12 @@ class AppContainer(context: Context) {
     )
 
     val budgetRepository = BudgetRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+    )
+
+    val reportsRepository = ReportsRepository(
         apiClient = apiClient,
         settingsStore = settingsStore,
         tokenStore = tokenStore,
