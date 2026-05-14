@@ -137,6 +137,7 @@ backend\
     export_confirmed.ps1
     install_startup_task.ps1
     restore_database.ps1
+    preflight_v1_migration.py
     setup_backend.ps1
     start_backend.ps1
     uninstall_startup_task.ps1

@@ -32,7 +32,7 @@ class BackupEntry:
     file_name: str
     size_bytes: int
     created_at: datetime
-    kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3"
+    kind: str  # "scheduled" / "manual" / "pre-restore" / "pre-v0.3" / "pre-v1.0"
 
 
 def _backup_dir() -> Path:
@@ -43,6 +43,8 @@ def _backup_dir() -> Path:
 def _classify(name: str) -> str:
     if name.startswith("ticketbox-before-restore-"):
         return "pre-restore"
+    if name.startswith("ticketbox-pre-v1.0-"):
+        return "pre-v1.0"
     if name.startswith("ticketbox-pre-v0.3"):
         return "pre-v0.3"
     if name.startswith("ticketbox-manual-"):
@@ -90,6 +92,16 @@ def create_manual_backup() -> BackupEntry:
     Raises :class:`AppError` if the database URL is not SQLite or the file is
     missing.
     """
+    return _create_sqlite_backup(prefix="ticketbox-manual", kind="manual")
+
+
+def create_pre_v1_backup() -> BackupEntry:
+    """Create a named pre-v1.0 backup for migration rehearsals."""
+
+    return _create_sqlite_backup(prefix="ticketbox-pre-v1.0", kind="pre-v1.0")
+
+
+def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
     cfg = get_settings()
     if not cfg.database_url.startswith("sqlite:///"):
         raise AppError(
@@ -108,11 +120,11 @@ def create_manual_backup() -> BackupEntry:
 
     directory = _backup_dir()
     stamp = now_utc().astimezone().strftime("%Y%m%d-%H%M%S")
-    target = directory / f"ticketbox-manual-{stamp}.db"
+    target = directory / f"{prefix}-{stamp}.db"
     # Avoid overwriting an existing backup if two clicks land in the same second.
     counter = 1
     while target.exists():
-        target = directory / f"ticketbox-manual-{stamp}-{counter}.db"
+        target = directory / f"{prefix}-{stamp}-{counter}.db"
         counter += 1
 
     # SQLite Online Backup API — safe under WAL / concurrent writes.
@@ -132,5 +144,5 @@ def create_manual_backup() -> BackupEntry:
         file_name=target.name,
         size_bytes=int(stat.st_size),
         created_at=created_at,
-        kind="manual",
+        kind=kind,
     )
