@@ -17,6 +17,7 @@ $BackendRoot = Join-Path $ProjectRoot "backend"
 $BackendStartScript = Join-Path $BackendRoot "scripts\start_backend.ps1"
 $BackendRestartScript = Join-Path $ProjectRoot "scripts\restart_backend.ps1"
 $BackendVersionFile = Join-Path $BackendRoot "app\version.py"
+$ExpectedBackendPython = Join-Path $BackendRoot ".venv\Scripts\python.exe"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 $Failures = New-Object System.Collections.Generic.List[string]
 
@@ -92,6 +93,53 @@ function Test-ListenerLoadedCurrentSource {
     return $process.StartTime.ToUniversalTime() -ge $sourceStamp
 }
 
+function Test-ListenerUsesExpectedRuntime {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    if (-not (Test-Path -LiteralPath $ExpectedBackendPython)) {
+        return $false
+    }
+
+    $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+    if (-not $processInfo) {
+        return $false
+    }
+
+    $expectedPythonPath = (Resolve-Path -LiteralPath $ExpectedBackendPython).Path
+    $executablePath = [string]$processInfo.ExecutablePath
+    $commandLine = [string]$processInfo.CommandLine
+    $usesExpectedPython = $executablePath.Equals($expectedPythonPath, [System.StringComparison]::OrdinalIgnoreCase)
+    $runsTicketboxApp = (
+        $commandLine.Contains("app.main:app") -and
+        $commandLine.Contains("--host 127.0.0.1") -and
+        $commandLine.Contains("--port $Port")
+    )
+    if ($usesExpectedPython -and $runsTicketboxApp) {
+        return $true
+    }
+
+    $parentProcessId = [int]$processInfo.ParentProcessId
+    if ($parentProcessId -le 0) {
+        return $false
+    }
+
+    $parentProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$parentProcessId" -ErrorAction SilentlyContinue
+    if (-not $parentProcessInfo) {
+        return $false
+    }
+
+    $parentExecutablePath = [string]$parentProcessInfo.ExecutablePath
+    $parentCommandLine = [string]$parentProcessInfo.CommandLine
+    $parentUsesExpectedPython = $parentExecutablePath.Equals($expectedPythonPath, [System.StringComparison]::OrdinalIgnoreCase)
+    $parentRunsTicketboxApp = (
+        $parentCommandLine.Contains("app.main:app") -and
+        $parentCommandLine.Contains("--host 127.0.0.1") -and
+        $parentCommandLine.Contains("--port $Port")
+    )
+
+    return $runsTicketboxApp -and $parentUsesExpectedPython -and $parentRunsTicketboxApp
+}
+
 function Test-Endpoint {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -142,7 +190,8 @@ function Start-BackendIfNeeded {
         $health = Get-LocalBackendHealth
         $runningVersion = if ($health) { [string]$health.backend_version } else { "" }
         $loadedCurrentSource = Test-ListenerLoadedCurrentSource -ProcessId $listener.OwningProcess
-        if ($health -and $health.status -eq "ok" -and $runningVersion -eq $expectedVersion -and $loadedCurrentSource) {
+        $usesExpectedRuntime = Test-ListenerUsesExpectedRuntime -ProcessId $listener.OwningProcess
+        if ($health -and $health.status -eq "ok" -and $runningVersion -eq $expectedVersion -and $loadedCurrentSource -and $usesExpectedRuntime) {
             Write-Host "OK   127.0.0.1:$Port 已监听，pid=$($listener.OwningProcess)，backend_version=$runningVersion"
             return
         }
@@ -151,7 +200,7 @@ function Start-BackendIfNeeded {
             throw "127.0.0.1:$Port 已监听但版本不一致，且找不到重启脚本：$BackendRestartScript"
         }
 
-        Write-Host "WARN 127.0.0.1:$Port 已监听但不是当前后端代码，pid=$($listener.OwningProcess)，expected=$expectedVersion running=$runningVersion loaded_current_source=$loadedCurrentSource"
+        Write-Host "WARN 127.0.0.1:$Port 已监听但不是当前项目后端运行时，pid=$($listener.OwningProcess)，expected=$expectedVersion running=$runningVersion loaded_current_source=$loadedCurrentSource expected_runtime=$usesExpectedRuntime"
         Write-Host "重启后端以加载当前代码：$BackendRestartScript"
         & $BackendRestartScript -Port $Port
         return

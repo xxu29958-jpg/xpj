@@ -70,6 +70,49 @@ function Test-ListenerLoadedCurrentSource {
     return $process.StartTime.ToUniversalTime() -ge $sourceStamp
 }
 
+function Test-ListenerUsesExpectedRuntime {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+    if (-not $processInfo) {
+        return $false
+    }
+
+    $expectedPythonPath = (Resolve-Path -LiteralPath $Python).Path
+    $executablePath = [string]$processInfo.ExecutablePath
+    $commandLine = [string]$processInfo.CommandLine
+    $usesExpectedPython = $executablePath.Equals($expectedPythonPath, [System.StringComparison]::OrdinalIgnoreCase)
+    $runsTicketboxApp = (
+        $commandLine.Contains("app.main:app") -and
+        $commandLine.Contains("--host 127.0.0.1") -and
+        $commandLine.Contains("--port $Port")
+    )
+    if ($usesExpectedPython -and $runsTicketboxApp) {
+        return $true
+    }
+
+    $parentProcessId = [int]$processInfo.ParentProcessId
+    if ($parentProcessId -le 0) {
+        return $false
+    }
+
+    $parentProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$parentProcessId" -ErrorAction SilentlyContinue
+    if (-not $parentProcessInfo) {
+        return $false
+    }
+
+    $parentExecutablePath = [string]$parentProcessInfo.ExecutablePath
+    $parentCommandLine = [string]$parentProcessInfo.CommandLine
+    $parentUsesExpectedPython = $parentExecutablePath.Equals($expectedPythonPath, [System.StringComparison]::OrdinalIgnoreCase)
+    $parentRunsTicketboxApp = (
+        $parentCommandLine.Contains("app.main:app") -and
+        $parentCommandLine.Contains("--host 127.0.0.1") -and
+        $parentCommandLine.Contains("--port $Port")
+    )
+
+    return $runsTicketboxApp -and $parentUsesExpectedPython -and $parentRunsTicketboxApp
+}
+
 if (-not (Test-Path -LiteralPath $Python)) {
     throw "Python virtual environment not found: $Python"
 }
@@ -80,14 +123,15 @@ if ($existing) {
     $health = Get-BackendHealth -TargetPort $Port
     $runningVersion = if ($health) { [string]$health.backend_version } else { "" }
     $loadedCurrentSource = Test-ListenerLoadedCurrentSource -ProcessId $existing.OwningProcess
+    $usesExpectedRuntime = Test-ListenerUsesExpectedRuntime -ProcessId $existing.OwningProcess
 
-    if ($health -and $health.status -eq "ok" -and $expectedVersion -and $runningVersion -eq $expectedVersion -and $loadedCurrentSource) {
+    if ($health -and $health.status -eq "ok" -and $expectedVersion -and $runningVersion -eq $expectedVersion -and $loadedCurrentSource -and $usesExpectedRuntime) {
         "[{0}] port 127.0.0.1:{1} already has current listener pid={2} backend_version={3}" -f (Get-Date -Format "s"), $Port, $existing.OwningProcess, $runningVersion | Out-File -FilePath $LogFile -Append -Encoding utf8
         exit 0
     }
 
-    "[{0}] refusing stale or unknown listener on 127.0.0.1:{1} pid={2} expected={3} running={4} loaded_current_source={5}" -f (Get-Date -Format "s"), $Port, $existing.OwningProcess, $expectedVersion, $runningVersion, $loadedCurrentSource | Out-File -FilePath $LogFile -Append -Encoding utf8
-    Write-Host "FAIL 127.0.0.1:$Port 已有监听进程 pid=$($existing.OwningProcess)，但不是当前后端代码。expected=$expectedVersion running=$runningVersion loaded_current_source=$loadedCurrentSource。请先运行 scripts\restart_backend.ps1 -Port $Port。"
+    "[{0}] refusing stale or unknown listener on 127.0.0.1:{1} pid={2} expected={3} running={4} loaded_current_source={5} expected_runtime={6}" -f (Get-Date -Format "s"), $Port, $existing.OwningProcess, $expectedVersion, $runningVersion, $loadedCurrentSource, $usesExpectedRuntime | Out-File -FilePath $LogFile -Append -Encoding utf8
+    Write-Host "FAIL 127.0.0.1:$Port 已有监听进程 pid=$($existing.OwningProcess)，但不是当前项目后端运行时。expected=$expectedVersion running=$runningVersion loaded_current_source=$loadedCurrentSource expected_runtime=$usesExpectedRuntime。请先运行 scripts\restart_backend.ps1 -Port $Port。"
     exit 1
 }
 
