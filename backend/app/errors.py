@@ -59,6 +59,7 @@ ERROR_MESSAGES = {
     "notification_source_invalid": "通知来源暂不支持。",
     "merchant_alias_not_found": "商家别名不存在。",
     "merchant_alias_conflict": "商家别名已指向其他商家。",
+    "import_batch_not_found": "导入批次不存在。",
 }
 
 

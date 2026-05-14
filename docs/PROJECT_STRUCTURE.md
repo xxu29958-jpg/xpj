@@ -52,6 +52,7 @@ backend\
       duplicates.py
       expenses.py
       goals.py
+      imports.py
       maintenance.py
       reports.py
       rules.py
@@ -67,6 +68,7 @@ backend\
       category_service.py
       classify_service.py
       cleanup_service.py
+      csv_import_batch_service.py
       budget_service.py
       dashboard_service.py
       duplicate_service.py
@@ -126,6 +128,7 @@ backend\
     test_uploads.py
     test_expenses.py
     test_expense_items.py
+    test_csv_import_batches.py
     test_tenant_isolation.py
     test_stats_filters.py
     test_maintenance.py

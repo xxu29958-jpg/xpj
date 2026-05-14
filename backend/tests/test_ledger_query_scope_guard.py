@@ -12,6 +12,8 @@ LEDGER_SCOPED_MODELS = {
     "Budget",
     "BudgetCategory",
     "CategoryRule",
+    "CsvImportBatch",
+    "CsvImportRow",
     "DashboardCardPreference",
     "DuplicateIgnore",
     "Expense",

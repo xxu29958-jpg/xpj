@@ -132,6 +132,8 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "tags" in inspector.get_table_names()
     assert "expense_tags" in inspector.get_table_names()
     assert "expense_items" in inspector.get_table_names()
+    assert "csv_import_batches" in inspector.get_table_names()
+    assert "csv_import_rows" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
     assert "budgets" in inspector.get_table_names()
     assert "budget_categories" in inspector.get_table_names()
@@ -158,6 +160,10 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_expense_items_tenant_expense_position" in _indexes("expense_items")
     assert "ix_expense_items_tenant_public_id" in _indexes("expense_items")
     assert "ix_expense_items_tenant_category" in _indexes("expense_items")
+    assert "ix_csv_import_batches_tenant_public_id" in _indexes("csv_import_batches")
+    assert "ix_csv_import_batches_tenant_status_created_at" in _indexes("csv_import_batches")
+    assert "ix_csv_import_rows_tenant_batch_line" in _indexes("csv_import_rows")
+    assert "ix_csv_import_rows_tenant_batch_status" in _indexes("csv_import_rows")
     assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
     assert "ix_budgets_tenant_month" in _indexes("budgets")
     assert "ix_budget_categories_tenant_month" in _indexes("budget_categories")
@@ -192,6 +198,11 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ck_expense_items_position_non_negative" in expense_items_sql
     assert "ck_expense_items_amount_non_negative" in expense_items_sql
     assert "uq_expense_items_tenant_expense_position" in expense_items_sql
+    csv_import_batches_sql = _table_create_sql("csv_import_batches")
+    assert "ck_csv_import_batches_status_valid" in csv_import_batches_sql
+    csv_import_rows_sql = _table_create_sql("csv_import_rows")
+    assert "ck_csv_import_rows_status_valid" in csv_import_rows_sql
+    assert "uq_csv_import_rows_tenant_batch_line" in csv_import_rows_sql
     recurring_sql = _table_create_sql("recurring_items")
     assert "ck_recurring_items_frequency_valid" in recurring_sql
     assert "ck_recurring_items_status_valid" in recurring_sql

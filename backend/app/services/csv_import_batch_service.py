@@ -1,0 +1,331 @@
+from __future__ import annotations
+
+import csv
+from datetime import timedelta
+from io import StringIO, TextIOWrapper
+from pathlib import Path
+from typing import BinaryIO
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
+from app.models import CsvImportBatch, CsvImportRow, Expense
+from app.schemas import (
+    CsvImportApplyResponse,
+    CsvImportBatchResponse,
+    CsvImportRowsResponse,
+)
+from app.services.import_service import DEFAULT_SOURCE, parse_csv_row
+from app.services.tag_service import normalize_tags, sync_expense_tags
+from app.services.time_service import now_utc
+
+
+MAX_CSV_IMPORT_ROWS = 20_000
+DEFAULT_BATCH_FILE_NAME = "import.csv"
+APPLY_LEASE_MINUTES = 5
+
+
+def create_csv_import_batch(
+    db: Session,
+    *,
+    tenant_id: str,
+    file_name: str | None,
+    file_obj: BinaryIO,
+) -> CsvImportBatch:
+    try:
+        text_stream = TextIOWrapper(file_obj, encoding="utf-8-sig", newline="")
+        reader = csv.reader(text_stream)
+        header_row = next(reader, None)
+        if header_row is None:
+            raise AppError("invalid_request", "CSV 缺少表头。", status_code=400)
+        headers = [header.strip().lstrip("\ufeff").lower() for header in header_row]
+        if not any(header in {"amount_yuan", "amount_cents"} for header in headers):
+            raise AppError(
+                "invalid_request",
+                "CSV 必须包含 amount_yuan 或 amount_cents 列。",
+                status_code=400,
+            )
+
+        now = now_utc()
+        batch = CsvImportBatch(
+            tenant_id=tenant_id,
+            file_name=_clean_file_name(file_name),
+            status="parsed",
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(batch)
+        db.flush()
+
+        total_rows = 0
+        valid_rows = 0
+        error_rows = 0
+        for line_number, row in enumerate(reader, start=2):
+            if not any(cell.strip() for cell in row):
+                continue
+            total_rows += 1
+            if total_rows > MAX_CSV_IMPORT_ROWS:
+                raise AppError(
+                    "invalid_request",
+                    f"CSV 一次最多导入 {MAX_CSV_IMPORT_ROWS} 行。",
+                    status_code=400,
+                )
+            parsed = parse_csv_row(headers, row, line_number=line_number)
+            if parsed.is_valid:
+                valid_rows += 1
+            else:
+                error_rows += 1
+            db.add(_row_from_parsed(batch, parsed))
+
+        batch.total_rows = total_rows
+        batch.valid_rows = valid_rows
+        batch.error_rows = error_rows
+        batch.status = "parsed_with_errors" if error_rows else "parsed"
+        batch.updated_at = now_utc()
+        db.commit()
+        db.refresh(batch)
+        return batch
+    except UnicodeDecodeError as exc:
+        db.rollback()
+        raise AppError("invalid_request", "CSV 必须使用 UTF-8 编码。", status_code=400) from exc
+    except AppError:
+        db.rollback()
+        raise
+
+
+def get_csv_import_batch(db: Session, *, tenant_id: str, public_id: str) -> CsvImportBatch:
+    batch = db.scalar(
+        ledger_scoped_select(CsvImportBatch, tenant_id).where(
+            CsvImportBatch.public_id == public_id
+        )
+    )
+    if batch is None:
+        raise AppError("import_batch_not_found", "导入批次不存在。", status_code=404)
+    return batch
+
+
+def list_csv_import_rows(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    page: int,
+    page_size: int,
+    status: str | None = None,
+) -> CsvImportRowsResponse:
+    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 500)
+    query = ledger_scoped_select(CsvImportRow, tenant_id).where(
+        CsvImportRow.batch_id == batch.id
+    )
+    if status:
+        query = query.where(CsvImportRow.status == status)
+    total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+    rows = list(
+        db.scalars(
+            query.order_by(CsvImportRow.line_number.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    )
+    return CsvImportRowsResponse(
+        batch=CsvImportBatchResponse.model_validate(batch),
+        items=rows,
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
+
+
+def apply_csv_import_batch(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    batch_size: int,
+) -> CsvImportApplyResponse:
+    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    now = now_utc()
+    if batch.locked_until is not None and batch.locked_until > now:
+        raise AppError("invalid_request", "导入批次正在应用中，请稍后重试。", status_code=409)
+
+    batch.locked_until = now + timedelta(minutes=APPLY_LEASE_MINUTES)
+    batch.status = "applying"
+    batch.updated_at = now
+    db.commit()
+
+    inserted = 0
+    try:
+        rows = list(
+            db.scalars(
+                ledger_scoped_select(CsvImportRow, tenant_id)
+                .where(CsvImportRow.batch_id == batch.id)
+                .where(CsvImportRow.status == "valid")
+                .order_by(CsvImportRow.line_number.asc())
+                .limit(batch_size)
+            )
+        )
+        now = now_utc()
+        created: list[tuple[CsvImportRow, Expense]] = []
+        for row in rows:
+            if row.amount_cents is None:
+                row.status = "insert_failed"
+                row.error_code = "amount_required"
+                row.error_message = "缺少有效金额。"
+                row.updated_at = now
+                continue
+            expense = Expense(
+                tenant_id=tenant_id,
+                amount_cents=row.amount_cents,
+                merchant=row.merchant or None,
+                category=row.category or "其他",
+                note=row.note or "",
+                source=row.source or DEFAULT_SOURCE,
+                tags=normalize_tags(row.tags),
+                expense_time=row.expense_time,
+                status="pending",
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(expense)
+            created.append((row, expense))
+        db.flush()
+        for row, expense in created:
+            sync_expense_tags(db, expense)
+            row.status = "applied"
+            row.expense_id = expense.id
+            row.updated_at = now
+            inserted += 1
+
+        db.flush()
+        _refresh_batch_counts(db, batch)
+        batch.locked_until = None
+        batch.updated_at = now_utc()
+        if _remaining_valid_rows(db, batch, tenant_id) == 0:
+            batch.applied_at = batch.updated_at
+            batch.status = "applied_with_errors" if batch.error_rows else "applied"
+        else:
+            batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
+        db.commit()
+        db.refresh(batch)
+        return CsvImportApplyResponse(
+            batch=CsvImportBatchResponse.model_validate(batch),
+            inserted_count=inserted,
+            remaining_valid_rows=_remaining_valid_rows(db, batch, tenant_id),
+        )
+    except Exception:
+        db.rollback()
+        batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+        batch.locked_until = None
+        batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
+        batch.last_error = "导入应用失败。"
+        batch.updated_at = now_utc()
+        db.commit()
+        raise
+
+
+def build_csv_import_errors_csv(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+) -> str:
+    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    rows = list(
+        db.scalars(
+            ledger_scoped_select(CsvImportRow, tenant_id)
+            .where(CsvImportRow.batch_id == batch.id)
+            .where(CsvImportRow.status.in_(("error", "insert_failed")))
+            .order_by(CsvImportRow.line_number.asc())
+        )
+    )
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "line_number",
+            "status",
+            "error_code",
+            "error_message",
+            "amount_cents",
+            "merchant",
+            "category",
+            "note",
+            "expense_time",
+            "tags",
+            "source",
+        ]
+    )
+    for row in rows:
+        writer.writerow(
+            [
+                row.line_number,
+                row.status,
+                row.error_code or "",
+                row.error_message or "",
+                row.amount_cents if row.amount_cents is not None else "",
+                row.merchant or "",
+                row.category,
+                row.note or "",
+                row.expense_time.isoformat() if row.expense_time else "",
+                row.tags or "",
+                row.source,
+            ]
+        )
+    return output.getvalue()
+
+
+def _row_from_parsed(batch: CsvImportBatch, parsed) -> CsvImportRow:
+    return CsvImportRow(
+        tenant_id=batch.tenant_id,
+        batch_id=batch.id,
+        line_number=parsed.line_number,
+        status="valid" if parsed.is_valid else "error",
+        error_code=None if parsed.is_valid else "invalid_row",
+        error_message=parsed.error,
+        amount_cents=parsed.amount_cents,
+        merchant=parsed.merchant or None,
+        category=parsed.category or "其他",
+        note=parsed.note or None,
+        expense_time=parsed.expense_time,
+        tags=parsed.tags or None,
+        source=parsed.source or DEFAULT_SOURCE,
+        created_at=now_utc(),
+        updated_at=now_utc(),
+    )
+
+
+def _clean_file_name(value: str | None) -> str:
+    cleaned = Path(value or DEFAULT_BATCH_FILE_NAME).name.strip()
+    return cleaned[:255] if cleaned else DEFAULT_BATCH_FILE_NAME
+
+
+def _refresh_batch_counts(db: Session, batch: CsvImportBatch) -> None:
+    counts = dict(
+        db.execute(
+            select(CsvImportRow.status, func.count())
+            .where(CsvImportRow.tenant_id == batch.tenant_id)
+            .where(CsvImportRow.batch_id == batch.id)
+            .group_by(CsvImportRow.status)
+        ).all()
+    )
+    batch.applied_rows = int(counts.get("applied", 0))
+    batch.inserted_count = batch.applied_rows
+    batch.error_rows = int(counts.get("error", 0)) + int(counts.get("insert_failed", 0))
+
+
+def _remaining_valid_rows(db: Session, batch: CsvImportBatch, tenant_id: str) -> int:
+    return int(
+        db.scalar(
+            select(func.count()).select_from(
+                ledger_scoped_select(CsvImportRow, tenant_id)
+                .where(CsvImportRow.batch_id == batch.id)
+                .where(CsvImportRow.status == "valid")
+                .subquery()
+            )
+        )
+        or 0
+    )

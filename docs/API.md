@@ -58,6 +58,7 @@ expense_not_found
 amount_required
 image_not_found
 rule_not_found
+import_batch_not_found
 permission_denied
 server_error
 invalid_request
@@ -122,6 +123,11 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/tag/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, smoke | gray/internal 导出 |
+| `/api/imports/csv` | POST | `backend/app/routes/imports.py` | 无 | multipart `csv_file` | `CsvImportBatchResponse` | Session Token，owner/member 写权限 | `backend/tests/test_csv_import_batches.py` | v1.0 大 CSV 导入批次创建 |
+| `/api/imports/csv/{public_id}` | GET | `backend/app/routes/imports.py` | 无 | path `public_id` | `CsvImportBatchResponse` | Session Token | `backend/tests/test_csv_import_batches.py` | v1.0 导入批次状态 |
+| `/api/imports/csv/{public_id}/rows` | GET | `backend/app/routes/imports.py` | 无 | query `page/page_size/status` | `CsvImportRowsResponse` | Session Token | `backend/tests/test_csv_import_batches.py` | v1.0 导入行分页预览 |
+| `/api/imports/csv/{public_id}/apply` | POST | `backend/app/routes/imports.py` | 无 | `CsvImportApplyRequest` | `CsvImportApplyResponse` | Session Token，owner/member 写权限 | `backend/tests/test_csv_import_batches.py` | v1.0 分批写入待确认账单 |
+| `/api/imports/csv/{public_id}/errors.csv` | GET | `backend/app/routes/imports.py` | 无 | path `public_id` | streaming `text/csv` | Session Token | `backend/tests/test_csv_import_batches.py` | v1.0 下载导入错误行 |
 | `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseManualCreateRequest` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/notification-drafts` | POST | `backend/app/routes/expenses.py` | `createNotificationDraft(request)` | `NotificationDraftCreateRequest` / `NotificationDraftRequestDto` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_notification_drafts.py`, `ApiDtoContractTest`, `ExpenseRepositoryBindingTest` | v0.6；结构化草稿，不上传通知原文 |
 | `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
@@ -736,6 +742,55 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
 ```
 
 返回 `text/csv`，用于导出已确认账单。导出接口只返回账单数据，不提供文件目录浏览或任意文件下载。
+
+### POST /api/imports/csv
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+Content-Type: multipart/form-data
+```
+
+表单字段：`csv_file`。CSV 必须包含 `amount_yuan` 或 `amount_cents`，可选列包括 `merchant/category/note/expense_time/tags/source`。接口会持久化导入批次和行级校验结果，不直接写入账单；viewer 返回 `permission_denied`。
+
+规则：
+
+- 单批最多 20000 个非空数据行。
+- 行级错误不会阻断批次创建，错误行通过分页预览和 `errors.csv` 查看。
+- 服务端只保存文件名，不保存客户端路径、不返回本机路径。
+
+### GET /api/imports/csv/{public_id}
+
+读取导入批次状态。跨账本读取返回 `import_batch_not_found`。
+
+### GET /api/imports/csv/{public_id}/rows
+
+查询参数：
+
+```text
+page: 默认 1
+page_size: 默认 100，最大 500
+status: 可选，valid/error/applied/insert_failed
+```
+
+返回分页行，用于大 CSV 预览，不需要一次把全部行塞回客户端。
+
+### POST /api/imports/csv/{public_id}/apply
+
+请求体：
+
+```json
+{
+  "batch_size": 500
+}
+```
+
+每次只把当前批次中 `status=valid` 的行写入 `pending` 账单，并把成功行标记为 `applied`。重复调用只处理剩余 `valid` 行，已应用行不会重复插入。viewer 返回 `permission_denied`。
+
+### GET /api/imports/csv/{public_id}/errors.csv
+
+返回当前批次的 `error` / `insert_failed` 行，便于用户修正后重新导入。只允许读取当前账本批次。
 
 ### PATCH /api/expenses/{id}
 

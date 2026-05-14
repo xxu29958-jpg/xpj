@@ -108,6 +108,8 @@ def seed_identity_data() -> None:
         Budget,
         BudgetCategory,
         CategoryRule,
+        CsvImportBatch,
+        CsvImportRow,
         DashboardCardPreference,
         DuplicateIgnore,
         Expense,
@@ -128,6 +130,10 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(Expense.tenant_id).distinct()) if value)
         if inspect(engine).has_table("expense_items"):
             ids.update(str(value) for value in db.scalars(select(ExpenseItem.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("csv_import_batches"):
+            ids.update(str(value) for value in db.scalars(select(CsvImportBatch.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("csv_import_rows"):
+            ids.update(str(value) for value in db.scalars(select(CsvImportRow.tenant_id).distinct()) if value)
         if inspect(engine).has_table("category_rules"):
             ids.update(str(value) for value in db.scalars(select(CategoryRule.tenant_id).distinct()) if value)
         if inspect(engine).has_table("merchant_aliases"):

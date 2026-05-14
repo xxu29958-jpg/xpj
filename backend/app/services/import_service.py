@@ -142,35 +142,37 @@ def parse_csv_preview(content: str) -> CsvPreview:
             break
         if not any(cell.strip() for cell in row):
             continue
-        cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
-        amount_cents, amount_display, amount_error = _parse_amount(
-            cells.get("amount_yuan", ""), cells.get("amount_cents", "")
-        )
-        expense_time, etime_display, etime_error = _parse_expense_time(
-            cells.get("expense_time", "")
-        )
-        category = normalize_category(cells.get("category", ""))
-        merchant = cells.get("merchant", "").strip()
-        note = cells.get("note", "").strip()
-        tags = cells.get("tags", "").strip()
-        source = cells.get("source", "").strip() or DEFAULT_SOURCE
-        error = amount_error or etime_error
-        preview.rows.append(
-            ParsedRow(
-                line_number=index,
-                amount_cents=amount_cents,
-                amount_display=amount_display,
-                merchant=merchant,
-                category=category,
-                note=note,
-                expense_time=expense_time,
-                expense_time_display=etime_display,
-                tags=tags,
-                source=source,
-                error=error,
-            )
-        )
+        preview.rows.append(parse_csv_row(headers, row, line_number=index))
     return preview
+
+
+def parse_csv_row(headers: list[str], row: list[str], *, line_number: int) -> ParsedRow:
+    cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
+    amount_cents, amount_display, amount_error = _parse_amount(
+        cells.get("amount_yuan", ""), cells.get("amount_cents", "")
+    )
+    expense_time, etime_display, etime_error = _parse_expense_time(
+        cells.get("expense_time", "")
+    )
+    category = normalize_category(cells.get("category", ""))
+    merchant = cells.get("merchant", "").strip()
+    note = cells.get("note", "").strip()
+    tags = cells.get("tags", "").strip()
+    source = cells.get("source", "").strip() or DEFAULT_SOURCE
+    error = amount_error or etime_error
+    return ParsedRow(
+        line_number=line_number,
+        amount_cents=amount_cents,
+        amount_display=amount_display,
+        merchant=merchant,
+        category=category,
+        note=note,
+        expense_time=expense_time,
+        expense_time_display=etime_display,
+        tags=tags,
+        source=source,
+        error=error,
+    )
 
 
 def import_rows(
