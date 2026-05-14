@@ -76,6 +76,9 @@
 - Material Design 3 cards：https://m3.material.io/components/cards/overview
 - Material Design 3 lists：https://m3.material.io/components/lists/overview
 - Apple Human Interface Guidelines：https://developer.apple.com/design/human-interface-guidelines/
+- Apache ECharts 官网：https://echarts.apache.org/
+- Apache ECharts 6.0.0 npm 元数据：https://registry.npmjs.org/echarts/6.0.0
+- Apache ECharts 6.0.0 npm tarball：https://registry.npmjs.org/echarts/-/echarts-6.0.0.tgz
 
 成熟记账和消费类 App 可作为体验参考，但只提炼模式，不照搬视觉、素材、商标或文案。参考方向包括：
 

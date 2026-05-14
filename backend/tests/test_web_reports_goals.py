@@ -91,6 +91,14 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient) ->
     assert "分类环比" in response.text
     assert "灰度账本商家" not in response.text
     assert "/web/reports/export.csv" in response.text
+    assert 'id="reports-overview-data"' in response.text
+    assert 'id="reports-trend-chart"' in response.text
+    assert 'id="reports-merchant-chart"' in response.text
+    assert 'id="reports-category-chart"' in response.text
+    assert "/static/web/vendor/echarts.min.js" in response.text
+    assert "/static/web/reports.js" in response.text
+    assert "cdn.jsdelivr" not in response.text
+    assert "unpkg.com" not in response.text
     assert "Bearer " not in response.text
     assert "UploadLink" not in response.text
 
@@ -99,6 +107,22 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient) ->
     assert "ticketbox-web-reports-2026-05-day.csv" in csv_response.headers["content-disposition"]
     assert "merchant_ranking,1,星巴克,4200,1" in csv_response.text
     assert "灰度账本商家" not in csv_response.text
+
+
+def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) -> None:
+    script = client.get("/static/web/vendor/echarts.min.js")
+    license_file = client.get("/static/web/vendor/echarts.LICENSE")
+    reports_js = client.get("/static/web/reports.js")
+
+    assert script.status_code == 200
+    assert "Apache Software Foundation" in script.text[:5000]
+    assert "sourceMappingURL" not in script.text[-2000:]
+    assert license_file.status_code == 200
+    assert "Apache License" in license_file.text
+    assert reports_js.status_code == 200
+    assert "reports-overview-data" in reports_js.text
+    assert "cdn.jsdelivr" not in reports_js.text
+    assert "unpkg.com" not in reports_js.text
 
 
 def test_web_reports_selected_ledger_isolated(web_client: TestClient) -> None:
