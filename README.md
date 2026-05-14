@@ -2,9 +2,9 @@
 
 **当前版本：v0.8.0a1**（阶段：**Budget / 月度可花三端基线**；基线 = v0.7 Rules / Tags / Merchant 治理）
 
-> 🚩 **v0.8.0a1 当前进度**：后端已加入服务端账本预算模型、月度预算 Dashboard API、viewer 写保护和代表性集成测试；Android 已接入服务端预算页并让统计页优先使用服务端预算；`/web` 已有预算 Dashboard；`/owner` 已有只读预算状态卡。
+> 🚩 **v0.8.0a1 当前进度**：后端已加入服务端账本预算模型、月度预算 Dashboard API、viewer 写保护和代表性集成测试；Android 已接入服务端预算页并让统计页优先使用服务端预算；`/web` 已有预算 Dashboard；`/owner` 已有只读预算状态卡；已补齐预算截图基线和已绑定真机走查。
 
-下一里程碑：补齐 v0.8 截图基线、已绑定真机预算页走查和版本报告，再决定是否进入 v0.8 RC。
+下一里程碑：按 [v0.8 Budget 收口报告](docs/V0_8_BUDGET_REPORT.md) 进入 RC 判定；RC 前不再扩大预算模型范围。
 
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 开始服务端预算和月度可花。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 
@@ -43,6 +43,7 @@ iPhone UploadLink 或 Android 上传截图
 - [v0.5 Household 权限模型](docs/V0_5_HOUSEHOLD_MODEL.md)
 - [v0.3.2 自用稳定版验收清单](docs/V0_3_2_SELFUSE_CHECKLIST.md)
 - [错误码文案映射](docs/ERROR_MESSAGE_MAPPING.md)
+- [v0.8 Budget 收口报告](docs/V0_8_BUDGET_REPORT.md)
 
 ## 项目组成
 
