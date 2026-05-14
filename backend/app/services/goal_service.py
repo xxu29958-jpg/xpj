@@ -1,0 +1,279 @@
+from __future__ import annotations
+
+import re
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
+from app.models import Goal
+from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
+from app.services.category_service import normalize_category
+from app.services.stats_service import _confirmed_query
+from app.services.time_service import local_month_bounds_utc, now_utc
+
+
+MONTH_PATTERN = re.compile(r"^\d{4}-\d{2}$")
+VALID_GOAL_TYPES = {"spending_limit"}
+VALID_PERIODS = {"monthly"}
+
+
+class GoalSpendTotals:
+    def __init__(self, total_amount_cents: int, by_category: dict[str, int]) -> None:
+        self.total_amount_cents = total_amount_cents
+        self.by_category = by_category
+
+
+def _clean_month(month: str) -> str:
+    cleaned = (month or "").strip()
+    if not MONTH_PATTERN.fullmatch(cleaned) or local_month_bounds_utc(cleaned, "UTC") is None:
+        raise AppError("invalid_request", status_code=422)
+    return cleaned
+
+
+def _clean_name(name: str) -> str:
+    cleaned = (name or "").strip()
+    if not cleaned or len(cleaned) > 80:
+        raise AppError("invalid_request", status_code=422)
+    return cleaned
+
+
+def _clean_goal_type(goal_type: str | None) -> str:
+    cleaned = (goal_type or "spending_limit").strip()
+    if cleaned not in VALID_GOAL_TYPES:
+        raise AppError("invalid_request", status_code=422)
+    return cleaned
+
+
+def _clean_period(period: str | None) -> str:
+    cleaned = (period or "monthly").strip()
+    if cleaned not in VALID_PERIODS:
+        raise AppError("invalid_request", status_code=422)
+    return cleaned
+
+
+def _clean_category(value: str | None) -> str | None:
+    if value is None:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    if len(raw) > 64:
+        raise AppError("invalid_request", status_code=422)
+    return normalize_category(raw)
+
+
+def _clean_target_amount(value: int) -> int:
+    amount = int(value)
+    if amount <= 0:
+        raise AppError("invalid_request", status_code=422)
+    return amount
+
+
+def _month_spend_totals(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    timezone_name: str | None = None,
+) -> GoalSpendTotals:
+    filtered = _confirmed_query(
+        tenant_id=tenant_id,
+        month=month,
+        timezone_name=timezone_name,
+    ).subquery()
+    rows = db.execute(
+        select(
+            filtered.c.category,
+            func.coalesce(func.sum(filtered.c.amount_cents), 0),
+        )
+        .select_from(filtered)
+        .group_by(filtered.c.category)
+    )
+    total_amount_cents = 0
+    by_category: dict[str, int] = {}
+    for category_raw, amount_value in rows:
+        amount = int(amount_value or 0)
+        total_amount_cents += amount
+        category = normalize_category(category_raw)
+        by_category[category] = by_category.get(category, 0) + amount
+    return GoalSpendTotals(total_amount_cents, by_category)
+
+
+def _progress_state(goal: Goal, spent_amount_cents: int) -> str:
+    if goal.status == "archived":
+        return "archived"
+    if spent_amount_cents <= 0:
+        return "not_started"
+    if spent_amount_cents >= goal.target_amount_cents:
+        return "over_limit"
+    if spent_amount_cents * 100 >= goal.target_amount_cents * 80:
+        return "near_limit"
+    return "on_track"
+
+
+def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
+    spent = totals.by_category.get(goal.category, 0) if goal.category else totals.total_amount_cents
+    target = int(goal.target_amount_cents)
+    return GoalResponse(
+        public_id=goal.public_id,
+        ledger_id=goal.tenant_id,
+        name=goal.name,
+        goal_type=goal.goal_type,
+        period=goal.period,
+        month=goal.month,
+        category=goal.category,
+        target_amount_cents=target,
+        spent_amount_cents=spent,
+        remaining_amount_cents=target - spent,
+        progress_percent=(spent * 100) // target,
+        progress_state=_progress_state(goal, spent),
+        status=goal.status,
+        created_at=goal.created_at,
+        updated_at=goal.updated_at,
+        archived_at=goal.archived_at,
+    )
+
+
+def _goal_by_public_id(db: Session, *, tenant_id: str, public_id: str) -> Goal | None:
+    return db.scalar(
+        ledger_scoped_select(Goal, tenant_id)
+        .where(Goal.public_id == public_id)
+        .limit(1)
+    )
+
+
+def get_goal(db: Session, *, tenant_id: str, public_id: str) -> Goal:
+    goal = _goal_by_public_id(db, tenant_id=tenant_id, public_id=public_id)
+    if goal is None:
+        raise AppError("goal_not_found", status_code=404)
+    return goal
+
+
+def list_goals(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    timezone_name: str | None = None,
+    include_archived: bool = False,
+) -> list[GoalResponse]:
+    month = _clean_month(month)
+    statement = ledger_scoped_select(Goal, tenant_id).where(Goal.month == month)
+    if not include_archived:
+        statement = statement.where(Goal.status != "archived")
+    statement = statement.order_by(Goal.status.asc(), Goal.category.asc(), Goal.created_at.asc(), Goal.id.asc())
+    goals = list(db.scalars(statement))
+    totals = _month_spend_totals(
+        db,
+        tenant_id=tenant_id,
+        month=month,
+        timezone_name=timezone_name,
+    )
+    return [goal_response(goal, totals) for goal in goals]
+
+
+def get_goal_response(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    timezone_name: str | None = None,
+) -> GoalResponse:
+    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    totals = _month_spend_totals(
+        db,
+        tenant_id=tenant_id,
+        month=goal.month,
+        timezone_name=timezone_name,
+    )
+    return goal_response(goal, totals)
+
+
+def create_goal(
+    db: Session,
+    *,
+    tenant_id: str,
+    payload: GoalCreateRequest,
+    timezone_name: str | None = None,
+) -> GoalResponse:
+    now = now_utc()
+    goal = Goal(
+        tenant_id=tenant_id,
+        name=_clean_name(payload.name),
+        goal_type=_clean_goal_type(payload.goal_type),
+        period=_clean_period(payload.period),
+        month=_clean_month(payload.month),
+        category=_clean_category(payload.category),
+        target_amount_cents=_clean_target_amount(payload.target_amount_cents),
+        status="active",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(goal)
+    db.commit()
+    db.refresh(goal)
+    totals = _month_spend_totals(
+        db,
+        tenant_id=tenant_id,
+        month=goal.month,
+        timezone_name=timezone_name,
+    )
+    return goal_response(goal, totals)
+
+
+def update_goal(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    payload: GoalUpdateRequest,
+    timezone_name: str | None = None,
+) -> GoalResponse:
+    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    if goal.status == "archived":
+        raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
+    updates = payload.model_dump(exclude_unset=True)
+    if "name" in updates:
+        goal.name = _clean_name(updates["name"])
+    if "month" in updates:
+        goal.month = _clean_month(updates["month"])
+    if "category" in updates:
+        goal.category = _clean_category(updates["category"])
+    if "target_amount_cents" in updates:
+        goal.target_amount_cents = _clean_target_amount(updates["target_amount_cents"])
+    goal.updated_at = now_utc()
+    db.commit()
+    db.refresh(goal)
+    totals = _month_spend_totals(
+        db,
+        tenant_id=tenant_id,
+        month=goal.month,
+        timezone_name=timezone_name,
+    )
+    return goal_response(goal, totals)
+
+
+def archive_goal(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    timezone_name: str | None = None,
+) -> GoalResponse:
+    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+    if goal.status != "archived":
+        now = now_utc()
+        goal.status = "archived"
+        goal.archived_at = now
+        goal.updated_at = now
+        db.commit()
+        db.refresh(goal)
+    totals = _month_spend_totals(
+        db,
+        tenant_id=tenant_id,
+        month=goal.month,
+        timezone_name=timezone_name,
+    )
+    return goal_response(goal, totals)

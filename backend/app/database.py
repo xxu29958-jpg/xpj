@@ -104,7 +104,7 @@ def _needs_pre_v03_backup(db_path: Path) -> bool:
 
 
 def seed_identity_data() -> None:
-    from app.models import Budget, BudgetCategory, CategoryRule, DuplicateIgnore, Expense, ExpenseTag, MerchantAlias, RuleApplicationBatch, RuleApplicationChange, Tag
+    from app.models import Budget, BudgetCategory, CategoryRule, DuplicateIgnore, Expense, ExpenseTag, Goal, MerchantAlias, RuleApplicationBatch, RuleApplicationChange, Tag
     from app.services.identity_service import ensure_identity_for_existing_ledger_ids, ensure_identity_seed
 
     with SessionLocal() as db:
@@ -126,6 +126,8 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(Budget.tenant_id).distinct()) if value)
         if inspect(engine).has_table("budget_categories"):
             ids.update(str(value) for value in db.scalars(select(BudgetCategory.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("goals"):
+            ids.update(str(value) for value in db.scalars(select(Goal.tenant_id).distinct()) if value)
         if inspect(engine).has_table("rule_application_batches"):
             ids.update(str(value) for value in db.scalars(select(RuleApplicationBatch.tenant_id).distinct()) if value)
         if inspect(engine).has_table("rule_application_changes"):

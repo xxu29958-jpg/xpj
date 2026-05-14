@@ -147,6 +147,11 @@ Authorization: Bearer <admin_token>
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/tag/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比；viewer 可读 |
+| `/api/goals` | GET | `backend/app/routes/goals.py` | v0.9 Goals | query `month/include_archived/timezone` | `GoalListResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标列表和进度；viewer 可读 |
+| `/api/goals` | POST | `backend/app/routes/goals.py` | v0.9 Goals | `GoalCreateRequest`；query `timezone` | `GoalResponse` | Session Token，owner/member 写权限 | `backend/tests/test_goals.py` | v0.9 创建月度支出目标 |
+| `/api/goals/{public_id}` | GET | `backend/app/routes/goals.py` | v0.9 Goals | path `public_id`；query `timezone` | `GoalResponse` | Session Token | `backend/tests/test_goals.py` | v0.9 目标详情和进度；viewer 可读 |
+| `/api/goals/{public_id}` | PATCH | `backend/app/routes/goals.py` | v0.9 Goals | `GoalUpdateRequest`；query `timezone` | `GoalResponse` | Session Token，owner/member 写权限 | `backend/tests/test_goals.py` | v0.9 更新目标配置 |
+| `/api/goals/{public_id}/archive` | POST | `backend/app/routes/goals.py` | v0.9 Goals | path `public_id`；query `timezone` | `GoalResponse` | Session Token，owner/member 写权限 | `backend/tests/test_goals.py` | v0.9 归档目标，不物理删除 |
 | `/api/recurring/items` | GET | `backend/app/routes/recurring.py` | `recurringItems(status,includeArchived,month,timezone)` | query `status/include_archived/month/timezone` | `RecurringItemListResponseDto` | Session Token | `backend/tests/test_recurring_items.py`, `ApiDtoContractTest` | v0.6 固定支出列表 |
 | `/api/recurring/from-candidate` | POST | `backend/app/routes/recurring.py` | `confirmRecurringCandidate(request,timezone)` | `RecurringCandidateConfirmRequest`；query `timezone` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 候选确认成固定支出 |
 | `/api/recurring/items/{public_id}` | GET | `backend/app/routes/recurring.py` | `recurringItem(publicId,month,timezone)` | path `public_id`；query `month/timezone` | `RecurringItemDto` | Session Token | `backend/tests/test_recurring_items.py` | 固定支出详情 |
@@ -1182,6 +1187,115 @@ timezone=Asia/Shanghai
   ]
 }
 ```
+
+## 目标
+
+> v0.9 起提供月度支出目标。第一刀只支持 `spending_limit` + `monthly`，用于外卖、购物、总支出等“不要超过”的目标；不做储蓄目标、资产目标或自动入账。
+
+### GET /api/goals
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+查询参数：
+
+```text
+month=2026-05
+include_archived=false
+timezone=Asia/Shanghai
+```
+
+规则：
+
+- 只读取当前账本目标。
+- `viewer` 可读。
+- 进度只统计当前账本、指定月份、`confirmed` 账单。
+- 统计时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
+- `category` 为空表示总支出目标；有值时只统计该分类，分类按现有归一规则处理。
+
+返回：
+
+```json
+{
+  "items": [
+    {
+      "public_id": "goal-uuid",
+      "ledger_id": "owner",
+      "name": "控制餐饮",
+      "goal_type": "spending_limit",
+      "period": "monthly",
+      "month": "2026-05",
+      "category": "餐饮",
+      "target_amount_cents": 20000,
+      "spent_amount_cents": 12800,
+      "remaining_amount_cents": 7200,
+      "progress_percent": 64,
+      "progress_state": "on_track",
+      "status": "active",
+      "created_at": "2026-05-14T08:00:00Z",
+      "updated_at": "2026-05-14T08:00:00Z",
+      "archived_at": null
+    }
+  ]
+}
+```
+
+`progress_state`：
+
+```text
+not_started  本月还没有相关支出
+on_track     已有支出但未接近上限
+near_limit   已达到目标金额的 80% 及以上
+over_limit   已达到或超过目标金额
+archived     目标已归档
+```
+
+### POST /api/goals
+
+仅 `owner` / `member` 可调用；`viewer` 返回 `permission_denied`。
+
+```json
+{
+  "name": "控制餐饮",
+  "month": "2026-05",
+  "category": "餐饮",
+  "target_amount_cents": 20000,
+  "goal_type": "spending_limit",
+  "period": "monthly"
+}
+```
+
+校验：
+
+- `name` 去掉首尾空格后必须为 1..80 字。
+- `month` 必须是有效 `YYYY-MM`。
+- `target_amount_cents` 必须大于 0。
+- 第一刀 `goal_type` 只支持 `spending_limit`，`period` 只支持 `monthly`。
+
+### GET /api/goals/{public_id}
+
+读取单个目标详情和当前进度。跨账本读取返回 `goal_not_found`。
+
+### PATCH /api/goals/{public_id}
+
+仅 `owner` / `member` 可调用。支持局部更新：
+
+```json
+{
+  "name": "全月总支出",
+  "category": null,
+  "target_amount_cents": 50000
+}
+```
+
+已归档目标不能继续修改，返回 `invalid_request`。
+
+### POST /api/goals/{public_id}/archive
+
+仅 `owner` / `member` 可调用。归档目标，不物理删除历史配置；默认列表不会返回归档目标，除非 `include_archived=true`。
 
 ## 预算
 

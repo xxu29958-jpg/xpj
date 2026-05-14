@@ -134,6 +134,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "recurring_items" in inspector.get_table_names()
     assert "budgets" in inspector.get_table_names()
     assert "budget_categories" in inspector.get_table_names()
+    assert "goals" in inspector.get_table_names()
     assert "rule_application_batches" in inspector.get_table_names()
     assert "rule_application_changes" in inspector.get_table_names()
     assert {
@@ -156,6 +157,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_budgets_tenant_month" in _indexes("budgets")
     assert "ix_budget_categories_tenant_month" in _indexes("budget_categories")
     assert "ix_budget_categories_tenant_category" in _indexes("budget_categories")
+    assert "ix_goals_tenant_month_status" in _indexes("goals")
+    assert "ix_goals_tenant_category_month" in _indexes("goals")
+    assert "ix_goals_tenant_public_id" in _indexes("goals")
     assert "ix_rule_application_batches_tenant_created_at" in _indexes("rule_application_batches")
     assert "ix_rule_application_batches_tenant_status" in _indexes("rule_application_batches")
     assert "ix_rule_application_changes_tenant_batch" in _indexes("rule_application_changes")
@@ -182,6 +186,11 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     budget_categories_sql = _table_create_sql("budget_categories")
     assert "ck_budget_categories_amount_non_negative" in budget_categories_sql
     assert "uq_budget_categories_tenant_month_category" in budget_categories_sql
+    goals_sql = _table_create_sql("goals")
+    assert "ck_goals_type_valid" in goals_sql
+    assert "ck_goals_period_valid" in goals_sql
+    assert "ck_goals_status_valid" in goals_sql
+    assert "ck_goals_target_positive" in goals_sql
     with engine.begin() as connection:
         owner_rules = connection.execute(
             text("SELECT COUNT(*) FROM category_rules WHERE tenant_id = 'owner'")
