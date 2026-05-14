@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
+from app.ledger_scope import add_ledger_scope
 from app.models import Expense
 from app.services.category_service import normalize_category
 from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
@@ -88,16 +89,6 @@ def _local_date_range_bounds_utc(
     return start_local.astimezone(UTC), end_local.astimezone(UTC)
 
 
-def _filter_range(query, *, tenant_id: str, start_utc: datetime, end_utc: datetime):
-    stat_time = _stat_time_expr()
-    return (
-        query.where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
-        .where(stat_time >= start_utc)
-        .where(stat_time < end_utc)
-    )
-
-
 def _range_amount_count(
     db: Session,
     *,
@@ -105,17 +96,21 @@ def _range_amount_count(
     start_utc: datetime,
     end_utc: datetime,
 ) -> tuple[int, int]:
-    row = db.execute(
-        _filter_range(
+    stat_time = _stat_time_expr()
+    statement = (
+        add_ledger_scope(
             select(
                 func.coalesce(func.sum(Expense.amount_cents), 0),
                 func.count(Expense.id),
             ),
-            tenant_id=tenant_id,
-            start_utc=start_utc,
-            end_utc=end_utc,
+            Expense,
+            tenant_id,
         )
-    ).one()
+        .where(Expense.status == "confirmed")
+        .where(stat_time >= start_utc)
+        .where(stat_time < end_utc)
+    )
+    row = db.execute(statement).one()
     return int(row[0] or 0), int(row[1] or 0)
 
 
@@ -219,18 +214,22 @@ def _merchant_ranking(
     end_utc: datetime,
     top_n: int,
 ) -> list[dict]:
-    rows = db.execute(
-        _filter_range(
+    stat_time = _stat_time_expr()
+    statement = (
+        add_ledger_scope(
             select(
                 func.coalesce(Expense.merchant, ""),
                 func.coalesce(func.sum(Expense.amount_cents), 0),
                 func.count(Expense.id),
             ).group_by(func.coalesce(Expense.merchant, "")),
-            tenant_id=tenant_id,
-            start_utc=start_utc,
-            end_utc=end_utc,
+            Expense,
+            tenant_id,
         )
+        .where(Expense.status == "confirmed")
+        .where(stat_time >= start_utc)
+        .where(stat_time < end_utc)
     )
+    rows = db.execute(statement)
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
     buckets: dict[str, dict[str, int | str]] = defaultdict(
         lambda: {"merchant": "", "amount_cents": 0, "count": 0}
@@ -255,18 +254,22 @@ def _category_totals(
     start_utc: datetime,
     end_utc: datetime,
 ) -> dict[str, dict[str, int | str]]:
-    rows = db.execute(
-        _filter_range(
+    stat_time = _stat_time_expr()
+    statement = (
+        add_ledger_scope(
             select(
                 Expense.category,
                 func.coalesce(func.sum(Expense.amount_cents), 0),
                 func.count(Expense.id),
             ).group_by(Expense.category),
-            tenant_id=tenant_id,
-            start_utc=start_utc,
-            end_utc=end_utc,
+            Expense,
+            tenant_id,
         )
+        .where(Expense.status == "confirmed")
+        .where(stat_time >= start_utc)
+        .where(stat_time < end_utc)
     )
+    rows = db.execute(statement)
     buckets: dict[str, dict[str, int | str]] = defaultdict(
         lambda: {"category": "", "amount_cents": 0, "count": 0}
     )

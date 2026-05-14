@@ -15,6 +15,7 @@ LEDGER_SCOPED_MODELS = {
     "DuplicateIgnore",
     "Expense",
     "ExpenseTag",
+    "Goal",
     "MerchantAlias",
     "RecurringItem",
     "RuleApplicationBatch",
