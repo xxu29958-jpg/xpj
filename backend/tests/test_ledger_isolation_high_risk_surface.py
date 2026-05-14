@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -258,22 +256,25 @@ def test_web_import_export_and_dashboard_keep_selected_ledger_scoped(
     assert "TesterWebOnly" in tester_export.text
     assert "OwnerWebOnly" not in tester_export.text
 
-    import_payload = json.dumps(
-        [
-            {
-                "amount_cents": 777,
-                "merchant": "TesterImportedOnly",
-                "category": "TesterWebCategory",
-                "note": "",
-                "expense_time": "2026-01-06T00:00:00+00:00",
-                "tags": "",
-                "source": "CSV",
-            }
-        ]
+    imported_preview = local_web_client.post(
+        "/web/import/preview",
+        data={"ledger_id": "tester_1"},
+        files={
+            "csv_file": (
+                "tester.csv",
+                b"amount_cents,merchant,category,expense_time,source\n"
+                b"777,TesterImportedOnly,TesterWebCategory,2026-01-06T00:00:00+00:00,CSV\n",
+                "text/csv",
+            )
+        },
+        follow_redirects=False,
     )
+    assert imported_preview.status_code == 303
+    location = imported_preview.headers["location"]
+    batch_path = location.split("?", 1)[0]
     imported = local_web_client.post(
-        "/web/import/confirm",
-        data={"ledger_id": "tester_1", "payload": import_payload},
+        f"{batch_path}/apply",
+        data={"ledger_id": "tester_1", "batch_size": "500"},
         follow_redirects=False,
     )
     assert imported.status_code == 303

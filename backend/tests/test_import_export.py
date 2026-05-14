@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -18,7 +16,7 @@ from app.services.import_service import (
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense
+from app.models import CsvImportBatch, Expense
 
 
 @pytest.fixture()
@@ -109,36 +107,24 @@ def test_web_import_preview_then_confirm_inserts_pending(web_client: TestClient)
         "/web/import/preview",
         data={"ledger_id": "owner"},
         files={"csv_file": ("rows.csv", csv.encode("utf-8"), "text/csv")},
+        follow_redirects=False,
     )
-    assert resp.status_code == 200
-    assert "可导入" in resp.text
-    # Build a payload that mirrors what the template would submit.
-    payload = json.dumps(
-        [
-            {
-                "amount_cents": 850,
-                "merchant": "Cafe",
-                "category": "餐饮",
-                "note": "morning",
-                "expense_time": None,
-                "tags": "",
-                "source": "CSV导入",
-            },
-            {
-                "amount_cents": 1200,
-                "merchant": "Bus",
-                "category": "交通",
-                "note": "",
-                "expense_time": None,
-                "tags": "",
-                "source": "CSV导入",
-            },
-        ],
-        ensure_ascii=False,
-    )
+    assert resp.status_code == 303
+    with SessionLocal() as db:
+        batch = db.scalar(select(CsvImportBatch).where(CsvImportBatch.tenant_id == "owner"))
+        assert batch is not None
+        assert batch.total_rows == 2
+        assert batch.valid_rows == 2
+
+    detail = web_client.get(f"/web/import/{batch.public_id}?ledger_id=owner")
+    assert detail.status_code == 200
+    assert "CSV 导入批次" in detail.text
+    assert "Cafe" in detail.text
+    assert "Bus" in detail.text
+
     confirm = web_client.post(
-        "/web/import/confirm",
-        data={"ledger_id": "owner", "payload": payload},
+        f"/web/import/{batch.public_id}/apply",
+        data={"ledger_id": "owner", "batch_size": "500"},
         follow_redirects=False,
     )
     assert confirm.status_code == 303
@@ -151,6 +137,30 @@ def test_web_import_preview_then_confirm_inserts_pending(web_client: TestClient)
     assert len(rows) == 2
     assert {r.amount_cents for r in rows} == {850, 1200}
     assert all(r.status == "pending" for r in rows)
+
+
+def test_web_import_batch_errors_csv(web_client: TestClient) -> None:
+    csv = "amount_yuan,merchant,category\nabc,Bad,餐饮\n3.00,Good,交通\n"
+    response = web_client.post(
+        "/web/import/preview",
+        data={"ledger_id": "owner"},
+        files={"csv_file": ("rows.csv", csv.encode("utf-8"), "text/csv")},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    with SessionLocal() as db:
+        batch = db.scalar(select(CsvImportBatch).where(CsvImportBatch.tenant_id == "owner"))
+        assert batch is not None
+
+    detail = web_client.get(f"/web/import/{batch.public_id}?ledger_id=owner&status=error")
+    assert detail.status_code == 200
+    assert "amount_yuan" in detail.text
+
+    errors = web_client.get(f"/web/import/{batch.public_id}/errors.csv?ledger_id=owner")
+    assert errors.status_code == 200
+    assert errors.content.startswith(b"\xef\xbb\xbf")
+    assert "Bad" in errors.text
+    assert "amount_yuan" in errors.text
 
 
 def test_web_import_remote_returns_403(client: TestClient) -> None:

@@ -126,6 +126,7 @@ h2 { font-size: 15px; margin: 16px 0 12px; color: #334155; border-bottom: 1px so
 .status-chip.warn    { background: var(--chip-warn-bg); color: var(--chip-warn-fg); }
 .status-chip.ok      { background: var(--chip-ok-bg); color: var(--chip-ok-fg); }
 .status-chip.muted   { background: var(--chip-muted-bg); color: var(--chip-muted-fg); }
+.status-chip.err     { background: #fee2e2; color: var(--fg-danger); }
 
 .category-badge {
     display: inline-block;
@@ -192,6 +193,8 @@ form.inline { margin: 0; }
 .empty-state { text-align: center; padding: 36px 20px; }
 .empty-state-title { font-size: 15px; color: var(--fg-default); font-weight: 600; margin-bottom: 6px; }
 .empty-state-hint { font-size: 13px; color: var(--fg-muted); }
+.empty-table-cell { text-align: center; color: var(--fg-muted); padding: 18px !important; }
+.error-text { color: var(--fg-danger); }
 
 .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
 .badge-ok { background: var(--chip-ok-bg); color: var(--chip-ok-fg); }
@@ -266,6 +269,14 @@ form.inline { margin: 0; }
 .btn-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .btn-danger:hover { background: #fecaca; }
 .transaction-table.compact th, .transaction-table.compact td { padding: 6px 8px; font-size: 13px; }
+.import-batch-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.import-batch-actions input[type="number"] {
+    width: 90px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    font-size: 13px;
+}
 
 
 /* v0.4-alpha3 slice 2 - Data Quality dashboard */

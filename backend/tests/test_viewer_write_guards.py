@@ -177,6 +177,13 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
         ],
         ensure_ascii=False,
     )
+    import_preview = web_client.post(
+        "/web/import/preview",
+        data={"ledger_id": ledger_id},
+        files={"csv_file": ("rows.csv", b"amount_yuan,merchant\n1.00,Cafe\n", "text/csv")},
+        follow_redirects=False,
+    )
+    _assert_permission_denied(import_preview, label="csv import preview")
 
     requests = [
         (
@@ -217,6 +224,7 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             "/web/import/confirm",
             {"ledger_id": ledger_id, "payload": import_payload},
         ),
+        ("csv import apply", "/web/import/missing/apply", {"ledger_id": ledger_id, "batch_size": "1"}),
         (
             "uncategorized bulk set",
             "/web/categories/uncategorized/bulk-set",
