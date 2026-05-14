@@ -133,6 +133,8 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
 | `/api/expenses/{id}/items` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseItemsResponse` | Session Token | `backend/tests/test_expense_items.py` | v1.0 账单明细行；viewer 可读 |
 | `/api/expenses/{id}/items` | PUT | `backend/app/routes/expenses.py` | 无 | `ExpenseItemReplaceRequest` | `ExpenseItemsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expense_items.py` | v1.0 整体替换账单明细行 |
+| `/api/expenses/{id}/splits` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseSplitsResponse` | Session Token | `backend/tests/test_expense_splits.py` | v1.0 家庭拆账；viewer 可读 |
+| `/api/expenses/{id}/splits` | PUT | `backend/app/routes/expenses.py` | 无 | `ExpenseSplitReplaceRequest` | `ExpenseSplitsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expense_splits.py` | v1.0 整体替换家庭拆账并写审计 |
 | `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
 | `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
@@ -900,6 +902,81 @@ Content-Type: application/json
 - 只允许修改 `pending` 或 `confirmed` 账单；`rejected` 返回 `expense_not_found`。
 - `position` 由服务端按请求顺序生成。
 - `items_total_amount_cents` 只汇总带 `amount_cents` 的明细；`mismatch_cents = parent_amount_cents - items_total_amount_cents`。
+- viewer 返回 `permission_denied`。
+
+### GET /api/expenses/{id}/splits
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+返回指定账单的家庭拆账行。拆账行是 v1.0 的独立子资源，不并入 `ExpenseResponse`，不会改变账单确认、统计、预算或 CSV 导出结果。跨账本读取返回 `expense_not_found`。viewer 可读。
+
+返回示例：
+
+```json
+{
+  "expense_id": 1,
+  "parent_amount_cents": 10000,
+  "splits_total_amount_cents": 9000,
+  "mismatch_cents": 1000,
+  "splits": [
+    {
+      "public_id": "04d3cfd1-58c8-4d9f-8f87-1a5686404202",
+      "position": 0,
+      "member_id": 12,
+      "account_name": "我",
+      "role": "owner",
+      "amount_cents": 6000,
+      "note": "我出大头",
+      "disabled_at": null,
+      "created_at": "2026-05-03T04:20:00Z",
+      "updated_at": "2026-05-03T04:20:00Z"
+    }
+  ]
+}
+```
+
+### PUT /api/expenses/{id}/splits
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "splits": [
+    {
+      "member_id": 12,
+      "amount_cents": 6000,
+      "note": "我出大头"
+    },
+    {
+      "member_id": 13,
+      "amount_cents": 3000,
+      "note": "一起吃饭"
+    }
+  ]
+}
+```
+
+规则：
+
+- 只能整体替换同一账单的拆账行，最多 100 行。
+- `member_id` 必须是当前账本的有效成员；跨账本、缺失、已停用成员返回 `member_not_found`。
+- 已有拆账行在成员停用后仍保留原成员姓名、角色和 `disabled_at`，但不能再把停用成员写入新的拆账替换请求。
+- 同一个成员不能在同一账单内重复出现，重复返回 `invalid_request`。
+- 只允许修改 `pending` 或 `confirmed` 账单；`rejected` 返回 `expense_not_found`。
+- `position` 由服务端按请求顺序生成。
+- `splits_total_amount_cents` 汇总拆账金额；`mismatch_cents = parent_amount_cents - splits_total_amount_cents`。
+- 成功替换会写入成员审计日志 `expense_splits_replaced`，`detail` 包含 `expense_public_id` 以及 before/after 的成员分配摘要。
 - viewer 返回 `permission_denied`。
 
 ### POST /api/expenses/{id}/confirm

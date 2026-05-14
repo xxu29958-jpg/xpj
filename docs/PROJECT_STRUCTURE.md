@@ -73,6 +73,7 @@ backend\
       dashboard_service.py
       duplicate_service.py
       expense_service.py
+      expense_split_service.py
       file_service.py
       goal_service.py
       ocr_service.py
@@ -130,6 +131,7 @@ backend\
     test_uploads.py
     test_expenses.py
     test_expense_items.py
+    test_expense_splits.py
     test_csv_import_batches.py
     test_tenant_isolation.py
     test_stats_filters.py

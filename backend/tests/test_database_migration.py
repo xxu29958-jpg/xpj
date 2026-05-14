@@ -132,6 +132,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "tags" in inspector.get_table_names()
     assert "expense_tags" in inspector.get_table_names()
     assert "expense_items" in inspector.get_table_names()
+    assert "expense_splits" in inspector.get_table_names()
     assert "csv_import_batches" in inspector.get_table_names()
     assert "csv_import_rows" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
@@ -160,6 +161,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_expense_items_tenant_expense_position" in _indexes("expense_items")
     assert "ix_expense_items_tenant_public_id" in _indexes("expense_items")
     assert "ix_expense_items_tenant_category" in _indexes("expense_items")
+    assert "ix_expense_splits_tenant_expense_position" in _indexes("expense_splits")
+    assert "ix_expense_splits_tenant_public_id" in _indexes("expense_splits")
+    assert "ix_expense_splits_tenant_member" in _indexes("expense_splits")
     assert "ix_csv_import_batches_tenant_public_id" in _indexes("csv_import_batches")
     assert "ix_csv_import_batches_tenant_status_created_at" in _indexes("csv_import_batches")
     assert "ix_csv_import_rows_tenant_batch_line" in _indexes("csv_import_rows")
@@ -194,10 +198,19 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "uq_tags_tenant_key" in tags_sql
     expense_tags_sql = _table_create_sql("expense_tags")
     assert "uq_expense_tags_tenant_expense_tag" in expense_tags_sql
+    expenses_sql = _table_create_sql("expenses")
+    assert "uq_expenses_id_tenant_id" in expenses_sql
     expense_items_sql = _table_create_sql("expense_items")
     assert "ck_expense_items_position_non_negative" in expense_items_sql
     assert "ck_expense_items_amount_non_negative" in expense_items_sql
     assert "uq_expense_items_tenant_expense_position" in expense_items_sql
+    expense_splits_sql = _table_create_sql("expense_splits")
+    assert "ck_expense_splits_position_non_negative" in expense_splits_sql
+    assert "ck_expense_splits_amount_non_negative" in expense_splits_sql
+    assert "fk_expense_splits_expense_tenant" in expense_splits_sql
+    assert "fk_expense_splits_member_tenant" in expense_splits_sql
+    assert "uq_expense_splits_tenant_expense_position" in expense_splits_sql
+    assert "uq_expense_splits_tenant_expense_member" in expense_splits_sql
     csv_import_batches_sql = _table_create_sql("csv_import_batches")
     assert "ck_csv_import_batches_status_valid" in csv_import_batches_sql
     csv_import_rows_sql = _table_create_sql("csv_import_rows")
@@ -240,9 +253,57 @@ def test_new_database_enforces_family_role_constraints() -> None:
     ledger_member_sql = _table_create_sql("ledger_members")
     invitation_sql = _table_create_sql("invitations")
     assert "ck_ledger_members_role_valid" in ledger_member_sql
+    assert "uq_ledger_members_id_ledger_id" in ledger_member_sql
     assert "role IN ('owner', 'member', 'viewer')" in ledger_member_sql
     assert "ck_invitations_role_invitable" in invitation_sql
     assert "role IN ('member', 'viewer')" in invitation_sql
+
+
+def test_legacy_database_with_cross_ledger_expense_splits_fails_startup() -> None:
+    _reset_empty_database()
+    init_db()
+
+    try:
+        with engine.begin() as connection:
+            owner_member_id = connection.execute(
+                text("SELECT id FROM ledger_members WHERE ledger_id = 'owner' LIMIT 1")
+            ).scalar_one()
+            result = connection.execute(
+                text(
+                    """
+                    INSERT INTO expenses (
+                        tenant_id, public_id, amount_cents, merchant, category,
+                        note, source, status, duplicate_status, created_at, updated_at
+                    )
+                    VALUES (
+                        'owner', '11111111-1111-1111-1111-111111111111',
+                        1000, '坏数据', '其他', '', 'pytest', 'confirmed', 'none',
+                        '2026-05-04 08:00:00', '2026-05-04 08:00:00'
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO expense_splits (
+                        public_id, tenant_id, expense_id, member_id, position,
+                        amount_cents, created_at, updated_at
+                    )
+                    VALUES (
+                        '22222222-2222-2222-2222-222222222222',
+                        'tester_1', :expense_id, :member_id, 0,
+                        1000, '2026-05-04 08:00:00', '2026-05-04 08:00:00'
+                    )
+                    """
+                ),
+                {"expense_id": int(result.lastrowid), "member_id": owner_member_id},
+            )
+
+        with pytest.raises(RuntimeError, match="expense_splits"):
+            database.validate_sqlite_data_integrity()
+    finally:
+        _reset_empty_database()
 
 
 def test_legacy_database_with_invalid_family_roles_fails_startup() -> None:

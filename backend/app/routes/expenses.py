@@ -14,6 +14,8 @@ from app.schemas import (
     NotificationDraftCreateRequest,
     ExpenseRecognizeTextRequest,
     ExpenseResponse,
+    ExpenseSplitReplaceRequest,
+    ExpenseSplitsResponse,
     ExpenseUpdateRequest,
     MonthsResponse,
     PaginatedExpensesResponse,
@@ -34,6 +36,7 @@ from app.services.expense_service import (
     update_expense,
 )
 from app.services.file_service import resolve_protected_image
+from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.receipt_item_service import list_expense_items, replace_expense_items
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.services.tag_service import list_tags
@@ -165,6 +168,31 @@ def put_expense_item_rows(
     db: Session = Depends(get_db),
 ) -> ExpenseItemsResponse:
     return replace_expense_items(db, expense_id, auth.tenant_id, payload)
+
+
+@router.get("/{expense_id}/splits", response_model=ExpenseSplitsResponse)
+def get_expense_split_rows(
+    expense_id: int,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> ExpenseSplitsResponse:
+    return list_expense_splits(db, expense_id, auth.tenant_id)
+
+
+@router.put("/{expense_id}/splits", response_model=ExpenseSplitsResponse)
+def put_expense_split_rows(
+    expense_id: int,
+    payload: ExpenseSplitReplaceRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ExpenseSplitsResponse:
+    return replace_expense_splits(
+        db,
+        expense_id,
+        auth.tenant_id,
+        payload,
+        actor_account_id=auth.account_id,
+    )
 
 
 @router.get("/{expense_id}", response_model=ExpenseResponse)

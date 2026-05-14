@@ -51,6 +51,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     migrate_sqlite_schema()
     seed_identity_data()
+    validate_sqlite_data_integrity()
     # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
     # paths remain readable through resolve_protected_image() after the route
     # has verified expense ownership. See docs/ROLLBACK.md.
@@ -114,6 +115,7 @@ def seed_identity_data() -> None:
         DuplicateIgnore,
         Expense,
         ExpenseItem,
+        ExpenseSplit,
         ExpenseTag,
         Goal,
         MerchantAlias,
@@ -130,6 +132,8 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(Expense.tenant_id).distinct()) if value)
         if inspect(engine).has_table("expense_items"):
             ids.update(str(value) for value in db.scalars(select(ExpenseItem.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("expense_splits"):
+            ids.update(str(value) for value in db.scalars(select(ExpenseSplit.tenant_id).distinct()) if value)
         if inspect(engine).has_table("csv_import_batches"):
             ids.update(str(value) for value in db.scalars(select(CsvImportBatch.tenant_id).distinct()) if value)
         if inspect(engine).has_table("csv_import_rows"):
@@ -260,6 +264,14 @@ def migrate_upload_paths_to_tenant_dirs() -> None:
                     )
 
 
+def validate_sqlite_data_integrity() -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+    table_names = set(inspect(engine).get_table_names())
+    with engine.begin() as connection:
+        _validate_expense_split_integrity(connection, table_names)
+
+
 def _validate_family_role_data(connection, table_names: set[str]) -> None:
     """Reject legacy SQLite rows that would bypass role CHECK constraints.
 
@@ -290,6 +302,46 @@ def _validate_family_role_data(connection, table_names: set[str]) -> None:
         )
         if invalid_invitations:
             raise RuntimeError("Invalid legacy data: invitations.role contains unsupported values")
+
+
+def _validate_expense_split_integrity(connection, table_names: set[str]) -> None:
+    """Reject split rows whose expense/member belongs to another ledger."""
+
+    required = {"expense_splits", "expenses", "ledger_members"}
+    if not required.issubset(table_names):
+        return
+
+    invalid_expense_refs = int(
+        connection.execute(
+            text(
+                "SELECT COUNT(*) FROM expense_splits AS split "
+                "LEFT JOIN expenses AS expense "
+                "ON expense.id = split.expense_id "
+                "AND expense.tenant_id = split.tenant_id "
+                "WHERE expense.id IS NULL"
+            )
+        ).scalar_one()
+    )
+    if invalid_expense_refs:
+        raise RuntimeError(
+            "Invalid legacy data: expense_splits contains cross-ledger expense references"
+        )
+
+    invalid_member_refs = int(
+        connection.execute(
+            text(
+                "SELECT COUNT(*) FROM expense_splits AS split "
+                "LEFT JOIN ledger_members AS member "
+                "ON member.id = split.member_id "
+                "AND member.ledger_id = split.tenant_id "
+                "WHERE member.id IS NULL"
+            )
+        ).scalar_one()
+    )
+    if invalid_member_refs:
+        raise RuntimeError(
+            "Invalid legacy data: expense_splits contains cross-ledger member references"
+        )
 
 
 def migrate_sqlite_schema() -> None:

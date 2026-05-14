@@ -390,6 +390,41 @@ class ExpenseItemsResponse(BaseModel):
     items: list[ExpenseItemResponse]
 
 
+class ExpenseSplitRequest(BaseModel):
+    member_id: int = Field(ge=1)
+    amount_cents: int = Field(ge=0)
+    note: str | None = Field(default=None, max_length=200)
+
+
+class ExpenseSplitReplaceRequest(BaseModel):
+    splits: list[ExpenseSplitRequest] = Field(default_factory=list, max_length=100)
+
+
+class ExpenseSplitResponse(BaseModel):
+    public_id: str
+    position: int
+    member_id: int
+    account_name: str
+    role: str
+    amount_cents: int
+    note: str | None
+    disabled_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("disabled_at", "created_at", "updated_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class ExpenseSplitsResponse(BaseModel):
+    expense_id: int
+    parent_amount_cents: int | None
+    splits_total_amount_cents: int | None
+    mismatch_cents: int | None
+    splits: list[ExpenseSplitResponse]
+
+
 class CsvImportBatchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -18,6 +18,7 @@ LEDGER_SCOPED_MODELS = {
     "DuplicateIgnore",
     "Expense",
     "ExpenseItem",
+    "ExpenseSplit",
     "ExpenseTag",
     "Goal",
     "MerchantAlias",

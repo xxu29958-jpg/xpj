@@ -3,7 +3,20 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -38,6 +51,7 @@ class LedgerMember(Base):
     __tablename__ = "ledger_members"
     __table_args__ = (
         CheckConstraint("role IN ('owner', 'member', 'viewer')", name="ck_ledger_members_role_valid"),
+        UniqueConstraint("id", "ledger_id", name="uq_ledger_members_id_ledger_id"),
         UniqueConstraint("ledger_id", "account_id", name="uq_ledger_member_ledger_account"),
     )
 
@@ -177,6 +191,9 @@ Index("ix_ledger_audit_logs_ledger_action", LedgerAuditLog.ledger_id, LedgerAudi
 
 class Expense(Base):
     __tablename__ = "expenses"
+    __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_expenses_id_tenant_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
@@ -267,6 +284,44 @@ class ExpenseItem(Base):
 Index("ix_expense_items_tenant_expense_position", ExpenseItem.tenant_id, ExpenseItem.expense_id, ExpenseItem.position)
 Index("ix_expense_items_tenant_public_id", ExpenseItem.tenant_id, ExpenseItem.public_id)
 Index("ix_expense_items_tenant_category", ExpenseItem.tenant_id, ExpenseItem.category)
+
+
+class ExpenseSplit(Base):
+    __tablename__ = "expense_splits"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="ck_expense_splits_position_non_negative"),
+        CheckConstraint("amount_cents >= 0", name="ck_expense_splits_amount_non_negative"),
+        ForeignKeyConstraint(
+            ["expense_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_expense_splits_expense_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["member_id", "tenant_id"],
+            ["ledger_members.id", "ledger_members.ledger_id"],
+            name="fk_expense_splits_member_tenant",
+        ),
+        UniqueConstraint("tenant_id", "expense_id", "position", name="uq_expense_splits_tenant_expense_position"),
+        UniqueConstraint("tenant_id", "expense_id", "member_id", name="uq_expense_splits_tenant_expense_member"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    expense_id: Mapped[int] = mapped_column(Integer, ForeignKey("expenses.id"), nullable=False, index=True)
+    member_id: Mapped[int] = mapped_column(Integer, ForeignKey("ledger_members.id"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_expense_splits_tenant_expense_position", ExpenseSplit.tenant_id, ExpenseSplit.expense_id, ExpenseSplit.position)
+Index("ix_expense_splits_tenant_public_id", ExpenseSplit.tenant_id, ExpenseSplit.public_id)
+Index("ix_expense_splits_tenant_member", ExpenseSplit.tenant_id, ExpenseSplit.member_id)
 
 
 class CsvImportBatch(Base):
