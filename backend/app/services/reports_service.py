@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import csv
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -21,6 +22,14 @@ from app.services.time_service import local_month_bounds_utc, safe_zone
 
 ReportGranularity = Literal["day", "week", "month"]
 ReportRankingMetric = Literal["amount", "count"]
+
+
+@dataclass(frozen=True)
+class _TrendBucket:
+    bucket: str
+    label: str
+    start_utc: datetime
+    end_utc: datetime
 
 
 def _stat_time_expr():
@@ -124,6 +133,100 @@ def _month_bounds(month: str, timezone_name: str) -> tuple[datetime, datetime]:
     return bounds
 
 
+def _trend_buckets(
+    *,
+    month: str,
+    granularity: ReportGranularity,
+    timezone_name: str,
+    zone: ZoneInfo,
+) -> list[_TrendBucket]:
+    if granularity == "month":
+        buckets: list[_TrendBucket] = []
+        for label in _month_labels_ending_at(month, 6):
+            start_utc, end_utc = _month_bounds(label, timezone_name)
+            buckets.append(
+                _TrendBucket(
+                    bucket=label,
+                    label=label,
+                    start_utc=start_utc,
+                    end_utc=end_utc,
+                )
+            )
+        return buckets
+
+    days = _days_in_month(month, zone)
+    if granularity == "week":
+        month_start = days[0]
+        month_end_exclusive = days[-1] + timedelta(days=1)
+        week_starts = sorted({day - timedelta(days=day.weekday()) for day in days})
+        buckets = []
+        for week_start in week_starts:
+            week_end_exclusive = week_start + timedelta(days=7)
+            start_day = max(week_start, month_start)
+            end_day = min(week_end_exclusive, month_end_exclusive)
+            start_utc, end_utc = _local_date_range_bounds_utc(start_day, end_day, zone)
+            label_end = end_day - timedelta(days=1)
+            buckets.append(
+                _TrendBucket(
+                    bucket=week_start.isoformat(),
+                    label=f"{start_day.strftime('%m-%d')}~{label_end.strftime('%m-%d')}",
+                    start_utc=start_utc,
+                    end_utc=end_utc,
+                )
+            )
+        return buckets
+
+    buckets = []
+    for day in days:
+        start_utc, end_utc = _local_day_bounds_utc(day, zone)
+        buckets.append(
+            _TrendBucket(
+                bucket=day.isoformat(),
+                label=day.strftime("%m-%d"),
+                start_utc=start_utc,
+                end_utc=end_utc,
+            )
+        )
+    return buckets
+
+
+def _bucket_amount_counts(
+    db: Session,
+    *,
+    tenant_id: str,
+    buckets: list[_TrendBucket],
+) -> dict[str, tuple[int, int]]:
+    if not buckets:
+        return {}
+    stat_time = _stat_time_expr()
+    columns = []
+    for index, bucket in enumerate(buckets):
+        in_bucket = (stat_time >= bucket.start_utc) & (stat_time < bucket.end_utc)
+        columns.extend(
+            [
+                func.coalesce(
+                    func.sum(case((in_bucket, Expense.amount_cents), else_=0)),
+                    0,
+                ).label(f"amount_{index}"),
+                func.coalesce(
+                    func.sum(case((in_bucket, 1), else_=0)),
+                    0,
+                ).label(f"count_{index}"),
+            ]
+        )
+    statement = (
+        add_ledger_scope(select(*columns), Expense, tenant_id)
+        .where(Expense.status == "confirmed")
+        .where(stat_time >= min(bucket.start_utc for bucket in buckets))
+        .where(stat_time < max(bucket.end_utc for bucket in buckets))
+    )
+    row = db.execute(statement).one()
+    return {
+        bucket.bucket: (int(row[index * 2] or 0), int(row[index * 2 + 1] or 0))
+        for index, bucket in enumerate(buckets)
+    }
+
+
 def _trend_points(
     db: Session,
     *,
@@ -133,72 +236,22 @@ def _trend_points(
     timezone_name: str,
     zone: ZoneInfo,
 ) -> list[dict]:
-    if granularity == "month":
-        points: list[dict] = []
-        for label in _month_labels_ending_at(month, 6):
-            start_utc, end_utc = _month_bounds(label, timezone_name)
-            amount, count = _range_amount_count(
-                db,
-                tenant_id=tenant_id,
-                start_utc=start_utc,
-                end_utc=end_utc,
-            )
-            points.append(
-                {
-                    "bucket": label,
-                    "label": label,
-                    "amount_cents": amount,
-                    "count": count,
-                }
-            )
-        return points
-
-    days = _days_in_month(month, zone)
-    if granularity == "week":
-        month_start = days[0]
-        month_end_exclusive = days[-1] + timedelta(days=1)
-        week_starts = sorted({day - timedelta(days=day.weekday()) for day in days})
-        points = []
-        for week_start in week_starts:
-            week_end_exclusive = week_start + timedelta(days=7)
-            start_day = max(week_start, month_start)
-            end_day = min(week_end_exclusive, month_end_exclusive)
-            start_utc, end_utc = _local_date_range_bounds_utc(start_day, end_day, zone)
-            amount, count = _range_amount_count(
-                db,
-                tenant_id=tenant_id,
-                start_utc=start_utc,
-                end_utc=end_utc,
-            )
-            label_end = end_day - timedelta(days=1)
-            points.append(
-                {
-                    "bucket": week_start.isoformat(),
-                    "label": f"{start_day.strftime('%m-%d')}~{label_end.strftime('%m-%d')}",
-                    "amount_cents": amount,
-                    "count": count,
-                }
-            )
-        return points
-
-    points = []
-    for day in days:
-        start_utc, end_utc = _local_day_bounds_utc(day, zone)
-        amount, count = _range_amount_count(
-            db,
-            tenant_id=tenant_id,
-            start_utc=start_utc,
-            end_utc=end_utc,
-        )
-        points.append(
-            {
-                "bucket": day.isoformat(),
-                "label": day.strftime("%m-%d"),
-                "amount_cents": amount,
-                "count": count,
-            }
-        )
-    return points
+    buckets = _trend_buckets(
+        month=month,
+        granularity=granularity,
+        timezone_name=timezone_name,
+        zone=zone,
+    )
+    totals = _bucket_amount_counts(db, tenant_id=tenant_id, buckets=buckets)
+    return [
+        {
+            "bucket": bucket.bucket,
+            "label": bucket.label,
+            "amount_cents": totals.get(bucket.bucket, (0, 0))[0],
+            "count": totals.get(bucket.bucket, (0, 0))[1],
+        }
+        for bucket in buckets
+    ]
 
 
 def _canonical_display(merchant: str, alias_map: dict[str, str]) -> str:

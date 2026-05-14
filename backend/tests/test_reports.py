@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.models import Expense, LedgerMember
+from app.services.reports_service import reports_overview
 from app.services.time_service import now_utc
 from conftest import app_headers, gray_app_headers
 
@@ -241,6 +242,56 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     assert "summary,ranking_metric,count" in csv_response.text
     assert "merchant_ranking,1,A店,300,3" in csv_response.text
     assert "category_comparison,交通,2000,1" in csv_response.text
+
+
+def test_reports_daily_trend_uses_bounded_aggregate_query_shape(
+    client: TestClient,
+) -> None:
+    for day in range(1, 32):
+        _insert_expense(
+            amount_cents=100 + day,
+            merchant=f"日趋势商家{day}",
+            category="生活",
+            status="confirmed",
+            expense_time=datetime(2026, 5, day, 0, 30, tzinfo=UTC),
+            confirmed_at=datetime(2026, 5, day, 0, 31, tzinfo=UTC),
+        )
+
+    expense_selects: list[str] = []
+
+    def before_cursor_execute(
+        conn,
+        cursor,
+        statement,
+        parameters,
+        context,
+        executemany,
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        normalized = " ".join(statement.upper().split())
+        if normalized.startswith("SELECT") and " FROM EXPENSES" in normalized:
+            expense_selects.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        with SessionLocal() as db:
+            payload = reports_overview(
+                db,
+                month="2026-05",
+                tenant_id="owner",
+                timezone_name="UTC",
+                granularity="day",
+                top_n=5,
+            )
+    finally:
+        event.remove(engine, "before_cursor_execute", before_cursor_execute)
+
+    assert len(payload["trend"]) == 31
+    assert sum(point["count"] for point in payload["trend"]) == 31
+    assert sum(point["amount_cents"] for point in payload["trend"]) == sum(
+        100 + day for day in range(1, 32)
+    )
+    assert len(expense_selects) <= 6
 
 
 def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
