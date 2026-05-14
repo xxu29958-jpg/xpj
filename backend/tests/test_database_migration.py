@@ -131,6 +131,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "merchant_aliases" in inspector.get_table_names()
     assert "tags" in inspector.get_table_names()
     assert "expense_tags" in inspector.get_table_names()
+    assert "expense_items" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
     assert "budgets" in inspector.get_table_names()
     assert "budget_categories" in inspector.get_table_names()
@@ -154,6 +155,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_tags_tenant_key" in _indexes("tags")
     assert "ix_expense_tags_tenant_expense" in _indexes("expense_tags")
     assert "ix_expense_tags_tenant_tag" in _indexes("expense_tags")
+    assert "ix_expense_items_tenant_expense_position" in _indexes("expense_items")
+    assert "ix_expense_items_tenant_public_id" in _indexes("expense_items")
+    assert "ix_expense_items_tenant_category" in _indexes("expense_items")
     assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
     assert "ix_budgets_tenant_month" in _indexes("budgets")
     assert "ix_budget_categories_tenant_month" in _indexes("budget_categories")
@@ -184,6 +188,10 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "uq_tags_tenant_key" in tags_sql
     expense_tags_sql = _table_create_sql("expense_tags")
     assert "uq_expense_tags_tenant_expense_tag" in expense_tags_sql
+    expense_items_sql = _table_create_sql("expense_items")
+    assert "ck_expense_items_position_non_negative" in expense_items_sql
+    assert "ck_expense_items_amount_non_negative" in expense_items_sql
+    assert "uq_expense_items_tenant_expense_position" in expense_items_sql
     recurring_sql = _table_create_sql("recurring_items")
     assert "ck_recurring_items_frequency_valid" in recurring_sql
     assert "ck_recurring_items_status_valid" in recurring_sql

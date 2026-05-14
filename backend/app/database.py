@@ -111,6 +111,7 @@ def seed_identity_data() -> None:
         DashboardCardPreference,
         DuplicateIgnore,
         Expense,
+        ExpenseItem,
         ExpenseTag,
         Goal,
         MerchantAlias,
@@ -125,6 +126,8 @@ def seed_identity_data() -> None:
         ids: set[str] = set()
         if inspect(engine).has_table("expenses"):
             ids.update(str(value) for value in db.scalars(select(Expense.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("expense_items"):
+            ids.update(str(value) for value in db.scalars(select(ExpenseItem.tenant_id).distinct()) if value)
         if inspect(engine).has_table("category_rules"):
             ids.update(str(value) for value in db.scalars(select(CategoryRule.tenant_id).distinct()) if value)
         if inspect(engine).has_table("merchant_aliases"):

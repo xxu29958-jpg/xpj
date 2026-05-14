@@ -15,6 +15,7 @@ LEDGER_SCOPED_MODELS = {
     "DashboardCardPreference",
     "DuplicateIgnore",
     "Expense",
+    "ExpenseItem",
     "ExpenseTag",
     "Goal",
     "MerchantAlias",

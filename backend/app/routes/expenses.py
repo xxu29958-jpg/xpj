@@ -8,6 +8,8 @@ from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     CategoriesResponse,
+    ExpenseItemReplaceRequest,
+    ExpenseItemsResponse,
     ExpenseManualCreateRequest,
     NotificationDraftCreateRequest,
     ExpenseRecognizeTextRequest,
@@ -32,6 +34,7 @@ from app.services.expense_service import (
     update_expense,
 )
 from app.services.file_service import resolve_protected_image
+from app.services.receipt_item_service import list_expense_items, replace_expense_items
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.services.tag_service import list_tags
 from app.tenants import AuthContext
@@ -143,6 +146,25 @@ def get_expenses_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'},
     )
+
+
+@router.get("/{expense_id}/items", response_model=ExpenseItemsResponse)
+def get_expense_item_rows(
+    expense_id: int,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> ExpenseItemsResponse:
+    return list_expense_items(db, expense_id, auth.tenant_id)
+
+
+@router.put("/{expense_id}/items", response_model=ExpenseItemsResponse)
+def put_expense_item_rows(
+    expense_id: int,
+    payload: ExpenseItemReplaceRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ExpenseItemsResponse:
+    return replace_expense_items(db, expense_id, auth.tenant_id, payload)
 
 
 @router.get("/{expense_id}", response_model=ExpenseResponse)

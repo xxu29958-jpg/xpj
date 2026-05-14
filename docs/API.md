@@ -125,6 +125,8 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseManualCreateRequest` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/notification-drafts` | POST | `backend/app/routes/expenses.py` | `createNotificationDraft(request)` | `NotificationDraftCreateRequest` / `NotificationDraftRequestDto` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_notification_drafts.py`, `ApiDtoContractTest`, `ExpenseRepositoryBindingTest` | v0.6；结构化草稿，不上传通知原文 |
 | `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
+| `/api/expenses/{id}/items` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseItemsResponse` | Session Token | `backend/tests/test_expense_items.py` | v1.0 账单明细行；viewer 可读 |
+| `/api/expenses/{id}/items` | PUT | `backend/app/routes/expenses.py` | 无 | `ExpenseItemReplaceRequest` | `ExpenseItemsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expense_items.py` | v1.0 整体替换账单明细行 |
 | `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
 | `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
@@ -770,6 +772,78 @@ Authorization: Bearer <session_token>
 ```
 
 返回单条账单详情，响应结构同 `ExpenseResponse`。找不到返回 `expense_not_found`。
+
+### GET /api/expenses/{id}/items
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+返回指定账单的明细行。明细行是 v1.0 的独立子资源，不并入 `ExpenseResponse`，不会改变账单确认、统计、预算或导出结果。跨账本读取返回 `expense_not_found`。viewer 可读。
+
+返回示例：
+
+```json
+{
+  "expense_id": 1,
+  "parent_amount_cents": 1500,
+  "items_total_amount_cents": 1250,
+  "mismatch_cents": 250,
+  "items": [
+    {
+      "public_id": "7c8b0f7a-9f44-4654-8ec9-0f91c5f3dd18",
+      "position": 0,
+      "name": "拿铁",
+      "quantity_text": "1杯",
+      "unit_price_cents": 500,
+      "amount_cents": 500,
+      "category": "餐饮",
+      "raw_text": "拿铁 1杯 5.00",
+      "confidence": 0.92,
+      "is_ocr_draft": false,
+      "created_at": "2026-05-03T04:20:00Z",
+      "updated_at": "2026-05-03T04:20:00Z"
+    }
+  ]
+}
+```
+
+### PUT /api/expenses/{id}/items
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "items": [
+    {
+      "name": "拿铁",
+      "quantity_text": "1杯",
+      "unit_price_cents": 500,
+      "amount_cents": 500,
+      "category": "餐饮",
+      "raw_text": "拿铁 1杯 5.00",
+      "confidence": 0.92
+    }
+  ]
+}
+```
+
+规则：
+
+- 只能整体替换同一账单的明细行，最多 200 行。
+- 只允许修改 `pending` 或 `confirmed` 账单；`rejected` 返回 `expense_not_found`。
+- `position` 由服务端按请求顺序生成。
+- `items_total_amount_cents` 只汇总带 `amount_cents` 的明细；`mismatch_cents = parent_amount_cents - items_total_amount_cents`。
+- viewer 返回 `permission_denied`。
 
 ### POST /api/expenses/{id}/confirm
 

@@ -347,6 +347,49 @@ class ExpenseResponse(BaseModel):
         return to_iso(value)
 
 
+class ExpenseItemRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    quantity_text: str | None = Field(default=None, max_length=64)
+    unit_price_cents: int | None = Field(default=None, ge=0)
+    amount_cents: int | None = Field(default=None, ge=0)
+    category: str | None = Field(default=None, max_length=64)
+    raw_text: str | None = Field(default=None, max_length=1000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class ExpenseItemReplaceRequest(BaseModel):
+    items: list[ExpenseItemRequest] = Field(default_factory=list, max_length=200)
+
+
+class ExpenseItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: str
+    position: int
+    name: str
+    quantity_text: str | None
+    unit_price_cents: int | None
+    amount_cents: int | None
+    category: str
+    raw_text: str | None
+    confidence: float | None
+    is_ocr_draft: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+
+class ExpenseItemsResponse(BaseModel):
+    expense_id: int
+    parent_amount_cents: int | None
+    items_total_amount_cents: int | None
+    mismatch_cents: int | None
+    items: list[ExpenseItemResponse]
+
+
 class PaginatedExpensesResponse(BaseModel):
     items: list[ExpenseResponse]
     page: int

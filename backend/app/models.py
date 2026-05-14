@@ -232,6 +232,43 @@ Index("ix_expenses_status_merchant_expense_time", Expense.status, Expense.mercha
 Index("ix_expenses_status_merchant_confirmed_at", Expense.status, Expense.merchant, Expense.confirmed_at)
 
 
+class ExpenseItem(Base):
+    __tablename__ = "expense_items"
+    __table_args__ = (
+        CheckConstraint("position >= 0", name="ck_expense_items_position_non_negative"),
+        CheckConstraint("amount_cents IS NULL OR amount_cents >= 0", name="ck_expense_items_amount_non_negative"),
+        CheckConstraint(
+            "unit_price_cents IS NULL OR unit_price_cents >= 0",
+            name="ck_expense_items_unit_price_non_negative",
+        ),
+        CheckConstraint("confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_expense_items_confidence"),
+        UniqueConstraint("tenant_id", "expense_id", "position", name="uq_expense_items_tenant_expense_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    expense_id: Mapped[int] = mapped_column(Integer, ForeignKey("expenses.id"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    unit_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    category: Mapped[str] = mapped_column(String(64), default="其他", nullable=False)
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    is_ocr_draft: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
+Index("ix_expense_items_tenant_expense_position", ExpenseItem.tenant_id, ExpenseItem.expense_id, ExpenseItem.position)
+Index("ix_expense_items_tenant_public_id", ExpenseItem.tenant_id, ExpenseItem.public_id)
+Index("ix_expense_items_tenant_category", ExpenseItem.tenant_id, ExpenseItem.category)
+
+
 class RecurringItem(Base):
     __tablename__ = "recurring_items"
     __table_args__ = (

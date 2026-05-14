@@ -74,6 +74,7 @@ backend\
       file_service.py
       goal_service.py
       ocr_service.py
+      receipt_item_service.py
       receipt_parse_service.py
       receipt_parse_amount.py
       receipt_parse_merchant.py
@@ -124,6 +125,7 @@ backend\
     test_auth_bootstrap.py
     test_uploads.py
     test_expenses.py
+    test_expense_items.py
     test_tenant_isolation.py
     test_stats_filters.py
     test_maintenance.py
