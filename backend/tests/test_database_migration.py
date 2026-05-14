@@ -145,6 +145,8 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     }.issubset(_expense_columns())
     assert "ix_ledger_audit_logs_ledger_created_at" in _indexes("ledger_audit_logs")
     assert "ix_expenses_tenant_draft_idempotency_key" in _indexes("expenses")
+    assert "ix_expenses_tenant_status_merchant_expense_time" in _indexes("expenses")
+    assert "ix_expenses_tenant_status_merchant_confirmed_at" in _indexes("expenses")
     assert "ix_merchant_aliases_tenant_alias_key" in _indexes("merchant_aliases")
     assert "ix_merchant_aliases_tenant_canonical" in _indexes("merchant_aliases")
     assert "ix_tags_tenant_key" in _indexes("tags")

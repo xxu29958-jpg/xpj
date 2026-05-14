@@ -386,6 +386,43 @@ class MonthlyStatsResponse(BaseModel):
     by_tag: list[TagStatsResponse] = Field(default_factory=list)
 
 
+class ReportTrendPointResponse(BaseModel):
+    bucket: str
+    label: str
+    amount_cents: int
+    count: int
+
+
+class ReportMerchantRankingResponse(BaseModel):
+    merchant: str
+    amount_cents: int
+    count: int
+
+
+class ReportCategoryComparisonResponse(BaseModel):
+    category: str
+    amount_cents: int
+    count: int
+    previous_amount_cents: int
+    previous_count: int
+    delta_amount_cents: int
+    delta_count: int
+
+
+class ReportsOverviewResponse(BaseModel):
+    month: str
+    timezone: str
+    granularity: str
+    total_amount_cents: int
+    count: int
+    previous_month: str
+    previous_total_amount_cents: int
+    previous_count: int
+    trend: list[ReportTrendPointResponse]
+    merchant_ranking: list[ReportMerchantRankingResponse]
+    category_comparison: list[ReportCategoryComparisonResponse]
+
+
 class OcrRetryResponse(BaseModel):
     id: int
     status: str

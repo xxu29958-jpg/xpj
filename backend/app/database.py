@@ -326,6 +326,18 @@ def migrate_sqlite_schema() -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_expenses_status_amount_merchant ON expenses (status, amount_cents, merchant)")
         )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_status_merchant_expense_time "
+                "ON expenses (status, merchant, expense_time)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_status_merchant_confirmed_at "
+                "ON expenses (status, merchant, confirmed_at)"
+            )
+        )
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_duplicate_status ON expenses (duplicate_status)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_duplicate_of_id ON expenses (duplicate_of_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_image_hash ON expenses (image_hash)"))
@@ -349,6 +361,18 @@ def migrate_sqlite_schema() -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_amount_merchant "
                 "ON expenses (tenant_id, status, amount_cents, merchant)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_merchant_expense_time "
+                "ON expenses (tenant_id, status, merchant, expense_time)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_status_merchant_confirmed_at "
+                "ON expenses (tenant_id, status, merchant, confirmed_at)"
             )
         )
         connection.execute(

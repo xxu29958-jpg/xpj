@@ -216,6 +216,8 @@ Index("ix_expenses_tenant_status_confirmed_at", Expense.tenant_id, Expense.statu
 Index("ix_expenses_tenant_status_category_expense_time", Expense.tenant_id, Expense.status, Expense.category, Expense.expense_time)
 Index("ix_expenses_tenant_status_category_confirmed_at", Expense.tenant_id, Expense.status, Expense.category, Expense.confirmed_at)
 Index("ix_expenses_tenant_status_amount_merchant", Expense.tenant_id, Expense.status, Expense.amount_cents, Expense.merchant)
+Index("ix_expenses_tenant_status_merchant_expense_time", Expense.tenant_id, Expense.status, Expense.merchant, Expense.expense_time)
+Index("ix_expenses_tenant_status_merchant_confirmed_at", Expense.tenant_id, Expense.status, Expense.merchant, Expense.confirmed_at)
 Index("ix_expenses_tenant_draft_idempotency_key", Expense.tenant_id, Expense.draft_idempotency_key, unique=True)
 Index("ix_expenses_tenant_image_hash", Expense.tenant_id, Expense.image_hash)
 Index("ix_expenses_tenant_duplicate_status", Expense.tenant_id, Expense.duplicate_status)
@@ -226,6 +228,8 @@ Index("ix_expenses_status_confirmed_at", Expense.status, Expense.confirmed_at)
 Index("ix_expenses_status_category_expense_time", Expense.status, Expense.category, Expense.expense_time)
 Index("ix_expenses_status_category_confirmed_at", Expense.status, Expense.category, Expense.confirmed_at)
 Index("ix_expenses_status_amount_merchant", Expense.status, Expense.amount_cents, Expense.merchant)
+Index("ix_expenses_status_merchant_expense_time", Expense.status, Expense.merchant, Expense.expense_time)
+Index("ix_expenses_status_merchant_confirmed_at", Expense.status, Expense.merchant, Expense.confirmed_at)
 
 
 class RecurringItem(Base):

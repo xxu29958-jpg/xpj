@@ -146,6 +146,7 @@ Authorization: Bearer <admin_token>
 | `/api/settings/server` | GET | `backend/app/routes/settings.py` | `serverSettings()` | 无 | `ServerSettingsDto` | Session Token | `backend/tests/test_maintenance.py` | gray/internal |
 | `/api/stats/monthly` | GET | `backend/app/routes/stats.py` | `monthlyStats(month,timezone)` | query `month/tag/timezone` | `MonthlyStatsDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
 | `/api/stats/lifestyle` | GET | `backend/app/routes/stats.py` | `lifestyleStats(month,timezone)` | query `month/timezone` | `LifestyleStatsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
+| `/api/reports/overview` | GET | `backend/app/routes/reports.py` | v0.9 Reports | query `month/granularity/top_n/timezone` | `ReportsOverviewResponse` | Session Token | `backend/tests/test_reports.py` | v0.9 动态趋势、商家排行、分类环比；viewer 可读 |
 | `/api/recurring/items` | GET | `backend/app/routes/recurring.py` | `recurringItems(status,includeArchived,month,timezone)` | query `status/include_archived/month/timezone` | `RecurringItemListResponseDto` | Session Token | `backend/tests/test_recurring_items.py`, `ApiDtoContractTest` | v0.6 固定支出列表 |
 | `/api/recurring/from-candidate` | POST | `backend/app/routes/recurring.py` | `confirmRecurringCandidate(request,timezone)` | `RecurringCandidateConfirmRequest`；query `timezone` | `RecurringItemDto` | Session Token，owner/member 写权限 | `backend/tests/test_recurring_items.py` | 候选确认成固定支出 |
 | `/api/recurring/items/{public_id}` | GET | `backend/app/routes/recurring.py` | `recurringItem(publicId,month,timezone)` | path `public_id`；query `month/timezone` | `RecurringItemDto` | Session Token | `backend/tests/test_recurring_items.py` | 固定支出详情 |
@@ -1106,6 +1107,77 @@ timezone=Asia/Shanghai
     {
       "merchant": "OpenAI",
       "count": 1
+    }
+  ]
+}
+```
+
+## 报表
+
+> v0.9 起提供服务端报表聚合。报表接口只返回结构化统计数据，不返回图表库私有格式，不做图片渲染。前端用它绘制 Android / `/web` 动态趋势、商家排行和分类环比。
+
+### GET /api/reports/overview
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+查询参数：
+
+```text
+month=2026-05
+granularity=day|week|month，默认 day
+top_n=8，范围 1..20
+timezone=Asia/Shanghai
+```
+
+规则：
+
+- 只统计当前账本的 `confirmed` 账单。
+- 统计时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
+- `day` / `week` 按指定 `timezone` 的本地自然日和自然周分桶；`month` 返回截至目标月的 6 个月趋势。
+- 商家排行按当前月份聚合金额和笔数，并按已启用商家别名合并展示名。
+- 分类对比返回当前月、上月和差额；旧分类别名会按分类归一规则合并。
+- `viewer` 可读；接口不要求 writer 权限。
+
+返回：
+
+```json
+{
+  "month": "2026-05",
+  "timezone": "Asia/Shanghai",
+  "granularity": "day",
+  "total_amount_cents": 4200,
+  "count": 3,
+  "previous_month": "2026-04",
+  "previous_total_amount_cents": 500,
+  "previous_count": 1,
+  "trend": [
+    {
+      "bucket": "2026-05-01",
+      "label": "05-01",
+      "amount_cents": 1200,
+      "count": 1
+    }
+  ],
+  "merchant_ranking": [
+    {
+      "merchant": "星巴克",
+      "amount_cents": 2000,
+      "count": 2
+    }
+  ],
+  "category_comparison": [
+    {
+      "category": "餐饮",
+      "amount_cents": 2000,
+      "count": 2,
+      "previous_amount_cents": 500,
+      "previous_count": 1,
+      "delta_amount_cents": 1500,
+      "delta_count": 1
     }
   ]
 }
