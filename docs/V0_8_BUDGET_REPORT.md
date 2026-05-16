@@ -26,7 +26,7 @@ v0.8.0a1 已完成服务端预算基线、Android 预算页、统计页预算卡
 | 统计页预算卡 | Android 统计页优先显示服务端预算卡。 |
 | Owner Console | `/owner` 只读展示预算状态，不提供预算写操作。 |
 
-截图索引见 `docs/V0_8_BUDGET_SCREENSHOTS.md`，原始截图和日志在 `artifacts/v0_8_budget/`（不入仓）。
+截图索引已归入 git 历史，原始截图和日志在 `artifacts/v0_8_budget/`（不入仓）。预算功能已在 v0.9 中被 Reports/Goals 扩展。
 
 ## 验收数据
 

@@ -663,5 +663,5 @@ $env:PATH="$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
 v0.3.2 self-use stable candidate 的自用门禁不替代本灰度清单，二者互补：
 
 - 本清单关注"灰度发给他人时不能泄漏服务器/凭证/调试入口"。
-- `docs/V0_3_2_SELFUSE_CHECKLIST.md` 关注"我自己单机能稳定使用"，包含 Owner Console UX、UploadLink 安全、Android 绑定恢复、飞行模式离线可读等。
+- 自用清单（已归入 git 历史）关注"我自己单机能稳定使用"，包含 Owner Console UX、UploadLink 安全、Android 绑定恢复、飞行模式离线可读等。
 - 本轮 Owner Console UX hotfix（`upload_links.html` 双重 `?tz=`、`devices.html`/`pairing.html` 时间戳、表头 nowrap）已并入 `v0.3.2-selfuse-stabilization` 分支。

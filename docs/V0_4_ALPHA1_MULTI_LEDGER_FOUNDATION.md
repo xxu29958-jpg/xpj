@@ -1,8 +1,7 @@
 # v0.4-alpha1 多账本基础（Multi-Ledger Foundation）
 
-> 状态：**已合并**（PR #11 squash → main `5a9e18b`，2026-05-10）。本期交付
-> 服务端契约 + Android 数据层 + 最小切换 UI + 真机灰度验收记录。下一里程碑
-> 为 `v0.4-alpha2`（见 `docs/V0_4_ALPHA2_TRI_SURFACE_UI.md`）。
+> 状态：**已完成**（PR #11 squash → main，2026-05-10）。本文保留为多账本
+> `ledger_id` 隔离模型和 Room v4 迁移的权威参考。
 
 ## 范围
 
