@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.BuildConfig
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -99,20 +100,34 @@ class NetworkErrorMapperTest {
 
     @Test
     fun rejectsLocalOnlyBindingServerUrl() {
-        val error = assertFailsWith<IllegalArgumentException> {
-            validateBindingInput(serverUrl = "http://127.0.0.1:8000", pairingCode = "123456")
-        }
+        if (allowsInternalInsecureBinding()) {
+            assertEquals(
+                "http://127.0.0.1:8000",
+                validateBindingInput(serverUrl = "http://127.0.0.1:8000", pairingCode = "123456"),
+            )
+        } else {
+            val error = assertFailsWith<IllegalArgumentException> {
+                validateBindingInput(serverUrl = "http://127.0.0.1:8000", pairingCode = "123456")
+            }
 
-        assertEquals("请填写可在手机上访问的地址。", error.message)
+            assertEquals("请填写可在手机上访问的地址。", error.message)
+        }
     }
 
     @Test
     fun rejectsPlainHttpBindingServerUrl() {
-        val error = assertFailsWith<IllegalArgumentException> {
-            validateBindingInput(serverUrl = "http://api.zen70.cn", pairingCode = "123456")
-        }
+        if (allowsInternalInsecureBinding()) {
+            assertEquals(
+                "http://api.zen70.cn",
+                validateBindingInput(serverUrl = "http://api.zen70.cn", pairingCode = "123456"),
+            )
+        } else {
+            val error = assertFailsWith<IllegalArgumentException> {
+                validateBindingInput(serverUrl = "http://api.zen70.cn", pairingCode = "123456")
+            }
 
-        assertEquals("请使用 HTTPS 地址。", error.message)
+            assertEquals("请使用 HTTPS 地址。", error.message)
+        }
     }
 
     @Test
@@ -122,5 +137,9 @@ class NetworkErrorMapperTest {
         }
 
         assertEquals("请输入绑定码。", error.message)
+    }
+
+    private fun allowsInternalInsecureBinding(): Boolean {
+        return BuildConfig.DEBUG && BuildConfig.SHOW_ADVANCED_TOOLS
     }
 }
