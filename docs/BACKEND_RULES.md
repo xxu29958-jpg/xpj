@@ -2,58 +2,9 @@
 
 v0.3 后端必须遵守 `docs/ACCOUNT_SYSTEM.md`、`docs/API.md` 和 `docs/SECURITY.md`。所有账单、图片、统计、分类规则、重复检测、CSV 导出和 App 上传接口必须按 `ledger_id` 隔离；数据库字段名暂保留 `tenant_id` 时，其语义也必须是 `ledger_id`。不得用前端过滤代替后端隔离。
 
-后端采用轻量分层：
+## 分层
 
-```text
-routes -> services -> database/models
-```
-
-## routes
-
-职责：
-
-- 接收 HTTP 请求。
-- 校验 Token。
-- 解析参数和请求体。
-- 调用 service。
-- 返回 Pydantic schema 或文件响应。
-- 维护接口只能暴露窄动作，不能暴露任意文件路径参数。
-
-禁止：
-
-- 写复杂业务流程。
-- 直接拼 SQL。
-- 直接操作 Windows 真实路径。
-- 返回原始 exception。
-- 把 OCR、分类、重复检测、缩略图逻辑写死在 route。
-- 做远程命令执行、远程关机、通用文件管理或目录浏览。
-
-## services
-
-职责：
-
-- 文件保存和读取。
-- pending 创建。
-- 账单修改、确认、拒绝。
-- 统计计算。
-- OCR provider 调用。
-- 分类规则匹配。
-- 重复检测。
-- 缩略图生成。
-- 图片清理策略。
-
-禁止：
-
-- 依赖 FastAPI Request。
-- 直接返回 HTTP Response。
-- 硬编码 Token。
-- 写 UI 文案。
-
-## models
-
-只定义 SQLAlchemy ORM 和索引。
-
-禁止依赖 routes、schemas 或 HTTP 层。
+后端采用 `routes -> services -> database/models` 三层架构。各层职责、禁止项和 schemas 规则详见 `docs/ENGINEERING_RULES.md` §3（后端分层）。
 
 ## 查询性能
 
@@ -63,28 +14,7 @@ routes -> services -> database/models
 - 不允许把已确认账单整表拉回 Python 后再分页。
 - 不允许让上传、确认、同步这类主路径依赖未来才会运行的离线清理任务。
 
-## schemas
-
-只定义 Pydantic 请求/响应模型和序列化规则。
-
-禁止写数据库连接、业务流程和文件操作。
-
-## 可插拔扩展点
-
-这些功能只能通过 service/provider 扩展：
-
-```text
-OCR
-自动分类
-重复检测
-缩略图
-图片生命周期
-生活化统计
-```
-
-当前可以使用空实现或简单规则，但必须能替换。
-
-OCR provider 当前约束：
+## OCR provider 约束
 
 - `empty` 是默认空实现。
 - `mock` 只用于测试和联调。
