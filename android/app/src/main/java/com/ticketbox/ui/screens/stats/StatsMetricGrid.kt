@@ -25,6 +25,8 @@ import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -38,8 +40,8 @@ internal fun StatsMetricGrid(
         .firstOrNull { it.category == "AI订阅" || it.category == "AI 订阅" }
         ?.amountCents
         ?.takeIf { it > 0L }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
                 label = "AI 订阅",
@@ -56,7 +58,7 @@ internal fun StatsMetricGrid(
                 accent = 1,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap)) {
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
                 label = "常去商家",
@@ -82,15 +84,15 @@ private fun BudgetProgressCard(budget: BudgetProgress) {
     val progress = budget.progress.coerceIn(0f, 1f)
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                     Text("月度预算", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         text = if (budget.overBudget) "已超过预算" else "还可花 ${formatAmount(budget.remainingCents)}",
@@ -109,14 +111,14 @@ private fun BudgetProgressCard(budget: BudgetProgress) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(7.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(AppRadius.pill))
                     .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.10f)),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(progress)
                         .height(7.dp)
-                        .clip(RoundedCornerShape(999.dp))
+                        .clip(RoundedCornerShape(AppRadius.pill))
                         .background(if (budget.overBudget) visuals.warningTint else visuals.primary),
                 )
             }
@@ -147,21 +149,21 @@ private fun StatsMetricCard(
     )
     AppGlassCard(modifier = modifier, containerAlpha = 0.96f) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(22.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(AppRadius.extraSmall))
                         .background(accentColors[accent % accentColors.size]),
                     contentAlignment = Alignment.Center,
                 ) {
                     Box(
                         modifier = Modifier
                             .size(5.dp)
-                            .clip(RoundedCornerShape(999.dp))
+                            .clip(RoundedCornerShape(AppRadius.pill))
                             .background(visuals.primary),
                     )
                 }

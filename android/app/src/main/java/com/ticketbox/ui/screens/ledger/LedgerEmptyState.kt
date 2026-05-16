@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -53,8 +55,8 @@ internal fun EmptyLedgerState(
 
     AppEmptyStateCard {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             LedgerEmptyIllustration()
@@ -70,7 +72,7 @@ internal fun EmptyLedgerState(
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 if (hasActiveFilters) {
                     Button(
@@ -124,7 +126,7 @@ private fun LedgerEmptyIllustration() {
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(AppRadius.medium))
                 .background(visuals.chipSelected.copy(alpha = 0.66f)),
             contentAlignment = Alignment.Center,
         ) {

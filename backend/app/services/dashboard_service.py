@@ -22,21 +22,21 @@ class DashboardCardDefinition:
 
 DEFAULT_DASHBOARD_CARDS: dict[DashboardSurface, tuple[DashboardCardDefinition, ...]] = {
     "android": (
-        DashboardCardDefinition("pending", "待确认"),
         DashboardCardDefinition("monthly_spend", "本月支出"),
-        DashboardCardDefinition("reports", "趋势报表"),
         DashboardCardDefinition("budget", "预算"),
+        DashboardCardDefinition("reports", "趋势报表"),
         DashboardCardDefinition("goals", "目标"),
         DashboardCardDefinition("recurring", "固定支出"),
+        DashboardCardDefinition("pending", "待确认"),
         DashboardCardDefinition("recent_uploads", "最近上传"),
     ),
     "web": (
-        DashboardCardDefinition("pending", "待确认"),
         DashboardCardDefinition("monthly_spend", "本月支出"),
-        DashboardCardDefinition("reports", "报表"),
         DashboardCardDefinition("budget", "预算"),
+        DashboardCardDefinition("reports", "报表"),
         DashboardCardDefinition("goals", "目标"),
         DashboardCardDefinition("recurring", "固定支出"),
+        DashboardCardDefinition("pending", "待确认"),
         DashboardCardDefinition("recent_uploads", "最近上传"),
         DashboardCardDefinition("backup_status", "备份状态"),
         DashboardCardDefinition("device_status", "设备状态"),

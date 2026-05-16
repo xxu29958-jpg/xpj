@@ -1,0 +1,32 @@
+{# 顶栏右上角 ledger 切换器（带下拉） #}
+{# 上下文：selected_ledger_id, selected_ledger_name, selected_ledger_role, ledger_options, request.url.path #}
+{% set _name = selected_ledger_name or '未选择' %}
+{% set _initial = _name[:1] if _name else '夹' %}
+{% set _role = selected_ledger_role or 'owner' %}
+{% set _role_zh = {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_role, _role|upper) %}
+{% set _ledger_kind = '个人账本' if selected_ledger_is_default else '共享账本' %}
+<div class="ledger-switcher" id="ledger-switcher" data-open="false">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <div class="ledger-avatar">{{ _initial }}</div>
+  <div class="ledger-name">{{ _name }}<span class="ledger-kind"> · {{ _ledger_kind }}</span></div>
+  <div class="role-badge ledger-role-chip ledger-role-{{ _role }} {{ _role }}">{{ _role_zh }}</div>
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+  <div class="ledger-popover" id="ledger-popover">
+    <div class="head">切换账本</div>
+    {% for opt in ledger_options %}
+    {% set _opt_role = opt.role or 'owner' %}
+    <a class="row {% if opt.ledger_id == selected_ledger_id %}on{% endif %}"
+       href="{{ request.url.path }}?ledger_id={{ opt.ledger_id }}{% for k, v in request.query_params.multi_items() %}{% if k != 'ledger_id' %}&{{ k }}={{ v }}{% endif %}{% endfor %}">
+      <div class="ledger-avatar" style="width:24px;height:24px">{{ opt.name[:1] if opt.name else '夹' }}</div>
+      <div class="meta">
+        <div class="name">{{ opt.name }}{% if opt.is_default %} · 默认{% endif %}</div>
+        <div class="sub">{{ opt.ledger_id }}</div>
+      </div>
+      <div class="role-badge ledger-role-chip ledger-role-{{ _opt_role }} {{ _opt_role }}">{{ {'owner': '拥有者', 'member': '成员', 'viewer': '只读'}.get(_opt_role, _opt_role|upper) }}</div>
+    </a>
+    {% endfor %}
+  </div>
+</div>

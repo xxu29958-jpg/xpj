@@ -38,7 +38,7 @@
           <div class="actions">
             {% if not d.revoked_at %}
             <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/revoke"
-                  onsubmit="return confirm('确认停用设备「{{ d.device_name }}」？停用后该设备所有 token 将失效。')">
+                  data-confirm="确认停用设备「{{ d.device_name }}」？停用后该设备所有 token 将失效。">
               <button type="submit" class="btn btn-danger">停用</button>
             </form>
             <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/rename">
@@ -50,7 +50,7 @@
             </form>
             {% else %}
             <form class="inline" method="post" action="/owner/devices/{{ d.public_id }}/delete"
-                  onsubmit="return confirm('确认从列表移除设备「{{ d.device_name }}」？将永久移除该设备及其历史 token / 上传链接记录，账单数据保留。')">
+                  data-confirm="确认从列表移除设备「{{ d.device_name }}」？将永久移除该设备及其历史 token / 上传链接记录，账单数据保留。">
               <button type="submit" class="btn btn-danger">移除记录</button>
             </form>
             {% endif %}

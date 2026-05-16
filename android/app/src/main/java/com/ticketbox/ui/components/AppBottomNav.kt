@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.LocalThemeVisuals
 
@@ -47,7 +49,7 @@ fun AppBottomNav(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -63,14 +65,17 @@ fun AppBottomNav(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 items.forEach { item ->
+                    val selected = item.key == selectedKey
                     Box(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(if (selected) 1.28f else 1f)
+                            .height(48.dp)
+                            .clickable(onClick = { onSelect(item) }),
                         contentAlignment = Alignment.Center,
                     ) {
                         AppBottomNavItemView(
                             item = item,
-                            selected = item.key == selectedKey,
-                            onClick = { onSelect(item) },
+                            selected = selected,
                         )
                     }
                 }
@@ -83,7 +88,6 @@ fun AppBottomNav(
 private fun AppBottomNavItemView(
     item: AppBottomNavItem,
     selected: Boolean,
-    onClick: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
     val background by animateColorAsState(
@@ -97,23 +101,27 @@ private fun AppBottomNavItemView(
     if (selected) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp)
                 .clip(RoundedCornerShape(AppRadius.large))
-                .clickable(onClick = onClick)
                 .background(background)
-                .padding(horizontal = 11.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = item.icon,
                 contentDescription = item.label,
                 tint = content,
-                modifier = Modifier.size(16.dp),
+                modifier = Modifier.size(17.dp),
             )
             Text(
                 text = item.label,
                 color = content,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                ),
                 fontWeight = FontWeight.Black,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -122,9 +130,7 @@ private fun AppBottomNavItemView(
     } else {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(AppRadius.large))
-                .clickable(onClick = onClick)
-                .padding(horizontal = 13.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
@@ -132,7 +138,7 @@ private fun AppBottomNavItemView(
                 imageVector = item.icon,
                 contentDescription = item.label,
                 tint = content,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(17.dp),
             )
             Text(
                 text = item.label,

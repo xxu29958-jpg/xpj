@@ -4,12 +4,6 @@ import com.ticketbox.data.local.ExpenseEntity
 import com.ticketbox.data.remote.dto.CategoryStatsDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.ExpenseItemDto
-import com.ticketbox.data.remote.dto.ExpenseItemRequestDto
-import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
-import com.ticketbox.data.remote.dto.ExpenseSplitDto
-import com.ticketbox.data.remote.dto.ExpenseSplitRequestDto
-import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.FrequentMerchantDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
@@ -28,12 +22,6 @@ import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.domain.model.ExpenseItem
-import com.ticketbox.domain.model.ExpenseItemDraft
-import com.ticketbox.domain.model.ExpenseItems
-import com.ticketbox.domain.model.ExpenseSplit
-import com.ticketbox.domain.model.ExpenseSplitDraft
-import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MerchantAlias
@@ -145,80 +133,6 @@ fun ExpenseDraft.toRequest(): ExpenseUpdateRequest = ExpenseUpdateRequest(
     valueScore = valueScore,
     regretScore = regretScore,
 )
-
-fun ExpenseItemsResponseDto.toDomain(): ExpenseItems = ExpenseItems(
-    expenseId = expenseId,
-    parentAmountCents = parentAmountCents,
-    itemsTotalAmountCents = itemsTotalAmountCents,
-    mismatchCents = mismatchCents,
-    items = items.map { it.toDomain() },
-)
-
-fun ExpenseItemDto.toDomain(): ExpenseItem = ExpenseItem(
-    publicId = publicId,
-    position = position,
-    name = name,
-    quantityText = quantityText,
-    unitPriceCents = unitPriceCents,
-    amountCents = amountCents,
-    category = normalizeExpenseCategory(category),
-    rawText = rawText,
-    confidence = confidence,
-    isOcrDraft = isOcrDraft,
-    createdAt = createdAt,
-    updatedAt = updatedAt,
-)
-
-fun ExpenseItemDraft.toRequest(): ExpenseItemRequestDto {
-    val cleanName = name.trim()
-    if (cleanName.isBlank()) {
-        throw RepositoryException("请输入商品名称。")
-    }
-    return ExpenseItemRequestDto(
-        name = cleanName,
-        quantityText = quantityText.cleanOptional(),
-        unitPriceCents = unitPriceCents,
-        amountCents = amountCents,
-        category = category.cleanOptional()?.let(::normalizeExpenseCategory),
-        rawText = rawText.cleanOptional(),
-        confidence = confidence,
-    )
-}
-
-fun ExpenseSplitsResponseDto.toDomain(): ExpenseSplits = ExpenseSplits(
-    expenseId = expenseId,
-    parentAmountCents = parentAmountCents,
-    splitsTotalAmountCents = splitsTotalAmountCents,
-    mismatchCents = mismatchCents,
-    splits = splits.map { it.toDomain() },
-)
-
-fun ExpenseSplitDto.toDomain(): ExpenseSplit = ExpenseSplit(
-    publicId = publicId,
-    position = position,
-    memberId = memberId,
-    accountName = accountName,
-    role = role,
-    amountCents = amountCents,
-    note = note,
-    disabledAt = disabledAt,
-    createdAt = createdAt,
-    updatedAt = updatedAt,
-)
-
-fun ExpenseSplitDraft.toRequest(): ExpenseSplitRequestDto {
-    if (memberId <= 0L) {
-        throw RepositoryException("请选择拆账成员。")
-    }
-    if (amountCents < 0L) {
-        throw RepositoryException("拆账金额不能为负数。")
-    }
-    return ExpenseSplitRequestDto(
-        memberId = memberId,
-        amountCents = amountCents,
-        note = note.cleanOptional(),
-    )
-}
 
 fun NotificationDraft.toRequest(): NotificationDraftRequestDto = NotificationDraftRequestDto(
     source = source.apiValue,
@@ -365,4 +279,4 @@ fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
     latestUploadAt = latestUploadAt,
 )
 
-private fun String?.cleanOptional(): String? = this?.trim()?.takeIf { it.isNotBlank() }
+internal fun String?.cleanOptional(): String? = this?.trim()?.takeIf { it.isNotBlank() }

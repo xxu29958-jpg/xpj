@@ -46,7 +46,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -91,15 +90,17 @@ import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
@@ -135,7 +136,7 @@ internal fun BuiltInBackgroundCard(
         modifier = modifier
             .height(184.dp)
             .shadow(
-                elevation = if (selected) AppElevation.softCardShadow else 7.dp,
+                elevation = if (selected) AppElevation.softCard else 7.dp,
                 shape = cardShape,
                 clip = false,
                 ambientColor = visuals.shadowTint.copy(alpha = if (selected) 0.18f else 0.08f),
@@ -149,7 +150,7 @@ internal fun BuiltInBackgroundCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp),
+                .padding(AppSpacing.compactPadding),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             GradientPreview(
@@ -173,7 +174,7 @@ internal fun BuiltInBackgroundCard(
                     )
                     if (selected) {
                         SkinPill(text = "当前", scheme = scheme, visuals = visuals, emphasized = true)
-                    } else if (skin == AppSkin.Harbor) {
+                    } else if (skin == AppSkin.Paper) {
                         SkinPill(text = "推荐", scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
@@ -336,7 +337,7 @@ internal fun BackgroundSwitchLine(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Switch(
+        AppSwitch(
             checked = checked,
             enabled = enabled,
             onCheckedChange = onCheckedChange,

@@ -488,6 +488,51 @@ def reports_overview(
     }
 
 
+def six_month_summary(
+    db: Session,
+    *,
+    anchor_month: str,
+    tenant_id: str,
+    timezone_name: str | None = None,
+) -> list[dict]:
+    """6 个月（含锚定月）的逐月已确认支出 + 预算汇总。
+
+    供 /web/reports 的「六个月，看清节奏」柱+线图使用。返回顺序：最早 → 锚定月。
+    每项 {'month', 'amount_cents', 'amount_yuan', 'count', 'budget_cents', 'budget_yuan'}。
+    """
+    timezone_key, _zone = _resolve_timezone(timezone_name)
+    # 避免循环导入：budget_service 没有反向依赖 reports_service。
+    from app.services.budget_service import get_monthly_budget
+
+    results: list[dict] = []
+    for month_label in _month_labels_ending_at(anchor_month, 6):
+        start_utc, end_utc = _month_bounds(month_label, timezone_key)
+        amount, count = _range_amount_count(
+            db,
+            tenant_id=tenant_id,
+            start_utc=start_utc,
+            end_utc=end_utc,
+        )
+        try:
+            budget = get_monthly_budget(
+                db, tenant_id=tenant_id, month=month_label, timezone_name=timezone_key
+            )
+            budget_cents = int(budget.total_amount_cents) if budget.configured else 0
+        except Exception:
+            budget_cents = 0
+        results.append(
+            {
+                "month": month_label,
+                "amount_cents": int(amount),
+                "amount_yuan": int(amount) / 100.0,
+                "count": int(count),
+                "budget_cents": budget_cents,
+                "budget_yuan": budget_cents / 100.0,
+            }
+        )
+    return results
+
+
 def export_reports_overview_csv(
     db: Session,
     *,

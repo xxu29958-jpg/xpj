@@ -89,7 +89,8 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -111,9 +112,9 @@ fun AboutScreen(
         subtitle = "小票夹是私人半自动账本。",
         onBack = onBack,
     ) {
-        SoftPanel(containerAlpha = 0.96f) {
+        AppGlassCard(containerAlpha = 0.96f) {
             Column(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("小票夹", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)

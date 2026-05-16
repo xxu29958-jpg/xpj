@@ -1,8 +1,8 @@
 package com.ticketbox.ui.navigation
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -221,6 +221,7 @@ private fun TicketboxContent(
 }
 
 @Composable
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 private fun MainShell(
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
@@ -306,11 +307,9 @@ private fun MainShell(
                     )
                 }
             },
-        ) { innerPadding ->
+        ) { _ ->
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .consumeWindowInsets(innerPadding),
+                modifier = Modifier.fillMaxSize(),
             ) {
                 val activeStatsSecondaryPage = statsSecondaryPage
                 if (activeStatsSecondaryPage != null) {

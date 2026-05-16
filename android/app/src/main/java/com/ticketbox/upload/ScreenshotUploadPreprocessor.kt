@@ -4,9 +4,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
+import android.graphics.Matrix
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -119,7 +121,44 @@ private fun Context.decodeSampledBitmap(uri: Uri, bounds: ImageBounds): Bitmap? 
     val decoded = contentResolver.openInputStream(uri)?.use { input ->
         BitmapFactory.decodeStream(input, null, options)
     }
-    return decoded ?: decodeBitmapWithImageDecoder(uri, targetLongSide = MAX_UPLOAD_LONG_SIDE)
+    // BitmapFactory ignores EXIF orientation; ImageDecoder honours it on
+    // Android 28+. Apply EXIF rotation here so that photos captured in
+    // portrait orientation are uploaded right-side up. PNG/WebP typically
+    // carry no EXIF tag, so the matrix is identity and returns the source.
+    val oriented = decoded?.let { applyExifOrientation(uri, it) }
+    return oriented ?: decodeBitmapWithImageDecoder(uri, targetLongSide = MAX_UPLOAD_LONG_SIDE)
+}
+
+private fun Context.applyExifOrientation(uri: Uri, bitmap: Bitmap): Bitmap {
+    val orientation = runCatching {
+        contentResolver.openInputStream(uri)?.use { input ->
+            ExifInterface(input).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL,
+            )
+        } ?: ExifInterface.ORIENTATION_NORMAL
+    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> {
+            matrix.postRotate(90f); matrix.postScale(-1f, 1f)
+        }
+        ExifInterface.ORIENTATION_TRANSVERSE -> {
+            matrix.postRotate(270f); matrix.postScale(-1f, 1f)
+        }
+        else -> return bitmap
+    }
+    val rotated = runCatching {
+        Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    }.getOrNull() ?: return bitmap
+    if (rotated !== bitmap) bitmap.recycle()
+    return rotated
 }
 
 private fun Context.readImageBoundsWithImageDecoder(uri: Uri): ImageBounds? {

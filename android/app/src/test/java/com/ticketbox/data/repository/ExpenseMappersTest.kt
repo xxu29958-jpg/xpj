@@ -139,6 +139,36 @@ class ExpenseMappersTest {
         assertEquals("一起吃饭", splitRequest.note)
     }
 
+    @Test
+    fun itemDraftRequiresName() {
+        val error = assertFailsWith<RepositoryException> {
+            ExpenseItemDraft(
+                name = " ",
+                quantityText = null,
+                unitPriceCents = null,
+                amountCents = 500,
+                category = "餐饮",
+                rawText = null,
+                confidence = null,
+            ).toRequest()
+        }
+
+        assertEquals("请输入商品名称。", error.message)
+    }
+
+    @Test
+    fun splitDraftRejectsInvalidMemberAndNegativeAmount() {
+        val missingMember = assertFailsWith<RepositoryException> {
+            ExpenseSplitDraft(memberId = 0, amountCents = 6000, note = null).toRequest()
+        }
+        val negativeAmount = assertFailsWith<RepositoryException> {
+            ExpenseSplitDraft(memberId = 12, amountCents = -1, note = null).toRequest()
+        }
+
+        assertEquals("请选择拆账成员。", missingMember.message)
+        assertEquals("拆账金额不能为负数。", negativeAmount.message)
+    }
+
     private fun expenseDto(publicId: String?, category: String = "其他"): ExpenseDto {
         return ExpenseDto(
             id = 1,

@@ -90,7 +90,8 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -138,7 +139,7 @@ fun BackgroundGalleryScreen(
         backgrounds.chunked(2).forEach { rowBackgrounds ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             ) {
                 rowBackgrounds.forEach { background ->
                     BuiltInBackgroundCard(
@@ -154,7 +155,7 @@ fun BackgroundGalleryScreen(
             }
         }
         SettingsSection(title = "自定义", icon = Icons.Filled.PhotoLibrary) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 BackgroundActionButton(
                     text = "从相册选择",
                     modifier = Modifier.weight(1f),

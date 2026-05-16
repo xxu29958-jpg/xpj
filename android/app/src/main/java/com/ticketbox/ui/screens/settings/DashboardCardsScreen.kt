@@ -18,7 +18,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,12 +30,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardSurface
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppLoadingState
+import com.ticketbox.ui.components.AppSwitch
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import kotlinx.coroutines.launch
 
 @Composable
@@ -129,60 +131,77 @@ fun DashboardCardsScreen(
         onBack = onBack,
     ) {
         SettingsSection(title = "卡片顺序", icon = Icons.Filled.DashboardCustomize) {
-            SoftPanel(containerAlpha = 0.96f) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (loading && cards.isEmpty()) {
-                        Text("加载中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (cards.isEmpty() && !loading) {
-                        Text("暂时没有卡片配置。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    cards.forEachIndexed { index, card ->
-                        DashboardCardRow(
-                            card = card,
-                            canMoveUp = index > 0,
-                            canMoveDown = index < cards.lastIndex,
-                            enabled = !readOnly && !saving,
-                            onMoveUp = { moveCard(index, -1) },
-                            onMoveDown = { moveCard(index, 1) },
-                            onVisibleChange = { visible ->
-                                updateCards(cards.map { item ->
-                                    if (item.key == card.key) item.copy(visible = visible) else item
-                                })
-                            },
-                        )
-                    }
-                    if (readOnly) {
+            when {
+                loading && cards.isEmpty() -> AppLoadingState(
+                    title = "正在加载首页卡片",
+                    body = "读取当前账本的 Android 首页配置。",
+                )
+                cards.isEmpty() -> AppEmptyStateCard {
+                    Column(
+                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
+                    ) {
                         Text(
-                            text = "当前角色为只读，无法修改账本展示偏好。",
+                            text = "暂时没有卡片配置",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Black,
+                        )
+                        Text(
+                            text = "刷新后仍为空时，可以恢复默认卡片。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            OutlinedButton(
-                                onClick = ::resetCards,
-                                enabled = !saving,
-                                modifier = Modifier.weight(1f),
+                    }
+                }
+                else -> AppGlassCard(containerAlpha = 0.96f) {
+                    Column(
+                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+                    ) {
+                        cards.forEachIndexed { index, card ->
+                            DashboardCardRow(
+                                card = card,
+                                canMoveUp = index > 0,
+                                canMoveDown = index < cards.lastIndex,
+                                enabled = !readOnly && !saving,
+                                onMoveUp = { moveCard(index, -1) },
+                                onMoveDown = { moveCard(index, 1) },
+                                onVisibleChange = { visible ->
+                                    updateCards(cards.map { item ->
+                                        if (item.key == card.key) item.copy(visible = visible) else item
+                                    })
+                                },
+                            )
+                        }
+                        if (readOnly) {
+                            Text(
+                                text = "当前角色为只读，无法修改账本展示偏好。",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                             ) {
-                                Icon(Icons.Filled.RestartAlt, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("恢复默认")
-                            }
-                            Button(
-                                onClick = ::saveCards,
-                                enabled = !saving && cards.isNotEmpty(),
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Icon(Icons.Filled.Save, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (saving) "保存中…" else "保存")
+                                OutlinedButton(
+                                    onClick = ::resetCards,
+                                    enabled = !saving,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(Icons.Filled.RestartAlt, contentDescription = "恢复默认首页卡片")
+                                    Spacer(Modifier.width(AppSpacing.smallGap))
+                                    Text("恢复默认")
+                                }
+                                Button(
+                                    onClick = ::saveCards,
+                                    enabled = !saving && cards.isNotEmpty(),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(Icons.Filled.Save, contentDescription = "保存首页卡片设置")
+                                    Spacer(Modifier.width(AppSpacing.smallGap))
+                                    Text(if (saving) "保存中…" else "保存")
+                                }
                             }
                         }
                     }
@@ -210,12 +229,12 @@ private fun DashboardCardRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(
                 text = card.title,
@@ -236,15 +255,15 @@ private fun DashboardCardRow(
             enabled = enabled && canMoveUp,
             onClick = onMoveUp,
         ) {
-            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "上移")
+            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "上移${card.title}")
         }
         IconButton(
             enabled = enabled && canMoveDown,
             onClick = onMoveDown,
         ) {
-            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "下移")
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "下移${card.title}")
         }
-        Switch(
+        AppSwitch(
             checked = card.visible,
             enabled = enabled,
             onCheckedChange = onVisibleChange,

@@ -1,0 +1,173 @@
+{# 左侧 sidebar：品牌 + 3 个 nav 分组 + 底部状态点 #}
+{# 上下文：selected_ledger_id (-> q), backend_version, request.url.path,
+            pending_count, suspected_duplicate_count（来自 _base_ctx） #}
+{% set _p = request.url.path %}
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark">夹</div>
+    <div class="brand-name">小票夹</div>
+    <div class="brand-version">v{{ backend_version }}</div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item {% if _p in ['/web', '/web/'] %}active{% endif %}" href="/web{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+      </span>
+      <span>仪表盘</span>
+    </a>
+    <a class="nav-item {% if '/reports' in _p %}active{% endif %}" href="/web/reports{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21V3"/><path d="M21 21H3"/>
+          <path d="M7 17v-4"/><path d="M12 17V9"/><path d="M17 17v-6"/>
+        </svg>
+      </span>
+      <span>报表</span>
+    </a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title">账单流</div>
+    <a class="nav-item {% if '/pending' in _p %}active{% endif %}" href="/web/pending{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
+          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/>
+        </svg>
+      </span>
+      <span>待确认</span>
+      {% if pending_count %}<span class="nav-badge">{{ pending_count }}</span>{% endif %}
+    </a>
+    <a class="nav-item {% if '/confirmed' in _p %}active{% endif %}" href="/web/confirmed{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </span>
+      <span>已确认</span>
+    </a>
+    <a class="nav-item {% if '/duplicates' in _p %}active{% endif %}" href="/web/duplicates{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+      </span>
+      <span>疑似重复</span>
+      {% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}
+    </a>
+    <a class="nav-item {% if '/import' in _p or '/export' in _p %}active{% endif %}" href="/web/import{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </span>
+      <span>导入导出</span>
+    </a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title">治理</div>
+    <a class="nav-item {% if '/budgets' in _p %}active{% endif %}" href="/web/budgets{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="6" width="20" height="12" rx="2"/>
+          <circle cx="12" cy="12" r="2.5"/>
+        </svg>
+      </span>
+      <span>预算</span>
+    </a>
+    <a class="nav-item {% if '/goals' in _p %}active{% endif %}" href="/web/goals{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="12" cy="12" r="5"/>
+          <circle cx="12" cy="12" r="1.5"/>
+        </svg>
+      </span>
+      <span>目标</span>
+    </a>
+    <a class="nav-item {% if '/categories' in _p %}active{% endif %}" href="/web/categories{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/>
+          <line x1="7" y1="7" x2="7.01" y2="7"/>
+        </svg>
+      </span>
+      <span>分类</span>
+    </a>
+    <a class="nav-item {% if '/rules' in _p %}active{% endif %}" href="/web/rules{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+        </svg>
+      </span>
+      <span>规则</span>
+    </a>
+    <a class="nav-item {% if '/merchants' in _p %}active{% endif %}" href="/web/merchants{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9V3h18v6"/>
+          <path d="M3 9h18l-2 12H5L3 9Z"/>
+        </svg>
+      </span>
+      <span>商家</span>
+    </a>
+    <a class="nav-item {% if '/recurring' in _p %}active{% endif %}" href="/web/recurring{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+      </span>
+      <span>固定支出</span>
+    </a>
+    <a class="nav-item {% if '/stats' in _p %}active{% endif %}" href="/web/stats{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"/>
+          <line x1="12" y1="20" x2="12" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="14"/>
+        </svg>
+      </span>
+      <span>月度统计</span>
+    </a>
+    <a class="nav-item {% if '/data-quality' in _p %}active{% endif %}" href="/web/data-quality{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+      </span>
+      <span>数据体检</span>
+    </a>
+  </div>
+
+  <div class="sidebar-foot">
+    <span class="dot"></span>
+    <span>后端在线 · 127.0.0.1:8000</span>
+  </div>
+</aside>

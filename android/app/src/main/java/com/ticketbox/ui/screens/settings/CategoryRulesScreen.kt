@@ -92,7 +92,8 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -180,10 +181,10 @@ fun CategoryRulesScreen(
     ) {
         if (!readOnly) {
             SettingsSection(title = if (editingRule == null) "新增规则" else "编辑规则", icon = Icons.Filled.Category) {
-                SoftPanel(containerAlpha = 0.96f) {
+                AppGlassCard(containerAlpha = 0.96f) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                     ) {
                         OutlinedTextField(
                             value = keyword,
@@ -264,7 +265,7 @@ fun CategoryRulesScreen(
             )
         }
         SettingsSection(title = "规则列表", icon = Icons.Filled.Category) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 if (rules.isEmpty()) {
                     Text(
                         text = "暂无分类规则。",
@@ -301,7 +302,7 @@ fun CategoryRulesScreen(
             )
         }
         SettingsSection(title = "最近应用记录", icon = Icons.Filled.RestartAlt) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 if (applications.isEmpty()) {
                     Text(
                         text = "暂无应用记录。",
@@ -330,8 +331,8 @@ private fun ConfirmedRuleApplyPanel(
     onPreview: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    SoftPanel(containerAlpha = 0.98f) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    AppGlassCard(containerAlpha = 0.98f) {
+        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             Text(
                 text = "先预览已入账账单中可被规则更新的分类，再手动确认应用。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -377,8 +378,8 @@ private fun ConfirmedRuleApplyPanel(
 
 @Composable
 private fun RuleApplyPreviewRow(item: RuleApplyPreviewItem) {
-    SoftPanel(containerAlpha = 0.82f) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    AppGlassCard(containerAlpha = 0.82f) {
+        Column(modifier = Modifier.padding(AppSpacing.compactPadding), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(
                 text = item.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
                 style = MaterialTheme.typography.labelLarge,
@@ -401,8 +402,8 @@ private fun RuleApplicationCard(
     busy: Boolean,
     onRollback: () -> Unit,
 ) {
-    SoftPanel(containerAlpha = 0.98f) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    AppGlassCard(containerAlpha = 0.98f) {
+        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

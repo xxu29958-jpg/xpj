@@ -1,10 +1,23 @@
 ﻿package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,15 +25,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.pending.BulkConfirmEntry
 import com.ticketbox.ui.screens.pending.EmptyPendingState
-import com.ticketbox.ui.screens.pending.LoadingPendingState
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
@@ -148,7 +165,16 @@ fun PendingScreen(
 
         when {
             state.items.isEmpty() && state.loading -> {
-                item { LoadingPendingState() }
+                item {
+                    EmptyPendingState(
+                        uploading = state.uploading,
+                        loading = true,
+                        readOnly = readOnly,
+                        showUploadGuide = showUploadGuide,
+                        onToggleGuide = { showUploadGuide = !showUploadGuide },
+                        onRefresh = onRefresh,
+                    )
+                }
             }
 
             state.items.isEmpty() -> {
@@ -199,30 +225,79 @@ fun PendingScreen(
                 item { NeedsReviewEmptyFilterCard(filter = needsReviewFilter) }
             } else {
                 items(filteredItems, key = { it.id }) { expense ->
-                    ExpenseCard(
-                        expense = expense,
-                        thumbnail = state.thumbnails[expense.id],
-                        previewMode = when (displayMode) {
-                            PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
-                            PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
-                        },
-                        showActions = !readOnly,
-                        actionsEnabled = expense.id !in state.actionInProgressIds,
-                        onEdit = { onEdit(expense) },
-                        onConfirm = {
-                            when {
-                                expense.amountCents == null -> onMissingAmount(expense)
-                                expense.duplicateStatus == "suspected" -> onOpenDuplicate(expense)
-                                expense.category.isBlank() -> onQuickCategory(expense)
-                                expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
-                                else -> onConfirm(expense)
+                    val canSwipe = !readOnly && expense.id !in state.actionInProgressIds
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            if (canSwipe && value == SwipeToDismissBoxValue.EndToStart) {
+                                onReject(expense)
+                                true
+                            } else {
+                                false
                             }
                         },
-                        onReject = { onReject(expense) },
-                        onKeepDuplicate = { onKeepDuplicate(expense) },
+                        positionalThreshold = { totalDistance -> totalDistance * 0.5f },
                     )
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        enableDismissFromEndToStart = canSwipe,
+                        backgroundContent = { SwipeRejectBackground() },
+                    ) {
+                        ExpenseCard(
+                            expense = expense,
+                            thumbnail = state.thumbnails[expense.id],
+                            previewMode = when (displayMode) {
+                                PendingDisplayMode.Compact -> ExpensePreviewMode.Compact
+                                PendingDisplayMode.Comfortable -> ExpensePreviewMode.Comfortable
+                            },
+                            showActions = !readOnly,
+                            actionsEnabled = expense.id !in state.actionInProgressIds,
+                            onEdit = { onEdit(expense) },
+                            onConfirm = {
+                                when {
+                                    expense.amountCents == null -> onMissingAmount(expense)
+                                    expense.duplicateStatus == "suspected" -> onOpenDuplicate(expense)
+                                    expense.category.isBlank() -> onQuickCategory(expense)
+                                    expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
+                                    else -> onConfirm(expense)
+                                }
+                            },
+                            onReject = { onReject(expense) },
+                            onKeepDuplicate = { onKeepDuplicate(expense) },
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SwipeRejectBackground() {
+    val visuals = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(vertical = AppSpacing.tinyGap)
+            .clip(RoundedCornerShape(AppRadius.medium))
+            .background(visuals.errorContainer)
+            .padding(horizontal = AppSpacing.cardPaddingSmall),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "忽略",
+                color = visuals.onErrorContainer,
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Icon(
+                imageVector = Icons.Filled.DeleteOutline,
+                contentDescription = null,
+                tint = visuals.onErrorContainer,
+            )
         }
     }
 }

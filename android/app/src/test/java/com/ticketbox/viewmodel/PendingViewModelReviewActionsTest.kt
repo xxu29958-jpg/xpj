@@ -337,6 +337,91 @@ class PendingViewModelReviewActionsTest {
         assertEquals(PendingSheet.None, reconciled)
     }
 
+    @Test
+    fun reducerRefreshKeepsOnlyActiveThumbnailsAndUpdatesOpenSheet() = review {
+        val stale = expense(id = 70L, category = "其他")
+        val latest = stale.copy(category = "交通", updatedAt = "2025-01-01T00:01:00Z")
+        val activeImage = image("active")
+        val oldImage = image("old")
+        val state = PendingUiState(
+            items = listOf(stale),
+            thumbnails = mapOf(stale.id to activeImage, 99L to oldImage),
+            activeSheet = PendingSheet.QuickCategory(stale),
+            loading = true,
+        )
+
+        val next = PendingUiStateReducer.afterRefresh(state, listOf(latest), readOnly = false)
+
+        assertEquals(listOf(latest), next.items)
+        assertTrue(next.thumbnails[latest.id] === activeImage)
+        assertFalse(next.thumbnails.containsKey(99L))
+        assertEquals(PendingSheet.QuickCategory(latest), next.activeSheet)
+        assertFalse(next.loading)
+    }
+
+    @Test
+    fun reducerConfirmedRemovesItemThumbnailAndProgressFlag() = review {
+        val target = expense(id = 71L)
+        val other = expense(id = 72L)
+        val state = PendingUiState(
+            items = listOf(target, other),
+            thumbnails = mapOf(target.id to image("target"), other.id to image("other")),
+            actionInProgressIds = setOf(target.id, other.id),
+            activeSheet = PendingSheet.MissingAmount(target),
+        )
+
+        val next = PendingUiStateReducer.afterConfirmed(state, target, message = "已确认入账")
+
+        assertEquals(listOf(other), next.items)
+        assertFalse(next.thumbnails.containsKey(target.id))
+        assertTrue(next.thumbnails.containsKey(other.id))
+        assertEquals(setOf(other.id), next.actionInProgressIds)
+        assertEquals(PendingSheet.None, next.activeSheet)
+        assertEquals("已确认入账", next.message)
+    }
+
+    @Test
+    fun reducerRejectedRemovesItemAndClosesSheet() = review {
+        val target = expense(id = 73L)
+        val state = PendingUiState(
+            items = listOf(target),
+            thumbnails = mapOf(target.id to image("target")),
+            actionInProgressIds = setOf(target.id),
+            activeSheet = PendingSheet.Duplicate(target),
+        )
+
+        val next = PendingUiStateReducer.afterRejected(state, target, message = "已删除")
+
+        assertTrue(next.items.isEmpty())
+        assertTrue(next.thumbnails.isEmpty())
+        assertTrue(next.actionInProgressIds.isEmpty())
+        assertEquals(PendingSheet.None, next.activeSheet)
+        assertEquals("已删除", next.message)
+    }
+
+    @Test
+    fun reducerUpdatedReplacesItemAndRefreshesOpenSheetSnapshot() = review {
+        val stale = expense(id = 74L, merchant = "旧商家")
+        val updated = stale.copy(merchant = "新商家", updatedAt = "2025-01-01T00:02:00Z")
+        val state = PendingUiState(
+            items = listOf(stale),
+            actionInProgressIds = setOf(stale.id),
+            activeSheet = PendingSheet.QuickMerchant(stale),
+        )
+
+        val next = PendingUiStateReducer.afterUpdated(
+            current = state,
+            updated = updated,
+            closeSheet = false,
+            message = "已更新商家",
+        )
+
+        assertEquals(listOf(updated), next.items)
+        assertTrue(next.actionInProgressIds.isEmpty())
+        assertEquals(PendingSheet.QuickMerchant(updated), next.activeSheet)
+        assertEquals("已更新商家", next.message)
+    }
+
     private fun expense(
         id: Long,
         amountCents: Long? = 100L,
@@ -370,6 +455,9 @@ class PendingViewModelReviewActionsTest {
         confirmedAt = null,
         rejectedAt = null,
     )
+
+    private fun image(label: String): ProtectedImage =
+        ProtectedImage(bytes = label.encodeToByteArray(), contentType = "image/jpeg")
 }
 
 private class FakeReviewActions(

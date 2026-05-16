@@ -1,7 +1,7 @@
 /* /web styling — v0.9 三端 token 共享
  * 不引入任何前端框架。设计 token 与 /owner 共享语义，统一在 ../shared/tokens.css。
- * 五套主题 (pine / pomelo / harbor / berry / night) 通过 <html data-theme="..."> 切换。
- * 未设置 data-theme 时 :root 默认 = harbor，与 Android AppSkin.Default 对齐。
+ * Legacy stylesheet. New desktop shell uses paper / mono / midnight through
+ * shared tokens; unset data-theme falls back to paper.
  */
 @import url("../shared/tokens.css");
 

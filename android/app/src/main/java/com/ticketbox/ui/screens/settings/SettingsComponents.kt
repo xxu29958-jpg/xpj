@@ -93,13 +93,14 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
@@ -140,12 +141,16 @@ internal fun SettingsPageFrame(
         role = AppPageRole.Settings,
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) 8.dp else 0.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isSecondaryPage) AppSpacing.smallGap else 0.dp),
         ) {
             onBack?.let {
                 TextButton(onClick = it) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回设置",
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(AppSpacing.miniGap))
                     Text("返回设置")
                 }
             }

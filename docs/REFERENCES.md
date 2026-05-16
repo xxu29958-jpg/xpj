@@ -33,6 +33,8 @@
 - Android prepare release：https://developer.android.com/studio/publish/preparing
 - Jetpack Compose state hoisting：https://developer.android.com/develop/ui/compose/state-hoisting
 - Android `BitmapFactory`：https://developer.android.com/reference/android/graphics/BitmapFactory
+- AndroidX ExifInterface 1.4.2 release notes：https://developer.android.com/jetpack/androidx/releases/exifinterface
+- AndroidX ExifInterface API 参考：https://developer.android.com/reference/kotlin/androidx/exifinterface/media/ExifInterface
 - Room：https://developer.android.com/training/data-storage/room
 - Room DAO：https://developer.android.com/training/data-storage/room/accessing-data
 - Room `@Upsert` API：https://developer.android.com/reference/androidx/room/Upsert

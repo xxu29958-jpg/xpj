@@ -1,149 +1,139 @@
 {% extends "base.html" %}
-{% block title %}动态报表 — 小票夹{% endblock %}
+{% block title %}报表 · 小票夹{% endblock %}
+
 {% block content %}
-<div class="page-header-row">
-  <div>
-    <h1>{{ report.month }} 动态报表</h1>
-    <p class="page-hint">按 {{ report.timezone }} 的本地自然日/月统计，只包含已确认账单。</p>
-  </div>
-  <div class="actions">
-    <button type="button" id="reports-export-png" class="btn btn-secondary">导出 PNG 预览</button>
-    <a class="btn btn-secondary" href="/web/reports/export.csv?ledger_id={{ selected_ledger_id }}&month={{ report.month }}&granularity={{ report.granularity }}&ranking_metric={{ report.ranking_metric }}{% if report.merchant_category %}&merchant_category={{ report.merchant_category }}{% endif %}">导出 CSV</a>
+{% set r = report %}
+{% set _earliest_month = six_month_trend[0].month if six_month_trend else r.month %}
+
+<div class="page-header">
+  <div class="page-eyebrow">REPORTS · {{ _earliest_month }} → {{ r.month }}</div>
+  <h1 class="page-title">动态报表，六个月看清节奏。</h1>
+  <div class="page-sub">
+    按当前账本的已确认账单聚合，时间口径为 expense_time，fallback confirmed_at。
+    CSV 导出走结构化数据，不依赖图表渲染层。
   </div>
 </div>
 
-<div class="card">
-  <form method="get" action="/web/reports" class="filter-row">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <label>月份
-      <input type="month" name="month" value="{{ report.month }}">
-    </label>
-    <label>粒度
-      <select name="granularity">
-        {% for key, label in granularity_options %}
-        <option value="{{ key }}" {% if key == report.granularity %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>商家排行
-      <select name="ranking_metric">
-        {% for key, label in ranking_metric_options %}
-        <option value="{{ key }}" {% if key == report.ranking_metric %}selected{% endif %}>按{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>商家分类
-      <input type="text" name="merchant_category" value="{{ report.merchant_category }}" placeholder="餐饮">
-    </label>
-    <button type="submit" class="btn btn-secondary">查看</button>
-  </form>
-</div>
+{% set _q = '?ledger_id=' ~ selected_ledger_id ~ '&month=' ~ r.month %}
 
-<div class="summary-grid">
-  <div class="summary-card primary">
-    <div class="summary-card-label">本月总支出</div>
-    <div class="summary-card-num">¥{{ report.total_amount_yuan }}</div>
-    <div class="summary-card-hint">共 {{ report.count }} 笔</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-card-label">上月支出</div>
-    <div class="summary-card-num">¥{{ report.previous_total_amount_yuan }}</div>
-    <div class="summary-card-hint">{{ report.previous_month }} · {{ report.previous_count }} 笔</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-card-label">商家数</div>
-    <div class="summary-card-num">{{ report.merchant_ranking|length }}</div>
-    <div class="summary-card-hint">当前 Top 列表</div>
-  </div>
-</div>
-
-<div class="card reports-panel">
-  <div class="card-header">
-    <h2>支出趋势</h2>
-    <span class="meta">{{ {'day':'按日','week':'按周','month':'近 6 个月'}[report.granularity] }}</span>
-  </div>
-  <div id="reports-trend-chart" class="reports-chart-canvas reports-chart-canvas-large" aria-label="支出趋势图"></div>
-  {% if report.count == 0 %}
-  <div class="empty-state"><div class="empty-state-title">本月还没有已确认账单</div></div>
-  {% elif report.trend %}
-  <div class="reports-chart-fallback trend-chart">
-    {% for point in report.trend %}
-    <div class="trend-column" title="{{ point.label }} ¥{{ point.amount_yuan }} · {{ point.count }} 笔">
-      <div class="trend-bar" style="height: {{ point.percent }}%"></div>
-      <div class="trend-label">{{ point.label }}</div>
+{# KPI strip #}
+{% set _cur = six_month_trend[-1].amount_cents if six_month_trend else 0 %}
+{% set _prev = six_month_trend[-2].amount_cents if six_month_trend and (six_month_trend | length) > 1 else 0 %}
+{% set _avg6 = (six_month_trend | map(attribute='amount_cents') | list | sum) / (six_month_trend | length) if six_month_trend else 0 %}
+{% set _over_months = six_month_trend | selectattr('budget_cents', 'gt', 0) | selectattr('amount_cents', 'gt', 'budget_cents') | list if six_month_trend else [] %}
+<div class="kpi-strip">
+  <div class="kpi-cell">
+    <div class="label">本月支出</div>
+    <div class="val" title="¥{{ r.total_amount_yuan }}"><span class="yuan">¥</span>{{ r.total_amount_yuan }}</div>
+    <div class="foot">
+      {% if _prev > 0 %}
+      <span>较上月 {{ '%+.1f' % ((_cur - _prev) / _prev * 100) }}%</span>
+      {% else %}
+      <span>上月无数据</span>
+      {% endif %}
     </div>
-    {% endfor %}
   </div>
-  {% else %}
-  <div class="empty-state"><div class="empty-state-title">本月还没有已确认账单</div></div>
-  {% endif %}
-</div>
-
-<div class="grid two-col">
-  <div class="card reports-panel">
-    <div class="card-header">
-      <h2>商家 Top</h2>
-      <span class="meta">{% if report.ranking_metric == 'count' %}按笔数{% else %}按金额{% endif %}</span>
-    </div>
-    <div id="reports-merchant-chart" class="reports-chart-canvas" aria-label="商家排行图"></div>
-    {% if report.merchant_ranking %}
-    <div class="reports-chart-fallback rank-list">
-      {% for row in report.merchant_ranking %}
-      <div class="rank-row">
-        <div class="rank-row-head">
-          <span>{{ loop.index }}. {{ row.merchant }}</span>
-          <strong>¥{{ row.amount_yuan }}</strong>
-        </div>
-        <div class="rank-track"><div class="rank-fill" style="width: {{ row.percent }}%"></div></div>
-        <div class="meta">{{ row.count }} 笔</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state"><div class="empty-state-title">暂无商家排行</div></div>
+  <div class="kpi-cell">
+    <div class="label">六月均值</div>
+    <div class="val"><span class="yuan">¥</span>{{ '%.2f' % (_avg6 / 100) }}</div>
+    <div class="foot">范围 {{ _earliest_month }} – {{ r.month }}</div>
+  </div>
+  <div class="kpi-cell">
+    <div class="label">入账笔数</div>
+    <div class="val">{{ r.count }} <span class="yuan" style="font-size:12px">笔</span></div>
+    {% if r.previous_count %}
+    <div class="foot">上月 {{ r.previous_count }} 笔</div>
     {% endif %}
   </div>
-
-  <div class="card reports-panel">
-    <div class="card-header">
-      <h2>分类环比</h2>
-      <span class="meta">对比 {{ report.previous_month }}</span>
-    </div>
-    <div id="reports-category-chart" class="reports-chart-canvas" aria-label="分类环比图"></div>
-    {% if report.category_comparison %}
-    <div class="reports-chart-fallback category-compare-list">
-      {% for row in report.category_comparison %}
-      <div class="category-compare-row">
-        <div class="rank-row-head">
-          <span class="category-badge">{{ row.category }}</span>
-          <strong class="{{ 'budget-over' if row.delta_amount_cents > 0 else '' }}">
-            {% if row.delta_amount_cents > 0 %}+{% endif %}¥{{ row.delta_amount_yuan }}
-          </strong>
-        </div>
-        <div class="compare-bars">
-          <div class="compare-bar current" style="width: {{ row.current_percent }}%">本月 ¥{{ row.amount_yuan }}</div>
-          <div class="compare-bar previous" style="width: {{ row.previous_percent }}%">上月 ¥{{ row.previous_amount_yuan }}</div>
-        </div>
-        <div class="meta">本月 {{ row.count }} 笔 · 上月 {{ row.previous_count }} 笔</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state"><div class="empty-state-title">暂无分类对比</div></div>
-    {% endif %}
+  <div class="kpi-cell">
+    <div class="label">超支月份</div>
+    <div class="val">{{ _over_months | length }} <span class="yuan" style="font-size:12px">个月</span></div>
+    <div class="foot">最近 6 个月内</div>
   </div>
 </div>
 
-<dialog id="reports-export-dialog" class="reports-export-dialog">
-  <h3>导出预览</h3>
-  <p class="meta">当前趋势图 PNG 预览，可右键保存；结构化数据仍使用 CSV 导出。</p>
-  <img id="reports-export-image" alt="支出趋势 PNG 预览">
-  <form method="dialog" class="reports-export-actions">
-    <button class="btn btn-primary" value="close">关闭</button>
-  </form>
-</dialog>
+<div class="dash-grid">
+  {# 月度趋势：柱+线 ECharts #}
+  <div class="col-8">
+    <div class="dt-card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">月度趋势</div>
+          <div class="card-sub" style="margin-top:4px">柱：实际支出 · 虚线：预算 · 曲线：趋势</div>
+        </div>
+        <div class="legend">
+          <span><span class="legend-dot" style="background:var(--text-default)"></span>实际</span>
+          <span><span class="legend-dot" style="background:var(--text-faint)"></span>预算</span>
+          <span><span class="legend-dot" style="background:var(--brand-primary)"></span>趋势</span>
+        </div>
+      </div>
+      <div id="chart-trend" class="chart-canvas tall"
+           data-series='{{ six_month_trend | tojson }}'></div>
+    </div>
+  </div>
 
-<script id="reports-overview-data" type="application/json">{{ report | tojson }}</script>
-<script src="/static/web/vendor/echarts.min.js"></script>
-<script src="/static/web/reports.js"></script>
+  {# 分类构成环图 #}
+  <div class="col-4">
+    <div class="dt-card">
+      <div class="card-head">
+          <div class="card-title">分类环比</div>
+        <div class="card-sub">本月</div>
+      </div>
+      <div id="chart-category" class="chart-canvas"
+           data-categories='{{ r.category_comparison | tojson }}'></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:12px">
+        {% set _total_cat = (r.category_comparison | map(attribute='amount_cents') | list | sum) or 1 %}
+        {% for c in r.category_comparison[:6] %}
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-muted);padding:3px 0">
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span class="legend-dot chart-legend-{{ loop.index0 }}"></span>
+            {{ c.category }}
+          </span>
+          <span class="num" style="color:var(--text-meta);font-size:11.5px">
+            {{ ((c.amount_cents / _total_cat) * 100) | round | int }}%
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# 商家排行（双列） #}
+  <div class="col-12">
+    <div class="dt-card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">商家排行</div>
+          <div class="card-sub" style="margin-top:4px">按本月支出金额降序 · 前 8 名</div>
+        </div>
+        <a class="dt-btn ghost" href="/web/reports/export.csv{{ _q }}">导出 CSV</a>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
+        {% set _merchants = r.merchant_ranking[:8] %}
+        {% set _max_amt = _merchants[0].amount_cents if _merchants else 1 %}
+        {% for col in [0, 1] %}
+        <div class="merch-rank">
+          {% for m in _merchants[col * 4:col * 4 + 4] %}
+          {% set _idx = col * 4 + loop.index %}
+          <div class="merch-row">
+            <span class="merch-rank-num">0{{ _idx }}</span>
+            <div style="min-width:0">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <span class="merch-name">{{ m.merchant }}</span>
+                <span class="merch-sub">{{ m.count }} 笔</span>
+              </div>
+              <div class="cat-bar">
+                <div class="cat-bar-fill"
+                     style="width:{{ (m.amount_cents / _max_amt * 100) if _max_amt else 0 }}%;background:{% if _idx <= 3 %}var(--brand-primary){% else %}var(--text-default){% endif %};opacity:{% if _idx <= 3 %}1{% else %}0.7{% endif %}"></div>
+              </div>
+            </div>
+            <div class="merch-amt">¥{{ '%.0f' % (m.amount_cents / 100) }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

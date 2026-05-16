@@ -10,19 +10,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 internal fun LifestyleCard(lifestyle: LifestyleStats) {
     AppGlassCard(containerAlpha = 0.92f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text("生活统计", style = MaterialTheme.typography.titleMedium)
             if (lifestyle.aiSubscriptionAmountCents > 0L) {
@@ -72,8 +72,8 @@ internal fun FrequentMerchantsCard(merchants: List<FrequentMerchant>) {
     val visuals = LocalThemeVisuals.current
     AppGlassCard(containerAlpha = 0.92f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Text("高频商家", style = MaterialTheme.typography.titleMedium)
             merchants.take(5).forEachIndexed { index, merchant ->

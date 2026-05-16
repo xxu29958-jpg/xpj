@@ -18,7 +18,9 @@ import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppLoadingState
+import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.formatAmount
 
@@ -49,7 +51,7 @@ private fun ExpenseItemsPanel(
     loading: Boolean,
     message: String?,
 ) {
-    SoftPanel(containerAlpha = 0.98f) {
+    AppSolidCard {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -60,9 +62,12 @@ private fun ExpenseItemsPanel(
                 trailing = expenseItems?.itemsTotalAmountCents?.let(::formatAmount),
             )
             when {
-                loading -> DetailMutedText("明细加载中")
-                message != null -> DetailMutedText(message)
-                expenseItems == null || expenseItems.items.isEmpty() -> DetailMutedText("暂无商品明细")
+                loading -> DetailLoadingState(
+                    title = "明细加载中",
+                    body = "商品级记录加载完成后会显示在这里。",
+                )
+                message != null -> DetailEmptyState(message)
+                expenseItems == null || expenseItems.items.isEmpty() -> DetailEmptyState("暂无商品明细")
                 else -> {
                     TotalReconcileLine(
                         parentAmountCents = expenseItems.parentAmountCents,
@@ -86,7 +91,7 @@ private fun ExpenseSplitsPanel(
     loading: Boolean,
     message: String?,
 ) {
-    SoftPanel(containerAlpha = 0.98f) {
+    AppSolidCard {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -97,9 +102,12 @@ private fun ExpenseSplitsPanel(
                 trailing = expenseSplits?.splitsTotalAmountCents?.let(::formatAmount),
             )
             when {
-                loading -> DetailMutedText("拆账加载中")
-                message != null -> DetailMutedText(message)
-                expenseSplits == null || expenseSplits.splits.isEmpty() -> DetailMutedText("暂无家庭拆账")
+                loading -> DetailLoadingState(
+                    title = "拆账加载中",
+                    body = "家庭成员分摊加载完成后会显示在这里。",
+                )
+                message != null -> DetailEmptyState(message)
+                expenseSplits == null || expenseSplits.splits.isEmpty() -> DetailEmptyState("暂无家庭拆账")
                 else -> {
                     TotalReconcileLine(
                         parentAmountCents = expenseSplits.parentAmountCents,
@@ -260,12 +268,32 @@ private fun ExpenseSplitRow(split: ExpenseSplit) {
 }
 
 @Composable
-private fun DetailMutedText(text: String) {
-    Text(
-        text = text,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodyMedium,
+private fun DetailLoadingState(
+    title: String,
+    body: String,
+) {
+    AppLoadingState(
+        title = title,
+        body = body,
     )
+}
+
+@Composable
+private fun DetailEmptyState(text: String) {
+    AppEmptyStateCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
 }
 
 private fun itemSubtitle(item: ExpenseItem): String {

@@ -1,10 +1,12 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-owner>
+<html lang="zh-CN" data-owner data-theme="{{ ui_theme or 'paper' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}小票夹 Owner Console{% endblock %}</title>
   <link rel="stylesheet" href="/static/owner/owner.css">
+  <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ backend_version }}">
+  <script defer src="/static/shared/confirm-modal.js?v={{ backend_version }}"></script>
 </head>
 <body>
 <nav class="nav">

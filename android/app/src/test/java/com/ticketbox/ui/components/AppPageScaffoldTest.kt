@@ -39,12 +39,12 @@ class AppPageScaffoldTest {
     @Test
     fun scaffoldSpacingMatchesPageGateDefaults() {
         assertEquals(24f, AppPageDefaults.HorizontalPadding.value)
-        assertEquals(16f, AppPageDefaults.topContentPadding(PageDensity.Compact).value)
-        assertEquals(24f, AppPageDefaults.topContentPadding(PageDensity.Comfortable).value)
-        assertEquals(16f, AppPageDefaults.headerToContentGap(PageDensity.Compact).value)
-        assertEquals(22f, AppPageDefaults.headerToContentGap(PageDensity.Comfortable).value)
-        assertEquals(18f, AppPageDefaults.sectionGap(PageDensity.Compact).value)
-        assertEquals(24f, AppPageDefaults.sectionGap(PageDensity.Comfortable).value)
+        assertEquals(14f, AppPageDefaults.topContentPadding(PageDensity.Compact).value)
+        assertEquals(18f, AppPageDefaults.topContentPadding(PageDensity.Comfortable).value)
+        assertEquals(12f, AppPageDefaults.headerToContentGap(PageDensity.Compact).value)
+        assertEquals(16f, AppPageDefaults.headerToContentGap(PageDensity.Comfortable).value)
+        assertEquals(12f, AppPageDefaults.sectionGap(PageDensity.Compact).value)
+        assertEquals(16f, AppPageDefaults.sectionGap(PageDensity.Comfortable).value)
         assertEquals(16f, AppPageDefaults.CardGap.value)
     }
 }

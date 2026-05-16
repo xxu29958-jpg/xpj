@@ -13,12 +13,12 @@ from app.routes.web_app import _require_local as _web_require_local
 
 
 WEB_CARD_KEYS = [
-    "pending",
     "monthly_spend",
-    "reports",
     "budget",
+    "reports",
     "goals",
     "recurring",
+    "pending",
     "recent_uploads",
     "backup_status",
     "device_status",
@@ -55,6 +55,7 @@ def _demote_owner_ledger_to_viewer() -> None:
 
 
 def test_web_dashboard_cards_remote_returns_403(client: TestClient) -> None:
+    assert client.get("/web/dashboard/data").status_code == 403
     assert client.get("/web/dashboard/cards").status_code == 403
     assert client.post("/web/dashboard/cards/save").status_code == 403
     assert client.post("/web/dashboard/cards/reset").status_code == 403
@@ -87,10 +88,23 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
 
     dashboard = web_client.get("/web?ledger_id=owner")
     assert dashboard.status_code == 200
+    assert 'id="dashboard-app"' in dashboard.text
+    assert "dashboard-skeleton-grid" in dashboard.text
+    assert "data-dashboard-fallback" in dashboard.text
     assert dashboard.text.index('data-dashboard-card="goals"') < dashboard.text.index(
         'data-dashboard-card="monthly_spend"'
     )
     assert 'data-dashboard-card="reports"' not in dashboard.text
+
+    dashboard_data = web_client.get("/web/dashboard/data?ledger_id=owner")
+    assert dashboard_data.status_code == 200, dashboard_data.text
+    payload = dashboard_data.json()
+    assert payload["selected_ledger_id"] == "owner"
+    assert {"layout", "pending_count", "month"}.issubset(payload["cards"])
+    assert "trend14" in payload and "category_share" in payload
+    visible_keys = [item["key"] for item in payload["visible_layout"]]
+    assert visible_keys[:2] == ["goals", "monthly_spend"]
+    assert "reports" not in visible_keys
 
     hidden_all = web_client.post(
         "/web/dashboard/cards/save",
@@ -101,6 +115,9 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
     empty_dashboard = web_client.get("/web?ledger_id=owner")
     assert empty_dashboard.status_code == 200
     assert "当前仪表盘没有可见卡片" in empty_dashboard.text
+    empty_data = web_client.get("/web/dashboard/data?ledger_id=owner")
+    assert empty_data.status_code == 200, empty_data.text
+    assert empty_data.json()["visible_layout"] == []
 
     reset = web_client.post(
         "/web/dashboard/cards/reset",
@@ -111,8 +128,8 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
 
     reset_dashboard = web_client.get("/web?ledger_id=owner")
     assert reset_dashboard.status_code == 200
-    assert reset_dashboard.text.index('data-dashboard-card="pending"') < reset_dashboard.text.index(
-        'data-dashboard-card="monthly_spend"'
+    assert reset_dashboard.text.index('data-dashboard-card="monthly_spend"') < reset_dashboard.text.index(
+        'data-dashboard-card="pending"'
     )
     assert 'data-dashboard-card="reports"' in reset_dashboard.text
 

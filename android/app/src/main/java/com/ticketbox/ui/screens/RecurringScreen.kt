@@ -43,6 +43,8 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.RecurringUiState
 
@@ -79,13 +81,21 @@ fun RecurringScreen(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
         hasBottomBar = onBack == null,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(if (onBack == null) 12.dp else 8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(
+                    if (onBack == null) AppSpacing.compactGap else AppSpacing.smallGap,
+                ),
+            ) {
                 onBack?.let {
                     TextButton(onClick = it) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回统计",
+                            modifier = Modifier.size(18.dp),
+                        )
                         Spacer(Modifier.width(4.dp))
                         Text("返回统计")
                     }
@@ -134,7 +144,7 @@ private fun RecurringTabRow(
     activeCount: Int,
     pausedCount: Int,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         RecurringTab.entries.forEach { tab ->
             val count = when (tab) {
                 RecurringTab.Upcoming,
@@ -162,8 +172,8 @@ private fun RecurringItemsCard(
     val visuals = LocalThemeVisuals.current
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -211,7 +221,7 @@ private fun RecurringItemRow(
     onResume: (String) -> Unit,
     onArchive: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -220,8 +230,8 @@ private fun RecurringItemRow(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                    .padding(end = AppSpacing.contentGap),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
             ) {
                 Text(
                     text = item.merchant.ifBlank { "未填写商家" },
@@ -249,7 +259,7 @@ private fun RecurringItemRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
                 StatusChip(item.status)
                 if (item.anomalyStatus == "higher_than_average") {
                     AssistChip(
@@ -272,13 +282,13 @@ private fun RecurringActions(
     onResume: (String) -> Unit,
     onArchive: (String) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         when (item.status) {
             "active" -> TextButton(onClick = { onPause(item.publicId) }) { Text("暂停") }
             "paused" -> TextButton(onClick = { onResume(item.publicId) }) { Text("恢复") }
         }
         TextButton(onClick = { onArchive(item.publicId) }) {
-            Icon(Icons.Filled.DeleteOutline, contentDescription = null)
+            Icon(Icons.Filled.DeleteOutline, contentDescription = "归档固定支出")
             Text("归档")
         }
     }
@@ -292,8 +302,8 @@ private fun RecurringCandidatesCard(
 ) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Text(
                 text = "固定支出候选（未确认）",
@@ -334,8 +344,8 @@ private fun CandidateRow(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(end = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(end = AppSpacing.contentGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
             Text(
                 text = candidate.merchant.ifBlank { "未填写商家" },
@@ -354,7 +364,7 @@ private fun CandidateRow(
         }
         if (canModify) {
             Button(onClick = { onConfirmCandidate(candidate) }) {
-                Icon(Icons.Filled.Add, contentDescription = null)
+                Icon(Icons.Filled.Add, contentDescription = "确认固定支出候选")
                 Text("确认")
             }
         }
@@ -372,9 +382,9 @@ private fun StatusChip(status: String) {
     }
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(visuals.chipSelected.copy(alpha = if (status == "active") 0.95f else 0.58f))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap + 1.dp),
     ) {
         Text(
             text = label,

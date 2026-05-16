@@ -32,11 +32,12 @@ class AppViewModel(
     private val hasActiveBinding: Boolean
         get() = settingsStore.isBound() && tokenStore.getToken() != null
 
+    private val initialSkin = normalizedInitialSkin()
     private val _uiState = MutableStateFlow(
         AppUiState(
             isBound = hasActiveBinding,
             unlocked = hasActiveBinding && (!requireLocalUnlock || !settingsStore.requiresUnlock()),
-            skin = AppSkin.fromStorageKey(settingsStore.appSkinKey()),
+            skin = initialSkin,
         ),
     )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -47,6 +48,15 @@ class AppViewModel(
                 _uiState.update { it.copy(backgroundSettings = settings) }
             }
         }
+    }
+
+    private fun normalizedInitialSkin(): AppSkin {
+        val rawKey = settingsStore.appSkinKey()
+        val skin = AppSkin.fromStorageKey(rawKey)
+        if (rawKey != skin.storageKey) {
+            settingsStore.saveAppSkinKey(skin.storageKey)
+        }
+        return skin
     }
 
     fun bind(serverUrl: String, pairingCode: String) {

@@ -37,7 +37,22 @@ from app.services.expense_service import (
 router = APIRouter(prefix="/web", tags=["web"])
 
 
-_PENDING_FILTERS = {"all", "missing_amount", "missing_merchant", "duplicate", "ready"}
+_PENDING_FILTERS = {
+    "all",
+    "missing_amount",
+    "missing_merchant",
+    "missing_category",
+    "duplicate",
+    "ready",
+}
+
+
+def _needs_category(view: dict) -> bool:
+    # 分类为空，或仍是默认占位「未分类」时视为待分类。
+    # 「其他」是用户可主动选择的合法分类，不能把它算进缺分类，
+    # 否则旧账单会被错误排除在 ready 筛选外。
+    cat = (view.get("category") or "").strip()
+    return cat == "" or cat == "未分类"
 
 
 def _matches_filter(view: dict, filter_key: str) -> bool:
@@ -47,12 +62,15 @@ def _matches_filter(view: dict, filter_key: str) -> bool:
         return view["needs_amount"]
     if filter_key == "missing_merchant":
         return view["needs_merchant"]
+    if filter_key == "missing_category":
+        return _needs_category(view)
     if filter_key == "duplicate":
         return view["is_duplicate"]
     if filter_key == "ready":
         return (
             not view["needs_amount"]
             and not view["needs_merchant"]
+            and not _needs_category(view)
             and not view["is_duplicate"]
         )
     return True
@@ -76,19 +94,31 @@ def web_pending(
         filter_key = "all"
 
     items = [it for it in raw_items if _matches_filter(it, filter_key)]
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    pending_total = len(raw_items)
+    suspected_total = sum(1 for it in raw_items if it["is_duplicate"])
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        page_title="待确认",
+        sidebar_counts=(pending_total, suspected_total),
+    )
     ctx["expenses"] = items
-    ctx["pending_count"] = len(raw_items)
+    ctx["pending_count"] = pending_total
     ctx["filtered_count"] = len(items)
     ctx["filter"] = filter_key
     ctx["flash_message"] = msg or ""
     ctx["needs_amount_count"] = sum(1 for it in raw_items if it["needs_amount"])
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
-    ctx["suspected_duplicate_count"] = sum(1 for it in raw_items if it["is_duplicate"])
+    ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))
+    ctx["suspected_duplicate_count"] = suspected_total
     ctx["ready_count"] = sum(
         1
         for it in raw_items
-        if not it["needs_amount"] and not it["needs_merchant"] and not it["is_duplicate"]
+        if not it["needs_amount"]
+        and not it["needs_merchant"]
+        and not _needs_category(it)
+        and not it["is_duplicate"]
     )
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
@@ -100,6 +130,78 @@ _BULK_ACTIONS = {
     "confirm_ready",
     "keep_duplicate",
 }
+
+
+def _pending_redirect(selected_id: str, *, filter: str, msg: str) -> RedirectResponse:
+    return RedirectResponse(
+        url=_with_ledger("/web/pending", selected_id, filter=filter or "all", msg=msg),
+        status_code=303,
+    )
+
+
+def _reject_pending_rows(
+    db: Session,
+    *,
+    selected_id: str,
+    expense_ids: list[int],
+) -> str:
+    rows = list(
+        db.scalars(
+            select(Expense)
+            .where(Expense.tenant_id == selected_id)
+            .where(Expense.id.in_(expense_ids))
+        )
+    )
+    found_ids = {row.id for row in rows}
+    skipped_cross_ledger = len([eid for eid in expense_ids if eid not in found_ids])
+    success_count = 0
+    skipped_not_pending = 0
+    skipped_failed = 0
+
+    for row in rows:
+        if row.status != "pending":
+            skipped_not_pending += 1
+            continue
+        try:
+            reject_expense(db, row.id, selected_id)
+            success_count += 1
+        except AppError:
+            skipped_failed += 1
+
+    parts: list[str] = []
+    if success_count:
+        parts.append(f"已忽略 {success_count} 条")
+    if skipped_cross_ledger:
+        parts.append(f"跳过 {skipped_cross_ledger} 条：不属于当前账本")
+    if skipped_not_pending:
+        parts.append(f"跳过 {skipped_not_pending} 条：非待确认")
+    if skipped_failed:
+        parts.append(f"跳过 {skipped_failed} 条：忽略失败")
+    if not parts:
+        parts.append("没有可操作的账单")
+    return "；".join(parts) + "。"
+
+
+@router.post("/pending/batch-reject", response_class=HTMLResponse)
+def web_pending_batch_reject(
+    ledger_id: str = Form(default=""),
+    expense_ids: list[int] = Form(default=[]),
+    filter: str = Form(default="all"),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
+
+    if not expense_ids:
+        return _pending_redirect(selected_id, filter=filter, msg="请先勾选账单。")
+
+    return _pending_redirect(
+        selected_id,
+        filter=filter,
+        msg=_reject_pending_rows(db, selected_id=selected_id, expense_ids=expense_ids),
+    )
 
 
 @router.post("/review/bulk", response_class=HTMLResponse)
@@ -123,12 +225,7 @@ def web_review_bulk(
         raise AppError("invalid_request", status_code=422)
 
     if not expense_ids:
-        return RedirectResponse(
-            url=_with_ledger(
-                "/web/pending", selected_id, filter=filter or "all", msg="请先勾选账单。"
-            ),
-            status_code=303,
-        )
+        return _pending_redirect(selected_id, filter=filter, msg="请先勾选账单。")
 
     rows = list(
         db.scalars(

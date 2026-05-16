@@ -75,18 +75,18 @@
             {% if not link.revoked_at %}
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/rotate"
-                  onsubmit="return confirm('重新生成上传 Key？旧 iPhone 快捷指令将立即失效。')">
+                  data-confirm="重新生成上传 Key？旧 iPhone 快捷指令将立即失效。">
               <button type="submit" class="btn btn-secondary">重新生成</button>
             </form>
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/revoke"
-                  onsubmit="return confirm('确认停用该上传链接？')">
+                  data-confirm="确认停用该上传链接？">
               <button type="submit" class="btn btn-danger">停用</button>
             </form>
             {% else %}
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/delete"
-                  onsubmit="return confirm('确认从列表移除该上传链接？仅移除已停用链接记录，账单数据保留。')">
+                  data-confirm="确认从列表移除该上传链接？仅移除已停用链接记录，账单数据保留。">
               <button type="submit" class="btn btn-danger">移除记录</button>
             </form>
             {% endif %}

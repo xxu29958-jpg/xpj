@@ -5,37 +5,39 @@ enum class AppSkin(
     val displayName: String,
     val description: String,
 ) {
-    Pine(
-        storageKey = "pine",
-        displayName = "松雾",
-        description = "雾青暖白",
+    Paper(
+        storageKey = "paper",
+        displayName = "纸本",
+        description = "温润米白 + 茶铜",
     ),
-    Pomelo(
-        storageKey = "pomelo",
-        displayName = "柚光",
-        description = "暖纸感",
+    Mono(
+        storageKey = "mono",
+        displayName = "墨白",
+        description = "冷灰极简",
     ),
-    Harbor(
-        storageKey = "harbor",
-        displayName = "港湾",
-        description = "海蓝暖光",
-    ),
-    Berry(
-        storageKey = "berry",
-        displayName = "莓果",
-        description = "莓粉柔光",
-    ),
-    Night(
-        storageKey = "night",
-        displayName = "夜幕",
-        description = "松林月色",
+    Midnight(
+        storageKey = "midnight",
+        displayName = "玄夜",
+        description = "深色玻璃 + 暖金",
     );
 
     companion object {
-        val Default: AppSkin = Harbor
+        val Default: AppSkin = Paper
+
+        // v0.10：5 套旧 skin 退役，旧 storageKey 自动映射到新 skin。
+        // harbor 是旧版默认浅色入口，迁到 paper，避免升级后从浅色直接跳到深色。
+        private val LEGACY_KEY_MAP: Map<String, String> = mapOf(
+            "pine" to "paper",
+            "pomelo" to "paper",
+            "harbor" to "paper",
+            "berry" to "mono",
+            "night" to "midnight",
+        )
 
         fun fromStorageKey(value: String?): AppSkin {
-            return entries.firstOrNull { skin -> skin.storageKey == value } ?: Default
+            if (value == null) return Default
+            val resolved = LEGACY_KEY_MAP[value] ?: value
+            return entries.firstOrNull { skin -> skin.storageKey == resolved } ?: Default
         }
     }
 }

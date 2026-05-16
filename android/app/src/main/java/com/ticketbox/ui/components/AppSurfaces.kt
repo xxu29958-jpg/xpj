@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,21 +23,25 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ticketbox.ui.design.AppElevation
+import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -46,28 +52,36 @@ fun ScreenHeader(
     eyebrow: String = "小票夹",
     action: (@Composable RowScope.() -> Unit)? = null,
 ) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         if (eyebrow.isNotBlank()) {
             Text(
                 text = eyebrow,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = AppTypography.appLabel.size,
+                    lineHeight = 20.sp,
+                    letterSpacing = 0.06.sp,
+                ),
                 color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTypography.appLabel.weight,
             )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = AppTypography.pageTitle.size,
+                        lineHeight = 34.sp,
+                        letterSpacing = 0.sp,
+                    ),
+                    fontWeight = AppTypography.pageTitle.weight,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -75,7 +89,10 @@ fun ScreenHeader(
                     Text(
                         text = it,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = AppTypography.body.size,
+                            lineHeight = 22.sp,
+                        ),
                     )
                 }
             }
@@ -90,85 +107,53 @@ fun SectionTitle(
     subtitle: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = AppTypography.sectionTitle.size,
+                lineHeight = 26.sp,
+                letterSpacing = 0.sp,
+            ),
             color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTypography.sectionTitle.weight,
         )
         subtitle?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = AppTypography.body.size,
+                    lineHeight = 22.sp,
+                ),
             )
         }
     }
 }
 
 @Composable
-fun SoftPanel(
-    modifier: Modifier = Modifier,
-    containerAlpha: Float = 0.64f,
-    content: @Composable () -> Unit,
-) {
-    val resolvedAlpha = containerAlpha.coerceIn(0.78f, 1f)
-    val shape = MaterialTheme.shapes.large
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .shadow(elevation = 14.dp, shape = shape, clip = false)
-            .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.surface.copy(alpha = resolvedAlpha),
-                        MaterialTheme.colorScheme.surface.copy(alpha = (resolvedAlpha * 0.94f).coerceIn(0.78f, 1f)),
-                    ),
-                ),
-            )
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f),
-                shape = shape,
-            ),
-    ) {
-        content()
-    }
-}
-
-@Composable
 fun AppGlassCard(
     modifier: Modifier = Modifier,
-    containerAlpha: Float = 0.90f,
+    containerAlpha: Float = 0.96f,
     radius: RoundedCornerShape = RoundedCornerShape(AppRadius.large),
     content: @Composable () -> Unit,
 ) {
-    val visuals = LocalThemeVisuals.current
-    val resolvedAlpha = containerAlpha.coerceIn(0.72f, 1f)
+    val resolvedAlpha = containerAlpha.coerceIn(0.88f, 1f)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = AppElevation.softCardShadow,
-                shape = radius,
-                clip = false,
-                ambientColor = visuals.shadowTint.copy(alpha = 0.16f),
-                spotColor = visuals.shadowTint.copy(alpha = 0.12f),
-            )
             .clip(radius)
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        visuals.glassTint.copy(alpha = resolvedAlpha),
-                        MaterialTheme.colorScheme.surface.copy(alpha = (resolvedAlpha * 0.96f).coerceIn(0.74f, 1f)),
+                        MaterialTheme.colorScheme.surface.copy(alpha = resolvedAlpha),
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = (resolvedAlpha * 0.52f).coerceIn(0.42f, 0.78f)),
                     ),
                 ),
             )
             .border(
                 width = 1.dp,
-                color = Color.White.copy(alpha = if (MaterialTheme.colorScheme.background.luminance() > 0.5f) 0.66f else 0.14f),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
                 shape = radius,
             ),
     ) {
@@ -181,12 +166,30 @@ fun AppSolidCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    // Solid cards are for edit, settings, and other input-heavy surfaces that
+    // need stronger separation from the immersive background.
     AppGlassCard(
         modifier = modifier,
         containerAlpha = 0.98f,
         radius = RoundedCornerShape(AppRadius.large),
         content = content,
     )
+}
+
+@Composable
+fun AppContentCard(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(AppSpacing.cardPadding),
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(AppSpacing.contentGap),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    AppSolidCard(modifier = modifier) {
+        Column(
+            modifier = Modifier.padding(contentPadding),
+            verticalArrangement = verticalArrangement,
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -212,18 +215,18 @@ fun AppHeroCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = AppElevation.heroShadow,
-                shape = shape,
-                clip = false,
-                ambientColor = visuals.shadowTint.copy(alpha = 0.22f),
-                spotColor = visuals.shadowTint.copy(alpha = 0.16f),
-            )
             .clip(shape)
-            .background(Brush.linearGradient(visuals.heroGradient))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        visuals.primary,
+                        visuals.primaryDark,
+                    ),
+                ),
+            )
             .border(
                 width = 1.dp,
-                color = Color.White.copy(alpha = 0.20f),
+                color = visuals.accent.copy(alpha = 0.42f),
                 shape = shape,
             ),
     ) {
@@ -231,23 +234,11 @@ fun AppHeroCard(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    Brush.radialGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.18f),
-                            Color.Transparent,
-                        ),
-                    ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.08f),
+                            Color.White.copy(alpha = 0.10f),
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.10f),
+                            Color.Black.copy(alpha = 0.08f),
                         ),
                     ),
                 ),
@@ -273,17 +264,10 @@ fun AppPrimaryButton(
     onClick: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
-    val shape = RoundedCornerShape(999.dp)
+    val shape = RoundedCornerShape(AppRadius.pill)
     Box(
         modifier = modifier
-            .height(56.dp)
-            .shadow(
-                elevation = if (enabled) 16.dp else 0.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = visuals.shadowTint.copy(alpha = 0.22f),
-                spotColor = visuals.shadowTint.copy(alpha = 0.16f),
-            )
+            .height(48.dp)
             .clip(shape)
             .background(
                 Brush.horizontalGradient(
@@ -295,28 +279,15 @@ fun AppPrimaryButton(
             )
             .border(
                 width = 1.dp,
-                color = Color.White.copy(alpha = 0.26f),
+                color = visuals.accent.copy(alpha = 0.34f),
                 shape = shape,
             )
             .alpha(if (enabled) 1f else 0.58f)
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.08f),
-                        ),
-                    ),
-                ),
-        )
         Row(
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -328,8 +299,10 @@ fun AppPrimaryButton(
             Text(
                 text = text,
                 color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -376,8 +349,8 @@ fun MetricTile(
         modifier = modifier
             .clip(MaterialTheme.shapes.medium)
             .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Text(
             text = label,
@@ -402,7 +375,7 @@ fun StatusPill(
     Text(
         text = text,
         modifier = modifier
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(
                 if (active) {
                     MaterialTheme.colorScheme.primaryContainer
@@ -410,10 +383,38 @@ fun StatusPill(
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.70f)
                 },
             )
-            .padding(horizontal = 13.dp, vertical = 7.dp),
+            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
         color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.Bold,
+    )
+}
+
+@Composable
+fun AppSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val visuals = LocalThemeVisuals.current
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        modifier = modifier,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+            checkedTrackColor = visuals.primary.copy(alpha = 0.92f),
+            checkedBorderColor = visuals.primary.copy(alpha = 0.80f),
+            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f),
+            uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f),
+            disabledCheckedThumbColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.58f),
+            disabledCheckedTrackColor = visuals.primary.copy(alpha = 0.36f),
+            disabledUncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f),
+            disabledUncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+        ),
     )
 }
 
@@ -440,9 +441,14 @@ fun QuietOutlinedButton(
     ) {
         leadingIcon?.let {
             Icon(it, contentDescription = null, modifier = Modifier.size(18.dp))
-            Box(modifier = Modifier.width(8.dp))
+            Box(modifier = Modifier.width(AppSpacing.smallGap))
         }
-        Text(text)
+        Text(
+            text = text,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -467,8 +473,8 @@ fun IconChip(
             .background(
                 if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
             )
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(

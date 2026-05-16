@@ -91,12 +91,13 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient) ->
     assert "分类环比" in response.text
     assert "灰度账本商家" not in response.text
     assert "/web/reports/export.csv" in response.text
-    assert 'id="reports-overview-data"' in response.text
-    assert 'id="reports-trend-chart"' in response.text
-    assert 'id="reports-merchant-chart"' in response.text
-    assert 'id="reports-category-chart"' in response.text
+    assert 'id="chart-trend"' in response.text
+    assert 'data-series=' in response.text
+    assert 'id="chart-category"' in response.text
+    assert 'data-categories=' in response.text
+    assert "商家排行" in response.text
     assert "/static/web/vendor/echarts.min.js" in response.text
-    assert "/static/web/reports.js" in response.text
+    assert "/static/web/desktop.js" in response.text
     assert "cdn.jsdelivr" not in response.text
     assert "unpkg.com" not in response.text
     assert "Bearer " not in response.text

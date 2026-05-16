@@ -37,85 +37,88 @@ import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalDashboardCardTokens
 import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.backgroundVisualsForSkin
 import com.ticketbox.ui.design.chartTokensForSkin
 import com.ticketbox.ui.design.dashboardCardTokensForSkin
 import com.ticketbox.ui.design.goalTokensForSkin
 import com.ticketbox.ui.design.stateTokensForSkin
+import com.ticketbox.ui.design.themeVisualsForSkin
 
-private val PineScheme = lightColorScheme(
-    primary = Color(0xFF0E5C4F),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFDCECE5),
-    onPrimaryContainer = Color(0xFF103D35),
-    secondary = Color(0xFFB1814A),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFEFE1CF),
-    onSecondaryContainer = Color(0xFF4B3118),
-    tertiary = Color(0xFF2D7A80),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFDDEDEF),
-    onTertiaryContainer = Color(0xFF143E42),
-    background = Color(0xFFF1F6F1),
-    onBackground = Color(0xFF192322),
-    surface = Color(0xFFFFFCF7),
-    onSurface = Color(0xFF1D2524),
-    surfaceVariant = Color(0xFFE4EEE8),
-    onSurfaceVariant = Color(0xFF76817E),
-    outline = Color(0xFFD8DCD5),
-    outlineVariant = Color(0xFFE4E7DF),
-    error = Color(0xFF8B3B34),
-    onError = Color(0xFFFFFFFF),
+private val PaperScheme = lightColorScheme(
+    primary = Color(0xFF8A5A2B),
+    onPrimary = Color(0xFFFBF8F1),
+    primaryContainer = Color(0xFFEFE1CB),
+    onPrimaryContainer = Color(0xFF5A3A14),
+    secondary = Color(0xFF1C1A18),
+    onSecondary = Color(0xFFFBF8F1),
+    secondaryContainer = Color(0xFFECE7D8),
+    onSecondaryContainer = Color(0xFF4A463F),
+    tertiary = Color(0xFF4F6B3A),
+    onTertiary = Color(0xFFFBF8F1),
+    tertiaryContainer = Color(0xFFD9E0C4),
+    onTertiaryContainer = Color(0xFF2E4220),
+    background = Color(0xFFF3EFE6),
+    onBackground = Color(0xFF1C1A18),
+    surface = Color(0xFFFBF8F1),
+    onSurface = Color(0xFF1C1A18),
+    surfaceVariant = Color(0xFFF5F0E3),
+    onSurfaceVariant = Color(0xFF4A463F),
+    outline = Color(0xFFE3E0D6),
+    outlineVariant = Color(0xFFEEEAE0),
+    error = Color(0xFFA4361C),
+    onError = Color(0xFFFBF8F1),
 )
 
-private val PomeloScheme = lightColorScheme(
-    primary = Color(0xFFE6981B),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFFE4B6),
-    onPrimaryContainer = Color(0xFF5C3500),
-    secondary = Color(0xFF8A6A2D),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFF2E4C6),
-    onSecondaryContainer = Color(0xFF473513),
-    tertiary = Color(0xFF2D7A80),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFDDEEEF),
-    onTertiaryContainer = Color(0xFF143E42),
-    background = Color(0xFFFFF6E6),
-    onBackground = Color(0xFF221F19),
-    surface = Color(0xFFFFFCF7),
-    onSurface = Color(0xFF25221C),
-    surfaceVariant = Color(0xFFF6E8D1),
-    onSurfaceVariant = Color(0xFF81786D),
-    outline = Color(0xFFE0D8CA),
-    outlineVariant = Color(0xFFECE4D8),
-    error = Color(0xFF8B3B34),
-    onError = Color(0xFFFFFFFF),
+private val MonoScheme = lightColorScheme(
+    primary = Color(0xFF0E0E0C),
+    onPrimary = Color(0xFFFAFAF8),
+    primaryContainer = Color(0xFFE3E2DD),
+    onPrimaryContainer = Color(0xFF000000),
+    secondary = Color(0xFF6F6E6A),
+    onSecondary = Color(0xFFFAFAF8),
+    secondaryContainer = Color(0xFFE3E2DD),
+    onSecondaryContainer = Color(0xFF3A3A37),
+    tertiary = Color(0xFF2C5036),
+    onTertiary = Color(0xFFFAFAF8),
+    tertiaryContainer = Color(0xFFD6E2D6),
+    onTertiaryContainer = Color(0xFF15301C),
+    background = Color(0xFFEDEDEA),
+    onBackground = Color(0xFF0E0E0C),
+    surface = Color(0xFFFAFAF8),
+    onSurface = Color(0xFF0E0E0C),
+    surfaceVariant = Color(0xFFF1F0ED),
+    onSurfaceVariant = Color(0xFF3A3A37),
+    outline = Color(0xFFDAD9D4),
+    outlineVariant = Color(0xFFE7E6E1),
+    error = Color(0xFF8E1D12),
+    onError = Color(0xFFFAFAF8),
 )
 
-private val HarborScheme = lightColorScheme(
-    primary = Color(0xFF245D78),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFDDEAF0),
-    onPrimaryContainer = Color(0xFF123648),
-    secondary = Color(0xFF185B4F),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFE0ECE8),
-    onSecondaryContainer = Color(0xFF123B35),
-    tertiary = Color(0xFFD59A4C),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFF2E3CC),
-    onTertiaryContainer = Color(0xFF55360E),
-    background = Color(0xFFF2F6F7),
-    onBackground = Color(0xFF192322),
-    surface = Color(0xFFFFFCF7),
-    onSurface = Color(0xFF1E2524),
-    surfaceVariant = Color(0xFFE3ECEE),
-    onSurfaceVariant = Color(0xFF6C7D82),
-    outline = Color(0xFFD8DDD6),
-    outlineVariant = Color(0xFFE4E8E1),
-    error = Color(0xFF8B3B34),
-    onError = Color(0xFFFFFFFF),
+private val MidnightScheme = darkColorScheme(
+    primary = Color(0xFFD6B487),
+    onPrimary = Color(0xFF15171C),
+    primaryContainer = Color(0xFF8A6A3E),
+    onPrimaryContainer = Color(0xFFF0D9B3),
+    secondary = Color(0xFFB89564),
+    onSecondary = Color(0xFF15171C),
+    secondaryContainer = Color(0xFF222530),
+    onSecondaryContainer = Color(0xFFE9E7DF),
+    tertiary = Color(0xFFA8B88A),
+    onTertiary = Color(0xFF15171C),
+    tertiaryContainer = Color(0xFF2C3220),
+    onTertiaryContainer = Color(0xFFCCD9B8),
+    background = Color(0xFF0C0D10),
+    onBackground = Color(0xFFE9E7DF),
+    surface = Color(0xFF15171C),
+    onSurface = Color(0xFFE9E7DF),
+    surfaceVariant = Color(0xFF1C1F25),
+    onSurfaceVariant = Color(0xFFB8B4A8),
+    outline = Color(0xFF262932),
+    outlineVariant = Color(0xFF1C1F25),
+    error = Color(0xFFD97757),
+    onError = Color(0xFF15171C),
 )
 
 private val TicketboxShapes = Shapes(
@@ -126,61 +129,11 @@ private val TicketboxShapes = Shapes(
     extraLarge = RoundedCornerShape(34.dp),
 )
 
-private val BerryScheme = lightColorScheme(
-    primary = Color(0xFFA83C5A),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFF2D7DF),
-    onPrimaryContainer = Color(0xFF511B2A),
-    secondary = Color(0xFFC96C86),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFF5DCE3),
-    onSecondaryContainer = Color(0xFF5E2637),
-    tertiary = Color(0xFF8B7A65),
-    onTertiary = Color(0xFFFFFFFF),
-    background = Color(0xFFF6EFF2),
-    onBackground = Color(0xFF241D20),
-    surface = Color(0xFFFFFAFC),
-    onSurface = Color(0xFF251F22),
-    surfaceVariant = Color(0xFFF0E4E9),
-    onSurfaceVariant = Color(0xFF83747B),
-    outline = Color(0xFFE0D4DA),
-    outlineVariant = Color(0xFFEDE1E7),
-    error = Color(0xFF8B3B34),
-    onError = Color(0xFFFFFFFF),
-)
-
-private val NightScheme = darkColorScheme(
-    primary = Color(0xFF2BB49A),
-    onPrimary = Color(0xFF062621),
-    primaryContainer = Color(0xFF0A4139),
-    onPrimaryContainer = Color(0xFFC7F2E8),
-    secondary = Color(0xFF84A7B7),
-    onSecondary = Color(0xFF102A35),
-    secondaryContainer = Color(0xFF173744),
-    onSecondaryContainer = Color(0xFFD4E8EF),
-    tertiary = Color(0xFFD2A46E),
-    onTertiary = Color(0xFF3A260D),
-    tertiaryContainer = Color(0xFF4D3617),
-    onTertiaryContainer = Color(0xFFF7E1C1),
-    background = Color(0xFF07151A),
-    onBackground = Color(0xFFE7F1EF),
-    surface = Color(0xFF0D2027),
-    onSurface = Color(0xFFEAF2F0),
-    surfaceVariant = Color(0xFF183039),
-    onSurfaceVariant = Color(0xFFB6C6C8),
-    outline = Color(0xFF31515A),
-    outlineVariant = Color(0xFF1C3B43),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-)
-
 fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
     return when (skin) {
-        AppSkin.Pine -> PineScheme
-        AppSkin.Pomelo -> PomeloScheme
-        AppSkin.Harbor -> HarborScheme
-        AppSkin.Berry -> BerryScheme
-        AppSkin.Night -> NightScheme
+        AppSkin.Paper -> PaperScheme
+        AppSkin.Mono -> MonoScheme
+        AppSkin.Midnight -> MidnightScheme
     }
 }
 
@@ -194,7 +147,7 @@ fun TicketboxTheme(
     content: @Composable () -> Unit,
 ) {
     val view = LocalView.current
-    val lightSystemBars = skin != AppSkin.Night
+    val lightSystemBars = skin != AppSkin.Midnight
     if (!view.isInEditMode) {
         SideEffect {
             view.context.findActivity()?.configureTicketboxSystemBars(view, lightSystemBars)
@@ -255,14 +208,14 @@ fun TicketboxAtmosphereBackground(
             ),
         )
         when (skin) {
-            AppSkin.Pine -> {
+            AppSkin.Paper -> {
                 AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = 96.dp, y = (-34).dp)
-                        .size(420.dp),
+                        .offset(x = 86.dp, y = (-36).dp)
+                        .size(360.dp),
                     colors = listOf(
-                        Color(0xFF7EAD9F).copy(alpha = 0.26f),
+                        Color(0xFFEAD8B8).copy(alpha = 0.30f),
                         Color.Transparent,
                     ),
                 )
@@ -273,74 +226,19 @@ fun TicketboxAtmosphereBackground(
                         .height(260.dp),
                     colors = listOf(
                         Color.Transparent,
-                        Color(0xFFA6C2B1).copy(alpha = 0.22f),
-                        Color(0xFF6C927C).copy(alpha = 0.16f),
+                        Color(0xFFE2D6C0).copy(alpha = 0.24f),
+                        Color(0xFFC8B895).copy(alpha = 0.16f),
                     ),
                 )
             }
-            AppSkin.Harbor -> {
+            AppSkin.Mono -> {
                 AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 76.dp, y = (-36).dp)
-                        .size(330.dp),
+                        .size(320.dp),
                     colors = listOf(
-                        Color(0xFF7FA7BF).copy(alpha = 0.36f),
-                        Color.Transparent,
-                    ),
-                )
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = 104.dp)
-                        .size(280.dp),
-                    colors = listOf(
-                        Color(0xFF9FC9D8).copy(alpha = 0.28f),
-                        Color.Transparent,
-                    ),
-                )
-                MistBand(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(260.dp),
-                    colors = listOf(
-                        Color.Transparent,
-                        Color(0xFFB7D4DC).copy(alpha = 0.24f),
-                        Color(0xFF7EA7BF).copy(alpha = 0.18f),
-                    ),
-                )
-            }
-            AppSkin.Night -> {
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 74.dp, y = (-36).dp)
-                        .size(310.dp),
-                    colors = listOf(
-                        Color(0xFF2BB49A).copy(alpha = 0.22f),
-                        Color.Transparent,
-                    ),
-                )
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset(x = (-88).dp, y = 88.dp)
-                        .size(360.dp),
-                    colors = listOf(
-                        Color(0xFF245D78).copy(alpha = 0.26f),
-                        Color.Transparent,
-                    ),
-                )
-            }
-            AppSkin.Pomelo -> {
-                AtmosphereWash(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset(x = (-88).dp, y = (-42).dp)
-                        .size(310.dp),
-                    colors = listOf(
-                        Color(0xFFFFCF7B).copy(alpha = 0.26f),
+                        Color(0xFFE0DFDA).copy(alpha = 0.28f),
                         Color.Transparent,
                     ),
                 )
@@ -351,29 +249,29 @@ fun TicketboxAtmosphereBackground(
                         .height(240.dp),
                     colors = listOf(
                         Color.Transparent,
-                        Color(0xFFE7D1A8).copy(alpha = 0.22f),
+                        Color(0xFFDADAD5).copy(alpha = 0.24f),
                     ),
                 )
             }
-            AppSkin.Berry -> {
+            AppSkin.Midnight -> {
                 AtmosphereWash(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = 64.dp, y = (-48).dp)
-                        .size(300.dp),
+                        .offset(x = 74.dp, y = (-36).dp)
+                        .size(310.dp),
                     colors = listOf(
-                        Color(0xFFEAA2B5).copy(alpha = 0.26f),
+                        Color(0xFFD6B487).copy(alpha = 0.20f),
                         Color.Transparent,
                     ),
                 )
-                MistBand(
+                AtmosphereWash(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(230.dp),
+                        .align(Alignment.BottomStart)
+                        .offset(x = (-88).dp, y = 88.dp)
+                        .size(360.dp),
                     colors = listOf(
+                        Color(0xFF8A6A3E).copy(alpha = 0.26f),
                         Color.Transparent,
-                        Color(0xFFE5D8DC).copy(alpha = 0.20f),
                     ),
                 )
             }
@@ -403,7 +301,7 @@ private fun MistTextureOverlay(
     skin: AppSkin,
     visuals: ThemeVisuals,
 ) {
-    val lineAlpha = if (skin == AppSkin.Night) 0.08f else 0.10f
+    val lineAlpha = if (skin == AppSkin.Midnight) 0.08f else 0.10f
     Canvas(modifier = Modifier.fillMaxSize()) {
         val lineColor = visuals.coolMist.copy(alpha = lineAlpha)
         repeat(10) { index ->

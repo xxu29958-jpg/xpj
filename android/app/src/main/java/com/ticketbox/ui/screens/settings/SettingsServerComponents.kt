@@ -95,13 +95,14 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
@@ -133,10 +134,10 @@ internal fun AccountStatusCard(
             ?: "owner",
     )
     val ledgerScope = serverSettings?.ledgerIsDefault?.let { ledgerScopeLabel(it) }
-    SoftPanel(containerAlpha = 0.96f) {
+    AppGlassCard(containerAlpha = 0.96f) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            modifier = Modifier.padding(AppSpacing.compactGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -145,7 +146,7 @@ internal fun AccountStatusCard(
             ) {
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
                 ) {
                     Text(
                         text = "当前账本",
@@ -160,7 +161,7 @@ internal fun AccountStatusCard(
                     )
                 }
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ledgerScope?.let { AccountLedgerScopePill(text = it) }
@@ -178,8 +179,8 @@ internal fun AccountStatusCard(
             )
             if (onCheckConnection != null && onSync != null) {
                 Row(
-                    modifier = Modifier.padding(top = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = AppSpacing.tinyGap),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
                     QuietOutlinedButton(
                         text = if (busy) "处理中" else "检查连接",
@@ -208,9 +209,9 @@ private fun AccountLedgerScopePill(text: String) {
         color = visuals.primary,
         style = MaterialTheme.typography.labelMedium,
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(visuals.chipSelected.copy(alpha = 0.68f))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
     )
 }
 
@@ -229,10 +230,10 @@ internal fun AdvancedStatusCard(
         }
     } ?: "尚未运行检测"
 
-    SoftPanel(containerAlpha = 0.98f) {
+    AppGlassCard(containerAlpha = 0.98f) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
         ) {
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(
@@ -249,7 +250,7 @@ internal fun AdvancedStatusCard(
                             DiagnosticStatus.Warn -> MaterialTheme.colorScheme.tertiary
                             DiagnosticStatus.Fail -> MaterialTheme.colorScheme.error
                         }
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -279,10 +280,10 @@ internal fun StatusPill(connected: Boolean) {
     val content = if (connected) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(background)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+            .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -365,7 +366,7 @@ internal fun PreviewRoleCard(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp),
+                    .padding(AppSpacing.compactGap),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Box(
@@ -378,7 +379,7 @@ internal fun PreviewRoleCard(
                             color = Color.White.copy(alpha = 0.32f),
                             shape = innerShape,
                         )
-                        .padding(10.dp),
+                        .padding(AppSpacing.compactPadding),
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         content()

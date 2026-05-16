@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.screens.CategoryFilterRow
 import com.ticketbox.ui.screens.SelectableFilterChip
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerUiState
 
 @Composable
@@ -38,10 +39,10 @@ internal fun LedgerToolsSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.compactGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text("筛选与更新", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             Text(
                 text = ledgerCombinedStatusLine(state),
@@ -72,7 +73,7 @@ internal fun LedgerToolsSheet(
             placeholder = { Text("搜索备注") },
             singleLine = true,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             LedgerInlineButton(
                 text = if (state.exporting) "导出中" else "导出表格",
                 modifier = Modifier.weight(1f),
@@ -86,7 +87,7 @@ internal fun LedgerToolsSheet(
                 onClick = onSync,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             if (hasUserFilters) {
                 QuietOutlinedButton(
                     text = "清除筛选",
@@ -117,13 +118,13 @@ private fun TagFilterRow(
     selectedTag: String,
     onTagChange: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
             text = "标签",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             item {
                 SelectableFilterChip(
                     selected = selectedTag.isBlank(),

@@ -1,79 +1,120 @@
 {% extends "base.html" %}
-{% block title %}疑似重复 — 小票夹{% endblock %}
+{% block title %}疑似重复 · 小票夹{% endblock %}
+
 {% block content %}
-<h1>疑似重复</h1>
-<p class="meta">
-  下方每一对账单都是系统标记为「疑似重复」的待确认账单。
-  {% if can_write %}
-  确认它们确实重复后可以删除其中一条；如果其实并不重复，点「保留两条」即可，下次相同组合不会再误报。
-  {% else %}
-  只读角色只能查看，不能保留或删除重复项。
-  {% endif %}
-</p>
+<div class="page-header">
+  <h1 class="page-title">这几笔，看起来像同一件事。<span style="color:var(--text-meta);font-weight:500;margin-left:8px">· {{ duplicate_pairs | length }} 组</span></h1>
+  <div class="page-sub">
+    每组并排呈现：左侧是已入账的原账单，右侧是新上传的待确认草稿。
+    差异字段以茶铜色标出。决定保留哪一份，剩下的会被标记为忽略。
+  </div>
+</div>
 
 {% if flash_message %}
-<div class="card flash">{{ flash_message }}</div>
+<div class="readonly-callout" style="background:var(--state-info-bg);color:var(--state-info-fg);border-color:var(--state-info-border)">
+  {{ flash_message }}
+</div>
 {% endif %}
 
-{% if duplicate_pairs %}
-{% for pair in duplicate_pairs %}
-<section class="card">
-  <h2>账单 #{{ pair.current.id }} 疑似与 {% if pair.original %}#{{ pair.original.id }}{% else %}已删除条目{% endif %} 重复</h2>
-  {% if pair.reason %}<p class="meta">原因：{{ pair.reason }}</p>{% endif %}
-  <div class="grid two-col">
-    <div class="card">
-      <h3>当前（#{{ pair.current.id }}）</h3>
-      <ul class="meta-list">
-        <li>金额：{% if pair.current.amount_yuan %}¥{{ pair.current.amount_yuan }}{% else %}—{% endif %}</li>
-        <li>商家：{{ pair.current.merchant or '—' }}</li>
-        <li>分类：{{ pair.current.category }}</li>
-        <li>消费时间：{{ pair.current.expense_time or '—' }}</li>
-        <li>创建时间：{{ pair.current.created_at }}</li>
-        <li>来源：{{ pair.current.source_label }}</li>
-      </ul>
-      <a href="/web/expenses/{{ pair.current.id }}/edit?ledger_id={{ selected_ledger_id }}">查看详情</a>
-    </div>
-    {% if pair.original %}
-    <div class="card">
-      <h3>被复制的条目（#{{ pair.original.id }}）</h3>
-      <ul class="meta-list">
-        <li>金额：{% if pair.original.amount_yuan %}¥{{ pair.original.amount_yuan }}{% else %}—{% endif %}</li>
-        <li>商家：{{ pair.original.merchant or '—' }}</li>
-        <li>分类：{{ pair.original.category }}</li>
-        <li>消费时间：{{ pair.original.expense_time or '—' }}</li>
-        <li>创建时间：{{ pair.original.created_at }}</li>
-        <li>状态：{{ pair.original.status }}</li>
-      </ul>
-      <a href="/web/expenses/{{ pair.original.id }}/edit?ledger_id={{ selected_ledger_id }}">查看详情</a>
-    </div>
-    {% else %}
-    <div class="card"><p class="meta">原条目已不可访问。</p></div>
-    {% endif %}
+<div class="toolbar">
+  <div class="seg">
+    <button class="on" type="button">待处理 <span class="count">{{ duplicate_pairs | length }}</span></button>
   </div>
-  <div class="form-inline" style="margin-top:12px;flex-wrap:wrap;gap:8px">
-    {% if can_write %}
-    <form method="post" action="/web/duplicates/{{ pair.current.id }}/keep">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <button type="submit" class="btn btn-secondary">保留两条</button>
-    </form>
-    <form method="post" action="/web/duplicates/{{ pair.current.id }}/reject-current">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <button type="submit" class="btn btn-secondary">删除当前 #{{ pair.current.id }}</button>
-    </form>
-    {% if pair.original %}
-    <form method="post" action="/web/duplicates/{{ pair.current.id }}/reject-original">
-      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <button type="submit" class="btn btn-secondary">删除被复制的 #{{ pair.original.id }}</button>
-    </form>
-    {% endif %}
-    {% else %}<span class="readonly-inline">只读角色，无法处理重复项。</span>{% endif %}
+  <div style="flex:1"></div>
+  <span style="font-size:11.5px;color:var(--text-meta)">
+    判定使用 image_hash + 金额/商家/时间近似。「不是重复」会被记到忽略列表，未来不再触发。
+  </span>
+</div>
+
+{% if duplicate_pairs | length == 0 %}
+<div class="dt-card" style="padding:48px 24px;text-align:center">
+  <h3 style="font-family:var(--font-serif);font-weight:400;font-size:22px;color:var(--text-muted);margin:0 0 8px">
+    没有疑似重复
+  </h3>
+  <div style="font-size:13px;color:var(--text-meta)">
+    新草稿和已入账账单都不冲突，可以放心确认。
   </div>
-</section>
-{% endfor %}
+</div>
 {% else %}
-<div class="card">
-  <p>当前账本没有疑似重复的待确认账单。</p>
-  <p class="meta">系统会持续监控相同截图哈希以及金额/商家/时间接近的账单。</p>
+<div style="display:flex;flex-direction:column;gap:16px">
+  {% for pair in duplicate_pairs %}
+  {% set cur = pair.current %}
+  {% set orig = pair.original %}
+  <div class="dt-card dup-card">
+    <div class="dup-head">
+      <h3>
+        {{ (orig.merchant if orig else cur.merchant) or '（未填）' }}
+        <span class="similar">× {{ pair.score_pct }}% 相似</span>
+      </h3>
+      <span class="dt-pill {% if pair.confidence_tier == 'high' %}danger{% else %}warn{% endif %}">
+        {% if pair.confidence_tier == 'high' %}高置信度{% else %}中置信度{% endif %} · {{ pair.score_pct }}
+      </span>
+      <span class="gid">组 ID · #{{ cur.id }}</span>
+    </div>
+
+    <div class="dup-stack">
+      {# 左：原账单 #}
+      <div class="dup-side">
+        <span class="dup-side-tag">原账单 · 已入账</span>
+        <div class="dup-thumb"><span class="label">receipt scan #{{ orig.id if orig else '—' }}</span></div>
+        <dl class="dup-fields">
+          <dt>商家</dt><dd class="{% if 'merchant' in pair.diff_fields %}diff{% endif %}">{{ (orig.merchant if orig else '—') or '—' }}</dd>
+          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">¥{{ orig.amount_yuan if orig else '—' }}</dd>
+          <dt>时间</dt><dd class="num {% if 'time' in pair.diff_fields %}diff{% endif %}">{{ (orig.expense_time if orig else '—') or '—' }}</dd>
+          <dt>分类</dt><dd>{{ (orig.category if orig else '—') or '—' }}</dd>
+          <dt>来源</dt><dd>{{ orig.source_label if orig else '—' }}</dd>
+          <dt>状态</dt>
+          <dd>
+            <span class="dt-pill ok">{{ orig.status if orig else '—' }}</span>
+            <span class="num" style="margin-left:8px;color:var(--text-meta);font-size:11.5px">#{{ orig.id if orig else '—' }}</span>
+          </dd>
+        </dl>
+      </div>
+
+      <div class="dup-divider"><div class="vs">vs</div></div>
+
+      {# 右：新草稿 #}
+      <div class="dup-side draft">
+        <span class="dup-side-tag">新草稿 · 待确认</span>
+        <div class="dup-thumb"><span class="label">receipt scan #{{ cur.id }}</span></div>
+        <dl class="dup-fields">
+          <dt>商家</dt><dd class="{% if 'merchant' in pair.diff_fields %}diff{% endif %}">{{ cur.merchant or '—' }}</dd>
+          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">¥{{ cur.amount_yuan or '—' }}</dd>
+          <dt>时间</dt><dd class="num {% if 'time' in pair.diff_fields %}diff{% endif %}">{{ cur.expense_time or '—' }}</dd>
+          <dt>分类</dt><dd>{{ cur.category }}</dd>
+          <dt>来源</dt><dd>{{ cur.source_label }}</dd>
+          <dt>状态</dt>
+          <dd>
+            <span class="dt-pill warn">{{ cur.status }}</span>
+            <span class="num" style="margin-left:8px;color:var(--text-meta);font-size:11.5px">#{{ cur.id }}</span>
+          </dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="dup-foot">
+      <span class="reason">
+        <span class="dt-pill muted">判定原因</span>
+        {{ pair.reason or '系统未提供原因。' }}
+      </span>
+      <div class="spacer"></div>
+      {% if can_write %}
+      <form method="post" action="/web/duplicates/{{ cur.id }}/keep" style="display:inline">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <button class="dt-btn" type="submit">保留两条</button>
+      </form>
+      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" style="display:inline">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <button class="dt-btn" type="submit">删除原账单</button>
+      </form>
+      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" style="display:inline">
+        <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+        <button class="dt-btn primary" type="submit">删除新草稿</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 {% endblock %}

@@ -22,7 +22,8 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import kotlinx.coroutines.launch
 
 private const val INVITE_TOKEN_MAX = 128
@@ -67,10 +68,10 @@ fun JoinFamilyLedgerScreen(
         onBack = onBack,
     ) {
         SettingsSection(title = "邀请信息", icon = Icons.Filled.GroupAdd) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
                     Text(
                         text = "当前绑定：$currentLedgerName / $currentAccountName / $currentRole",

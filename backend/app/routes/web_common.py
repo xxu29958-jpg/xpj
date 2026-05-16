@@ -129,10 +129,53 @@ def _with_ledger(path: str, ledger_id: str, **extra: str) -> str:
     return f"{path}?{urlencode(params)}"
 
 
+_VALID_UI_THEMES = {"paper", "mono", "midnight"}
+
+
+def _read_ui_theme(request: Request) -> str:
+    raw = request.cookies.get("ui_theme")
+    if raw in _VALID_UI_THEMES:
+        return raw
+    return "paper"
+
+
+def _sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
+    """Cheap counts for the sidebar nav badges (pending + suspected duplicates).
+
+    Avoids loading full ``list_pending()`` rows on pages that don't need them.
+    """
+    pending_count = int(
+        db.scalar(
+            select(func.count(Expense.id))
+            .where(Expense.tenant_id == ledger_id)
+            .where(Expense.status == "pending")
+        )
+        or 0
+    )
+    suspected_count = int(
+        db.scalar(
+            select(func.count(Expense.id))
+            .where(Expense.tenant_id == ledger_id)
+            .where(Expense.status == "pending")
+            .where(Expense.duplicate_status == "suspected")
+        )
+        or 0
+    )
+    return pending_count, suspected_count
+
+
 def _base_ctx(
-    request: Request, *, options: list[LedgerOption], selected_ledger_id: str
+    request: Request,
+    *,
+    options: list[LedgerOption],
+    selected_ledger_id: str,
+    page_title: str | None = None,
+    show_month_picker: bool = False,
+    selected_month: str | None = None,
+    sidebar_counts: tuple[int, int] | None = None,
 ) -> dict:
     selected = _selected_option(options, selected_ledger_id)
+    pending_count, suspected_count = sidebar_counts or (0, 0)
     return {
         "backend_version": BACKEND_VERSION,
         "request": request,
@@ -143,6 +186,12 @@ def _base_ctx(
         "selected_ledger_is_default": selected.is_default,
         "is_viewer": selected.role == "viewer",
         "can_write": selected.role in ("owner", "member"),
+        "page_title": page_title,
+        "ui_theme": _read_ui_theme(request),
+        "show_month_picker": show_month_picker,
+        "selected_month": selected_month,
+        "pending_count": pending_count,
+        "suspected_duplicate_count": suspected_count,
     }
 
 
@@ -153,6 +202,85 @@ def _amount_yuan(amount_cents: int | None) -> str:
     if amount_cents is None:
         return ""
     return f"{amount_cents / 100:.2f}"
+
+
+def _trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
+    """近 14 个日历日（含今天）的每日确认金额，按 expense_time/confirmed_at 聚合。
+
+    返回顺序：从最早到今天，每项 {'d': 'MM-DD', 'amount_yuan': float}。
+    日期为空的 expense 会 fallback 到 confirmed_at；都没有则忽略。
+    """
+    today = now_utc().astimezone().date()
+    start = today - timedelta(days=13)
+    expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
+    rows = db.execute(
+        select(func.strftime("%m-%d", expense_time), func.coalesce(func.sum(Expense.amount_cents), 0))
+        .where(Expense.tenant_id == ledger_id)
+        .where(Expense.status == "confirmed")
+        .where(func.date(expense_time) >= start.isoformat())
+        .where(func.date(expense_time) <= today.isoformat())
+        .group_by(func.strftime("%m-%d", expense_time))
+    )
+    by_day: dict[str, int] = {label: int(amt or 0) for label, amt in rows}
+    result: list[dict] = []
+    for i in range(14):
+        d = start + timedelta(days=i)
+        label = d.strftime("%m-%d")
+        result.append({
+            "d": label,
+            "amount_yuan": by_day.get(label, 0) / 100.0,
+            "amount_cents": by_day.get(label, 0),
+        })
+    return result
+
+
+def _confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
+    """已确认账单在指定月内的每日金额，用于日历热力图。
+
+    返回 [{'date': 'YYYY-MM-DD', 'amount_cents': int, 'count': int}]，
+    只包含该月有支出的天；模板自己填空日。
+    """
+    if not month or "-" not in month:
+        return []
+    expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
+    rows = db.execute(
+        select(
+            func.strftime("%Y-%m-%d", expense_time),
+            func.coalesce(func.sum(Expense.amount_cents), 0),
+            func.count(Expense.id),
+        )
+        .where(Expense.tenant_id == ledger_id)
+        .where(Expense.status == "confirmed")
+        .where(func.strftime("%Y-%m", expense_time) == month)
+        .group_by(func.strftime("%Y-%m-%d", expense_time))
+    )
+    return [
+        {"date": d, "amount_cents": int(amt or 0), "amount_yuan": int(amt or 0) / 100.0, "count": int(cnt)}
+        for d, amt, cnt in rows
+    ]
+
+
+def _confirmed_source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dict]:
+    """指定月的已确认账单来源占比。返回 [{'label', 'count', 'percent'}]。"""
+    q = (
+        select(Expense.source, func.count(Expense.id))
+        .where(Expense.tenant_id == ledger_id)
+        .where(Expense.status == "confirmed")
+    )
+    if month:
+        expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
+        q = q.where(func.strftime("%Y-%m", expense_time) == month)
+    q = q.group_by(Expense.source)
+    rows = list(db.execute(q))
+    total = sum(int(c or 0) for _, c in rows) or 1
+    return [
+        {
+            "label": _SOURCE_LABELS.get((s or "").strip(), "其他"),
+            "count": int(c),
+            "percent": int(round(int(c) / total * 100)),
+        }
+        for s, c in sorted(rows, key=lambda r: -int(r[1] or 0))
+    ]
 
 
 _SOURCE_LABELS: dict[str, str] = {
@@ -196,6 +324,20 @@ def _expense_view(expense) -> dict:
     }
 
 
+def _previous_month_string(month: str) -> str | None:
+    try:
+        year_text, month_text = month.split("-", 1)
+        year = int(year_text)
+        month_number = int(month_text)
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= month_number <= 12:
+        return None
+    if month_number == 1:
+        return f"{year - 1:04d}-12"
+    return f"{year:04d}-{month_number - 1:02d}"
+
+
 def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     pending_rows = list_pending(db, ledger_id)
     pending_count = len(pending_rows)
@@ -206,6 +348,8 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     )
     month = current_month("Asia/Shanghai")
     stats = monthly_stats(db, month, ledger_id)
+    prev_month = _previous_month_string(month)
+    prev_stats = monthly_stats(db, prev_month, ledger_id) if prev_month else None
     recurring_rows = list_recurring_items(db, tenant_id=ledger_id, include_archived=False)
     active_recurring = sum(1 for item in recurring_rows if item.status == "active")
     paused_recurring = sum(1 for item in recurring_rows if item.status == "paused")
@@ -240,6 +384,21 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     if latest_backup is not None:
         backup_age_days = max(0, (now.astimezone() - latest_backup.created_at).days)
     layout = list_dashboard_cards(db, tenant_id=ledger_id, surface="web")
+    current_total = int(stats["total_amount_cents"])
+    prev_total = int(prev_stats["total_amount_cents"]) if prev_stats else 0
+    delta_amount = current_total - prev_total
+    if prev_total <= 0:
+        delta_direction = "none"
+        delta_percent = None
+    elif delta_amount == 0:
+        delta_direction = "flat"
+        delta_percent = 0
+    elif delta_amount > 0:
+        delta_direction = "up"
+        delta_percent = int(round(delta_amount * 100 / prev_total))
+    else:
+        delta_direction = "down"
+        delta_percent = int(round(abs(delta_amount) * 100 / prev_total))
     return {
         "layout": [
             {
@@ -257,6 +416,11 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
         "month": month,
         "total_amount_yuan": _amount_yuan(int(stats["total_amount_cents"])),
         "confirmed_count": int(stats["count"]),
+        "previous_month": prev_month,
+        "previous_total_amount_yuan": _amount_yuan(prev_total),
+        "delta_amount_yuan": _amount_yuan(abs(delta_amount)),
+        "delta_direction": delta_direction,
+        "delta_percent": delta_percent,
         "recurring_active_count": active_recurring,
         "recurring_paused_count": paused_recurring,
         "recurring_candidate_count": candidate_count,

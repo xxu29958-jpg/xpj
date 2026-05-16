@@ -199,6 +199,11 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             {"ledger_id": ledger_id, "action": "confirm_ready", "expense_ids": ["999"]},
         ),
         (
+            "pending batch reject",
+            "/web/pending/batch-reject",
+            {"ledger_id": ledger_id, "expense_ids": ["999"]},
+        ),
+        (
             "rules create",
             "/web/rules/create",
             {"ledger_id": ledger_id, "keyword": "Kimi", "category": "AI订阅", "priority": "1"},

@@ -1,65 +1,54 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}小票夹 网页版{% endblock %}</title>
+  <link rel="stylesheet" href="/static/shared/tokens.css">
   <link rel="stylesheet" href="/static/web/web.css">
+  <link rel="stylesheet" href="/static/web/desktop.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ backend_version }}">
+  <script defer src="/static/web/vendor/echarts.min.js"></script>
+  <script defer src="/static/web/desktop.js?v={{ backend_version }}"></script>
+  <script defer src="/static/shared/confirm-modal.js?v={{ backend_version }}"></script>
 </head>
-<body>
+<body class="desktop-shell-active">
 {% set q = '?ledger_id=' ~ selected_ledger_id if selected_ledger_id else '' %}
-<nav class="nav">
-  <a class="brand" href="/web{{ q }}">🎫 小票夹 · 网页版</a>
-  <a href="/web{{ q }}" {% if request.url.path in ['/web', '/web/'] %}class="active"{% endif %}>仪表盘</a>
-  <a href="/web/pending{{ q }}" {% if '/pending' in request.url.path %}class="active"{% endif %}>待确认</a>
-  <a href="/web/confirmed{{ q }}" {% if '/confirmed' in request.url.path %}class="active"{% endif %}>已确认</a>
-  <a href="/web/reports{{ q }}" {% if '/reports' in request.url.path %}class="active"{% endif %}>动态报表</a>
-  <a href="/web/goals{{ q }}" {% if '/goals' in request.url.path %}class="active"{% endif %}>目标</a>
-  <a href="/web/stats{{ q }}" {% if '/stats' in request.url.path %}class="active"{% endif %}>月度统计</a>
-  <a href="/web/budgets{{ q }}" {% if '/budgets' in request.url.path %}class="active"{% endif %}>预算</a>
-  <a href="/web/recurring{{ q }}" {% if '/recurring' in request.url.path %}class="active"{% endif %}>固定支出</a>
-  <a href="/web/data-quality{{ q }}" {% if '/data-quality' in request.url.path %}class="active"{% endif %}>数据体检</a>
-  <a href="/web/duplicates{{ q }}" {% if '/duplicates' in request.url.path %}class="active"{% endif %}>重复</a>
-  <a href="/web/categories{{ q }}" {% if '/categories' in request.url.path %}class="active"{% endif %}>分类</a>
-  <a href="/web/merchants{{ q }}" {% if '/merchants' in request.url.path %}class="active"{% endif %}>商家</a>
-  <a href="/web/import{{ q }}" {% if '/import' in request.url.path or '/export' in request.url.path %}class="active"{% endif %}>导入导出</a>
-  <a href="/web/rules{{ q }}" {% if '/rules' in request.url.path %}class="active"{% endif %}>规则</a>
-  <span style="flex:1"></span>
-  <form method="get" action="{{ request.url.path }}" class="ledger-selector">
-    {% for key, value in request.query_params.multi_items() %}
-      {% if key != 'ledger_id' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
-    {% endfor %}
-    <label>当前账本：
-      <select name="ledger_id" onchange="this.form.submit()">
-        {% for opt in ledger_options %}
-        <option value="{{ opt.ledger_id }}" {% if opt.ledger_id == selected_ledger_id %}selected{% endif %}>
-          {{ opt.name }}{% if opt.is_default %}（默认）{% endif %}
-        </option>
-        {% endfor %}
-      </select>
-    </label>
-  </form>
-  <a href="/owner" class="owner-link" title="本机管理后台">管理后台</a>
-  <span class="version">v{{ backend_version }}</span>
-</nav>
-
-<div class="page">
-  <div class="ledger-context-bar">
-    <span class="ledger-pill {{ 'is-default' if selected_ledger_is_default else 'is-secondary' }}">
-      {% if selected_ledger_is_default %}个人账本{% else %}共享账本{% endif %} · {{ selected_ledger_name }}
-    </span>
-    {% set _role = selected_ledger_role or 'owner' %}
-    <span class="ledger-role-chip ledger-role-{{ _role }}" title="当前账本中你的角色">
-      {% if _role == 'owner' %}拥有者{% elif _role == 'member' %}成员{% elif _role == 'viewer' %}只读{% else %}{{ _role }}{% endif %}
-    </span>
-    <span class="ledger-context-hint">仅本机 · 公网无法访问 · 按 ledger 隔离</span>
+{% set _path = request.url.path %}
+{% set _role = selected_ledger_role or 'owner' %}
+<div class="app">
+  {% include "_sidebar_nav.html" %}
+  <div>
+    <div class="topbar">
+      <div class="crumb">
+        <span>小票夹</span>
+        <span class="sep">/</span>
+        <span>桌面账本</span>
+        <span class="sep">/</span>
+        <span class="current">{{ page_title or '仪表盘' }}</span>
+      </div>
+      <div class="grow"></div>
+      {% if show_month_picker %}
+        {% include "_month_picker.html" %}
+      {% endif %}
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换主题" title="切换主题（纸本 / 墨白 / 玄夜）">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+      {% include "_ledger_switcher.html" %}
+    </div>
+    <main class="content">
+      {% if _role == 'viewer' %}
+      <div class="readonly-callout">
+        你在此账本是<strong>只读角色</strong>，仅能查看；新建、编辑、确认、忽略、导入和规则改写等操作已隐藏或禁用。
+      </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
   </div>
-  {% if _role == 'viewer' %}
-  <div class="readonly-callout">
-    你在此账本是<strong>只读角色</strong>，仅能查看；新建、编辑、确认、忽略、导入和规则改写等操作已隐藏或禁用。
-  </div>
-  {% endif %}
-  {% block content %}{% endblock %}
 </div>
+{% block drawer %}{% endblock %}
 </body>
 </html>

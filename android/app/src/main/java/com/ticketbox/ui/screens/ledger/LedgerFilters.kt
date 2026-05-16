@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerUiState
 
 @Composable
@@ -34,9 +35,8 @@ internal fun LedgerFilterPanel(
     onManualAdd: () -> Unit,
     onCategoryChange: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        LedgerHeader(readOnly = state.readOnly, onManualAdd = onManualAdd)
-        LedgerSummaryStrip(state)
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
+        LedgerHeader(state = state, onManualAdd = onManualAdd)
         LedgerInlineFilters(
             state = state,
             onOpenMonthPicker = onOpenMonthPicker,
@@ -65,7 +65,7 @@ private fun LedgerInlineFilters(
     val hasTag = state.tagFilter.isNotBlank()
     val quickCategories = remember(state.categories) { state.categories.take(2) }
     val selectedOutsideQuick = state.categoryFilter.isNotBlank() && state.categoryFilter !in quickCategories
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
         item {
             AppFilterChip(
                 selected = true,
@@ -146,10 +146,10 @@ internal fun LedgerInlineButton(
     onClick: () -> Unit,
 ) {
     OutlinedButton(
-        modifier = modifier.heightIn(min = 40.dp),
+        modifier = modifier.heightIn(min = AppSpacing.controlMinHeight),
         enabled = enabled,
         onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+        contentPadding = PaddingValues(horizontal = AppSpacing.compactPadding, vertical = 0.dp),
     ) {
         Text(
             text = text,

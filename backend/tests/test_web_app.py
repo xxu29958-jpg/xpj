@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,6 +43,11 @@ def test_web_pending_remote_returns_403(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
+def test_web_dashboard_data_remote_returns_403(client: TestClient) -> None:
+    resp = client.get("/web/dashboard/data")
+    assert resp.status_code == 403
+
+
 def test_web_root_remote_returns_403(client: TestClient) -> None:
     resp = client.get("/web")
     assert resp.status_code == 403
@@ -53,6 +59,10 @@ def test_web_confirm_remote_returns_403(client: TestClient) -> None:
 
 def test_web_reject_remote_returns_403(client: TestClient) -> None:
     assert client.post("/web/expenses/1/reject").status_code == 403
+
+
+def test_web_pending_batch_reject_remote_returns_403(client: TestClient) -> None:
+    assert client.post("/web/pending/batch-reject").status_code == 403
 
 
 def test_web_image_remote_returns_403(client: TestClient) -> None:
@@ -229,6 +239,19 @@ def test_web_edit_save_updates_amount(web_client: TestClient) -> None:
     assert "测试商家" in detail.text
 
 
+def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient) -> None:
+    expense_id = _create_pending(web_client)
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert detail.status_code == 200
+    assert "data-image-skeleton" in detail.text
+    assert "receipt-image-skeleton" in detail.text
+
+    drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
+    assert drawer.status_code == 200
+    assert "data-image-skeleton" in drawer.text
+    assert "receipt-image-skeleton" in drawer.text
+
+
 def test_web_save_invalid_amount_shows_error(web_client: TestClient) -> None:
     expense_id = _create_pending(web_client)
     resp = web_client.post(
@@ -333,6 +356,20 @@ def test_web_pending_filter_active_tab_marker(web_client: TestClient) -> None:
     assert 'class="filter-tab is-active"' in resp.text
 
 
+def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestClient) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+    resp = web_client.get("/web/pending?ledger_id=owner")
+    assert resp.status_code == 200
+    assert f'data-expense-id="{eid}"' in resp.text
+    assert 'aria-selected="false"' in resp.text
+    assert f'aria-label="选择账单 #{eid}"' in resp.text
+    assert 'role="checkbox"' in resp.text
+
+    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop.js"
+    js = js_path.read_text(encoding="utf-8")
+    assert 'h.name = "expense_ids";' in js
+
+
 def test_web_bulk_set_category_updates_pending(web_client: TestClient) -> None:
     eid = _seed_pending_with_amount(web_client, "9.00", "X")
     resp = web_client.post(
@@ -386,6 +423,30 @@ def test_web_bulk_reject_removes_from_pending(web_client: TestClient) -> None:
     assert resp.status_code in {303, 307}
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{eid}/edit" not in pending.text
+
+
+def test_web_pending_batch_reject_removes_multiple_pending(web_client: TestClient) -> None:
+    first = _seed_pending_with_amount(web_client, "12.00", "Y")
+    second = _seed_pending_with_amount(web_client, "13.00", "Z")
+    resp = web_client.post(
+        "/web/pending/batch-reject",
+        data={"ledger_id": "owner", "expense_ids": [str(first), str(second)], "filter": "all"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    pending = web_client.get("/web/pending?ledger_id=owner")
+    assert f"/web/expenses/{first}/edit" not in pending.text
+    assert f"/web/expenses/{second}/edit" not in pending.text
+
+
+def test_web_pending_batch_reject_requires_selection(web_client: TestClient) -> None:
+    resp = web_client.post(
+        "/web/pending/batch-reject",
+        data={"ledger_id": "owner", "filter": "all"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "请先勾选账单" in resp.text
 
 
 def test_web_bulk_unknown_action_returns_error(web_client: TestClient) -> None:

@@ -100,6 +100,7 @@ class ExpenseRepository(
     private val settingsStore: TicketboxSettingsStore,
     private val tokenStore: SessionTokenStore,
     private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
+    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) : ServerBindingRepository, PendingReviewActions {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
@@ -110,9 +111,6 @@ class ExpenseRepository(
         .build()
         .adapter(ErrorDto::class.java)
 
-    private var cachedServerUrl: String? = null
-    private var cachedApi: ApiService? = null
-
     private fun currentTimezoneId(): String {
         return TimeZone.getDefault().id
     }
@@ -122,22 +120,14 @@ class ExpenseRepository(
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
     private fun api(serverUrlOverride: String? = null, tokenOverride: String? = null): ApiService {
-        val serverUrl = serverUrlOverride ?: settingsStore.serverUrl()
-        require(!serverUrl.isNullOrBlank()) { "账本地址未绑定" }
         if (serverUrlOverride != null || tokenOverride != null) {
-            return apiClient.create(serverUrl) { tokenOverride ?: tokenStore.getToken() }
+            return apiProvider.temporary(
+                requireNotNull(serverUrlOverride ?: settingsStore.serverUrl()) { "账本地址未绑定" },
+                tokenOverride,
+            )
         }
 
-        val cached = cachedApi
-        if (cached != null && cachedServerUrl == serverUrl) {
-            return cached
-        }
-
-        return apiClient.create(serverUrl) { tokenStore.getToken() }
-            .also { service ->
-                cachedServerUrl = serverUrl
-                cachedApi = service
-            }
+        return apiProvider.current()
     }
 
     private suspend fun <T> safeCall(serverUrlHint: String? = null, block: suspend () -> T): Result<T> {
@@ -741,8 +731,7 @@ class ExpenseRepository(
     }
 
     override suspend fun clearBinding() {
-        cachedServerUrl = null
-        cachedApi = null
+        apiProvider.clear()
         expenseDao.clear()
         settingsStore.clear()
         tokenStore.clear()

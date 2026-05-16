@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -28,8 +30,11 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
 
     AppGlassCard(containerAlpha = 0.92f) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(
+                horizontal = AppSpacing.cardPaddingSmall,
+                vertical = AppSpacing.cardPaddingTight,
+            ),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -52,7 +57,7 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(92.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
                 ) {
                     trend.forEach { day ->
                         DailyTrendBar(
@@ -71,8 +76,11 @@ internal fun RecentTrendCard(trend: List<DailySpend>) {
 internal fun RecentUploadCard(lastUploadAt: String?) {
     AppGlassCard(containerAlpha = 0.92f) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(
+                horizontal = AppSpacing.cardPaddingSmall,
+                vertical = AppSpacing.cardPaddingTight,
+            ),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Text("最近上传", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             Text(
@@ -115,7 +123,7 @@ private fun DailyTrendBar(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap + AppSpacing.tinyGap),
     ) {
         Box(
             modifier = Modifier
@@ -127,7 +135,7 @@ private fun DailyTrendBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(barHeight)
-                    .clip(RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(AppRadius.pill))
                     .background(barColor),
             )
         }

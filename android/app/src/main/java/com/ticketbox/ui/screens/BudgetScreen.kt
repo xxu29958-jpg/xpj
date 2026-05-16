@@ -42,6 +42,8 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.SafeBadge
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.BudgetCategoryInput
 import com.ticketbox.viewmodel.BudgetUiState
@@ -71,13 +73,21 @@ fun BudgetScreen(
         isRefreshing = state.loading,
         onRefresh = onRefresh,
         hasBottomBar = onBack == null,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(if (onBack == null) 12.dp else 8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(
+                    if (onBack == null) AppSpacing.compactGap else AppSpacing.smallGap,
+                ),
+            ) {
                 onBack?.let {
                     TextButton(onClick = it) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回统计",
+                            modifier = Modifier.size(18.dp),
+                        )
                         Spacer(Modifier.width(4.dp))
                         Text("返回统计")
                     }
@@ -148,8 +158,8 @@ private fun MonthSwitcher(
 private fun BudgetSummaryCard(budget: BudgetMonthly?) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -176,7 +186,7 @@ private fun BudgetSummaryCard(budget: BudgetMonthly?) {
                 return@Column
             }
             BudgetProgressBar(progress = budget.spentProgress)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 MetricPill(
                     label = "总额",
                     value = formatAmount(budget.availableAmountCents),
@@ -188,7 +198,7 @@ private fun BudgetSummaryCard(budget: BudgetMonthly?) {
                     modifier = Modifier.weight(1f),
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 MetricPill(
                     label = "已花",
                     value = formatAmount(budget.spentAmountCents),
@@ -200,7 +210,7 @@ private fun BudgetSummaryCard(budget: BudgetMonthly?) {
                     modifier = Modifier.weight(1f),
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 MetricPill(
                     label = "固定支出",
                     value = formatAmount(budget.fixedAmountCents),
@@ -223,14 +233,14 @@ private fun BudgetProgressBar(progress: Float) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(track),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
                 .background(fill)
-                .padding(vertical = 4.dp),
+                .padding(vertical = AppSpacing.miniGap),
         )
     }
 }
@@ -244,10 +254,10 @@ private fun MetricPill(
     val visuals = LocalThemeVisuals.current
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(AppRadius.small))
             .background(visuals.chipUnselected.copy(alpha = 0.54f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.contentGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         Text(
             text = label,
@@ -278,8 +288,8 @@ private fun BudgetEditorCard(
 ) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Text(
                 text = "预算设置",
@@ -300,7 +310,7 @@ private fun BudgetEditorCard(
                 label = "月度总预算",
                 placeholder = "3000",
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 MoneyField(
                     value = state.form.rolloverAmount,
                     onValueChange = onRolloverAmountChange,
@@ -339,7 +349,7 @@ private fun BudgetEditorCard(
                 )
             }
             TextButton(onClick = onAddCategoryRow) {
-                Icon(Icons.Filled.Add, contentDescription = null)
+                Icon(Icons.Filled.Add, contentDescription = "增加分类预算")
                 Text("增加分类")
             }
             Button(
@@ -379,7 +389,7 @@ private fun CategoryInputRow(
     onChange: (String, String) -> Unit,
     onRemove: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         OutlinedTextField(
             value = row.category,
             onValueChange = { onChange(it, row.amount) },
@@ -390,7 +400,7 @@ private fun CategoryInputRow(
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             MoneyField(
@@ -404,7 +414,10 @@ private fun CategoryInputRow(
                 enabled = canRemove,
                 onClick = onRemove,
             ) {
-                Icon(Icons.Filled.DeleteOutline, contentDescription = "删除分类")
+                Icon(
+                    Icons.Filled.DeleteOutline,
+                    contentDescription = row.category.takeIf { it.isNotBlank() }?.let { "删除 $it 分类预算" } ?: "删除分类预算",
+                )
             }
         }
     }
@@ -414,8 +427,8 @@ private fun CategoryInputRow(
 private fun CategoryBudgetCard(items: List<BudgetCategoryBudget>) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Text(
                 text = "分类执行",
@@ -450,8 +463,8 @@ private fun CategoryBudgetCard(items: List<BudgetCategoryBudget>) {
 private fun ExcludedBreakdownCard(items: List<BudgetExcludedCategory>) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Text(
                 text = "剔除明细",

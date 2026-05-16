@@ -21,9 +21,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -33,7 +35,7 @@ internal fun LedgerDayHeader(label: String) {
         color = MaterialTheme.colorScheme.onBackground,
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Black,
-        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+        modifier = Modifier.padding(top = AppSpacing.miniGap, bottom = AppSpacing.tinyGap),
     )
 }
 
@@ -43,19 +45,19 @@ internal fun LedgerExpenseCard(
     onEdit: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
-    SoftPanel(
+    AppGlassCard(
         modifier = Modifier.clickable(onClick = onEdit),
         containerAlpha = 0.995f,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LedgerCategoryMark(category = expense.category)
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
                     text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
@@ -83,7 +85,7 @@ internal fun LedgerExpenseCard(
             }
             Column(
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
                     text = expense.amountCents?.let(::formatAmount) ?: "待填写",
@@ -97,7 +99,7 @@ internal fun LedgerExpenseCard(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(visuals.chipSelected.copy(alpha = 0.72f))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                        .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
                     color = visuals.primary,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
@@ -114,7 +116,7 @@ private fun LedgerCategoryMark(category: String) {
     Box(
         modifier = Modifier
             .size(42.dp)
-            .clip(RoundedCornerShape(15.dp))
+            .clip(RoundedCornerShape(AppRadius.small))
             .background(visuals.chipSelected.copy(alpha = 0.78f)),
         contentAlignment = Alignment.Center,
     ) {

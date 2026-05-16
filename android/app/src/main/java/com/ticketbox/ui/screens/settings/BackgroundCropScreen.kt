@@ -92,11 +92,13 @@ import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
@@ -123,14 +125,14 @@ fun BackgroundCropScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(9f / 16f)
-                .clip(RoundedCornerShape(28.dp))
+                .clip(RoundedCornerShape(AppRadius.large))
                 .background(visuals.solidCard.copy(alpha = 0.92f)),
         ) {
             val bitmap = rememberLocalImage(sourcePath)
             if (bitmap != null) {
                 Image(
                     bitmap = bitmap,
-                    contentDescription = null,
+                    contentDescription = "背景裁剪预览",
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
@@ -151,11 +153,11 @@ fun BackgroundCropScreen(
                 cropMode = cropMode,
                 modifier = Modifier
                     .align(cropMode.previewBadgeAlignment)
-                    .padding(14.dp),
+                    .padding(AppSpacing.cardPaddingTight),
             )
         }
         SettingsSection(title = "构图位置", icon = Icons.Filled.Tune) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                 BackgroundCropMode.entries.forEach { mode ->
                     AppFilterChip(
                         modifier = Modifier.weight(1f),
@@ -171,7 +173,7 @@ fun BackgroundCropScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
             OutlinedButton(
                 modifier = Modifier.weight(1f),
                 onClick = onBack,
@@ -209,9 +211,9 @@ private fun CropSelectionBadge(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.82f))
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
     ) {
         Text(
             text = "当前保留：${cropMode.displayName}",

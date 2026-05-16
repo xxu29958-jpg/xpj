@@ -25,55 +25,35 @@ val LocalDashboardCardTokens = compositionLocalOf { dashboardCardTokensForSkin(A
 
 fun dashboardCardTokensForSkin(skin: AppSkin): DashboardCardTokens {
     return when (skin) {
-        AppSkin.Pine -> DashboardCardTokens(
-            pending = DashboardCardAccent(Color(0xFFE6981B), Color(0xFF8A5A12), Color(0xFFFFFCF7)),
-            monthSpend = DashboardCardAccent(Color(0xFF185B4F), Color(0xFF0E433A), Color(0xFFFFFCF7)),
-            recentUpload = DashboardCardAccent(Color(0xFF2D7A80), Color(0xFF143E42), Color(0xFFFFFCF7)),
-            recurring = DashboardCardAccent(Color(0xFFC8995F), Color(0xFF6E4D1D), Color(0xFFFFFCF7)),
-            goals = DashboardCardAccent(Color(0xFF5E8A6F), Color(0xFF2E5841), Color(0xFFFFFCF7)),
-            budget = DashboardCardAccent(Color(0xFF185B4F), Color(0xFF0E433A), Color(0xFFFFFCF7)),
-            backup = DashboardCardAccent(Color(0xFF4A6E84), Color(0xFF253C4E), Color(0xFFFFFCF7)),
-            device = DashboardCardAccent(Color(0xFF8B7A65), Color(0xFF55483A), Color(0xFFFFFCF7)),
+        AppSkin.Paper -> DashboardCardTokens(
+            pending = DashboardCardAccent(Color(0xFF8A5A2B), Color(0xFF5A3A14), Color(0xFFFBF8F1)),
+            monthSpend = DashboardCardAccent(Color(0xFF1C1A18), Color(0xFF0A0908), Color(0xFFFBF8F1)),
+            recentUpload = DashboardCardAccent(Color(0xFF3E6770), Color(0xFF1C3E46), Color(0xFFFBF8F1)),
+            recurring = DashboardCardAccent(Color(0xFFA4361C), Color(0xFF6E220F), Color(0xFFFBF8F1)),
+            goals = DashboardCardAccent(Color(0xFF4F6B3A), Color(0xFF2E4220), Color(0xFFFBF8F1)),
+            budget = DashboardCardAccent(Color(0xFF8A5A2B), Color(0xFF5A3A14), Color(0xFFFBF8F1)),
+            backup = DashboardCardAccent(Color(0xFF807968), Color(0xFF4A463F), Color(0xFFFBF8F1)),
+            device = DashboardCardAccent(Color(0xFF5A4A6E), Color(0xFF382D44), Color(0xFFFBF8F1)),
         )
-        AppSkin.Pomelo -> DashboardCardTokens(
-            pending = DashboardCardAccent(Color(0xFFE6981B), Color(0xFF8A5A12), Color(0xFFFFFCF7)),
-            monthSpend = DashboardCardAccent(Color(0xFFCB6C2F), Color(0xFF6C3712), Color(0xFFFFFCF7)),
-            recentUpload = DashboardCardAccent(Color(0xFF2D7A80), Color(0xFF143E42), Color(0xFFFFFCF7)),
-            recurring = DashboardCardAccent(Color(0xFF8A6A2D), Color(0xFF473513), Color(0xFFFFFCF7)),
-            goals = DashboardCardAccent(Color(0xFF6A8C3F), Color(0xFF36511C), Color(0xFFFFFCF7)),
-            budget = DashboardCardAccent(Color(0xFFE6981B), Color(0xFF8A5A12), Color(0xFFFFFCF7)),
-            backup = DashboardCardAccent(Color(0xFF45A6A3), Color(0xFF1F5957), Color(0xFFFFFCF7)),
-            device = DashboardCardAccent(Color(0xFFB05E91), Color(0xFF5F2F4D), Color(0xFFFFFCF7)),
+        AppSkin.Mono -> DashboardCardTokens(
+            pending = DashboardCardAccent(Color(0xFF6F6E6A), Color(0xFF3A3A37), Color(0xFFFAFAF8)),
+            monthSpend = DashboardCardAccent(Color(0xFF0E0E0C), Color(0xFF000000), Color(0xFFFAFAF8)),
+            recentUpload = DashboardCardAccent(Color(0xFF3A4A52), Color(0xFF1D2A30), Color(0xFFFAFAF8)),
+            recurring = DashboardCardAccent(Color(0xFF8E1D12), Color(0xFF5A1009), Color(0xFFFAFAF8)),
+            goals = DashboardCardAccent(Color(0xFF2C5036), Color(0xFF15301C), Color(0xFFFAFAF8)),
+            budget = DashboardCardAccent(Color(0xFF0E0E0C), Color(0xFF000000), Color(0xFFFAFAF8)),
+            backup = DashboardCardAccent(Color(0xFF6F6E6A), Color(0xFF3A3A37), Color(0xFFFAFAF8)),
+            device = DashboardCardAccent(Color(0xFF5A4A6E), Color(0xFF382D44), Color(0xFFFAFAF8)),
         )
-        AppSkin.Harbor -> DashboardCardTokens(
-            pending = DashboardCardAccent(Color(0xFFD5A35D), Color(0xFF7C5414), Color(0xFFFFFCF7)),
-            monthSpend = DashboardCardAccent(Color(0xFF245D78), Color(0xFF12384C), Color(0xFFFFFCF7)),
-            recentUpload = DashboardCardAccent(Color(0xFF3E92AE), Color(0xFF1E5A6E), Color(0xFFFFFCF7)),
-            recurring = DashboardCardAccent(Color(0xFFB87A48), Color(0xFF6B431E), Color(0xFFFFFCF7)),
-            goals = DashboardCardAccent(Color(0xFF185B4F), Color(0xFF0E433A), Color(0xFFFFFCF7)),
-            budget = DashboardCardAccent(Color(0xFF245D78), Color(0xFF12384C), Color(0xFFFFFCF7)),
-            backup = DashboardCardAccent(Color(0xFF6B7F4D), Color(0xFF394823), Color(0xFFFFFCF7)),
-            device = DashboardCardAccent(Color(0xFF5A4E78), Color(0xFF2F274A), Color(0xFFFFFCF7)),
-        )
-        AppSkin.Berry -> DashboardCardTokens(
-            pending = DashboardCardAccent(Color(0xFFC4657F), Color(0xFF73263F), Color(0xFFFFFAFC)),
-            monthSpend = DashboardCardAccent(Color(0xFFA83C5A), Color(0xFF511B2A), Color(0xFFFFFAFC)),
-            recentUpload = DashboardCardAccent(Color(0xFF3E7A6A), Color(0xFF1F4138), Color(0xFFFFFAFC)),
-            recurring = DashboardCardAccent(Color(0xFF8B7A65), Color(0xFF55483A), Color(0xFFFFFAFC)),
-            goals = DashboardCardAccent(Color(0xFF6F4C7A), Color(0xFF3F2548), Color(0xFFFFFAFC)),
-            budget = DashboardCardAccent(Color(0xFFA83C5A), Color(0xFF511B2A), Color(0xFFFFFAFC)),
-            backup = DashboardCardAccent(Color(0xFF457495), Color(0xFF1F3F58), Color(0xFFFFFAFC)),
-            device = DashboardCardAccent(Color(0xFFB8814D), Color(0xFF6A4520), Color(0xFFFFFAFC)),
-        )
-        AppSkin.Night -> DashboardCardTokens(
-            pending = DashboardCardAccent(Color(0xFFD2A46E), Color(0xFFF7E1C1), Color(0xFF0D2027)),
-            monthSpend = DashboardCardAccent(Color(0xFF2BB49A), Color(0xFFC7F2E8), Color(0xFF0D2027)),
-            recentUpload = DashboardCardAccent(Color(0xFF84BCD4), Color(0xFFD4E8EF), Color(0xFF0D2027)),
-            recurring = DashboardCardAccent(Color(0xFFE8C07A), Color(0xFFF8E1B6), Color(0xFF0D2027)),
-            goals = DashboardCardAccent(Color(0xFFAFC97A), Color(0xFFDDEEB7), Color(0xFF0D2027)),
-            budget = DashboardCardAccent(Color(0xFF2BB49A), Color(0xFFC7F2E8), Color(0xFF0D2027)),
-            backup = DashboardCardAccent(Color(0xFF6FB1AD), Color(0xFFCFEAE7), Color(0xFF0D2027)),
-            device = DashboardCardAccent(Color(0xFFB78ED3), Color(0xFFE0CCEF), Color(0xFF0D2027)),
+        AppSkin.Midnight -> DashboardCardTokens(
+            pending = DashboardCardAccent(Color(0xFFD6B487), Color(0xFFF0D9B3), Color(0xFF15171C)),
+            monthSpend = DashboardCardAccent(Color(0xFFB89564), Color(0xFFE8D2AD), Color(0xFF15171C)),
+            recentUpload = DashboardCardAccent(Color(0xFF84BCD4), Color(0xFFC4DEE9), Color(0xFF15171C)),
+            recurring = DashboardCardAccent(Color(0xFFD97757), Color(0xFFF0B8A3), Color(0xFF15171C)),
+            goals = DashboardCardAccent(Color(0xFFA8B88A), Color(0xFFCCD9B8), Color(0xFF15171C)),
+            budget = DashboardCardAccent(Color(0xFFD6B487), Color(0xFFF0D9B3), Color(0xFF15171C)),
+            backup = DashboardCardAccent(Color(0xFF7C8A6A), Color(0xFFB8C4A3), Color(0xFF15171C)),
+            device = DashboardCardAccent(Color(0xFF8A7EAC), Color(0xFFC3B9D9), Color(0xFF15171C)),
         )
     }
 }

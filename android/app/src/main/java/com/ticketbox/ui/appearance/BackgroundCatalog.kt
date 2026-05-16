@@ -23,73 +23,68 @@ data class BuiltInBackground(
 object BackgroundCatalog {
     val entries: List<BuiltInBackground> = listOf(
         BuiltInBackground(
-            id = "pine_mist",
-            name = "松雾",
-            category = BuiltInBackgroundCategory.Nature,
-            description = "低饱和绿雾，适合夜间记账。",
-            gradientColors = listOf(0xFF10231FL, 0xFF31564DL, 0xFFB8C8B7L),
-            preferredSkin = AppSkin.Pine,
-        ),
-        BuiltInBackground(
-            id = "harbor",
-            name = "港湾",
-            category = BuiltInBackgroundCategory.Nature,
-            description = "安静蓝绿，默认推荐。",
-            gradientColors = listOf(0xFF10222EL, 0xFF245A63L, 0xFFBFD7D3L),
-            preferredSkin = AppSkin.Harbor,
-        ),
-        BuiltInBackground(
-            id = "pomelo_light",
-            name = "柚光",
-            category = BuiltInBackgroundCategory.Emotion,
-            description = "暖纸和柚子色，轻松但不过亮。",
-            gradientColors = listOf(0xFFFFF5D7L, 0xFFFFC57AL, 0xFF7E5B3CL),
-            preferredSkin = AppSkin.Pomelo,
-        ),
-        BuiltInBackground(
-            id = "berry",
-            name = "莓果",
-            category = BuiltInBackgroundCategory.Emotion,
-            description = "低亮莓色，适合短时查看。",
-            gradientColors = listOf(0xFF211224L, 0xFF5D2D50L, 0xFFF2A8BFL),
-            preferredSkin = AppSkin.Berry,
-        ),
-        BuiltInBackground(
-            id = "night",
-            name = "夜幕",
-            category = BuiltInBackgroundCategory.Nature,
-            description = "深夜蓝黑，克制耐看。",
-            gradientColors = listOf(0xFF080C13L, 0xFF18253AL, 0xFF59708BL),
-            preferredSkin = AppSkin.Night,
-        ),
-        BuiltInBackground(
             id = "paper",
-            name = "纸感",
+            name = "纸本",
             category = BuiltInBackgroundCategory.Minimal,
-            description = "暖白纸面，适合白天。",
-            gradientColors = listOf(0xFFFBF7EFL, 0xFFE9DDC8L, 0xFFD0C4AFL),
-            preferredSkin = AppSkin.Pomelo,
+            description = "温润米白与茶铜纸影，和桌面账本默认视觉一致。",
+            gradientColors = listOf(0xFFFBF8F1L, 0xFFF3EFE6L, 0xFFEAD8B8L),
+            preferredSkin = AppSkin.Paper,
         ),
         BuiltInBackground(
-            id = "warm_fog",
-            name = "暖雾",
-            category = BuiltInBackgroundCategory.Minimal,
-            description = "轻暖灰雾，表单页更稳。",
-            gradientColors = listOf(0xFFF7F1E8L, 0xFFD6D0C6L, 0xFF9EA8A3L),
-            preferredSkin = AppSkin.Harbor,
+            id = "paper_warm",
+            name = "茶雾",
+            category = BuiltInBackgroundCategory.Nature,
+            description = "更明显的暖纸雾面，适合待确认和统计首页。",
+            gradientColors = listOf(0xFFFFFBF3L, 0xFFECD8B5L, 0xFFC8B895L),
+            preferredSkin = AppSkin.Paper,
         ),
         BuiltInBackground(
-            id = "clouds",
-            name = "云层",
+            id = "mono",
+            name = "墨白",
+            category = BuiltInBackgroundCategory.Minimal,
+            description = "冷灰纸面，减少彩色干扰。",
+            gradientColors = listOf(0xFFFAFAF8L, 0xFFF1F0EDL, 0xFFDAD9D4L),
+            preferredSkin = AppSkin.Mono,
+        ),
+        BuiltInBackground(
+            id = "mono_fog",
+            name = "灰雾",
             category = BuiltInBackgroundCategory.Illustration,
-            description = "柔和云层感，适合统计页。",
-            gradientColors = listOf(0xFFE9F1F8L, 0xFFB8CCE0L, 0xFF627B9AL),
-            preferredSkin = AppSkin.Harbor,
+            description = "低对比灰雾，适合表格和长列表。",
+            gradientColors = listOf(0xFFF7F7F4L, 0xFFE3E2DDL, 0xFFB8B7B3L),
+            preferredSkin = AppSkin.Mono,
+        ),
+        BuiltInBackground(
+            id = "midnight",
+            name = "玄夜",
+            category = BuiltInBackgroundCategory.Nature,
+            description = "深色玻璃与暖金，适合夜间。",
+            gradientColors = listOf(0xFF15171CL, 0xFF1C1F25L, 0xFF8A6A3EL),
+            preferredSkin = AppSkin.Midnight,
+        ),
+        BuiltInBackground(
+            id = "midnight_gold",
+            name = "暖金",
+            category = BuiltInBackgroundCategory.Emotion,
+            description = "深色底上的暖金光晕，保留暗色但不回到旧蓝绿。",
+            gradientColors = listOf(0xFF0C0D10L, 0xFF2A2D35L, 0xFFB89564L),
+            preferredSkin = AppSkin.Midnight,
         ),
     )
 
+    private val legacyIdMap: Map<String, String> = mapOf(
+        "pine_mist" to "paper",
+        "harbor" to "paper",
+        "pomelo_light" to "paper_warm",
+        "warm_fog" to "paper_warm",
+        "berry" to "mono",
+        "clouds" to "mono_fog",
+        "night" to "midnight",
+    )
+
     fun find(id: String?): BuiltInBackground? {
-        return entries.firstOrNull { background -> background.id == id }
+        val resolvedId = legacyIdMap[id] ?: id
+        return entries.firstOrNull { background -> background.id == resolvedId }
     }
 
     fun byCategory(category: BuiltInBackgroundCategory): List<BuiltInBackground> {

@@ -36,6 +36,12 @@ class ApiClient(context: Context? = null) : ApiServiceFactory {
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
+            // Never let bearer tokens or session cookies appear in logcat,
+            // even when SHOW_ADVANCED_TOOLS unlocks the logging interceptor
+            // for debug builds. See docs/SECURITY.md.
+            redactHeader("Authorization")
+            redactHeader("Cookie")
+            redactHeader("Set-Cookie")
         }
         val directNetwork = nonVpnNetworkProvider
             ?.takeIf { it.hasActiveVpnNetwork() }

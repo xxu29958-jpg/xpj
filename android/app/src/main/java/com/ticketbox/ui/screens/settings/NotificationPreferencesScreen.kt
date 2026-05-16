@@ -9,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,7 +18,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.NotificationPreferences
 import com.ticketbox.notification.NotificationListenerStatus
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppSwitch
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 fun NotificationPreferencesScreen(
@@ -40,10 +41,10 @@ fun NotificationPreferencesScreen(
         onBack = onBack,
     ) {
         SettingsSection(title = "通知自动草稿", icon = Icons.Filled.Notifications) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
                 ) {
                     NotificationSwitchLine(
                         title = "本机解析支付通知",
@@ -83,10 +84,10 @@ fun NotificationPreferencesScreen(
             }
         }
         SettingsSection(title = "提醒开关", icon = Icons.Filled.Notifications) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
                 ) {
                     NotificationSwitchLine(
                         title = "待确认提醒",
@@ -116,9 +117,9 @@ fun NotificationPreferencesScreen(
             }
         }
         SettingsSection(title = "隐私边界", icon = Icons.Filled.Notifications) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
@@ -153,7 +154,7 @@ private fun NotificationSwitchLine(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(end = 12.dp),
+                .padding(end = AppSpacing.compactGap),
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
@@ -167,7 +168,7 @@ private fun NotificationSwitchLine(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        Switch(
+        AppSwitch(
             checked = checked,
             enabled = enabled,
             onCheckedChange = onCheckedChange,

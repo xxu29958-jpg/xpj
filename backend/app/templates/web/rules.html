@@ -145,7 +145,7 @@
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="preview_confirmed" value="yes">
     <button type="submit" class="btn btn-primary"
-            onclick="return confirm('已预览影响范围，确认把规则应用到这些待确认账单？')">
+            data-confirm="已预览影响范围，确认把规则应用到这些待确认账单？">
       确认应用到待确认
     </button>
   </form>
@@ -223,7 +223,7 @@
     <input type="hidden" name="preview_confirmed" value="yes">
     <input type="hidden" name="preview_token" value="{{ confirmed_bulk_preview.preview_token }}">
     <button type="submit" class="btn btn-danger"
-            onclick="return confirm('确认把规则应用到这些已确认历史账单？操作会被记录，可从规则应用记录回滚。')">
+            data-confirm="确认把规则应用到这些已确认历史账单？操作会被记录，可从规则应用记录回滚。">
       确认应用到已确认
     </button>
   </form>
@@ -269,7 +269,7 @@
         <td>
           {% if can_write and batch.status != 'rolled_back' %}
           <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" style="display:inline"
-                onsubmit="return confirm('回滚这次规则应用？只会恢复未被手动改过的账单。');">
+                data-confirm="回滚这次规则应用？只会恢复未被手动改过的账单。">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <button type="submit" class="btn btn-danger">回滚</button>
           </form>
@@ -335,7 +335,7 @@
             </button>
           </form>
           <form method="post" action="/web/rules/{{ r.id }}/delete" style="display:inline"
-                onsubmit="return confirm('删除规则 [{{ r.keyword }}]？');">
+                data-confirm="删除规则 [{{ r.keyword }}]？">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
             <button type="submit" class="btn btn-danger">删除</button>
           </form>

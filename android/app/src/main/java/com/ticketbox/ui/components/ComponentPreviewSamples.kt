@@ -25,7 +25,7 @@ import com.ticketbox.ui.theme.TicketboxTheme
 @Preview(showBackground = true)
 @Composable
 private fun AppVisualComponentsPreview() {
-    TicketboxTheme(skin = AppSkin.Pine) {
+    TicketboxTheme(skin = AppSkin.Paper) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),

@@ -25,8 +25,8 @@ def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient) ->
     android_payload = default_android.json()
     assert android_payload["surface"] == "android"
     assert [item["key"] for item in android_payload["items"]][:3] == [
-        "pending",
         "monthly_spend",
+        "budget",
         "reports",
     ]
 
@@ -75,8 +75,8 @@ def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient) ->
     )
     assert android_after_web_update.status_code == 200, android_after_web_update.json()
     assert [item["key"] for item in android_after_web_update.json()["items"]][:3] == [
-        "pending",
         "monthly_spend",
+        "budget",
         "reports",
     ]
 
@@ -86,8 +86,8 @@ def test_dashboard_cards_defaults_update_and_ledger_scope(client: TestClient) ->
     )
     assert gray_web.status_code == 200, gray_web.json()
     assert [item["key"] for item in gray_web.json()["items"]][:3] == [
-        "pending",
         "monthly_spend",
+        "budget",
         "reports",
     ]
     assert all(item["visible"] for item in gray_web.json()["items"])

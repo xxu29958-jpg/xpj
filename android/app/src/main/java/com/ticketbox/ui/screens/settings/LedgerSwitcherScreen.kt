@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material3.Button
@@ -25,13 +23,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.LedgerSummary
-import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.domain.model.ledgerScopeLabel
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import kotlinx.coroutines.launch
 
 private const val LEDGER_NAME_MAX = 60
@@ -76,10 +73,10 @@ fun LedgerSwitcherScreen(
         onBack = onBack,
     ) {
         SettingsSection(title = "已加入的账本", icon = Icons.Filled.FolderShared) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
                     if (ledgers.isEmpty() && !loading) {
                         Text(
@@ -94,15 +91,19 @@ fun LedgerSwitcherScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                         ) {
-                            Column {
+                            Column(
+                                modifier = Modifier.weight(1f).padding(end = AppSpacing.compactGap),
+                            ) {
                                 Text(
                                     text = ledger.name,
                                     style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                    LedgerScopeChip(isDefault = ledger.isDefault)
+                                    SettingsLedgerScopeChip(isDefault = ledger.isDefault)
                                     Spacer(Modifier.width(6.dp))
-                                    LedgerRoleChip(role = ledger.role)
+                                    SettingsRoleChip(role = ledger.role)
                                     if (isActive) {
                                         Spacer(Modifier.width(6.dp))
                                         Text(
@@ -144,9 +145,9 @@ fun LedgerSwitcherScreen(
         }
 
         SettingsSection(title = "新建账本", icon = Icons.Filled.FolderShared) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
@@ -199,46 +200,5 @@ fun LedgerSwitcherScreen(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-    }
-}
-
-/**
- * v0.5 role chip. Mirrors the colour palette used by the /web role
- * badge: owner→amber, member→blue, viewer→grey. Unknown roles fall back to
- * the surface-variant tone so the UI never drops information silently.
- */
-@Composable
-private fun LedgerRoleChip(role: String) {
-    val (label, container, content) = when (role) {
-        "owner" -> Triple(ledgerRoleLabel(role), Color(0xFFFFE2A0), Color(0xFF5A3B00))
-        "member" -> Triple(ledgerRoleLabel(role), Color(0xFFC9DCFF), Color(0xFF1F3D7A))
-        "viewer" -> Triple(ledgerRoleLabel(role), Color(0xFFE2E2E6), Color(0xFF40404A))
-        else -> Triple(ledgerRoleLabel(role), Color(0xFFE2E2E6), Color(0xFF40404A))
-    }
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .background(container, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = content,
-        )
-    }
-}
-
-@Composable
-private fun LedgerScopeChip(isDefault: Boolean) {
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .background(Color(0xFFE7F5EF), RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    ) {
-        Text(
-            text = ledgerScopeLabel(isDefault),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF1D5A42),
-        )
     }
 }

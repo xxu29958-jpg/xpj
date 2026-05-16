@@ -50,12 +50,65 @@ def init_db() -> None:
     backup_sqlite_database_once()
     Base.metadata.create_all(bind=engine)
     migrate_sqlite_schema()
+    record_schema_migration("baseline-v0.9.0a1", note="legacy hand-written migrate_sqlite_schema baseline")
     seed_identity_data()
     validate_sqlite_data_integrity()
     # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
     # paths remain readable through resolve_protected_image() after the route
     # has verified expense ownership. See docs/ROLLBACK.md.
     seed_runtime_data()
+
+
+def record_schema_migration(name: str, *, note: str | None = None) -> None:
+    """Record that the named migration step has been applied.
+
+    Idempotent: subsequent calls with the same ``name`` are no-ops. Future
+    incremental migrations should call this *after* their DDL succeeds so that
+    repeated boots skip already-applied steps once that gating logic lands.
+    Today the legacy migrator is itself idempotent, so this is informational.
+    """
+
+    from app.version import BACKEND_VERSION
+
+    if not settings.database_url.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                "name VARCHAR(128) PRIMARY KEY, "
+                "applied_at DATETIME NOT NULL, "
+                "backend_version VARCHAR(32), "
+                "note TEXT)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT OR IGNORE INTO schema_migrations (name, applied_at, backend_version, note) "
+                "VALUES (:name, :applied_at, :backend_version, :note)"
+            ),
+            {
+                "name": name,
+                "applied_at": datetime.now(UTC),
+                "backend_version": BACKEND_VERSION,
+                "note": note,
+            },
+        )
+
+
+def is_schema_migration_applied(name: str) -> bool:
+    """Return True if a named migration step has previously been recorded."""
+
+    if not settings.database_url.startswith("sqlite"):
+        return False
+    if "schema_migrations" not in set(inspect(engine).get_table_names()):
+        return False
+    with engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT 1 FROM schema_migrations WHERE name = :name LIMIT 1"),
+            {"name": name},
+        ).first()
+    return row is not None
 
 
 def _sqlite_database_path() -> Path | None:
@@ -269,7 +322,51 @@ def validate_sqlite_data_integrity() -> None:
         return
     table_names = set(inspect(engine).get_table_names())
     with engine.begin() as connection:
+        _validate_expense_core_data(connection, table_names)
         _validate_expense_split_integrity(connection, table_names)
+
+
+def _validate_expense_core_data(connection, table_names: set[str]) -> None:
+    """Reject legacy expense rows that would bypass CHECK constraints."""
+
+    if "expenses" not in table_names:
+        return
+
+    invalid_amounts = int(
+        connection.execute(
+            text(
+                "SELECT COUNT(*) FROM expenses "
+                "WHERE amount_cents IS NOT NULL AND amount_cents < 0"
+            )
+        ).scalar_one()
+    )
+    if invalid_amounts:
+        raise RuntimeError("Invalid legacy data: expenses.amount_cents contains negative values")
+
+    invalid_statuses = int(
+        connection.execute(
+            text(
+                "SELECT COUNT(*) FROM expenses "
+                "WHERE status IS NULL OR status NOT IN ('pending', 'confirmed', 'rejected')"
+            )
+        ).scalar_one()
+    )
+    if invalid_statuses:
+        raise RuntimeError("Invalid legacy data: expenses.status contains unsupported values")
+
+    columns = {column["name"] for column in inspect(engine).get_columns("expenses")}
+    if "duplicate_status" not in columns:
+        return
+    invalid_duplicate_statuses = int(
+        connection.execute(
+            text(
+                "SELECT COUNT(*) FROM expenses "
+                "WHERE duplicate_status IS NULL OR duplicate_status NOT IN ('none', 'suspected')"
+            )
+        ).scalar_one()
+    )
+    if invalid_duplicate_statuses:
+        raise RuntimeError("Invalid legacy data: expenses.duplicate_status contains unsupported values")
 
 
 def _validate_family_role_data(connection, table_names: set[str]) -> None:

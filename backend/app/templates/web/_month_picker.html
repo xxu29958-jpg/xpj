@@ -1,0 +1,30 @@
+{# 月份选择器（confirmed / reports / stats 页面使用） #}
+{# 上下文：selected_month (YYYY-MM)，由 route handler 注入 #}
+{% set _months_zh = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'] %}
+{% set _m = selected_month or '' %}
+{% if _m and '-' in _m %}
+  {% set _parts = _m.split('-') %}
+  {% set _y = _parts[0] | int %}
+  {% set _mo = _parts[1] | int %}
+  {% set _label = _y ~ ' 年 ' ~ _months_zh[_mo - 1] %}
+  {% set _prev_mo = _mo - 1 %}
+  {% set _prev_y = _y %}
+  {% if _prev_mo < 1 %}{% set _prev_mo = 12 %}{% set _prev_y = _y - 1 %}{% endif %}
+  {% set _next_mo = _mo + 1 %}
+  {% set _next_y = _y %}
+  {% if _next_mo > 12 %}{% set _next_mo = 1 %}{% set _next_y = _y + 1 %}{% endif %}
+  {% set _prev = '%04d-%02d' % (_prev_y, _prev_mo) %}
+  {% set _next = '%04d-%02d' % (_next_y, _next_mo) %}
+{% else %}
+  {% set _label = '本月' %}
+  {% set _prev = '' %}
+  {% set _next = '' %}
+{% endif %}
+{% macro _link(month) -%}
+{{ request.url.path }}?{% for k, v in request.query_params.multi_items() %}{% if k != 'month' %}{{ k }}={{ v }}&{% endif %}{% endfor %}month={{ month }}
+{%- endmacro %}
+<div class="month-picker">
+  {% if _prev %}<a href="{{ _link(_prev) }}" aria-label="上一月">‹</a>{% endif %}
+  <div class="label">{{ _label }}</div>
+  {% if _next %}<a href="{{ _link(_next) }}" aria-label="下一月">›</a>{% endif %}
+</div>

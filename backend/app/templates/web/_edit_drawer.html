@@ -1,0 +1,130 @@
+{# 编辑抽屉片段（GET /web/expenses/{id}/edit?fragment=1）。
+   不带 base.html 外框，仅返回抽屉内部的 markup，由 desktop.js fetch 后注入 #drawer。
+   上下文：与 edit.html 共享 `_web_edit_context()`：
+     expense, receipt_items, split_rows, split_members, ledger_options, ...
+#}
+{% set e = expense %}
+<section class="drawer-receipt">
+  <div class="card-title" style="margin-bottom:0">小票原件</div>
+  <div class="meta">
+    #{{ e.id }} · {{ e.source_label }}<br>
+    上传于 {{ e.created_at or '—' }}
+  </div>
+  <div class="receipt-frame" data-placeholder="receipt scan placeholder"{% if e.has_image %} data-image-skeleton{% endif %}>
+    {% if e.has_image %}
+      <div class="skeleton skeleton-block receipt-image-skeleton" aria-hidden="true"></div>
+      <img src="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}" alt="小票" loading="lazy" decoding="async">
+    {% endif %}
+  </div>
+  <div class="receipt-tools">
+    {% if e.has_image %}
+    <a class="dt-btn" href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}" target="_blank">放大</a>
+    <a class="dt-btn" href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}" download>下载</a>
+    {% else %}
+    <span style="font-size:11.5px;color:var(--text-meta)">没有小票图像（手动记录或图像已清理）。</span>
+    {% endif %}
+  </div>
+  <div style="background:var(--surface-card);border:1px solid var(--border-card);border-radius:6px;padding:10px 12px;font-size:11.5px;color:var(--text-meta);line-height:1.7">
+    <div style="color:var(--text-muted);font-family:var(--font-num);font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px">
+      草稿状态
+    </div>
+    <div>商家：{{ e.merchant or '未填' }}{% if e.needs_merchant %} · <span style="color:var(--state-danger-fg)">待补</span>{% endif %}</div>
+    <div>金额：{% if e.amount_cents %}¥{{ e.amount_yuan }}{% else %}<span style="color:var(--state-danger-fg)">未识别</span>{% endif %}</div>
+    <div>时间：{{ e.expense_time or '未填' }}</div>
+    <div>分类：{{ e.category }}</div>
+    {% if e.is_duplicate %}
+    <div style="margin-top:6px"><span class="dt-pill danger">疑似重复</span></div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="drawer-form">
+  <header class="drawer-head">
+    <div style="flex:1">
+      <div class="page-eyebrow" style="margin:0">
+        #{{ e.id }} · {% if e.is_duplicate %}疑似重复{% else %}{{ '待确认草稿' if e.status == 'pending' else '已入账' }}{% endif %}
+      </div>
+      <h2>{{ e.merchant or '新建账单' }}</h2>
+      <div style="font-size:11.5px;color:var(--text-meta);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
+        {% set _flags = [] %}
+        {% if e.needs_amount %}{% set _ = _flags.append(('danger', '缺金额')) %}{% endif %}
+        {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
+        {% if e.is_duplicate %}{% set _ = _flags.append(('danger', '疑似重复')) %}{% endif %}
+        {% if _flags %}
+          {% for cls, label in _flags %}<span class="dt-pill {{ cls }}">{{ label }}</span>{% endfor %}
+        {% else %}
+          <span class="dt-pill ok">可确认</span>
+        {% endif %}
+      </div>
+    </div>
+    <button class="drawer-close" type="button" data-drawer-close aria-label="关闭">✕</button>
+  </header>
+
+  {% if not can_write %}
+  <div class="readonly-callout" style="margin:0">
+    只读角色，仅能查看。编辑、确认、删除等操作已禁用。
+  </div>
+  {% endif %}
+
+  <form method="post" action="/web/expenses/{{ e.id }}/save" data-drawer-form>
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <div class="field-row">
+      <div class="field" style="flex:2">
+        <div class="field-label">
+          <span>金额</span>
+          {% if e.needs_amount %}<span class="hint" style="color:var(--state-danger-fg)">未识别，请填写</span>{% endif %}
+        </div>
+        <div class="input-wrap">
+          <span class="input-prefix">¥</span>
+          <input class="dt-input large with-prefix" type="text" inputmode="decimal" name="amount_yuan"
+                 value="{{ e.amount_yuan }}" placeholder="0.00" {% if not can_write %}disabled{% endif %}>
+        </div>
+      </div>
+      <div class="field" style="flex:1;max-width:130px">
+        <div class="field-label"><span>币种</span></div>
+        <input class="dt-input" value="CNY" disabled>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">
+        <span>商家</span>
+      </div>
+      <input class="dt-input" type="text" name="merchant" value="{{ e.merchant }}"
+             placeholder="例如：盒马鲜生 · 望京店" {% if not can_write %}disabled{% endif %}>
+    </div>
+
+    <div class="field">
+      <div class="field-label">
+        <span>分类</span>
+      </div>
+      <input class="dt-input" type="text" name="category" value="{{ e.category }}"
+             {% if not can_write %}disabled{% endif %}>
+    </div>
+
+    <div class="field">
+      <div class="field-label"><span>备注</span></div>
+      <textarea class="dt-input" name="note" rows="3"
+                placeholder="可选 · 仅自己可见" {% if not can_write %}disabled{% endif %}>{{ e.note }}</textarea>
+    </div>
+
+    {% if can_write %}
+    <div class="drawer-foot">
+      <button class="dt-btn" type="submit" formaction="/web/expenses/{{ e.id }}/reject">删除草稿</button>
+      {% if e.is_duplicate %}
+      <button class="dt-btn" type="submit" formaction="/web/duplicates/{{ e.id }}/keep">标为非重复</button>
+      {% endif %}
+      <div class="spacer"></div>
+      <button class="dt-btn" type="submit">保存草稿</button>
+      {% if e.status == 'pending' %}
+      <button class="dt-btn primary" type="submit" formaction="/web/expenses/{{ e.id }}/confirm">确认入账</button>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="drawer-foot">
+      <div class="spacer"></div>
+      <button class="dt-btn" type="button" data-drawer-close>关闭</button>
+    </div>
+    {% endif %}
+  </form>
+</section>

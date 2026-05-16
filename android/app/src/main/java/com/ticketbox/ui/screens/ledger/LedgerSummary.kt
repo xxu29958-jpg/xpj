@@ -20,28 +20,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 
 @Composable
 internal fun LedgerSummaryStrip(state: LedgerUiState) {
     val total = state.items.sumOf { it.amountCents ?: 0L }
-    SoftPanel(containerAlpha = 0.98f) {
+    AppGlassCard(containerAlpha = 0.98f) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(
+                horizontal = AppSpacing.cardPaddingSmall,
+                vertical = AppSpacing.contentGap,
+            ),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingSmall),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
                 ) {
                     Text(
                         text = "${displayMonthLabel(state.monthFilter)} 合计",
@@ -58,7 +63,7 @@ internal fun LedgerSummaryStrip(state: LedgerUiState) {
                 Column(
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
                 ) {
                     Text(
                         text = "账单",
@@ -84,7 +89,7 @@ private fun LedgerSummaryTrendDots(items: List<Expense>) {
     val visuals = LocalThemeVisuals.current
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap - 1.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val amounts = items.take(10).map { it.amountCents ?: 0L }
@@ -104,7 +109,7 @@ private fun LedgerSummaryTrendDots(items: List<Expense>) {
                 modifier = Modifier
                     .width(width)
                     .height(6.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(AppRadius.pill))
                     .background(
                         if (amount > 0L) {
                             visuals.primary.copy(alpha = 0.72f)

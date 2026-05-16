@@ -89,7 +89,7 @@
             {% endif %}
             {% if item.status != 'archived' %}
             <form method="post" action="/web/recurring/{{ item.public_id }}/archive" class="inline"
-                  onsubmit="return confirm('归档这条固定支出？');">
+                  data-confirm="归档这条固定支出？">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
               <button type="submit" class="btn btn-danger">归档</button>
             </form>

@@ -87,6 +87,31 @@ th { text-align: left; padding: 8px 12px; font-size: 12px; color: var(--text-mut
 td { padding: 10px 12px; border-bottom: 1px solid var(--state-neutral-border); font-size: 13px; vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--surface-sunken); }
+/* 数字列等宽数字，避免不同行金额/计数对不齐。 */
+td.num,
+th.num,
+.num-cell {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+}
+/* /owner 表格普遍多列：把直接放在 .card 里的 table 自动套上横向滚动容器，
+ * 防止列宽在窄屏 / 长设备名 / 长账本名场景下挤压换行。
+ * :has() 在 Chrome 105+ / Safari 15.4+ / Firefox 121+ 全部可用。 */
+.card:has(> table) {
+    overflow-x: auto;
+}
+.card > table {
+    min-width: 720px;
+    table-layout: auto;
+}
+/* 选中行 accent 边条（与 /web 一致语义）。 */
+tr[aria-selected="true"] td {
+    background: var(--brand-primary-bg);
+}
+tr[aria-selected="true"] td:first-child {
+    box-shadow: inset 3px 0 0 0 var(--brand-primary);
+}
 
 .table-scroll {
     width: 100%;
@@ -291,8 +316,7 @@ form.inline { display: inline; }
 .settings-main { flex: 1; min-width: 0; }
 .settings-main h2 { margin-top: 0; }
 @media (max-width: 720px) {
-    .settings-shell { flex-direction: column; }
-    .settings-side { width: 100%; flex: initial; position: static; }
+    .settings-shell { flex-direction: column; }    .settings-side { width: 100%; flex: initial; position: static; }
 }
 
 /* ── route inspector ───────────────────────────────────────────────────── */
@@ -331,3 +355,51 @@ form.inline { display: inline; }
 .kv-list { display: grid; grid-template-columns: 200px 1fr; gap: 8px 16px; font-size: 13px; }
 .kv-list dt { color: var(--text-muted); }
 .kv-list dd { margin: 0; color: var(--text-default); font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+
+/* ───── A11y: 键盘焦点环 ─────
+ * 仅 :focus-visible 触发，鼠标点击不显示；颜色由 shared/tokens.css 的
+ * --brand-focus-ring 提供，自动跟随 paper / mono / midnight。
+ */
+:focus-visible {
+    outline: 2px solid var(--brand-focus-ring);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+.nav a:focus-visible {
+    outline-offset: 0;
+    background: var(--state-neutral-bg);
+}
+
+/* ───── Skeleton 占位骨架（与 /web desktop.css 同语义） ───── */
+@keyframes skeleton-shimmer {
+    0%   { background-position: -160px 0; }
+    100% { background-position: 160px 0; }
+}
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--surface-sunken) 0%,
+        var(--border-card) 50%,
+        var(--surface-sunken) 100%
+    );
+    background-size: 320px 100%;
+    background-repeat: no-repeat;
+    border-radius: 4px;
+    animation: skeleton-shimmer 1200ms ease-in-out infinite;
+    color: transparent;
+    user-select: none;
+}
+.skeleton-line {
+    display: block;
+    height: 12px;
+    width: 100%;
+    margin: 6px 0;
+}
+.skeleton-block {
+    display: block;
+    height: 96px;
+    width: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; }
+}

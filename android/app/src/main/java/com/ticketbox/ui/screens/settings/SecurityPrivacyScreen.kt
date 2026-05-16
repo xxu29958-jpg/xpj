@@ -90,7 +90,8 @@ import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -160,9 +161,9 @@ fun SecurityPrivacyScreen(
             title = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) "本机解锁" else "本机验证",
             icon = Icons.Filled.Security,
         ) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
@@ -189,7 +190,7 @@ fun SecurityPrivacyScreen(
             }
         }
         SettingsSection(title = "危险操作", icon = Icons.Filled.DeleteOutline) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
                     onClick = { showClearCacheDialog = true },
@@ -197,7 +198,7 @@ fun SecurityPrivacyScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = "清除手机本地数据", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("清除数据")
                 }
@@ -208,7 +209,7 @@ fun SecurityPrivacyScreen(
                         contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "退出当前账本", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("退出账本")
                 }

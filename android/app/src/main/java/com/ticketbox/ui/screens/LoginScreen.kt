@@ -2,8 +2,10 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
@@ -12,9 +14,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppSolidCard
+import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 fun LoginScreen(
@@ -25,32 +27,20 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .safeDrawingPadding()
-            .padding(horizontal = 24.dp),
+            .padding(horizontal = AppSpacing.screenHorizontal),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            "小票夹",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.SemiBold,
+        AuthScreenHeader(
+            title = "验证后查看账单",
+            subtitle = "本机验证通过后，才会读取账本会话凭证。",
         )
-        Text(
-            "验证后查看账单",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        SoftPanel(
-            modifier = Modifier.padding(top = 18.dp),
-        ) {
+        Spacer(Modifier.height(18.dp))
+        AppSolidCard(modifier = Modifier.fillMaxWidth()) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(AppSpacing.cardPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    "本机验证通过后，才会读取账本会话凭证。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Button(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onUnlock,

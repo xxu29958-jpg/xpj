@@ -45,6 +45,7 @@ class LedgerRepository(
     private val settingsStore: TicketboxSettingsStore,
     private val tokenStore: SessionTokenStore,
     private val expenseDao: ExpenseDao,
+    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) {
     private val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
@@ -56,9 +57,7 @@ class LedgerRepository(
     )
     private val ledgerListAdapter = moshi.adapter<List<LedgerDto>>(ledgerListType)
 
-    private fun api() = apiClient.create(
-        requireNotNull(settingsStore.serverUrl()) { "账本地址未绑定" },
-    ) { tokenStore.getToken() }
+    private fun api() = apiProvider.current()
 
     suspend fun refreshLedgers(): Result<List<LedgerSummary>> = wrap {
         val response = api().listLedgers()

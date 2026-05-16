@@ -48,7 +48,7 @@
         <td style="padding:8px 10px">
           <span class="role-chip {% if m.role == 'owner' %}role-owner{% elif m.role == 'member' %}role-member{% elif m.role == 'viewer' %}role-viewer{% else %}role-unknown{% endif %}">{% if m.role == 'owner' %}拥有者{% elif m.role == 'member' %}成员{% elif m.role == 'viewer' %}只读{% else %}{{ m.role }}{% endif %}</span>
           {% if can_manage_members and not m.disabled_at and m.role != 'owner' and not m.is_self %}
-          <form class="member-role-form" method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/role" onsubmit="return confirm('确定调整 {{ m.account_name }} 的角色吗？');">
+          <form class="member-role-form" method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/role" data-confirm="确定调整 {{ m.account_name }} 的角色吗？">
             <select name="role" style="padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
               <option value="member" {% if m.role == 'member' %}selected{% endif %}>成员</option>
               <option value="viewer" {% if m.role == 'viewer' %}selected{% endif %}>只读</option>
@@ -62,10 +62,10 @@
         <td style="padding:8px 10px">
           {% if can_manage_members and not m.disabled_at and m.role != 'owner' %}
           <div class="member-actions">
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/transfer-owner" style="display:inline" onsubmit="return confirm('确定把 {{ ledger_name or ledger_id }} 的拥有者转让给 {{ m.account_name }} 吗？当前拥有者会降为成员。');">
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/transfer-owner" style="display:inline" data-confirm="确定把 {{ ledger_name or ledger_id }} 的拥有者转让给 {{ m.account_name }} 吗？当前拥有者会降为成员。">
             <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">转让拥有者</button>
           </form>
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" style="display:inline" onsubmit="return confirm('确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。');">
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" style="display:inline" data-confirm="确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。">
             <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">停用</button>
           </form>
           </div>
@@ -140,7 +140,7 @@
         </td>
         <td style="padding:8px 10px">
           {% if not inv.used_at and not inv.revoked_at %}
-          <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" style="display:inline" onsubmit="return confirm('确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。');">
+          <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" style="display:inline" data-confirm="确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。">
             <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">撤销</button>
           </form>
           {% else %}<span style="color:#94a3b8;font-size:12px">—</span>{% endif %}

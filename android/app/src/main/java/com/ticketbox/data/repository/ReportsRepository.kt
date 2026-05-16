@@ -5,7 +5,6 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.TicketboxSettingsStore
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.domain.model.CsvExport
@@ -49,6 +48,7 @@ class ReportsRepository(
     private val apiClient: ApiServiceFactory,
     private val settingsStore: TicketboxSettingsStore,
     private val tokenStore: SessionTokenStore,
+    private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) : ReportsActions {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
@@ -58,9 +58,6 @@ class ReportsRepository(
         .add(KotlinJsonAdapterFactory())
         .build()
         .adapter(ErrorDto::class.java)
-
-    private var cachedServerUrl: String? = null
-    private var cachedApi: ApiService? = null
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
@@ -190,19 +187,7 @@ class ReportsRepository(
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
 
-    private fun api(): ApiService {
-        val serverUrl = settingsStore.serverUrl()
-        require(!serverUrl.isNullOrBlank()) { "账本地址未绑定" }
-        val cached = cachedApi
-        if (cached != null && cachedServerUrl == serverUrl) {
-            return cached
-        }
-        return apiClient.create(serverUrl) { tokenStore.getToken() }
-            .also { service ->
-                cachedServerUrl = serverUrl
-                cachedApi = service
-            }
-    }
+    private fun api() = apiProvider.current()
 
     private suspend fun <T> safeCall(block: suspend () -> T): Result<T> {
         return try {

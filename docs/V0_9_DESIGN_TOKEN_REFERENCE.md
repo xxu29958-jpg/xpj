@@ -5,8 +5,9 @@
 ## 1. 维护规则
 
 - 三端 token 名按相同语义对应。Android 端用 sibling data class（`ThemeVisuals` / `StateTokens` / `ChartTokens` / `GoalTokens` / `DashboardCardTokens`）；Web / Owner 用 `backend/app/static/shared/tokens.css` 的 CSS 变量。
-- 五套主题：`pine` 松雾、`pomelo` 柚光、`harbor` 港湾（默认）、`berry` 莓果、`night` 夜幕。命名与 `com.ticketbox.domain.model.AppSkin` 保持一致。
-- Web / Owner 默认 `:root` = `harbor`，与 Android `AppSkin.Default` 对齐。未来通过 `<html data-theme="...">` 由 cookie/服务端设置注入，本轮 tokens-only commit 不动 `base.html`。
+- **v0.10 主题集**：`paper` 纸本（默认）、`mono` 墨白、`midnight` 玄夜。命名与 `com.ticketbox.domain.model.AppSkin` 保持一致。
+- 旧主题（`pine` / `pomelo` / `harbor` / `berry` / `night`）已退役。Android `AppSkin.fromStorageKey()` 把旧 storageKey 自动映射：`pine`/`pomelo`/`harbor` → `paper`、`berry` → `mono`、`night` → `midnight`。CSS 这边没有兼容映射（`data-theme` 仅认新值），但 `_base_ctx` 读 cookie 时只接受 3 个新值，旧 cookie 会被降级到默认 paper。
+- Web / Owner 默认 `:root` = `paper`，与 Android `AppSkin.Default` 对齐。`<html data-theme="...">` 由 `_base_ctx` 从 cookie `ui_theme` 读取（`paper` / `mono` / `midnight`）；前端切换由 `desktop.js` 的 `#theme-toggle` 写 cookie + localStorage。
 - v0.4 alias shim（`--bg-app` / `--fg-*` / `--chip-*` / `--pill-*`）保留在 `tokens.css` 末尾，直到所有页面消费方迁完到 v0.9 token 名后才能删除。新代码必须直接用 v0.9 名字。
 - Android 现有 `ThemeVisuals` 17 字段（被 27 个 UI 文件、60 处消费）**禁止改名 / 禁止删除**。v0.9 仅追加 `surfaceRaised` / `focusRing`，其它新概念走 sibling data class。
 
@@ -45,15 +46,15 @@
 | Goal idle/onTrack/nearLimit/exceeded/expired | `--goal-{name}-bg/fg/border` | `GoalTokens.{name}` | — |
 | Dashboard 卡片 pending/monthSpend/recentUpload/recurring/goals/budget/backup/device | `--card-{name}-accent/icon/surface` | `DashboardCardTokens.{name}` | — |
 
-## 3. 五套主题主体调
+## 3. 三套主题主体调（v0.10）
 
 | 主题 | brand-primary | accent | surface-app | 适用场景 |
 |---|---|---|---|---|
-| `harbor` 港湾（默认） | `#245d78` 海蓝 | `#d5a35d` 金沙 | `#f2f6f7` 海雾白 | 默认沉稳基线，三端均衡 |
-| `pine` 松雾 | `#185b4f` 松绿 | `#c8995f` 暖蜂蜜 | `#f1f6f1` 雾白 | 安静、半自动、生活账本气质 |
-| `pomelo` 柚光 | `#e6981b` 柚黄 | `#2d7a80` 青绿 | `#fff6e6` 暖纸 | 明亮治愈、外卖/零食月份 |
-| `berry` 莓果 | `#a83c5a` 莓红 | `#8b7a65` 木质 | `#f6eff2` 奶莓 | 柔粉、礼物/纪念月份 |
-| `night` 夜幕（深色） | `#2bb49a` 月青 | `#d2a46e` 月光金 | `#07151a` 深松林 | 夜班记账、运维 |
+| `paper` 纸本（默认） | `#8a5a2b` 茶铜 | `#d6b487` 奶咖 | `#f3efe6` 米白 | 温润日间、家庭账本默认 |
+| `mono` 墨白 | `#0e0e0c` 墨 | `#6f6e6a` 中灰 | `#ededea` 冷灰 | 极简专注、编辑感 |
+| `midnight` 玄夜（深色） | `#d6b487` 暖金 | `#8a6a3e` 深铜 | `#0c0d10` 深墨 | 夜班记账、运维 |
+
+`/web` 桌面账本破例引入本地自托管 webfont（Noto Sans SC + Newsreader + Inter），见 `backend/app/static/web/fonts/README.md` 与 `scripts/download-fonts.ps1`。Android 与 `/owner` 仍走系统中文字体栈。
 
 ## 4. Chart 调色板说明（P09-12）
 
@@ -88,16 +89,16 @@ diverging ramp（`--chart-diverging-*`）专给 P09-03 分类组对比的正/负
 
 8 张卡（与 P09-10 一致）：
 
-| key | 卡片名 | 默认主题（harbor） accent |
+| key | 卡片名 | 默认主题（paper） accent |
 |---|---|---|
-| `pending` | 待确认 | `#d5a35d` |
-| `monthSpend` | 本月支出 | `#245d78` |
-| `recentUpload` | 最近上传 | `#3e92ae` |
-| `recurring` | Recurring | `#b87a48` |
-| `goals` | Goals | `#185b4f` |
-| `budget` | 预算 | `#245d78` |
-| `backup` | 备份 | `#6b7f4d` |
-| `device` | 设备 | `#5a4e78` |
+| `pending` | 待确认 | `#8a5a2b` |
+| `monthSpend` | 本月支出 | `#1c1a18` |
+| `recentUpload` | 最近上传 | `#3e6770` |
+| `recurring` | Recurring | `#a4361c` |
+| `goals` | Goals | `#4f6b3a` |
+| `budget` | 预算 | `#8a5a2b` |
+| `backup` | 备份 | `#807968` |
+| `device` | 设备 | `#5a4a6e` |
 
 Owner 只在模板里渲染其中的 pending / recurring / budget / backup / device，但 token 在三端都齐全，避免 owner / web 出现颜色对不上的尴尬。
 
@@ -121,7 +122,7 @@ Owner 只在模板里渲染其中的 pending / recurring / budget / backup / dev
 
 ## 8. 主题切换机制（本轮未启用）
 
-tokens-only commit **不动 `base.html`**，所以 `<html>` 上无 `data-theme` 属性，浏览器解析后 `:root` 块即默认 harbor，页面渲染与 v0.8 末态保持兼容（alias shim 解析旧变量到新值）。
+v0.10 base.html 用 `<html data-theme="{{ ui_theme or 'paper' }}">`，由 `_base_ctx` 从 cookie 读取。v0.4 alias shim 仍在 tokens.css 末尾，给 7 个未重写的 legacy `/web` 页面（budgets / goals / categories / rules / merchants / recurring / import / stats / data-quality）兜底。
 
 下一阶段（"appearance only" commit）会做的事：
 - Jinja `base.html` 读取 cookie `xpj_theme` 注入 `<html data-theme="{{ theme_key }}">`

@@ -24,9 +24,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.MerchantAlias
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 
 @Composable
 fun MerchantAliasesScreen(
@@ -74,10 +74,10 @@ fun MerchantAliasesScreen(
     ) {
         if (!readOnly) {
             SettingsSection(title = "新增别名", icon = Icons.Filled.Tune) {
-                SoftPanel(containerAlpha = 0.96f) {
+                AppGlassCard(containerAlpha = 0.96f) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                     ) {
                         OutlinedTextField(
                             value = canonicalMerchant,
@@ -125,7 +125,7 @@ fun MerchantAliasesScreen(
         }
 
         SettingsSection(title = "别名列表", icon = Icons.Filled.Tune) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 if (aliases.isEmpty()) {
                     Text(
                         text = "暂无商家别名。",
@@ -159,13 +159,13 @@ private fun MerchantAliasCard(
     onToggleAlias: () -> Unit,
     onDeleteAlias: () -> Unit,
 ) {
-    SoftPanel(containerAlpha = 0.98f) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    AppGlassCard(containerAlpha = 0.98f) {
+        Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                     Text(
                         text = alias.alias,
                         style = MaterialTheme.typography.titleSmall,
@@ -180,7 +180,7 @@ private fun MerchantAliasCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(AppSpacing.compactGap))
                 Text(
                     text = if (alias.enabled) "已启用" else "已停用",
                     color = if (alias.enabled) {
@@ -199,7 +199,7 @@ private fun MerchantAliasCard(
                 overflow = TextOverflow.Ellipsis,
             )
             if (!readOnly) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         enabled = !busy,

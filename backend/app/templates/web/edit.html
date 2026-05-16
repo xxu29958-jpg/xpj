@@ -13,9 +13,10 @@
 <div class="card">
   <div class="edit-grid">
     {% if expense.has_image %}
-    <div class="edit-image">
+    <div class="edit-image receipt-image-shell" data-image-skeleton>
+      <div class="skeleton skeleton-block receipt-image-skeleton" aria-hidden="true"></div>
       <a href="/web/expenses/{{ expense.id }}/image{{ q }}" target="_blank">
-        <img src="/web/expenses/{{ expense.id }}/image{{ q }}" alt="小票图片" class="receipt-img">
+        <img src="/web/expenses/{{ expense.id }}/image{{ q }}" alt="小票图片" class="receipt-img" loading="lazy" decoding="async">
       </a>
     </div>
     {% elif expense.image_state == 'cleaned' %}
@@ -60,7 +61,7 @@
         {% if expense.status == 'pending' %}
         <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="btn btn-success">入账</button>
         <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="btn btn-danger"
-                onclick="return confirm('忽略这笔账单？');">忽略</button>
+                data-confirm="忽略这笔账单？">忽略</button>
         {% endif %}
         {% endif %}
         <a href="/web/pending{{ q }}" class="btn btn-link">返回</a>

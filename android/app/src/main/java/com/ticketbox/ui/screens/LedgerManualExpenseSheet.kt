@@ -5,10 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
@@ -31,11 +34,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.nowUtcIso
@@ -44,6 +46,7 @@ import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.timePickerToUtcIso
+import com.ticketbox.ui.design.AppSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,8 +146,10 @@ fun ManualExpenseSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = AppSpacing.cardPaddingSmall, vertical = AppSpacing.contentGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         Text("手动记一笔", style = MaterialTheme.typography.titleLarge)
         Text(
@@ -177,7 +182,7 @@ fun ManualExpenseSheet(
             singleLine = true,
         )
         if (categories.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                 items(categories, key = { it }) { item ->
                     SelectableFilterChip(
                         selected = category == item,
@@ -193,14 +198,14 @@ fun ManualExpenseSheet(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("备注") },
         )
-        SoftPanel(containerAlpha = 0.96f) {
+        AppSolidCard {
             Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
             ) {
                 Text("消费时间", style = MaterialTheme.typography.titleSmall)
                 Text(displayDateTime(expenseTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
                     OutlinedButton(onClick = { showDatePicker = true }) {
                         Text("选日期")
                     }
@@ -216,7 +221,7 @@ fun ManualExpenseSheet(
         message?.let {
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
             OutlinedButton(
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss,
@@ -243,13 +248,13 @@ fun CategoryFilterRow(
     selectedCategory: String,
     onCategoryChange: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         Text(
             text = "分类",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
             item {
                 SelectableFilterChip(
                     selected = selectedCategory.isBlank(),

@@ -31,6 +31,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _sidebar_counts,
     _with_ledger,
     templates,
 )
@@ -82,14 +83,45 @@ def web_duplicates(
                 .where(Expense.tenant_id == selected_id)
                 .where(Expense.id == row.duplicate_of_id)
             )
+        reason = row.duplicate_reason or ""
+        # 把判定 reason 字符串映射成相似度 score（高/中置信度 pill 用）。
+        # 后端目前没有持久化 score；规则简单透明，由 reason 关键词派生。
+        if "hash" in reason or "完全一致" in reason:
+            score = 0.98
+        elif "金额" in reason and "时间" in reason:
+            score = 0.85
+        elif reason:
+            score = 0.72
+        else:
+            score = 0.7
+        current_view = _expense_view(row)
+        original_view = _expense_view(original) if original is not None else None
+        diff_fields: list[str] = []
+        if original_view:
+            if current_view.get("merchant") != original_view.get("merchant"):
+                diff_fields.append("merchant")
+            if current_view.get("amount_cents") != original_view.get("amount_cents"):
+                diff_fields.append("amount")
+            if current_view.get("expense_time") != original_view.get("expense_time"):
+                diff_fields.append("time")
         pairs.append(
             {
-                "current": _expense_view(row),
-                "original": _expense_view(original) if original is not None else None,
-                "reason": row.duplicate_reason or "",
+                "current": current_view,
+                "original": original_view,
+                "reason": reason,
+                "score": score,
+                "score_pct": int(round(score * 100)),
+                "confidence_tier": "high" if score >= 0.9 else "mid",
+                "diff_fields": diff_fields,
             }
         )
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        page_title="疑似重复",
+        sidebar_counts=_sidebar_counts(db, selected_id),
+    )
     ctx["duplicate_pairs"] = pairs
     ctx["flash_message"] = msg
     ctx["q"] = "?ledger_id=" + selected_id

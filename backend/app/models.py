@@ -193,6 +193,18 @@ class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
         UniqueConstraint("id", "tenant_id", name="uq_expenses_id_tenant_id"),
+        CheckConstraint(
+            "amount_cents IS NULL OR amount_cents >= 0",
+            name="ck_expenses_amount_non_negative",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'confirmed', 'rejected')",
+            name="ck_expenses_status_valid",
+        ),
+        CheckConstraint(
+            "duplicate_status IN ('none', 'suspected')",
+            name="ck_expenses_duplicate_status_valid",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -672,3 +684,23 @@ Index("ix_tags_tenant_name", Tag.tenant_id, Tag.name)
 Index("ix_expense_tags_tenant_expense", ExpenseTag.tenant_id, ExpenseTag.expense_id)
 Index("ix_expense_tags_tenant_tag", ExpenseTag.tenant_id, ExpenseTag.tag_id)
 Index("ix_duplicate_ignores_tenant_pair_kind", DuplicateIgnore.tenant_id, DuplicateIgnore.expense_id, DuplicateIgnore.duplicate_of_id, DuplicateIgnore.kind)
+
+
+class SchemaMigration(Base):
+    """Tracks which named migration steps have been applied to the SQLite DB.
+
+    The legacy hand-written ``migrate_sqlite_schema`` in
+    :mod:`app.database` is idempotent (uses ``ADD COLUMN`` /
+    ``CREATE INDEX IF NOT EXISTS``), so this table is **purely informational**
+    today — it does not gate execution. It exists so that future incremental
+    migration scripts can record a stable identifier (e.g. ``"v0.9-add-foo"``)
+    and be skipped on subsequent boots. See ``docs/V2_ROADMAP.md`` and the
+    audit notes in ``docs/VERSION.md``.
+    """
+
+    __tablename__ = "schema_migrations"
+
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    backend_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)

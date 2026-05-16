@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,16 +30,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.design.AppTypography
+import com.ticketbox.ui.design.tabularNum
 
 enum class ExpensePreviewMode {
     Compact,
     Comfortable,
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExpenseCard(
     expense: Expense,
@@ -87,7 +94,7 @@ fun ExpenseCard(
         )
     }
 
-    SoftPanel(
+    AppGlassCard(
         modifier = Modifier.clickable(enabled = actionsEnabled, onClick = onEdit),
         containerAlpha = 0.96f,
     ) {
@@ -119,6 +126,8 @@ fun ExpenseCard(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = "${displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt)} · ${
@@ -126,14 +135,25 @@ fun ExpenseCard(
                         }",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = expense.amountCents?.let(::formatAmount) ?: "等待你确认金额",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = AppTypography.amountMedium.size,
+                            lineHeight = 28.sp,
+                            letterSpacing = 0.sp,
+                        ).tabularNum(),
                         color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = AppTypography.amountMedium.weight,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         StatusPill(
                             text = expense.category,
                             active = true,
@@ -155,6 +175,8 @@ fun ExpenseCard(
                     text = it,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
@@ -179,6 +201,8 @@ fun ExpenseCard(
                     text = "标签：$it",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
@@ -204,7 +228,11 @@ fun ExpenseCard(
                             ),
                             onClick = onConfirm,
                         ) {
-                            Text("入账")
+                            Text(
+                                text = "入账",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                     if (showRejectAction) {
@@ -213,7 +241,11 @@ fun ExpenseCard(
                             enabled = actionsEnabled,
                             onClick = { showRejectDialog = true },
                         ) {
-                            Text("忽略")
+                            Text(
+                                text = "忽略",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 }
@@ -222,7 +254,11 @@ fun ExpenseCard(
                         enabled = actionsEnabled,
                         onClick = onKeepDuplicate,
                     ) {
-                        Text("不是重复，保留")
+                        Text(
+                            text = "不是重复，保留",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }

@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -57,8 +59,8 @@ internal fun EmptyStatsCard(
 ) {
     AppEmptyStateCard {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         ) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(
@@ -84,10 +86,10 @@ private fun StatsSkeletonPlaceholder() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(AppRadius.medium))
             .background(visuals.chipUnselected.copy(alpha = 0.48f))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(AppSpacing.cardPaddingTight),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         SkeletonBlock(title = "本月总支出", widthFraction = 0.72f)
         SkeletonBlock(title = "分类占比", widthFraction = 0.88f)
@@ -100,7 +102,7 @@ private fun SkeletonBlock(
     title: String,
     widthFraction: Float,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap - 1.dp)) {
         Text(
             text = title,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
@@ -110,7 +112,7 @@ private fun SkeletonBlock(
             modifier = Modifier
                 .fillMaxWidth(widthFraction)
                 .height(10.dp)
-                .clip(RoundedCornerShape(999.dp))
+                .clip(RoundedCornerShape(AppRadius.pill))
                 .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)),
         )
     }

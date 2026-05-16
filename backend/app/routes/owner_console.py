@@ -95,6 +95,16 @@ LocalOnly = Depends(_require_local)
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+_VALID_UI_THEMES = {"paper", "mono", "midnight"}
+
+
+def _read_ui_theme(request: Request) -> str:
+    raw = request.cookies.get("ui_theme")
+    if raw in _VALID_UI_THEMES:
+        return raw
+    return "paper"
+
+
 def _base(request: Request, db: Session) -> dict:
     """Common template context injected into every page."""
     cfg = get_settings()
@@ -102,6 +112,7 @@ def _base(request: Request, db: Session) -> dict:
     return {
         "backend_version": BACKEND_VERSION,
         "upload_dir_status": upload_status,
+        "ui_theme": _read_ui_theme(request),
     }
 
 

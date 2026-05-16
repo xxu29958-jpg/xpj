@@ -1,0 +1,59 @@
+/* confirm-modal.css · 共享于 /web 与 /owner
+ * 与 confirm-modal.js 成对存在；样式所用 token 全部来自 shared/tokens.css。
+ */
+.tb-confirm-modal {
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    background: var(--surface-card);
+    color: var(--text-default);
+    padding: 0;
+    max-width: 360px;
+    width: calc(100% - 32px);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
+}
+.tb-confirm-modal::backdrop {
+    background: rgba(0, 0, 0, 0.34);
+}
+.tb-confirm-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    margin: 0;
+}
+.tb-confirm-message {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-default);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.tb-confirm-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.tb-confirm-actions button {
+    appearance: none;
+    border: 1px solid var(--border-card);
+    background: var(--surface-app);
+    color: var(--text-default);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 1.4;
+}
+.tb-confirm-actions .tb-confirm-ok {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+    color: var(--text-on-primary);
+    font-weight: 600;
+}
+.tb-confirm-actions button:hover { filter: brightness(0.96); }
+.tb-confirm-actions button:focus-visible {
+    outline: 2px solid var(--brand-focus-ring);
+    outline-offset: 2px;
+}

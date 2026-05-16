@@ -101,7 +101,7 @@ private fun BoxScope.BottomReadabilityScrim(
         else -> roleAlpha * 0.42f
     }
     val scrimHeight = if (settings.source == BackgroundSource.CustomImage && backgroundVisible) 360.dp else 260.dp
-    val bottomColor = if (skin == AppSkin.Night) {
+    val bottomColor = if (skin == AppSkin.Midnight) {
         Color(0xFF061015).copy(alpha = alpha)
     } else {
         visuals.backgroundBottom.copy(alpha = alpha)
@@ -327,7 +327,7 @@ fun resolveGlobalScrim(
         BackgroundSource.BuiltIn -> BackgroundCatalog.find(settings.builtInBackgroundId) != null
         BackgroundSource.CustomImage -> shouldUseCustomBackground(settings) { path -> File(path).isFile }
     }
-    val isDarkBackground = skin == AppSkin.Night
+    val isDarkBackground = skin == AppSkin.Midnight
     val scrimAlpha = if (backgroundVisible) {
         resolveScrimAlpha(settings.immersionMode, role)
     } else {

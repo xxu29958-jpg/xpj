@@ -1,15 +1,12 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
@@ -27,7 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.FamilyMember
@@ -38,8 +35,9 @@ import com.ticketbox.domain.model.LedgerAuditEntry
 import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.domain.model.ledgerRoleLabel
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
+import com.ticketbox.ui.design.AppSpacing
 import kotlinx.coroutines.launch
 
 @Composable
@@ -143,10 +141,10 @@ fun FamilyMembersScreen(
         onBack = onBack,
     ) {
         SettingsSection(title = "当前账本成员", icon = Icons.Filled.Group) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                 ) {
                     if (members.isEmpty() && !loading) {
                         Text(
@@ -186,10 +184,10 @@ fun FamilyMembersScreen(
         }
         if (canManageMembers) {
             SettingsSection(title = "成员记录", icon = Icons.Filled.Info) {
-                SoftPanel(containerAlpha = 0.96f) {
+                AppGlassCard(containerAlpha = 0.96f) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     ) {
                         if (auditItems.isEmpty() && !auditLoading) {
                             Text(
@@ -298,6 +296,8 @@ private fun FamilyMemberRow(
                         } else {
                             MaterialTheme.colorScheme.onSurface
                         },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     if (member.isSelf) {
                         Spacer(Modifier.width(6.dp))
@@ -329,7 +329,7 @@ private fun FamilyMemberRow(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                FamilyRoleChip(role = member.role)
+                SettingsRoleChip(role = member.role)
                 Text(
                     text = if (member.isDisabled) "已停用" else "活跃",
                     style = MaterialTheme.typography.labelSmall,
@@ -374,27 +374,6 @@ private fun FamilyMemberRow(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun FamilyRoleChip(role: String) {
-    val (label, container, content) = when (role) {
-        "owner" -> Triple(ledgerRoleLabel(role), Color(0xFFFFE2A0), Color(0xFF5A3B00))
-        "member" -> Triple(ledgerRoleLabel(role), Color(0xFFC9DCFF), Color(0xFF1F3D7A))
-        "viewer" -> Triple(ledgerRoleLabel(role), Color(0xFFE2E2E6), Color(0xFF40404A))
-        else -> Triple(ledgerRoleLabel(role), Color(0xFFE2E2E6), Color(0xFF40404A))
-    }
-    Box(
-        modifier = Modifier
-            .background(container, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = content,
-        )
     }
 }
 

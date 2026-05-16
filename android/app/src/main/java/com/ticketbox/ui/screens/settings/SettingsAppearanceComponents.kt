@@ -93,13 +93,14 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
@@ -144,7 +145,7 @@ internal fun ThemeMoodPreview(
                     color = scheme.onPrimary.copy(alpha = 0.22f),
                     shape = RoundedCornerShape(22.dp),
                 )
-                .padding(14.dp),
+                .padding(AppSpacing.cardPaddingTight),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
@@ -165,7 +166,7 @@ internal fun ThemeMoodPreview(
                     .align(Alignment.BottomEnd)
                     .clip(RoundedCornerShape(18.dp))
                     .background(visuals.glassTint.copy(alpha = 0.84f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = AppSpacing.compactGap, vertical = AppSpacing.smallGap),
             ) {
                 Text(
                     text = settings.immersionMode.displayName,
@@ -199,7 +200,7 @@ internal fun SkinOptionCard(
         modifier = modifier
             .height(168.dp)
             .shadow(
-                elevation = if (selected) AppElevation.softCardShadow else 6.dp,
+                elevation = if (selected) AppElevation.softCard else 6.dp,
                 shape = cardShape,
                 clip = false,
                 ambientColor = visuals.shadowTint.copy(alpha = if (selected) 0.18f else 0.08f),
@@ -213,7 +214,7 @@ internal fun SkinOptionCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(10.dp),
+                .padding(AppSpacing.compactPadding),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             SkinPreview(skin = skin, scheme = scheme, visuals = visuals)
@@ -230,7 +231,7 @@ internal fun SkinOptionCard(
                     )
                     if (selected) {
                         SkinPill(text = "当前", scheme = scheme, visuals = visuals, emphasized = true)
-                    } else if (skin == AppSkin.Harbor) {
+                    } else if (skin == AppSkin.Paper) {
                         SkinPill(text = "推荐", scheme = scheme, visuals = visuals, emphasized = false)
                     }
                 }
@@ -313,7 +314,7 @@ internal fun PreviewBar(
         modifier = Modifier
             .width(width)
             .height(5.dp)
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(color),
     )
 }
@@ -329,10 +330,10 @@ internal fun SkinPill(
     val content = if (emphasized) scheme.onPrimary else scheme.onSurfaceVariant
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(AppRadius.pill))
             .background(background)
-            .padding(horizontal = 7.dp, vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+            .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.miniGap),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (emphasized) {

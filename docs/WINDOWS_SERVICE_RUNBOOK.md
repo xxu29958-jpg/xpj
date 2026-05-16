@@ -127,6 +127,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop_backend.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restart_backend.ps1
 ```
 
+本机 GUI 运维壳：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start_backend_gui.ps1
+```
+
+这个窗口只包装现有启动/停止/重启脚本，提供状态检查、打开 `/web`、打开 `/owner` 和查看最近日志；业务管理仍然在 Owner Console 和 `/web` 页面里完成。
+
 查看 Windows 计划任务状态：
 
 ```powershell

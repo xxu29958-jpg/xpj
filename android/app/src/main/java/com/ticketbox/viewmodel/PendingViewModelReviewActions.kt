@@ -98,20 +98,22 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, amountCents: Long) {
         repository.updateExpense(expenseId, blankDraft().copy(amountCents = amountCents))
             .onSuccess { updated ->
                 _uiState.update { state ->
-                    state.copy(
-                        items = state.items.map { if (it.id == updated.id) updated else it },
+                    PendingUiStateReducer.afterUpdated(
+                        current = state,
+                        updated = updated,
+                        closeSheet = false,
+                        message = null,
+                        clearInProgress = false,
                     )
                 }
                 repository.confirmExpense(expenseId)
                     .onSuccess { confirmed ->
                         _uiState.update { state ->
-                            state.copy(
-                                items = state.items.filterNot { it.id == confirmed.id },
-                                thumbnails = state.thumbnails - confirmed.id,
-                                actionInProgressIds = state.actionInProgressIds - confirmed.id,
-                                activeSheet = PendingSheet.None,
+                            PendingUiStateReducer.afterConfirmed(
+                                current = state,
+                                confirmed = confirmed,
                                 message = "已保存并确认入账",
-                            )
+                            ).copy(activeSheet = PendingSheet.None)
                         }
                     }
                     .onFailure { error ->
@@ -160,10 +162,11 @@ fun PendingViewModel.confirmReadyExpenses() {
                 .onSuccess { confirmed ->
                     succeeded += 1
                     _uiState.update { current ->
-                        current.copy(
-                            items = current.items.filterNot { it.id == confirmed.id },
-                            thumbnails = current.thumbnails - confirmed.id,
-                            actionInProgressIds = current.actionInProgressIds - confirmed.id,
+                        PendingUiStateReducer.afterConfirmed(
+                            current = current,
+                            confirmed = confirmed,
+                            message = null,
+                        ).copy(
                             bulkConfirm = current.bulkConfirm.copy(succeeded = succeeded),
                         )
                     }
@@ -222,10 +225,10 @@ private fun PendingViewModel.patchExpense(
         repository.updateExpense(expenseId, draft)
             .onSuccess { updated ->
                 _uiState.update { state ->
-                    state.copy(
-                        items = state.items.map { if (it.id == updated.id) updated else it },
-                        actionInProgressIds = state.actionInProgressIds - updated.id,
-                        activeSheet = PendingSheet.None,
+                    PendingUiStateReducer.afterUpdated(
+                        current = state,
+                        updated = updated,
+                        closeSheet = true,
                         message = successMessage,
                     )
                 }

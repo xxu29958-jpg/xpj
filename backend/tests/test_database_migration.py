@@ -142,6 +142,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "dashboard_card_preferences" in inspector.get_table_names()
     assert "rule_application_batches" in inspector.get_table_names()
     assert "rule_application_changes" in inspector.get_table_names()
+    assert "schema_migrations" in inspector.get_table_names()
     assert {
         "tenant_id",
         "public_id",
@@ -200,6 +201,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "uq_expense_tags_tenant_expense_tag" in expense_tags_sql
     expenses_sql = _table_create_sql("expenses")
     assert "uq_expenses_id_tenant_id" in expenses_sql
+    assert "ck_expenses_amount_non_negative" in expenses_sql
+    assert "ck_expenses_status_valid" in expenses_sql
+    assert "ck_expenses_duplicate_status_valid" in expenses_sql
     expense_items_sql = _table_create_sql("expense_items")
     assert "ck_expense_items_position_non_negative" in expense_items_sql
     assert "ck_expense_items_amount_non_negative" in expense_items_sql
@@ -243,6 +247,27 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
         ).scalar_one()
     assert owner_rules > 0
     assert tester_rules > 0
+    with engine.begin() as connection:
+        migration_count = connection.execute(
+            text("SELECT COUNT(*) FROM schema_migrations WHERE name = 'baseline-v0.9.0a1'")
+        ).scalar_one()
+    assert migration_count == 1
+
+
+def test_schema_migration_marker_query_is_safe_before_init() -> None:
+    _reset_empty_database()
+
+    assert database.is_schema_migration_applied("baseline-v0.9.0a1") is False
+
+    init_db()
+
+    assert database.is_schema_migration_applied("baseline-v0.9.0a1") is True
+    database.record_schema_migration("baseline-v0.9.0a1", note="repeat")
+    with engine.begin() as connection:
+        migration_count = connection.execute(
+            text("SELECT COUNT(*) FROM schema_migrations WHERE name = 'baseline-v0.9.0a1'")
+        ).scalar_one()
+    assert migration_count == 1
 
 
 def test_new_database_enforces_family_role_constraints() -> None:
@@ -364,6 +389,42 @@ def test_legacy_database_with_invalid_invitation_role_fails_startup() -> None:
             init_db()
     finally:
         database._sqlite_backup_done = False
+
+
+@pytest.mark.parametrize(
+    ("setup_sql", "message"),
+    [
+        (
+            "UPDATE expenses SET amount_cents = -1",
+            "expenses.amount_cents",
+        ),
+        (
+            "UPDATE expenses SET status = 'archived'",
+            "expenses.status",
+        ),
+        (
+            "ALTER TABLE expenses ADD COLUMN duplicate_status VARCHAR(32) NOT NULL DEFAULT 'duplicate'",
+            "expenses.duplicate_status",
+        ),
+    ],
+)
+def test_legacy_database_with_invalid_expense_core_data_fails_startup(
+    setup_sql: str,
+    message: str,
+) -> None:
+    _reset_empty_database()
+    _create_v01_expenses_table()
+    _insert_legacy_expense(amount_cents=3680, status="confirmed")
+    with engine.begin() as connection:
+        connection.execute(text(setup_sql))
+
+    database._sqlite_backup_done = True
+    try:
+        with pytest.raises(RuntimeError, match=message):
+            init_db()
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
 
 
 def test_v01_schema_migrates_without_losing_expense_data() -> None:

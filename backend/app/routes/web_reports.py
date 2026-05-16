@@ -14,9 +14,14 @@ from app.routes.web_common import (
     _base_ctx,
     _list_ledger_options,
     _resolve_selected_ledger_id,
+    _sidebar_counts,
     templates,
 )
-from app.services.reports_service import export_reports_overview_csv, reports_overview
+from app.services.reports_service import (
+    export_reports_overview_csv,
+    reports_overview,
+    six_month_summary,
+)
 from app.services.time_service import current_month
 
 
@@ -127,13 +132,27 @@ def web_reports(
         ranking_metric=selected_metric,
         merchant_category=merchant_category,
     )
-    ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
+    ctx = _base_ctx(
+        request,
+        options=options,
+        selected_ledger_id=selected_id,
+        page_title="报表",
+        show_month_picker=True,
+        selected_month=target_month,
+        sidebar_counts=_sidebar_counts(db, selected_id),
+    )
     ctx.update(
         {
             "report": _view_model(payload),
             "month": target_month,
             "granularity_options": [("day", "日"), ("week", "周"), ("month", "月")],
             "ranking_metric_options": [("amount", "金额"), ("count", "笔数")],
+            "six_month_trend": six_month_summary(
+                db,
+                anchor_month=target_month,
+                tenant_id=selected_id,
+                timezone_name=timezone_name,
+            ),
         }
     )
     return templates.TemplateResponse(request=request, name="reports.html", context=ctx)

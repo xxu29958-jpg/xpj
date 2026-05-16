@@ -87,7 +87,8 @@ import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
 import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
 import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.ScreenHeader
-import com.ticketbox.ui.components.SoftPanel
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
@@ -115,14 +116,14 @@ fun AppearanceScreen(
 ) {
     SettingsPageFrame(
         title = "外观与主题",
-        subtitle = "港湾作为默认推荐，背景参与氛围但不抢账单内容。",
+        subtitle = "纸本作为默认推荐，背景参与氛围但不抢账单内容。",
         onBack = onBack,
     ) {
         SettingsSection(title = "主题皮肤", icon = Icons.Filled.Palette) {
             AppSkin.entries.chunked(2).forEach { rowSkins ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
                     rowSkins.forEach { skin ->
                         SkinOptionCard(
@@ -139,10 +140,10 @@ fun AppearanceScreen(
             }
         }
         SettingsSection(title = "背景", icon = Icons.Filled.Image) {
-            SoftPanel(containerAlpha = 0.96f) {
+            AppGlassCard(containerAlpha = 0.96f) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(AppSpacing.cardPaddingTight),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                 ) {
                     ThemeMoodPreview(
                         settings = state.backgroundSettings,
@@ -167,7 +168,7 @@ fun AppearanceScreen(
                             emphasized = false,
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                         BackgroundActionButton(
                             text = "背景图库",
                             modifier = Modifier.weight(1f),
@@ -179,7 +180,7 @@ fun AppearanceScreen(
                             onClick = onPickCustomImage,
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                         BackgroundActionButton(
                             text = "跟随主题包",
                             modifier = Modifier.weight(1f),

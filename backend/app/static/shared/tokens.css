@@ -1,380 +1,266 @@
-/* v0.9 设计 token 共享层 — 由 /web 和 /owner 通过 @import 引入。
+/* v0.10 设计 token 共享层 — 由 /web 和 /owner 通过 @import 引入。
  *
  * 维护原则：
  * 1. 这里只放 :root / [data-theme=…] 选择器和 v0.4 alias shim，不写组件样式。
- * 2. 5 套主题 (pine / pomelo / harbor / berry / night) 字段名与 Android ThemeVisuals
- *    sibling token classes 语义一致：surface / text / brand / state / chart / goal / card。
+ * 2. 3 套主题 (paper / mono / midnight) 字段名与 Android ThemeVisuals 镜像，
+ *    语义分组：surface / text / brand / state / chart / goal / card。
  * 3. v0.4 alias shim (--bg-app / --fg-* / --chip-*-bg/fg / --pill-*) 必须保留，
  *    直到所有页面消费方迁完到新名字。删除前需要一次 "pages refactor" commit。
- * 4. :root 默认调色板 = harbor，与 Android AppSkin.Default 对齐。
- * 5. Night 是显式主题，不依赖 prefers-color-scheme。
- * 6. tokens-only commit 不动 base.html，所以 <html> 上无 data-theme 属性时，
- *    页面渲染与 v0.8 完全一致（:root 块即默认 harbor 值）。
+ * 4. :root 默认调色板 = paper，与 Android AppSkin.Default 对齐。
+ * 5. Midnight 是显式主题，不依赖 prefers-color-scheme。
+ * 6. v0.10 旧 5 套主题 (pine / pomelo / harbor / berry / night) 已被替换为 3 套。
+ *    Android 端 AppSkin.fromStorageKey() 会把旧 storageKey 自动映射到新值：
+ *    pine/pomelo/harbor → paper，berry → mono，night → midnight。
+ * 7. 新增两个 token：--text-faint（第四级文本）、--brand-primary-bg（强调底）。
  */
 
 :root,
-:root[data-theme="harbor"] {
-    /* Surface */
-    --surface-app: #f2f6f7;
-    --surface-card: #fffcf7;
+:root[data-theme="paper"] {
+    /* Surface — 温润米白底 */
+    --surface-app: #f3efe6;
+    --surface-card: #fbf8f1;
     --surface-raised: #ffffff;
-    --surface-nav: #1e293b;
-    --surface-sunken: #e3eced;
+    --surface-nav: #1c1a18;
+    --surface-sunken: #f5f0e3;
 
-    /* Text */
-    --text-default: #1e2524;
-    --text-muted: #6c7d82;
-    --text-meta: #94a3b8;
-    --text-on-primary: #ffffff;
+    /* Text — 墨色四级 */
+    --text-default: #1c1a18;
+    --text-muted: #4a463f;
+    --text-meta: #807968;
+    --text-faint: #b3ad9d;
+    --text-on-primary: #fbf8f1;
 
-    /* Brand */
-    --brand-primary: #245d78;
-    --brand-primary-strong: #16465e;
-    --brand-accent: #d5a35d;
-    --brand-focus-ring: rgba(36, 93, 120, 0.40);
+    /* Brand — 茶铜强调 */
+    --brand-primary: #8a5a2b;
+    --brand-primary-strong: #6f4621;
+    --brand-accent: #d6b487;
+    --brand-primary-bg: #efe1cb;
+    --brand-focus-ring: rgba(138, 90, 43, 0.40);
 
     /* State */
-    --state-success-bg: #dcefe3; --state-success-fg: #195039; --state-success-border: #badcc4;
-    --state-warn-bg:    #f2e3cc; --state-warn-fg:    #7c4f0f; --state-warn-border:    #e3cb9f;
-    --state-danger-bg:  #f5d6cd; --state-danger-fg:  #8b3b34; --state-danger-border:  #e5b9ad;
-    --state-info-bg:    #ddeaf0; --state-info-fg:    #124360; --state-info-border:    #bcd5e2;
-    --state-neutral-bg: #edf2f3; --state-neutral-fg: #52646a; --state-neutral-border: #d6dfe0;
+    --state-success-bg: #d9e0c4; --state-success-fg: #4f6b3a; --state-success-border: #bccaa6;
+    --state-warn-bg:    #f5e3c0; --state-warn-fg:    #7c4f0f; --state-warn-border:    #e3cb91;
+    --state-danger-bg:  #f1d4cb; --state-danger-fg:  #a4361c; --state-danger-border:  #e2b3a5;
+    --state-info-bg:    #dce6e8; --state-info-fg:    #3a5560; --state-info-border:    #bccdd1;
+    --state-neutral-bg: #ece7d8; --state-neutral-fg: #807968; --state-neutral-border: #d6cfbe;
 
     /* Borders / radii / shadows */
-    --border-card: #d8ddd6;
-    --border-input: #cbd5e1;
+    --border-card: #e3e0d6;
+    --border-input: #c8c2b3;
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.06);
-    --shadow-raised: 0 4px 16px rgba(20,40,60,.10);
+    --shadow-raised: 0 4px 16px rgba(28,26,24,.10);
 
-    /* Chart — see P09-12 统计图视觉系统 */
-    --chart-series-1: #245d78;
-    --chart-series-2: #d5a35d;
-    --chart-series-3: #185b4f;
-    --chart-series-4: #a86a52;
-    --chart-series-5: #3e92ae;
-    --chart-series-6: #6b7f4d;
-    --chart-series-7: #b87a48;
-    --chart-series-8: #5a4e78;
-    --chart-sequential-from: #ddeaf0;
-    --chart-sequential-to:   #12384c;
-    --chart-diverging-negative: #b04a3c;
-    --chart-diverging-zero:     #e6e3d5;
-    --chart-diverging-positive: #2d7a80;
-    --chart-axis: #8fa1a6;
-    --chart-axis-label: #52646a;
-    --chart-grid: rgba(159, 180, 187, 0.20);
-    --chart-grid-emphasis: rgba(36, 93, 120, 0.40);
-    --chart-tooltip-bg: #112a35;
-    --chart-tooltip-fg: #f1f6f7;
-    --chart-tooltip-border: #1e4254;
-    --chart-legend-fg: #1e2524;
-    --chart-legend-marker: #fffcf7;
-    --chart-sankey-ribbon: rgba(47, 123, 146, 0.30);
-    --chart-sankey-ribbon-emphasis: rgba(36, 93, 120, 0.80);
-    --chart-overspend: #b04a3c;
-    --chart-empty: #d0d7d9;
+    /* Chart — 8 色调色板 */
+    --chart-series-1: #8a5a2b;
+    --chart-series-2: #1c1a18;
+    --chart-series-3: #4f6b3a;
+    --chart-series-4: #a4361c;
+    --chart-series-5: #3e6770;
+    --chart-series-6: #d6b487;
+    --chart-series-7: #5a4a6e;
+    --chart-series-8: #807968;
+    --chart-sequential-from: #f1e7d5;
+    --chart-sequential-to:   #6f4621;
+    --chart-diverging-negative: #a4361c;
+    --chart-diverging-zero:     #ece7d8;
+    --chart-diverging-positive: #4f6b3a;
+    --chart-axis: #aaa294;
+    --chart-axis-label: #4a463f;
+    --chart-grid: rgba(28, 26, 24, 0.08);
+    --chart-grid-emphasis: rgba(138, 90, 43, 0.40);
+    --chart-tooltip-bg: #1c1a18;
+    --chart-tooltip-fg: #fbf8f1;
+    --chart-tooltip-border: #3a3530;
+    --chart-legend-fg: #1c1a18;
+    --chart-legend-marker: #fbf8f1;
+    --chart-sankey-ribbon: rgba(138, 90, 43, 0.30);
+    --chart-sankey-ribbon-emphasis: rgba(111, 70, 33, 0.80);
+    --chart-overspend: #a4361c;
+    --chart-empty: #ddd6c5;
 
-    /* Goal state — see P09-04 */
-    --goal-idle-bg:        #edf2f3; --goal-idle-fg:        #52646a; --goal-idle-border:        #d6dfe0;
-    --goal-on-track-bg:    #dcefe3; --goal-on-track-fg:    #195039; --goal-on-track-border:    #badcc4;
-    --goal-near-limit-bg:  #f2e3cc; --goal-near-limit-fg:  #7c4f0f; --goal-near-limit-border:  #e3cb9f;
-    --goal-exceeded-bg:    #f5d6cd; --goal-exceeded-fg:    #8b3b34; --goal-exceeded-border:    #e5b9ad;
-    --goal-expired-bg:     #e7ebec; --goal-expired-fg:     #707f84; --goal-expired-border:     #ced7d8;
+    /* Goal state */
+    --goal-idle-bg:        #ece7d8; --goal-idle-fg:        #807968; --goal-idle-border:        #d6cfbe;
+    --goal-on-track-bg:    #d9e0c4; --goal-on-track-fg:    #4f6b3a; --goal-on-track-border:    #bccaa6;
+    --goal-near-limit-bg:  #f5e3c0; --goal-near-limit-fg:  #7c4f0f; --goal-near-limit-border:  #e3cb91;
+    --goal-exceeded-bg:    #f1d4cb; --goal-exceeded-fg:    #a4361c; --goal-exceeded-border:    #e2b3a5;
+    --goal-expired-bg:     #e9e5d9; --goal-expired-fg:     #8a8478; --goal-expired-border:     #d2ccbd;
 
-    /* Dashboard card — see P09-10 */
-    --card-pending-accent:       #d5a35d; --card-pending-icon:       #7c5414; --card-pending-surface:       #fffcf7;
-    --card-month-spend-accent:   #245d78; --card-month-spend-icon:   #12384c; --card-month-spend-surface:   #fffcf7;
-    --card-recent-upload-accent: #3e92ae; --card-recent-upload-icon: #1e5a6e; --card-recent-upload-surface: #fffcf7;
-    --card-recurring-accent:     #b87a48; --card-recurring-icon:     #6b431e; --card-recurring-surface:     #fffcf7;
-    --card-goals-accent:         #185b4f; --card-goals-icon:         #0e433a; --card-goals-surface:         #fffcf7;
-    --card-budget-accent:        #245d78; --card-budget-icon:        #12384c; --card-budget-surface:        #fffcf7;
-    --card-backup-accent:        #6b7f4d; --card-backup-icon:        #394823; --card-backup-surface:        #fffcf7;
-    --card-device-accent:        #5a4e78; --card-device-icon:        #2f274a; --card-device-surface:        #fffcf7;
+    /* Dashboard card */
+    --card-pending-accent:       #8a5a2b; --card-pending-icon:       #5a3a14; --card-pending-surface:       #fbf8f1;
+    --card-month-spend-accent:   #1c1a18; --card-month-spend-icon:   #0a0908; --card-month-spend-surface:   #fbf8f1;
+    --card-recent-upload-accent: #3e6770; --card-recent-upload-icon: #1c3e46; --card-recent-upload-surface: #fbf8f1;
+    --card-recurring-accent:     #a4361c; --card-recurring-icon:     #6e220f; --card-recurring-surface:     #fbf8f1;
+    --card-goals-accent:         #4f6b3a; --card-goals-icon:         #2e4220; --card-goals-surface:         #fbf8f1;
+    --card-budget-accent:        #8a5a2b; --card-budget-icon:        #5a3a14; --card-budget-surface:        #fbf8f1;
+    --card-backup-accent:        #807968; --card-backup-icon:        #4a463f; --card-backup-surface:        #fbf8f1;
+    --card-device-accent:        #5a4a6e; --card-device-icon:        #382d44; --card-device-surface:        #fbf8f1;
 }
 
-:root[data-theme="pine"] {
-    --surface-app: #f1f6f1;
-    --surface-card: #fffcf7;
+:root[data-theme="mono"] {
+    /* Surface — 冷灰极简 */
+    --surface-app: #ededea;
+    --surface-card: #fafaf8;
     --surface-raised: #ffffff;
-    --surface-nav: #1e293b;
-    --surface-sunken: #e4eee8;
+    --surface-nav: #0e0e0c;
+    --surface-sunken: #f1f0ed;
 
-    --text-default: #1d2524;
-    --text-muted: #76817e;
-    --text-meta: #94a3b8;
-    --text-on-primary: #ffffff;
+    /* Text */
+    --text-default: #0e0e0c;
+    --text-muted: #3a3a37;
+    --text-meta: #6f6e6a;
+    --text-faint: #adaca7;
+    --text-on-primary: #fafaf8;
 
-    --brand-primary: #185b4f;
-    --brand-primary-strong: #0e433a;
-    --brand-accent: #c8995f;
-    --brand-focus-ring: rgba(24, 91, 79, 0.40);
+    /* Brand — 墨即强调 */
+    --brand-primary: #0e0e0c;
+    --brand-primary-strong: #000000;
+    --brand-accent: #6f6e6a;
+    --brand-primary-bg: #e3e2dd;
+    --brand-focus-ring: rgba(14, 14, 12, 0.40);
 
-    --state-success-bg: #e2efe6; --state-success-fg: #1f6a45; --state-success-border: #c4decd;
-    --state-warn-bg:    #f8e6c7; --state-warn-fg:    #8a5a12; --state-warn-border:    #ead5a2;
-    --state-danger-bg:  #f5d9d2; --state-danger-fg:  #8b3b34; --state-danger-border:  #e8c0b5;
-    --state-info-bg:    #ddebe5; --state-info-fg:    #1f4d45; --state-info-border:    #c4d9d0;
-    --state-neutral-bg: #eff1ec; --state-neutral-fg: #5c6760; --state-neutral-border: #dde2da;
+    /* State */
+    --state-success-bg: #d6e2d6; --state-success-fg: #2c5036; --state-success-border: #b7c9b8;
+    --state-warn-bg:    #e7dbc0; --state-warn-fg:    #665015; --state-warn-border:    #d2c39a;
+    --state-danger-bg:  #f1d8d4; --state-danger-fg:  #8e1d12; --state-danger-border:  #e2b9b3;
+    --state-info-bg:    #dbe1e3; --state-info-fg:    #3a4a52; --state-info-border:    #bcc6ca;
+    --state-neutral-bg: #e3e2dd; --state-neutral-fg: #3a3a37; --state-neutral-border: #c9c8c3;
 
-    --border-card: #d8dcd5;
-    --border-input: #cbd5e1;
+    --border-card: #dad9d4;
+    --border-input: #b8b7b3;
+    --radius-card: 10px;
+    --radius-input: 6px;
+    --radius-pill: 999px;
+    --shadow-card: 0 1px 3px rgba(0,0,0,.06);
+    --shadow-raised: 0 4px 16px rgba(0,0,0,.10);
 
-    --chart-series-1: #185b4f;
-    --chart-series-2: #c8995f;
-    --chart-series-3: #2d7a80;
-    --chart-series-4: #a86a52;
-    --chart-series-5: #5e8a6f;
-    --chart-series-6: #d9a847;
-    --chart-series-7: #4a6e84;
-    --chart-series-8: #7a5670;
-    --chart-sequential-from: #dcebe5;
-    --chart-sequential-to:   #0e433a;
-    --chart-diverging-negative: #b94b3f;
-    --chart-diverging-zero:     #e9e4d6;
-    --chart-diverging-positive: #2f7e64;
-    --chart-axis: #8c9c95;
-    --chart-axis-label: #5e6b65;
-    --chart-grid: rgba(162, 181, 170, 0.20);
-    --chart-grid-emphasis: rgba(24, 91, 79, 0.40);
-    --chart-tooltip-bg: #0f2a24;
-    --chart-tooltip-fg: #f1f6f2;
-    --chart-tooltip-border: #1a3c34;
-    --chart-legend-fg: #1d2524;
-    --chart-legend-marker: #fffcf7;
-    --chart-sankey-ribbon: rgba(43, 117, 103, 0.30);
-    --chart-sankey-ribbon-emphasis: rgba(24, 91, 79, 0.80);
-    --chart-overspend: #b94b3f;
-    --chart-empty: #cfd6d1;
+    --chart-series-1: #0e0e0c;
+    --chart-series-2: #6f6e6a;
+    --chart-series-3: #2c5036;
+    --chart-series-4: #8e1d12;
+    --chart-series-5: #3a4a52;
+    --chart-series-6: #665015;
+    --chart-series-7: #5a4a6e;
+    --chart-series-8: #adaca7;
+    --chart-sequential-from: #e8e7e3;
+    --chart-sequential-to:   #0e0e0c;
+    --chart-diverging-negative: #8e1d12;
+    --chart-diverging-zero:     #e3e2dd;
+    --chart-diverging-positive: #2c5036;
+    --chart-axis: #a6a5a0;
+    --chart-axis-label: #3a3a37;
+    --chart-grid: rgba(0, 0, 0, 0.06);
+    --chart-grid-emphasis: rgba(14, 14, 12, 0.40);
+    --chart-tooltip-bg: #0e0e0c;
+    --chart-tooltip-fg: #fafaf8;
+    --chart-tooltip-border: #2a2a28;
+    --chart-legend-fg: #0e0e0c;
+    --chart-legend-marker: #fafaf8;
+    --chart-sankey-ribbon: rgba(14, 14, 12, 0.20);
+    --chart-sankey-ribbon-emphasis: rgba(14, 14, 12, 0.70);
+    --chart-overspend: #8e1d12;
+    --chart-empty: #d6d5d0;
 
-    --goal-idle-bg:        #eff1ec; --goal-idle-fg:        #5c6760; --goal-idle-border:        #dde2da;
-    --goal-on-track-bg:    #e2efe6; --goal-on-track-fg:    #1f6a45; --goal-on-track-border:    #c4decd;
-    --goal-near-limit-bg:  #f8e6c7; --goal-near-limit-fg:  #8a5a12; --goal-near-limit-border:  #ead5a2;
-    --goal-exceeded-bg:    #f5d9d2; --goal-exceeded-fg:    #8b3b34; --goal-exceeded-border:    #e8c0b5;
-    --goal-expired-bg:     #e9ebe5; --goal-expired-fg:     #7c857f; --goal-expired-border:     #d4d8d1;
+    --goal-idle-bg:        #e3e2dd; --goal-idle-fg:        #3a3a37; --goal-idle-border:        #c9c8c3;
+    --goal-on-track-bg:    #d6e2d6; --goal-on-track-fg:    #2c5036; --goal-on-track-border:    #b7c9b8;
+    --goal-near-limit-bg:  #e7dbc0; --goal-near-limit-fg:  #665015; --goal-near-limit-border:  #d2c39a;
+    --goal-exceeded-bg:    #f1d8d4; --goal-exceeded-fg:    #8e1d12; --goal-exceeded-border:    #e2b9b3;
+    --goal-expired-bg:     #e7e6e1; --goal-expired-fg:     #6f6e6a; --goal-expired-border:     #cdcdc8;
 
-    --card-pending-accent:       #e6981b; --card-pending-icon:       #8a5a12; --card-pending-surface:       #fffcf7;
-    --card-month-spend-accent:   #185b4f; --card-month-spend-icon:   #0e433a; --card-month-spend-surface:   #fffcf7;
-    --card-recent-upload-accent: #2d7a80; --card-recent-upload-icon: #143e42; --card-recent-upload-surface: #fffcf7;
-    --card-recurring-accent:     #c8995f; --card-recurring-icon:     #6e4d1d; --card-recurring-surface:     #fffcf7;
-    --card-goals-accent:         #5e8a6f; --card-goals-icon:         #2e5841; --card-goals-surface:         #fffcf7;
-    --card-budget-accent:        #185b4f; --card-budget-icon:        #0e433a; --card-budget-surface:        #fffcf7;
-    --card-backup-accent:        #4a6e84; --card-backup-icon:        #253c4e; --card-backup-surface:        #fffcf7;
-    --card-device-accent:        #8b7a65; --card-device-icon:        #55483a; --card-device-surface:        #fffcf7;
+    --card-pending-accent:       #6f6e6a; --card-pending-icon:       #3a3a37; --card-pending-surface:       #fafaf8;
+    --card-month-spend-accent:   #0e0e0c; --card-month-spend-icon:   #000000; --card-month-spend-surface:   #fafaf8;
+    --card-recent-upload-accent: #3a4a52; --card-recent-upload-icon: #1d2a30; --card-recent-upload-surface: #fafaf8;
+    --card-recurring-accent:     #8e1d12; --card-recurring-icon:     #5a1009; --card-recurring-surface:     #fafaf8;
+    --card-goals-accent:         #2c5036; --card-goals-icon:         #15301c; --card-goals-surface:         #fafaf8;
+    --card-budget-accent:        #0e0e0c; --card-budget-icon:        #000000; --card-budget-surface:        #fafaf8;
+    --card-backup-accent:        #6f6e6a; --card-backup-icon:        #3a3a37; --card-backup-surface:        #fafaf8;
+    --card-device-accent:        #5a4a6e; --card-device-icon:        #382d44; --card-device-surface:        #fafaf8;
 }
 
-:root[data-theme="pomelo"] {
-    --surface-app: #fff6e6;
-    --surface-card: #fffcf7;
-    --surface-raised: #ffffff;
-    --surface-nav: #1e293b;
-    --surface-sunken: #f6e8d1;
+:root[data-theme="midnight"] {
+    /* Surface — 深色玻璃 */
+    --surface-app: #0c0d10;
+    --surface-card: #15171c;
+    --surface-raised: #222530;
+    --surface-nav: #08090c;
+    --surface-sunken: #1c1f25;
 
-    --text-default: #25221c;
-    --text-muted: #81786d;
-    --text-meta: #a99a83;
-    --text-on-primary: #ffffff;
+    /* Text */
+    --text-default: #e9e7df;
+    --text-muted: #b8b4a8;
+    --text-meta: #807c70;
+    --text-faint: #4d4a44;
+    --text-on-primary: #15171c;
 
-    --brand-primary: #e6981b;
-    --brand-primary-strong: #9b6306;
-    --brand-accent: #2d7a80;
-    --brand-focus-ring: rgba(206, 127, 18, 0.40);
+    /* Brand — 暖金 */
+    --brand-primary: #d6b487;
+    --brand-primary-strong: #b89564;
+    --brand-accent: #8a6a3e;
+    --brand-primary-bg: rgba(214, 180, 135, 0.14);
+    --brand-focus-ring: rgba(214, 180, 135, 0.55);
 
-    --state-success-bg: #e3eccf; --state-success-fg: #4f6b22; --state-success-border: #cbd9ac;
-    --state-warn-bg:    #ffe4b6; --state-warn-fg:    #8a5a12; --state-warn-border:    #f1ce83;
-    --state-danger-bg:  #f6d6cb; --state-danger-fg:  #8b3b1f; --state-danger-border:  #e9bba8;
-    --state-info-bg:    #ddeeef; --state-info-fg:    #195059; --state-info-border:    #bed9dc;
-    --state-neutral-bg: #f1e8d5; --state-neutral-fg: #6b5b3a; --state-neutral-border: #e0d2b3;
+    /* State */
+    --state-success-bg: rgba(168, 184, 138, 0.14); --state-success-fg: #a8b88a; --state-success-border: rgba(168, 184, 138, 0.30);
+    --state-warn-bg:    rgba(214, 180, 135, 0.14); --state-warn-fg:    #d6b487; --state-warn-border:    rgba(214, 180, 135, 0.30);
+    --state-danger-bg:  rgba(217, 119, 87, 0.14);  --state-danger-fg:  #d97757; --state-danger-border:  rgba(217, 119, 87, 0.30);
+    --state-info-bg:    rgba(132, 188, 212, 0.12); --state-info-fg:    #84bcd4; --state-info-border:    rgba(132, 188, 212, 0.30);
+    --state-neutral-bg: #1c1f25;                   --state-neutral-fg: #b8b4a8; --state-neutral-border: #2a2d35;
 
-    --border-card: #e0d8ca;
-    --border-input: #d6c8ad;
-
-    --chart-series-1: #e6981b;
-    --chart-series-2: #2d7a80;
-    --chart-series-3: #cb6c2f;
-    --chart-series-4: #6a8c3f;
-    --chart-series-5: #8a6a2d;
-    --chart-series-6: #45a6a3;
-    --chart-series-7: #b05e91;
-    --chart-series-8: #4d5f8e;
-    --chart-sequential-from: #ffefcb;
-    --chart-sequential-to:   #8b5a0b;
-    --chart-diverging-negative: #b94a2a;
-    --chart-diverging-zero:     #f1e6d0;
-    --chart-diverging-positive: #4f8a48;
-    --chart-axis: #aa9870;
-    --chart-axis-label: #6f5c36;
-    --chart-grid: rgba(216, 196, 154, 0.20);
-    --chart-grid-emphasis: rgba(230, 152, 27, 0.40);
-    --chart-tooltip-bg: #2f2410;
-    --chart-tooltip-fg: #fff6e6;
-    --chart-tooltip-border: #513a18;
-    --chart-legend-fg: #25221c;
-    --chart-legend-marker: #fffcf7;
-    --chart-sankey-ribbon: rgba(230, 152, 27, 0.30);
-    --chart-sankey-ribbon-emphasis: rgba(155, 99, 6, 0.80);
-    --chart-overspend: #b94a2a;
-    --chart-empty: #e0d2b3;
-
-    --goal-idle-bg:        #f1e8d5; --goal-idle-fg:        #6b5b3a; --goal-idle-border:        #e0d2b3;
-    --goal-on-track-bg:    #e3eccf; --goal-on-track-fg:    #4f6b22; --goal-on-track-border:    #cbd9ac;
-    --goal-near-limit-bg:  #ffe4b6; --goal-near-limit-fg:  #8a5a12; --goal-near-limit-border:  #f1ce83;
-    --goal-exceeded-bg:    #f6d6cb; --goal-exceeded-fg:    #8b3b1f; --goal-exceeded-border:    #e9bba8;
-    --goal-expired-bg:     #eae3d2; --goal-expired-fg:     #8a7e5f; --goal-expired-border:     #d6ccb1;
-
-    --card-pending-accent:       #e6981b; --card-pending-icon:       #8a5a12; --card-pending-surface:       #fffcf7;
-    --card-month-spend-accent:   #cb6c2f; --card-month-spend-icon:   #6c3712; --card-month-spend-surface:   #fffcf7;
-    --card-recent-upload-accent: #2d7a80; --card-recent-upload-icon: #143e42; --card-recent-upload-surface: #fffcf7;
-    --card-recurring-accent:     #8a6a2d; --card-recurring-icon:     #473513; --card-recurring-surface:     #fffcf7;
-    --card-goals-accent:         #6a8c3f; --card-goals-icon:         #36511c; --card-goals-surface:         #fffcf7;
-    --card-budget-accent:        #e6981b; --card-budget-icon:        #8a5a12; --card-budget-surface:        #fffcf7;
-    --card-backup-accent:        #45a6a3; --card-backup-icon:        #1f5957; --card-backup-surface:        #fffcf7;
-    --card-device-accent:        #b05e91; --card-device-icon:        #5f2f4d; --card-device-surface:        #fffcf7;
-}
-
-:root[data-theme="berry"] {
-    --surface-app: #f6eff2;
-    --surface-card: #fffafc;
-    --surface-raised: #ffffff;
-    --surface-nav: #1e293b;
-    --surface-sunken: #f0e4e9;
-
-    --text-default: #251f22;
-    --text-muted: #83747b;
-    --text-meta: #a08e94;
-    --text-on-primary: #ffffff;
-
-    --brand-primary: #a83c5a;
-    --brand-primary-strong: #7b2840;
-    --brand-accent: #8b7a65;
-    --brand-focus-ring: rgba(168, 60, 90, 0.40);
-
-    --state-success-bg: #dde8dd; --state-success-fg: #2f5d38; --state-success-border: #bdd2bc;
-    --state-warn-bg:    #f5ddc2; --state-warn-fg:    #8a5a1a; --state-warn-border:    #e6c28e;
-    --state-danger-bg:  #f5d2da; --state-danger-fg:  #7e1f36; --state-danger-border:  #e8b0bc;
-    --state-info-bg:    #e6dde9; --state-info-fg:    #513363; --state-info-border:    #cebfd6;
-    --state-neutral-bg: #f0e7eb; --state-neutral-fg: #635458; --state-neutral-border: #ded2d6;
-
-    --border-card: #e0d4da;
-    --border-input: #d4c0c8;
-
-    --chart-series-1: #a83c5a;
-    --chart-series-2: #8b7a65;
-    --chart-series-3: #3e7a6a;
-    --chart-series-4: #c4657f;
-    --chart-series-5: #6f4c7a;
-    --chart-series-6: #b8814d;
-    --chart-series-7: #457495;
-    --chart-series-8: #8b5048;
-    --chart-sequential-from: #f2d7df;
-    --chart-sequential-to:   #6e2238;
-    --chart-diverging-negative: #a83c5a;
-    --chart-diverging-zero:     #e6dde0;
-    --chart-diverging-positive: #3e7a6a;
-    --chart-axis: #aa8e96;
-    --chart-axis-label: #6e5660;
-    --chart-grid: rgba(210, 182, 192, 0.20);
-    --chart-grid-emphasis: rgba(168, 60, 90, 0.40);
-    --chart-tooltip-bg: #34141e;
-    --chart-tooltip-fg: #f8e9ee;
-    --chart-tooltip-border: #52202f;
-    --chart-legend-fg: #251f22;
-    --chart-legend-marker: #fffafc;
-    --chart-sankey-ribbon: rgba(196, 101, 127, 0.30);
-    --chart-sankey-ribbon-emphasis: rgba(168, 60, 90, 0.80);
-    --chart-overspend: #7e1f36;
-    --chart-empty: #deccd2;
-
-    --goal-idle-bg:        #f0e7eb; --goal-idle-fg:        #635458; --goal-idle-border:        #ded2d6;
-    --goal-on-track-bg:    #dde8dd; --goal-on-track-fg:    #2f5d38; --goal-on-track-border:    #bdd2bc;
-    --goal-near-limit-bg:  #f5ddc2; --goal-near-limit-fg:  #8a5a1a; --goal-near-limit-border:  #e6c28e;
-    --goal-exceeded-bg:    #f5d2da; --goal-exceeded-fg:    #7e1f36; --goal-exceeded-border:    #e8b0bc;
-    --goal-expired-bg:     #e9e1e4; --goal-expired-fg:     #837277; --goal-expired-border:     #d2c6cb;
-
-    --card-pending-accent:       #c4657f; --card-pending-icon:       #73263f; --card-pending-surface:       #fffafc;
-    --card-month-spend-accent:   #a83c5a; --card-month-spend-icon:   #511b2a; --card-month-spend-surface:   #fffafc;
-    --card-recent-upload-accent: #3e7a6a; --card-recent-upload-icon: #1f4138; --card-recent-upload-surface: #fffafc;
-    --card-recurring-accent:     #8b7a65; --card-recurring-icon:     #55483a; --card-recurring-surface:     #fffafc;
-    --card-goals-accent:         #6f4c7a; --card-goals-icon:         #3f2548; --card-goals-surface:         #fffafc;
-    --card-budget-accent:        #a83c5a; --card-budget-icon:        #511b2a; --card-budget-surface:        #fffafc;
-    --card-backup-accent:        #457495; --card-backup-icon:        #1f3f58; --card-backup-surface:        #fffafc;
-    --card-device-accent:        #b8814d; --card-device-icon:        #6a4520; --card-device-surface:        #fffafc;
-}
-
-:root[data-theme="night"] {
-    --surface-app: #07151a;
-    --surface-card: #0d2027;
-    --surface-raised: #13313a;
-    --surface-nav: #050f14;
-    --surface-sunken: #051218;
-
-    --text-default: #eaf2f0;
-    --text-muted: #b6c6c8;
-    --text-meta: #7b8b8c;
-    --text-on-primary: #062621;
-
-    --brand-primary: #2bb49a;
-    --brand-primary-strong: #0a4139;
-    --brand-accent: #d2a46e;
-    --brand-focus-ring: rgba(43, 180, 154, 0.55);
-
-    --state-success-bg: #11362f; --state-success-fg: #7cddb8; --state-success-border: #1a4a3e;
-    --state-warn-bg:    #3a2a12; --state-warn-fg:    #e8c07a; --state-warn-border:    #4e3919;
-    --state-danger-bg:  #3a1e1b; --state-danger-fg:  #ec9c8f; --state-danger-border:  #4e2924;
-    --state-info-bg:    #12303d; --state-info-fg:    #84bcd4; --state-info-border:    #1b4255;
-    --state-neutral-bg: #1a2a30; --state-neutral-fg: #b6c6c8; --state-neutral-border: #243a42;
-
-    --border-card: #1c3b43;
-    --border-input: #31515a;
+    --border-card: #262932;
+    --border-input: #3a3e48;
+    --radius-card: 10px;
+    --radius-input: 6px;
+    --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.40);
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
 
-    --chart-series-1: #2bb49a;
-    --chart-series-2: #d2a46e;
-    --chart-series-3: #84bcd4;
-    --chart-series-4: #ec9c8f;
-    --chart-series-5: #afc97a;
-    --chart-series-6: #b78ed3;
-    --chart-series-7: #f5c76a;
-    --chart-series-8: #6fb1ad;
-    --chart-sequential-from: #0a2a26;
-    --chart-sequential-to:   #7cddb8;
-    --chart-diverging-negative: #ec9c8f;
-    --chart-diverging-zero:     #1a3038;
-    --chart-diverging-positive: #7cddb8;
-    --chart-axis: #435e66;
-    --chart-axis-label: #b6c6c8;
-    --chart-grid: rgba(45, 74, 82, 0.30);
-    --chart-grid-emphasis: rgba(43, 180, 154, 0.55);
-    --chart-tooltip-bg: #051518;
-    --chart-tooltip-fg: #e7f1ef;
-    --chart-tooltip-border: #143138;
-    --chart-legend-fg: #e7f1ef;
-    --chart-legend-marker: #0d2027;
-    --chart-sankey-ribbon: rgba(43, 180, 154, 0.30);
-    --chart-sankey-ribbon-emphasis: rgba(124, 221, 184, 0.80);
-    --chart-overspend: #ec9c8f;
-    --chart-empty: #243a42;
+    --chart-series-1: #d6b487;
+    --chart-series-2: #a8b88a;
+    --chart-series-3: #d97757;
+    --chart-series-4: #84bcd4;
+    --chart-series-5: #b89564;
+    --chart-series-6: #8a6a3e;
+    --chart-series-7: #7c8a6a;
+    --chart-series-8: #5e7a8a;
+    --chart-sequential-from: #1c1f25;
+    --chart-sequential-to:   #d6b487;
+    --chart-diverging-negative: #d97757;
+    --chart-diverging-zero:     #2a2d35;
+    --chart-diverging-positive: #a8b88a;
+    --chart-axis: #4a4e58;
+    --chart-axis-label: #b8b4a8;
+    --chart-grid: rgba(255, 255, 255, 0.06);
+    --chart-grid-emphasis: rgba(214, 180, 135, 0.40);
+    --chart-tooltip-bg: #08090c;
+    --chart-tooltip-fg: #e9e7df;
+    --chart-tooltip-border: #2a2d35;
+    --chart-legend-fg: #e9e7df;
+    --chart-legend-marker: #15171c;
+    --chart-sankey-ribbon: rgba(214, 180, 135, 0.20);
+    --chart-sankey-ribbon-emphasis: rgba(214, 180, 135, 0.70);
+    --chart-overspend: #d97757;
+    --chart-empty: #2a2d35;
 
-    --goal-idle-bg:        #1a2a30; --goal-idle-fg:        #b6c6c8; --goal-idle-border:        #243a42;
-    --goal-on-track-bg:    #11362f; --goal-on-track-fg:    #7cddb8; --goal-on-track-border:    #1a4a3e;
-    --goal-near-limit-bg:  #3a2a12; --goal-near-limit-fg:  #e8c07a; --goal-near-limit-border:  #4e3919;
-    --goal-exceeded-bg:    #3a1e1b; --goal-exceeded-fg:    #ec9c8f; --goal-exceeded-border:    #4e2924;
-    --goal-expired-bg:     #1d2a2e; --goal-expired-fg:     #7b8b8c; --goal-expired-border:     #263740;
+    --goal-idle-bg:        #1c1f25;                   --goal-idle-fg:        #b8b4a8; --goal-idle-border:        #2a2d35;
+    --goal-on-track-bg:    rgba(168, 184, 138, 0.14); --goal-on-track-fg:    #a8b88a; --goal-on-track-border:    rgba(168, 184, 138, 0.30);
+    --goal-near-limit-bg:  rgba(214, 180, 135, 0.14); --goal-near-limit-fg:  #d6b487; --goal-near-limit-border:  rgba(214, 180, 135, 0.30);
+    --goal-exceeded-bg:    rgba(217, 119, 87, 0.14);  --goal-exceeded-fg:    #d97757; --goal-exceeded-border:    rgba(217, 119, 87, 0.30);
+    --goal-expired-bg:     #1d2025;                   --goal-expired-fg:     #807c70; --goal-expired-border:     #2c2f37;
 
-    --card-pending-accent:       #d2a46e; --card-pending-icon:       #f7e1c1; --card-pending-surface:       #0d2027;
-    --card-month-spend-accent:   #2bb49a; --card-month-spend-icon:   #c7f2e8; --card-month-spend-surface:   #0d2027;
-    --card-recent-upload-accent: #84bcd4; --card-recent-upload-icon: #d4e8ef; --card-recent-upload-surface: #0d2027;
-    --card-recurring-accent:     #e8c07a; --card-recurring-icon:     #f8e1b6; --card-recurring-surface:     #0d2027;
-    --card-goals-accent:         #afc97a; --card-goals-icon:         #ddeeb7; --card-goals-surface:         #0d2027;
-    --card-budget-accent:        #2bb49a; --card-budget-icon:        #c7f2e8; --card-budget-surface:        #0d2027;
-    --card-backup-accent:        #6fb1ad; --card-backup-icon:        #cfeae7; --card-backup-surface:        #0d2027;
-    --card-device-accent:        #b78ed3; --card-device-icon:        #e0ccef; --card-device-surface:        #0d2027;
+    --card-pending-accent:       #d6b487; --card-pending-icon:       #f0d9b3; --card-pending-surface:       #15171c;
+    --card-month-spend-accent:   #b89564; --card-month-spend-icon:   #e8d2ad; --card-month-spend-surface:   #15171c;
+    --card-recent-upload-accent: #84bcd4; --card-recent-upload-icon: #c4dee9; --card-recent-upload-surface: #15171c;
+    --card-recurring-accent:     #d97757; --card-recurring-icon:     #f0b8a3; --card-recurring-surface:     #15171c;
+    --card-goals-accent:         #a8b88a; --card-goals-icon:         #ccd9b8; --card-goals-surface:         #15171c;
+    --card-budget-accent:        #d6b487; --card-budget-icon:        #f0d9b3; --card-budget-surface:        #15171c;
+    --card-backup-accent:        #7c8a6a; --card-backup-icon:        #b8c4a3; --card-backup-surface:        #15171c;
+    --card-device-accent:        #8a7eac; --card-device-icon:        #c3b9d9; --card-device-surface:        #15171c;
 }
 
 /* v0.4 alias shim — 保留旧名直到所有页面消费方迁完。
- * 不要在这里新增 alias；新代码必须直接用 v0.9 token 名。
+ * 不要在这里新增 alias；新代码必须直接用 v0.10 token 名。
  */
 :root {
     --bg-app: var(--surface-app);

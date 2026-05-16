@@ -12,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -27,8 +26,9 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppLoadingState
+import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.ExpenseImagePreview
-import com.ticketbox.ui.components.SoftPanel
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.formatAmount
@@ -44,7 +44,7 @@ internal fun EditDraftPreviewCard(
     onToggleLargeImage: () -> Unit,
     onRetryOcr: () -> Unit,
 ) {
-    SoftPanel(containerAlpha = 0.98f) {
+    AppSolidCard {
         Row(
             modifier = Modifier.padding(14.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -134,23 +134,10 @@ internal fun EditDraftPreviewCard(
 
 @Composable
 internal fun OcrProgressCard() {
-    SoftPanel(containerAlpha = 0.98f) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "正在重新识别截图",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = "识别结果只会更新草稿，仍需要你核对后确认入账。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-    }
+    AppLoadingState(
+        title = "正在重新识别截图",
+        body = "识别结果只会更新草稿，仍需要你核对后确认入账。",
+    )
 }
 
 @Composable
@@ -188,7 +175,7 @@ internal fun ExpenseDateField(
     onClear: () -> Unit,
     enabled: Boolean = true,
 ) {
-    SoftPanel(containerAlpha = 0.98f) {
+    AppSolidCard {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),

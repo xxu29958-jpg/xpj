@@ -2,20 +2,16 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.repository.PendingThumbnailLoader
 import com.ticketbox.data.repository.PendingReviewActions
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 
 /**
  * slice 3 M7：BottomSheet 类型枚举，标记当前打开的 review 快速操作面板。
@@ -54,11 +50,8 @@ data class PendingUiState(
 
 class PendingViewModel(
     internal val repository: PendingReviewActions,
+    private val thumbnailLoader: PendingThumbnailLoader = PendingThumbnailLoader(repository),
 ) : ViewModel() {
-    private companion object {
-        const val THUMBNAIL_CONCURRENCY = 4
-    }
-
     internal val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
 
@@ -102,16 +95,7 @@ class PendingViewModel(
             _uiState.update { it.copy(loading = true, message = null) }
             repository.fetchPending()
                 .onSuccess { expenses ->
-                    val ids = expenses.map { expense -> expense.id }.toSet()
-                    _uiState.update {
-                        it.copy(
-                            items = expenses,
-                            thumbnails = it.thumbnails.filterKeys { id -> id in ids },
-                            activeSheet = reconcileActiveSheet(it.activeSheet, expenses),
-                            readOnly = isReadOnly(),
-                            loading = false,
-                        )
-                    }
+                    _uiState.update { PendingUiStateReducer.afterRefresh(it, expenses, readOnly = isReadOnly()) }
                     loadThumbnails(expenses)
                 }
                 .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "暂时加载不了，请稍后再试。") } }
@@ -167,34 +151,10 @@ class PendingViewModel(
         }
     }
 
-    private suspend fun loadThumbnails(expenses: List<Expense>) = coroutineScope {
-        val pendingIds = expenses.map { expense -> expense.id }.toSet()
-        val missing = expenses.filter { expense ->
-            expense.imagePath != null && !_uiState.value.thumbnails.containsKey(expense.id)
-        }
-        if (missing.isEmpty()) return@coroutineScope
-
-        val limiter = Semaphore(THUMBNAIL_CONCURRENCY)
-        val loaded = missing
-            .map { expense ->
-                async {
-                    limiter.withPermit {
-                        repository.fetchThumbnail(expense.id)
-                            .getOrNull()
-                            ?.let { image -> expense.id to image }
-                    }
-                }
-            }
-            .awaitAll()
-            .filterNotNull()
-            .filter { (id, _) -> id in pendingIds }
-            .toMap()
-
+    private suspend fun loadThumbnails(expenses: List<Expense>) {
+        val loaded = thumbnailLoader.loadMissing(expenses, _uiState.value.thumbnails)
         if (loaded.isNotEmpty()) {
-            _uiState.update { state ->
-                val activeIds = state.items.map { expense -> expense.id }.toSet()
-                state.copy(thumbnails = state.thumbnails + loaded.filterKeys { id -> id in activeIds })
-            }
+            _uiState.update { state -> PendingUiStateReducer.afterLoadedThumbnails(state, loaded) }
         }
     }
 
@@ -210,12 +170,7 @@ class PendingViewModel(
             repository.confirmExpense(expense.id)
                 .onSuccess { confirmed ->
                     _uiState.update { state ->
-                        state.copy(
-                            items = state.items.filterNot { it.id == confirmed.id },
-                            thumbnails = state.thumbnails - confirmed.id,
-                            actionInProgressIds = state.actionInProgressIds - confirmed.id,
-                            message = "已确认入账",
-                        )
+                        PendingUiStateReducer.afterConfirmed(state, confirmed, message = "已确认入账")
                     }
                 }
                 .onFailure { error ->
@@ -237,13 +192,7 @@ class PendingViewModel(
             repository.rejectExpense(expense.id)
                 .onSuccess { rejected ->
                     _uiState.update { state ->
-                        state.copy(
-                            items = state.items.filterNot { it.id == rejected.id },
-                            thumbnails = state.thumbnails - rejected.id,
-                            actionInProgressIds = state.actionInProgressIds - rejected.id,
-                            activeSheet = PendingSheet.None,
-                            message = "已删除",
-                        )
+                        PendingUiStateReducer.afterRejected(state, rejected, message = "已删除")
                     }
                 }
                 .onFailure { error ->
@@ -265,10 +214,10 @@ class PendingViewModel(
             repository.markNotDuplicate(expense.id)
                 .onSuccess { updated ->
                     _uiState.update { state ->
-                        state.copy(
-                            items = state.items.map { if (it.id == updated.id) updated else it },
-                            actionInProgressIds = state.actionInProgressIds - updated.id,
-                            activeSheet = PendingSheet.None,
+                        PendingUiStateReducer.afterUpdated(
+                            current = state,
+                            updated = updated,
+                            closeSheet = true,
                             message = "已保留这条账单",
                         )
                     }
