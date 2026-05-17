@@ -90,6 +90,23 @@ def _confirmed_query(
     return query
 
 
+def _confirmed_amount_query(
+    *,
+    tenant_id: str,
+    month: str | None = None,
+    category: str | None = None,
+    tag: str | None = None,
+    timezone_name: str | None = None,
+) -> Select[tuple[Expense]]:
+    return _confirmed_query(
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_name=timezone_name,
+    ).where(Expense.amount_cents.is_not(None))
+
+
 def _confirmed_ordered(query: Select[tuple[Expense]]) -> Select[tuple[Expense]]:
     return query.order_by(_stat_time_expr().desc(), Expense.id.desc())
 
@@ -191,8 +208,12 @@ def export_confirmed_csv(
         ]
     )
     for expense in expenses:
-        amount_cents = expense.amount_cents or 0
-        amount_yuan = (Decimal(amount_cents) / Decimal(100)).quantize(Decimal("0.01"))
+        if expense.amount_cents is None:
+            amount_cents: int | str = ""
+            amount_yuan = ""
+        else:
+            amount_cents = int(expense.amount_cents)
+            amount_yuan = str((Decimal(amount_cents) / Decimal(100)).quantize(Decimal("0.01")))
         stat_time = _stat_time(expense)
         confirmed_at = ensure_utc(expense.confirmed_at)
         writer.writerow(
@@ -200,7 +221,7 @@ def export_confirmed_csv(
                 expense.id,
                 expense.public_id,
                 amount_cents,
-                str(amount_yuan),
+                amount_yuan,
                 expense.original_currency_code,
                 expense.original_amount_minor if expense.original_amount_minor is not None else "",
                 expense.exchange_rate_to_cny if expense.exchange_rate_to_cny is not None else "",
@@ -260,7 +281,7 @@ def monthly_stats(
     bounds = _stat_month_bounds(month, timezone_name)
     if bounds is None:
         raise AppError("invalid_request", status_code=422)
-    filtered = _confirmed_query(
+    filtered = _confirmed_amount_query(
         tenant_id=tenant_id,
         month=month,
         tag=tag,
@@ -307,7 +328,7 @@ def lifestyle_stats(
         db.scalars(
             _confirmed_query(
                 tenant_id=tenant_id, month=month, timezone_name=timezone_name
-            )
+            ).where(Expense.amount_cents.is_not(None))
         )
     )
     recent_start = now_utc() - timedelta(days=7)
@@ -330,6 +351,7 @@ def lifestyle_stats(
             select(func.coalesce(func.sum(Expense.amount_cents), 0))
             .where(Expense.tenant_id == tenant_id)
             .where(Expense.status == "confirmed")
+            .where(Expense.amount_cents.is_not(None))
             .where(_stat_time_expr() >= recent_start)
         )
         or 0

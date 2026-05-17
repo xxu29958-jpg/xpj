@@ -17,7 +17,7 @@ from app.schemas import (
     BudgetMonthlyUpdateRequest,
 )
 from app.services.category_service import normalize_category
-from app.services.stats_service import _confirmed_query
+from app.services.stats_service import _confirmed_amount_query
 from app.services.time_service import normalize_month_label, now_utc
 
 
@@ -128,7 +128,7 @@ def _month_spend_by_category(
     month: str,
     timezone_name: str | None,
 ) -> dict[str, CategorySpend]:
-    filtered = _confirmed_query(
+    filtered = _confirmed_amount_query(
         tenant_id=tenant_id,
         month=month,
         timezone_name=timezone_name,

@@ -7,6 +7,8 @@ import com.ticketbox.domain.model.Expense
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -54,6 +56,26 @@ class GlobalSearchViewModel(
                 confirmedCache = expenses
                 recompute()
             }
+        }
+        viewModelScope.launch {
+            repository.observeActiveLedgerId()
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    pendingCache = emptyList()
+                    confirmedCache = emptyList()
+                    _uiState.update {
+                        it.copy(
+                            results = emptyList(),
+                            pendingMatchCount = 0,
+                            confirmedMatchCount = 0,
+                            loadingPending = false,
+                            pendingLoaded = false,
+                            message = null,
+                        )
+                    }
+                    refreshPending()
+                }
         }
         refreshPending()
     }

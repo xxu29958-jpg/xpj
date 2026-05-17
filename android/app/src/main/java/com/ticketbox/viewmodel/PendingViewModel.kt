@@ -10,6 +10,8 @@ import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -58,8 +60,27 @@ class PendingViewModel(
     init {
         val readOnly = !repository.canModifyLedger()
         _uiState.update { it.copy(readOnly = readOnly, message = if (readOnly) READ_ONLY_LEDGER_MESSAGE else it.message) }
+        observeLedgerChanges()
         refresh()
         loadCategoryOptions()
+    }
+
+    private fun observeLedgerChanges() {
+        viewModelScope.launch {
+            repository.observeActiveLedgerId()
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    val readOnly = isReadOnly()
+                    _uiState.value = PendingUiState(
+                        readOnly = readOnly,
+                        loading = true,
+                        message = if (readOnly) READ_ONLY_LEDGER_MESSAGE else null,
+                    )
+                    refresh()
+                    loadCategoryOptions()
+                }
+        }
     }
 
     private fun isReadOnly(): Boolean = !repository.canModifyLedger()

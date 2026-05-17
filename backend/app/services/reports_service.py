@@ -115,6 +115,7 @@ def _range_amount_count(
             tenant_id,
         )
         .where(Expense.status == "confirmed")
+        .where(Expense.amount_cents.is_not(None))
         .where(stat_time >= start_utc)
         .where(stat_time < end_utc)
     )
@@ -213,6 +214,7 @@ def _bucket_amount_counts(
     statement = (
         add_ledger_scope(select(*columns), Expense, tenant_id)
         .where(Expense.status == "confirmed")
+        .where(Expense.amount_cents.is_not(None))
         .where(stat_time >= min(bucket.start_utc for bucket in buckets))
         .where(stat_time < max(bucket.end_utc for bucket in buckets))
     )
@@ -291,6 +293,7 @@ def _merchant_ranking(
             tenant_id,
         )
         .where(Expense.status == "confirmed")
+        .where(Expense.amount_cents.is_not(None))
         .where(stat_time >= start_utc)
         .where(stat_time < end_utc)
     )
@@ -348,6 +351,7 @@ def _category_totals(
             tenant_id,
         )
         .where(Expense.status == "confirmed")
+        .where(Expense.amount_cents.is_not(None))
         .where(stat_time >= start_utc)
         .where(stat_time < end_utc)
     )

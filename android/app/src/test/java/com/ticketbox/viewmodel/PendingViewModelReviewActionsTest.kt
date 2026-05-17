@@ -7,6 +7,9 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -453,6 +456,27 @@ class PendingViewModelReviewActionsTest {
         assertEquals("已更新商家", next.message)
     }
 
+    @Test
+    fun activeLedgerChangeDropsStalePendingItemsAndReloads() = review {
+        val ledgerFlow = MutableStateFlow<String?>("owner")
+        val fake = FakeReviewActions(
+            pending = listOf(expense(id = 80L, merchant = "Old Ledger")),
+            activeLedgerFlow = ledgerFlow,
+        )
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        assertEquals(listOf("Old Ledger"), vm.uiState.value.items.map { it.merchant })
+
+        fake.pending = listOf(expense(id = 81L, merchant = "New Ledger"))
+        ledgerFlow.value = "family"
+        advanceUntilIdle()
+
+        assertEquals(2, fake.fetchPendingCalls)
+        assertEquals(listOf("New Ledger"), vm.uiState.value.items.map { it.merchant })
+        assertFalse(vm.uiState.value.thumbnails.containsKey(80L))
+    }
+
     private fun expense(
         id: Long,
         amountCents: Long? = 100L,
@@ -497,10 +521,13 @@ class PendingViewModelReviewActionsTest {
 }
 
 private class FakeReviewActions(
-    private val pending: List<Expense> = emptyList(),
+    pending: List<Expense> = emptyList(),
     private val categoryOptions: List<String> = listOf("餐饮", "交通", "购物"),
     private val canModifyLedger: Boolean = true,
+    private val activeLedgerFlow: Flow<String?> = emptyFlow(),
 ) : PendingReviewActions {
+
+    var pending: List<Expense> = pending
 
     var updateResponder: (suspend (Long, ExpenseDraft) -> Result<Expense>)? = null
     var confirmResponder: (suspend (Long) -> Result<Expense>)? = null
@@ -517,11 +544,18 @@ private class FakeReviewActions(
         private set
     var uploadCalls: Int = 0
         private set
+    var fetchPendingCalls: Int = 0
+        private set
     val confirmedIds = mutableListOf<Long>()
 
     override fun canModifyLedger(): Boolean = canModifyLedger
 
-    override suspend fun fetchPending(): Result<List<Expense>> = Result.success(pending)
+    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
+
+    override suspend fun fetchPending(): Result<List<Expense>> {
+        fetchPendingCalls += 1
+        return Result.success(pending)
+    }
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> =
         Result.failure(IllegalStateException("no thumbnail in tests"))

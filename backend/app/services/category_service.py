@@ -132,6 +132,7 @@ def list_category_summary(
         )
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
+        .where(Expense.amount_cents.is_not(None))
         .where(Expense.confirmed_at >= start)
         .where(Expense.confirmed_at < end)
         .group_by(Expense.category)

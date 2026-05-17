@@ -92,17 +92,48 @@ class GlobalSearchViewModelTest {
         assertEquals("pending offline", state.message)
         assertEquals(listOf(2L), state.results.map { it.expense.id })
     }
+
+    @Test
+    fun activeLedgerChangeClearsSearchCachesAndReloadsPending() = searchTest {
+        val ledgerFlow = MutableStateFlow<String?>("owner")
+        val fake = FakeGlobalSearchActions(
+            activeLedgerFlow = ledgerFlow,
+            pending = listOf(expense(id = 1, status = "pending", merchant = "Old Cafe")),
+            confirmed = listOf(expense(id = 2, status = "confirmed", merchant = "Old Confirmed")),
+        )
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("Old")
+        advanceUntilIdle()
+        assertEquals(listOf(1L, 2L), vm.uiState.value.results.map { it.expense.id })
+
+        fake.pendingResult = Result.success(listOf(expense(id = 3, status = "pending", merchant = "New Cafe")))
+        ledgerFlow.value = "family"
+        advanceUntilIdle()
+
+        assertEquals(2, fake.fetchPendingCalls)
+        assertEquals(0, vm.uiState.value.confirmedMatchCount)
+        assertTrue(vm.uiState.value.results.isEmpty())
+
+        vm.setQuery("New")
+        advanceUntilIdle()
+        assertEquals(listOf(3L), vm.uiState.value.results.map { it.expense.id })
+    }
 }
 
 private class FakeGlobalSearchActions(
+    private val activeLedgerFlow: Flow<String?> = MutableStateFlow("owner"),
     pending: List<Expense> = emptyList(),
     pendingResult: Result<List<Expense>> = Result.success(pending),
     confirmed: List<Expense> = emptyList(),
 ) : GlobalSearchActions {
     private val confirmedFlow = MutableStateFlow(confirmed)
-    private val pendingResult = pendingResult
+    var pendingResult = pendingResult
     var fetchPendingCalls: Int = 0
         private set
+
+    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
 
     override fun observeConfirmed(): Flow<List<Expense>> = confirmedFlow
 

@@ -6,9 +6,10 @@ Covers the 15 scenarios listed in
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
+import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
@@ -303,6 +304,37 @@ def test_accept_expired_invitation(client: TestClient) -> None:
     )
     assert resp.status_code == 400
     assert resp.json()["error"] == "invitation_invalid"
+
+
+def test_accept_invitation_rechecks_expiry_when_consuming_token(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    family_id = _create_family_ledger(client)
+    family_app = _switch_to(client, family_id, app_headers())
+    invite = _mint(client, family_id, family_app)
+    base = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
+    with SessionLocal() as db:
+        inv = db.scalar(select(Invitation))
+        assert inv is not None
+        inv.expires_at = base + timedelta(seconds=1)
+        db.commit()
+
+    ticks = iter([base, base + timedelta(seconds=2)])
+    monkeypatch.setattr("app.services.invitation_invites.now_utc", lambda: next(ticks))
+
+    resp = client.post(
+        "/api/invitations/accept",
+        json={"invite_token": invite, "account_name": "x", "device_name": "d", "platform": "android"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "invitation_invalid"
+
+    with SessionLocal() as db:
+        inv = db.scalar(select(Invitation).where(Invitation.token_hash == hash_secret(invite)))
+        assert inv is not None
+        assert inv.used_at is None
+        assert inv.used_by_account_id is None
 
 
 def test_accept_unknown_token(client: TestClient) -> None:

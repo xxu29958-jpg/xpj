@@ -3,6 +3,8 @@ package com.ticketbox.data.repository
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * v0.4-alpha4 M1：PendingViewModel 依赖反转用接口。
@@ -16,6 +18,7 @@ import com.ticketbox.domain.model.ProtectedImage
  */
 interface PendingReviewActions {
     fun canModifyLedger(): Boolean = true
+    fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     suspend fun fetchPending(): Result<List<Expense>>
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
     suspend fun updateExpense(

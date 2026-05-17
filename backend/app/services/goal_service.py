@@ -11,7 +11,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Goal
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services.category_service import normalize_category
-from app.services.stats_service import _confirmed_query
+from app.services.stats_service import _confirmed_amount_query
 from app.services.time_service import local_month_bounds_utc, now_utc
 
 
@@ -79,7 +79,7 @@ def _month_spend_totals(
     month: str,
     timezone_name: str | None = None,
 ) -> GoalSpendTotals:
-    filtered = _confirmed_query(
+    filtered = _confirmed_amount_query(
         tenant_id=tenant_id,
         month=month,
         timezone_name=timezone_name,

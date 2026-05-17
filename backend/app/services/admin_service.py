@@ -219,6 +219,12 @@ def rotate_upload_link(
     db: Session, *, public_id: str
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
     link = _upload_link_by_public_id(db, public_id)
+    if link.revoked_at is not None:
+        raise AppError(
+            "invalid_request",
+            "上传链接已停用，不能继续轮换。",
+            status_code=409,
+        )
     now = now_utc()
     link.revoked_at = now
     new_key = new_upload_key()

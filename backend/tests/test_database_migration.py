@@ -463,6 +463,24 @@ def test_legacy_database_with_invalid_expense_core_data_fails_startup(
         _reset_empty_database()
 
 
+def test_legacy_database_with_invalid_tenant_id_fails_identity_seed() -> None:
+    _reset_empty_database()
+    init_db()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE category_rules SET tenant_id = '../outside' "
+                "WHERE id = (SELECT id FROM category_rules LIMIT 1)"
+            )
+        )
+
+    try:
+        with pytest.raises(RuntimeError, match="tenant_id"):
+            database.seed_identity_data()
+    finally:
+        _reset_empty_database()
+
+
 def test_v01_schema_migrates_without_losing_expense_data() -> None:
     _reset_empty_database()
     _create_v01_expenses_table()

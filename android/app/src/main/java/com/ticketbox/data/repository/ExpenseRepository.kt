@@ -136,6 +136,8 @@ class ExpenseRepository(
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
+    override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
+
     private fun api(serverUrlOverride: String? = null, tokenOverride: String? = null): ApiService {
         if (serverUrlOverride != null || tokenOverride != null) {
             return apiProvider.temporary(

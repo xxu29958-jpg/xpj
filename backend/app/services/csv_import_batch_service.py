@@ -445,7 +445,6 @@ def _recover_stale_csv_import_rows(
         .where(CsvImportRow.batch_id == batch_id)
         .where(CsvImportRow.status == "applying")
         .where(CsvImportRow.expense_id.is_(None))
-        .where(CsvImportRow.apply_token.is_not(None))
         .where(CsvImportRow.updated_at <= stale_before)
         .values(status="valid", apply_token=None, updated_at=now_utc())
         .execution_options(synchronize_session=False)

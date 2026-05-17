@@ -13,7 +13,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_ROOT, get_settings
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, FX_SOURCE_BASE, FX_STATUS_PENDING, FX_STATUS_READY
-from app.tenants import DEFAULT_TENANT_ID
+from app.tenants import DEFAULT_TENANT_ID, TENANT_ID_PATTERN
 
 
 settings = get_settings()
@@ -231,9 +231,17 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(RuleApplicationBatch.tenant_id).distinct()) if value)
         if inspect(engine).has_table("rule_application_changes"):
             ids.update(str(value) for value in db.scalars(select(RuleApplicationChange.tenant_id).distinct()) if value)
+        _validate_legacy_tenant_ids(ids, source="tenant-scoped tables")
         if ids:
             ensure_identity_for_existing_ledger_ids(db, ids)
         db.commit()
+
+
+def _validate_legacy_tenant_ids(tenant_ids: set[str], *, source: str) -> None:
+    invalid = sorted(tenant_id for tenant_id in tenant_ids if not TENANT_ID_PATTERN.fullmatch(tenant_id))
+    if invalid:
+        sample = ", ".join(invalid[:3])
+        raise RuntimeError(f"Invalid legacy data: {source} contains unsupported tenant_id values: {sample}")
 
 
 def seed_runtime_data() -> None:
@@ -298,6 +306,7 @@ def migrate_upload_paths_to_tenant_dirs() -> None:
             tenant_ids = set(ledger_ids(db))
     else:
         tenant_ids = {tenant.id for tenant in configured_tenants()}
+    _validate_legacy_tenant_ids(tenant_ids, source="ledgers")
     if not tenant_ids or not settings.upload_dir.exists():
         return
 

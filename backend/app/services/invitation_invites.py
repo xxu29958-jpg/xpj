@@ -261,7 +261,9 @@ def accept_invitation(
         .where(Invitation.id == invitation.id)
         .where(Invitation.used_at.is_(None))
         .where(Invitation.revoked_at.is_(None))
+        .where(Invitation.expires_at > used_at)
         .values(used_at=used_at, used_by_account_id=account.id)
+        .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
         db.rollback()

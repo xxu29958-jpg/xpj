@@ -14,7 +14,7 @@ from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, PairingCode, UploadLink
 from app.services import permission_service
 from app.services.time_service import ensure_utc, now_utc, to_iso
-from app.tenants import AuthContext, DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, Tenant, configured_tenants
+from app.tenants import AuthContext, DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, TENANT_ID_PATTERN, Tenant, configured_tenants
 
 
 DEFAULT_ACCOUNT_NAME = "我"
@@ -165,6 +165,8 @@ def _ledger_by_id(db: Session, ledger_id: str) -> Ledger | None:
 
 
 def _ensure_ledger(db: Session, *, ledger_id: str, name: str, owner_account: Account) -> Ledger:
+    if not TENANT_ID_PATTERN.fullmatch(ledger_id):
+        raise RuntimeError(f"Invalid legacy data: ledger_id contains unsupported value: {ledger_id}")
     ledger = _ledger_by_id(db, ledger_id)
     if ledger is None:
         ledger = Ledger(

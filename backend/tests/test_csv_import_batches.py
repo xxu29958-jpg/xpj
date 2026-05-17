@@ -243,6 +243,59 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
         assert final_inserted == 2
 
 
+def test_csv_import_recovers_legacy_stale_applying_row_without_apply_token(client: TestClient) -> None:
+    del client
+    with SessionLocal() as setup_db:
+        batch = create_csv_import_batch(
+            setup_db,
+            tenant_id="owner",
+            file_name="legacy-row-token.csv",
+            file_obj=_csv_bytes(2),
+        )
+        public_id = batch.public_id
+        batch_id = batch.id
+        row_id = setup_db.scalar(
+            select(CsvImportRow.id)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.batch_id == batch_id)
+            .order_by(CsvImportRow.line_number.asc())
+            .limit(1)
+        )
+        assert row_id is not None
+        setup_db.execute(
+            update(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.id == row_id)
+            .values(
+                status="applying",
+                apply_token=None,
+                updated_at=now_utc() - timedelta(minutes=10),
+            )
+        )
+        setup_db.commit()
+
+    with SessionLocal() as db:
+        applied = apply_csv_import_batch(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            batch_size=10,
+        )
+        assert applied.inserted_count == 2
+        assert applied.remaining_valid_rows == 0
+        assert applied.batch.status == "applied"
+
+        rows = list(
+            db.scalars(
+                select(CsvImportRow)
+                .where(CsvImportRow.tenant_id == "owner")
+                .where(CsvImportRow.batch_id == batch_id)
+            )
+        )
+        assert sorted(row.status for row in rows) == ["applied", "applied"]
+        assert all(row.apply_token is None for row in rows)
+
+
 def test_csv_import_stale_worker_token_cannot_apply_after_reclaim(client: TestClient) -> None:
     del client
     with SessionLocal() as setup_db:

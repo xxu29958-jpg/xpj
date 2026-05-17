@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import csv
 from datetime import UTC, datetime
+from io import StringIO
 
 from fastapi.testclient import TestClient
 
 from api_contract_helpers import (
     insert_confirmed_expense,
 )
+from app.database import SessionLocal
+from app.models import Expense
 from conftest import (
     app_headers,
 )
@@ -161,6 +165,58 @@ def test_confirmed_month_filter_handles_cross_year_local_boundary(
     months = client.get("/api/expenses/months", headers=app_headers())
     assert months.status_code == 200
     assert months.json()["items"] == ["2027-01", "2026-12"]
+
+
+def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zero(
+    client: TestClient,
+) -> None:
+    insert_confirmed_expense(
+        amount_cents=1234,
+        merchant="已结算外币账单",
+        category="餐饮",
+        expense_time=datetime(2026, 5, 4, 8, 0, tzinfo=UTC),
+        confirmed_at=datetime(2026, 5, 4, 8, 1, tzinfo=UTC),
+    )
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=None,
+                original_currency_code="USD",
+                original_amount_minor=999,
+                exchange_rate_to_cny=None,
+                exchange_rate_source=None,
+                fx_status="pending",
+                merchant="待汇率外币账单",
+                category="旅行",
+                note="legacy migrated fx row",
+                source="pytest",
+                status="confirmed",
+                expense_time=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
+                created_at=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 5, 5, 8, 0, tzinfo=UTC),
+                confirmed_at=datetime(2026, 5, 5, 8, 1, tzinfo=UTC),
+            )
+        )
+        db.commit()
+
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    assert stats.status_code == 200
+    stats_payload = stats.json()
+    assert stats_payload["total_amount_cents"] == 1234
+    assert stats_payload["count"] == 1
+    assert stats_payload["by_category"] == [
+        {"category": "餐饮", "amount_cents": 1234, "count": 1},
+    ]
+
+    exported = client.get("/api/expenses/export.csv?month=2026-05", headers=app_headers())
+    assert exported.status_code == 200
+    rows = list(csv.DictReader(StringIO(exported.text.lstrip("\ufeff"))))
+    unresolved = next(row for row in rows if row["merchant"] == "待汇率外币账单")
+    assert unresolved["amount_cents"] == ""
+    assert unresolved["amount_yuan"] == ""
+    assert unresolved["original_currency_code"] == "USD"
+    assert unresolved["original_amount_minor"] == "999"
 
 
 def test_month_filter_can_follow_client_timezone_query(client: TestClient) -> None:

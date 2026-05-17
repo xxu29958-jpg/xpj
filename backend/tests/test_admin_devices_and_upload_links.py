@@ -321,6 +321,12 @@ def test_revoke_upload_link_blocks_further_uploads(client: TestClient) -> None:
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
 
+    rotate = client.post(
+        f"/api/admin/upload-links/{public_id}/rotate", headers=admin_headers()
+    )
+    assert rotate.status_code == 409
+    assert rotate.json()["error"] == "invalid_request"
+
 
 def test_upload_link_cannot_read_or_confirm(client: TestClient) -> None:
     # The seeded /u/{CURRENT_UPLOAD_KEY} is an UploadLink. Use it to confirm
