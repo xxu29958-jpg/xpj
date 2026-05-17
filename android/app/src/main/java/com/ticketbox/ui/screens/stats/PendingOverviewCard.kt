@@ -14,11 +14,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.DataQualitySummary
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun PendingOverviewCard(summary: DataQualitySummary) {
@@ -44,7 +44,7 @@ internal fun PendingOverviewCard(summary: DataQualitySummary) {
                 Text(
                     text = "待确认概况",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
                     text = summary.oldestPendingAgeDays?.let { "最久 $it 天" } ?: "—",
@@ -99,7 +99,7 @@ private fun MetricCell(
             Text(
                 text = value.toString(),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
                 color = if (value > 0) {
                     MaterialTheme.colorScheme.onSurface
                 } else {

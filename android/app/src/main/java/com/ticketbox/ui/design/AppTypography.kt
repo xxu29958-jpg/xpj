@@ -10,16 +10,29 @@ data class AppTextRole(
     val weight: FontWeight,
 )
 
+/**
+ * 旧 token 集 —— 保持兼容。
+ *
+ * v0.10 字重重平衡（2026-05）：
+ * - `appLabel` Black → SemiBold（应用标记不该和 amountLarge 同等级）
+ * - `sectionTitle` Black → SemiBold（section 头不是页面唯一焦点）
+ * - `cardTitle` Bold → SemiBold（卡内标题比 section 还轻一级）
+ * - `amountMedium` Black → Bold（次级金额不与主 hero 同等级）
+ * - `chip` Bold → Medium（chip 是辅助元素，Bold 在 12px 字号上视觉过重）
+ * - 保留 Black：`pageTitle` / `amountLarge` —— 这两个才是每屏唯一焦点
+ *
+ * 新代码请优先使用 [AppTextHierarchy] 的 4 级层级。
+ */
 object AppTypography {
-    val appLabel = AppTextRole(size = 15.sp, weight = FontWeight.Black)
+    val appLabel = AppTextRole(size = 15.sp, weight = FontWeight.SemiBold)
     val pageTitle = AppTextRole(size = 28.sp, weight = FontWeight.Black)
-    val sectionTitle = AppTextRole(size = 20.sp, weight = FontWeight.Black)
-    val cardTitle = AppTextRole(size = 17.sp, weight = FontWeight.Bold)
+    val sectionTitle = AppTextRole(size = 20.sp, weight = FontWeight.SemiBold)
+    val cardTitle = AppTextRole(size = 17.sp, weight = FontWeight.SemiBold)
     val amountLarge = AppTextRole(size = 38.sp, weight = FontWeight.Black)
-    val amountMedium = AppTextRole(size = 24.sp, weight = FontWeight.Black)
+    val amountMedium = AppTextRole(size = 24.sp, weight = FontWeight.Bold)
     val body = AppTextRole(size = 14.sp, weight = FontWeight.Normal)
     val caption = AppTextRole(size = 12.sp, weight = FontWeight.Medium)
-    val chip = AppTextRole(size = 13.sp, weight = FontWeight.Bold)
+    val chip = AppTextRole(size = 13.sp, weight = FontWeight.Medium)
 }
 
 /**

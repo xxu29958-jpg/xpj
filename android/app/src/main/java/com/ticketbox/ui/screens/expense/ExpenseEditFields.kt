@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -35,6 +34,7 @@ import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun EditDraftPreviewCard(
@@ -116,7 +116,7 @@ internal fun EditDraftPreviewCard(
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = AppTextHierarchy.body.weight,
                             )
                         }
                         if (!readOnly) {
@@ -134,7 +134,7 @@ internal fun EditDraftPreviewCard(
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = AppTextHierarchy.body.weight,
                                 )
                             }
                         }

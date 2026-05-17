@@ -65,7 +65,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -98,6 +97,7 @@ import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -147,7 +147,7 @@ fun BackgroundPreviewScreen(
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            Text("本月支出 ${formatAmount(428690, homeCurrency)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text("本月支出 ${formatAmount(428690, homeCurrency)}", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
             Text("餐饮 42% · AI订阅 ${formatAmount(20000, homeCurrency)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PreviewRoleCard(

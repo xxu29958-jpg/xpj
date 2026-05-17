@@ -23,6 +23,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun RecentTrendCard(trend: List<DailySpend>) {
@@ -82,7 +83,7 @@ internal fun RecentUploadCard(lastUploadAt: String?) {
             ),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
-            Text("最近上传", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text("最近上传", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
             Text(
                 text = lastUploadAt?.let { displayTime(it) } ?: "还没有上传记录",
                 style = MaterialTheme.typography.titleSmall,

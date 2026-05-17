@@ -14,9 +14,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppContentCard
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSecondaryButton
 
@@ -26,7 +26,7 @@ internal fun UploadFlowCard() {
         Text(
             text = "上传后怎么处理",
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -45,7 +45,7 @@ internal fun UploadProgressCard() {
         Text(
             text = "正在创建待确认账单",
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
             text = "上传完成后会自动刷新。新截图仍然只是草稿，不会直接入账。",
@@ -72,13 +72,13 @@ private fun FlowStep(
             text = number,
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
         )
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = AppTextHierarchy.heading.weight)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -145,7 +145,7 @@ internal fun EmptyPendingState(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("iPhone 上传方法", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+                    Text("iPhone 上传方法", style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.heading.weight)
                     Text("1. 打开账单截图，点分享。")
                     Text("2. 选择\u201C上传到小票夹\u201D快捷指令。")
                     Text("3. 上传成功后回到这里刷新。")
@@ -177,7 +177,7 @@ private fun PendingStateTitle(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
                 text = body,
