@@ -18,7 +18,11 @@ interface PendingReviewActions {
     fun canModifyLedger(): Boolean = true
     suspend fun fetchPending(): Result<List<Expense>>
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
-    suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense>
+    suspend fun updateExpense(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense? = null,
+    ): Result<Expense>
     suspend fun confirmExpense(id: Long): Result<Expense>
     suspend fun rejectExpense(id: Long): Result<Expense>
     suspend fun markNotDuplicate(id: Long): Result<Expense>

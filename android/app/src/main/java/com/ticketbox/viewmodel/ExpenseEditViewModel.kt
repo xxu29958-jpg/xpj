@@ -172,8 +172,9 @@ class ExpenseEditViewModel(
     fun save(draft: ExpenseDraft) {
         if (blockReadOnlyWrite()) return
         viewModelScope.launch {
+            val baseline = _uiState.value.expense
             _uiState.update { it.copy(saving = true, message = null) }
-            repository.updateExpense(expenseId, draft)
+            repository.updateExpense(expenseId, draft, baseline)
                 .onSuccess { expense ->
                     _uiState.update { it.copy(expense = expense, saving = false, message = "已保存", done = true) }
                 }
@@ -188,8 +189,9 @@ class ExpenseEditViewModel(
             return
         }
         viewModelScope.launch {
+            val baseline = _uiState.value.expense
             _uiState.update { it.copy(saving = true, message = null) }
-            repository.updateExpense(expenseId, draft)
+            repository.updateExpense(expenseId, draft, baseline)
                 .onSuccess {
                     repository.confirmExpense(expenseId)
                         .onSuccess { confirmed ->

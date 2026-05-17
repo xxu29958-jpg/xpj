@@ -106,6 +106,7 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
                 originalCurrencyCode = expense?.originalCurrencyCode,
                 originalAmountMinor = originalAmountMinor,
             ),
+            baseline = expense,
         )
             .onSuccess { updated ->
                 _uiState.update { state ->
@@ -226,6 +227,7 @@ private fun PendingViewModel.patchExpense(
 ) {
     if (blockReadOnlyWrite(closeSheet = true)) return
     if (expenseId in _uiState.value.actionInProgressIds) return
+    val baseline = _uiState.value.items.firstOrNull { it.id == expenseId }
     viewModelScope.launch {
         _uiState.update {
             it.copy(
@@ -233,7 +235,7 @@ private fun PendingViewModel.patchExpense(
                 message = null,
             )
         }
-        repository.updateExpense(expenseId, draft)
+        repository.updateExpense(expenseId, draft, baseline)
             .onSuccess { updated ->
                 _uiState.update { state ->
                     PendingUiStateReducer.afterUpdated(

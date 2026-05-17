@@ -280,6 +280,7 @@ def apply_currency_payload(
             _payload_attr(payload, "original_currency"),
             _payload_attr(payload, "original_amount"),
             _payload_attr(payload, "spent_at"),
+            _payload_attr(payload, "expense_time"),
             _payload_attr(payload, "original_currency_code"),
             _payload_attr(payload, "original_amount_minor"),
             _payload_attr(payload, "exchange_rate_date"),
@@ -307,8 +308,11 @@ def apply_currency_payload(
     )
     if original_amount is None:
         original_amount = expense.original_amount_minor
+    explicit_rate_date = _payload_attr(payload, "exchange_rate_date")
+    time_changed = _payload_attr(payload, "spent_at") is not None or _payload_attr(payload, "expense_time") is not None
     rate_date = (
-        _payload_attr(payload, "exchange_rate_date")
+        explicit_rate_date
+        or (default_rate_date(expense.expense_time) if time_changed else None)
         or expense.exchange_rate_date
         or default_rate_date(expense.expense_time)
     )

@@ -81,6 +81,67 @@ class ExpenseMappersTest {
     }
 
     @Test
+    fun baselineAwareToRequestOmitsFxFieldsWhenUnchanged() {
+        val baseline = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            originalCurrencyCode = "USD",
+            originalAmountMinor = 12345,
+            fxRate = "7.12340000",
+            fxRateDate = "2026-05-04",
+            fxStatus = "ready",
+        ).toDomain()
+
+        val request = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalAmountMinor = 12345,
+            merchant = "测试商家",
+            category = "其他",
+            note = "新加的备注",
+            expenseTime = "2026-05-04T04:20:00Z",
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        ).toRequest(baseline = baseline)
+
+        assertEquals(null, request.originalCurrency)
+        assertEquals(null, request.originalAmount)
+        assertEquals(null, request.spentAt)
+        assertEquals(null, request.expenseTime)
+        assertEquals("新加的备注", request.note)
+    }
+
+    @Test
+    fun baselineAwareToRequestSendsFxTimeFieldsWhenTimeChanged() {
+        val baseline = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            originalCurrencyCode = "USD",
+            originalAmountMinor = 12345,
+            fxRate = "7.12340000",
+            fxRateDate = "2026-05-04",
+            fxStatus = "ready",
+        ).toDomain()
+
+        val request = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalAmountMinor = 12345,
+            merchant = "测试商家",
+            category = "其他",
+            note = "",
+            expenseTime = "2026-05-05T04:20:00Z",
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        ).toRequest(baseline = baseline)
+
+        assertEquals(null, request.originalCurrency)
+        assertEquals(null, request.originalAmount)
+        assertEquals("2026-05-05T04:20:00Z", request.spentAt)
+        assertEquals("2026-05-05T04:20:00Z", request.expenseTime)
+    }
+
+    @Test
     fun categoryOnlyDraftDoesNotSubmitSyntheticCurrencyFields() {
         val request = ExpenseDraft(
             amountCents = null,

@@ -179,6 +179,48 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
     assert response.json()["fx_status"] == "ready"
 
 
+def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(client: TestClient) -> None:
+    day_one = client.put(
+        "/api/exchange-rates/USD/2026-05-04",
+        headers=app_headers(),
+        json={"currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
+    )
+    assert day_one.status_code == 200, day_one.json()
+    day_two = client.put(
+        "/api/exchange-rates/USD/2026-05-05",
+        headers=app_headers(),
+        json={"currency_code": "USD", "rate_date": "2026-05-05", "rate_to_cny": "8.0000"},
+    )
+    assert day_two.status_code == 200, day_two.json()
+
+    created = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "original_currency_code": "USD",
+            "original_amount_minor": 10000,
+            "merchant": "跨日期咖啡",
+            "category": "餐饮",
+            "spent_at": "2026-05-04T02:00:00Z",
+        },
+    )
+    assert created.status_code == 200, created.json()
+    initial = created.json()
+    assert initial["exchange_rate_date"] == "2026-05-04"
+    assert initial["amount_cents"] == 70000
+
+    edited = client.patch(
+        f"/api/expenses/{int(initial['id'])}",
+        headers=app_headers(),
+        json={"spent_at": "2026-05-05T02:00:00Z"},
+    )
+    assert edited.status_code == 200, edited.json()
+    body = edited.json()
+    assert body["exchange_rate_date"] == "2026-05-05"
+    assert Decimal(body["exchange_rate_to_cny"]) == Decimal("8.00000000")
+    assert body["amount_cents"] == 80000
+
+
 def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient) -> None:
     response = client.post(
         "/api/expenses/manual",

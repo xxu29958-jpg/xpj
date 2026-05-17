@@ -526,10 +526,10 @@ private class FakeReviewActions(
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> =
         Result.failure(IllegalStateException("no thumbnail in tests"))
 
-    override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> {
+    override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> {
         updateCalls += 1
         return updateResponder?.invoke(id, draft)
-            ?: error("updateResponder not set; got id=$id draft=$draft")
+            ?: error("updateResponder not set; got id=$id draft=$draft baseline=$baseline")
     }
 
     override suspend fun confirmExpense(id: Long): Result<Expense> {

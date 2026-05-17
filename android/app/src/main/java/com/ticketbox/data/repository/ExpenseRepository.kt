@@ -372,9 +372,13 @@ class ExpenseRepository(
         response.id
     }
 
-    override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
+    override suspend fun updateExpense(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense?,
+    ): Result<Expense> = errorHandler.safeCall {
         val ledgerIdAtRequest = activeLedgerIdOrLegacy()
-        cacheIfConfirmed(api().updateExpense(id, draft.toRequest()), ledgerIdAtRequest).toDomain()
+        cacheIfConfirmed(api().updateExpense(id, draft.toRequest(baseline = baseline)), ledgerIdAtRequest).toDomain()
     }
 
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = errorHandler.safeCall {

@@ -160,21 +160,27 @@ fun ExpenseEntity.toDomain(): Expense = Expense(
     rejectedAt = null,
 )
 
-fun ExpenseDraft.toRequest(): ExpenseUpdateRequest {
+fun ExpenseDraft.toRequest(baseline: Expense? = null): ExpenseUpdateRequest {
     val submittedOriginalMinor = originalAmountMinor ?: amountCents
     val submittedCurrency = originalCurrencyCode
         ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+    val submittedAmountText = minorToMajorText(
+        submittedOriginalMinor,
+        submittedCurrency ?: FxContract.HomeCurrency,
+    )
+    val isCreate = baseline == null
+    val currencyChanged = baseline != null && submittedCurrency != baseline.originalCurrencyCode
+    val amountChanged = baseline != null && submittedOriginalMinor != baseline.originalAmountMinor
+    val timeChanged = baseline != null && expenseTime != baseline.expenseTime
+
     return ExpenseUpdateRequest(
-        originalCurrency = submittedCurrency?.storageKey,
-        originalAmount = minorToMajorText(
-            submittedOriginalMinor,
-            submittedCurrency ?: FxContract.HomeCurrency,
-        ),
-        spentAt = expenseTime,
+        originalCurrency = if (isCreate || currencyChanged) submittedCurrency?.storageKey else null,
+        originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
+        spentAt = if (isCreate || timeChanged) expenseTime else null,
         merchant = merchant,
         category = normalizeExpenseCategory(category),
         note = note,
-        expenseTime = expenseTime,
+        expenseTime = if (isCreate || timeChanged) expenseTime else null,
         tags = tags,
         valueScore = valueScore,
         regretScore = regretScore,

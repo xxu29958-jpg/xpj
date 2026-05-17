@@ -85,7 +85,7 @@ private class ThumbnailFakeReviewActions(
             ?: Result.failure(IllegalStateException("unexpected thumbnail id $id"))
     }
 
-    override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> =
+    override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun confirmExpense(id: Long): Result<Expense> =
