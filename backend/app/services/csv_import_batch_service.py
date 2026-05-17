@@ -158,14 +158,24 @@ def apply_csv_import_batch(
 ) -> CsvImportApplyResponse:
     batch = _claim_apply_lease(db, tenant_id=tenant_id, public_id=public_id)
     inserted = 0
+    claimed_row_ids: list[int] = []
     try:
+        claimed_row_ids = _claim_csv_import_rows(
+            db,
+            tenant_id=tenant_id,
+            batch_id=batch.id,
+            batch_size=batch_size,
+        )
+        batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+        if not claimed_row_ids and _applying_row_count(db, batch, tenant_id) > 0:
+            raise AppError("invalid_request", "导入批次正在应用中，请稍后重试。", status_code=409)
         rows = list(
             db.scalars(
                 ledger_scoped_select(CsvImportRow, tenant_id)
                 .where(CsvImportRow.batch_id == batch.id)
-                .where(CsvImportRow.status == "valid")
+                .where(CsvImportRow.id.in_(claimed_row_ids))
+                .where(CsvImportRow.status == "applying")
                 .order_by(CsvImportRow.line_number.asc())
-                .limit(batch_size)
             )
         )
         now = now_utc()
@@ -212,7 +222,8 @@ def apply_csv_import_batch(
         _refresh_batch_counts(db, batch)
         batch.locked_until = None
         batch.updated_at = now_utc()
-        if _remaining_valid_rows(db, batch, tenant_id) == 0:
+        remaining_rows = _remaining_importable_rows(db, batch, tenant_id)
+        if remaining_rows == 0:
             batch.applied_at = batch.updated_at
             batch.status = "applied_with_errors" if batch.error_rows else "applied"
         else:
@@ -222,16 +233,40 @@ def apply_csv_import_batch(
         return CsvImportApplyResponse(
             batch=CsvImportBatchResponse.model_validate(batch),
             inserted_count=inserted,
-            remaining_valid_rows=_remaining_valid_rows(db, batch, tenant_id),
+            remaining_valid_rows=remaining_rows,
         )
+    except AppError:
+        db.rollback()
+        if claimed_row_ids:
+            _reset_claimed_csv_import_rows(
+                db,
+                tenant_id=tenant_id,
+                row_ids=claimed_row_ids,
+            )
+            _mark_csv_import_apply_failed(
+                db,
+                tenant_id=tenant_id,
+                public_id=public_id,
+            )
+        else:
+            _release_csv_import_apply_lease(
+                db,
+                tenant_id=tenant_id,
+                public_id=public_id,
+            )
+        raise
     except Exception:
         db.rollback()
-        batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
-        batch.locked_until = None
-        batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
-        batch.last_error = "导入应用失败。"
-        batch.updated_at = now_utc()
-        db.commit()
+        _reset_claimed_csv_import_rows(
+            db,
+            tenant_id=tenant_id,
+            row_ids=claimed_row_ids,
+        )
+        _mark_csv_import_apply_failed(
+            db,
+            tenant_id=tenant_id,
+            public_id=public_id,
+        )
         raise
 
 
@@ -265,6 +300,100 @@ def _claim_apply_lease(db: Session, *, tenant_id: str, public_id: str) -> CsvImp
     db.commit()
     db.expire_all()
     return get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+
+
+def _claim_csv_import_rows(
+    db: Session,
+    *,
+    tenant_id: str,
+    batch_id: int,
+    batch_size: int,
+) -> list[int]:
+    capped = max(1, min(int(batch_size or 1), 1000))
+    row_ids = list(
+        db.scalars(
+            ledger_scoped_select(CsvImportRow, tenant_id)
+            .where(CsvImportRow.batch_id == batch_id)
+            .where(CsvImportRow.status == "valid")
+            .order_by(CsvImportRow.line_number.asc())
+            .limit(capped)
+            .with_only_columns(CsvImportRow.id)
+        )
+    )
+    if not row_ids:
+        return []
+    now = now_utc()
+    result = db.execute(
+        update(CsvImportRow)
+        .where(CsvImportRow.tenant_id == tenant_id)
+        .where(CsvImportRow.batch_id == batch_id)
+        .where(CsvImportRow.id.in_(row_ids))
+        .where(CsvImportRow.status == "valid")
+        .values(status="applying", updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    db.expire_all()
+    if result.rowcount != len(row_ids):
+        return list(
+            db.scalars(
+                ledger_scoped_select(CsvImportRow, tenant_id)
+                .where(CsvImportRow.batch_id == batch_id)
+                .where(CsvImportRow.id.in_(row_ids))
+                .where(CsvImportRow.status == "applying")
+                .with_only_columns(CsvImportRow.id)
+            )
+        )
+    return [int(row_id) for row_id in row_ids]
+
+
+def _reset_claimed_csv_import_rows(
+    db: Session,
+    *,
+    tenant_id: str,
+    row_ids: list[int],
+) -> None:
+    if not row_ids:
+        return
+    db.execute(
+        update(CsvImportRow)
+        .where(CsvImportRow.tenant_id == tenant_id)
+        .where(CsvImportRow.id.in_(row_ids))
+        .where(CsvImportRow.status == "applying")
+        .where(CsvImportRow.expense_id.is_(None))
+        .values(status="valid", updated_at=now_utc())
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+
+
+def _mark_csv_import_apply_failed(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+) -> None:
+    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    batch.locked_until = None
+    batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
+    batch.last_error = "导入应用失败。"
+    batch.updated_at = now_utc()
+    db.commit()
+
+
+def _release_csv_import_apply_lease(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+) -> None:
+    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    batch.locked_until = None
+    batch.status = "applying" if _applying_row_count(db, batch, tenant_id) else (
+        "parsed_with_errors" if batch.error_rows else "parsed"
+    )
+    batch.updated_at = now_utc()
+    db.commit()
 
 
 def build_csv_import_errors_csv(
@@ -370,13 +499,27 @@ def _refresh_batch_counts(db: Session, batch: CsvImportBatch) -> None:
     batch.error_rows = int(counts.get("error", 0)) + int(counts.get("insert_failed", 0))
 
 
-def _remaining_valid_rows(db: Session, batch: CsvImportBatch, tenant_id: str) -> int:
+def _applying_row_count(db: Session, batch: CsvImportBatch, tenant_id: str) -> int:
     return int(
         db.scalar(
             select(func.count()).select_from(
                 ledger_scoped_select(CsvImportRow, tenant_id)
                 .where(CsvImportRow.batch_id == batch.id)
-                .where(CsvImportRow.status == "valid")
+                .where(CsvImportRow.status == "applying")
+                .subquery()
+            )
+        )
+        or 0
+    )
+
+
+def _remaining_importable_rows(db: Session, batch: CsvImportBatch, tenant_id: str) -> int:
+    return int(
+        db.scalar(
+            select(func.count()).select_from(
+                ledger_scoped_select(CsvImportRow, tenant_id)
+                .where(CsvImportRow.batch_id == batch.id)
+                .where(CsvImportRow.status.in_(("valid", "applying")))
                 .subquery()
             )
         )

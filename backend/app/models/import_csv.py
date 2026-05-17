@@ -68,7 +68,7 @@ class CsvImportRow(Base):
     __table_args__ = (
         CheckConstraint("line_number >= 2", name="ck_csv_import_rows_line_number_valid"),
         CheckConstraint(
-            "status IN ('valid', 'error', 'applied', 'insert_failed')",
+            "status IN ('valid', 'error', 'applying', 'applied', 'insert_failed')",
             name="ck_csv_import_rows_status_valid",
         ),
         CheckConstraint("amount_cents IS NULL OR amount_cents >= 0", name="ck_csv_import_rows_amount_non_negative"),

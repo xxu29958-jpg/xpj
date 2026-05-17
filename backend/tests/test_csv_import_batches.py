@@ -7,10 +7,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember
+from app.models import CsvImportRow, Expense, LedgerMember
 from app.errors import AppError
 from app.services.csv_import_batch_service import (
     _claim_apply_lease,
+    _claim_csv_import_rows,
     apply_csv_import_batch,
     create_csv_import_batch,
     list_csv_import_rows,
@@ -126,6 +127,71 @@ def test_csv_import_apply_lease_is_atomically_claimed(client: TestClient) -> Non
             .where(Expense.tenant_id == "owner")
         )
         assert inserted == 0
+
+
+def test_csv_import_row_claim_prevents_duplicate_apply_after_batch_lease_expires(client: TestClient) -> None:
+    del client
+    with SessionLocal() as setup_db:
+        batch = create_csv_import_batch(
+            setup_db,
+            tenant_id="owner",
+            file_name="row-claim.csv",
+            file_obj=_csv_bytes(2),
+        )
+        public_id = batch.public_id
+        batch_id = batch.id
+        claimed_ids = _claim_csv_import_rows(
+            setup_db,
+            tenant_id="owner",
+            batch_id=batch_id,
+            batch_size=1,
+        )
+        assert len(claimed_ids) == 1
+
+    with SessionLocal() as db:
+        applied = apply_csv_import_batch(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            batch_size=10,
+        )
+        assert applied.inserted_count == 1
+        assert applied.remaining_valid_rows == 1
+
+        inserted = db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == "owner")
+            .where(Expense.source == "CSV导入")
+        )
+        assert inserted == 1
+
+        rows = list(
+            db.scalars(
+                select(CsvImportRow)
+                .where(CsvImportRow.tenant_id == "owner")
+                .where(CsvImportRow.batch_id == batch_id)
+                .order_by(CsvImportRow.line_number.asc())
+            )
+        )
+        assert sorted(row.status for row in rows) == ["applied", "applying"]
+
+        with pytest.raises(AppError) as exc_info:
+            apply_csv_import_batch(
+                db,
+                tenant_id="owner",
+                public_id=public_id,
+                batch_size=10,
+            )
+        assert exc_info.value.status_code == 409
+
+        inserted_after_retry = db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == "owner")
+            .where(Expense.source == "CSV导入")
+        )
+        assert inserted_after_retry == 1
 
 
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient) -> None:
