@@ -1,6 +1,6 @@
 # v0.3+ 账号 / 账本 / 设备身份模型（当前基线：v0.9.0a1，`identity_schema=v0.3` 不变）
 
-> 身份契约自 v0.3 起未变更；v0.4 / v0.5 / v0.6-v0.8 / v0.9 的能力演进均建立在该契约之上。版本真值源见 [docs/VERSION.md](VERSION.md)。
+> 身份契约自 v0.3 起未变更；v0.4 / v0.5 / v0.6-v0.8 / v0.9 的能力演进均建立在该契约之上。版本真值源见 [docs/architecture/VERSION.md](VERSION.md)。
 
 v0.3 把旧 `APP_TOKEN` / `UPLOAD_TOKEN` / `TENANTS_JSON` 运行时模型切换为账号、账本、设备和可撤销凭证。
 

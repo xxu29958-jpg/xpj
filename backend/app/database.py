@@ -67,7 +67,7 @@ def init_db() -> None:
     validate_sqlite_data_integrity()
     # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
     # paths remain readable through resolve_protected_image() after the route
-    # has verified expense ownership. See docs/ROLLBACK.md.
+    # has verified expense ownership. See docs/runbook/ROLLBACK.md.
     seed_runtime_data()
 
 

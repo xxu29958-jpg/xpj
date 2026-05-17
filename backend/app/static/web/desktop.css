@@ -8,7 +8,7 @@
  *   2. /static/web/web.css         (legacy 7 个页面仍使用)
  *   3. /static/web/desktop.css     (本文件，覆盖 shell + 5 个新页样式)
  *
- * Token 翻译表见 docs/ENGINEERING_RULES.md。
+ * Token 翻译表见 docs/rules/ENGINEERING_RULES.md。
  */
 
 /* ───── Webfonts (本地自托管，v0.10 破例) ─────

@@ -106,19 +106,19 @@ Owner 只在模板里渲染其中的 pending / recurring / budget / backup / dev
 
 **Android**：
 - 数据类与每主题取值：
-  - [ThemeVisuals.kt](../android/app/src/main/java/com/ticketbox/ui/design/ThemeVisuals.kt)
-  - [BackgroundVisuals.kt](../android/app/src/main/java/com/ticketbox/ui/design/BackgroundVisuals.kt)
-  - [StateTokens.kt](../android/app/src/main/java/com/ticketbox/ui/design/StateTokens.kt)
-  - [ChartTokens.kt](../android/app/src/main/java/com/ticketbox/ui/design/ChartTokens.kt)
-  - [GoalTokens.kt](../android/app/src/main/java/com/ticketbox/ui/design/GoalTokens.kt)
-  - [DashboardCardTokens.kt](../android/app/src/main/java/com/ticketbox/ui/design/DashboardCardTokens.kt)
-- 注入入口：[Theme.kt](../android/app/src/main/java/com/ticketbox/ui/theme/Theme.kt) 内 `TicketboxTheme` 的 `CompositionLocalProvider`
-- 单元测试：[ThemeVisualsTest.kt](../android/app/src/test/java/com/ticketbox/ui/design/ThemeVisualsTest.kt)
+  - [ThemeVisuals.kt](../../android/app/src/main/java/com/ticketbox/ui/design/ThemeVisuals.kt)
+  - [BackgroundVisuals.kt](../../android/app/src/main/java/com/ticketbox/ui/design/BackgroundVisuals.kt)
+  - [StateTokens.kt](../../android/app/src/main/java/com/ticketbox/ui/design/StateTokens.kt)
+  - [ChartTokens.kt](../../android/app/src/main/java/com/ticketbox/ui/design/ChartTokens.kt)
+  - [GoalTokens.kt](../../android/app/src/main/java/com/ticketbox/ui/design/GoalTokens.kt)
+  - [DashboardCardTokens.kt](../../android/app/src/main/java/com/ticketbox/ui/design/DashboardCardTokens.kt)
+- 注入入口：[Theme.kt](../../android/app/src/main/java/com/ticketbox/ui/theme/Theme.kt) 内 `TicketboxTheme` 的 `CompositionLocalProvider`
+- 单元测试：[ThemeVisualsTest.kt](../../android/app/src/test/java/com/ticketbox/ui/design/ThemeVisualsTest.kt)
 
 **Web / Owner**：
-- 共享 token 真值表：[shared/tokens.css](../backend/app/static/shared/tokens.css)
-- Web 入口：[web/web.css](../backend/app/static/web/web.css)（顶部 `@import "../shared/tokens.css"`）
-- Owner 入口：[owner/owner.css](../backend/app/static/owner/owner.css)（顶部 `@import "../shared/tokens.css"` + `[data-owner]` 密度覆写）
+- 共享 token 真值表：[shared/tokens.css](../../backend/app/static/shared/tokens.css)
+- Web 入口：[web/web.css](../../backend/app/static/web/web.css)（顶部 `@import "../shared/tokens.css"`）
+- Owner 入口：[owner/owner.css](../../backend/app/static/owner/owner.css)（顶部 `@import "../shared/tokens.css"` + `[data-owner]` 密度覆写）
 
 ## 8. 主题切换机制（本轮未启用）
 
@@ -132,7 +132,7 @@ v0.10 base.html 用 `<html data-theme="{{ ui_theme or 'paper' }}">`，由 `_base
 
 ## 9. 提交边界
 
-按 [UI_IMPLEMENTATION_PLAN.md](UI_IMPLEMENTATION_PLAN.md) 的"tokens only"边界，v0.9 token 重写拆四个 commit：
+按 [UI_IMPLEMENTATION_PLAN.md](../roadmap/UI_IMPLEMENTATION_PLAN.md) 的"tokens only"边界，v0.9 token 重写拆四个 commit：
 
 1. `tokens(android)`：4 个 sibling token class + ThemeVisuals 追加字段 + 测试。**不动任何 screen 文件**。
 2. `tokens(web)`：抽 `shared/tokens.css` + 5 主题块 + alias shim；`web.css` 删原 `:root` 块改 `@import`。

@@ -1,22 +1,20 @@
 # 小票夹完整架构
 
-> **当前基线：v0.9.0a1**（身份契约 `identity_schema=v0.3` 不变）。版本真值源见 [docs/VERSION.md](VERSION.md)。
+> **当前基线：v0.9.0a1**（身份契约 `identity_schema=v0.3` 不变）。版本真值源见 [docs/architecture/VERSION.md](VERSION.md)。
 
 ## 灰度版总入口
 
 当前开发基准以 v0.3 账号 / 账本 / 设备身份模型为准。完整要求见：
 
-```text
-docs/ACCOUNT_SYSTEM.md
-docs/BOOTSTRAP.md
-docs/API.md
-docs/SECURITY.md
-docs/ANDROID_RULES.md
-docs/ANDROID_STATE_FLOW.md
-docs/ANDROID_UPLOAD.md
-docs/RELEASE_PACKAGING.md
-docs/GRAY_ACCEPTANCE_EXECUTION.md
-```
+- [ACCOUNT_SYSTEM.md](ACCOUNT_SYSTEM.md) — 账号 / 账本 / 设备身份模型
+- [../runbook/BOOTSTRAP.md](../runbook/BOOTSTRAP.md) — Owner 首次初始化
+- [API.md](API.md) — 后端 API 契约
+- [SECURITY.md](SECURITY.md) — 隔离与边界
+- [../rules/ANDROID_RULES.md](../rules/ANDROID_RULES.md) — Android 开发规则
+- [ANDROID_STATE_FLOW.md](ANDROID_STATE_FLOW.md) — Android 状态流
+- [ANDROID_UPLOAD.md](ANDROID_UPLOAD.md) — Android 上传规格
+- [../runbook/RELEASE_PACKAGING.md](../runbook/RELEASE_PACKAGING.md) — Release 打包
+- [../runbook/GRAY_ACCEPTANCE_EXECUTION.md](../runbook/GRAY_ACCEPTANCE_EXECUTION.md) — 灰度验收执行清单
 
 灰度版强制要求：
 
@@ -205,7 +203,7 @@ Authorization: Bearer <admin_token>
 认证规则：
 
 - `POST /api/auth/pair` 不需要鉴权，用 Pairing Code 换取 session token。
-- `POST /api/bootstrap/owner` 默认禁用（返回 `404 bootstrap_disabled`）。仅当后端运行环境显式设置 `ENABLE_HTTP_BOOTSTRAP=true` 并配置 `HTTP_BOOTSTRAP_SECRET` 时可用，调用方必须携带 `X-Bootstrap-Secret` 请求头；secret 一次性消费。loopback 不再用作鉴权依据，Cloudflare Tunnel 公网无法绕过。详见 [BOOTSTRAP.md](BOOTSTRAP.md)。
+- `POST /api/bootstrap/owner` 默认禁用（返回 `404 bootstrap_disabled`）。仅当后端运行环境显式设置 `ENABLE_HTTP_BOOTSTRAP=true` 并配置 `HTTP_BOOTSTRAP_SECRET` 时可用，调用方必须携带 `X-Bootstrap-Secret` 请求头；secret 一次性消费。loopback 不再用作鉴权依据，Cloudflare Tunnel 公网无法绕过。详见 [BOOTSTRAP.md](../runbook/BOOTSTRAP.md)。
 - `POST /api/bootstrap/pairing-codes` 需要 admin token。
 - `/u/{upload_key}` 通过 URL 路径中的 upload_key 鉴权，不需要 header。
 - Android App 接口需要 `Authorization: Bearer <session_token>`。

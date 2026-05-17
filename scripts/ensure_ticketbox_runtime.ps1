@@ -251,7 +251,7 @@ function Start-TunnelIfNeeded {
     }
 
     Write-Host "WARN 未找到 cloudflared 进程、Windows 服务或计划任务。"
-    Write-Host "WARN 如果公网检查失败，请先按 docs\\CLOUDFLARE_TUNNEL.md 安装 Tunnel connector。"
+    Write-Host "WARN 如果公网检查失败，请先按 docs\\runbook\\CLOUDFLARE_TUNNEL.md 安装 Tunnel connector。"
 }
 
 Write-Host "小票夹运行保障检查"

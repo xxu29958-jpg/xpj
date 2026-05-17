@@ -1,6 +1,6 @@
 # 小票夹安全说明
 
-v0.3 隔离要求以账号 / 账本 / 设备模型为准，完整要求见 `docs/ACCOUNT_SYSTEM.md`。
+v0.3 隔离要求以账号 / 账本 / 设备模型为准，完整要求见 `docs/architecture/ACCOUNT_SYSTEM.md`。
 
 核心底线：
 

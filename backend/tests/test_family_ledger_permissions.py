@@ -1,7 +1,7 @@
 """v0.4-beta1 family-ledger permission & invitation tests.
 
 Covers the 15 scenarios listed in
-``docs/V0_4_BETA1_FAMILY_LEDGER_FOUNDATION.md`` §8.
+``docs/DECISIONS/0022-family-ledger-permission-model.md``.
 """
 
 from __future__ import annotations

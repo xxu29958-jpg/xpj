@@ -225,7 +225,7 @@ Ledger 和 Edit 不追求最高沉浸。它们的优先级是：
 2. 只改对应页面或通用骨架的最小范围。
 3. 保留原 ViewModel / Repository / API 调用逻辑。
 4. 刷新对应 `artifacts/*.png` 验收截图。
-5. 更新 `docs/UI_SCREENSHOT_ACCEPTANCE.md` 或灰度状态文档。
+5. 更新 `docs/roadmap/UI_SCREENSHOT_ACCEPTANCE.md` 或灰度状态文档。
 6. 跑当前 gray 变体的测试、构建、lint。
 7. 单独提交，不和新功能混在一起。
 
