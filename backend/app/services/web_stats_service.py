@@ -15,8 +15,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import AuthToken, Device, Expense
-from app.services.time_service import now_utc
+from app.services.time_service import normalize_month_label, now_utc
 
 
 SOURCE_LABELS: dict[str, str] = {
@@ -80,8 +81,7 @@ def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
 
 def confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
     """已确认账单在指定月内的每日金额，用于日历热力图。"""
-    if not month or "-" not in month:
-        return []
+    month = _clean_month_filter(month)
     expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
     rows = db.execute(
         select(
@@ -108,6 +108,7 @@ def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dic
         .where(Expense.status == "confirmed")
     )
     if month:
+        month = _clean_month_filter(month)
         expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
         q = q.where(func.strftime("%Y-%m", expense_time) == month)
     q = q.group_by(Expense.source)
@@ -121,6 +122,13 @@ def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dic
         }
         for s, c in sorted(rows, key=lambda r: -int(r[1] or 0))
     ]
+
+
+def _clean_month_filter(month: str) -> str:
+    cleaned = normalize_month_label(month)
+    if cleaned is None:
+        raise AppError("invalid_request", status_code=422)
+    return cleaned
 
 
 def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:

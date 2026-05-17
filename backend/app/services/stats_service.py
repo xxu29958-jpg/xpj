@@ -6,10 +6,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from io import StringIO
 
-from sqlalchemy import Select, false, func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.errors import AppError
 from app.models import Expense, ExpenseTag, Tag
 from app.services.category_service import merge_categories, normalize_category
 from app.services.csv_security import safe_csv_cell
@@ -18,6 +19,7 @@ from app.services.time_service import (
     ensure_utc,
     local_month_bounds_utc,
     local_month_label,
+    normalize_month_label,
     now_utc,
 )
 
@@ -48,6 +50,13 @@ def _stat_month_bounds(
     return local_month_bounds_utc(month, _stat_timezone(timezone_name))
 
 
+def _clean_month_filter(month: str) -> str:
+    cleaned = normalize_month_label(month)
+    if cleaned is None:
+        raise AppError("invalid_request", status_code=422)
+    return cleaned
+
+
 def _confirmed_query(
     *,
     tenant_id: str,
@@ -70,9 +79,10 @@ def _confirmed_query(
         )
         query = query.where(Expense.id.in_(tagged_expense_ids))
     if month:
+        month = _clean_month_filter(month)
         bounds = _stat_month_bounds(month, timezone_name)
         if bounds is None:
-            return query.where(false())
+            raise AppError("invalid_request", status_code=422)
         start_utc, end_utc = bounds
         query = query.where(_stat_time_expr() >= start_utc).where(
             _stat_time_expr() < end_utc
@@ -244,17 +254,12 @@ def monthly_stats(
         lambda: {"category": "", "amount_cents": 0, "count": 0}
     )
 
+    month = _clean_month_filter(month)
     total_amount_cents = 0
     total_count = 0
     bounds = _stat_month_bounds(month, timezone_name)
     if bounds is None:
-        return {
-            "month": month,
-            "total_amount_cents": 0,
-            "count": 0,
-            "by_category": [],
-            "by_tag": [],
-        }
+        raise AppError("invalid_request", status_code=422)
     filtered = _confirmed_query(
         tenant_id=tenant_id,
         month=month,
@@ -297,6 +302,7 @@ def monthly_stats(
 def lifestyle_stats(
     db: Session, month: str, tenant_id: str, timezone_name: str | None = None
 ) -> dict:
+    month = _clean_month_filter(month)
     month_expenses = list(
         db.scalars(
             _confirmed_query(

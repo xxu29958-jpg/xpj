@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -19,10 +18,7 @@ from app.schemas import (
 )
 from app.services.category_service import normalize_category
 from app.services.stats_service import _confirmed_query
-from app.services.time_service import local_month_bounds_utc, now_utc
-
-
-MONTH_PATTERN = re.compile(r"^\d{4}-\d{2}$")
+from app.services.time_service import normalize_month_label, now_utc
 
 
 @dataclass(frozen=True)
@@ -32,8 +28,8 @@ class CategorySpend:
 
 
 def _clean_month(month: str) -> str:
-    cleaned = (month or "").strip()
-    if not MONTH_PATTERN.fullmatch(cleaned) or local_month_bounds_utc(cleaned, "UTC") is None:
+    cleaned = normalize_month_label(month)
+    if cleaned is None:
         raise AppError("invalid_request", status_code=422)
     return cleaned
 

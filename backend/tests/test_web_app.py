@@ -107,6 +107,22 @@ def test_web_stats_local_returns_200(web_client: TestClient) -> None:
 
 # ── Ledger selector contract ────────────────────────────────────────────────
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/web/stats?month=2026-13",
+        "/web/confirmed?month=0000-05",
+        "/web/categories?month=2026-5",
+    ],
+)
+def test_web_month_pages_reject_invalid_month_labels(
+    web_client: TestClient, path: str
+) -> None:
+    resp = web_client.get(path)
+    assert resp.status_code == 422
+    assert resp.json()["error"] == "invalid_request"
+
+
 def test_web_search_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/search?ledger_id=owner")
     assert resp.status_code == 200

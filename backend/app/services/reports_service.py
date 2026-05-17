@@ -19,7 +19,7 @@ from app.services.category_service import LEGACY_CATEGORY_ALIASES, normalize_cat
 from app.services.csv_security import safe_csv_cell
 from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
 from app.services.merchant_service import display_merchant, normalize_merchant
-from app.services.time_service import local_month_bounds_utc, safe_zone
+from app.services.time_service import local_month_bounds_utc, parse_month_label, safe_zone
 
 ReportGranularity = Literal["day", "week", "month"]
 ReportRankingMetric = Literal["amount", "count"]
@@ -44,15 +44,10 @@ def _resolve_timezone(timezone_name: str | None) -> tuple[str, ZoneInfo]:
 
 
 def _parse_month(month: str) -> tuple[int, int]:
-    try:
-        year_text, month_text = month.split("-", 1)
-        year = int(year_text)
-        month_number = int(month_text)
-    except (AttributeError, ValueError) as exc:
-        raise AppError("invalid_request", status_code=422) from exc
-    if not 1 <= month_number <= 12:
+    parsed = parse_month_label(month)
+    if parsed is None:
         raise AppError("invalid_request", status_code=422)
-    return year, month_number
+    return parsed
 
 
 def _shift_month(month: str, offset: int) -> str:

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import CategoryRule, Expense
 from app.schemas import ExpenseUpdateRequest
+from app.services.time_service import parse_month_label
 
 
 DEFAULT_CATEGORIES = [
@@ -100,7 +101,10 @@ class CategoryDashboard:
 
 
 def _category_month_window(month: str) -> tuple[datetime, datetime]:
-    year, mon = (int(p) for p in month.split("-", 1))
+    parsed = parse_month_label(month)
+    if parsed is None:
+        raise AppError("invalid_request", status_code=422)
+    year, mon = parsed
     start = datetime(year, mon, 1)
     if mon == 12:
         end = datetime(year + 1, 1, 1)

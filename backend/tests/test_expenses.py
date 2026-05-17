@@ -105,6 +105,22 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     assert stats.json()["total_amount_cents"] == 3680
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/stats/monthly?month=2026-13",
+        "/api/stats/monthly?month=0000-05",
+        "/api/stats/lifestyle?month=2026-5",
+        "/api/expenses/confirmed?month=2026-13",
+        "/api/expenses/export.csv?month=0000-05",
+    ],
+)
+def test_month_filters_reject_invalid_month_labels(client: TestClient, path: str) -> None:
+    response = client.get(path, headers=app_headers())
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_request"
+
+
 def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     client: TestClient,
 ) -> None:
