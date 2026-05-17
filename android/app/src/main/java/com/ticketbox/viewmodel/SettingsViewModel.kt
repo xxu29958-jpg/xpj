@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.MerchantRepository
+import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
@@ -45,6 +47,8 @@ data class SettingsUiState(
 
 class SettingsViewModel(
     private val repository: ExpenseRepository,
+    private val ruleRepository: RuleRepository,
+    private val merchantRepository: MerchantRepository,
     private val settingsStore: TicketboxSettingsStore,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState().withLocalBindingFields())
@@ -254,7 +258,7 @@ class SettingsViewModel(
 
     fun loadCategoryRules() {
         viewModelScope.launch {
-            repository.categoryRules()
+            ruleRepository.categoryRules()
                 .onSuccess { rules -> _uiState.update { it.copy(categoryRules = rules) } }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "分类规则暂时打不开。") } }
         }
@@ -262,7 +266,7 @@ class SettingsViewModel(
 
     fun loadMerchantAliases() {
         viewModelScope.launch {
-            repository.merchantAliases()
+            merchantRepository.merchantAliases()
                 .onSuccess { aliases -> _uiState.update { it.copy(merchantAliases = aliases.sortedMerchantAliases()) } }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "商家别名暂时打不开。") } }
         }
@@ -270,7 +274,7 @@ class SettingsViewModel(
 
     fun loadRuleApplications() {
         viewModelScope.launch {
-            repository.ruleApplications()
+            ruleRepository.ruleApplications()
                 .onSuccess { applications -> _uiState.update { it.copy(ruleApplications = applications) } }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "规则应用记录暂时打不开。") } }
         }
@@ -283,7 +287,7 @@ class SettingsViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
-            repository.createCategoryRule(keyword = keyword, category = category, priority = priority)
+            ruleRepository.createCategoryRule(keyword = keyword, category = category, priority = priority)
                 .onSuccess { rule ->
                     _uiState.update {
                         it.copy(
@@ -308,7 +312,7 @@ class SettingsViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
-            repository.updateCategoryRule(
+            ruleRepository.updateCategoryRule(
                 id = rule.id,
                 keyword = keyword.trim(),
                 category = category.trim(),
@@ -333,7 +337,7 @@ class SettingsViewModel(
             return
         }
         viewModelScope.launch {
-            repository.updateCategoryRule(rule.id, enabled = !rule.enabled)
+            ruleRepository.updateCategoryRule(rule.id, enabled = !rule.enabled)
                 .onSuccess { updated ->
                     _uiState.update { state ->
                         state.copy(
@@ -352,7 +356,7 @@ class SettingsViewModel(
             return
         }
         viewModelScope.launch {
-            repository.deleteCategoryRule(rule.id)
+            ruleRepository.deleteCategoryRule(rule.id)
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(
@@ -372,7 +376,7 @@ class SettingsViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
-            repository.createMerchantAlias(canonicalMerchant = canonicalMerchant, alias = alias)
+            merchantRepository.createMerchantAlias(canonicalMerchant = canonicalMerchant, alias = alias)
                 .onSuccess { created ->
                     _uiState.update { state ->
                         state.copy(
@@ -392,7 +396,7 @@ class SettingsViewModel(
             return
         }
         viewModelScope.launch {
-            repository.updateMerchantAlias(alias.publicId, enabled = !alias.enabled)
+            merchantRepository.updateMerchantAlias(alias.publicId, enabled = !alias.enabled)
                 .onSuccess { updated ->
                     _uiState.update { state ->
                         state.copy(
@@ -413,7 +417,7 @@ class SettingsViewModel(
             return
         }
         viewModelScope.launch {
-            repository.deleteMerchantAlias(alias.publicId)
+            merchantRepository.deleteMerchantAlias(alias.publicId)
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(
@@ -429,7 +433,7 @@ class SettingsViewModel(
     fun previewApplyConfirmedRules() {
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
-            repository.previewApplyConfirmedRules()
+            ruleRepository.previewApplyConfirmedRules()
                 .onSuccess { preview ->
                     _uiState.update {
                         it.copy(
@@ -459,9 +463,9 @@ class SettingsViewModel(
                 return@launch
             }
             _uiState.update { it.copy(busy = true, message = null) }
-            repository.confirmApplyConfirmedRules(previewToken)
+            ruleRepository.confirmApplyConfirmedRules(previewToken)
                 .onSuccess { result ->
-                    repository.ruleApplications()
+                    ruleRepository.ruleApplications()
                         .onSuccess { applications ->
                             _uiState.update { it.copy(ruleApplications = applications) }
                         }
@@ -484,9 +488,9 @@ class SettingsViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
-            repository.rollbackRuleApplication(application.publicId)
+            ruleRepository.rollbackRuleApplication(application.publicId)
                 .onSuccess { rollback ->
-                    repository.ruleApplications()
+                    ruleRepository.ruleApplications()
                         .onSuccess { applications ->
                             _uiState.update { it.copy(ruleApplications = applications) }
                         }

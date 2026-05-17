@@ -1,0 +1,60 @@
+"""Domain-organized ORM models.
+
+This package was split from a single ``models.py`` into one file per domain to
+make navigation easier. All names previously importable from ``app.models``
+remain importable at the same path (``from app.models import Expense``), so
+no caller needs to change.
+"""
+
+from __future__ import annotations
+
+from app.models.auth import Invitation, PairingCode, UploadLink
+from app.models.budget import Budget, BudgetCategory, DashboardCardPreference, Goal
+from app.models.catalog import DuplicateIgnore, ExpenseTag, MerchantAlias, Tag
+from app.models.classification import (
+    CategoryRule,
+    RuleApplicationBatch,
+    RuleApplicationChange,
+)
+from app.models.expense import Expense, ExpenseItem, ExpenseSplit
+from app.models.identity import (
+    Account,
+    AuthToken,
+    Device,
+    Ledger,
+    LedgerAuditLog,
+    LedgerMember,
+)
+from app.models.import_csv import CsvImportBatch, CsvImportRow
+from app.models.recurring import RecurringItem
+from app.models.system import SchemaMigration
+
+__all__ = [
+    "Account",
+    "AuthToken",
+    "Budget",
+    "BudgetCategory",
+    "CategoryRule",
+    "CsvImportBatch",
+    "CsvImportRow",
+    "DashboardCardPreference",
+    "Device",
+    "DuplicateIgnore",
+    "Expense",
+    "ExpenseItem",
+    "ExpenseSplit",
+    "ExpenseTag",
+    "Goal",
+    "Invitation",
+    "Ledger",
+    "LedgerAuditLog",
+    "LedgerMember",
+    "MerchantAlias",
+    "PairingCode",
+    "RecurringItem",
+    "RuleApplicationBatch",
+    "RuleApplicationChange",
+    "SchemaMigration",
+    "Tag",
+    "UploadLink",
+]

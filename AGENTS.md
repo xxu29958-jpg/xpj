@@ -38,9 +38,9 @@ Android 实现相关任务再阅读：
 
 以下规则的完整详情均在 `docs/ENGINEERING_RULES.md` 中，此处仅列索引：
 
-- 后端技术栈 → §1
-- 不可回退决定 → §23
+- 总原则与优先级 → §1
 - 后端分层（routes → services → models） → §3-4
+- 代码质量与依赖约束 → §4.1, §15.1
 - Android 分层（Screen → ViewModel → Repository → DAO） → §12
-- 代码质量与依赖管理 → §2
-- Windows UTF-8 → §9
+- Windows UTF-8 → §9.1
+- 不可回退决定 → §23

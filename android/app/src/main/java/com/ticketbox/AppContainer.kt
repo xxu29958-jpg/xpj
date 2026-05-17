@@ -8,8 +8,10 @@ import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
+import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.security.SecureTokenStore
 
 class AppContainer(context: Context) {
@@ -51,6 +53,21 @@ class AppContainer(context: Context) {
     )
 
     val reportsRepository = ReportsRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+
+    val ruleRepository = RuleRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+        onConfirmedChanged = { expenseRepository.syncConfirmed() },
+    )
+
+    val merchantRepository = MerchantRepository(
         apiClient = apiClient,
         settingsStore = settingsStore,
         tokenStore = tokenStore,

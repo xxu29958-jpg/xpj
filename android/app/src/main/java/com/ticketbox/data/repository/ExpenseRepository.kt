@@ -1,24 +1,17 @@
 package com.ticketbox.data.repository
 
 import android.util.Log
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
-import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
-import com.ticketbox.data.remote.dto.MerchantAliasRequest
 import com.ticketbox.data.remote.dto.PairRequestDto
-import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
-import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DiagnosticCheck
@@ -30,26 +23,20 @@ import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.LifestyleStats
-import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.DataQualitySummary
-import com.ticketbox.domain.model.RuleApplicationBatch
-import com.ticketbox.domain.model.RuleApplicationRollback
-import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.mergeExpenseCategories
 import com.ticketbox.security.SessionTokenStore
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import retrofit2.HttpException
@@ -106,10 +93,14 @@ class ExpenseRepository(
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
     }
 
-    private val errorAdapter = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-        .adapter(ErrorDto::class.java)
+    private val errorHandler = NetworkErrorHandler(
+        settingsStore = settingsStore,
+        context = "Repository",
+        statusMessages = mapOf(
+            404 to "账单不存在。",
+            413 to "上传文件超过大小限制。",
+        ),
+    )
 
     private fun currentTimezoneId(): String {
         return TimeZone.getDefault().id
@@ -130,55 +121,13 @@ class ExpenseRepository(
         return apiProvider.current()
     }
 
-    private suspend fun <T> safeCall(serverUrlHint: String? = null, block: suspend () -> T): Result<T> {
-        return try {
-            Result.success(withContext(Dispatchers.IO) { block() })
-        } catch (error: HttpException) {
-            Result.failure(RepositoryException(parseHttpError(error)))
-        } catch (error: RepositoryException) {
-            Result.failure(error)
-        } catch (error: IOException) {
-            val serverUrl = serverUrlHint ?: settingsStore.serverUrl()
-            Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, serverUrl), error)
-            Result.failure(RepositoryException(userNetworkMessage(error, serverUrl)))
-        } catch (error: IllegalArgumentException) {
-            if (BuildConfig.DEBUG) {
-                Log.w(NETWORK_LOG_TAG, "Repository request argument error: ${error.message}", error)
-            }
-            Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
-        } catch (error: Exception) {
-            if (BuildConfig.DEBUG) {
-                Log.w(NETWORK_LOG_TAG, "Repository request failed: ${error::class.java.name}: ${error.message}", error)
-            }
-            Result.failure(RepositoryException(error.message ?: "操作失败。"))
-        }
-    }
-
-    private fun parseHttpError(error: HttpException): String {
-        return parseErrorMessage(error.code(), error.response()?.errorBody()?.string())
-    }
-
-    private fun parseErrorMessage(statusCode: Int, body: String?): String {
-        if (!body.isNullOrBlank()) {
-            runCatching { errorAdapter.fromJson(body) }
-                .getOrNull()
-                ?.let { return backendErrorUserMessage(it.error, it.message) }
-        }
-        return when (statusCode) {
-            401, 403 -> "绑定已失效，请重新绑定账本。"
-            404 -> "账单不存在。"
-            413 -> "上传文件超过大小限制。"
-            else -> "连接出错（$statusCode），请稍后再试。"
-        }
-    }
-
     private fun readProtectedImage(response: Response<ResponseBody>): ProtectedImage {
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string()
             if (BuildConfig.DEBUG) {
                 Log.w(NETWORK_LOG_TAG, "Protected image request failed: code=${response.code()} body=${errorBody?.take(160)}")
             }
-            throw RepositoryException(parseErrorMessage(response.code(), errorBody))
+            throw RepositoryException(errorHandler.parseErrorMessage(response.code(), errorBody))
         }
         val body = response.body() ?: throw RepositoryException("图片为空。")
         val contentType = body.contentType()?.toString()
@@ -194,7 +143,7 @@ class ExpenseRepository(
 
     private fun diagnosticErrorMessage(error: Throwable): String {
         return when (error) {
-            is HttpException -> parseHttpError(error)
+            is HttpException -> errorHandler.parseHttpError(error)
             is IOException -> {
                 Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, settingsStore.serverUrl()), error)
                 userNetworkMessage(error, settingsStore.serverUrl())
@@ -232,7 +181,7 @@ class ExpenseRepository(
     }
 
     override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> {
-        return safeCall(serverUrlHint = serverUrl) {
+        return errorHandler.safeCall(serverUrlHint = serverUrl) {
             val normalized = validateBindingInput(serverUrl, pairingCode)
             val pairResponse = api(normalized, null).pairDevice(
                 PairRequestDto(
@@ -269,11 +218,11 @@ class ExpenseRepository(
         }
     }
 
-    suspend fun testConnection(): Result<Unit> = safeCall {
+    suspend fun testConnection(): Result<Unit> = errorHandler.safeCall {
         persistAuthCheck(api().checkAuth())
     }
 
-    suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> = safeCall {
+    suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> = errorHandler.safeCall {
         val service = api()
         val checks = mutableListOf<DiagnosticCheck>()
 
@@ -350,7 +299,7 @@ class ExpenseRepository(
         ConnectionDiagnostics(checks)
     }
 
-    override suspend fun fetchPending(): Result<List<Expense>> = safeCall {
+    override suspend fun fetchPending(): Result<List<Expense>> = errorHandler.safeCall {
         api().pendingExpenses().map { it.toDomain() }
     }
 
@@ -360,7 +309,7 @@ class ExpenseRepository(
         bytes: ByteArray,
         preparationDurationMs: Long?,
         sourceSizeBytes: Long?,
-    ): Result<Long> = safeCall {
+    ): Result<Long> = errorHandler.safeCall {
         require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
         val cleanName = fileName
             .trim()
@@ -392,15 +341,15 @@ class ExpenseRepository(
         response.id
     }
 
-    override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = safeCall {
+    override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
         cacheIfConfirmed(api().updateExpense(id, draft.toRequest())).toDomain()
     }
 
-    suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = safeCall {
+    suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = errorHandler.safeCall {
         api().expenseItems(id).toDomain()
     }
 
-    suspend fun replaceExpenseItems(id: Long, items: List<ExpenseItemDraft>): Result<ExpenseItems> = safeCall {
+    suspend fun replaceExpenseItems(id: Long, items: List<ExpenseItemDraft>): Result<ExpenseItems> = errorHandler.safeCall {
         if (!canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
@@ -410,11 +359,11 @@ class ExpenseRepository(
         ).toDomain()
     }
 
-    suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = safeCall {
+    suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = errorHandler.safeCall {
         api().expenseSplits(id).toDomain()
     }
 
-    suspend fun replaceExpenseSplits(id: Long, splits: List<ExpenseSplitDraft>): Result<ExpenseSplits> = safeCall {
+    suspend fun replaceExpenseSplits(id: Long, splits: List<ExpenseSplitDraft>): Result<ExpenseSplits> = errorHandler.safeCall {
         if (!canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
@@ -424,16 +373,16 @@ class ExpenseRepository(
         ).toDomain()
     }
 
-    suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = safeCall {
+    suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
         require(draft.amountCents != null) { "请先填写金额。" }
         cacheIfConfirmed(api().createManualExpense(draft.toRequest())).toDomain()
     }
 
-    suspend fun createNotificationDraft(draft: NotificationDraft): Result<Expense> = safeCall {
+    suspend fun createNotificationDraft(draft: NotificationDraft): Result<Expense> = errorHandler.safeCall {
         api().createNotificationDraft(draft.toRequest()).toDomain()
     }
 
-    override suspend fun confirmExpense(id: Long): Result<Expense> = safeCall {
+    override suspend fun confirmExpense(id: Long): Result<Expense> = errorHandler.safeCall {
         cacheIfConfirmed(api().confirmExpense(id)).toDomain()
     }
 
@@ -445,27 +394,27 @@ class ExpenseRepository(
         return dto
     }
 
-    override suspend fun rejectExpense(id: Long): Result<Expense> = safeCall {
+    override suspend fun rejectExpense(id: Long): Result<Expense> = errorHandler.safeCall {
         api().rejectExpense(id).toDomain()
     }
 
-    suspend fun retryOcr(id: Long): Result<Expense> = safeCall {
+    suspend fun retryOcr(id: Long): Result<Expense> = errorHandler.safeCall {
         api().retryOcr(id).toDomain()
     }
 
-    override suspend fun markNotDuplicate(id: Long): Result<Expense> = safeCall {
+    override suspend fun markNotDuplicate(id: Long): Result<Expense> = errorHandler.safeCall {
         api().markNotDuplicate(id).toDomain()
     }
 
-    suspend fun fetchDuplicates(): Result<List<Expense>> = safeCall {
+    suspend fun fetchDuplicates(): Result<List<Expense>> = errorHandler.safeCall {
         api().duplicates().map { it.toDomain() }
     }
 
-    override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = safeCall {
+    override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = errorHandler.safeCall {
         readProtectedImage(api().expenseThumbnail(id))
     }
 
-    suspend fun fetchImage(id: Long): Result<ProtectedImage> = safeCall {
+    suspend fun fetchImage(id: Long): Result<ProtectedImage> = errorHandler.safeCall {
         readProtectedImage(api().expenseImage(id))
     }
 
@@ -518,19 +467,19 @@ class ExpenseRepository(
         month: String? = null,
         category: String? = null,
         tag: String? = null,
-    ): Result<List<Expense>> = safeCall {
+    ): Result<List<Expense>> = errorHandler.safeCall {
         syncConfirmedFromService(api(), month, category, tag)
     }
 
-    override suspend fun categories(): Result<List<String>> = safeCall {
+    override suspend fun categories(): Result<List<String>> = errorHandler.safeCall {
         mergeExpenseCategories(api().categories().items)
     }
 
-    suspend fun tags(): Result<List<String>> = safeCall {
+    suspend fun tags(): Result<List<String>> = errorHandler.safeCall {
         api().tags().items
     }
 
-    suspend fun months(): Result<List<String>> = safeCall {
+    suspend fun months(): Result<List<String>> = errorHandler.safeCall {
         api().months(timezone = currentTimezoneId()).items
     }
 
@@ -538,7 +487,7 @@ class ExpenseRepository(
         month: String? = null,
         category: String? = null,
         tag: String? = null,
-    ): Result<CsvExport> = safeCall {
+    ): Result<CsvExport> = errorHandler.safeCall {
         val cleanMonth = month?.trim()?.ifBlank { null }
         val cleanCategory = category?.trim()?.ifBlank { null }
         val cleanTag = tag?.trim()?.ifBlank { null }
@@ -549,7 +498,7 @@ class ExpenseRepository(
             timezone = currentTimezoneId(),
         )
         if (!response.isSuccessful) {
-            throw RepositoryException(parseErrorMessage(response.code(), response.errorBody()?.string()))
+            throw RepositoryException(errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string()))
         }
         val body = response.body() ?: throw RepositoryException("导出内容为空。")
         val fileName = buildString {
@@ -570,142 +519,23 @@ class ExpenseRepository(
             .distinctUntilChanged()
             .flatMapLatest { id -> expenseDao.observeConfirmed(id).map { rows -> rows.map { it.toDomain() } } }
 
-    suspend fun monthlyStats(month: String? = null, tag: String? = null): Result<MonthlyStats> = safeCall {
+    suspend fun monthlyStats(month: String? = null, tag: String? = null): Result<MonthlyStats> = errorHandler.safeCall {
         api().monthlyStats(month = month, tag = tag?.trim()?.ifBlank { null }, timezone = currentTimezoneId()).toDomain()
     }
 
-    suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats> = safeCall {
+    suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats> = errorHandler.safeCall {
         api().lifestyleStats(month = month, timezone = currentTimezoneId()).toDomain()
     }
 
-    suspend fun recurringCandidates(): Result<List<RecurringCandidate>> = safeCall {
+    suspend fun recurringCandidates(): Result<List<RecurringCandidate>> = errorHandler.safeCall {
         api().recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
     }
 
-    suspend fun dataQualitySummary(): Result<DataQualitySummary> = safeCall {
+    suspend fun dataQualitySummary(): Result<DataQualitySummary> = errorHandler.safeCall {
         api().dataQualitySummary().toDomain()
     }
 
-    suspend fun categoryRules(): Result<List<CategoryRule>> = safeCall {
-        api().categoryRules().map { it.toDomain() }
-    }
-
-    suspend fun createCategoryRule(keyword: String, category: String, priority: Int): Result<CategoryRule> = safeCall {
-        val cleanKeyword = keyword.trim()
-        val cleanCategory = category.trim()
-        require(cleanKeyword.isNotBlank()) { "请输入关键词。" }
-        require(cleanCategory.isNotBlank()) { "请输入分类。" }
-        api().createCategoryRule(
-            CategoryRuleRequest(
-                keyword = cleanKeyword,
-                category = cleanCategory,
-                enabled = true,
-                priority = priority,
-            ),
-        ).toDomain()
-    }
-
-    suspend fun updateCategoryRule(
-        id: Long,
-        keyword: String? = null,
-        category: String? = null,
-        enabled: Boolean? = null,
-        priority: Int? = null,
-    ): Result<CategoryRule> = safeCall {
-        api().updateCategoryRule(
-            id,
-            CategoryRuleRequest(
-                keyword = keyword,
-                category = category,
-                enabled = enabled,
-                priority = priority,
-            ),
-        ).toDomain()
-    }
-
-    suspend fun deleteCategoryRule(id: Long): Result<Unit> = safeCall {
-        api().deleteCategoryRule(id)
-        Unit
-    }
-
-    suspend fun merchantAliases(): Result<List<MerchantAlias>> = safeCall {
-        api().merchantAliases().items.map { it.toDomain() }
-    }
-
-    suspend fun createMerchantAlias(canonicalMerchant: String, alias: String): Result<MerchantAlias> = safeCall {
-        val cleanCanonical = canonicalMerchant.trim()
-        val cleanAlias = alias.trim()
-        require(cleanCanonical.isNotBlank()) { "请输入标准商家名。" }
-        require(cleanAlias.isNotBlank()) { "请输入别名。" }
-        api().createMerchantAlias(
-            MerchantAliasRequest(
-                canonicalMerchant = cleanCanonical,
-                alias = cleanAlias,
-                enabled = true,
-            ),
-        ).toDomain()
-    }
-
-    suspend fun updateMerchantAlias(
-        publicId: String,
-        canonicalMerchant: String? = null,
-        alias: String? = null,
-        enabled: Boolean? = null,
-    ): Result<MerchantAlias> = safeCall {
-        val cleanPublicId = publicId.trim()
-        require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
-        api().updateMerchantAlias(
-            cleanPublicId,
-            MerchantAliasRequest(
-                canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() },
-                alias = alias?.trim()?.takeIf { it.isNotBlank() },
-                enabled = enabled,
-            ),
-        ).toDomain()
-    }
-
-    suspend fun deleteMerchantAlias(publicId: String): Result<Unit> = safeCall {
-        val cleanPublicId = publicId.trim()
-        require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
-        api().deleteMerchantAlias(cleanPublicId)
-        Unit
-    }
-
-    suspend fun ruleApplications(limit: Int = 8): Result<List<RuleApplicationBatch>> = safeCall {
-        api().ruleApplications(limit = limit.coerceIn(1, 20)).items.map { it.toDomain() }
-    }
-
-    suspend fun previewApplyConfirmedRules(): Result<RuleApplyConfirmedResult> = safeCall {
-        api().applyConfirmedRules(
-            request = RuleApplyConfirmedRequestDto(confirm = false),
-        ).toDomain()
-    }
-
-    suspend fun confirmApplyConfirmedRules(previewToken: String): Result<RuleApplyConfirmedResult> = safeCall {
-        val cleanPreviewToken = previewToken.trim()
-        require(cleanPreviewToken.isNotBlank()) { "请先预览影响范围。" }
-        val service = api()
-        val result = service.applyConfirmedRules(
-            request = RuleApplyConfirmedRequestDto(confirm = true, previewToken = cleanPreviewToken),
-        ).toDomain()
-        if (result.changedCount > 0) {
-            syncConfirmedFromService(service)
-        }
-        result
-    }
-
-    suspend fun rollbackRuleApplication(publicId: String): Result<RuleApplicationRollback> = safeCall {
-        val cleanPublicId = publicId.trim()
-        require(cleanPublicId.isNotBlank()) { "请选择一条应用记录。" }
-        val service = api()
-        val result = service.rollbackRuleApplication(cleanPublicId).toDomain()
-        if (result.changed > 0) {
-            syncConfirmedFromService(service)
-        }
-        result
-    }
-
-    suspend fun serverSettings(): Result<ServerSettings> = safeCall {
+    suspend fun serverSettings(): Result<ServerSettings> = errorHandler.safeCall {
         val ledgerIdAtRequest = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
         val settings = api().serverSettings()
         persistServerSettings(settings, expectedLedgerId = ledgerIdAtRequest)

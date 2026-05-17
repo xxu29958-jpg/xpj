@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.security.SecureTokenStore
 
 @Suppress("UNCHECKED_CAST")
@@ -58,10 +60,12 @@ fun recurringViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun settingsViewModelFactory(
     repository: ExpenseRepository,
+    ruleRepository: RuleRepository,
+    merchantRepository: MerchantRepository,
     settingsStore: LocalSettingsStore,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return SettingsViewModel(repository, settingsStore) as T
+        return SettingsViewModel(repository, ruleRepository, merchantRepository, settingsStore) as T
     }
 }
 
