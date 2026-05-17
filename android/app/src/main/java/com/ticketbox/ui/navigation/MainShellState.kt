@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ internal enum class BottomTab(
 ) {
     Pending("pending", "待确认", Icons.Default.CheckCircle),
     Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
+    Search("search", "搜索", Icons.Default.Search),
     Stats("stats", "统计", Icons.Default.BarChart),
     Settings("settings", "设置", Icons.Default.Settings),
 }
@@ -88,6 +90,7 @@ internal val BottomTab.surfaceRole: SurfaceRole
     get() = when (this) {
         BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
+        BottomTab.Search -> SurfaceRole.Ledger
         BottomTab.Stats -> SurfaceRole.Stats
         BottomTab.Settings -> SurfaceRole.Settings
     }

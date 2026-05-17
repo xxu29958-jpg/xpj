@@ -154,6 +154,11 @@ private fun MainTabRoute(
             screenFactory = screenFactory,
         )
 
+        BottomTab.Search -> SearchRoute(
+            navController = navController,
+            screenFactory = screenFactory,
+        )
+
         BottomTab.Stats -> StatsRoute(
             shellState = shellState,
             screenFactory = screenFactory,

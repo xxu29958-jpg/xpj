@@ -1,11 +1,16 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,9 +31,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 data class AppBottomNavItem(
@@ -49,7 +57,12 @@ fun AppBottomNav(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            .padding(
+                start = AppBottomNavLayout.OuterHorizontalPadding,
+                end = AppBottomNavLayout.OuterHorizontalPadding,
+                top = AppSpacing.smallGap,
+                bottom = AppSpacing.smallGap,
+            ),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -61,15 +74,18 @@ fun AppBottomNav(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(
+                        horizontal = AppSpacing.compactPadding,
+                        vertical = AppBottomNavLayout.InnerVerticalPadding,
+                    ),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 items.forEach { item ->
                     val selected = item.key == selectedKey
                     Box(
                         modifier = Modifier
-                            .weight(if (selected) 1.28f else 1f)
-                            .height(48.dp)
+                            .weight(if (selected) AppBottomNavLayout.SelectedWeight else 1f)
+                            .height(AppBottomNavLayout.ItemHeight)
                             .clickable(onClick = { onSelect(item) }),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -98,23 +114,28 @@ private fun AppBottomNavItemView(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
         label = "appBottomNavContent",
     )
-    if (selected) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .clip(RoundedCornerShape(AppRadius.large))
-                .background(background)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(AppBottomNavLayout.PillHeight)
+            .clip(RoundedCornerShape(AppRadius.large))
+            .background(background)
+            .padding(horizontal = AppSpacing.smallGap, vertical = AppBottomNavLayout.PillVerticalPadding),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = item.icon,
+            contentDescription = item.label,
+            tint = content,
+            modifier = Modifier.size(AppBottomNavLayout.IconSize),
+        )
+        AnimatedVisibility(
+            visible = selected,
+            enter = fadeIn(tween(AppMotion.fastMillis)) + expandHorizontally(tween(AppMotion.fastMillis)),
+            exit = fadeOut(tween(AppMotion.fastMillis)) + shrinkHorizontally(tween(AppMotion.fastMillis)),
         ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = item.label,
-                tint = content,
-                modifier = Modifier.size(17.dp),
-            )
             Text(
                 text = item.label,
                 color = content,
@@ -127,27 +148,15 @@ private fun AppBottomNavItemView(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-    } else {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = item.label,
-                tint = content,
-                modifier = Modifier.size(17.dp),
-            )
-            Text(
-                text = item.label,
-                color = content,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
     }
+}
+
+private object AppBottomNavLayout {
+    val OuterHorizontalPadding: Dp = 16.dp
+    val InnerVerticalPadding: Dp = 6.dp
+    val ItemHeight: Dp = 48.dp
+    val PillHeight: Dp = 40.dp
+    val PillVerticalPadding: Dp = 6.dp
+    val IconSize: Dp = 17.dp
+    const val SelectedWeight: Float = 1.14f
 }

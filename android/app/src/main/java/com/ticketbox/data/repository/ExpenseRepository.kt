@@ -108,7 +108,7 @@ class ExpenseRepository(
     private val tokenStore: SessionTokenStore,
     private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
-) : ServerBindingRepository, PendingReviewActions, LedgerActions {
+) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
     }
