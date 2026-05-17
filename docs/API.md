@@ -35,7 +35,7 @@ https://api.我的域名.com
 
 - 后端自增 `id` 仍用于当前 API 路径，例如 `/api/expenses/{id}`。
 - `public_id` 是账单公共 UUID，用于导出、跨端同步、排查问题和未来多端合并。
-- Android Room 同时保存 `serverId` 和 `publicId`，二者都必须唯一。
+- Android Room 同时保存 `serverId` 和 `publicId`；`publicId` 必须全局唯一，`serverId` 必须在当前 `ledgerId` 下唯一。
 - 普通 UI 不直接展示 UUID；需要给用户看时使用"账单编号"等生活化文案。
 
 错误：

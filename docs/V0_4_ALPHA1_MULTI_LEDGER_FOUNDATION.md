@@ -63,17 +63,12 @@ Android 端：
 - v0.4-alpha1 → v0.4：增加成员管理、邀请、账本归档；保持 schema v4 不动。
 - 旧版客户端：`legacy` 兜底分组保证升级后历史数据仍可见；不会自动清空。
 
-## DAO upsert 的 “legacy claim” 语义
+## DAO upsert 的账本作用域
 
-- `expenses.serverId` 在客户端有 `UNIQUE` 索引，对应服务端单一自增主键；
-  同一逻辑行升级前可能落在 `ledgerId='legacy'`，升级后第一次同步当前账本
-  会再次拉到同样的 `serverId`。
+- `expenses.serverId` 在客户端只允许在当前 `ledgerId` 下唯一，对应服务端当前账本内的账单行。
 - `ExpenseDao.upsertByServerIdForLedger` / `upsertAllByServerIdForLedger`
-  使用 `findAnyByServerIds`（**不**带 `ledgerId` 过滤）做命中判定；命中则
-  走 update 路径并把 `ledgerId` 改写为当前账本，等价于一次性把 legacy 行
-  “认领”到当前账本，避免插入冲突。
-- 由于 serverId 全局唯一，这一行为不会跨账本错配；当一个 serverId 实际
-  归属另一个账本时，服务端不会向当前会话返回它。
+  必须使用 `(ledgerId, serverId)` 做命中判定；命中则走 update 路径并保留本地主键。
+- 不再用不带 `ledgerId` 的 `findAnyByServerIds` 做 legacy claim。跨账本复用本地主键会把其他账本缓存改写到当前账本，属于隔离缺陷。
 
 ## 真机灰度验收（v0.4-alpha1）
 

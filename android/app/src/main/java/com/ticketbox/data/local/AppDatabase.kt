@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -158,6 +158,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val Migration6To7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP INDEX IF EXISTS index_expenses_serverId")
+                db.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS index_expenses_ledgerId_serverId
+                    ON expenses (ledgerId, serverId)
+                    """.trimIndent(),
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -165,7 +177,14 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "ticketbox.db",
                 )
-                    .addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5, Migration5To6)
+                    .addMigrations(
+                        Migration1To2,
+                        Migration2To3,
+                        Migration3To4,
+                        Migration4To5,
+                        Migration5To6,
+                        Migration6To7,
+                    )
                     .build()
                     .also { instance = it }
             }

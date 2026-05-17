@@ -10,11 +10,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * v0.4-alpha1 multi-ledger contract:
  *
- * Every confirmed query MUST filter by [ledgerId]. The `serverId` index stays
- * globally unique because the backend mints `Expense.id` from a single
- * autoincrement sequence — there is no overlap between ledgers — but we
- * still match on `(ledgerId, serverId)` from the DAO so a misconfigured
- * server can never cross-write a row into the wrong ledger's cache.
+ * Every confirmed query and upsert MUST filter by [ledgerId]. `serverId`
+ * identifies a backend row only inside the active ledger cache; using it as a
+ * global local key would let a bad or rebinding server response rewrite a
+ * different ledger's cached row.
  */
 @Dao
 interface ExpenseDao {
@@ -46,18 +45,6 @@ interface ExpenseDao {
     )
     suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity>
 
-    /**
-     * Look up cached rows by serverId across *all* ledgers. Used during sync
-     * upserts to absorb pre-multi-ledger ('legacy') rows into the active
-     * ledger without violating the global UNIQUE(serverId) index. Backend
-     * guarantees serverId is globally unique (single autoincrement), so a
-     * row found here is by definition the same row.
-     */
-    @Query(
-        "SELECT * FROM expenses WHERE serverId IN (:serverIds)",
-    )
-    suspend fun findAnyByServerIds(serverIds: List<Long>): List<ExpenseEntity>
-
     @Insert
     suspend fun insert(expense: ExpenseEntity): Long
 
@@ -75,8 +62,7 @@ interface ExpenseDao {
         require(expense.ledgerId == ledgerId) {
             "expense.ledgerId=${expense.ledgerId} does not match scope $ledgerId"
         }
-        // Match across all ledgers; see upsertAllByServerIdForLedger.
-        val existing = findAnyByServerIds(listOf(expense.serverId)).firstOrNull()
+        val existing = findByServerId(ledgerId, expense.serverId)
         if (existing == null) {
             insert(expense.copy(id = 0))
         } else {
@@ -93,12 +79,7 @@ interface ExpenseDao {
         require(expenses.all { it.ledgerId == ledgerId }) {
             "upsertAllByServerIdForLedger received mixed-ledger entities"
         }
-        // Match by serverId across all ledgers so 'legacy' rows from a v0.3
-        // → v0.4 migration are re-tagged to the active ledger instead of
-        // colliding with the global UNIQUE(serverId) index. Backend assigns
-        // serverId from a single autoincrement, so every existing match is
-        // the same logical row.
-        val existingByServerId = findAnyByServerIds(expenses.map { it.serverId })
+        val existingByServerId = findByServerIds(ledgerId, expenses.map { it.serverId })
             .associateBy { it.serverId }
         val inserts = mutableListOf<ExpenseEntity>()
         val updates = mutableListOf<ExpenseEntity>()

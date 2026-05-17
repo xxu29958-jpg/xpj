@@ -54,6 +54,21 @@ class ExpenseDaoContractTest {
     }
 
     @Test
+    fun upsertDoesNotMoveSameServerIdAcrossLedgers() = runTest {
+        val dao = FakeExpenseDao()
+
+        dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 42, merchant = "owner row"))
+        dao.upsertByServerIdForLedger("L_family", entity("L_family", serverId = 42, merchant = "family row"))
+
+        val owner = dao.getConfirmed("owner").single()
+        val family = dao.getConfirmed("L_family").single()
+        assertEquals("owner", owner.ledgerId)
+        assertEquals("owner row", owner.merchant)
+        assertEquals("L_family", family.ledgerId)
+        assertEquals("family row", family.merchant)
+    }
+
+    @Test
     fun clearForLedgerOnlyDropsTargetLedger() = runTest {
         val dao = FakeExpenseDao()
         dao.upsertByServerIdForLedger("owner", entity("owner", serverId = 1))
@@ -154,11 +169,6 @@ private class FakeExpenseDao : ExpenseDao {
     override suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity> {
         val wanted = serverIds.toSet()
         return expenses.values.filter { it.ledgerId == ledgerId && it.serverId in wanted }
-    }
-
-    override suspend fun findAnyByServerIds(serverIds: List<Long>): List<ExpenseEntity> {
-        val wanted = serverIds.toSet()
-        return expenses.values.filter { it.serverId in wanted }
     }
 
     override suspend fun insert(expense: ExpenseEntity): Long {

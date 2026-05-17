@@ -17,7 +17,7 @@ public_id: UUID
 - 后端 `Expense.public_id` 为唯一 UUID 字符串。
 - 上传、待确认、已确认、手动记账、统计关联对象和导出都携带 `public_id`。
 - Android DTO、Domain、Room Entity 都保存 `publicId`。
-- Room `serverId` 和 `publicId` 都是唯一索引。
+- Room `publicId` 是唯一索引；`serverId` 使用 `(ledgerId, serverId)` 唯一索引，避免跨账本缓存改写。
 - Room 1 -> 2 迁移使用新表复制并重建索引，避免新增非空列造成 schema 校验失败。
 - 如果后端旧进程缺少 `public_id`，Android 不显示 JSON 解析细节，而提示“服务器版本过旧，请重启 Windows 后端后再试。”。
 

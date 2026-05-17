@@ -61,8 +61,8 @@ v0.4-alpha2 只完成信息架构统一，发布级视觉 polish 放到 v0.8-v1.
 - Android 切换账本仍走 `POST /api/ledgers/{id}/switch`，
   `LedgerRepository.switchLedger` 顺序不变：保存新 token → 写 active ledger
   → `clearForLedger(targetId)`。
-- ExpenseDao 的 `findAnyByServerIds` + claim-legacy 语义保持不动；
-  Dashboard 改造**不得**绕过 ledger 维度过滤。
+- ExpenseDao 只能按 `(ledgerId, serverId)` upsert；
+  Dashboard 改造**不得**绕过 ledger 维度过滤或跨账本复用本地主键。
 - `/web` 选中账本必须经过 `_resolve_selected_ledger_id` 这层服务端 validate，
   只能选 owner 可见账本，绝不接受任意 `ledger_id` query。
 - `/owner` 与 `/web` 公网仍 403；Owner Console 仍 loopback only。

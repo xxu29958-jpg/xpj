@@ -481,6 +481,9 @@ class ExpenseRepository(
             )
             total = response.total
             collectedDtos += response.items
+            if (response.items.isEmpty() && collectedDtos.size < total) {
+                throw RepositoryException("账本同步分页异常，请稍后再试。")
+            }
             page += 1
         } while (collectedDtos.size < total)
 

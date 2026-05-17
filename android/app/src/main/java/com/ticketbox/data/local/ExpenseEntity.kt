@@ -8,7 +8,7 @@ import com.ticketbox.domain.model.FxContract
 @Entity(
     tableName = "expenses",
     indices = [
-        Index(value = ["serverId"], unique = true),
+        Index(value = ["ledgerId", "serverId"], unique = true),
         Index(value = ["publicId"], unique = true),
         Index(value = ["status", "expenseTime"]),
         Index(value = ["status", "confirmedAt"]),

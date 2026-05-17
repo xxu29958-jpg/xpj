@@ -24,6 +24,7 @@ import com.ticketbox.domain.model.OwnerTransferResult
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.security.SessionTokenStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
@@ -253,8 +254,13 @@ class LedgerRepository(
             Result.failure(RepositoryException(message))
         } catch (error: IOException) {
             Result.failure(RepositoryException("网络连接失败，请检查电脑端服务。"))
+        } catch (error: RepositoryException) {
+            Result.failure(error)
         } catch (error: IllegalArgumentException) {
             Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
+        } catch (error: RuntimeException) {
+            if (error is CancellationException) throw error
+            Result.failure(RepositoryException(error.message ?: "操作失败。"))
         }
     }
 

@@ -26,10 +26,10 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import ExpenseUpdateRequest
-from app.services.duplicate_service import mark_not_duplicate
 from app.services.expense_service import (
     confirm_expense,
     list_pending,
+    mark_expense_not_duplicate,
     reject_expense,
     update_expense,
 )
@@ -304,7 +304,7 @@ def web_review_bulk(
                 _bump("非疑似重复")
                 continue
             try:
-                mark_not_duplicate(db, row)
+                mark_expense_not_duplicate(db, row.id, selected_id)
                 success_count += 1
             except AppError:
                 _bump("更新失败")

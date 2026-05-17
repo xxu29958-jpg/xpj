@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from io import StringIO, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO
+from uuid import uuid4
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
@@ -157,7 +158,13 @@ def apply_csv_import_batch(
     public_id: str,
     batch_size: int,
 ) -> CsvImportApplyResponse:
-    batch = _claim_apply_lease(db, tenant_id=tenant_id, public_id=public_id)
+    apply_token = str(uuid4())
+    batch = _claim_apply_lease(
+        db,
+        tenant_id=tenant_id,
+        public_id=public_id,
+        apply_token=apply_token,
+    )
     inserted = 0
     claimed_row_ids: list[int] = []
     try:
@@ -172,6 +179,7 @@ def apply_csv_import_batch(
             tenant_id=tenant_id,
             batch_id=batch.id,
             batch_size=batch_size,
+            apply_token=apply_token,
         )
         batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
         if not claimed_row_ids and _applying_row_count(db, batch, tenant_id) > 0:
@@ -182,14 +190,24 @@ def apply_csv_import_batch(
                 .where(CsvImportRow.batch_id == batch.id)
                 .where(CsvImportRow.id.in_(claimed_row_ids))
                 .where(CsvImportRow.status == "applying")
+                .where(CsvImportRow.apply_token == apply_token)
                 .order_by(CsvImportRow.line_number.asc())
             )
         )
         now = now_utc()
         created: list[tuple[CsvImportRow, Expense]] = []
         for row in rows:
+            if not _refresh_claimed_csv_import_row(
+                db,
+                tenant_id=tenant_id,
+                row_id=row.id,
+                apply_token=apply_token,
+                now=now,
+            ):
+                continue
             if row.amount_cents is None and row.original_amount_minor is None:
                 row.status = "insert_failed"
+                row.apply_token = None
                 row.error_code = "amount_required"
                 row.error_message = "缺少有效金额。"
                 row.updated_at = now
@@ -221,20 +239,23 @@ def apply_csv_import_batch(
         for row, expense in created:
             sync_expense_tags(db, expense)
             row.status = "applied"
+            row.apply_token = None
             row.expense_id = expense.id
             row.updated_at = now
             inserted += 1
 
         db.flush()
         _refresh_batch_counts(db, batch)
-        batch.locked_until = None
         batch.updated_at = now_utc()
         remaining_rows = _remaining_importable_rows(db, batch, tenant_id)
-        if remaining_rows == 0:
-            batch.applied_at = batch.updated_at
-            batch.status = "applied_with_errors" if batch.error_rows else "applied"
-        else:
-            batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
+        if _batch_apply_token_matches(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token):
+            batch.locked_until = None
+            batch.apply_token = None
+            if remaining_rows == 0:
+                batch.applied_at = batch.updated_at
+                batch.status = "applied_with_errors" if batch.error_rows else "applied"
+            else:
+                batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
         db.commit()
         db.refresh(batch)
         return CsvImportApplyResponse(
@@ -249,17 +270,20 @@ def apply_csv_import_batch(
                 db,
                 tenant_id=tenant_id,
                 row_ids=claimed_row_ids,
+                apply_token=apply_token,
             )
             _mark_csv_import_apply_failed(
                 db,
                 tenant_id=tenant_id,
                 public_id=public_id,
+                apply_token=apply_token,
             )
         else:
             _release_csv_import_apply_lease(
                 db,
                 tenant_id=tenant_id,
                 public_id=public_id,
+                apply_token=apply_token,
             )
         raise
     except Exception:
@@ -268,16 +292,24 @@ def apply_csv_import_batch(
             db,
             tenant_id=tenant_id,
             row_ids=claimed_row_ids,
+            apply_token=apply_token,
         )
         _mark_csv_import_apply_failed(
             db,
             tenant_id=tenant_id,
             public_id=public_id,
+            apply_token=apply_token,
         )
         raise
 
 
-def _claim_apply_lease(db: Session, *, tenant_id: str, public_id: str) -> CsvImportBatch:
+def _claim_apply_lease(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    apply_token: str,
+) -> CsvImportBatch:
     now = now_utc()
     result = db.execute(
         update(CsvImportBatch)
@@ -291,6 +323,7 @@ def _claim_apply_lease(db: Session, *, tenant_id: str, public_id: str) -> CsvImp
         )
         .values(
             locked_until=now + timedelta(minutes=APPLY_LEASE_MINUTES),
+            apply_token=apply_token,
             status="applying",
             updated_at=now,
         )
@@ -315,6 +348,7 @@ def _claim_csv_import_rows(
     tenant_id: str,
     batch_id: int,
     batch_size: int,
+    apply_token: str,
 ) -> list[int]:
     capped = max(1, min(int(batch_size or 1), 1000))
     row_ids = list(
@@ -336,7 +370,7 @@ def _claim_csv_import_rows(
         .where(CsvImportRow.batch_id == batch_id)
         .where(CsvImportRow.id.in_(row_ids))
         .where(CsvImportRow.status == "valid")
-        .values(status="applying", updated_at=now)
+        .values(status="applying", apply_token=apply_token, updated_at=now)
         .execution_options(synchronize_session=False)
     )
     db.commit()
@@ -348,6 +382,7 @@ def _claim_csv_import_rows(
                 .where(CsvImportRow.batch_id == batch_id)
                 .where(CsvImportRow.id.in_(row_ids))
                 .where(CsvImportRow.status == "applying")
+                .where(CsvImportRow.apply_token == apply_token)
                 .with_only_columns(CsvImportRow.id)
             )
         )
@@ -359,6 +394,7 @@ def _reset_claimed_csv_import_rows(
     *,
     tenant_id: str,
     row_ids: list[int],
+    apply_token: str,
 ) -> None:
     if not row_ids:
         return
@@ -367,11 +403,33 @@ def _reset_claimed_csv_import_rows(
         .where(CsvImportRow.tenant_id == tenant_id)
         .where(CsvImportRow.id.in_(row_ids))
         .where(CsvImportRow.status == "applying")
+        .where(CsvImportRow.apply_token == apply_token)
         .where(CsvImportRow.expense_id.is_(None))
-        .values(status="valid", updated_at=now_utc())
+        .values(status="valid", apply_token=None, updated_at=now_utc())
         .execution_options(synchronize_session=False)
     )
     db.commit()
+
+
+def _refresh_claimed_csv_import_row(
+    db: Session,
+    *,
+    tenant_id: str,
+    row_id: int,
+    apply_token: str,
+    now: datetime,
+) -> bool:
+    result = db.execute(
+        update(CsvImportRow)
+        .where(CsvImportRow.tenant_id == tenant_id)
+        .where(CsvImportRow.id == row_id)
+        .where(CsvImportRow.status == "applying")
+        .where(CsvImportRow.apply_token == apply_token)
+        .where(CsvImportRow.expense_id.is_(None))
+        .values(updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
 
 
 def _recover_stale_csv_import_rows(
@@ -387,8 +445,9 @@ def _recover_stale_csv_import_rows(
         .where(CsvImportRow.batch_id == batch_id)
         .where(CsvImportRow.status == "applying")
         .where(CsvImportRow.expense_id.is_(None))
+        .where(CsvImportRow.apply_token.is_not(None))
         .where(CsvImportRow.updated_at <= stale_before)
-        .values(status="valid", updated_at=now_utc())
+        .values(status="valid", apply_token=None, updated_at=now_utc())
         .execution_options(synchronize_session=False)
     )
     recovered = int(result.rowcount or 0)
@@ -403,9 +462,13 @@ def _mark_csv_import_apply_failed(
     *,
     tenant_id: str,
     public_id: str,
+    apply_token: str,
 ) -> None:
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    if batch.apply_token != apply_token:
+        return
     batch.locked_until = None
+    batch.apply_token = None
     batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
     batch.last_error = "导入应用失败。"
     batch.updated_at = now_utc()
@@ -417,14 +480,35 @@ def _release_csv_import_apply_lease(
     *,
     tenant_id: str,
     public_id: str,
+    apply_token: str,
 ) -> None:
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    if batch.apply_token != apply_token:
+        return
     batch.locked_until = None
+    batch.apply_token = None
     batch.status = "applying" if _applying_row_count(db, batch, tenant_id) else (
         "parsed_with_errors" if batch.error_rows else "parsed"
     )
     batch.updated_at = now_utc()
     db.commit()
+
+
+def _batch_apply_token_matches(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    apply_token: str,
+) -> bool:
+    return bool(
+        db.scalar(
+            select(CsvImportBatch.id)
+            .where(CsvImportBatch.tenant_id == tenant_id)
+            .where(CsvImportBatch.public_id == public_id)
+            .where(CsvImportBatch.apply_token == apply_token)
+        )
+    )
 
 
 def build_csv_import_errors_csv(

@@ -112,7 +112,7 @@ api.我的域名.com -> http://127.0.0.1:8000
 - BiometricPrompt 只用于本地解锁 Token，不替代服务端鉴权。
 - OkHttp 日志不得打印 Header、Body 或 Token。
 - 清除绑定必须清除服务器地址、Token 和本地解锁状态。
-- confirmed 账单同步到 Room 时必须按 `serverId` 唯一 upsert。
+- confirmed 账单同步到 Room 时必须按 `(ledgerId, serverId)` 唯一 upsert，不能跨账本复用本地主键。
 
 ## 错误返回
 

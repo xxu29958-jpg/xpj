@@ -7,9 +7,12 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 import conftest as cf  # noqa: F401
+from app.database import SessionLocal
 from app.main import app
+from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
 
 
@@ -338,6 +341,50 @@ def test_web_edit_save_updates_amount(web_client: TestClient) -> None:
     assert "测试商家" in detail.text
 
 
+def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient) -> None:
+    rate = web_client.put(
+        "/api/exchange-rates/USD/2026-05-04",
+        headers=cf.app_headers(),
+        json={"currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
+    )
+    assert rate.status_code == 200, rate.json()
+    created = web_client.post(
+        "/api/expenses/manual",
+        headers=cf.app_headers(),
+        json={
+            "original_currency_code": "USD",
+            "original_amount_minor": 12345,
+            "merchant": "Foreign Cafe",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T12:00:00Z",
+        },
+    )
+    assert created.status_code == 200, created.json()
+    expense_id = int(created.json()["id"])
+
+    saved = web_client.post(
+        f"/web/expenses/{expense_id}/save",
+        data={
+            "ledger_id": "owner",
+            "original_currency": "USD",
+            "amount_yuan": "124.00",
+            "merchant": "Foreign Cafe Updated",
+            "category": "餐饮",
+            "note": "kept as USD",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code in {303, 307}, saved.text
+
+    detail = web_client.get(f"/api/expenses/{expense_id}", headers=cf.app_headers())
+    assert detail.status_code == 200, detail.json()
+    payload = detail.json()
+    assert payload["original_currency_code"] == "USD"
+    assert payload["original_amount_minor"] == 12400
+    assert payload["amount_cents"] == 86800
+    assert payload["merchant"] == "Foreign Cafe Updated"
+
+
 def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient) -> None:
     expense_id = _create_pending(web_client)
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
@@ -621,6 +668,31 @@ def test_web_bulk_reject_removes_from_pending(web_client: TestClient) -> None:
     assert resp.status_code in {303, 307}
     pending = web_client.get("/web/pending?ledger_id=owner")
     assert f"/web/expenses/{eid}/edit" not in pending.text
+
+
+def test_web_bulk_keep_duplicate_persists_flag_clear(web_client: TestClient) -> None:
+    first = _seed_pending_with_amount(web_client, "12.00", "Duplicate A")
+    second = _seed_pending_with_amount(web_client, "12.00", "Duplicate B")
+    with SessionLocal() as db:
+        row = db.scalar(select(Expense).where(Expense.id == second))
+        assert row is not None
+        row.duplicate_status = "suspected"
+        row.duplicate_of_id = first
+        row.duplicate_reason = "test duplicate"
+        db.commit()
+
+    resp = web_client.post(
+        "/web/review/bulk",
+        data={"action": "keep_duplicate", "ledger_id": "owner", "expense_ids": [str(second)], "filter": "all"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code in {303, 307}
+    with SessionLocal() as db:
+        row = db.scalar(select(Expense).where(Expense.id == second))
+        assert row is not None
+        assert row.duplicate_status == "none"
+        assert row.duplicate_of_id is None
 
 
 def test_web_pending_batch_reject_removes_multiple_pending(web_client: TestClient) -> None:

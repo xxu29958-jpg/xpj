@@ -255,6 +255,34 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
+    fun confirmedSyncFailsOnEmptyPageBeforeReportedTotal() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = boundSettingsStore()
+        val apiService = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0).apply {
+            confirmedResponses[1] = PaginatedExpensesDto(
+                items = emptyList(),
+                page = 1,
+                pageSize = 50,
+                total = 2,
+            )
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val failure = repository.syncConfirmed().exceptionOrNull()
+
+        assertTrue(failure is RepositoryException)
+        assertTrue(failure.message!!.contains("分页异常"))
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertNull(settingsStore.lastConfirmedSyncAt())
+    }
+
+    @Test
     fun confirmedSyncSkipsCacheWhenLedgerChangesDuringRequest() = runTest {
         val events = mutableListOf<String>()
         val dao = FakeExpenseDao()
@@ -800,6 +828,7 @@ private class FakeApiService(
     var lastConfirmedMonth: String? = null
     var lastConfirmedCategory: String? = null
     var lastConfirmedTag: String? = null
+    val confirmedResponses = mutableMapOf<Int, PaginatedExpensesDto>()
     val applyConfirmedRequests = mutableListOf<RuleApplyConfirmedRequestDto>()
     val rollbackPublicIds = mutableListOf<String>()
     val merchantAliasRequests = mutableListOf<MerchantAliasRequest>()
@@ -843,6 +872,7 @@ private class FakeApiService(
             confirmedFailuresRemaining -= 1
             throw IOException("restore unavailable")
         }
+        confirmedResponses[page]?.let { return it }
         return PaginatedExpensesDto(
             items = listOf(confirmedExpenseDto()),
             page = page,
@@ -1471,11 +1501,6 @@ private class FakeExpenseDao : ExpenseDao {
     override suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity> {
         val wanted = serverIds.toSet()
         return expenses.values.filter { it.ledgerId == ledgerId && it.serverId in wanted }
-    }
-
-    override suspend fun findAnyByServerIds(serverIds: List<Long>): List<ExpenseEntity> {
-        val wanted = serverIds.toSet()
-        return expenses.values.filter { it.serverId in wanted }
     }
 
     override suspend fun insert(expense: ExpenseEntity): Long {

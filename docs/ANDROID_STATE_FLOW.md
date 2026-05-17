@@ -291,7 +291,7 @@ OCR 只填草稿，不自动入账。
 
 Android 测试必须覆盖：
 
-- confirmed 写入 Room 时按 serverId upsert。
+- confirmed 写入 Room 时按 `(ledgerId, serverId)` upsert。
 - pending / rejected 不进入 confirmed 缓存。
 - 账本本地月份筛选按手机系统时区。
 - 远端失败时账本页不清空 Room 已有 confirmed 数据。

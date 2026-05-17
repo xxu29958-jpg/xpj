@@ -878,7 +878,7 @@ Android 使用 Compose 卡片、列表和图表展示，不要求后台报表式
 
 ```text
 id: Long，本地主键
-serverId: Long，唯一
+serverId: Long，在当前 ledgerId 下唯一
 publicId: String，唯一
 amountCents: Long?
 merchant: String?
@@ -898,8 +898,8 @@ updatedAt: String?
 
 - pending 可以不强制保存，也可以缓存。
 - confirmed 必须保存。
-- `serverId` 和 `publicId` 必须唯一。
-- 同步 confirmed 时，如果 `serverId` 已存在，则更新，不重复插入。
+- `publicId` 必须唯一，`serverId` 必须在当前 `ledgerId` 下唯一。
+- 同步 confirmed 时，如果当前 `ledgerId` 下的 `serverId` 已存在，则更新，不重复插入。
 - 服务器不可用时，账本页展示本地 confirmed。
 
 ## 16. iPhone 快捷指令

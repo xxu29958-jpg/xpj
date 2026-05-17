@@ -137,6 +137,21 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun refreshLedgersWrapsRuntimeExceptions() = runTest {
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(StubApi(listLedgersError = RuntimeException("json bad"))),
+            settingsStore = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") },
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val failure = repo.refreshLedgers().exceptionOrNull()
+
+        assertNotNull(failure)
+        assertTrue(failure.message!!.contains("json bad"))
+    }
+
+    @Test
     fun createLedgerRejectsBlankNameWithChineseMessage() = runTest {
         val repo = makeRepo()
         val failure = repo.createLedger("   ").exceptionOrNull()
@@ -697,6 +712,7 @@ private class LedgerStubApiFactory(private val service: ApiService) : ApiService
 
 private class StubApi(
     var listLedgersResult: LedgerListResponseDto? = null,
+    var listLedgersError: Throwable? = null,
     var createResult: LedgerDto? = null,
     var switchResult: LedgerSwitchResponseDto? = null,
     var switchError: Throwable? = null,
@@ -719,6 +735,7 @@ private class StubApi(
     val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf(),
 ) : ApiService {
     override suspend fun listLedgers(): LedgerListResponseDto {
+        listLedgersError?.let { throw it }
         return listLedgersResult ?: LedgerListResponseDto(ledgers = emptyList())
     }
 
@@ -985,8 +1002,6 @@ private class LedgerFakeDao : ExpenseDao {
         map.values.firstOrNull { it.ledgerId == ledgerId && it.serverId == serverId }
     override suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity> =
         map.values.filter { it.ledgerId == ledgerId && it.serverId in serverIds.toSet() }
-    override suspend fun findAnyByServerIds(serverIds: List<Long>): List<ExpenseEntity> =
-        map.values.filter { it.serverId in serverIds.toSet() }
     override suspend fun insert(expense: ExpenseEntity): Long {
         map[expense.id] = expense
         return expense.id

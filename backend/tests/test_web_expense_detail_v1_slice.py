@@ -74,6 +74,28 @@ def _demote_owner_ledger_to_viewer() -> None:
         db.commit()
 
 
+def test_web_expense_edit_routes_have_single_owner() -> None:
+    expected = {
+        ("GET", "/web/expenses/{expense_id}/edit"),
+        ("POST", "/web/expenses/{expense_id}/save"),
+        ("POST", "/web/expenses/{expense_id}/confirm"),
+        ("POST", "/web/expenses/{expense_id}/items/save"),
+        ("POST", "/web/expenses/{expense_id}/splits/save"),
+        ("POST", "/web/expenses/{expense_id}/reject"),
+    }
+    seen: dict[tuple[str, str], list[str]] = {key: [] for key in expected}
+    for route in app.routes:
+        path = getattr(route, "path", "")
+        methods = getattr(route, "methods", set()) or set()
+        endpoint = getattr(route, "endpoint", None)
+        for method, target_path in expected:
+            if path == target_path and method in methods:
+                seen[(method, target_path)].append(getattr(endpoint, "__module__", ""))
+
+    for key, modules in seen.items():
+        assert modules == ["app.routes.web_expense_edit"], f"{key} resolved to {modules}"
+
+
 def _seed_detail_rows(expense_id: int) -> None:
     member_id = _owner_member_id()
     with SessionLocal() as db:

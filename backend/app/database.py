@@ -920,6 +920,7 @@ def migrate_sqlite_schema() -> None:
         if "csv_import_rows" in table_names:
             csv_row_columns = {column["name"] for column in inspector.get_columns("csv_import_rows")}
             csv_row_additions = {
+                "apply_token": "VARCHAR(36)",
                 "original_currency_code": f"VARCHAR(3) NOT NULL DEFAULT '{default_home}'",
                 "original_amount_minor": "INTEGER",
                 "exchange_rate_to_cny": "NUMERIC(18, 8)",
@@ -963,6 +964,11 @@ def migrate_sqlite_schema() -> None:
                 ),
                 {"source_base": source_base, "home": default_home},
             )
+
+        if "csv_import_batches" in table_names:
+            csv_batch_columns = {column["name"] for column in inspector.get_columns("csv_import_batches")}
+            if "apply_token" not in csv_batch_columns:
+                connection.execute(text("ALTER TABLE csv_import_batches ADD COLUMN apply_token VARCHAR(36)"))
 
         if "duplicate_ignores" in table_names:
             duplicate_ignore_columns = {column["name"] for column in inspector.get_columns("duplicate_ignores")}

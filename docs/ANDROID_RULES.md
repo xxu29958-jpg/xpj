@@ -17,7 +17,7 @@ Repository 层额外职责：解析后端统一错误结构。
 
 ## Room 同步
 
-`serverId` 和 `publicId` 必须唯一。
+`publicId` 必须唯一；Room 的 `serverId` 唯一性必须限定在当前账本，即 `(ledgerId, serverId)` 唯一。
 
 Room schema 必须导出到：
 
@@ -30,21 +30,21 @@ android/app/schemas/
 同步 confirmed 账单时：
 
 ```text
-serverId 已存在 -> 更新本地记录
-serverId 不存在 -> 插入本地记录
+当前 ledgerId 下 serverId 已存在 -> 更新本地记录
+当前 ledgerId 下 serverId 不存在 -> 插入本地记录
 ```
 
 不允许重复插入。
 
 实现要求：
 
-- DAO 必须提供按 `serverId` 查询旧记录的能力。
-- 批量同步 confirmed 时必须批量查询已有 `serverId`，再批量 insert/update；不允许回到逐条 SELECT + 写入。
+- DAO 必须提供按 `(ledgerId, serverId)` 查询旧记录的能力。
+- 批量同步 confirmed 时必须在当前 `ledgerId` 内批量查询已有 `serverId`，再批量 insert/update；不允许回到逐条 SELECT + 写入，也不允许跨账本复用本地主键。
 - `publicId` 来自后端 `public_id`，不得由 Android 为新同步账单伪造。
 - 老版本本地缓存迁移到 `publicId` 时，可以用 `server-<serverId>` 作为兼容占位；后续服务端同步会写入真实 UUID。
 - 如果服务端响应缺少 `public_id`，App 必须显示"服务器版本过旧，请重启 Windows 后端后再试。"，不能把 JSON 字段名或解析异常直接显示给用户。
 - 更新时保留本地自增主键 `id`。
-- 不依赖"看起来像 upsert"的主键冲突行为来替代 `serverId` 唯一同步。
+- 不依赖"看起来像 upsert"的主键冲突行为来替代 `(ledgerId, serverId)` 唯一同步。
 - 本地账本排序过滤字段必须保留索引迁移，包括 `status + expenseTime`、`status + confirmedAt`、`status + createdAt`。
 
 ## 错误文案与日志

@@ -8,11 +8,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
 from app.database import SessionLocal
-from app.models import CsvImportRow, Expense, LedgerMember
+from app.models import CsvImportBatch, CsvImportRow, Expense, LedgerMember
 from app.errors import AppError
 from app.services.csv_import_batch_service import (
     _claim_apply_lease,
     _claim_csv_import_rows,
+    _refresh_claimed_csv_import_row,
     apply_csv_import_batch,
     create_csv_import_batch,
     list_csv_import_rows,
@@ -113,12 +114,22 @@ def test_csv_import_apply_lease_is_atomically_claimed(client: TestClient) -> Non
         public_id = batch.public_id
 
     with SessionLocal() as first_db, SessionLocal() as second_db:
-        claimed = _claim_apply_lease(first_db, tenant_id="owner", public_id=public_id)
+        claimed = _claim_apply_lease(
+            first_db,
+            tenant_id="owner",
+            public_id=public_id,
+            apply_token="worker-a",
+        )
         assert claimed.status == "applying"
         assert claimed.locked_until is not None
 
         with pytest.raises(AppError) as exc_info:
-            _claim_apply_lease(second_db, tenant_id="owner", public_id=public_id)
+            _claim_apply_lease(
+                second_db,
+                tenant_id="owner",
+                public_id=public_id,
+                apply_token="worker-b",
+            )
         assert exc_info.value.status_code == 409
         assert exc_info.value.error == "invalid_request"
 
@@ -147,6 +158,7 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
             tenant_id="owner",
             batch_id=batch_id,
             batch_size=1,
+            apply_token="worker-a",
         )
         assert len(claimed_ids) == 1
 
@@ -229,6 +241,70 @@ def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(cli
             .where(Expense.source == "CSV导入")
         )
         assert final_inserted == 2
+
+
+def test_csv_import_stale_worker_token_cannot_apply_after_reclaim(client: TestClient) -> None:
+    del client
+    with SessionLocal() as setup_db:
+        batch = create_csv_import_batch(
+            setup_db,
+            tenant_id="owner",
+            file_name="fence.csv",
+            file_obj=_csv_bytes(1),
+        )
+        public_id = batch.public_id
+        batch_id = batch.id
+        row_ids = _claim_csv_import_rows(
+            setup_db,
+            tenant_id="owner",
+            batch_id=batch_id,
+            batch_size=1,
+            apply_token="worker-a",
+        )
+        assert len(row_ids) == 1
+        setup_db.execute(
+            update(CsvImportBatch)
+            .where(CsvImportBatch.tenant_id == "owner")
+            .where(CsvImportBatch.id == batch_id)
+            .values(
+                status="applying",
+                apply_token="worker-a",
+                locked_until=now_utc() - timedelta(minutes=1),
+                updated_at=now_utc() - timedelta(minutes=10),
+            )
+        )
+        setup_db.execute(
+            update(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.id == row_ids[0])
+            .values(updated_at=now_utc() - timedelta(minutes=10))
+        )
+        setup_db.commit()
+
+    with SessionLocal() as db:
+        applied = apply_csv_import_batch(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            batch_size=10,
+        )
+        assert applied.inserted_count == 1
+        assert applied.remaining_valid_rows == 0
+
+        assert not _refresh_claimed_csv_import_row(
+            db,
+            tenant_id="owner",
+            row_id=row_ids[0],
+            apply_token="worker-a",
+            now=now_utc(),
+        )
+        inserted = db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == "owner")
+            .where(Expense.source == "CSV导入")
+        )
+        assert inserted == 1
 
 
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient) -> None:
