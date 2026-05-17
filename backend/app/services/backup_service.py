@@ -5,8 +5,9 @@ location is used by ``scripts/maintenance_ticketbox.ps1 -Backup`` so that a
 backup created from the Owner Console is interchangeable with one created by
 the scheduled task.
 
-This service intentionally only handles SQLite file copies. Restoring is done
-by ``scripts/restore_ticketbox_db.ps1`` and remains an explicit local command.
+This service intentionally only handles SQLite Online Backup snapshots.
+Restoring is done by ``scripts/restore_ticketbox_db.ps1`` and remains an
+explicit local command.
 """
 
 from __future__ import annotations

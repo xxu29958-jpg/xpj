@@ -34,6 +34,25 @@ function Resolve-Python {
     throw "未找到 Python，无法校验 SQLite 备份。"
 }
 
+function Assert-PathInside {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+
+    $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
+    $separators = [char[]]@(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $rootPrefix = $resolvedRoot.TrimEnd($separators) + [System.IO.Path]::DirectorySeparatorChar
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "恢复文件必须位于备份目录内：$fullPath"
+    }
+    return $fullPath
+}
+
 function Test-SqliteBackup {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -41,10 +60,11 @@ function Test-SqliteBackup {
     & $python -c "import sqlite3, sys; con = sqlite3.connect(sys.argv[1]); result = con.execute('PRAGMA integrity_check').fetchone()[0]; con.close(); raise SystemExit(0 if result == 'ok' else 1)" $Path
 }
 
-$source = Resolve-Path -LiteralPath $BackupPath
+$source = Assert-PathInside -Path (Resolve-Path -LiteralPath $BackupPath).Path -Root $BackupDir
 $sourceItem = Get-Item -LiteralPath $source
-if (-not $sourceItem.Name.EndsWith(".db", [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "备份文件必须是 .db：$source"
+if (-not $sourceItem.Name.StartsWith("ticketbox-", [System.StringComparison]::OrdinalIgnoreCase) -or
+    -not $sourceItem.Name.EndsWith(".db", [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "备份文件必须是 backend\\backups 下的 ticketbox-*.db：$source"
 }
 
 $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -60,9 +80,32 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $DbPath) | Out-Nul
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 
 if (Test-Path -LiteralPath $DbPath) {
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $preRestore = Join-Path $BackupDir "pre-restore-$stamp.db"
-    Copy-Item -LiteralPath $DbPath -Destination $preRestore
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
+    $preRestore = Join-Path $BackupDir "ticketbox-before-restore-$stamp.db"
+    $preRestore = Assert-PathInside -Path $preRestore -Root $BackupDir
+    $python = Resolve-Python
+    $script = @'
+import sqlite3
+import sys
+
+source, target = sys.argv[1], sys.argv[2]
+src = sqlite3.connect(source)
+try:
+    dst = sqlite3.connect(target)
+    try:
+        src.backup(dst)
+        result = dst.execute('PRAGMA integrity_check').fetchone()[0]
+        if result != 'ok':
+            raise SystemExit('SQLite backup integrity_check failed: ' + str(result))
+    finally:
+        dst.close()
+finally:
+    src.close()
+'@
+    & $python -c $script $DbPath $preRestore
+    if ($LASTEXITCODE -ne 0) {
+        throw "恢复前备份失败。"
+    }
     Write-Host "已创建恢复前备份：$preRestore"
 }
 

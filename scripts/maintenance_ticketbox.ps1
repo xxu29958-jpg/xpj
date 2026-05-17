@@ -45,6 +45,68 @@ function Invoke-MaintenancePost {
     Invoke-RestMethod -Method Post -Uri $uri -Headers @{ Authorization = "Bearer $AdminToken" } -TimeoutSec 60
 }
 
+function Resolve-Python {
+    $venvPython = Join-Path $BackendRoot ".venv\Scripts\python.exe"
+    if (Test-Path -LiteralPath $venvPython) {
+        return $venvPython
+    }
+    $command = Get-Command python -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    throw "未找到 Python，无法使用 SQLite Online Backup API。"
+}
+
+function Assert-PathInside {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+
+    $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
+    $separators = [char[]]@(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $rootPrefix = $resolvedRoot.TrimEnd($separators) + [System.IO.Path]::DirectorySeparatorChar
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "拒绝访问备份目录外路径：$fullPath"
+    }
+    return $fullPath
+}
+
+function Backup-SqliteDatabase {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$TargetPath
+    )
+
+    $python = Resolve-Python
+    $script = @'
+import sqlite3
+import sys
+
+source, target = sys.argv[1], sys.argv[2]
+src = sqlite3.connect(source)
+try:
+    dst = sqlite3.connect(target)
+    try:
+        src.backup(dst)
+        result = dst.execute('PRAGMA integrity_check').fetchone()[0]
+        if result != 'ok':
+            raise SystemExit('SQLite backup integrity_check failed: ' + str(result))
+    finally:
+        dst.close()
+finally:
+    src.close()
+'@
+    & $python -c $script $SourcePath $TargetPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "SQLite 备份失败。"
+    }
+}
+
 function Backup-Database {
     if (-not (Test-Path -LiteralPath $DbPath)) {
         Write-Host "数据库不存在，跳过备份：$DbPath"
@@ -52,9 +114,10 @@ function Backup-Database {
     }
 
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
     $target = Join-Path $BackupDir "ticketbox-$stamp.db"
-    Copy-Item -LiteralPath $DbPath -Destination $target
+    $target = Assert-PathInside -Path $target -Root $BackupDir
+    Backup-SqliteDatabase -SourcePath $DbPath -TargetPath $target
     $size = (Get-Item -LiteralPath $target).Length
     Write-Host "数据库备份完成：$target ($(Format-Bytes $size))"
 }
@@ -70,6 +133,7 @@ function Prune-OldBackups {
     }
 
     $cutoff = (Get-Date).AddDays(-$BackupRetentionDays)
+    $backupRoot = (Resolve-Path -LiteralPath $BackupDir).Path
     $oldFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.db" -File -ErrorAction SilentlyContinue |
         Where-Object { $_.LastWriteTime -lt $cutoff })
     if ($oldFiles.Count -eq 0) {
@@ -79,8 +143,9 @@ function Prune-OldBackups {
 
     $deletedBytes = 0L
     foreach ($file in $oldFiles) {
+        $candidate = Assert-PathInside -Path $file.FullName -Root $backupRoot
         $deletedBytes += $file.Length
-        Remove-Item -LiteralPath $file.FullName -Force
+        Remove-Item -LiteralPath $candidate -Force
     }
     Write-Host "备份保留清理完成：删除 $($oldFiles.Count) 个旧备份，释放 $(Format-Bytes $deletedBytes)。"
 }
@@ -91,11 +156,7 @@ function Vacuum-Database {
         return
     }
 
-    $python = Join-Path $BackendRoot ".venv\Scripts\python.exe"
-    if (-not (Test-Path -LiteralPath $python)) {
-        throw "未找到后端虚拟环境 Python：$python"
-    }
-
+    $python = Resolve-Python
     & $python -c "import sqlite3, sys; conn = sqlite3.connect(sys.argv[1]); conn.execute('VACUUM'); conn.close()" $DbPath
     Write-Host "SQLite VACUUM 完成。"
 }

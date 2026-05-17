@@ -84,7 +84,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db
 
 1. 校验备份文件必须是 `.db`。
 2. 执行 SQLite `PRAGMA integrity_check`。
-3. 如果当前数据库存在，先创建 `pre-restore-*.db`。
+3. 如果当前数据库存在，先用 SQLite Online Backup API 创建 `ticketbox-before-restore-*.db`。
 4. 再覆盖 `backend/data/ticketbox.db`。
 5. 覆盖后再次校验数据库。
 
@@ -94,7 +94,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db
 
 - 不提交 `backend/backups/`。
 - 不把真实 Token 写进备份文档、日志或 Git。
-- 备份只复制 SQLite 文件，不上传云端。
+- 备份只在本机用 SQLite Online Backup API 生成一致快照，不上传云端。
 - 默认只保留最近 30 天的 `ticketbox-*.db` 备份。
 - 恢复脚本只恢复 SQLite 数据库，不删除 uploads 图片。
 - 清理图片不影响 confirmed 账本数据。
