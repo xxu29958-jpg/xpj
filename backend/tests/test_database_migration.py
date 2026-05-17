@@ -184,8 +184,12 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     )
     assert "ix_rule_application_batches_tenant_created_at" in _indexes("rule_application_batches")
     assert "ix_rule_application_batches_tenant_status" in _indexes("rule_application_batches")
+    assert "uq_rule_application_batches_id_tenant_id" in _indexes("rule_application_batches")
     assert "ix_rule_application_changes_tenant_batch" in _indexes("rule_application_changes")
     assert "ix_rule_application_changes_tenant_expense" in _indexes("rule_application_changes")
+    rule_changes_sql = _table_create_sql("rule_application_changes")
+    assert "fk_rule_application_changes_batch_tenant" in rule_changes_sql
+    assert "fk_rule_application_changes_expense_tenant" in rule_changes_sql
     assert {
         "amount_min_cents",
         "amount_max_cents",
@@ -197,7 +201,10 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "uq_merchant_aliases_tenant_alias_key" in merchant_alias_sql
     tags_sql = _table_create_sql("tags")
     assert "uq_tags_tenant_key" in tags_sql
+    assert "uq_tags_id_tenant_id" in tags_sql
     expense_tags_sql = _table_create_sql("expense_tags")
+    assert "fk_expense_tags_expense_tenant" in expense_tags_sql
+    assert "fk_expense_tags_tag_tenant" in expense_tags_sql
     assert "uq_expense_tags_tenant_expense_tag" in expense_tags_sql
     expenses_sql = _table_create_sql("expenses")
     assert "uq_expenses_id_tenant_id" in expenses_sql
@@ -207,6 +214,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     expense_items_sql = _table_create_sql("expense_items")
     assert "ck_expense_items_position_non_negative" in expense_items_sql
     assert "ck_expense_items_amount_non_negative" in expense_items_sql
+    assert "fk_expense_items_expense_tenant" in expense_items_sql
     assert "uq_expense_items_tenant_expense_position" in expense_items_sql
     expense_splits_sql = _table_create_sql("expense_splits")
     assert "ck_expense_splits_position_non_negative" in expense_splits_sql
@@ -217,8 +225,11 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "uq_expense_splits_tenant_expense_member" in expense_splits_sql
     csv_import_batches_sql = _table_create_sql("csv_import_batches")
     assert "ck_csv_import_batches_status_valid" in csv_import_batches_sql
+    assert "uq_csv_import_batches_id_tenant_id" in csv_import_batches_sql
     csv_import_rows_sql = _table_create_sql("csv_import_rows")
     assert "ck_csv_import_rows_status_valid" in csv_import_rows_sql
+    assert "fk_csv_import_rows_batch_tenant" in csv_import_rows_sql
+    assert "fk_csv_import_rows_expense_tenant" in csv_import_rows_sql
     assert "uq_csv_import_rows_tenant_batch_line" in csv_import_rows_sql
     recurring_sql = _table_create_sql("recurring_items")
     assert "ck_recurring_items_frequency_valid" in recurring_sql
@@ -234,11 +245,14 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ck_goals_period_valid" in goals_sql
     assert "ck_goals_status_valid" in goals_sql
     assert "ck_goals_target_positive" in goals_sql
+    assert "uq_goals_active_total_scope" in _indexes("goals")
+    assert "uq_goals_active_category_scope" in _indexes("goals")
     dashboard_cards_sql = _table_create_sql("dashboard_card_preferences")
     assert "ck_dashboard_cards_surface_valid" in dashboard_cards_sql
     assert "ck_dashboard_cards_position_non_negative" in dashboard_cards_sql
     assert "uq_dashboard_cards_tenant_surface_key" in dashboard_cards_sql
     with engine.begin() as connection:
+        assert connection.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
         owner_rules = connection.execute(
             text("SELECT COUNT(*) FROM category_rules WHERE tenant_id = 'owner'")
         ).scalar_one()
@@ -289,7 +303,8 @@ def test_legacy_database_with_cross_ledger_expense_splits_fails_startup() -> Non
     init_db()
 
     try:
-        with engine.begin() as connection:
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
             owner_member_id = connection.execute(
                 text("SELECT id FROM ledger_members WHERE ledger_id = 'owner' LIMIT 1")
             ).scalar_one()
@@ -324,6 +339,8 @@ def test_legacy_database_with_cross_ledger_expense_splits_fails_startup() -> Non
                 ),
                 {"expense_id": int(result.lastrowid), "member_id": owner_member_id},
             )
+            connection.commit()
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
         with pytest.raises(RuntimeError, match="expense_splits"):
             database.validate_sqlite_data_integrity()

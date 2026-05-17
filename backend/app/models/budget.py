@@ -98,6 +98,25 @@ class Goal(Base):
 Index("ix_goals_tenant_month_status", Goal.tenant_id, Goal.month, Goal.status)
 Index("ix_goals_tenant_category_month", Goal.tenant_id, Goal.category, Goal.month)
 Index("ix_goals_tenant_public_id", Goal.tenant_id, Goal.public_id)
+Index(
+    "uq_goals_active_total_scope",
+    Goal.tenant_id,
+    Goal.month,
+    Goal.goal_type,
+    Goal.period,
+    unique=True,
+    sqlite_where=(Goal.status == "active") & Goal.category.is_(None),
+)
+Index(
+    "uq_goals_active_category_scope",
+    Goal.tenant_id,
+    Goal.month,
+    Goal.goal_type,
+    Goal.period,
+    Goal.category,
+    unique=True,
+    sqlite_where=(Goal.status == "active") & Goal.category.is_not(None),
+)
 
 
 class DashboardCardPreference(Base):

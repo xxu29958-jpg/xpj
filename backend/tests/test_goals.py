@@ -125,6 +125,18 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     assert total_payload["progress_percent"] == 84
     assert total_payload["progress_state"] == "near_limit"
 
+    duplicate_total = client.post(
+        "/api/goals?timezone=UTC",
+        headers=app_headers(),
+        json={
+            "name": "重复总目标",
+            "month": "2026-05",
+            "target_amount_cents": 7000,
+        },
+    )
+    assert duplicate_total.status_code == 409
+    assert duplicate_total.json()["error"] == "invalid_request"
+
     category_goal = client.post(
         "/api/goals?timezone=UTC",
         headers=app_headers(),
@@ -142,6 +154,19 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     assert category_payload["remaining_amount_cents"] == 800
     assert category_payload["progress_percent"] == 60
     assert category_payload["progress_state"] == "on_track"
+
+    duplicate_category = client.post(
+        "/api/goals?timezone=UTC",
+        headers=app_headers(),
+        json={
+            "name": "重复餐饮目标",
+            "month": "2026-05",
+            "category": "餐饮",
+            "target_amount_cents": 3000,
+        },
+    )
+    assert duplicate_category.status_code == 409
+    assert duplicate_category.json()["error"] == "invalid_request"
 
     goals = client.get("/api/goals?month=2026-05&timezone=UTC", headers=app_headers())
     assert goals.status_code == 200, goals.json()

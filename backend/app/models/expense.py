@@ -105,6 +105,11 @@ class ExpenseItem(Base):
             name="ck_expense_items_unit_price_non_negative",
         ),
         CheckConstraint("confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_expense_items_confidence"),
+        ForeignKeyConstraint(
+            ["expense_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_expense_items_expense_tenant",
+        ),
         UniqueConstraint("tenant_id", "expense_id", "position", name="uq_expense_items_tenant_expense_position"),
     )
 

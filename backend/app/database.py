@@ -8,7 +8,7 @@ import shutil
 import sqlite3
 from uuid import uuid4
 
-from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy import create_engine, event, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_ROOT, get_settings
@@ -34,6 +34,17 @@ V03_IDENTITY_TABLES = {
 
 class Base(DeclarativeBase):
     pass
+
+
+@event.listens_for(engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+    finally:
+        cursor.close()
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -324,6 +335,7 @@ def validate_sqlite_data_integrity() -> None:
     with engine.begin() as connection:
         _validate_expense_core_data(connection, table_names)
         _validate_expense_split_integrity(connection, table_names)
+        _validate_tenant_child_integrity(connection, table_names)
 
 
 def _validate_expense_core_data(connection, table_names: set[str]) -> None:
@@ -441,6 +453,111 @@ def _validate_expense_split_integrity(connection, table_names: set[str]) -> None
         )
 
 
+def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
+    """Reject tenant-scoped child rows whose parent belongs to another ledger."""
+
+    if {"expense_items", "expenses"}.issubset(table_names):
+        invalid = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM expense_items AS item "
+                    "LEFT JOIN expenses AS expense "
+                    "ON expense.id = item.expense_id "
+                    "AND expense.tenant_id = item.tenant_id "
+                    "WHERE expense.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid:
+            raise RuntimeError("Invalid legacy data: expense_items contains cross-ledger expense references")
+
+    if {"csv_import_rows", "csv_import_batches"}.issubset(table_names):
+        invalid = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM csv_import_rows AS row "
+                    "LEFT JOIN csv_import_batches AS batch "
+                    "ON batch.id = row.batch_id "
+                    "AND batch.tenant_id = row.tenant_id "
+                    "WHERE batch.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid:
+            raise RuntimeError("Invalid legacy data: csv_import_rows contains cross-ledger batch references")
+
+    if {"csv_import_rows", "expenses"}.issubset(table_names):
+        invalid = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM csv_import_rows AS row "
+                    "LEFT JOIN expenses AS expense "
+                    "ON expense.id = row.expense_id "
+                    "AND expense.tenant_id = row.tenant_id "
+                    "WHERE row.expense_id IS NOT NULL AND expense.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid:
+            raise RuntimeError("Invalid legacy data: csv_import_rows contains cross-ledger expense references")
+
+    if {"expense_tags", "expenses", "tags"}.issubset(table_names):
+        invalid_expenses = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM expense_tags AS link "
+                    "LEFT JOIN expenses AS expense "
+                    "ON expense.id = link.expense_id "
+                    "AND expense.tenant_id = link.tenant_id "
+                    "WHERE expense.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid_expenses:
+            raise RuntimeError("Invalid legacy data: expense_tags contains cross-ledger expense references")
+        invalid_tags = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM expense_tags AS link "
+                    "LEFT JOIN tags AS tag "
+                    "ON tag.id = link.tag_id "
+                    "AND tag.tenant_id = link.tenant_id "
+                    "WHERE tag.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid_tags:
+            raise RuntimeError("Invalid legacy data: expense_tags contains cross-ledger tag references")
+
+    if {"rule_application_changes", "rule_application_batches", "expenses"}.issubset(table_names):
+        invalid_batches = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM rule_application_changes AS change "
+                    "LEFT JOIN rule_application_batches AS batch "
+                    "ON batch.id = change.batch_id "
+                    "AND batch.tenant_id = change.tenant_id "
+                    "WHERE batch.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid_batches:
+            raise RuntimeError("Invalid legacy data: rule_application_changes contains cross-ledger batch references")
+        invalid_expenses = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM rule_application_changes AS change "
+                    "LEFT JOIN expenses AS expense "
+                    "ON expense.id = change.expense_id "
+                    "AND expense.tenant_id = change.tenant_id "
+                    "WHERE expense.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid_expenses:
+            raise RuntimeError("Invalid legacy data: rule_application_changes contains cross-ledger expense references")
+
+
 def migrate_sqlite_schema() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
@@ -475,6 +592,12 @@ def migrate_sqlite_schema() -> None:
             if name not in existing_columns:
                 connection.execute(text(f"ALTER TABLE expenses ADD COLUMN {name} {ddl}"))
 
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_expenses_id_tenant_id "
+                "ON expenses (id, tenant_id)"
+            )
+        )
         connection.execute(
             text("UPDATE expenses SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
             {"tenant_id": DEFAULT_TENANT_ID},
@@ -604,6 +727,12 @@ def migrate_sqlite_schema() -> None:
         if "rule_application_batches" in table_names:
             connection.execute(
                 text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_rule_application_batches_id_tenant_id "
+                    "ON rule_application_batches (id, tenant_id)"
+                )
+            )
+            connection.execute(
+                text(
                     "CREATE INDEX IF NOT EXISTS ix_rule_application_batches_tenant_created_at "
                     "ON rule_application_batches (tenant_id, created_at)"
                 )
@@ -646,6 +775,12 @@ def migrate_sqlite_schema() -> None:
         if "tags" in table_names:
             connection.execute(
                 text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_tags_id_tenant_id "
+                    "ON tags (id, tenant_id)"
+                )
+            )
+            connection.execute(
+                text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS uq_tags_tenant_key "
                     "ON tags (tenant_id, key)"
                 )
@@ -655,6 +790,14 @@ def migrate_sqlite_schema() -> None:
             )
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_tags_tenant_name ON tags (tenant_id, name)")
+            )
+
+        if "csv_import_batches" in table_names:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_csv_import_batches_id_tenant_id "
+                    "ON csv_import_batches (id, tenant_id)"
+                )
             )
 
         if "expense_tags" in table_names:
@@ -705,6 +848,40 @@ def migrate_sqlite_schema() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_duplicate_ignores_tenant_pair_kind "
                     "ON duplicate_ignores (tenant_id, expense_id, duplicate_of_id, kind)"
+                )
+            )
+
+        if "goals" in table_names:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_active_total_scope "
+                    "ON goals (tenant_id, month, goal_type, period) "
+                    "WHERE status = 'active' AND category IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_active_category_scope "
+                    "ON goals (tenant_id, month, goal_type, period, category) "
+                    "WHERE status = 'active' AND category IS NOT NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_goals_tenant_month_status "
+                    "ON goals (tenant_id, month, status)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_goals_tenant_category_month "
+                    "ON goals (tenant_id, category, month)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_goals_tenant_public_id "
+                    "ON goals (tenant_id, public_id)"
                 )
             )
 

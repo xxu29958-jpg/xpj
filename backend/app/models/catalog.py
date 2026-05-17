@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -42,6 +43,7 @@ class MerchantAlias(Base):
 class Tag(Base):
     __tablename__ = "tags"
     __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_tags_id_tenant_id"),
         UniqueConstraint("tenant_id", "key", name="uq_tags_tenant_key"),
     )
 
@@ -56,6 +58,16 @@ class Tag(Base):
 class ExpenseTag(Base):
     __tablename__ = "expense_tags"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["expense_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_expense_tags_expense_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["tag_id", "tenant_id"],
+            ["tags.id", "tags.tenant_id"],
+            name="fk_expense_tags_tag_tenant",
+        ),
         UniqueConstraint("tenant_id", "expense_id", "tag_id", name="uq_expense_tags_tenant_expense_tag"),
     )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -151,6 +152,40 @@ def get_goal(db: Session, *, tenant_id: str, public_id: str) -> Goal:
     return goal
 
 
+def _raise_duplicate_goal() -> None:
+    raise AppError(
+        "invalid_request",
+        "同一账本、月份和分类只能有一个启用中的目标。",
+        status_code=409,
+    )
+
+
+def _active_goal_conflict_exists(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    category: str | None,
+    goal_type: str,
+    period: str,
+    exclude_public_id: str | None = None,
+) -> bool:
+    statement = (
+        ledger_scoped_select(Goal, tenant_id)
+        .where(Goal.status == "active")
+        .where(Goal.month == month)
+        .where(Goal.goal_type == goal_type)
+        .where(Goal.period == period)
+    )
+    if category is None:
+        statement = statement.where(Goal.category.is_(None))
+    else:
+        statement = statement.where(Goal.category == category)
+    if exclude_public_id is not None:
+        statement = statement.where(Goal.public_id != exclude_public_id)
+    return db.scalar(statement.limit(1)) is not None
+
+
 def list_goals(
     db: Session,
     *,
@@ -199,20 +234,37 @@ def create_goal(
     timezone_name: str | None = None,
 ) -> GoalResponse:
     now = now_utc()
+    goal_type = _clean_goal_type(payload.goal_type)
+    period = _clean_period(payload.period)
+    month = _clean_month(payload.month)
+    category = _clean_category(payload.category)
+    if _active_goal_conflict_exists(
+        db,
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        goal_type=goal_type,
+        period=period,
+    ):
+        _raise_duplicate_goal()
     goal = Goal(
         tenant_id=tenant_id,
         name=_clean_name(payload.name),
-        goal_type=_clean_goal_type(payload.goal_type),
-        period=_clean_period(payload.period),
-        month=_clean_month(payload.month),
-        category=_clean_category(payload.category),
+        goal_type=goal_type,
+        period=period,
+        month=month,
+        category=category,
         target_amount_cents=_clean_target_amount(payload.target_amount_cents),
         status="active",
         created_at=now,
         updated_at=now,
     )
     db.add(goal)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _raise_duplicate_goal()
     db.refresh(goal)
     totals = _month_spend_totals(
         db,
@@ -243,8 +295,22 @@ def update_goal(
         goal.category = _clean_category(updates["category"])
     if "target_amount_cents" in updates:
         goal.target_amount_cents = _clean_target_amount(updates["target_amount_cents"])
+    if _active_goal_conflict_exists(
+        db,
+        tenant_id=tenant_id,
+        month=goal.month,
+        category=goal.category,
+        goal_type=goal.goal_type,
+        period=goal.period,
+        exclude_public_id=goal.public_id,
+    ):
+        _raise_duplicate_goal()
     goal.updated_at = now_utc()
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _raise_duplicate_goal()
     db.refresh(goal)
     totals = _month_spend_totals(
         db,

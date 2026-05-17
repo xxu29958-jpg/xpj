@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -32,6 +33,7 @@ class CsvImportBatch(Base):
         CheckConstraint("error_rows >= 0", name="ck_csv_import_batches_error_rows_non_negative"),
         CheckConstraint("applied_rows >= 0", name="ck_csv_import_batches_applied_rows_non_negative"),
         CheckConstraint("inserted_count >= 0", name="ck_csv_import_batches_inserted_count_non_negative"),
+        UniqueConstraint("id", "tenant_id", name="uq_csv_import_batches_id_tenant_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -66,6 +68,16 @@ class CsvImportRow(Base):
             name="ck_csv_import_rows_status_valid",
         ),
         CheckConstraint("amount_cents IS NULL OR amount_cents >= 0", name="ck_csv_import_rows_amount_non_negative"),
+        ForeignKeyConstraint(
+            ["batch_id", "tenant_id"],
+            ["csv_import_batches.id", "csv_import_batches.tenant_id"],
+            name="fk_csv_import_rows_batch_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["expense_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_csv_import_rows_expense_tenant",
+        ),
         UniqueConstraint("tenant_id", "batch_id", "line_number", name="uq_csv_import_rows_tenant_batch_line"),
     )
 

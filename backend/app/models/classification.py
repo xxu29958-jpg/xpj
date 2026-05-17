@@ -7,9 +7,11 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,6 +39,9 @@ class CategoryRule(Base):
 
 class RuleApplicationBatch(Base):
     __tablename__ = "rule_application_batches"
+    __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_rule_application_batches_id_tenant_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
@@ -54,6 +59,18 @@ class RuleApplicationBatch(Base):
 
 class RuleApplicationChange(Base):
     __tablename__ = "rule_application_changes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["batch_id", "tenant_id"],
+            ["rule_application_batches.id", "rule_application_batches.tenant_id"],
+            name="fk_rule_application_changes_batch_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["expense_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_rule_application_changes_expense_tenant",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(

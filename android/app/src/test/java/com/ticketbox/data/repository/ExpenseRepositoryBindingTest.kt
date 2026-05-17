@@ -74,6 +74,7 @@ import retrofit2.Response
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -160,6 +161,49 @@ class ExpenseRepositoryBindingTest {
         assertEquals("2026-05", apiService.lastConfirmedMonth)
         assertEquals("餐饮", apiService.lastConfirmedCategory)
         assertEquals("AI", apiService.lastConfirmedTag)
+    }
+
+    @Test
+    fun confirmedSyncSkipsCacheWhenLedgerChangesDuringRequest() = runTest {
+        val events = mutableListOf<String>()
+        val dao = FakeExpenseDao()
+        val settingsStore = FakeTicketboxSettingsStore(events).apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "Account",
+                ledgerId = "owner",
+                ledgerName = "Owner Ledger",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events, confirmedFailuresRemaining = 0).apply {
+            onConfirmedRequest = {
+                settingsStore.saveIdentity(
+                    accountName = "Account",
+                    ledgerId = "family",
+                    ledgerName = "Family Ledger",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
+            }
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val result = repository.syncConfirmed().getOrThrow()
+
+        assertTrue(result.isEmpty())
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertTrue(dao.getConfirmed("family").isEmpty())
+        assertNull(settingsStore.lastConfirmedSyncAt())
     }
 
     @Test
@@ -564,6 +608,49 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
+    fun fetchExpenseSkipsConfirmedCacheWhenLedgerChangesDuringRequest() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "Account",
+                ledgerId = "owner",
+                ledgerName = "Owner Ledger",
+                deviceName = "Pixel",
+                role = "member",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply {
+            onExpenseFetch = {
+                settingsStore.saveIdentity(
+                    accountName = "Account",
+                    ledgerId = "family",
+                    ledgerName = "Family Ledger",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
+            }
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val expense = repository.fetchExpense(9).getOrThrow()
+
+        assertEquals("confirmed", expense.status)
+        assertEquals(listOf(9L), apiService.expenseFetchIds)
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertTrue(dao.getConfirmed("family").isEmpty())
+    }
+
+
+    @Test
     fun viewerCannotReplaceExpenseItemsOrSplitsLocally() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
@@ -634,6 +721,8 @@ private class FakeApiService(
     val splitReplaceIds = mutableListOf<Long>()
     val splitReplaceRequests = mutableListOf<ExpenseSplitReplaceRequestDto>()
     val expenseFetchIds = mutableListOf<Long>()
+    var onConfirmedRequest: (() -> Unit)? = null
+    var onExpenseFetch: (() -> Unit)? = null
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -658,6 +747,7 @@ private class FakeApiService(
         lastConfirmedMonth = month
         lastConfirmedCategory = category
         lastConfirmedTag = tag
+        onConfirmedRequest?.invoke()
         if (confirmedFailuresRemaining > 0) {
             confirmedFailuresRemaining -= 1
             throw IOException("restore unavailable")
@@ -718,6 +808,7 @@ private class FakeApiService(
 
     override suspend fun expense(id: Long): ExpenseDto {
         expenseFetchIds += id
+        onExpenseFetch?.invoke()
         return confirmedExpenseDto()
     }
 

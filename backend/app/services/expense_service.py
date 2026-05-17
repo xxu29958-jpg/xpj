@@ -4,7 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -205,9 +206,14 @@ def enrich_pending_expense(
             return
 
         ocr_results = collect_auto_ocr_results(expense, timezone_name=timezone_name)
+
+    with SessionLocal() as db:
         try:
-            db.refresh(expense)
-            if expense.status != "pending":
+            _begin_immediate_write_if_sqlite(db)
+            expense = db.scalar(
+                ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
+            )
+            if expense is None or expense.status != "pending":
                 return
             if not expense.thumbnail_path:
                 expense.thumbnail_path = _try_generate_thumbnail(
@@ -230,6 +236,12 @@ def enrich_pending_expense(
             db.commit()
         except Exception:
             db.rollback()
+
+
+def _begin_immediate_write_if_sqlite(db: Session) -> None:
+    bind = db.get_bind()
+    if bind.dialect.name == "sqlite":
+        db.execute(text("BEGIN IMMEDIATE"))
 
 
 def create_manual_expense(
@@ -314,7 +326,18 @@ def create_notification_draft(
         updated_at=now,
     )
     db.add(expense)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(
+            ledger_scoped_select(Expense, tenant_id).where(
+                Expense.draft_idempotency_key == idempotency_key
+            )
+        )
+        if existing is not None:
+            return existing
+        raise
     if expense.category == "其他":
         classify_expense(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
@@ -478,18 +501,27 @@ def update_expense(
 
 
 def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
-    expense = get_expense(db, expense_id, tenant_id)
-    if expense.status == "rejected":
-        raise AppError("expense_not_found", status_code=404)
-    if expense.amount_cents is None:
-        raise AppError("amount_required", status_code=400)
-    if expense.status == "confirmed":
-        return expense
-
     now = now_utc()
-    expense.status = "confirmed"
-    expense.confirmed_at = now
-    expense.updated_at = now
+    result = db.execute(
+        update(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.id == expense_id)
+        .where(Expense.status == "pending")
+        .where(Expense.amount_cents.is_not(None))
+        .values(status="confirmed", confirmed_at=now, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.expire_all()
+        expense = get_expense(db, expense_id, tenant_id)
+        if expense.status == "confirmed":
+            return expense
+        if expense.status == "pending" and expense.amount_cents is None:
+            raise AppError("amount_required", status_code=400)
+        raise AppError("expense_not_found", status_code=404)
+
+    db.expire_all()
+    expense = get_expense(db, expense_id, tenant_id)
     sync_expense_tags(db, expense)
     cleanup_after_confirm(expense)
     db.commit()
@@ -498,14 +530,22 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
 
 
 def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
-    expense = get_expense(db, expense_id, tenant_id)
-    if expense.status != "pending":
+    now = now_utc()
+    result = db.execute(
+        update(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.id == expense_id)
+        .where(Expense.status == "pending")
+        .values(status="rejected", rejected_at=now, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.expire_all()
+        get_expense(db, expense_id, tenant_id)
         raise AppError("expense_not_found", status_code=404)
 
-    now = now_utc()
-    expense.status = "rejected"
-    expense.rejected_at = now
-    expense.updated_at = now
+    db.expire_all()
+    expense = get_expense(db, expense_id, tenant_id)
     db.commit()
     db.refresh(expense)
     return expense

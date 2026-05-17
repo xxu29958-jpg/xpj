@@ -324,7 +324,8 @@ class ExpenseRepository(
     }
 
     suspend fun fetchExpense(id: Long): Result<Expense> = errorHandler.safeCall {
-        cacheIfConfirmed(api().expense(id)).toDomain()
+        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
+        cacheIfConfirmed(api().expense(id), ledgerIdAtRequest).toDomain()
     }
 
     override suspend fun uploadScreenshot(
@@ -366,7 +367,8 @@ class ExpenseRepository(
     }
 
     override suspend fun updateExpense(id: Long, draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
-        cacheIfConfirmed(api().updateExpense(id, draft.toRequest())).toDomain()
+        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
+        cacheIfConfirmed(api().updateExpense(id, draft.toRequest()), ledgerIdAtRequest).toDomain()
     }
 
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = errorHandler.safeCall {
@@ -399,7 +401,8 @@ class ExpenseRepository(
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
         require(draft.amountCents != null) { "请先填写金额。" }
-        cacheIfConfirmed(api().createManualExpense(draft.toRequest())).toDomain()
+        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
+        cacheIfConfirmed(api().createManualExpense(draft.toRequest()), ledgerIdAtRequest).toDomain()
     }
 
     suspend fun createNotificationDraft(draft: NotificationDraft): Result<Expense> = errorHandler.safeCall {
@@ -407,13 +410,13 @@ class ExpenseRepository(
     }
 
     override suspend fun confirmExpense(id: Long): Result<Expense> = errorHandler.safeCall {
-        cacheIfConfirmed(api().confirmExpense(id)).toDomain()
+        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
+        cacheIfConfirmed(api().confirmExpense(id), ledgerIdAtRequest).toDomain()
     }
 
-    private suspend fun cacheIfConfirmed(dto: ExpenseDto): ExpenseDto {
-        if (dto.status == "confirmed") {
-            val ledgerId = activeLedgerIdOrLegacy()
-            expenseDao.upsertByServerIdForLedger(ledgerId, dto.toEntity(ledgerId))
+    private suspend fun cacheIfConfirmed(dto: ExpenseDto, ledgerIdAtRequest: String): ExpenseDto {
+        if (dto.status == "confirmed" && activeLedgerIdOrLegacy() == ledgerIdAtRequest) {
+            expenseDao.upsertByServerIdForLedger(ledgerIdAtRequest, dto.toEntity(ledgerIdAtRequest))
         }
         return dto
     }
@@ -450,6 +453,7 @@ class ExpenseRepository(
         replaceCache: Boolean = false,
         recordSyncTimestamp: Boolean = true,
     ): List<Expense> {
+        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
         val collectedDtos = mutableListOf<ExpenseDto>()
         var page = 1
         val pageSize = 50
@@ -468,19 +472,20 @@ class ExpenseRepository(
             page += 1
         } while (collectedDtos.size < total)
 
-        if (replaceCache) {
-            // v0.4-alpha1: scope cache replacement to the active ledger so other
-            // ledgers' confirmed rows survive token rotations. Read the ledger
-            // id once and reuse it for the whole sync to avoid clear-A/insert-B
-            // races if a switch happens mid-flight.
-            expenseDao.clearForLedger(activeLedgerIdOrLegacy())
-        }
-        val ledgerId = activeLedgerIdOrLegacy()
-        val entities = collectedDtos.map { it.toEntity(ledgerId) }
-        if (entities.isNotEmpty()) {
-            expenseDao.upsertAllByServerIdForLedger(ledgerId, entities)
-        }
         val collected = collectedDtos.map { it.toDomain() }
+        if (activeLedgerIdOrLegacy() != ledgerIdAtRequest) {
+            return emptyList()
+        }
+
+        if (replaceCache) {
+            // Scope cache replacement to the ledger that started this sync so a
+            // ledger switch cannot clear one cache and insert into another.
+            expenseDao.clearForLedger(ledgerIdAtRequest)
+        }
+        val entities = collectedDtos.map { it.toEntity(ledgerIdAtRequest) }
+        if (entities.isNotEmpty()) {
+            expenseDao.upsertAllByServerIdForLedger(ledgerIdAtRequest, entities)
+        }
         if (recordSyncTimestamp) {
             settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
         }
