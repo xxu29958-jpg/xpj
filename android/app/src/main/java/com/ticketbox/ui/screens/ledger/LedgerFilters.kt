@@ -12,12 +12,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppFilterChip
@@ -40,6 +38,10 @@ internal fun LedgerFilterPanel(
     onViewModeChange: (LedgerViewMode) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
+        // 三段竖向布局：账本头（含状态 pill + KPI）→ 视图模式段 → 内联 chip 筛选。
+        // 之前在最末又渲染了一段 `ledgerCombinedStatusLine` 文本——它把 LedgerHeader
+        // 的状态 pill 和 LedgerInlineFilters 的 chip 状态又重新文字叙述一遍，纯冗余。
+        // 移除后顶部垂直高度减少 ~24dp，信息密度更高且没有损失任何用户能用上的信息。
         LedgerHeader(state = state, onManualAdd = onManualAdd)
         LedgerViewModeToggle(
             selectedMode = state.viewMode,
@@ -50,14 +52,6 @@ internal fun LedgerFilterPanel(
             onOpenMonthPicker = onOpenMonthPicker,
             onOpenTools = onOpenTools,
             onCategoryChange = onCategoryChange,
-        )
-        Text(
-            text = ledgerCombinedStatusLine(state),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

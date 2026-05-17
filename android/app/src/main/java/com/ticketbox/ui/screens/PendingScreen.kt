@@ -46,7 +46,7 @@ import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
 import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
-import com.ticketbox.ui.screens.pending.PendingHeader
+import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
 import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
@@ -167,6 +167,18 @@ fun PendingScreen(
                 uploading = state.uploading,
                 readOnly = readOnly,
                 onUploadScreenshot = onUploadScreenshot,
+                // 显示模式按钮只在列表有内容时才显示——空态用 EmptyPendingState 自带 CTA
+                trailingAction = if (state.items.isNotEmpty()) {
+                    {
+                        PendingDisplayModeButton(
+                            loading = state.loading,
+                            displayMode = displayMode,
+                            onClick = { showPendingTools = true },
+                        )
+                    }
+                } else {
+                    null
+                },
             )
         }
 
@@ -207,13 +219,7 @@ fun PendingScreen(
             }
 
             else -> {
-                item {
-                    PendingHeader(
-                        loading = state.loading,
-                        displayMode = displayMode,
-                        onOpenTools = { showPendingTools = true },
-                    )
-                }
+                // PendingHeader 已合并到 PendingTop 的 trailingAction —— 这里直接进 filter bar。
                 item {
                     NeedsReviewFilterBar(
                         selected = needsReviewFilter,
