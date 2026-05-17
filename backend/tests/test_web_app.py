@@ -473,6 +473,8 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'aria-selected="false"' in resp.text
     assert f'aria-label="选择账单 #{eid}"' in resp.text
     assert 'role="checkbox"' in resp.text
+    assert 'name="category"' in resp.text
+    assert 'name="merchant"' in resp.text
 
     js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop.js"
     js = js_path.read_text(encoding="utf-8")

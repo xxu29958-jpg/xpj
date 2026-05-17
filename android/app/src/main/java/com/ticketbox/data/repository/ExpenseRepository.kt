@@ -209,7 +209,7 @@ class ExpenseRepository(
     override suspend fun bindServer(serverUrl: String, pairingCode: String): Result<BindServerResult> {
         return errorHandler.safeCall(serverUrlHint = serverUrl) {
             val normalized = validateBindingInput(serverUrl, pairingCode)
-            val pairResponse = api(normalized, null).pairDevice(
+            val pairResponse = apiProvider.unauthenticated(normalized).pairDevice(
                 PairRequestDto(
                     pairingCode = pairingCode.trim(),
                     deviceName = deviceNameProvider(),
@@ -227,6 +227,7 @@ class ExpenseRepository(
                 boundAt = Instant.now().toString(),
             )
             settingsStore.markUnlocked()
+            expenseDao.clearForLedger(pairResponse.ledgerId)
             val restoreFailed = try {
                 syncConfirmedFromService(
                     service = api(normalized, pairResponse.sessionToken),
@@ -495,6 +496,14 @@ class ExpenseRepository(
         val entities = collectedDtos.map { it.toEntity(ledgerIdAtRequest) }
         if (entities.isNotEmpty()) {
             expenseDao.upsertAllByServerIdForLedger(ledgerIdAtRequest, entities)
+        }
+        if (!replaceCache && month == null && category == null && tag == null) {
+            val remoteServerIds = collectedDtos.map { it.id }
+            if (remoteServerIds.isEmpty()) {
+                expenseDao.deleteConfirmedForLedger(ledgerIdAtRequest)
+            } else {
+                expenseDao.deleteConfirmedNotInServerIds(ledgerIdAtRequest, remoteServerIds)
+            }
         }
         if (recordSyncTimestamp) {
             settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())

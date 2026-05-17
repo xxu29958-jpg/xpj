@@ -254,6 +254,25 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     assert "灰度报表导出不应串入" not in csv_response.text
 
 
+def test_reports_csv_neutralizes_formula_cells(client: TestClient) -> None:
+    _insert_expense(
+        amount_cents=1200,
+        merchant='=HYPERLINK("http://example.invalid")',
+        category="餐饮",
+        status="confirmed",
+        expense_time=datetime(2026, 5, 3, 0, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 5, 3, 0, 31, tzinfo=UTC),
+    )
+
+    response = client.get(
+        "/api/reports/overview.csv?month=2026-05&timezone=UTC",
+        headers=app_headers(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert "'=HYPERLINK" in response.text
+
+
 def test_reports_daily_trend_uses_bounded_aggregate_query_shape(
     client: TestClient,
 ) -> None:

@@ -27,12 +27,13 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import StringIO
 
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense
 from app.services.category_service import normalize_category
@@ -44,7 +45,7 @@ from app.services.exchange_rate_service import (
     normalize_currency_code,
 )
 from app.services.tag_service import normalize_tags, sync_expense_tags
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc_assuming_local, now_utc
 
 
 MAX_PREVIEW_ROWS = 500
@@ -113,21 +114,20 @@ def _parse_amount(raw_yuan: str, raw_cents: str) -> tuple[int | None, str, str |
     return cents, str(amount.quantize(Decimal("0.01"))), None
 
 
-def _parse_expense_time(raw: str) -> tuple[datetime | None, str, str | None]:
+def _parse_expense_time(raw: str, timezone_name: str | None = None) -> tuple[datetime | None, str, str | None]:
     text = raw.strip()
     if not text:
         return None, "", None
     try:
-        # Accept "2025-01-02T03:04:05+08:00" or "2025-01-02 03:04:05" (naive => UTC).
+        # Accept "2025-01-02T03:04:05+08:00" or "2025-01-02 03:04:05".
         cleaned = text.replace("/", "-")
         if "T" not in cleaned and " " in cleaned:
             cleaned = cleaned.replace(" ", "T", 1)
         parsed = datetime.fromisoformat(cleaned)
     except ValueError:
         return None, text, "expense_time 不是合法的 ISO 时间"
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed, text, None
+    resolved_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
+    return ensure_utc_assuming_local(parsed, resolved_timezone), text, None
 
 
 def _parse_optional_int(raw: str, label: str) -> tuple[int | None, str | None]:
@@ -163,7 +163,7 @@ def _parse_optional_date(raw: str) -> tuple[date | None, str | None]:
         return None, "exchange_rate_date 不是合法日期"
 
 
-def parse_csv_preview(content: str) -> CsvPreview:
+def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPreview:
     """Parse ``content`` into a preview structure.
 
     Caller is responsible for applying any size/encoding limits before
@@ -191,11 +191,24 @@ def parse_csv_preview(content: str) -> CsvPreview:
             break
         if not any(cell.strip() for cell in row):
             continue
-        preview.rows.append(parse_csv_row(headers, row, line_number=index))
+        preview.rows.append(
+            parse_csv_row(
+                headers,
+                row,
+                line_number=index,
+                timezone_name=timezone_name,
+            )
+        )
     return preview
 
 
-def parse_csv_row(headers: list[str], row: list[str], *, line_number: int) -> ParsedRow:
+def parse_csv_row(
+    headers: list[str],
+    row: list[str],
+    *,
+    line_number: int,
+    timezone_name: str | None = None,
+) -> ParsedRow:
     cells = dict(zip(headers, row + [""] * max(0, len(headers) - len(row)), strict=False))
     amount_cents, amount_display, amount_error = _parse_amount(
         cells.get("amount_yuan", ""), cells.get("amount_cents", "")
@@ -218,7 +231,8 @@ def parse_csv_row(headers: list[str], row: list[str], *, line_number: int) -> Pa
     )
     exchange_rate_date, exchange_rate_date_error = _parse_optional_date(cells.get("exchange_rate_date", ""))
     expense_time, etime_display, etime_error = _parse_expense_time(
-        cells.get("expense_time", "")
+        cells.get("expense_time", ""),
+        timezone_name=timezone_name,
     )
     if exchange_rate_date is None and expense_time is not None:
         exchange_rate_date = expense_time.date()

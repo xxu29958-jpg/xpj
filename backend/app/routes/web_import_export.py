@@ -9,8 +9,6 @@ valid rows as ``pending`` expenses in chunks.
 
 from __future__ import annotations
 
-from urllib.parse import quote
-
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
@@ -108,7 +106,7 @@ async def web_import_preview(
     )
     msg = f"已解析 {batch.total_rows} 行，{batch.valid_rows} 行可导入。"
     target = _with_ledger(f"/web/import/{batch.public_id}", selected_id, msg=msg)
-    return RedirectResponse(url=quote(target, safe="/?=&"), status_code=303)
+    return RedirectResponse(url=target, status_code=303)
 
 
 @router.get("/import/{public_id}", response_class=HTMLResponse)
@@ -175,7 +173,7 @@ def web_import_batch_apply(
     )
     msg = f"本次导入 {applied.inserted_count} 条，剩余 {applied.remaining_valid_rows} 条可导入。"
     target = _with_ledger(f"/web/import/{public_id}", selected_id, msg=msg)
-    return RedirectResponse(url=quote(target, safe="/?=&"), status_code=303)
+    return RedirectResponse(url=target, status_code=303)
 
 
 @router.get("/import/{public_id}/errors.csv")
@@ -215,4 +213,4 @@ def web_import_confirm(
         selected_id,
         msg="CSV 导入已升级为服务端批次流程，请重新上传 CSV。",
     )
-    return RedirectResponse(url=quote(target, safe="/?=&"), status_code=303)
+    return RedirectResponse(url=target, status_code=303)

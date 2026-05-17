@@ -11,6 +11,7 @@ import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class ApiServiceProviderTest {
@@ -69,6 +70,19 @@ class ApiServiceProviderTest {
         )
         assertEquals("bound-token", factory.creations[0].tokenProvider())
         assertEquals("pair-token", factory.creations[1].tokenProvider())
+    }
+
+    @Test
+    fun unauthenticatedServiceDoesNotReadStoredToken() {
+        val settings = ProviderSettingsStore().apply { saveServerUrl("https://api.example.com") }
+        val tokenStore = ProviderTokenStore().apply { saveToken("old-session-token") }
+        val factory = RecordingApiFactory()
+        val provider = ApiServiceProvider(factory, settings, tokenStore)
+
+        provider.unauthenticated("https://pairing.example")
+
+        assertEquals("https://pairing.example", factory.creations.single().baseUrl)
+        assertNull(factory.creations.single().tokenProvider())
     }
 
     @Test

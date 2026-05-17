@@ -16,6 +16,7 @@ from app.errors import AppError
 from app.ledger_scope import add_ledger_scope
 from app.models import Expense
 from app.services.category_service import LEGACY_CATEGORY_ALIASES, normalize_category
+from app.services.csv_security import safe_csv_cell
 from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.time_service import local_month_bounds_utc, safe_zone
@@ -570,15 +571,15 @@ def export_reports_overview_csv(
         "ranking_metric",
     ]:
         value = overview.get(field)
-        writer.writerow(["summary", field, "" if value is None else value])
+        writer.writerow(["summary", field, "" if value is None else safe_csv_cell(value)])
     writer.writerow([])
     writer.writerow(["section", "bucket", "label", "amount_cents", "count"])
     for point in overview["trend"]:
         writer.writerow(
             [
                 "trend",
-                point["bucket"],
-                point["label"],
+                safe_csv_cell(point["bucket"]),
+                safe_csv_cell(point["label"]),
                 point["amount_cents"],
                 point["count"],
             ]
@@ -590,7 +591,7 @@ def export_reports_overview_csv(
             [
                 "merchant_ranking",
                 index,
-                item["merchant"],
+                safe_csv_cell(item["merchant"]),
                 item["amount_cents"],
                 item["count"],
             ]
@@ -612,7 +613,7 @@ def export_reports_overview_csv(
         writer.writerow(
             [
                 "category_comparison",
-                item["category"],
+                safe_csv_cell(item["category"]),
                 item["amount_cents"],
                 item["count"],
                 item["previous_amount_cents"],

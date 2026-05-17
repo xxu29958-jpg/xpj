@@ -63,6 +63,9 @@ class LedgerRepository(
         val response = api().listLedgers()
         val summaries = response.ledgers.map { it.toSummary() }
         settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
+        settingsStore.activeLedgerId()
+            ?.let { activeId -> summaries.firstOrNull { it.ledgerId == activeId } }
+            ?.let { persistCurrentRoleIfChanged(it.role) }
         summaries
     }
 
@@ -122,7 +125,9 @@ class LedgerRepository(
         val targetLedgerId = requireNotNull(ledgerId?.takeIf { it.isNotBlank() }) {
             "当前账本还没有准备好。"
         }
-        api().ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
+        val members = api().ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
+        members.firstOrNull { it.isSelf }?.let { persistSelfRoleIfChanged(it) }
+        members
     }
 
     suspend fun refreshFamilyAudit(
@@ -266,7 +271,12 @@ class LedgerRepository(
     }
 
     private fun persistSelfRoleIfChanged(member: FamilyMember) {
-        if (!member.isSelf || member.role == settingsStore.role()) return
+        if (!member.isSelf) return
+        persistCurrentRoleIfChanged(member.role)
+    }
+
+    private fun persistCurrentRoleIfChanged(role: String) {
+        if (role == settingsStore.role()) return
         val accountName = settingsStore.accountName() ?: return
         val ledgerId = settingsStore.activeLedgerId() ?: return
         val ledgerName = settingsStore.activeLedgerName() ?: settingsStore.ledgerName() ?: return
@@ -276,7 +286,7 @@ class LedgerRepository(
             ledgerId = ledgerId,
             ledgerName = ledgerName,
             deviceName = deviceName,
-            role = member.role,
+            role = role,
             boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
         )
     }

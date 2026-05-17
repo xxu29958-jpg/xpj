@@ -7,12 +7,13 @@ from datetime import date, datetime
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.insights_service import normalize_merchant, recurring_candidates
-from app.services.time_service import current_month, ensure_utc, local_month_bounds_utc, now_utc
+from app.services.time_service import current_month, ensure_utc, local_month_bounds_utc, now_utc, safe_zone
 
 
 VALID_FREQUENCIES = {"monthly"}
@@ -49,10 +50,13 @@ def _add_one_month(value: date) -> date:
     return date(year, month, day)
 
 
-def _next_expected_date(last_seen_at: datetime | None) -> date | None:
-    if last_seen_at is None:
+def _next_expected_date(last_seen_at: datetime | None, timezone_name: str | None) -> date | None:
+    utc_value = ensure_utc(last_seen_at)
+    if utc_value is None:
         return None
-    return _add_one_month(last_seen_at.date())
+    resolved_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
+    local_date = utc_value.astimezone(safe_zone(resolved_timezone)).date()
+    return _add_one_month(local_date)
 
 
 def _find_recurring_candidate(
@@ -233,7 +237,7 @@ def confirm_recurring_candidate(
         last_amount_cents=amount_cents,
         occurrence_count=max(int(payload.occurrence_count or 0), int(candidate.get("occurrence_count") or 0)),
         last_seen_at=last_seen_at,
-        next_expected_date=payload.next_expected_date or _next_expected_date(last_seen_at),
+        next_expected_date=payload.next_expected_date or _next_expected_date(last_seen_at, timezone_name),
         status="active",
         confidence=str(confidence) if confidence else None,
         source="candidate",

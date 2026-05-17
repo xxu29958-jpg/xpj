@@ -119,4 +119,17 @@ interface ExpenseDao {
 
     @Query("DELETE FROM expenses WHERE ledgerId = :ledgerId")
     suspend fun clearForLedger(ledgerId: String)
+
+    @Query("DELETE FROM expenses WHERE ledgerId = :ledgerId AND status = 'confirmed'")
+    suspend fun deleteConfirmedForLedger(ledgerId: String)
+
+    @Query(
+        """
+        DELETE FROM expenses
+        WHERE ledgerId = :ledgerId
+          AND status = 'confirmed'
+          AND serverId NOT IN (:serverIds)
+        """,
+    )
+    suspend fun deleteConfirmedNotInServerIds(ledgerId: String, serverIds: List<Long>)
 }

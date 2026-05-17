@@ -9,6 +9,7 @@ from typing import BinaryIO
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow, Expense
@@ -17,6 +18,7 @@ from app.schemas import (
     CsvImportBatchResponse,
     CsvImportRowsResponse,
 )
+from app.services.csv_security import safe_csv_cell
 from app.services.exchange_rate_service import apply_currency_payload, home_currency_code
 from app.services.import_service import DEFAULT_SOURCE, parse_csv_row
 from app.services.tag_service import normalize_tags, sync_expense_tags
@@ -63,6 +65,7 @@ def create_csv_import_batch(
         total_rows = 0
         valid_rows = 0
         error_rows = 0
+        timezone_name = get_settings().ocr_default_timezone
         for line_number, row in enumerate(reader, start=2):
             if not any(cell.strip() for cell in row):
                 continue
@@ -73,7 +76,12 @@ def create_csv_import_batch(
                     f"CSV 一次最多导入 {MAX_CSV_IMPORT_ROWS} 行。",
                     status_code=400,
                 )
-            parsed = parse_csv_row(headers, row, line_number=line_number)
+            parsed = parse_csv_row(
+                headers,
+                row,
+                line_number=line_number,
+                timezone_name=timezone_name,
+            )
             if parsed.is_valid:
                 valid_rows += 1
             else:
@@ -300,19 +308,19 @@ def build_csv_import_errors_csv(
             [
                 row.line_number,
                 row.status,
-                row.error_code or "",
-                row.error_message or "",
+                safe_csv_cell(row.error_code or ""),
+                safe_csv_cell(row.error_message or ""),
                 row.amount_cents if row.amount_cents is not None else "",
                 row.original_currency_code,
                 row.original_amount_minor if row.original_amount_minor is not None else "",
                 row.exchange_rate_to_cny if row.exchange_rate_to_cny is not None else "",
                 row.exchange_rate_date.isoformat() if row.exchange_rate_date else "",
-                row.merchant or "",
-                row.category,
-                row.note or "",
+                safe_csv_cell(row.merchant or ""),
+                safe_csv_cell(row.category),
+                safe_csv_cell(row.note or ""),
                 row.expense_time.isoformat() if row.expense_time else "",
-                row.tags or "",
-                row.source,
+                safe_csv_cell(row.tags or ""),
+                safe_csv_cell(row.source),
             ]
         )
     return output.getvalue()

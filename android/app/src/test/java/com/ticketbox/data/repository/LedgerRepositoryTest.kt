@@ -105,6 +105,38 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun refreshLedgersPersistsActiveLedgerRoleChange() = runTest {
+        val api = StubApi(
+            listLedgersResult = LedgerListResponseDto(
+                ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "viewer", isDefault = true)),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "L_family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val ledgers = repo.refreshLedgers().getOrThrow()
+
+        assertEquals("viewer", ledgers.single().role)
+        assertEquals("viewer", store.role())
+        assertEquals("L_family", store.activeLedgerId())
+    }
+
+    @Test
     fun createLedgerRejectsBlankNameWithChineseMessage() = runTest {
         val repo = makeRepo()
         val failure = repo.createLedger("   ").exceptionOrNull()
@@ -400,6 +432,48 @@ class LedgerRepositoryTest {
         assertEquals(listOf("owner", "viewer"), members.map { it.role })
         assertTrue(members.first().isSelf)
         assertTrue(members.last().isDisabled)
+    }
+
+    @Test
+    fun refreshFamilyMembersPersistsSelfRoleDowngrade() = runTest {
+        val api = StubApi(
+            membersResult = LedgerMemberListResponseDto(
+                members = listOf(
+                    LedgerMemberDto(
+                        memberId = 1,
+                        accountPublicId = "acc_self",
+                        accountName = "我",
+                        role = "viewer",
+                        createdAt = "2026-05-01T00:00:00Z",
+                        disabledAt = null,
+                        isSelf = true,
+                    ),
+                ),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "L_family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val members = repo.refreshFamilyMembers().getOrThrow()
+
+        assertEquals("viewer", members.single().role)
+        assertEquals("viewer", store.role())
+        assertEquals("L_family", store.activeLedgerId())
     }
 
     @Test
@@ -923,6 +997,17 @@ private class LedgerFakeDao : ExpenseDao {
     override suspend fun clear() { map.clear() }
     override suspend fun clearForLedger(ledgerId: String) {
         val ids = map.values.filter { it.ledgerId == ledgerId }.map { it.id }
+        ids.forEach { map.remove(it) }
+    }
+    override suspend fun deleteConfirmedForLedger(ledgerId: String) {
+        val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.id }
+        ids.forEach { map.remove(it) }
+    }
+    override suspend fun deleteConfirmedNotInServerIds(ledgerId: String, serverIds: List<Long>) {
+        val keep = serverIds.toSet()
+        val ids = map.values
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId !in keep }
+            .map { it.id }
         ids.forEach { map.remove(it) }
     }
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> =

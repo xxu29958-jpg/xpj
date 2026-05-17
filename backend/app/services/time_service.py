@@ -16,6 +16,14 @@ def ensure_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(UTC)
 
 
+def ensure_utc_assuming_local(value: datetime | None, timezone_name: str | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=safe_zone(timezone_name)).astimezone(UTC)
+    return value.astimezone(UTC)
+
+
 def to_iso(value: datetime | None) -> str | None:
     value = ensure_utc(value)
     if value is None:

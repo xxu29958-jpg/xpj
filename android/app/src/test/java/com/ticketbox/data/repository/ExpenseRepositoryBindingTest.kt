@@ -109,6 +109,56 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
+    fun bindDoesNotSendOldSessionTokenAndClearsStaleTargetLedgerCache() = runTest {
+        val events = mutableListOf<String>()
+        val dao = FakeExpenseDao()
+        dao.insert(
+            ExpenseEntity(
+                ledgerId = "owner",
+                serverId = 99,
+                publicId = "old-server-expense",
+                amountCents = 1200,
+                merchant = "旧服务器缓存",
+                category = "餐饮",
+                note = null,
+                source = "旧绑定",
+                thumbnailPath = null,
+                imageHash = null,
+                rawText = null,
+                duplicateStatus = "none",
+                duplicateOfId = null,
+                duplicateReason = null,
+                tags = null,
+                valueScore = null,
+                regretScore = null,
+                status = "confirmed",
+                expenseTime = "2026-05-01T00:00:00Z",
+                createdAt = "2026-05-01T00:00:00Z",
+                confirmedAt = "2026-05-01T00:00:00Z",
+                updatedAt = "2026-05-01T00:00:00Z",
+            ),
+        )
+        val settingsStore = FakeTicketboxSettingsStore(events)
+        val tokenStore = FakeSessionTokenStore(events).apply { saveToken("old-session-token") }
+        val apiService = FakeApiService(events, confirmedFailuresRemaining = 1)
+        val apiFactory = FakeApiServiceFactory(apiService)
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = apiFactory,
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val result = repository.bindServer("https://new.example.com", "123456").getOrThrow()
+
+        assertTrue(result.confirmedRestoreFailed)
+        assertNull(apiFactory.tokenValues.first())
+        assertEquals("session-token", apiFactory.tokenValues.last())
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+    }
+
+    @Test
     fun manualConfirmedSyncStillWorksAfterBindRestoreFailure() = runTest {
         val events = mutableListOf<String>()
         val dao = FakeExpenseDao()
@@ -161,6 +211,44 @@ class ExpenseRepositoryBindingTest {
         assertEquals("2026-05", apiService.lastConfirmedMonth)
         assertEquals("餐饮", apiService.lastConfirmedCategory)
         assertEquals("AI", apiService.lastConfirmedTag)
+    }
+
+    @Test
+    fun fullConfirmedSyncDeletesRemoteMissingCachedRows() = runTest {
+        val dao = FakeExpenseDao()
+        dao.insert(cachedConfirmedEntity(serverId = 9, publicId = "remote-kept", merchant = "旧高德"))
+        dao.insert(cachedConfirmedEntity(serverId = 99, publicId = "remote-deleted", merchant = "已删除"))
+        val settingsStore = boundSettingsStore()
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.syncConfirmed().getOrThrow()
+
+        val cached = dao.getConfirmed("owner")
+        assertEquals(listOf(9L), cached.map { it.serverId })
+        assertEquals("高德", cached.single().merchant)
+    }
+
+    @Test
+    fun filteredConfirmedSyncDoesNotDeleteUnreturnedCachedRows() = runTest {
+        val dao = FakeExpenseDao()
+        dao.insert(cachedConfirmedEntity(serverId = 99, publicId = "other-filter-row", merchant = "不在当前筛选"))
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+            settingsStore = boundSettingsStore(),
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.syncConfirmed(month = "2026-05", category = "交通", tag = null).getOrThrow()
+
+        assertEquals(listOf(9L, 99L), dao.getConfirmed("owner").map { it.serverId }.sorted())
     }
 
     @Test
@@ -1175,6 +1263,50 @@ private class FakeApiService(
     }
 }
 
+private fun boundSettingsStore(): FakeTicketboxSettingsStore =
+    FakeTicketboxSettingsStore().apply {
+        saveServerUrl("https://api.example.com")
+        saveIdentity(
+            accountName = "我",
+            ledgerId = "owner",
+            ledgerName = "我的小票夹",
+            deviceName = "Pixel",
+            role = "owner",
+            boundAt = "2026-05-01T00:00:00Z",
+        )
+    }
+
+private fun cachedConfirmedEntity(
+    serverId: Long,
+    publicId: String,
+    merchant: String,
+    ledgerId: String = "owner",
+): ExpenseEntity =
+    ExpenseEntity(
+        ledgerId = ledgerId,
+        serverId = serverId,
+        publicId = publicId,
+        amountCents = 1200,
+        merchant = merchant,
+        category = "交通",
+        note = null,
+        source = "缓存",
+        thumbnailPath = null,
+        imageHash = null,
+        rawText = null,
+        duplicateStatus = "none",
+        duplicateOfId = null,
+        duplicateReason = null,
+        tags = null,
+        valueScore = null,
+        regretScore = null,
+        status = "confirmed",
+        expenseTime = "2026-05-01T00:00:00Z",
+        createdAt = "2026-05-01T00:00:00Z",
+        confirmedAt = "2026-05-01T00:00:00Z",
+        updatedAt = "2026-05-01T00:00:00Z",
+    )
+
 private class FakeTicketboxSettingsStore(
     private val events: MutableList<String> = mutableListOf(),
 ) : TicketboxSettingsStore {
@@ -1372,6 +1504,23 @@ private class FakeExpenseDao : ExpenseDao {
     override suspend fun clearForLedger(ledgerId: String) {
         expenses.values
             .filter { it.ledgerId == ledgerId }
+            .map { it.id }
+            .forEach { expenses.remove(it) }
+        emit(ledgerId)
+    }
+
+    override suspend fun deleteConfirmedForLedger(ledgerId: String) {
+        expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
+            .map { it.id }
+            .forEach { expenses.remove(it) }
+        emit(ledgerId)
+    }
+
+    override suspend fun deleteConfirmedNotInServerIds(ledgerId: String, serverIds: List<Long>) {
+        val keep = serverIds.toSet()
+        expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId !in keep }
             .map { it.id }
             .forEach { expenses.remove(it) }
         emit(ledgerId)

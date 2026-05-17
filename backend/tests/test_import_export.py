@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -73,6 +74,14 @@ def test_parse_csv_preview_accepts_foreign_currency_columns() -> None:
     assert row.exchange_rate_date and row.exchange_rate_date.isoformat() == "2026-05-04"
 
 
+def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
+    csv = "amount_yuan,merchant,expense_time\n1.00,Cafe,2026-05-01 00:30:00\n"
+    preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
+
+    assert preview.valid_count == 1
+    assert preview.rows[0].expense_time == datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
+
+
 def test_parse_csv_preview_flags_invalid_rows() -> None:
     csv = "amount_yuan,merchant\nabc,Bad\n5.00,Good\n"
     preview = parse_csv_preview(csv)
@@ -107,6 +116,35 @@ def test_web_export_csv_returns_attachment(web_client: TestClient) -> None:
     assert resp.content.startswith(b"\xef\xbb\xbf")
 
 
+def test_web_export_csv_neutralizes_formula_cells(web_client: TestClient) -> None:
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=1200,
+                merchant='=HYPERLINK("http://example.invalid")',
+                category="餐饮",
+                note="@note",
+                source="+source",
+                tags="-tag",
+                status="confirmed",
+                expense_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                created_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                confirmed_at=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+            )
+        )
+        db.commit()
+
+    resp = web_client.get("/web/export.csv?ledger_id=owner&month=2026-05&timezone=UTC")
+
+    assert resp.status_code == 200
+    assert "'=HYPERLINK" in resp.text
+    assert "'@note" in resp.text
+    assert "'+source" in resp.text
+    assert "'-tag" in resp.text
+
+
 def test_web_export_csv_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/export.csv").status_code == 403
 
@@ -129,6 +167,7 @@ def test_web_import_preview_then_confirm_inserts_pending(web_client: TestClient)
         follow_redirects=False,
     )
     assert resp.status_code == 303
+    assert "%25E" not in resp.headers["location"]
     with SessionLocal() as db:
         batch = db.scalar(select(CsvImportBatch).where(CsvImportBatch.tenant_id == "owner"))
         assert batch is not None
@@ -159,7 +198,7 @@ def test_web_import_preview_then_confirm_inserts_pending(web_client: TestClient)
 
 
 def test_web_import_batch_errors_csv(web_client: TestClient) -> None:
-    csv = "amount_yuan,merchant,category\nabc,Bad,餐饮\n3.00,Good,交通\n"
+    csv = 'amount_yuan,merchant,category\nabc,"=HYPERLINK(""http://x"")",餐饮\n3.00,Good,交通\n'
     response = web_client.post(
         "/web/import/preview",
         data={"ledger_id": "owner"},
@@ -178,7 +217,7 @@ def test_web_import_batch_errors_csv(web_client: TestClient) -> None:
     errors = web_client.get(f"/web/import/{batch.public_id}/errors.csv?ledger_id=owner")
     assert errors.status_code == 200
     assert errors.content.startswith(b"\xef\xbb\xbf")
-    assert "Bad" in errors.text
+    assert "'=HYPERLINK" in errors.text
     assert "amount_yuan" in errors.text
 
 

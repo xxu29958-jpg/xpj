@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import Expense, ExpenseTag, Tag
 from app.services.category_service import merge_categories, normalize_category
+from app.services.csv_security import safe_csv_cell
 from app.services.tag_service import tag_key
 from app.services.time_service import (
     ensure_utc,
@@ -194,14 +195,14 @@ def export_confirmed_csv(
                 expense.original_amount_minor if expense.original_amount_minor is not None else "",
                 expense.exchange_rate_to_cny if expense.exchange_rate_to_cny is not None else "",
                 expense.exchange_rate_date.isoformat() if expense.exchange_rate_date else "",
-                expense.exchange_rate_source or "",
-                expense.merchant or "",
-                expense.category,
-                expense.note or "",
-                expense.source,
+                safe_csv_cell(expense.exchange_rate_source or ""),
+                safe_csv_cell(expense.merchant or ""),
+                safe_csv_cell(expense.category),
+                safe_csv_cell(expense.note or ""),
+                safe_csv_cell(expense.source),
                 stat_time.isoformat().replace("+00:00", "Z") if stat_time else "",
                 confirmed_at.isoformat().replace("+00:00", "Z") if confirmed_at else "",
-                expense.tags or "",
+                safe_csv_cell(expense.tags or ""),
                 expense.value_score or "",
                 expense.regret_score or "",
             ]

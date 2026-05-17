@@ -46,6 +46,11 @@ class ApiServiceProvider(
         return apiClient.create(cleanServerUrl) { tokenOverride ?: tokenStore.getToken() }
     }
 
+    fun unauthenticated(serverUrl: String): ApiService {
+        val cleanServerUrl = requireServerUrl(serverUrl)
+        return apiClient.create(cleanServerUrl) { null }
+    }
+
     fun clear() {
         synchronized(lock) {
             cachedServerUrl = null

@@ -193,6 +193,23 @@ private class FakeExpenseDao : ExpenseDao {
         emit(ledgerId)
     }
 
+    override suspend fun deleteConfirmedForLedger(ledgerId: String) {
+        val ids = expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
+            .map { it.id }
+        ids.forEach { expenses.remove(it) }
+        emit(ledgerId)
+    }
+
+    override suspend fun deleteConfirmedNotInServerIds(ledgerId: String, serverIds: List<Long>) {
+        val keep = serverIds.toSet()
+        val ids = expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId !in keep }
+            .map { it.id }
+        ids.forEach { expenses.remove(it) }
+        emit(ledgerId)
+    }
+
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> {
         return perLedgerFlows.getOrPut(ledgerId) {
             MutableStateFlow(snapshot(ledgerId))

@@ -106,6 +106,41 @@ def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: Test
     assert [entry["public_id"] for entry in listed.json()["items"]] == [item["public_id"]]
 
 
+def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestClient) -> None:
+    merchant = "Boundary Billing"
+    amount_cents = 9900
+    last_seen = datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
+    for when in (
+        datetime(2026, 2, 28, 16, 30, tzinfo=UTC),
+        datetime(2026, 3, 31, 16, 30, tzinfo=UTC),
+        last_seen,
+    ):
+        insert_confirmed_expense(
+            amount_cents=amount_cents,
+            merchant=merchant,
+            category="AI订阅",
+            expense_time=when,
+            confirmed_at=when,
+        )
+
+    response = client.post(
+        "/api/recurring/from-candidate?timezone=Asia/Shanghai",
+        headers=app_headers(),
+        json={
+            "merchant": merchant,
+            "amount_cents": amount_cents,
+            "occurrence_count": 3,
+            "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
+            "confidence": "high",
+            "frequency": "monthly",
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["last_seen_at"] == "2026-04-30T16:30:00Z"
+    assert response.json()["next_expected_date"] == "2026-06-01"
+
+
 def test_recurring_item_state_transitions(client: TestClient) -> None:
     item = _confirm_candidate(client)
     public_id = item["public_id"]
