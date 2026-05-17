@@ -16,6 +16,9 @@
   当前仅显示标签「{{ tag }}」。
 </div>
 {% endif %}
+{% if flash_message %}
+<div class="readonly-callout confirmed-flash">{{ flash_message }}</div>
+{% endif %}
 
 <div class="month-overview">
   {# 月度概览 #}
@@ -109,6 +112,13 @@
     该月还没有已确认账单。
   </div>
   {% else %}
+    {% if can_write %}
+    <div class="confirmed-batch-head">
+      <div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择本页全部账单"></div>
+      <span>本页批处理</span>
+      <span class="hint">只会修改已入账账单的分类或标签</span>
+    </div>
+    {% endif %}
     {% for d in _order %}
     {% set _items = _groups[d] %}
     {% set _day_sum = _items | sum(attribute='amount_cents') %}
@@ -120,8 +130,13 @@
       </div>
       <div>
         {% for e in _items %}
-        <a class="timeline-row" href="/web/expenses/{{ e.id }}/edit{{ _q }}"
+        <a class="timeline-row{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}"
            style="text-decoration:none;color:inherit">
+          {% if can_write %}
+          <div data-stop="true">
+            <div class="checkbox row-check" data-id="{{ e.id }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
+          </div>
+          {% endif %}
           <div class="timeline-time">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '' }}</div>
           <div>
             <div class="timeline-merch">{{ e.merchant or '（未填）' }}</div>
@@ -153,4 +168,17 @@
   </div>
   {% endif %}
 </div>
+{% if can_write and expenses | length > 0 %}
+<form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar confirmed-bulk-bar" data-bulk>
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="month" value="{{ month }}">
+  <input type="hidden" name="tag" value="{{ tag }}">
+  <span class="count" data-bulk-count>0</span>
+  <span class="label">已选中</span>
+  <input class="bulk-field" name="category" maxlength="64" placeholder="分类">
+  <button class="dt-btn" type="submit" name="action" value="set_category">改分类</button>
+  <input class="bulk-field" name="tags" maxlength="500" placeholder="标签，逗号分隔">
+  <button class="dt-btn primary" type="submit" name="action" value="set_tags">改标签</button>
+</form>
+{% endif %}
 {% endblock %}

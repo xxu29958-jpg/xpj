@@ -65,6 +65,10 @@ def test_web_pending_batch_reject_remote_returns_403(client: TestClient) -> None
     assert client.post("/web/pending/batch-reject").status_code == 403
 
 
+def test_web_confirmed_batch_update_remote_returns_403(client: TestClient) -> None:
+    assert client.post("/web/confirmed/batch-update").status_code == 403
+
+
 def test_web_search_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/search").status_code == 403
 
@@ -387,6 +391,51 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient) -> Non
     assert other_ledger.status_code == 200
     assert "SearchCafe Pending" not in other_ledger.text
     assert "SearchCafe Confirmed" not in other_ledger.text
+
+
+def test_web_confirmed_batch_markup_and_updates(web_client: TestClient) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe")
+    confirmed = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert confirmed.status_code in {303, 307}
+
+    page = web_client.get("/web/confirmed?ledger_id=owner")
+    assert page.status_code == 200
+    assert 'action="/web/confirmed/batch-update"' in page.text
+    assert f'data-id="{expense_id}"' in page.text
+    assert 'id="check-all"' in page.text
+
+    category_resp = web_client.post(
+        "/web/confirmed/batch-update",
+        data={
+            "action": "set_category",
+            "ledger_id": "owner",
+            "expense_ids": [str(expense_id)],
+            "category": "Batch Web Cat",
+        },
+        follow_redirects=False,
+    )
+    assert category_resp.status_code in {303, 307}
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "Batch Web Cat" in detail.text
+
+    tags_resp = web_client.post(
+        "/web/confirmed/batch-update",
+        data={
+            "action": "set_tags",
+            "ledger_id": "owner",
+            "expense_ids": [str(expense_id)],
+            "tags": "web, family, web",
+        },
+        follow_redirects=False,
+    )
+    assert tags_resp.status_code in {303, 307}
+    api_detail = web_client.get(f"/api/expenses/{expense_id}", headers=cf.app_headers())
+    assert api_detail.status_code == 200
+    assert api_detail.json()["tags"] == "web, family"
 
 
 def test_web_pending_filter_missing_amount(web_client: TestClient) -> None:

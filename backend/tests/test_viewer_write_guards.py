@@ -156,6 +156,14 @@ def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient) -> None
             "apply pending",
             client.post("/api/rules/apply-pending", headers=_bearer(viewer_token)),
         ),
+        (
+            "confirmed batch update",
+            client.post(
+                "/api/expenses/confirmed/batch-update",
+                headers=_bearer(viewer_token),
+                json={"expense_ids": [999], "category": "餐饮"},
+            ),
+        ),
     ]
     for label, response in checks:
         _assert_permission_denied(response, label=label)
@@ -202,6 +210,11 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             "pending batch reject",
             "/web/pending/batch-reject",
             {"ledger_id": ledger_id, "expense_ids": ["999"]},
+        ),
+        (
+            "confirmed batch update",
+            "/web/confirmed/batch-update",
+            {"ledger_id": ledger_id, "action": "set_category", "expense_ids": ["999"], "category": "餐饮"},
         ),
         (
             "rules create",

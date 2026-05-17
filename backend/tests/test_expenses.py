@@ -15,6 +15,7 @@ from conftest import (
     BACKEND_ROOT,
     PNG_BYTES,
     app_headers,
+    gray_app_headers,
 )
 
 
@@ -837,6 +838,59 @@ def test_manual_expense_create_contract(client: TestClient) -> None:
     )
     assert missing_amount.status_code == 400
     assert missing_amount.json()["error"] == "amount_required"
+
+
+def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient) -> None:
+    def _manual(headers: dict[str, str], merchant: str, category: str) -> int:
+        response = client.post(
+            "/api/expenses/manual",
+            headers=headers,
+            json={
+                "amount_cents": 1200,
+                "merchant": merchant,
+                "category": category,
+                "expense_time": "2026-05-05T12:00:00Z",
+            },
+        )
+        assert response.status_code == 200, response.json()
+        return int(response.json()["id"])
+
+    first_id = _manual(app_headers(), "Batch Coffee A", "OldCat")
+    second_id = _manual(app_headers(), "Batch Coffee B", "OldCat")
+    other_ledger_id = _manual(gray_app_headers(), "Batch Other Ledger", "GrayCat")
+    pending_id = upload_png(client)
+
+    response = client.post(
+        "/api/expenses/confirmed/batch-update",
+        headers=app_headers(),
+        json={
+            "expense_ids": [first_id, second_id, pending_id, other_ledger_id, first_id],
+            "category": "Family Meals",
+            "tags": "weekend, shared, weekend",
+        },
+    )
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert payload == {
+        "requested_count": 4,
+        "updated_count": 2,
+        "skipped_not_found": 1,
+        "skipped_not_confirmed": 1,
+    }
+
+    for expense_id in [first_id, second_id]:
+        detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+        assert detail.status_code == 200
+        assert detail.json()["category"] == "Family Meals"
+        assert detail.json()["tags"] == "weekend, shared"
+
+    pending_detail = client.get(f"/api/expenses/{pending_id}", headers=app_headers())
+    assert pending_detail.status_code == 200
+    assert pending_detail.json()["category"] != "Family Meals"
+
+    other_detail = client.get(f"/api/expenses/{other_ledger_id}", headers=gray_app_headers())
+    assert other_detail.status_code == 200
+    assert other_detail.json()["category"] == "GrayCat"
 
 
 def test_expense_update_normalizes_user_text(client: TestClient) -> None:

@@ -43,6 +43,7 @@ from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month
 from app.schemas import DashboardCardUpdateRequest, DashboardCardsUpdateRequest
 from app.schemas import (
+    ConfirmedExpenseBatchUpdateRequest,
     ExpenseItemReplaceRequest,
     ExpenseItemRequest,
     ExpenseSplitReplaceRequest,
@@ -52,6 +53,7 @@ from app.schemas import (
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.expense_service import (
+    batch_update_confirmed_expenses,
     confirm_expense,
     ensure_thumbnail_file,
     get_expense,
@@ -239,6 +241,19 @@ def web_dashboard_cards_reset(
     )
 
 
+def _confirmed_redirect(
+    selected_id: str,
+    *,
+    month: str = "",
+    tag: str = "",
+    msg: str = "",
+) -> RedirectResponse:
+    return RedirectResponse(
+        url=_with_ledger("/web/confirmed", selected_id, month=month, tag=tag, msg=msg),
+        status_code=303,
+    )
+
+
 @router.get("/confirmed", response_class=HTMLResponse)
 def web_confirmed(
     request: Request,
@@ -246,6 +261,7 @@ def web_confirmed(
     month: str | None = None,
     tag: str | None = None,
     ledger_id: str | None = None,
+    msg: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -291,7 +307,65 @@ def web_confirmed(
     ctx["month_total_count"] = int(month_stats.get("count", 0))
     ctx["by_day"] = _confirmed_by_day(db, selected_id, effective_month)
     ctx["source_breakdown"] = _confirmed_source_breakdown(db, selected_id, effective_month)
+    ctx["flash_message"] = msg or ""
     return templates.TemplateResponse(request=request, name="confirmed.html", context=ctx)
+
+
+@router.post("/confirmed/batch-update", response_class=HTMLResponse)
+def web_confirmed_batch_update(
+    action: str = Form(...),
+    ledger_id: str = Form(default=""),
+    expense_ids: list[int] = Form(default=[]),
+    category: str = Form(default=""),
+    tags: str = Form(default=""),
+    month: str = Form(default=""),
+    tag: str = Form(default=""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    _require_selected_ledger_write(options, selected_id)
+
+    if not expense_ids:
+        return _confirmed_redirect(selected_id, month=month, tag=tag, msg="请先勾选账单。")
+
+    action_clean = (action or "").strip()
+    if action_clean == "set_category":
+        category_clean = category.strip()
+        if not category_clean:
+            return _confirmed_redirect(selected_id, month=month, tag=tag, msg="请填写分类。")
+        payload = ConfirmedExpenseBatchUpdateRequest(
+            expense_ids=expense_ids,
+            category=category_clean,
+        )
+    elif action_clean == "set_tags":
+        tags_clean = tags.strip()
+        if not tags_clean:
+            return _confirmed_redirect(selected_id, month=month, tag=tag, msg="请填写标签。")
+        payload = ConfirmedExpenseBatchUpdateRequest(
+            expense_ids=expense_ids,
+            tags=tags_clean,
+        )
+    else:
+        raise AppError("invalid_request", status_code=422)
+
+    result = batch_update_confirmed_expenses(db, tenant_id=selected_id, payload=payload)
+    parts: list[str] = []
+    if result.updated_count:
+        parts.append(f"已更新 {result.updated_count} 条")
+    if result.skipped_not_found:
+        parts.append(f"跳过 {result.skipped_not_found} 条：不属于当前账本")
+    if result.skipped_not_confirmed:
+        parts.append(f"跳过 {result.skipped_not_confirmed} 条：不是已入账")
+    if not parts:
+        parts.append("没有可更新的账单")
+    return _confirmed_redirect(
+        selected_id,
+        month=month,
+        tag=tag,
+        msg="；".join(parts) + "。",
+    )
 
 
 # ── Expense edit / save / confirm / reject / image ──────────────────────────
