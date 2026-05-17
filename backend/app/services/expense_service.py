@@ -12,6 +12,8 @@ from app.fx_constants import FX_STATUS_PENDING
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import (
+    ConfirmedExpenseBatchUpdateRequest,
+    ConfirmedExpenseBatchUpdateResponse,
     ExpenseManualCreateRequest,
     NotificationDraftCreateRequest,
     ExpenseRecognizeTextRequest,
@@ -411,6 +413,63 @@ def list_confirmed(
         )
     )
     return expenses, total
+
+
+def batch_update_confirmed_expenses(
+    db: Session,
+    *,
+    tenant_id: str,
+    payload: ConfirmedExpenseBatchUpdateRequest,
+) -> ConfirmedExpenseBatchUpdateResponse:
+    expense_ids = list(dict.fromkeys(payload.expense_ids))
+    category_provided = payload.category is not None
+    tags_provided = payload.tags is not None
+    if not category_provided and not tags_provided:
+        raise AppError("invalid_request", status_code=422)
+
+    category = payload.category.strip() if category_provided else None
+    if category_provided and not category:
+        raise AppError("invalid_request", status_code=422)
+
+    normalized_tags = normalize_tags(payload.tags) if tags_provided else None
+    rows = list(
+        db.scalars(
+            select(Expense)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.id.in_(expense_ids))
+        )
+    )
+    rows_by_id = {row.id: row for row in rows}
+
+    updated_count = 0
+    skipped_not_found = 0
+    skipped_not_confirmed = 0
+    now = now_utc()
+    for expense_id in expense_ids:
+        expense = rows_by_id.get(expense_id)
+        if expense is None:
+            skipped_not_found += 1
+            continue
+        if expense.status != "confirmed":
+            skipped_not_confirmed += 1
+            continue
+        if category_provided:
+            expense.category = _clean_category(category)
+        if tags_provided:
+            expense.tags = normalized_tags
+            sync_expense_tags(db, expense)
+        expense.updated_at = now
+        updated_count += 1
+
+    if updated_count:
+        db.commit()
+
+    return ConfirmedExpenseBatchUpdateResponse(
+        requested_count=len(expense_ids),
+        updated_count=updated_count,
+        skipped_not_found=skipped_not_found,
+        skipped_not_confirmed=skipped_not_confirmed,
+    )
 
 
 def update_expense(

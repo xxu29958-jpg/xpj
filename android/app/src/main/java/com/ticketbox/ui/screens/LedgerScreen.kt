@@ -10,20 +10,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
-import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.screens.ledger.EmptyLedgerState
 import com.ticketbox.ui.screens.ledger.LedgerDayHeader
 import com.ticketbox.ui.screens.ledger.LedgerExpenseCard
+import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
+import com.ticketbox.ui.screens.ledger.LedgerExpenseTableRow
 import com.ticketbox.ui.screens.ledger.LedgerFilterPanel
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
 import com.ticketbox.viewmodel.LedgerUiState
+import com.ticketbox.viewmodel.LedgerViewMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,12 +38,12 @@ fun LedgerScreen(
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
     onManualCreate: (ExpenseDraft) -> Unit,
+    onViewModeChange: (LedgerViewMode) -> Unit,
     onEdit: (Expense) -> Unit,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
     var showLedgerTools by rememberSaveable { mutableStateOf(false) }
-    val selectedCurrency = LocalCurrencyCode.current
     val canExport = state.items.isNotEmpty() && !state.exporting
 
     if (showMonthPicker) {
@@ -64,7 +65,6 @@ fun LedgerScreen(
             ManualExpenseSheet(
                 categories = state.categories,
                 saving = state.creatingManual,
-                initialCurrency = selectedCurrency,
                 onCreate = { draft ->
                     showManualSheet = false
                     onManualCreate(draft)
@@ -105,6 +105,7 @@ fun LedgerScreen(
                 onOpenTools = { showLedgerTools = true },
                 onManualAdd = { if (!state.readOnly) showManualSheet = true },
                 onCategoryChange = onCategoryChange,
+                onViewModeChange = onViewModeChange,
             )
         }
         if (state.items.isEmpty()) {
@@ -119,14 +120,23 @@ fun LedgerScreen(
         }
         groupedItems.forEach { group ->
             item(key = "ledger-day-${group.key}") {
-                LedgerDayHeader(group.label, modifier = Modifier.animateItem())
+                LedgerDayHeader(group.label)
             }
             items(group.items, key = { it.id }) { expense ->
-                LedgerExpenseCard(
-                    modifier = Modifier.animateItem(),
-                    expense = expense,
-                    onEdit = { onEdit(expense) },
-                )
+                when (state.viewMode) {
+                    LedgerViewMode.Card -> LedgerExpenseCard(
+                        expense = expense,
+                        onEdit = { onEdit(expense) },
+                    )
+                    LedgerViewMode.List -> LedgerExpenseListRow(
+                        expense = expense,
+                        onEdit = { onEdit(expense) },
+                    )
+                    LedgerViewMode.Table -> LedgerExpenseTableRow(
+                        expense = expense,
+                        onEdit = { onEdit(expense) },
+                    )
+                }
             }
         }
     }

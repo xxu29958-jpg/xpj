@@ -4,14 +4,13 @@
  * 1. 这里只放 :root / [data-theme=…] 选择器，不写组件样式。
  * 2. 3 套主题 (paper / mono / midnight) 字段名与 Android ThemeVisuals 镜像，
  *    语义分组：surface / text / brand / state / chart / goal / card。
- * 3. :root 默认调色板 = paper，与 Android AppSkin.Default 对齐。
- * 4. Midnight 是显式主题，不依赖 prefers-color-scheme。
- * 5. v0.10 旧 5 套主题 (pine / pomelo / harbor / berry / night) 已被替换为 3 套。
+ * 3. v0.4 alias 已删除；新增页面必须直接使用 v0.10 token 名称。
+ * 4. :root 默认调色板 = paper，与 Android AppSkin.Default 对齐。
+ * 5. Midnight 是显式主题，不依赖 prefers-color-scheme。
+ * 6. v0.10 旧 5 套主题 (pine / pomelo / harbor / berry / night) 已被替换为 3 套。
  *    Android 端 AppSkin.fromStorageKey() 会把旧 storageKey 自动映射到新值：
  *    pine/pomelo/harbor → paper，berry → mono，night → midnight。
- * 6. v0.4 alias shim (--bg-app / --fg-* / --chip-* / --pill-*) 已在 v0.10 删除，
- *    所有消费方迁到 --surface-* / --text-* / --brand-* / --state-* 新名。
- *    详见 ENGINEERING_RULES.md 的 token 翻译表。
+ * 7. 新增两个 token：--text-faint（第四级文本）、--brand-primary-bg（强调底）。
  */
 
 :root,
@@ -47,6 +46,10 @@
     /* Borders / radii / shadows */
     --border-card: #e3e0d6;
     --border-input: #c8c2b3;
+    --control-border: rgba(138, 90, 43, 0.26);
+    --control-border-hover: rgba(138, 90, 43, 0.44);
+    --control-border-active: rgba(138, 90, 43, 0.62);
+    --control-press-bg: rgba(138, 90, 43, 0.10);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
@@ -130,6 +133,10 @@
 
     --border-card: #dad9d4;
     --border-input: #b8b7b3;
+    --control-border: rgba(14, 14, 12, 0.24);
+    --control-border-hover: rgba(14, 14, 12, 0.42);
+    --control-border-active: rgba(14, 14, 12, 0.62);
+    --control-press-bg: rgba(14, 14, 12, 0.08);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
@@ -210,6 +217,10 @@
 
     --border-card: #262932;
     --border-input: #3a3e48;
+    --control-border: rgba(214, 180, 135, 0.28);
+    --control-border-hover: rgba(214, 180, 135, 0.46);
+    --control-border-active: rgba(214, 180, 135, 0.68);
+    --control-press-bg: rgba(214, 180, 135, 0.12);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
@@ -258,9 +269,3 @@
     --card-backup-accent:        #7c8a6a; --card-backup-icon:        #b8c4a3; --card-backup-surface:        #15171c;
     --card-device-accent:        #8a7eac; --card-device-icon:        #c3b9d9; --card-device-surface:        #15171c;
 }
-
-/* v0.4 alias shim 已在 v0.10 全量删除（2026-05）。
- * 所有 --bg-* / --fg-* / --pill-* / --chip-* 旧名已替换为对应的
- * --surface-* / --text-* / --brand-* / --state-* token，详见 commit history。
- * 新代码请直接使用 v0.10 token 名。
- */

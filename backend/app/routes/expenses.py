@@ -8,6 +8,8 @@ from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.schemas import (
     CategoriesResponse,
+    ConfirmedExpenseBatchUpdateRequest,
+    ConfirmedExpenseBatchUpdateResponse,
     ExpenseItemReplaceRequest,
     ExpenseItemsResponse,
     ExpenseManualCreateRequest,
@@ -22,6 +24,7 @@ from app.schemas import (
     TagsResponse,
 )
 from app.services.expense_service import (
+    batch_update_confirmed_expenses,
     confirm_expense,
     create_manual_expense,
     create_notification_draft,
@@ -97,6 +100,15 @@ def get_confirmed_expenses(
         timezone_name=timezone,
     )
     return PaginatedExpensesResponse(items=items, page=page, page_size=page_size, total=total)
+
+
+@router.post("/confirmed/batch-update", response_model=ConfirmedExpenseBatchUpdateResponse)
+def post_confirmed_expenses_batch_update(
+    payload: ConfirmedExpenseBatchUpdateRequest,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ConfirmedExpenseBatchUpdateResponse:
+    return batch_update_confirmed_expenses(db, tenant_id=auth.tenant_id, payload=payload)
 
 
 @router.get("/categories", response_model=CategoriesResponse)

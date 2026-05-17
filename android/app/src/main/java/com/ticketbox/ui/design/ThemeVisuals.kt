@@ -4,16 +4,12 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.ticketbox.domain.model.AppSkin
 
-/**
- * 票据缩略图（ReceiptStub illustration）的纸面调色板。
- * 三套 skin 各自定义，避免在 [com.ticketbox.ui.components.AppSurfaces] 写死颜色。
- */
 data class ReceiptStubPalette(
     val paperTop: Color,
     val paperBottom: Color,
     val border: Color,
     val line: Color,
-    val stripe: Color,
+    val footer: Color,
 )
 
 data class ThemeVisuals(
@@ -74,7 +70,7 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
                 paperBottom = Color(0xFFF1E9DB),
                 border = Color(0xFFE2D8C8),
                 line = Color(0xFFBDB7AB),
-                stripe = Color(0xFFE0D5C4),
+                footer = Color(0xFFE0D5C4),
             ),
         )
         AppSkin.Mono -> ThemeVisuals(
@@ -103,11 +99,11 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             surfaceRaised = Color(0xFFFFFFFF),
             focusRing = Color(0xFF0E0E0C),
             receiptStub = ReceiptStubPalette(
-                paperTop = Color(0xFFFCFCFA),
-                paperBottom = Color(0xFFEEEDE8),
-                border = Color(0xFFD6D5D0),
-                line = Color(0xFFB0AFAA),
-                stripe = Color(0xFFD0CFCB),
+                paperTop = Color(0xFFFAFAF8),
+                paperBottom = Color(0xFFEDEDEA),
+                border = Color(0xFFD7D6D1),
+                line = Color(0xFFACABA6),
+                footer = Color(0xFFE0DFDA),
             ),
         )
         AppSkin.Midnight -> ThemeVisuals(
@@ -136,12 +132,11 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             surfaceRaised = Color(0xFF222530),
             focusRing = Color(0xFFD6B487),
             receiptStub = ReceiptStubPalette(
-                // Midnight 上的小票仍保留纸面感（米黄）但收暗一档，避免亮起一块刺眼
-                paperTop = Color(0xFF3A3327),
-                paperBottom = Color(0xFF2A2418),
-                border = Color(0xFF55492E),
-                line = Color(0xFF8C7E5C),
-                stripe = Color(0xFF6B5E40),
+                paperTop = Color(0xFF252830),
+                paperBottom = Color(0xFF1A1D24),
+                border = Color(0xFF3A3E48),
+                line = Color(0xFF8A806F),
+                footer = Color(0xFF343742),
             ),
         )
     }

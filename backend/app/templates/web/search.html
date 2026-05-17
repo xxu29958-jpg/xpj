@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}搜索 · 小票夹{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">搜索</h1>
+  <div class="page-sub">
+    在当前账本里查待确认、已确认、规则和目标，快速回到一笔账或一条规则。
+  </div>
+</div>
+
+<form class="search-box" method="get" action="/web/search">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input class="search-input" type="search" name="q" value="{{ search_query }}" placeholder="商家、分类、备注、规则关键词或目标名" autofocus>
+  <button class="dt-btn primary" type="submit">搜索</button>
+</form>
+
+{% if not search_query %}
+<div class="search-empty dt-card">
+  <div class="card-title">先输入一个关键词</div>
+  <div class="card-sub">例如早餐、地铁、咖啡、预算分类或目标名称。</div>
+</div>
+{% elif search_total == 0 %}
+<div class="search-empty dt-card">
+  <div class="card-title">没有找到匹配项</div>
+  <div class="card-sub">可以换一个更短的商家名、分类名或规则关键词。</div>
+</div>
+{% else %}
+<div class="search-groups">
+  {% for group in search_groups %}
+  <section class="dt-card search-group">
+    <div class="card-head">
+      <div>
+        <div class="card-title">{{ group.title }}</div>
+        <div class="card-sub">{{ group.results | length }} 条匹配</div>
+      </div>
+    </div>
+    {% if group.results %}
+      <div class="search-result-list">
+        {% for result in group.results %}
+        <a class="search-result" href="{{ result.href }}">
+          <span class="search-type">{{ result.badge }}</span>
+          <span class="search-main">
+            <span class="search-title">{{ result.title }}</span>
+            <span class="search-subtitle">{{ result.subtitle }}</span>
+          </span>
+          {% if result.amount_cents is not none %}
+          <span class="search-amount">¥{{ '%.2f' % (result.amount_cents / 100) }}</span>
+          {% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="search-none">这一组没有匹配项。</div>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

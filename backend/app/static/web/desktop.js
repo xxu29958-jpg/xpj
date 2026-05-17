@@ -175,7 +175,7 @@
       form.classList.toggle("on", ids.length > 0);
       checks.forEach(function (cb) {
         const checked = cb.classList.contains("checked");
-        const row = cb.closest(".exp-row");
+        const row = cb.closest(".exp-row, .timeline-row");
         cb.setAttribute("aria-checked", checked ? "true" : "false");
         if (row) {
           row.classList.toggle("selected", checked);

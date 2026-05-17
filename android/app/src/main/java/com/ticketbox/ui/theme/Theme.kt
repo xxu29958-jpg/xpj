@@ -68,8 +68,8 @@ private val PaperScheme = lightColorScheme(
     onSurface = Color(0xFF1C1A18),
     surfaceVariant = Color(0xFFF5F0E3),
     onSurfaceVariant = Color(0xFF4A463F),
-    outline = Color(0xFFE3E0D6),
-    outlineVariant = Color(0xFFEEEAE0),
+    outline = Color(0x8F8A5A2B),
+    outlineVariant = Color(0x428A5A2B),
     error = Color(0xFFA4361C),
     onError = Color(0xFFFBF8F1),
 )
@@ -93,8 +93,8 @@ private val MonoScheme = lightColorScheme(
     onSurface = Color(0xFF0E0E0C),
     surfaceVariant = Color(0xFFF1F0ED),
     onSurfaceVariant = Color(0xFF3A3A37),
-    outline = Color(0xFFDAD9D4),
-    outlineVariant = Color(0xFFE7E6E1),
+    outline = Color(0x990E0E0C),
+    outlineVariant = Color(0x330E0E0C),
     error = Color(0xFF8E1D12),
     onError = Color(0xFFFAFAF8),
 )
@@ -118,8 +118,8 @@ private val MidnightScheme = darkColorScheme(
     onSurface = Color(0xFFE9E7DF),
     surfaceVariant = Color(0xFF1C1F25),
     onSurfaceVariant = Color(0xFFB8B4A8),
-    outline = Color(0xFF262932),
-    outlineVariant = Color(0xFF1C1F25),
+    outline = Color(0xAAD6B487),
+    outlineVariant = Color(0x47D6B487),
     error = Color(0xFFD97757),
     onError = Color(0xFF15171C),
 )

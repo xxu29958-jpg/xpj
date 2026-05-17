@@ -29,6 +29,7 @@ from app.routes import web_recurring
 from app.routes import web_goals
 from app.routes import web_reports
 from app.routes import web_rules as web_rules_routes
+from app.routes import web_search
 from app.routes import web_stats
 from app.schemas import HealthResponse
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
@@ -98,6 +99,7 @@ app.include_router(web_stats.router)
 app.include_router(web_budgets.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
+app.include_router(web_search.router)
 app.include_router(web_data_quality.router)
 app.include_router(web_categories.router)
 app.include_router(web_duplicates.router)

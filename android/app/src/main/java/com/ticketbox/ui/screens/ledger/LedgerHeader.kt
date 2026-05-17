@@ -35,11 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 
@@ -48,12 +46,11 @@ internal fun LedgerHeader(
     state: LedgerUiState,
     onManualAdd: () -> Unit,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
-    val total = state.items.sumOf { it.amountCents ?: 0L }
-    val monthLabel = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
+    val summary = state.summary
+    val monthLabel = summary.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
     val statusText = when {
-        state.syncing -> "更新中"
-        state.lastSyncAt != null -> "已更新 ${ledgerSyncClock(state.lastSyncAt)}"
+        summary.syncing -> "更新中"
+        summary.lastSyncAt != null -> "已更新 ${ledgerSyncClock(summary.lastSyncAt)}"
         else -> "本机账本可用"
     }
     PaperLedgerPanel {
@@ -77,17 +74,17 @@ internal fun LedgerHeader(
                         text = "纸本账本",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = AppTextHierarchy.body.weight,
+                        fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = "账本",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = AppTextHierarchy.heading.weight,
+                        fontWeight = FontWeight.Black,
                         maxLines = 1,
                     )
                 }
-                LedgerStatusPill(text = statusText, active = state.syncing)
+                LedgerStatusPill(text = statusText, active = summary.syncing)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -95,13 +92,13 @@ internal fun LedgerHeader(
             ) {
                 LedgerKpiCell(
                     label = "$monthLabel 合计",
-                    value = formatDisplayAmount(total, currencyDisplay),
+                    value = formatAmount(summary.totalAmountCents),
                     modifier = Modifier.weight(1.45f),
                     emphasized = true,
                 )
                 LedgerKpiCell(
                     label = "账单",
-                    value = "${state.items.size} 笔",
+                    value = "${summary.itemCount} 笔",
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -189,7 +186,7 @@ private fun LedgerKpiCell(
             text = value,
             color = if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             style = if (emphasized) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
-            fontWeight = if (emphasized) AppTextHierarchy.heading.weight else AppTextHierarchy.body.weight,
+            fontWeight = FontWeight.Black,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -223,7 +220,7 @@ private fun LedgerStatusPill(text: String, active: Boolean) {
             text = text,
             color = if (active) visuals.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = AppTextHierarchy.caption.weight,
+            fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

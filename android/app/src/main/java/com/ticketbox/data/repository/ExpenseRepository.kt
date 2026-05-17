@@ -50,6 +50,26 @@ import okhttp3.ResponseBody
 
 class RepositoryException(message: String) : RuntimeException(message)
 
+interface LedgerActions {
+    fun canModifyLedger(): Boolean
+    fun lastConfirmedSyncAt(): String?
+    fun observeConfirmed(): Flow<List<Expense>>
+    suspend fun categories(): Result<List<String>>
+    suspend fun tags(): Result<List<String>>
+    suspend fun months(): Result<List<String>>
+    suspend fun syncConfirmed(
+        month: String? = null,
+        category: String? = null,
+        tag: String? = null,
+    ): Result<List<Expense>>
+    suspend fun exportConfirmedCsv(
+        month: String? = null,
+        category: String? = null,
+        tag: String? = null,
+    ): Result<CsvExport>
+    suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense>
+}
+
 internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): String {
     return when (errorCode.trim()) {
         "invalid_token" -> "绑定已失效，请重新绑定账本。"
@@ -94,7 +114,7 @@ class ExpenseRepository(
     private val tokenStore: SessionTokenStore,
     private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
-) : ServerBindingRepository, PendingReviewActions {
+) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
     }
@@ -309,6 +329,10 @@ class ExpenseRepository(
         api().pendingExpenses().map { it.toDomain() }
     }
 
+    suspend fun fetchExpense(id: Long): Result<Expense> = errorHandler.safeCall {
+        cacheIfConfirmed(api().expense(id)).toDomain()
+    }
+
     override suspend fun uploadScreenshot(
         fileName: String,
         contentType: String?,
@@ -380,10 +404,11 @@ class ExpenseRepository(
         ).toDomain()
     }
 
-    suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
+    override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
+        // FX 多币种：手记账单可以只填 originalAmountMinor（原币 minor），让后端换算成 home cents；
+        // 这是 main 单币种校验 amountCents != null 的扩展（OR），与接口契约里的 override 标识保持兼容。
         require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
-        val service = api()
-        cacheIfConfirmed(service.createManualExpense(draft.toRequest())).toDomain()
+        cacheIfConfirmed(api().createManualExpense(draft.toRequest())).toDomain()
     }
 
     suspend fun createNotificationDraft(draft: NotificationDraft): Result<Expense> = errorHandler.safeCall {
@@ -471,10 +496,10 @@ class ExpenseRepository(
         return collected
     }
 
-    suspend fun syncConfirmed(
-        month: String? = null,
-        category: String? = null,
-        tag: String? = null,
+    override suspend fun syncConfirmed(
+        month: String?,
+        category: String?,
+        tag: String?,
     ): Result<List<Expense>> = errorHandler.safeCall {
         syncConfirmedFromService(api(), month, category, tag)
     }
@@ -483,18 +508,18 @@ class ExpenseRepository(
         mergeExpenseCategories(api().categories().items)
     }
 
-    suspend fun tags(): Result<List<String>> = errorHandler.safeCall {
+    override suspend fun tags(): Result<List<String>> = errorHandler.safeCall {
         api().tags().items
     }
 
-    suspend fun months(): Result<List<String>> = errorHandler.safeCall {
+    override suspend fun months(): Result<List<String>> = errorHandler.safeCall {
         api().months(timezone = currentTimezoneId()).items
     }
 
-    suspend fun exportConfirmedCsv(
-        month: String? = null,
-        category: String? = null,
-        tag: String? = null,
+    override suspend fun exportConfirmedCsv(
+        month: String?,
+        category: String?,
+        tag: String?,
     ): Result<CsvExport> = errorHandler.safeCall {
         val cleanMonth = month?.trim()?.ifBlank { null }
         val cleanCategory = category?.trim()?.ifBlank { null }
@@ -519,7 +544,7 @@ class ExpenseRepository(
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    fun observeConfirmed(): Flow<List<Expense>> =
+    override fun observeConfirmed(): Flow<List<Expense>> =
         // Re-subscribe to the DAO query when the active ledger changes so a
         // token rotation reflects immediately in the UI.
         settingsStore.observeActiveLedgerId()
@@ -552,7 +577,7 @@ class ExpenseRepository(
 
     fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()
 
-    fun lastConfirmedSyncAt(): String? = settingsStore.lastConfirmedSyncAt()
+    override fun lastConfirmedSyncAt(): String? = settingsStore.lastConfirmedSyncAt()
 
     fun lastUploadAt(): String? = settingsStore.lastUploadAt()
 

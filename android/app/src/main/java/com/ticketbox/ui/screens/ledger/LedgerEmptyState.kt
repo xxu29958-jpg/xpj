@@ -39,7 +39,7 @@ internal fun EmptyLedgerState(
     val hasMonth = state.monthFilter.isNotBlank()
     val hasCategory = state.categoryFilter.isNotBlank()
     val hasTag = state.tagFilter.isNotBlank()
-    val hasActiveFilters = hasMonth || hasCategory || hasTag || state.query.isNotBlank()
+    val hasActiveFilters = state.filter.hasFilters
     val title = when {
         hasTag -> "暂无 #${state.tagFilter} 标签账单"
         hasMonth && hasCategory -> "${displayMonthLabel(state.monthFilter)} 暂无 ${state.categoryFilter} 分类账单"

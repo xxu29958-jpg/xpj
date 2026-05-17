@@ -23,8 +23,7 @@ $TextExtensions = @(
     ".xml", ".yaml", ".yml"
 )
 $IgnoredDirectories = @(
-    ".git", ".gradle", ".gradle-user", ".idea", ".pytest_cache", ".ruff_cache", ".toolchains",
-    "artifacts",
+    ".claude", ".git", ".gradle", ".gradle-user", ".idea", ".pytest_cache", ".ruff_cache", ".toolchains",
     ".venv", "build", "__pycache__"
 )
 
@@ -87,22 +86,8 @@ function Test-TextFile {
     }
 }
 
-function Invoke-TextFileCheck {
-    param([Parameter(Mandatory = $true)][System.IO.DirectoryInfo]$Directory)
-
-    foreach ($entry in Get-ChildItem -LiteralPath $Directory.FullName -Force -ErrorAction Stop) {
-        if ($entry.PSIsContainer) {
-            if ($IgnoredDirectories -contains $entry.Name) {
-                continue
-            }
-            Invoke-TextFileCheck -Directory $entry
-            continue
-        }
-
-        Test-TextFile -File $entry
-    }
+Get-ChildItem -LiteralPath $ProjectRoot -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+    Test-TextFile -File $_
 }
-
-Invoke-TextFileCheck -Directory (Get-Item -LiteralPath $ProjectRoot.Path)
 
 Write-Host "文本编码检查通过：UTF-8 正常，PowerShell 脚本为 UTF-8 with BOM。"

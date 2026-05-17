@@ -2,14 +2,11 @@ package com.ticketbox.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,15 +27,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppRadius
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 data class AppBottomNavItem(
@@ -47,16 +45,6 @@ data class AppBottomNavItem(
     val icon: ImageVector,
 )
 
-/**
- * 底部导航条。
- *
- * 设计取舍：
- * - 选中态 weight 从 1.28 降到 1.16，4-tab 时整体更平衡（28% 不对称视觉上抢镜）
- * - 选中态保持一致的 Row(icon+label) 结构，未选中态隐藏 label——避免布局类型互换造成跳动
- * - 用 [animateDpAsState] 平滑过渡 chip 宽度差，配合 [AnimatedVisibility] 让 label 横向 expand/shrink
- * - 选中瞬间 scale 弹簧反弹，给点击反馈
- * - 颜色 / 字重 / motion 都走 token：AppMotion.normalMillis、ThemeVisuals.primary
- */
 @Composable
 fun AppBottomNav(
     items: List<AppBottomNavItem>,
@@ -65,12 +53,16 @@ fun AppBottomNav(
     modifier: Modifier = Modifier,
 ) {
     val visuals = LocalThemeVisuals.current
-    val haptics = rememberAppHaptics()
     Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            .padding(
+                start = AppBottomNavLayout.OuterHorizontalPadding,
+                end = AppBottomNavLayout.OuterHorizontalPadding,
+                top = AppSpacing.smallGap,
+                bottom = AppSpacing.smallGap,
+            ),
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -82,28 +74,19 @@ fun AppBottomNav(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(
+                        horizontal = AppSpacing.compactPadding,
+                        vertical = AppBottomNavLayout.InnerVerticalPadding,
+                    ),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 items.forEach { item ->
                     val selected = item.key == selectedKey
-                    // 选中态 1.16，未选中态 1.0 —— 28% 太抢眼，降到 16% 仍可视别但平衡
-                    val weight by animateDpAsState(
-                        targetValue = if (selected) 116.dp else 100.dp,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMediumLow,
-                        ),
-                        label = "appBottomNavWeight",
-                    )
                     Box(
                         modifier = Modifier
-                            .weight(weight.value / 100f)
-                            .height(48.dp)
-                            .clickable(onClick = {
-                                if (!selected) haptics.tick()
-                                onSelect(item)
-                            }),
+                            .weight(if (selected) AppBottomNavLayout.SelectedWeight else 1f)
+                            .height(AppBottomNavLayout.ItemHeight)
+                            .clickable(onClick = { onSelect(item) }),
                         contentAlignment = Alignment.Center,
                     ) {
                         AppBottomNavItemView(
@@ -125,46 +108,33 @@ private fun AppBottomNavItemView(
     val visuals = LocalThemeVisuals.current
     val background by animateColorAsState(
         targetValue = if (selected) visuals.primary.copy(alpha = 0.90f) else Color.Transparent,
-        animationSpec = tween(durationMillis = AppMotion.normalMillis),
         label = "appBottomNavBackground",
     )
     val content by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(durationMillis = AppMotion.normalMillis),
         label = "appBottomNavContent",
-    )
-    // 选中瞬间 spring scale，给"已激活"的触觉反馈（搭配后续 haptic feedback）
-    val scale by animateDpAsState(
-        targetValue = if (selected) 102.dp else 100.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "appBottomNavScale",
     )
 
     Row(
         modifier = Modifier
-            .scale(scale.value / 100f)
-            .height(40.dp)
+            .fillMaxWidth()
+            .height(AppBottomNavLayout.PillHeight)
             .clip(RoundedCornerShape(AppRadius.large))
             .background(background)
-            .padding(horizontal = if (selected) 10.dp else 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            .padding(horizontal = AppSpacing.smallGap, vertical = AppBottomNavLayout.PillVerticalPadding),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = item.icon,
             contentDescription = item.label,
             tint = content,
-            modifier = Modifier.size(if (selected) 18.dp else 20.dp),
+            modifier = Modifier.size(AppBottomNavLayout.IconSize),
         )
         AnimatedVisibility(
             visible = selected,
-            enter = fadeIn(tween(AppMotion.normalMillis)) +
-                expandHorizontally(tween(AppMotion.normalMillis)),
-            exit = fadeOut(tween(AppMotion.fastMillis)) +
-                shrinkHorizontally(tween(AppMotion.fastMillis)),
+            enter = fadeIn(tween(AppMotion.fastMillis)) + expandHorizontally(tween(AppMotion.fastMillis)),
+            exit = fadeOut(tween(AppMotion.fastMillis)) + shrinkHorizontally(tween(AppMotion.fastMillis)),
         ) {
             Text(
                 text = item.label,
@@ -173,10 +143,20 @@ private fun AppBottomNavItemView(
                     fontSize = 12.sp,
                     lineHeight = 15.sp,
                 ),
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Black,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
     }
+}
+
+private object AppBottomNavLayout {
+    val OuterHorizontalPadding: Dp = 16.dp
+    val InnerVerticalPadding: Dp = 6.dp
+    val ItemHeight: Dp = 48.dp
+    val PillHeight: Dp = 40.dp
+    val PillVerticalPadding: Dp = 6.dp
+    val IconSize: Dp = 17.dp
+    const val SelectedWeight: Float = 1.14f
 }

@@ -1,17 +1,12 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -24,9 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
@@ -36,14 +29,18 @@ import com.ticketbox.domain.model.DASHBOARD_CARD_PENDING
 import com.ticketbox.domain.model.DASHBOARD_CARD_RECENT_UPLOADS
 import com.ticketbox.domain.model.DASHBOARD_CARD_RECURRING
 import com.ticketbox.domain.model.DASHBOARD_CARD_REPORTS
+import com.ticketbox.domain.model.DashboardCard
+import com.ticketbox.domain.model.StatsTab
+import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.CardSkeleton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.components.MonthPickerSheet
-import com.ticketbox.ui.components.SectionTitle
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.screens.stats.CategoryStructureCard
 import com.ticketbox.ui.screens.stats.EmptyStatsCard
@@ -74,6 +71,7 @@ fun StatsScreen(
     onOpenRecurring: () -> Unit,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
+    var selectedStatsTab by rememberSaveable { mutableStateOf(StatsTab.Overview) }
 
     if (showMonthPicker) {
         ModalBottomSheet(onDismissRequest = { showMonthPicker = false }) {
@@ -89,8 +87,6 @@ fun StatsScreen(
         }
     }
 
-    var maintenanceExpanded by rememberSaveable { mutableStateOf(false) }
-
     AppScrollableContent(
         role = AppPageRole.Stats,
         isRefreshing = state.loading,
@@ -98,11 +94,17 @@ fun StatsScreen(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
         val visibleDashboardKeys = orderedStatsDashboardKeys(visibleDashboardCardKeys(state.dashboardCards))
+        val selectedDashboardKeys = orderedStatsDashboardKeys(
+            statsDashboardKeysForTab(selectedStatsTab, visibleDashboardKeys),
+        )
         item {
             StatsTopPanel(
                 state = state,
+                selectedTab = selectedStatsTab,
+                visibleDashboardKeys = visibleDashboardKeys,
                 onOpenMonthPicker = { showMonthPicker = true },
                 onTagChange = onTagChange,
+                onTabChange = { selectedStatsTab = it },
                 onOpenBudget = onOpenBudget,
                 onOpenRecurring = onOpenRecurring,
             )
@@ -135,32 +137,8 @@ fun StatsScreen(
         val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
         val visibleTags = stats.byTag.filter { it.amountCents > 0L && it.count > 0 }
         var renderedCard = false
-        var lastSection: String? = null
 
-        visibleDashboardKeys.forEach { key ->
-            val section = STATS_SECTION_FOR[key]
-            val isMaintenance = section == STATS_SECTION_MAINTENANCE
-            if (section != null && section != lastSection) {
-                if (isMaintenance) {
-                    item(key = "section_$section") {
-                        MaintenanceSectionHeader(
-                            expanded = maintenanceExpanded,
-                            onToggle = { maintenanceExpanded = !maintenanceExpanded },
-                        )
-                    }
-                } else {
-                    item(key = "section_$section") {
-                        SectionTitle(
-                            title = section,
-                            modifier = Modifier.padding(top = AppSpacing.compactGap),
-                        )
-                    }
-                }
-                lastSection = section
-            }
-            // 维护区折叠时只显示 section 头，不渲染任何卡片。
-            if (isMaintenance && !maintenanceExpanded) return@forEach
-
+        selectedDashboardKeys.forEach { key ->
             when (key) {
                 DASHBOARD_CARD_MONTHLY_SPEND -> {
                     renderedCard = true
@@ -193,34 +171,38 @@ fun StatsScreen(
 
                 DASHBOARD_CARD_REPORTS -> {
                     renderedCard = true
-                    if (visibleCategories.isEmpty()) {
-                        item {
-                            EmptyStatsCard(
-                                title = "${displayMonthLabel(stats.month)} 暂无分类支出",
-                                body = "确认几笔账单后，这里会显示分类占比。",
-                            )
+                    if (selectedStatsTab == StatsTab.Category) {
+                        if (visibleCategories.isEmpty()) {
+                            item {
+                                EmptyStatsCard(
+                                    title = "${displayMonthLabel(stats.month)} 暂无分类支出",
+                                    body = "确认几笔账单后，这里会显示分类占比。",
+                                )
+                            }
+                        } else {
+                            item {
+                                CategoryStructureCard(
+                                    categories = visibleCategories,
+                                    totalAmountCents = stats.totalAmountCents,
+                                    insight = state.categoryInsight,
+                                )
+                            }
                         }
-                    } else {
-                        item {
-                            CategoryStructureCard(
-                                categories = visibleCategories,
-                                totalAmountCents = stats.totalAmountCents,
-                                insight = state.categoryInsight,
-                            )
+                        if (visibleTags.isNotEmpty()) {
+                            item {
+                                TagStatsCard(
+                                    tags = visibleTags,
+                                    totalAmountCents = stats.totalAmountCents,
+                                )
+                            }
                         }
                     }
-                    if (visibleTags.isNotEmpty()) {
-                        item {
-                            TagStatsCard(
-                                tags = visibleTags,
-                                totalAmountCents = stats.totalAmountCents,
-                            )
-                        }
-                    }
-                    item { RecentTrendCard(state.dailyTrend) }
-                    if (state.selectedTag.isBlank()) {
-                        state.reportsOverview?.let { overview ->
-                            item { ReportsInsightCard(overview) }
+                    if (selectedStatsTab == StatsTab.Trend) {
+                        item { RecentTrendCard(state.dailyTrend) }
+                        if (state.selectedTag.isBlank()) {
+                            state.reportsOverview?.let { overview ->
+                                item { ReportsInsightCard(overview) }
+                            }
                         }
                     }
                 }
@@ -274,52 +256,14 @@ fun StatsScreen(
     }
 }
 
-private const val STATS_SECTION_OVERVIEW = "本月概览"
-private const val STATS_SECTION_TRENDS = "结构与趋势"
-private const val STATS_SECTION_PLAN = "计划与提醒"
-private const val STATS_SECTION_MAINTENANCE = "记账维护"
-
-private val STATS_SECTION_FOR: Map<String, String> = mapOf(
-    DASHBOARD_CARD_MONTHLY_SPEND to STATS_SECTION_OVERVIEW,
-    DASHBOARD_CARD_BUDGET to STATS_SECTION_OVERVIEW,
-    DASHBOARD_CARD_REPORTS to STATS_SECTION_TRENDS,
-    DASHBOARD_CARD_GOALS to STATS_SECTION_PLAN,
-    DASHBOARD_CARD_RECURRING to STATS_SECTION_PLAN,
-    DASHBOARD_CARD_PENDING to STATS_SECTION_MAINTENANCE,
-    DASHBOARD_CARD_RECENT_UPLOADS to STATS_SECTION_MAINTENANCE,
-)
-
-@Composable
-private fun MaintenanceSectionHeader(
-    expanded: Boolean,
-    onToggle: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = AppSpacing.compactGap)
-            .clickable(role = Role.Button, onClick = onToggle),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SectionTitle(
-            title = STATS_SECTION_MAINTENANCE,
-            modifier = Modifier.weight(1f),
-        )
-        Icon(
-            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-            contentDescription = if (expanded) "收起记账维护" else "展开记账维护",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
 @Composable
 private fun StatsTopPanel(
     state: StatsUiState,
+    selectedTab: StatsTab,
+    visibleDashboardKeys: List<String>,
     onOpenMonthPicker: () -> Unit,
     onTagChange: (String) -> Unit,
+    onTabChange: (StatsTab) -> Unit,
     onOpenBudget: () -> Unit,
     onOpenRecurring: () -> Unit,
 ) {
@@ -340,6 +284,48 @@ private fun StatsTopPanel(
             onOpenMonthPicker = onOpenMonthPicker,
             onTagChange = onTagChange,
         )
+        StatsTabRow(
+            selectedTab = selectedTab,
+            dashboardCards = state.dashboardCards,
+            visibleDashboardKeys = visibleDashboardKeys,
+            onTabChange = onTabChange,
+        )
+    }
+}
+
+@Composable
+private fun StatsTabRow(
+    selectedTab: StatsTab,
+    dashboardCards: List<DashboardCard>,
+    visibleDashboardKeys: List<String>,
+    onTabChange: (StatsTab) -> Unit,
+) {
+    AppSegmentedControl(
+        options = StatsTab.entries.map { tab ->
+            AppSegmentedItem(
+                value = tab,
+                label = statsTabLabel(tab, dashboardCards),
+                enabled = statsDashboardKeysForTab(tab, visibleDashboardKeys).isNotEmpty(),
+            )
+        },
+        selectedValue = selectedTab,
+        onValueChange = onTabChange,
+    )
+}
+
+private fun statsTabLabel(
+    tab: StatsTab,
+    dashboardCards: List<DashboardCard>,
+): String {
+    val titleByKey = dashboardCards
+        .filter { it.title.isNotBlank() }
+        .associate { it.key to it.title }
+    return when (tab) {
+        StatsTab.Overview -> titleByKey[DASHBOARD_CARD_MONTHLY_SPEND] ?: "概览"
+        StatsTab.Trend -> titleByKey[DASHBOARD_CARD_REPORTS] ?: "趋势"
+        StatsTab.Category -> "分类"
+        StatsTab.Budget -> titleByKey[DASHBOARD_CARD_BUDGET] ?: "预算"
+        StatsTab.Goals -> titleByKey[DASHBOARD_CARD_GOALS] ?: "目标"
     }
 }
 

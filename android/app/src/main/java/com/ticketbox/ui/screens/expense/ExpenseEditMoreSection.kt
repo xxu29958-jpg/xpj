@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -15,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
 
 @Composable
@@ -52,7 +52,7 @@ internal fun ExpenseEditMoreSection(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                OutlinedButton(onClick = onToggleMore) {
+                AppOutlinedButton(onClick = onToggleMore) {
                     Text(if (moreExpanded) "收起" else "展开")
                 }
             }
@@ -89,7 +89,7 @@ internal fun ExpenseEditMoreSection(
                         Text(if (rawTextExpanded) "收起识别原文" else "查看识别原文")
                     }
                     if (!readOnly) {
-                        OutlinedButton(
+                        AppOutlinedButton(
                             enabled = !ocrRunning && !saving,
                             onClick = onRetryOcr,
                         ) {

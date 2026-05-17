@@ -121,6 +121,9 @@ interface ApiService {
         @Header("X-Timezone") timezone: String? = null,
     ): UploadResponseDto
 
+    @GET("api/expenses/{id}")
+    suspend fun expense(@Path("id") id: Long): ExpenseDto
+
     @PATCH("api/expenses/{id}")
     suspend fun updateExpense(
         @Path("id") id: Long,

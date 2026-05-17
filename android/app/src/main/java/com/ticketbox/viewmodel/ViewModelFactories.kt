@@ -33,6 +33,7 @@ fun repositoryViewModelFactory(
         return when (modelClass) {
             PendingViewModel::class.java -> PendingViewModel(repository)
             LedgerViewModel::class.java -> LedgerViewModel(repository)
+            GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
             StatsViewModel::class.java -> StatsViewModel(repository, recurringRepository, budgetRepository, reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T

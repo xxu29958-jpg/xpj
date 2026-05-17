@@ -1,5 +1,6 @@
-/* /web styling — v0.9 三端 token 共享
- * 不引入任何前端框架。设计 token 与 /owner 共享语义，统一在 ../shared/tokens.css。
+/* /web styling - v0.9 tri-surface shared tokens.
+ * No frontend framework is introduced here. Design tokens are shared with
+ * /owner through ../shared/tokens.css.
  * Legacy stylesheet. New desktop shell uses paper / mono / midnight through
  * shared tokens; unset data-theme falls back to paper.
  */
@@ -161,13 +162,37 @@ td.amount { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: 
     cursor: pointer;
     text-decoration: none;
     font-family: inherit;
+    outline: none;
+    transition:
+        background-color var(--motion-fast, 120ms) var(--ease-standard, ease),
+        border-color var(--motion-fast, 120ms) var(--ease-standard, ease),
+        color var(--motion-fast, 120ms) var(--ease-standard, ease),
+        transform var(--motion-fast, 120ms) var(--ease-standard, ease),
+        box-shadow var(--motion-fast, 120ms) var(--ease-standard, ease);
+    -webkit-tap-highlight-color: transparent;
 }
 .btn-primary  { background: var(--brand-primary); color: #fff; }
 .btn-primary:hover { background: var(--brand-primary-strong); }
 .btn-success  { background: var(--state-success-fg); color: #fff; }
 .btn-success:hover { background: #15803d; }
-.btn-secondary { background: #fff; color: #334155; border-color: var(--border-input); }
+.btn-secondary { background: var(--surface-card); color: var(--text-muted); border-color: var(--control-border); }
 .btn-secondary:hover { background: var(--surface-sunken); }
+.btn:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+.btn:active {
+    border-color: var(--control-border-active);
+    background: var(--control-press-bg);
+    transform: translateY(1px);
+}
+.btn-primary:active,
+.btn-success:active {
+    border-color: transparent;
+    filter: brightness(0.96);
+}
+.btn:focus-visible {
+    outline: none;
+    border-color: var(--control-border-active);
+    box-shadow: 0 0 0 3px var(--brand-focus-ring);
+}
 .btn:disabled,
 .btn[aria-disabled="true"] {
     cursor: not-allowed;
@@ -247,7 +272,7 @@ form.inline { margin: 0; }
 .meta { font-size: 12px; color: var(--text-muted); }
 
 
-/* v0.4-alpha3 — Review Center bulk + filter tabs */
+/* v0.4-alpha3 - Review Center bulk + filter tabs */
 .filter-bar { display: flex; gap: 8px; margin: 12px 0 16px; flex-wrap: wrap; }
 .filter-tab { padding: 6px 12px; border-radius: 999px; background: var(--surface-card, #f1f5f9); color: var(--text-default); text-decoration: none; font-size: 13px; border: 1px solid transparent; }
 .filter-tab:hover { border-color: var(--border-subtle, #cbd5e1); }
@@ -279,7 +304,7 @@ form.inline { margin: 0; }
 
 
 
-/* v0.4-alpha3 — Rules page extras */
+/* v0.4-alpha3 - Rules page extras */
 .grid.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 @media (max-width: 720px) { .grid.two-col { grid-template-columns: 1fr; } }
 .form-stack { display: flex; flex-direction: column; gap: 10px; }
@@ -287,7 +312,7 @@ form.inline { margin: 0; }
 .form-stack input { padding: 6px 10px; border: 1px solid var(--border-subtle, #cbd5e1); border-radius: 6px; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .card-header h2 { margin: 0; }
-.btn-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.btn-danger { background: var(--state-danger-bg); color: var(--state-danger-fg); border: 1px solid var(--state-danger-border); padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .btn-danger:hover { background: #fecaca; }
 .transaction-table.compact th, .transaction-table.compact td { padding: 6px 8px; font-size: 13px; }
 .import-batch-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -315,7 +340,7 @@ form.inline { margin: 0; }
 .page-footer-hint { color: var(--text-meta, #94a3b8); font-size: 11px; margin-top: 12px; }
 
 
-/* v0.8 — Budget dashboard */
+/* v0.8 - Budget dashboard */
 .budget-month-filter { margin-bottom: 16px; }
 .budget-form-grid {
     display: grid;
@@ -389,7 +414,7 @@ form.inline { margin: 0; }
     .budget-category-row { grid-template-columns: 1fr 1fr; }
 }
 
-/* v0.9 — Reports and Goals */
+/* v0.9 - Reports and Goals */
 .page-header-row {
     display: flex;
     justify-content: space-between;

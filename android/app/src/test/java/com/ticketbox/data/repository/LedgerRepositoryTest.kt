@@ -731,6 +731,7 @@ private class StubApi(
         request: com.ticketbox.data.remote.dto.NotificationDraftRequestDto,
     ): ExpenseDto = unsupported()
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = unsupported()
+    override suspend fun expense(id: Long): ExpenseDto = unsupported()
     override suspend fun updateExpense(id: Long, request: ExpenseUpdateRequest): ExpenseDto = unsupported()
     override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = unsupported()
     override suspend fun replaceExpenseItems(

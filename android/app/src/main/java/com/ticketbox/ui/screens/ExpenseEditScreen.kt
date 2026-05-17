@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +19,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
@@ -210,7 +210,7 @@ fun ExpenseEditScreen(
         if (currentExpense.duplicateStatus == "suspected") {
             DuplicateNotice(reason = currentExpense.duplicateReason)
             if (!readOnly) {
-                OutlinedButton(onClick = onKeepDuplicate) {
+                AppOutlinedButton(onClick = onKeepDuplicate) {
                     Text("不是重复，保留")
                 }
             }

@@ -352,6 +352,21 @@ class ExpenseUpdateRequest(BaseModel):
     regret_score: int | None = Field(default=None, ge=1, le=5)
 
 
+class ConfirmedExpenseBatchUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expense_ids: list[int] = Field(min_length=1, max_length=200)
+    category: str | None = Field(default=None, max_length=64)
+    tags: str | None = Field(default=None, max_length=500)
+
+
+class ConfirmedExpenseBatchUpdateResponse(BaseModel):
+    requested_count: int
+    updated_count: int
+    skipped_not_found: int
+    skipped_not_confirmed: int
+
+
 class ExpenseRecognizeTextRequest(BaseModel):
     raw_text: str = Field(min_length=1, max_length=20000)
 

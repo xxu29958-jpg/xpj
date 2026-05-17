@@ -65,6 +65,14 @@ def test_web_pending_batch_reject_remote_returns_403(client: TestClient) -> None
     assert client.post("/web/pending/batch-reject").status_code == 403
 
 
+def test_web_confirmed_batch_update_remote_returns_403(client: TestClient) -> None:
+    assert client.post("/web/confirmed/batch-update").status_code == 403
+
+
+def test_web_search_remote_returns_403(client: TestClient) -> None:
+    assert client.get("/web/search").status_code == 403
+
+
 def test_web_image_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/expenses/1/image").status_code == 403
 
@@ -98,6 +106,12 @@ def test_web_stats_local_returns_200(web_client: TestClient) -> None:
 
 
 # ── Ledger selector contract ────────────────────────────────────────────────
+
+def test_web_search_local_returns_200(web_client: TestClient) -> None:
+    resp = web_client.get("/web/search?ledger_id=owner")
+    assert resp.status_code == 200
+    assert 'name="q"' in resp.text
+
 
 def test_web_ledger_selector_present(web_client: TestClient) -> None:
     resp = web_client.get("/web")
@@ -185,7 +199,7 @@ def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient) -> N
 
 def test_web_no_secret_leaks(web_client: TestClient) -> None:
     """No token_hash, upload_key, pairing_code or absolute path in HTML."""
-    pages = ["/web", "/web/pending", "/web/confirmed", "/web/stats"]
+    pages = ["/web", "/web/pending", "/web/confirmed", "/web/stats", "/web/search"]
     for path in pages:
         resp = web_client.get(path)
         assert resp.status_code == 200, path
@@ -327,6 +341,101 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
     )
     assert resp.status_code in {303, 307}, resp.text
     return expense_id
+
+
+def test_web_search_finds_current_ledger_entities(web_client: TestClient) -> None:
+    pending_id = _seed_pending_with_amount(web_client, "9.00", "SearchCafe Pending")
+    confirmed_id = _seed_pending_with_amount(web_client, "11.00", "SearchCafe Confirmed")
+    confirmed = web_client.post(
+        f"/web/expenses/{confirmed_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert confirmed.status_code in {303, 307}
+    rule = web_client.post(
+        "/web/rules/create",
+        data={
+            "keyword": "SearchCafe",
+            "category": "餐饮",
+            "priority": "100",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert rule.status_code in {303, 307}
+    goal = web_client.post(
+        "/web/goals/create",
+        data={
+            "ledger_id": "owner",
+            "month": "2026-05",
+            "name": "SearchGoal Groceries",
+            "target_amount_yuan": "1000",
+            "category": "餐饮",
+        },
+        follow_redirects=False,
+    )
+    assert goal.status_code in {303, 307}
+
+    page = web_client.get("/web/search?ledger_id=owner&q=SearchCafe")
+    assert page.status_code == 200
+    assert f"/web/expenses/{pending_id}/edit?ledger_id=owner" in page.text
+    assert f"/web/expenses/{confirmed_id}/edit?ledger_id=owner" in page.text
+    assert "/web/rules?ledger_id=owner" in page.text
+
+    goals = web_client.get("/web/search?ledger_id=owner&q=SearchGoal")
+    assert goals.status_code == 200
+    assert "SearchGoal Groceries" in goals.text
+    assert "/web/goals?ledger_id=owner&amp;month=2026-05" in goals.text
+
+    other_ledger = web_client.get("/web/search?ledger_id=tester_1&q=SearchCafe")
+    assert other_ledger.status_code == 200
+    assert "SearchCafe Pending" not in other_ledger.text
+    assert "SearchCafe Confirmed" not in other_ledger.text
+
+
+def test_web_confirmed_batch_markup_and_updates(web_client: TestClient) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe")
+    confirmed = web_client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert confirmed.status_code in {303, 307}
+
+    page = web_client.get("/web/confirmed?ledger_id=owner")
+    assert page.status_code == 200
+    assert 'action="/web/confirmed/batch-update"' in page.text
+    assert f'data-id="{expense_id}"' in page.text
+    assert 'id="check-all"' in page.text
+
+    category_resp = web_client.post(
+        "/web/confirmed/batch-update",
+        data={
+            "action": "set_category",
+            "ledger_id": "owner",
+            "expense_ids": [str(expense_id)],
+            "category": "Batch Web Cat",
+        },
+        follow_redirects=False,
+    )
+    assert category_resp.status_code in {303, 307}
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "Batch Web Cat" in detail.text
+
+    tags_resp = web_client.post(
+        "/web/confirmed/batch-update",
+        data={
+            "action": "set_tags",
+            "ledger_id": "owner",
+            "expense_ids": [str(expense_id)],
+            "tags": "web, family, web",
+        },
+        follow_redirects=False,
+    )
+    assert tags_resp.status_code in {303, 307}
+    api_detail = web_client.get(f"/api/expenses/{expense_id}", headers=cf.app_headers())
+    assert api_detail.status_code == 200
+    assert api_detail.json()["tags"] == "web, family"
 
 
 def test_web_pending_filter_missing_amount(web_client: TestClient) -> None:

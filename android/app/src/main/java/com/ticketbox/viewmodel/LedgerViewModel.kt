@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.LedgerActions
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
@@ -16,6 +16,29 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 
+enum class LedgerViewMode {
+    Card,
+    List,
+    Table,
+}
+
+data class LedgerSummaryUi(
+    val totalAmountCents: Long = 0L,
+    val itemCount: Int = 0,
+    val monthFilter: String = "",
+    val syncing: Boolean = false,
+    val lastSyncAt: String? = null,
+    val readOnly: Boolean = false,
+)
+
+data class LedgerFilterUi(
+    val monthFilter: String = "",
+    val categoryFilter: String = "",
+    val tagFilter: String = "",
+    val query: String = "",
+    val hasFilters: Boolean = false,
+)
+
 data class LedgerUiState(
     val items: List<Expense> = emptyList(),
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
@@ -27,15 +50,38 @@ data class LedgerUiState(
     val categoryFilter: String = "",
     val tagFilter: String = "",
     val query: String = "",
+    val viewMode: LedgerViewMode = LedgerViewMode.Card,
     val lastSyncAt: String? = null,
     val syncing: Boolean = false,
     val exporting: Boolean = false,
     val creatingManual: Boolean = false,
     val message: String? = null,
-)
+) {
+    val summary: LedgerSummaryUi
+        get() = LedgerSummaryUi(
+            totalAmountCents = items.sumOf { it.amountCents ?: 0L },
+            itemCount = items.size,
+            monthFilter = monthFilter,
+            syncing = syncing,
+            lastSyncAt = lastSyncAt,
+            readOnly = readOnly,
+        )
+
+    val filter: LedgerFilterUi
+        get() = LedgerFilterUi(
+            monthFilter = monthFilter,
+            categoryFilter = categoryFilter,
+            tagFilter = tagFilter,
+            query = query,
+            hasFilters = monthFilter.isNotBlank() ||
+                categoryFilter.isNotBlank() ||
+                tagFilter.isNotBlank() ||
+                query.isNotBlank(),
+        )
+}
 
 class LedgerViewModel(
-    private val repository: ExpenseRepository,
+    private val repository: LedgerActions,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(
         LedgerUiState(
@@ -53,7 +99,9 @@ class LedgerViewModel(
         viewModelScope.launch {
             repository.observeConfirmed().collect { expenses ->
                 allConfirmed = expenses
-                _uiState.update { state -> state.copy(items = filterItems(expenses, state)) }
+                _uiState.update { state ->
+                    state.copy(items = filterItems(expenses, state))
+                }
             }
         }
         sync()
@@ -115,6 +163,10 @@ class LedgerViewModel(
         }
     }
 
+    fun setViewMode(value: LedgerViewMode) {
+        _uiState.update { state -> state.copy(viewMode = value) }
+    }
+
     fun clearFilters() {
         _uiState.update { state ->
             val next = state.copy(monthFilter = "", categoryFilter = "", tagFilter = "", query = "")
@@ -124,7 +176,9 @@ class LedgerViewModel(
 
     fun sync() {
         viewModelScope.launch {
-            _uiState.update { it.copy(readOnly = !repository.canModifyLedger(), syncing = true, message = null) }
+            _uiState.update {
+                it.copy(readOnly = !repository.canModifyLedger(), syncing = true, message = null)
+            }
             val filters = _uiState.value
             repository.syncConfirmed(
                 month = filters.monthFilter.trim().ifBlank { null },

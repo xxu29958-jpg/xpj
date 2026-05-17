@@ -16,29 +16,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatExpenseExchangeMeta
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
-import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
 
+private object LedgerItemLayout {
+    const val CardContainerAlpha = 0.995f
+    const val ListContainerAlpha = 0.99f
+    const val TableContainerAlpha = 0.985f
+    const val CardCategoryAlpha = 0.72f
+    const val TableCategoryAlpha = 0.62f
+    const val CategoryMarkAlpha = 0.78f
+    const val TableMerchantWeight = 1.35f
+    const val TableCategoryWeight = 0.72f
+    const val TableAmountWeight = 0.88f
+}
+
 @Composable
-internal fun LedgerDayHeader(label: String, modifier: Modifier = Modifier) {
+internal fun LedgerDayHeader(label: String) {
     Text(
         text = label,
         color = MaterialTheme.colorScheme.onBackground,
         style = MaterialTheme.typography.titleSmall,
-        fontWeight = AppTextHierarchy.heading.weight,
-        modifier = modifier.padding(top = AppSpacing.miniGap, bottom = AppSpacing.tinyGap),
+        fontWeight = AppTypography.cardTitle.weight,
+        modifier = Modifier.padding(top = AppSpacing.miniGap, bottom = AppSpacing.tinyGap),
     )
 }
 
@@ -46,14 +55,11 @@ internal fun LedgerDayHeader(label: String, modifier: Modifier = Modifier) {
 internal fun LedgerExpenseCard(
     expense: Expense,
     onEdit: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val currencyDisplay = LocalCurrencyDisplay.current
     val visuals = LocalThemeVisuals.current
-    val exchangeMeta = formatExpenseExchangeMeta(expense)
     AppGlassCard(
-        modifier = modifier.clickable(onClick = onEdit),
-        containerAlpha = 0.995f,
+        modifier = Modifier.clickable(onClick = onEdit),
+        containerAlpha = LedgerItemLayout.CardContainerAlpha,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
@@ -69,7 +75,7 @@ internal fun LedgerExpenseCard(
                     text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = AppTextHierarchy.body.weight,
+                    fontWeight = AppTypography.cardTitle.weight,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -94,33 +100,145 @@ internal fun LedgerExpenseCard(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
-                    text = if (expense.amountCents == null) "待填写" else formatExpensePrimaryAmount(expense, currencyDisplay),
+                    text = expense.amountCents?.let(::formatAmount) ?: "待填写",
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
+                    fontWeight = AppTypography.amountMedium.weight,
                     maxLines = 1,
                 )
-                exchangeMeta?.let {
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
                 Text(
                     text = expense.category,
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(visuals.chipSelected.copy(alpha = 0.72f))
+                        .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CardCategoryAlpha))
                         .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
                     color = visuals.primary,
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = AppTextHierarchy.caption.weight,
+                    fontWeight = AppTypography.chip.weight,
                     maxLines = 1,
                 )
             }
+        }
+    }
+}
+
+@Composable
+internal fun LedgerExpenseListRow(
+    expense: Expense,
+    onEdit: () -> Unit,
+) {
+    AppGlassCard(
+        modifier = Modifier.clickable(onClick = onEdit),
+        containerAlpha = LedgerItemLayout.ListContainerAlpha,
+        radius = RoundedCornerShape(AppRadius.medium),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactGap),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LedgerCategoryMark(category = expense.category)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = AppTypography.cardTitle.weight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = expense.amountCents?.let(::formatAmount) ?: "待填写",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = AppTypography.amountMedium.weight,
+                    maxLines = 1,
+                )
+                Text(
+                    text = expense.category,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LedgerExpenseTableRow(
+    expense: Expense,
+    onEdit: () -> Unit,
+) {
+    val visuals = LocalThemeVisuals.current
+    AppGlassCard(
+        modifier = Modifier.clickable(onClick = onEdit),
+        containerAlpha = LedgerItemLayout.TableContainerAlpha,
+        radius = RoundedCornerShape(AppRadius.small),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(LedgerItemLayout.TableMerchantWeight),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+            ) {
+                Text(
+                    text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = AppTypography.chip.weight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = displayTime(expense.expenseTime ?: expense.confirmedAt ?: expense.createdAt),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                text = expense.category,
+                modifier = Modifier
+                    .weight(LedgerItemLayout.TableCategoryWeight)
+                    .clip(CircleShape)
+                    .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.TableCategoryAlpha))
+                    .padding(horizontal = AppSpacing.smallGap, vertical = AppSpacing.tinyGap),
+                color = visuals.primary,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = AppTypography.chip.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = expense.amountCents?.let(::formatAmount) ?: "待填写",
+                modifier = Modifier.weight(LedgerItemLayout.TableAmountWeight),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = AppTypography.amountMedium.weight,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
         }
     }
 }
@@ -132,14 +250,14 @@ private fun LedgerCategoryMark(category: String) {
         modifier = Modifier
             .size(42.dp)
             .clip(RoundedCornerShape(AppRadius.small))
-            .background(visuals.chipSelected.copy(alpha = 0.78f)),
+            .background(visuals.chipSelected.copy(alpha = LedgerItemLayout.CategoryMarkAlpha)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = category.take(1).ifBlank { "账" },
             color = visuals.primary,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = AppTextHierarchy.heading.weight,
+            fontWeight = AppTypography.cardTitle.weight,
             textAlign = TextAlign.Center,
         )
     }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 
 data class ExpenseEditUiState(
     val expense: Expense? = null,
+    val expenseLoading: Boolean = true,
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,
@@ -50,10 +51,39 @@ class ExpenseEditViewModel(
     val uiState: StateFlow<ExpenseEditUiState> = _uiState.asStateFlow()
 
     init {
+        loadExpense()
         loadCategories()
         loadThumbnail()
         loadExpenseItems()
         loadExpenseSplits()
+    }
+
+    fun retryLoadExpense() {
+        loadExpense()
+    }
+
+    private fun loadExpense() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(expenseLoading = true, message = null) }
+            repository.fetchExpense(expenseId)
+                .onSuccess { expense ->
+                    _uiState.update {
+                        it.copy(
+                            expense = expense,
+                            expenseLoading = false,
+                            message = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            expenseLoading = false,
+                            message = error.message ?: "账单暂时加载失败，请稍后再试。",
+                        )
+                    }
+                }
+        }
     }
 
     private fun loadCategories() {
