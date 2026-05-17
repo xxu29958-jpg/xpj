@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 import json
 import mimetypes
 from typing import Any, Protocol
@@ -10,9 +11,11 @@ from urllib import error, request
 
 from app.config import get_settings
 from app.errors import AppError
+from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import Expense
 from app.services.category_service import normalize_category
 from app.services.file_service import resolve_protected_image
+from app.services.exchange_rate_service import default_rate_date, home_currency_code
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc
 
@@ -260,6 +263,14 @@ def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | N
     ):
         expense.category = normalize_category(merged.category)
         applied_fields.add("category")
+    home = home_currency_code()
+    if expense.amount_cents is not None and expense.original_currency_code == home:
+        expense.original_amount_minor = expense.amount_cents
+        expense.exchange_rate_to_cny = Decimal("1")
+        expense.exchange_rate_date = default_rate_date(expense.expense_time)
+        expense.exchange_rate_source = FX_SOURCE_BASE
+        expense.home_currency_code = home
+        expense.fx_status = FX_STATUS_READY
     if applied_fields:
         _write_ocr_draft_fields(expense, draft_fields.union(applied_fields))
 

@@ -62,6 +62,32 @@ data class ExpenseDto(
     val publicId: String? = null,
     @param:Json(name = "amount_cents")
     val amountCents: Long?,
+    @param:Json(name = "home_amount_cents")
+    val homeAmountCents: Long? = null,
+    @param:Json(name = "home_currency")
+    val homeCurrency: String? = null,
+    @param:Json(name = "original_currency")
+    val originalCurrency: String? = null,
+    @param:Json(name = "original_amount")
+    val originalAmount: String? = null,
+    @param:Json(name = "fx_rate")
+    val fxRate: String? = null,
+    @param:Json(name = "fx_rate_date")
+    val fxRateDate: String? = null,
+    @param:Json(name = "fx_source")
+    val fxSource: String? = null,
+    @param:Json(name = "fx_status")
+    val fxStatus: String? = null,
+    @param:Json(name = "original_currency_code")
+    val originalCurrencyCode: String? = null,
+    @param:Json(name = "original_amount_minor")
+    val originalAmountMinor: Long? = null,
+    @param:Json(name = "exchange_rate_to_cny")
+    val exchangeRateToCny: String? = null,
+    @param:Json(name = "exchange_rate_date")
+    val exchangeRateDate: String? = null,
+    @param:Json(name = "exchange_rate_source")
+    val exchangeRateSource: String? = null,
     val merchant: String?,
     val category: String,
     val note: String?,
@@ -100,8 +126,12 @@ data class ExpenseDto(
 )
 
 data class ExpenseUpdateRequest(
-    @param:Json(name = "amount_cents")
-    val amountCents: Long?,
+    @param:Json(name = "original_currency")
+    val originalCurrency: String? = null,
+    @param:Json(name = "original_amount")
+    val originalAmount: String? = null,
+    @param:Json(name = "spent_at")
+    val spentAt: String? = null,
     val merchant: String?,
     val category: String?,
     val note: String?,
@@ -213,8 +243,12 @@ data class ExpenseSplitReplaceRequestDto(
 
 data class NotificationDraftRequestDto(
     val source: String,
-    @param:Json(name = "amount_cents")
-    val amountCents: Long?,
+    @param:Json(name = "original_currency")
+    val originalCurrency: String? = null,
+    @param:Json(name = "original_amount")
+    val originalAmount: String? = null,
+    @param:Json(name = "spent_at")
+    val spentAt: String? = null,
     val merchant: String?,
     val category: String?,
     @param:Json(name = "expense_time")

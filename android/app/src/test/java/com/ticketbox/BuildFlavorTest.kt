@@ -2,6 +2,7 @@ package com.ticketbox
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class BuildFlavorTest {
     @Test
@@ -10,7 +11,14 @@ class BuildFlavorTest {
     }
 
     @Test
-    fun debugFlavorsUseOwnerServerAsDefault() {
-        assertEquals("https://api.zen70.cn", BuildConfig.DEFAULT_SERVER_URL)
+    fun debugFlavorsExposeConfiguredServerDefault() {
+        assertTrue(
+            BuildConfig.DEFAULT_SERVER_URL.startsWith("https://") ||
+                BuildConfig.DEFAULT_SERVER_URL.startsWith("http://"),
+        )
+        assertEquals(
+            BuildConfig.DEFAULT_SERVER_URL.trim().trimEnd('/'),
+            BuildConfig.DEFAULT_SERVER_URL,
+        )
     }
 }

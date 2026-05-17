@@ -1,4 +1,4 @@
-package com.ticketbox.data.repository
+﻿package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
@@ -16,7 +16,7 @@ import kotlin.test.assertSame
 class ApiServiceProviderTest {
     @Test
     fun currentReusesServiceForSameServerUrlAndReadsLatestToken() {
-        val settings = ProviderSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val settings = ProviderSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = ProviderTokenStore().apply { saveToken("token-1") }
         val factory = RecordingApiFactory()
         val provider = ApiServiceProvider(factory, settings, tokenStore)
@@ -52,7 +52,7 @@ class ApiServiceProviderTest {
 
     @Test
     fun temporaryServiceDoesNotPolluteCurrentCache() {
-        val settings = ProviderSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val settings = ProviderSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = ProviderTokenStore().apply { saveToken("bound-token") }
         val factory = RecordingApiFactory()
         val provider = ApiServiceProvider(factory, settings, tokenStore)
@@ -64,7 +64,7 @@ class ApiServiceProviderTest {
         assertSame(current, currentAgain)
         assertFalse(current === temporary)
         assertEquals(
-            listOf("https://api.zen70.cn", "https://pairing.example"),
+            listOf("https://api.example.com", "https://pairing.example"),
             factory.creations.map { it.baseUrl },
         )
         assertEquals("bound-token", factory.creations[0].tokenProvider())
@@ -73,7 +73,7 @@ class ApiServiceProviderTest {
 
     @Test
     fun clearDropsCurrentCache() {
-        val settings = ProviderSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val settings = ProviderSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = ProviderTokenStore().apply { saveToken("session-token") }
         val factory = RecordingApiFactory()
         val provider = ApiServiceProvider(factory, settings, tokenStore)
@@ -174,6 +174,12 @@ private class ProviderSettingsStore : TicketboxSettingsStore {
     override fun saveLastUploadAt(value: String) = Unit
 
     override fun saveAppSkinKey(skinKey: String) = Unit
+
+    override fun currencyCodeKey(): String? = null
+
+    override fun saveCurrencyCodeKey(currencyKey: String) = Unit
+
+    override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)
 
     override fun saveServerUrl(serverUrl: String) {
         this.serverUrl = serverUrl.trim().trimEnd('/')

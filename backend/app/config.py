@@ -7,6 +7,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
+
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_ROOT / ".env", encoding="utf-8-sig")
@@ -58,6 +60,12 @@ class Settings:
     enable_api_docs: bool
     allow_public_admin_api: bool
     public_base_url: str
+    fx_home_currency_code: str
+    fx_supported_currency_codes: str
+    fx_rate_auto_sync_enabled: bool
+    fx_rate_sync_times: str
+    fx_rate_sync_timezone: str
+    fx_rate_ecb_url: str
 
     @property
     def max_upload_size_bytes(self) -> int:
@@ -108,4 +116,21 @@ def get_settings() -> Settings:
         enable_api_docs=_bool_env("ENABLE_API_DOCS", False),
         allow_public_admin_api=_bool_env("ALLOW_PUBLIC_ADMIN_API", False),
         public_base_url=_resolve_public_base_url(os.getenv("PUBLIC_BASE_URL")),
+        fx_home_currency_code=os.getenv("FX_HOME_CURRENCY_CODE", DEFAULT_HOME_CURRENCY_CODE).strip().upper()
+        or DEFAULT_HOME_CURRENCY_CODE,
+        fx_supported_currency_codes=os.getenv(
+            "FX_SUPPORTED_CURRENCY_CODES",
+            ",".join(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES)),
+        ).strip()
+        or ",".join(sorted(DEFAULT_SUPPORTED_CURRENCY_CODES)),
+        fx_rate_auto_sync_enabled=_bool_env("FX_RATE_AUTO_SYNC_ENABLED", True),
+        fx_rate_sync_times=os.getenv("FX_RATE_SYNC_TIMES", "09:10,23:10").strip() or "09:10,23:10",
+        fx_rate_sync_timezone=os.getenv("FX_RATE_SYNC_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
+        fx_rate_ecb_url=(
+            os.getenv(
+                "FX_RATE_ECB_URL",
+                "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+            ).strip()
+            or "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+        ),
     )

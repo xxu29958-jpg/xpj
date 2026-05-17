@@ -65,7 +65,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -104,6 +103,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.theme.TicketboxAtmosphereBackground
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -152,13 +152,13 @@ internal fun ThemeMoodPreview(
                     text = "背景只参与氛围",
                     color = scheme.onPrimary.copy(alpha = 0.78f),
                     style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = AppTextHierarchy.body.weight,
                 )
                 Text(
                     text = skin.displayName,
                     color = scheme.onPrimary,
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
             }
             Box(
@@ -172,7 +172,7 @@ internal fun ThemeMoodPreview(
                     text = settings.immersionMode.displayName,
                     color = visuals.primary,
                     style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
             }
         }

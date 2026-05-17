@@ -219,7 +219,7 @@ publicId: String，唯一，对应后端 public_id
 amount_cents
 ```
 
-单位是分。
+单位是分，且固定表示 CNY 基准金额。
 
 后端：
 
@@ -243,6 +243,8 @@ amount: double
 ```
 
 UI 显示时才转换为元。
+
+外币账单必须通过 `original_currency_code`、`original_amount_minor`、`exchange_rate_to_cny`、`exchange_rate_date` 和 `exchange_rate_source` 表达。统计、预算、报表、Goals 只能汇总 CNY 口径的 `amount_cents`，不得直接相加外币原始金额。
 
 示例：
 

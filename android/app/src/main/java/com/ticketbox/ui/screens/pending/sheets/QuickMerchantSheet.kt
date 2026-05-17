@@ -17,11 +17,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
  * QuickMerchant BottomSheet — slice 3 M3。
@@ -42,7 +42,7 @@ internal fun QuickMerchantSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("补一下商家", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text("补一下商家", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
             text = "保存后不会自动确认。空商家不能保存。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,

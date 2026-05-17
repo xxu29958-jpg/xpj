@@ -13,7 +13,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
@@ -21,17 +23,18 @@ import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.DuplicateNotice
-import com.ticketbox.ui.components.ExpenseImagePreview
+import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.nowUtcIso
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.formatMinorAmountInput
+import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.screens.expense.EditDraftPreviewCard
 import com.ticketbox.ui.screens.expense.ExpenseDateField
-import com.ticketbox.ui.screens.expense.ExpenseEditAmountField
 import com.ticketbox.ui.screens.expense.ExpenseEditCategoryField
 import com.ticketbox.ui.screens.expense.ExpenseEditConfirmActions
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseEditDatePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
 import com.ticketbox.ui.screens.expense.ExpenseEditMoreSection
@@ -66,8 +69,16 @@ fun ExpenseEditScreen(
     }
 
     val currentExpense = state.expense ?: expense
-    var amountText by remember(currentExpense.id, currentExpense.updatedAt) {
-        mutableStateOf(formatAmountInput(currentExpense.amountCents))
+    var currency by remember(currentExpense.id, currentExpense.updatedAt) {
+        mutableStateOf(currentExpense.originalCurrencyCode)
+    }
+    var originalAmountText by remember(currentExpense.id, currentExpense.updatedAt) {
+        mutableStateOf(
+            formatMinorAmountInput(
+                currentExpense.originalAmountMinor ?: currentExpense.amountCents,
+                currentExpense.originalCurrencyCode,
+            )
+        )
     }
     var merchant by remember(currentExpense.id, currentExpense.updatedAt) { mutableStateOf(currentExpense.merchant.orEmpty()) }
     var category by remember(currentExpense.id, currentExpense.updatedAt) {
@@ -94,6 +105,7 @@ fun ExpenseEditScreen(
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() } ?: "第一版为空"
     val previewImage = state.fullImage ?: state.thumbnail
     val readOnly = state.readOnly
+    val haptics = rememberAppHaptics()
 
     if (showDatePicker) {
         ExpenseEditDatePicker(
@@ -131,15 +143,17 @@ fun ExpenseEditScreen(
     }
 
     fun draftOrMessage(): ExpenseDraft? {
-        val cents = parseAmountCents(amountText)
-        if (amountText.isNotBlank() && cents == null) {
+        val originalMinor = parseMinorAmount(originalAmountText, currency)
+        if (originalAmountText.isNotBlank() && originalMinor == null) {
             message = "金额格式不正确"
             return null
         }
         val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, "值不值评分") ?: return null)
         val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, "后悔指数") ?: return null)
         return ExpenseDraft(
-            amountCents = cents,
+            amountCents = null,
+            originalCurrencyCode = currency,
+            originalAmountMinor = originalMinor,
             merchant = merchant.ifBlank { null },
             category = normalizeExpenseCategory(category),
             note = note,
@@ -181,13 +195,14 @@ fun ExpenseEditScreen(
         )
 
         if (showLargeImage && currentExpense.imagePath != null) {
-            ExpenseImagePreview(
+            AppAsyncImage(
                 image = state.fullImage ?: previewImage,
                 placeholder = if (state.imageLoading) {
                     "原图加载中"
                 } else {
                     "原图暂时加载失败，截图已保存"
                 },
+                contentScale = ContentScale.Fit,
                 displayHeight = 420.dp,
             )
         }
@@ -205,9 +220,13 @@ fun ExpenseEditScreen(
             OcrProgressCard()
         }
 
-        ExpenseEditAmountField(
-            amountText = amountText,
-            onAmountChange = { amountText = it },
+        ExpenseCurrencyFields(
+            currency = currency,
+            onCurrencyChange = {
+                currency = it
+            },
+            originalAmountText = originalAmountText,
+            onOriginalAmountChange = { originalAmountText = it },
             enabled = !readOnly,
         )
         ExpenseEditMerchantField(
@@ -279,6 +298,7 @@ fun ExpenseEditScreen(
             onBack = onDone,
             onSave = {
                 val draft = draftOrMessage() ?: return@ExpenseEditPrimaryActions
+                haptics.tick()
                 onSave(draft)
             },
         )
@@ -289,10 +309,11 @@ fun ExpenseEditScreen(
             allowReject = allowReject && !readOnly,
             onConfirm = {
                 val draft = draftOrMessage() ?: return@ExpenseEditConfirmActions
-                if (draft.amountCents == null) {
+                if (draft.originalAmountMinor == null) {
                     message = "请先填写金额。"
                     return@ExpenseEditConfirmActions
                 }
+                haptics.confirm()
                 onConfirm(draft)
             },
             onRequestReject = { showRejectDialog = true },

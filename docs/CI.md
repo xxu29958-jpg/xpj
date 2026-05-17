@@ -25,11 +25,11 @@ Python 3.11
 ```powershell
 python -m compileall app scripts tests
 ruff check app scripts tests
-python -m pytest
+python -m pytest --cov=app --cov-report=term-missing
 python scripts\smoke_test.py
 ```
 
-后端 CI 会真实拉起 FastAPI smoke 服务，验证上传、鉴权、账单修改、确认、统计、CSV、图片保护、重复检测和维护接口。
+后端 CI 会输出 `app` 包覆盖率报告，并真实拉起 FastAPI smoke 服务，验证上传、鉴权、账单修改、确认、统计、CSV、图片保护、重复检测和维护接口。
 
 同时会检查 `backend/scripts` 和 `android/scripts` 下的 PowerShell 脚本：
 

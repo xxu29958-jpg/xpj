@@ -108,7 +108,7 @@
           {% elif row.status == 'insert_failed' %}<span class="status-chip err">写入失败</span>
           {% else %}<span class="status-chip err">错误</span>{% endif %}
         </td>
-        <td class="num">{% if row.amount_cents is not none %}¥{{ "%.2f"|format(row.amount_cents / 100) }}{% else %}—{% endif %}</td>
+        <td class="num">{% if row.amount_cents is not none %}{{ home_currency_symbol }}{{ "%.2f"|format(row.amount_cents / 100) }}{% else %}—{% endif %}</td>
         <td>{{ row.merchant or '—' }}</td>
         <td>{{ row.category }}</td>
         <td>{{ row.expense_time or '—' }}</td>

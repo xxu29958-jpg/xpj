@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 fun AppFilterChip(
@@ -33,7 +34,7 @@ fun AppFilterChip(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
+                fontWeight = if (selected) AppTextHierarchy.heading.weight else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -36,8 +36,10 @@ import com.ticketbox.domain.model.ledgerAuditActionLabel
 import com.ticketbox.domain.model.ledgerAuditResultLabel
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppSpacing
+import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.launch
 
 @Composable
@@ -146,7 +148,11 @@ fun FamilyMembersScreen(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                 ) {
-                    if (members.isEmpty() && !loading) {
+                    if (members.isEmpty() && loading) {
+                        Column(modifier = Modifier.shimmer()) {
+                            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
+                        }
+                    } else if (members.isEmpty()) {
                         Text(
                             text = "还没有可显示的成员。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -189,7 +195,11 @@ fun FamilyMembersScreen(
                         modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     ) {
-                        if (auditItems.isEmpty() && !auditLoading) {
+                        if (auditItems.isEmpty() && auditLoading) {
+                            Column(modifier = Modifier.shimmer()) {
+                                repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
+                            }
+                        } else if (auditItems.isEmpty()) {
                             Text(
                                 text = "还没有成员变更记录。",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -198,7 +208,7 @@ fun FamilyMembersScreen(
                         auditItems.forEach { item ->
                             LedgerAuditRow(item = item)
                         }
-                        if (auditLoading) {
+                        if (auditLoading && auditItems.isNotEmpty()) {
                             Text(
                                 text = "正在刷新成员记录…",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

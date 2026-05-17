@@ -30,15 +30,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.DashboardCard
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.ui.components.AppEmptyStateCard
-import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.ListItemSkeleton
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppSpacing
+import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.launch
 
 @Composable
@@ -132,10 +135,15 @@ fun DashboardCardsScreen(
     ) {
         SettingsSection(title = "卡片顺序", icon = Icons.Filled.DashboardCustomize) {
             when {
-                loading && cards.isEmpty() -> AppLoadingState(
-                    title = "正在加载首页卡片",
-                    body = "读取当前账本的 Android 首页配置。",
-                )
+                loading && cards.isEmpty() -> AppGlassCard(containerAlpha = 0.96f) {
+                    Column(
+                        modifier = Modifier
+                            .padding(AppSpacing.cardPaddingTight)
+                            .shimmer(),
+                    ) {
+                        repeat(4) { ListItemSkeleton(horizontalPadding = 0.dp) }
+                    }
+                }
                 cards.isEmpty() -> AppEmptyStateCard {
                     Column(
                         modifier = Modifier.padding(AppSpacing.cardPaddingTight),
@@ -144,7 +152,7 @@ fun DashboardCardsScreen(
                         Text(
                             text = "暂时没有卡片配置",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Black,
+                            fontWeight = AppTextHierarchy.heading.weight,
                         )
                         Text(
                             text = "刷新后仍为空时，可以恢复默认卡片。",

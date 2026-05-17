@@ -25,11 +25,18 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     // first subscribers observe the persisted value without a race.
     private val activeLedgerIdFlow = MutableStateFlow(prefs.getString(KEY_ACTIVE_LEDGER_ID, null))
 
+    // 币种偏好 hot flow，与 ledger id 同理：磁盘初值保证首订阅者不会错过当前值。
+    private val currencyCodeFlow = MutableStateFlow(prefs.getString(KEY_CURRENCY_CODE, null))
+
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerIdFlow
+
+    override fun observeCurrencyCodeKey(): Flow<String?> = currencyCodeFlow
 
     override fun serverUrl(): String? = prefs.getString(KEY_SERVER_URL, null)
 
     override fun appSkinKey(): String? = prefs.getString(KEY_APP_SKIN, null)
+
+    override fun currencyCodeKey(): String? = prefs.getString(KEY_CURRENCY_CODE, null)
 
     override fun monthlyBudgetCents(): Long? {
         val value = prefs.getLong(KEY_MONTHLY_BUDGET_CENTS, NO_BUDGET)
@@ -147,6 +154,15 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
+    override fun saveCurrencyCodeKey(currencyKey: String) {
+        val sanitized = currencyKey.trim().uppercase()
+        if (sanitized.isBlank()) return
+        prefs.edit {
+            putString(KEY_CURRENCY_CODE, sanitized)
+        }
+        currencyCodeFlow.value = sanitized
+    }
+
     override fun saveServerUrl(serverUrl: String) {
         prefs.edit {
             putString(KEY_SERVER_URL, serverUrl.trim().trimEnd('/'))
@@ -217,6 +233,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     private companion object {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_APP_SKIN = "app_skin"
+        const val KEY_CURRENCY_CODE = "currency_code"
         const val KEY_MONTHLY_BUDGET_CENTS = "monthly_budget_cents"
         const val KEY_ACCOUNT_NAME = "account_name"
         const val KEY_LEDGER_NAME = "ledger_name"

@@ -11,9 +11,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.screens.pending.sheets.BulkConfirmSheetContent
@@ -114,7 +114,7 @@ internal fun BulkConfirmEntry(
             Text(
                 text = "可直接确认 $readyCount 条",
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             AppSecondaryButton(
                 text = if (inProgress) "确认中…" else "批量确认",

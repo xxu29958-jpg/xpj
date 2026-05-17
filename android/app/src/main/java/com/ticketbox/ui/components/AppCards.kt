@@ -18,11 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.AppTextHierarchy
 @Composable
 fun AppGlassCard(
     modifier: Modifier = Modifier,
@@ -170,7 +170,7 @@ fun MetricTile(
             text = value,
             color = tint,
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
         )
     }
 }

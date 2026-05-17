@@ -1,5 +1,14 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -13,9 +22,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,7 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
@@ -35,7 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.design.AppMotion
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppTypography
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.tabularNum
 
 enum class ExpensePreviewMode {
@@ -59,12 +74,14 @@ fun ExpenseCard(
     onReject: () -> Unit = {},
     onKeepDuplicate: () -> Unit = {},
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     var showRejectDialog by remember(expense.id) { mutableStateOf(false) }
     val isCompact = previewMode == ExpensePreviewMode.Compact
     val cardPadding = if (isCompact) 10.dp else 14.dp
     val contentGap = if (isCompact) 8.dp else 12.dp
     val rowGap = if (isCompact) 10.dp else 12.dp
     val imageSize = if (isCompact) DpSize(width = 82.dp, height = 110.dp) else DpSize(width = 96.dp, height = 128.dp)
+    val exchangeMeta = formatExpenseExchangeMeta(expense)
 
     if (showRejectDialog) {
         AlertDialog(
@@ -107,9 +124,10 @@ fun ExpenseCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (expense.imagePath != null) {
-                    ExpenseImagePreview(
+                    AppAsyncImage(
                         image = thumbnail,
-                        placeholder = "截图",
+                        placeholder = "截图缩略图加载中",
+                        contentScale = ContentScale.Crop,
                         compact = true,
                         compactSize = imageSize,
                     )
@@ -124,7 +142,7 @@ fun ExpenseCard(
                         text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = AppTextHierarchy.body.weight,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -138,7 +156,7 @@ fun ExpenseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = expense.amountCents?.let(::formatAmount) ?: "等待你确认金额",
+                        text = if (expense.amountCents == null) "等待你确认金额" else formatExpensePrimaryAmount(expense, currencyDisplay),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = AppTypography.amountMedium.size,
                             lineHeight = 28.sp,
@@ -149,6 +167,15 @@ fun ExpenseCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    exchangeMeta?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -185,9 +212,10 @@ fun ExpenseCard(
                 } else {
                     "截图已保存，点开后可查看"
                 }
-                ExpenseImagePreview(
+                AppAsyncImage(
                     image = thumbnail,
                     placeholder = imagePlaceholder,
+                    contentScale = ContentScale.Crop,
                 )
             }
 
@@ -227,11 +255,42 @@ fun ExpenseCard(
                             ),
                             onClick = onConfirm,
                         ) {
-                            Text(
-                                text = "入账",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            // actionsEnabled=false ⇒ 后台正在 confirm，给一个 scale+check 的反馈：
+                            // - 文字 "入账" 淡出
+                            // - check 图标从中央 scale 0.6 → 1.0 spring-bounce 进入
+                            // 随后整个 row 会被 actionInProgressIds 移除（动画衔接 animateItem）
+                            AnimatedContent(
+                                targetState = actionsEnabled,
+                                transitionSpec = {
+                                    (fadeIn(tween(AppMotion.fastMillis)) +
+                                        scaleIn(
+                                            initialScale = 0.6f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium,
+                                            ),
+                                        )
+                                    ) togetherWith (
+                                        fadeOut(tween(AppMotion.fastMillis)) +
+                                            scaleOut(targetScale = 0.85f, animationSpec = tween(AppMotion.fastMillis))
+                                    )
+                                },
+                                label = "confirmButtonState",
+                            ) { ready ->
+                                if (ready) {
+                                    Text(
+                                        text = "入账",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = "已入账",
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                     if (showRejectAction) {
@@ -278,7 +337,7 @@ private fun CategoryMark(category: String) {
             text = category.take(1).ifBlank { "账" },
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
             textAlign = TextAlign.Center,
         )
     }

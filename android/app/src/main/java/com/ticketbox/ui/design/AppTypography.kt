@@ -10,16 +10,56 @@ data class AppTextRole(
     val weight: FontWeight,
 )
 
+/**
+ * 旧 token 集 —— 保持兼容。
+ *
+ * v0.10 字重重平衡（2026-05）：
+ * - `appLabel` Black → SemiBold（应用标记不该和 amountLarge 同等级）
+ * - `sectionTitle` Black → SemiBold（section 头不是页面唯一焦点）
+ * - `cardTitle` Bold → SemiBold（卡内标题比 section 还轻一级）
+ * - `amountMedium` Black → Bold（次级金额不与主 hero 同等级）
+ * - `chip` Bold → Medium（chip 是辅助元素，Bold 在 12px 字号上视觉过重）
+ * - 保留 Black：`pageTitle` / `amountLarge` —— 这两个才是每屏唯一焦点
+ *
+ * 新代码请优先使用 [AppTextHierarchy] 的 4 级层级。
+ */
 object AppTypography {
-    val appLabel = AppTextRole(size = 15.sp, weight = FontWeight.Black)
+    val appLabel = AppTextRole(size = 15.sp, weight = FontWeight.SemiBold)
     val pageTitle = AppTextRole(size = 28.sp, weight = FontWeight.Black)
-    val sectionTitle = AppTextRole(size = 20.sp, weight = FontWeight.Black)
-    val cardTitle = AppTextRole(size = 17.sp, weight = FontWeight.Bold)
+    val sectionTitle = AppTextRole(size = 20.sp, weight = FontWeight.SemiBold)
+    val cardTitle = AppTextRole(size = 17.sp, weight = FontWeight.SemiBold)
     val amountLarge = AppTextRole(size = 38.sp, weight = FontWeight.Black)
-    val amountMedium = AppTextRole(size = 24.sp, weight = FontWeight.Black)
+    val amountMedium = AppTextRole(size = 24.sp, weight = FontWeight.Bold)
     val body = AppTextRole(size = 14.sp, weight = FontWeight.Normal)
     val caption = AppTextRole(size = 12.sp, weight = FontWeight.Medium)
-    val chip = AppTextRole(size = 13.sp, weight = FontWeight.Bold)
+    val chip = AppTextRole(size = 13.sp, weight = FontWeight.Medium)
+}
+
+/**
+ * 字重层级 token，按"焦点优先级"组织——下方注释说明使用边界。
+ *
+ * 现状审计发现 FontWeight.Black 在 UI 层有 69 处、Bold 29 处，
+ * 所有文字都"高字重"导致信息层级失效（什么都重就什么都不重）。
+ * 这套 token 用 4 级递进，约束新代码必须挑层级，而不是凭手感选字重。
+ *
+ * 旧代码迁移规则（在后续 commit 逐步替换 [AppTypography] 里的高字重 token）：
+ *   - 列表项首行 / 卡片标题 / 商家名     → [body]    (Medium)
+ *   - 分类标签 / 时间 / meta / 说明文字   → [caption] (Normal)
+ *   - 大金额 / 页面主标题（每屏 1-2 个）  → [hero]    (Black)
+ *   - 区块 section 标题                  → [heading] (SemiBold)
+ */
+object AppTextHierarchy {
+    /** 页面唯一焦点：大金额、页面主标题。每屏 1-2 次。 */
+    val hero = AppTextRole(size = 32.sp, weight = FontWeight.Black)
+
+    /** 区块标题、卡片大标题。轻量强调，不抢主焦点。 */
+    val heading = AppTextRole(size = 18.sp, weight = FontWeight.SemiBold)
+
+    /** 列表项首行、商家名、内容正文。承担最多视觉量但不喧宾夺主。 */
+    val body = AppTextRole(size = 15.sp, weight = FontWeight.Medium)
+
+    /** 辅助信息：时间、分类标签、meta、说明文字。安静地存在。 */
+    val caption = AppTextRole(size = 12.sp, weight = FontWeight.Normal)
 }
 
 /**
@@ -30,7 +70,7 @@ object AppTypography {
  * 在 Text(style = ...) 上链式调用即可：
  *
  *   Text(
- *     text = formatAmount(cents),
+ *     text = formatDisplayAmount(cents, currencyDisplay),
  *     style = MaterialTheme.typography.headlineMedium.tabularNum(),
  *     fontWeight = AppTypography.amountLarge.weight,
  *   )

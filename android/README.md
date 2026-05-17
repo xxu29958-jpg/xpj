@@ -48,6 +48,30 @@ android\app\build\outputs\apk\gray\debug\app-gray-debug.apk
 android\app\build\outputs\apk\internal\debug\app-internal-debug.apk
 ```
 
+## 本机稳定 debug 签名
+
+`grayDebug` 和 `internalDebug` 可以使用本机固定 debug keystore，避免每次换工作区或换 Gradle 默认 debug key 后，真机覆盖安装出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
+
+密钥、别名和密码只写入被 Git 忽略的 `android/local.properties` 或环境变量，不进入仓库。优先级为环境变量高于 `local.properties`。
+
+```properties
+ticketbox.debug.keystore=E\:\\path\\to\\ticketbox-debug.keystore
+ticketbox.debug.keyAlias=ticketbox-debug
+ticketbox.debug.storePassword=...
+ticketbox.debug.keyPassword=...
+```
+
+等价环境变量：
+
+```powershell
+$env:TICKETBOX_DEBUG_KEYSTORE_PATH="E:\path\to\ticketbox-debug.keystore"
+$env:TICKETBOX_DEBUG_KEY_ALIAS="ticketbox-debug"
+$env:TICKETBOX_DEBUG_KEYSTORE_PASSWORD="..."
+$env:TICKETBOX_DEBUG_KEY_PASSWORD="..."
+```
+
+如果手机上已经安装过不同证书签名的 `com.ticketbox`，仍然需要卸载一次旧包。之后只要保留同一份本机 debug keystore，`adb install -r` 和安装脚本即可覆盖升级。
+
 项目级完整验证：
 
 ```powershell

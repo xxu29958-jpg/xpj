@@ -16,10 +16,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.theme.TicketboxTheme
 
 @Preview(showBackground = true)
@@ -47,7 +47,7 @@ private fun AppVisualComponentsPreview() {
                         text = "0 张",
                         color = MaterialTheme.colorScheme.onPrimary,
                         style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = AppTextHierarchy.heading.weight,
                     )
                 }
             }
@@ -73,7 +73,7 @@ private fun AppVisualComponentsPreview() {
                         Text(
                             text = "还没有待确认账单",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Black,
+                            fontWeight = AppTextHierarchy.heading.weight,
                         )
                         Text(
                             text = "截图上传后不会自动入账，你确认后才会记录。",

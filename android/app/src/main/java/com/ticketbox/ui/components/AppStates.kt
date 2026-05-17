@@ -9,8 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
  * 统一加载占位组件。
@@ -35,7 +35,7 @@ fun AppLoadingState(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             body?.let {
                 Text(

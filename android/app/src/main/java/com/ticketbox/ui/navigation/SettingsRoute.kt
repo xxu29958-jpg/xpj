@@ -6,6 +6,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.screens.SettingsScreen
 import com.ticketbox.viewmodel.SettingsViewModel
 
@@ -14,7 +15,9 @@ internal fun SettingsRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
     currentSkin: AppSkin,
+    currentCurrency: CurrencyCode,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
@@ -25,6 +28,7 @@ internal fun SettingsRoute(
     SettingsScreen(
         state = state,
         currentSkin = currentSkin,
+        currentCurrency = currentCurrency,
         onTestConnection = settingsViewModel::testConnection,
         onRunDiagnostics = settingsViewModel::runDiagnostics,
         onRefreshServerSettings = settingsViewModel::refreshServerSettings,
@@ -42,6 +46,7 @@ internal fun SettingsRoute(
         onConfirmApplyConfirmedRules = settingsViewModel::confirmApplyConfirmedRules,
         onRollbackRuleApplication = settingsViewModel::rollbackRuleApplication,
         onSkinChange = onSkinChange,
+        onCurrencyChange = onCurrencyChange,
         onApplyBackgroundSettings = settingsViewModel::applyBackgroundSettings,
         onClearBackgroundImage = settingsViewModel::clearBackgroundImage,
         onBackgroundImageError = settingsViewModel::backgroundImageCopyFailed,

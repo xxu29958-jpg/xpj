@@ -18,20 +18,23 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
-import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatExpenseExchangeMeta
+import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun EditDraftPreviewCard(
@@ -44,6 +47,8 @@ internal fun EditDraftPreviewCard(
     onToggleLargeImage: () -> Unit,
     onRetryOcr: () -> Unit,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     AppSolidCard {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -51,9 +56,10 @@ internal fun EditDraftPreviewCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (expense.imagePath != null) {
-                ExpenseImagePreview(
+                AppAsyncImage(
                     image = previewImage,
                     placeholder = if (imageLoading) "截图加载中" else "截图已保存",
+                    contentScale = ContentScale.Crop,
                     compact = true,
                     compactSize = DpSize(width = 104.dp, height = 136.dp),
                 )
@@ -73,10 +79,17 @@ internal fun EditDraftPreviewCard(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = formatAmount(expense.amountCents),
+                    text = formatExpensePrimaryAmount(expense, currencyDisplay),
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                formatExpenseExchangeMeta(expense)?.let { meta ->
+                    Text(
+                        text = meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatusPill(expense.category)
                     expense.confidence?.let {
@@ -103,7 +116,7 @@ internal fun EditDraftPreviewCard(
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = AppTextHierarchy.body.weight,
                             )
                         }
                         if (!readOnly) {
@@ -121,7 +134,7 @@ internal fun EditDraftPreviewCard(
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = AppTextHierarchy.body.weight,
                                 )
                             }
                         }

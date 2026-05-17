@@ -22,11 +22,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 fun MerchantAliasesScreen(
@@ -188,7 +188,7 @@ private fun MerchantAliasCard(
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = AppTextHierarchy.body.weight,
                 )
             }
             Text(

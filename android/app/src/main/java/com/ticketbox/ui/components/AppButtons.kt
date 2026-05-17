@@ -32,12 +32,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
+import com.ticketbox.ui.design.AppTextHierarchy
 
 private const val ControlBorderIdleAlpha = 0.28f
 private const val ControlBorderPressedAlpha = 0.62f
@@ -89,7 +89,7 @@ fun AppPrimaryButton(
                 text = text,
                 color = MaterialTheme.colorScheme.onPrimary,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

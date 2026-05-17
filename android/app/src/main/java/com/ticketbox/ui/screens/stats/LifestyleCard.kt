@@ -13,12 +13,15 @@ import androidx.compose.ui.Modifier
 import com.ticketbox.domain.model.FrequentMerchant
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 internal fun LifestyleCard(lifestyle: LifestyleStats) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     AppGlassCard(containerAlpha = 0.92f) {
         Column(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
@@ -26,15 +29,15 @@ internal fun LifestyleCard(lifestyle: LifestyleStats) {
         ) {
             Text("生活统计", style = MaterialTheme.typography.titleMedium)
             if (lifestyle.aiSubscriptionAmountCents > 0L) {
-                LifestyleRow("AI 订阅", formatAmount(lifestyle.aiSubscriptionAmountCents))
+                LifestyleRow("AI 订阅", formatDisplayAmount(lifestyle.aiSubscriptionAmountCents, currencyDisplay))
             }
             if (lifestyle.digitalAmountCents > 0L) {
-                LifestyleRow("数码消费", formatAmount(lifestyle.digitalAmountCents))
+                LifestyleRow("数码消费", formatDisplayAmount(lifestyle.digitalAmountCents, currencyDisplay))
             }
             lifestyle.maxExpense?.let { maxExpense ->
                 LifestyleRow(
                     label = "最大一笔",
-                    value = "${formatAmount(maxExpense.amountCents)} · ${
+                    value = "${formatDisplayAmount(maxExpense.amountCents, currencyDisplay)} · ${
                         maxExpense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家"
                     }",
                 )

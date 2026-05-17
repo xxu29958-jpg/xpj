@@ -18,12 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.TagStats
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -31,6 +33,7 @@ internal fun TagStatsCard(
     tags: List<TagStats>,
     totalAmountCents: Long,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val visibleTags = tags
         .filter { it.amountCents > 0L && it.count > 0 }
         .sortedByDescending { it.amountCents }
@@ -46,7 +49,7 @@ internal fun TagStatsCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("标签分布", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text("标签分布", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                 Text(
                     text = "按本月已确认账单的标签聚合",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -61,6 +64,7 @@ internal fun TagStatsCard(
                     tag = tag,
                     totalAmountCents = totalAmountCents,
                     colorIndex = index,
+                    currencyDisplay = currencyDisplay,
                 )
             }
         }
@@ -72,6 +76,7 @@ private fun TagStatsRow(
     tag: TagStats,
     totalAmountCents: Long,
     colorIndex: Int,
+    currencyDisplay: CurrencyDisplay,
 ) {
     val colors = tagStatsColors()
     val progress = if (totalAmountCents > 0L) {
@@ -105,10 +110,10 @@ private fun TagStatsRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = formatAmount(tag.amountCents),
+                text = formatDisplayAmount(tag.amountCents, currencyDisplay),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
                 text = "$percent% · ${tag.count} 笔",

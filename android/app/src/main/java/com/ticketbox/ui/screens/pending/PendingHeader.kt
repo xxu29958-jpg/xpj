@@ -9,14 +9,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppFilterChip
-import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppTextHierarchy
 
+/**
+ * 待确认页的"显示密度"枚举 + 工具 sheet。
+ *
+ * v0.11 重构：原 [PendingHeader] composable 被合并到 [PendingTop] 的 trailingAction，
+ * 不再单独渲染"待处理"section title——避免和页头 AppPageHeader 的"待确认"重复出现。
+ */
 internal enum class PendingDisplayMode {
     Compact,
     Comfortable,
@@ -26,30 +30,6 @@ internal fun pendingDisplayModeLabel(displayMode: PendingDisplayMode): String {
     return when (displayMode) {
         PendingDisplayMode.Compact -> "紧凑"
         PendingDisplayMode.Comfortable -> "舒适"
-    }
-}
-
-@Composable
-internal fun PendingHeader(
-    loading: Boolean,
-    displayMode: PendingDisplayMode,
-    onOpenTools: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        AppSectionHeader(
-            title = "待处理",
-            subtitle = "点进截图后补金额、商家和分类",
-            modifier = Modifier.weight(1f),
-        )
-        AppSecondaryButton(
-            text = if (loading) "刷新中" else pendingDisplayModeLabel(displayMode),
-            enabled = !loading,
-            onClick = onOpenTools,
-        )
     }
 }
 
@@ -71,7 +51,7 @@ internal fun PendingToolsSheet(
             Text(
                 text = "待处理设置",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
                 text = "调整列表密度，或重新整理待确认截图。",

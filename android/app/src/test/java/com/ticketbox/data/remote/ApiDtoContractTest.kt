@@ -90,7 +90,9 @@ class ApiDtoContractTest {
         val json = moshi.adapter(NotificationDraftRequestDto::class.java).toJson(
             NotificationDraftRequestDto(
                 source = "wechat",
-                amountCents = 2680,
+                originalCurrency = "CNY",
+                originalAmount = "26.80",
+                spentAt = "2026-05-13T10:05:00Z",
                 merchant = "星巴克",
                 category = "餐饮",
                 expenseTime = "2026-05-13T10:05:00Z",
@@ -98,10 +100,12 @@ class ApiDtoContractTest {
         )
 
         assertEquals(
-            """{"source":"wechat","amount_cents":2680,"merchant":"星巴克","category":"餐饮","expense_time":"2026-05-13T10:05:00Z"}""",
+            """{"source":"wechat","original_currency":"CNY","original_amount":"26.80","spent_at":"2026-05-13T10:05:00Z","merchant":"星巴克","category":"餐饮","expense_time":"2026-05-13T10:05:00Z"}""",
             json,
         )
         assertFalse(json.contains("raw_text"))
+        assertFalse(json.contains("amount_cents"))
+        assertFalse(json.contains("exchange_rate"))
     }
 
     @Test

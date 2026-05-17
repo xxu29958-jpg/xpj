@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -32,8 +31,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppOutlinedButton
@@ -41,22 +41,25 @@ import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.nowUtcIso
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
 import com.ticketbox.ui.components.selectedMinuteFromIso
 import com.ticketbox.ui.components.timePickerToUtcIso
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualExpenseSheet(
     categories: List<String>,
     saving: Boolean,
+    initialCurrency: CurrencyCode = FxContract.HomeCurrency,
     onCreate: (ExpenseDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var amountText by rememberSaveable { mutableStateOf("") }
+    var currency by rememberSaveable(initialCurrency) { mutableStateOf(initialCurrency) }
     var merchant by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("餐饮") }
     var note by rememberSaveable { mutableStateOf("") }
@@ -126,13 +129,15 @@ fun ManualExpenseSheet(
     }
 
     fun draftOrMessage(): ExpenseDraft? {
-        val amountCents = parseAmountCents(amountText)
-        if (amountCents == null) {
+        val originalMinor = parseMinorAmount(amountText, currency)
+        if (originalMinor == null) {
             message = "请填写正确金额。"
             return null
         }
         return ExpenseDraft(
-            amountCents = amountCents,
+            amountCents = null,
+            originalCurrencyCode = currency,
+            originalAmountMinor = originalMinor,
             merchant = merchant.ifBlank { null },
             category = normalizeExpenseCategory(category),
             note = note,
@@ -157,14 +162,14 @@ fun ManualExpenseSheet(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        OutlinedTextField(
-            value = amountText,
-            onValueChange = { amountText = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("金额，单位元") },
-            placeholder = { Text("18.50") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
+        ExpenseCurrencyFields(
+            currency = currency,
+            onCurrencyChange = {
+                currency = it
+            },
+            originalAmountText = amountText,
+            onOriginalAmountChange = { amountText = it },
+            enabled = !saving,
         )
         OutlinedTextField(
             value = merchant,

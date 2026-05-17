@@ -35,18 +35,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
+import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.SafeBadge
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.RecurringUiState
+import com.valentinilk.shimmer.shimmer
 
 private enum class RecurringTab(val label: String) {
     Upcoming("即将"),
@@ -64,6 +69,8 @@ fun RecurringScreen(
     onArchive: (String) -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     BackHandler(enabled = onBack != null) {
         onBack?.invoke()
     }
@@ -121,6 +128,8 @@ fun RecurringScreen(
             RecurringItemsCard(
                 title = selectedTab.label,
                 items = visibleItems,
+                loading = state.loading,
+                currencyDisplay = currencyDisplay,
                 canModify = state.canModify,
                 onPause = onPause,
                 onResume = onResume,
@@ -130,6 +139,8 @@ fun RecurringScreen(
         item {
             RecurringCandidatesCard(
                 candidates = state.candidates,
+                loading = state.loading,
+                currencyDisplay = currencyDisplay,
                 canModify = state.canModify,
                 onConfirmCandidate = onConfirmCandidate,
             )
@@ -164,6 +175,8 @@ private fun RecurringTabRow(
 private fun RecurringItemsCard(
     title: String,
     items: List<RecurringItem>,
+    loading: Boolean,
+    currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
@@ -183,7 +196,7 @@ private fun RecurringItemsCard(
                 Text(
                     text = "$title 固定支出",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
                     text = "${items.size} 项",
@@ -192,16 +205,23 @@ private fun RecurringItemsCard(
                 )
             }
             if (items.isEmpty()) {
-                Text(
-                    text = "还没有这一类固定支出。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                if (loading) {
+                    Column(modifier = Modifier.shimmer()) {
+                        repeat(4) { ListItemSkeleton(horizontalPadding = 0.dp) }
+                    }
+                } else {
+                    Text(
+                        text = "还没有这一类固定支出。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             } else {
                 items.forEachIndexed { index, item ->
                     if (index > 0) HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
                     RecurringItemRow(
                         item = item,
+                        currencyDisplay = currencyDisplay,
                         canModify = canModify,
                         onPause = onPause,
                         onResume = onResume,
@@ -216,6 +236,7 @@ private fun RecurringItemsCard(
 @Composable
 private fun RecurringItemRow(
     item: RecurringItem,
+    currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
@@ -241,7 +262,7 @@ private fun RecurringItemRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = recurringMeta(item),
+                    text = recurringMeta(item, currencyDisplay),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
@@ -249,9 +270,9 @@ private fun RecurringItemRow(
                 )
             }
             Text(
-                text = formatAmount(item.lastAmountCents),
+                text = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
         }
         Row(
@@ -297,6 +318,8 @@ private fun RecurringActions(
 @Composable
 private fun RecurringCandidatesCard(
     candidates: List<RecurringCandidate>,
+    loading: Boolean,
+    currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
     onConfirmCandidate: (RecurringCandidate) -> Unit,
 ) {
@@ -308,7 +331,7 @@ private fun RecurringCandidatesCard(
             Text(
                 text = "固定支出候选（未确认）",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
                 text = "根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。",
@@ -316,14 +339,20 @@ private fun RecurringCandidatesCard(
                 style = MaterialTheme.typography.bodySmall,
             )
             if (candidates.isEmpty()) {
-                Text(
-                    text = "暂无新的固定支出候选。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                if (loading) {
+                    Column(modifier = Modifier.shimmer()) {
+                        repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
+                    }
+                } else {
+                    Text(
+                        text = "暂无新的固定支出候选。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             } else {
                 candidates.take(8).forEach { candidate ->
-                    CandidateRow(candidate, canModify, onConfirmCandidate)
+                    CandidateRow(candidate, currencyDisplay, canModify, onConfirmCandidate)
                 }
             }
         }
@@ -333,6 +362,7 @@ private fun RecurringCandidatesCard(
 @Composable
 private fun CandidateRow(
     candidate: RecurringCandidate,
+    currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
     onConfirmCandidate: (RecurringCandidate) -> Unit,
 ) {
@@ -355,7 +385,7 @@ private fun CandidateRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${formatAmount(candidate.amountCents)} · ${candidate.occurrenceCount} 次 · ${candidate.confidence}",
+                text = "${formatDisplayAmount(candidate.amountCents, currencyDisplay)} · ${candidate.occurrenceCount} 次 · ${candidate.confidence}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -394,11 +424,11 @@ private fun StatusChip(status: String) {
     }
 }
 
-private fun recurringMeta(item: RecurringItem): String {
+private fun recurringMeta(item: RecurringItem, currencyDisplay: CurrencyDisplay): String {
     val next = item.nextExpectedDate?.let { "下次 $it" } ?: "下次未估算"
     val count = "${item.occurrenceCount} 次"
     val anomaly = if (item.anomalyStatus == "higher_than_average") {
-        " · 本月 ${formatAmount(item.currentMonthAmountCents)}"
+        " · 本月 ${formatDisplayAmount(item.currentMonthAmountCents, currencyDisplay)}"
     } else {
         ""
     }

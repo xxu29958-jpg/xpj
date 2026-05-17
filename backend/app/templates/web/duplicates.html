@@ -59,7 +59,10 @@
         <div class="dup-thumb"><span class="label">receipt scan #{{ orig.id if orig else '—' }}</span></div>
         <dl class="dup-fields">
           <dt>商家</dt><dd class="{% if 'merchant' in pair.diff_fields %}diff{% endif %}">{{ (orig.merchant if orig else '—') or '—' }}</dd>
-          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">¥{{ orig.amount_yuan if orig else '—' }}</dd>
+          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">
+            {{ orig.amount_label if orig else '—' }}
+            {% if orig and orig.fx_meta %}<div class="meta">{{ orig.fx_meta }}</div>{% endif %}
+          </dd>
           <dt>时间</dt><dd class="num {% if 'time' in pair.diff_fields %}diff{% endif %}">{{ (orig.expense_time if orig else '—') or '—' }}</dd>
           <dt>分类</dt><dd>{{ (orig.category if orig else '—') or '—' }}</dd>
           <dt>来源</dt><dd>{{ orig.source_label if orig else '—' }}</dd>
@@ -79,7 +82,10 @@
         <div class="dup-thumb"><span class="label">receipt scan #{{ cur.id }}</span></div>
         <dl class="dup-fields">
           <dt>商家</dt><dd class="{% if 'merchant' in pair.diff_fields %}diff{% endif %}">{{ cur.merchant or '—' }}</dd>
-          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">¥{{ cur.amount_yuan or '—' }}</dd>
+          <dt>金额</dt><dd class="num {% if 'amount' in pair.diff_fields %}diff{% endif %}">
+            {{ cur.amount_label or '—' }}
+            {% if cur.fx_meta %}<div class="meta">{{ cur.fx_meta }}</div>{% endif %}
+          </dd>
           <dt>时间</dt><dd class="num {% if 'time' in pair.diff_fields %}diff{% endif %}">{{ cur.expense_time or '—' }}</dd>
           <dt>分类</dt><dd>{{ cur.category }}</dd>
           <dt>来源</dt><dd>{{ cur.source_label }}</dd>

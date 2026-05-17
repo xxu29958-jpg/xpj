@@ -12,9 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppGlassCard
 
@@ -91,7 +91,7 @@ internal fun NeedsReviewEmptyFilterCard(filter: NeedsReviewFilter) {
             Text(
                 text = "没有符合 [${filter.label}] 的待确认账单",
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
                 text = "切换其他筛选可以看到剩余账单。当前不会自动判断，也不会自动入账。",

@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.PendingReviewActions
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
@@ -134,8 +135,10 @@ class PendingViewModelReviewActionsTest {
         val target = expense(id = 6L, amountCents = null)
         val fake = FakeReviewActions(pending = listOf(target))
         fake.updateResponder = { _, draft ->
-            assertEquals(1234L, draft.amountCents)
-            Result.success(target.copy(amountCents = 1234L))
+            assertEquals(null, draft.amountCents)
+            assertEquals(CurrencyCode.CNY, draft.originalCurrencyCode)
+            assertEquals(1234L, draft.originalAmountMinor)
+            Result.success(target.copy(amountCents = 1234L, originalAmountMinor = 1234L))
         }
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
@@ -149,10 +152,38 @@ class PendingViewModelReviewActionsTest {
     }
 
     @Test
+    fun saveAmountDraftPatchesOriginalForeignAmount() = review {
+        val target = expense(
+            id = 16L,
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalAmountMinor = null,
+        )
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.updateResponder = { _, draft ->
+            assertEquals(null, draft.amountCents)
+            assertEquals(CurrencyCode.USD, draft.originalCurrencyCode)
+            assertEquals(12345L, draft.originalAmountMinor)
+            Result.success(target.copy(originalAmountMinor = 12345L))
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.saveAmountDraft(target.id, 12345L)
+        advanceUntilIdle()
+
+        assertEquals(12345L, vm.uiState.value.items.single().originalAmountMinor)
+    }
+
+    @Test
     fun saveAmountAndConfirmRunsUpdateThenConfirm() = review {
         val target = expense(id = 7L, amountCents = null)
         val fake = FakeReviewActions(pending = listOf(target))
-        fake.updateResponder = { _, _ -> Result.success(target.copy(amountCents = 4200L)) }
+        fake.updateResponder = { _, draft ->
+            assertEquals(null, draft.amountCents)
+            assertEquals(4200L, draft.originalAmountMinor)
+            Result.success(target.copy(amountCents = 4200L, originalAmountMinor = 4200L))
+        }
         fake.confirmResponder = { Result.success(target.copy(amountCents = 4200L, status = "confirmed")) }
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
@@ -429,10 +460,15 @@ class PendingViewModelReviewActionsTest {
         category: String = "其他",
         duplicateStatus: String = "none",
         status: String = "pending",
+        originalCurrencyCode: CurrencyCode = CurrencyCode.CNY,
+        originalAmountMinor: Long? = amountCents,
     ): Expense = Expense(
         id = id,
         publicId = "pub-$id",
         amountCents = amountCents,
+        originalCurrency = originalCurrencyCode,
+        originalCurrencyCode = originalCurrencyCode,
+        originalAmountMinor = originalAmountMinor,
         merchant = merchant,
         category = category,
         note = null,

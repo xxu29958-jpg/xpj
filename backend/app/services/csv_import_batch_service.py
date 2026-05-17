@@ -17,6 +17,7 @@ from app.schemas import (
     CsvImportBatchResponse,
     CsvImportRowsResponse,
 )
+from app.services.exchange_rate_service import apply_currency_payload, home_currency_code
 from app.services.import_service import DEFAULT_SOURCE, parse_csv_row
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
@@ -162,7 +163,7 @@ def apply_csv_import_batch(
         now = now_utc()
         created: list[tuple[CsvImportRow, Expense]] = []
         for row in rows:
-            if row.amount_cents is None:
+            if row.amount_cents is None and row.original_amount_minor is None:
                 row.status = "insert_failed"
                 row.error_code = "amount_required"
                 row.error_message = "缺少有效金额。"
@@ -170,7 +171,7 @@ def apply_csv_import_batch(
                 continue
             expense = Expense(
                 tenant_id=tenant_id,
-                amount_cents=row.amount_cents,
+                amount_cents=None,
                 merchant=row.merchant or None,
                 category=row.category or "其他",
                 note=row.note or "",
@@ -180,6 +181,14 @@ def apply_csv_import_batch(
                 status="pending",
                 created_at=now,
                 updated_at=now,
+            )
+            apply_currency_payload(
+                db,
+                tenant_id=tenant_id,
+                expense=expense,
+                payload=row,
+                amount_was_explicit=row.original_currency_code == home_currency_code()
+                and row.amount_cents is not None,
             )
             db.add(expense)
             created.append((row, expense))
@@ -274,6 +283,10 @@ def build_csv_import_errors_csv(
             "error_code",
             "error_message",
             "amount_cents",
+            "original_currency_code",
+            "original_amount_minor",
+            "exchange_rate_to_cny",
+            "exchange_rate_date",
             "merchant",
             "category",
             "note",
@@ -290,6 +303,10 @@ def build_csv_import_errors_csv(
                 row.error_code or "",
                 row.error_message or "",
                 row.amount_cents if row.amount_cents is not None else "",
+                row.original_currency_code,
+                row.original_amount_minor if row.original_amount_minor is not None else "",
+                row.exchange_rate_to_cny if row.exchange_rate_to_cny is not None else "",
+                row.exchange_rate_date.isoformat() if row.exchange_rate_date else "",
                 row.merchant or "",
                 row.category,
                 row.note or "",
@@ -310,6 +327,11 @@ def _row_from_parsed(batch: CsvImportBatch, parsed) -> CsvImportRow:
         error_code=None if parsed.is_valid else "invalid_row",
         error_message=parsed.error,
         amount_cents=parsed.amount_cents,
+        original_currency_code=parsed.original_currency_code,
+        original_amount_minor=parsed.original_amount_minor,
+        exchange_rate_to_cny=parsed.exchange_rate_to_cny,
+        exchange_rate_date=parsed.exchange_rate_date,
+        exchange_rate_source=parsed.exchange_rate_source,
         merchant=parsed.merchant or None,
         category=parsed.category or "其他",
         note=parsed.note or None,

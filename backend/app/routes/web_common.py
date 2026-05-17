@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.network_boundary import require_owner_console_local
 from app.services import backup_service
 from app.services import owner_console_service as owner_svc
@@ -26,6 +27,7 @@ from app.services import web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.expense_service import list_pending
+from app.services.exchange_rate_service import home_currency_code
 from app.services.goal_service import list_goals
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
@@ -171,6 +173,8 @@ def _base_ctx(
         "selected_month": selected_month,
         "pending_count": pending_count,
         "suspected_duplicate_count": suspected_count,
+        "home_currency_code": home_currency_code(),
+        "home_currency_symbol": _currency_symbol(home_currency_code()),
     }
 
 
@@ -181,6 +185,63 @@ def _amount_yuan(amount_cents: int | None) -> str:
     if amount_cents is None:
         return ""
     return f"{amount_cents / 100:.2f}"
+
+
+def _currency_symbol(currency_code: str | None) -> str:
+    code = (currency_code or home_currency_code()).upper()
+    return CURRENCY_SYMBOLS.get(code, f"{code} ")
+
+
+def _minor_amount_label(amount_minor: int | None, currency_code: str | None) -> str:
+    if amount_minor is None:
+        return ""
+    code = (currency_code or home_currency_code()).upper()
+    symbol = _currency_symbol(code)
+    if code in NO_FRACTION_CURRENCY_CODES:
+        return f"{symbol}{amount_minor:,}"
+    return f"{symbol}{amount_minor / 100:,.2f}"
+
+
+def _minor_amount_value(amount_minor: int | None, currency_code: str | None) -> str:
+    if amount_minor is None:
+        return ""
+    code = (currency_code or home_currency_code()).upper()
+    if code in NO_FRACTION_CURRENCY_CODES:
+        return str(amount_minor)
+    return f"{amount_minor / 100:.2f}"
+
+
+def _home_amount_label(amount_cents: int | None, currency_code: str | None) -> str:
+    return _minor_amount_label(amount_cents, currency_code or home_currency_code())
+
+
+def _expense_amount_labels(expense) -> tuple[str, str | None]:
+    home_code = (getattr(expense, "home_currency_code", None) or home_currency_code()).upper()
+    original_code = (getattr(expense, "original_currency_code", None) or home_code).upper()
+    original_minor = getattr(expense, "original_amount_minor", None)
+    amount_cents = getattr(expense, "amount_cents", None)
+    is_foreign = original_code != home_code
+    primary = (
+        _minor_amount_label(original_minor, original_code)
+        if is_foreign and original_minor is not None
+        else _home_amount_label(amount_cents, home_code)
+    )
+    if not is_foreign:
+        return primary, None
+    rate_date = getattr(expense, "exchange_rate_date", None)
+    date_text = rate_date.isoformat() if hasattr(rate_date, "isoformat") else (str(rate_date) if rate_date else "")
+    if getattr(expense, "fx_status", "") == FX_STATUS_PENDING or amount_cents is None:
+        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
+    rate = getattr(expense, "exchange_rate_to_cny", None)
+    if rate is None:
+        return primary, f"汇率待同步{(' · ' + date_text) if date_text else ''}"
+    meta = (
+        f"≈ {_home_amount_label(amount_cents, home_code)} · "
+        f"汇率 1 {original_code} = {rate} {home_code}"
+    )
+    if date_text:
+        meta += f" · {date_text}"
+    return primary, meta
 
 
 def _trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
@@ -202,6 +263,10 @@ _SOURCE_LABELS = web_stats_service.SOURCE_LABELS
 
 
 def _expense_view(expense) -> dict:
+    amount_label, fx_meta = _expense_amount_labels(expense)
+    home_code = getattr(expense, "home_currency_code", None) or home_currency_code()
+    original_code = getattr(expense, "original_currency_code", None) or home_code
+    original_minor = getattr(expense, "original_amount_minor", None)
     has_image = bool(expense.image_path) and not expense.image_deleted_at
     if has_image:
         image_state = "available"
@@ -218,6 +283,19 @@ def _expense_view(expense) -> dict:
         "id": expense.id,
         "amount_yuan": _amount_yuan(expense.amount_cents),
         "amount_cents": expense.amount_cents,
+        "home_currency_code": home_code,
+        "original_currency_code": original_code,
+        "original_amount_minor": original_minor,
+        "original_amount_value": _minor_amount_value(original_minor, original_code)
+        or _amount_yuan(expense.amount_cents),
+        "amount_symbol": _currency_symbol(original_code),
+        "is_foreign_currency": original_code != home_code,
+        "exchange_rate_to_cny": getattr(expense, "exchange_rate_to_cny", None),
+        "exchange_rate_date": getattr(expense, "exchange_rate_date", None),
+        "exchange_rate_source": getattr(expense, "exchange_rate_source", None),
+        "fx_status": getattr(expense, "fx_status", ""),
+        "amount_label": amount_label,
+        "fx_meta": fx_meta,
         "merchant": expense.merchant or "",
         "category": expense.category or "未分类",
         "note": expense.note or "",

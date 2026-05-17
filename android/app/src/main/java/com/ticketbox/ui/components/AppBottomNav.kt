@@ -2,11 +2,11 @@ package com.ticketbox.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +29,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 data class AppBottomNavItem(
@@ -53,6 +58,7 @@ fun AppBottomNav(
     modifier: Modifier = Modifier,
 ) {
     val visuals = LocalThemeVisuals.current
+    val haptics = rememberAppHaptics()
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -86,7 +92,16 @@ fun AppBottomNav(
                         modifier = Modifier
                             .weight(if (selected) AppBottomNavLayout.SelectedWeight else 1f)
                             .height(AppBottomNavLayout.ItemHeight)
-                            .clickable(onClick = { onSelect(item) }),
+                            // Role.Tab + selected 让 TalkBack 念出 "已选中 / 共 N 项 / 当前是第 X 项"
+                            .semantics {
+                                role = Role.Tab
+                                this.selected = selected
+                                contentDescription = item.label
+                            }
+                            .clickable(onClick = {
+                                if (!selected) haptics.tick()
+                                onSelect(item)
+                            }),
                         contentAlignment = Alignment.Center,
                     ) {
                         AppBottomNavItemView(
@@ -143,7 +158,7 @@ private fun AppBottomNavItemView(
                     fontSize = 12.sp,
                     lineHeight = 15.sp,
                 ),
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

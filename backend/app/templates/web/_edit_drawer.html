@@ -29,7 +29,8 @@
       草稿状态
     </div>
     <div>商家：{{ e.merchant or '未填' }}{% if e.needs_merchant %} · <span style="color:var(--state-danger-fg)">待补</span>{% endif %}</div>
-    <div>金额：{% if e.amount_cents %}¥{{ e.amount_yuan }}{% else %}<span style="color:var(--state-danger-fg)">未识别</span>{% endif %}</div>
+    <div>金额：{% if e.amount_label %}{{ e.amount_label }}{% else %}<span style="color:var(--state-danger-fg)">未识别</span>{% endif %}</div>
+    {% if e.fx_meta %}<div>{{ e.fx_meta }}</div>{% endif %}
     <div>时间：{{ e.expense_time or '未填' }}</div>
     <div>分类：{{ e.category }}</div>
     {% if e.is_duplicate %}
@@ -68,6 +69,7 @@
 
   <form method="post" action="/web/expenses/{{ e.id }}/save" data-drawer-form>
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
     <div class="field-row">
       <div class="field" style="flex:2">
         <div class="field-label">
@@ -75,14 +77,15 @@
           {% if e.needs_amount %}<span class="hint" style="color:var(--state-danger-fg)">未识别，请填写</span>{% endif %}
         </div>
         <div class="input-wrap">
-          <span class="input-prefix">¥</span>
+          <span class="input-prefix">{{ e.amount_symbol }}</span>
           <input class="dt-input large with-prefix" type="text" inputmode="decimal" name="amount_yuan"
-                 value="{{ e.amount_yuan }}" placeholder="0.00" {% if not can_write %}disabled{% endif %}>
+                 value="{{ e.original_amount_value }}" placeholder="0.00" {% if not can_write %}disabled{% endif %}>
         </div>
+        {% if e.fx_meta %}<div class="hint">{{ e.fx_meta }}</div>{% endif %}
       </div>
       <div class="field" style="flex:1;max-width:130px">
         <div class="field-label"><span>币种</span></div>
-        <input class="dt-input" value="CNY" disabled>
+        <input class="dt-input" value="{{ e.original_currency_code }}" disabled>
       </div>
     </div>
 

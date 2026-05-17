@@ -17,6 +17,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppBottomNav
 
 @Composable
@@ -25,8 +26,10 @@ internal fun MainNavGraph(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
     currentSkin: AppSkin,
+    currentCurrency: CurrencyCode,
     snackbarHostState: SnackbarHostState,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     NavHost(
@@ -40,8 +43,10 @@ internal fun MainNavGraph(
                 shellState = shellState,
                 screenFactory = screenFactory,
                 currentSkin = currentSkin,
+                currentCurrency = currentCurrency,
                 snackbarHostState = snackbarHostState,
                 onSkinChange = onSkinChange,
+                onCurrencyChange = onCurrencyChange,
                 onBindingCleared = onBindingCleared,
             )
         }
@@ -70,8 +75,10 @@ private fun MainRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
     currentSkin: AppSkin,
+    currentCurrency: CurrencyCode,
     snackbarHostState: SnackbarHostState,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     Scaffold(
@@ -94,7 +101,9 @@ private fun MainRoute(
                 shellState = shellState,
                 screenFactory = screenFactory,
                 currentSkin = currentSkin,
+                currentCurrency = currentCurrency,
                 onSkinChange = onSkinChange,
+                onCurrencyChange = onCurrencyChange,
                 onBindingCleared = onBindingCleared,
             )
         }
@@ -107,7 +116,9 @@ private fun MainRouteContent(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
     currentSkin: AppSkin,
+    currentCurrency: CurrencyCode,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     when (shellState.statsSecondaryPage) {
@@ -126,7 +137,9 @@ private fun MainRouteContent(
             shellState = shellState,
             screenFactory = screenFactory,
             currentSkin = currentSkin,
+            currentCurrency = currentCurrency,
             onSkinChange = onSkinChange,
+            onCurrencyChange = onCurrencyChange,
             onBindingCleared = onBindingCleared,
         )
     }
@@ -138,7 +151,9 @@ private fun MainTabRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
     currentSkin: AppSkin,
+    currentCurrency: CurrencyCode,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     when (shellState.selectedTab) {
@@ -168,7 +183,9 @@ private fun MainTabRoute(
             shellState = shellState,
             screenFactory = screenFactory,
             currentSkin = currentSkin,
+            currentCurrency = currentCurrency,
             onSkinChange = onSkinChange,
+            onCurrencyChange = onCurrencyChange,
             onBindingCleared = onBindingCleared,
         )
     }

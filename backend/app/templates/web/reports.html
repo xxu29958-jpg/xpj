@@ -24,7 +24,7 @@
 <div class="kpi-strip">
   <div class="kpi-cell">
     <div class="label">本月支出</div>
-    <div class="val" title="¥{{ r.total_amount_yuan }}"><span class="yuan">¥</span>{{ r.total_amount_yuan }}</div>
+    <div class="val" title="{{ home_currency_symbol }}{{ r.total_amount_yuan }}"><span class="yuan">{{ home_currency_symbol }}</span>{{ r.total_amount_yuan }}</div>
     <div class="foot">
       {% if _prev > 0 %}
       <span>较上月 {{ '%+.1f' % ((_cur - _prev) / _prev * 100) }}%</span>
@@ -35,7 +35,7 @@
   </div>
   <div class="kpi-cell">
     <div class="label">六月均值</div>
-    <div class="val"><span class="yuan">¥</span>{{ '%.2f' % (_avg6 / 100) }}</div>
+    <div class="val"><span class="yuan">{{ home_currency_symbol }}</span>{{ '%.2f' % (_avg6 / 100) }}</div>
     <div class="foot">范围 {{ _earliest_month }} – {{ r.month }}</div>
   </div>
   <div class="kpi-cell">
@@ -127,7 +127,7 @@
                      style="width:{{ (m.amount_cents / _max_amt * 100) if _max_amt else 0 }}%;background:{% if _idx <= 3 %}var(--brand-primary){% else %}var(--text-default){% endif %};opacity:{% if _idx <= 3 %}1{% else %}0.7{% endif %}"></div>
               </div>
             </div>
-            <div class="merch-amt">¥{{ '%.0f' % (m.amount_cents / 100) }}</div>
+            <div class="merch-amt">{{ home_currency_symbol }}{{ '%.0f' % (m.amount_cents / 100) }}</div>
           </div>
           {% endfor %}
         </div>

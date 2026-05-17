@@ -94,16 +94,16 @@
   <h2>预算状态 · {{ budget_status.ledger_name }}</h2>
   <div class="stat-grid">
     <div class="stat">
-      <div class="num">{% if budget_status.configured %}¥{{ budget_status.total_amount_yuan }}{% else %}未配置{% endif %}</div>
+      <div class="num">{% if budget_status.configured %}{{ home_currency_symbol }}{{ budget_status.total_amount_yuan }}{% else %}未配置{% endif %}</div>
       <div class="label">月度预算</div>
     </div>
     <div class="stat">
-      <div class="num">¥{{ budget_status.spent_amount_yuan }}</div>
+      <div class="num">{{ home_currency_symbol }}{{ budget_status.spent_amount_yuan }}</div>
       <div class="label">已花</div>
     </div>
     <div class="stat">
       <div class="num">
-        {% if budget_status.is_over_budget %}¥{{ budget_status.overspent_amount_yuan }}{% else %}¥{{ budget_status.remaining_amount_yuan }}{% endif %}
+        {% if budget_status.is_over_budget %}{{ home_currency_symbol }}{{ budget_status.overspent_amount_yuan }}{% else %}{{ home_currency_symbol }}{{ budget_status.remaining_amount_yuan }}{% endif %}
       </div>
       <div class="label">{% if budget_status.is_over_budget %}超支{% else %}剩余{% endif %}</div>
     </div>

@@ -34,6 +34,7 @@ import com.ticketbox.domain.model.StatsTab
 import com.ticketbox.domain.model.statsDashboardKeysForTab
 import com.ticketbox.domain.model.visibleDashboardCardKeys
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.CardSkeleton
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
@@ -57,6 +58,7 @@ import com.ticketbox.ui.screens.stats.StatsOverviewCard
 import com.ticketbox.ui.screens.stats.TagStatsCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.StatsUiState
+import com.valentinilk.shimmer.shimmer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,7 +120,18 @@ fun StatsScreen(
         }
         val stats = state.stats
         if (stats == null) {
-            item { EmptyStatsCard(onRefresh = onRefresh) }
+            item {
+                if (state.loading) {
+                    Column(
+                        modifier = Modifier.shimmer(),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+                    ) {
+                        repeat(4) { CardSkeleton(lines = 3) }
+                    }
+                } else {
+                    EmptyStatsCard(onRefresh = onRefresh)
+                }
+            }
             return@AppScrollableContent
         }
         val visibleCategories = stats.byCategory.filter { it.amountCents > 0L && it.count > 0 }
@@ -139,6 +152,7 @@ fun StatsScreen(
                                 state.dailyTrend.sumOf { it.amountCents }
                             },
                             comparison = state.monthComparison,
+                            dailyTrend = state.dailyTrend,
                         )
                     }
                 }

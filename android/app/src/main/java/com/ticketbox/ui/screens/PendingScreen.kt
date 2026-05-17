@@ -3,6 +3,7 @@
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
@@ -33,7 +34,9 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.ExpenseCard
+import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.ExpensePreviewMode
+import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.pending.BulkConfirmEntry
@@ -41,8 +44,9 @@ import com.ticketbox.ui.screens.pending.EmptyPendingState
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
+import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
-import com.ticketbox.ui.screens.pending.PendingHeader
+import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
 import com.ticketbox.ui.screens.pending.PendingMessageCard
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
@@ -51,6 +55,7 @@ import com.ticketbox.ui.screens.pending.UploadFlowCard
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.viewmodel.PendingUiState
+import com.valentinilk.shimmer.shimmer
 
 /**
  * 待确认账单页面入口（slice 3 拆分后）。
@@ -96,6 +101,20 @@ fun PendingScreen(
     }
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
+    val haptics = rememberAppHaptics()
+    // 待确认清零庆祝：previousItemCount > 0 → 0 时触发 1.5s 庆祝动画。
+    // 用 remember 持有上一帧的 count，state 一旦回到 0 就 flip showCelebration。
+    var previousItemCount by remember { mutableStateOf(state.items.size) }
+    var showCelebration by remember { mutableStateOf(false) }
+    LaunchedEffect(state.items.size, state.loading) {
+        val nowEmpty = state.items.isEmpty() && !state.loading
+        if (previousItemCount > 0 && nowEmpty) {
+            showCelebration = true
+            kotlinx.coroutines.delay(1800)
+            showCelebration = false
+        }
+        previousItemCount = state.items.size
+    }
 
     LaunchedEffect(state.loading) {
         if (wasLoading && !state.loading) {
@@ -148,10 +167,23 @@ fun PendingScreen(
                 uploading = state.uploading,
                 readOnly = readOnly,
                 onUploadScreenshot = onUploadScreenshot,
+                // 显示模式按钮只在列表有内容时才显示——空态用 EmptyPendingState 自带 CTA
+                trailingAction = if (state.items.isNotEmpty()) {
+                    {
+                        PendingDisplayModeButton(
+                            loading = state.loading,
+                            displayMode = displayMode,
+                            onClick = { showPendingTools = true },
+                        )
+                    }
+                } else {
+                    null
+                },
             )
         }
 
         if (state.items.isEmpty() && !readOnly) {
+            item { PendingClearCelebration(visible = showCelebration) }
             item { UploadFlowCard() }
         }
 
@@ -166,14 +198,11 @@ fun PendingScreen(
         when {
             state.items.isEmpty() && state.loading -> {
                 item {
-                    EmptyPendingState(
-                        uploading = state.uploading,
-                        loading = true,
-                        readOnly = readOnly,
-                        showUploadGuide = showUploadGuide,
-                        onToggleGuide = { showUploadGuide = !showUploadGuide },
-                        onRefresh = onRefresh,
-                    )
+                    Column(modifier = Modifier.shimmer()) {
+                        repeat(5) {
+                            ListItemSkeleton(horizontalPadding = 0.dp)
+                        }
+                    }
                 }
             }
 
@@ -190,13 +219,7 @@ fun PendingScreen(
             }
 
             else -> {
-                item {
-                    PendingHeader(
-                        loading = state.loading,
-                        displayMode = displayMode,
-                        onOpenTools = { showPendingTools = true },
-                    )
-                }
+                // PendingHeader 已合并到 PendingTop 的 trailingAction —— 这里直接进 filter bar。
                 item {
                     NeedsReviewFilterBar(
                         selected = needsReviewFilter,
@@ -229,6 +252,7 @@ fun PendingScreen(
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { value ->
                             if (canSwipe && value == SwipeToDismissBoxValue.EndToStart) {
+                                haptics.reject()
                                 onReject(expense)
                                 true
                             } else {
@@ -238,6 +262,7 @@ fun PendingScreen(
                         positionalThreshold = { totalDistance -> totalDistance * 0.5f },
                     )
                     SwipeToDismissBox(
+                        modifier = Modifier.animateItem(),
                         state = dismissState,
                         enableDismissFromStartToEnd = false,
                         enableDismissFromEndToStart = canSwipe,
@@ -259,10 +284,16 @@ fun PendingScreen(
                                     expense.duplicateStatus == "suspected" -> onOpenDuplicate(expense)
                                     expense.category.isBlank() -> onQuickCategory(expense)
                                     expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
-                                    else -> onConfirm(expense)
+                                    else -> {
+                                        haptics.confirm()
+                                        onConfirm(expense)
+                                    }
                                 }
                             },
-                            onReject = { onReject(expense) },
+                            onReject = {
+                                haptics.reject()
+                                onReject(expense)
+                            },
                             onKeepDuplicate = { onKeepDuplicate(expense) },
                         )
                     }

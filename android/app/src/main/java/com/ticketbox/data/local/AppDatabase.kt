@@ -6,10 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class],
-    version = 4,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -131,6 +132,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val Migration4To5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE expenses ADD COLUMN originalCurrencyCode TEXT NOT NULL DEFAULT '${FxContract.HomeCurrency.storageKey}'")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN originalAmountMinor INTEGER")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN exchangeRateToCny TEXT")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN exchangeRateDate TEXT")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN exchangeRateSource TEXT")
+                db.execSQL(
+                    """
+                    UPDATE expenses
+                    SET originalAmountMinor = amountCents,
+                        exchangeRateToCny = CASE WHEN amountCents IS NULL THEN NULL ELSE '${FxContract.BaseRateToHome}' END,
+                        exchangeRateSource = CASE WHEN amountCents IS NULL THEN NULL ELSE '${FxContract.SourceBase}' END
+                    WHERE originalCurrencyCode = '${FxContract.HomeCurrency.storageKey}'
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        private val Migration5To6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE expenses ADD COLUMN homeCurrencyCode TEXT NOT NULL DEFAULT '${FxContract.HomeCurrency.storageKey}'")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN fxStatus TEXT NOT NULL DEFAULT '${FxContract.StatusReady}'")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -138,7 +165,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "ticketbox.db",
                 )
-                    .addMigrations(Migration1To2, Migration2To3, Migration3To4)
+                    .addMigrations(Migration1To2, Migration2To3, Migration3To4, Migration4To5, Migration5To6)
                     .build()
                     .also { instance = it }
             }

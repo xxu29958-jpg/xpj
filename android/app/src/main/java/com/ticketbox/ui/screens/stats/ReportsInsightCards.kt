@@ -55,6 +55,7 @@ import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.ui.design.AppTextHierarchy
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -86,7 +87,7 @@ internal fun ReportsInsightCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text("动态图表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text("动态图表", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                     Text(
                         text = "${overview.month} · 服务端聚合 · ${overview.count} 笔",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -99,7 +100,7 @@ internal fun ReportsInsightCard(
                     text = formatAmount(overview.totalAmountCents),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
             }
             if (chartPoints.any { it.amountCents > 0L }) {
@@ -136,7 +137,7 @@ internal fun GoalsSummaryCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("月度目标", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text("月度目标", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
             if (visibleGoals.isEmpty()) {
                 Text(
                     text = "本月还没有目标。",
@@ -211,7 +212,7 @@ private fun RankingBlock(
 ) {
     val maxAmount = rows.maxOfOrNull { it.amountCents } ?: 0L
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.body.weight)
         rows.forEach { row ->
             AmountBarRow(
                 label = row.merchant.ifBlank { "未填写商家" },
@@ -226,7 +227,7 @@ private fun RankingBlock(
 @Composable
 private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text("分类环比", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text("分类环比", style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.body.weight)
         rows.forEach { row ->
             val deltaText = when {
                 row.deltaAmountCents > 0L -> "多 ${formatAmount(row.deltaAmountCents)}"
@@ -274,7 +275,7 @@ private fun AmountBarRow(
             Text(
                 text = formatAmount(amountCents),
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
                 text = trailingText,
@@ -343,7 +344,7 @@ private fun GoalProgressRow(goal: Goal) {
                     text = formatAmount(goal.targetAmountCents),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = AppTextHierarchy.body.weight,
                 )
             }
             Text(
@@ -398,7 +399,7 @@ private fun GoalProgressRing(
             text = "${progressPercent.coerceAtLeast(0)}%",
             color = color,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
             maxLines = 1,
         )
     }

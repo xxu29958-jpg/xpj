@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, event, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import BACKEND_ROOT, get_settings
+from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, FX_SOURCE_BASE, FX_STATUS_PENDING, FX_STATUS_READY
 from app.tenants import DEFAULT_TENANT_ID
 
 
@@ -570,6 +571,10 @@ def migrate_sqlite_schema() -> None:
     if "expenses" not in table_names:
         return
 
+    default_home = DEFAULT_HOME_CURRENCY_CODE
+    source_base = FX_SOURCE_BASE
+    status_ready = FX_STATUS_READY
+    status_pending = FX_STATUS_PENDING
     existing_columns = {column["name"] for column in inspector.get_columns("expenses")}
     required_columns = {
         "tenant_id": f"VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'",
@@ -583,6 +588,13 @@ def migrate_sqlite_schema() -> None:
         "regret_score": "INTEGER",
         "ocr_draft_fields": "TEXT",
         "draft_idempotency_key": "VARCHAR(128)",
+        "home_currency_code": f"VARCHAR(3) NOT NULL DEFAULT '{default_home}'",
+        "original_currency_code": f"VARCHAR(3) NOT NULL DEFAULT '{default_home}'",
+        "original_amount_minor": "INTEGER",
+        "exchange_rate_to_cny": "NUMERIC(18, 8)",
+        "exchange_rate_date": "DATE",
+        "exchange_rate_source": f"VARCHAR(32) DEFAULT '{source_base}'",
+        "fx_status": f"VARCHAR(32) NOT NULL DEFAULT '{status_ready}'",
         "image_deleted_at": "DATETIME",
         "thumbnail_deleted_at": "DATETIME",
     }
@@ -601,6 +613,79 @@ def migrate_sqlite_schema() -> None:
         connection.execute(
             text("UPDATE expenses SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
             {"tenant_id": DEFAULT_TENANT_ID},
+        )
+        connection.execute(
+            text("UPDATE expenses SET original_currency_code = :home WHERE original_currency_code IS NULL OR original_currency_code = ''"),
+            {"home": default_home},
+        )
+        connection.execute(
+            text("UPDATE expenses SET home_currency_code = :home WHERE home_currency_code IS NULL OR home_currency_code = ''"),
+            {"home": default_home},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET original_amount_minor = amount_cents "
+                "WHERE original_amount_minor IS NULL "
+                "AND amount_cents IS NOT NULL "
+                "AND original_currency_code = :home"
+            ),
+            {"home": default_home},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET exchange_rate_to_cny = 1 "
+                "WHERE exchange_rate_to_cny IS NULL "
+                "AND amount_cents IS NOT NULL "
+                "AND original_currency_code = :home"
+            ),
+            {"home": default_home},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET amount_cents = NULL "
+                "WHERE original_currency_code != :home "
+                "AND original_amount_minor IS NOT NULL "
+                "AND exchange_rate_to_cny IS NULL"
+            ),
+            {"home": default_home},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET exchange_rate_source = NULL "
+                "WHERE original_currency_code != :home "
+                "AND amount_cents IS NULL "
+                "AND exchange_rate_to_cny IS NULL"
+            ),
+            {"home": default_home},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET exchange_rate_source = :source_base "
+                "WHERE exchange_rate_source IS NULL AND original_currency_code = :home"
+            ),
+            {"source_base": source_base, "home": default_home},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET exchange_rate_date = date(COALESCE(expense_time, confirmed_at, created_at)) "
+                "WHERE exchange_rate_date IS NULL AND amount_cents IS NOT NULL"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET fx_status = :pending "
+                "WHERE amount_cents IS NULL "
+                "AND original_amount_minor IS NOT NULL "
+                "AND original_currency_code != :home"
+            ),
+            {"home": default_home, "pending": status_pending},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET fx_status = :ready "
+                "WHERE fx_status IS NULL OR fx_status = ''"
+            ),
+            {"ready": status_ready},
         )
         public_id_rows = connection.execute(
             text("SELECT id FROM expenses WHERE public_id IS NULL OR public_id = ''")
@@ -688,6 +773,18 @@ def migrate_sqlite_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_image_hash ON expenses (tenant_id, image_hash)"))
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_expenses_tenant_duplicate_status ON expenses (tenant_id, duplicate_status)")
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_original_currency_date "
+                "ON expenses (tenant_id, original_currency_code, exchange_rate_date)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_fx_status "
+                "ON expenses (tenant_id, fx_status)"
+            )
         )
 
         if "category_rules" in table_names:
@@ -818,6 +915,53 @@ def migrate_sqlite_schema() -> None:
                     "CREATE INDEX IF NOT EXISTS ix_expense_tags_tenant_tag "
                     "ON expense_tags (tenant_id, tag_id)"
                 )
+            )
+
+        if "csv_import_rows" in table_names:
+            csv_row_columns = {column["name"] for column in inspector.get_columns("csv_import_rows")}
+            csv_row_additions = {
+                "original_currency_code": f"VARCHAR(3) NOT NULL DEFAULT '{default_home}'",
+                "original_amount_minor": "INTEGER",
+                "exchange_rate_to_cny": "NUMERIC(18, 8)",
+                "exchange_rate_date": "DATE",
+                "exchange_rate_source": "VARCHAR(32)",
+            }
+            for column_name, column_type in csv_row_additions.items():
+                if column_name not in csv_row_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE csv_import_rows ADD COLUMN {column_name} {column_type}")
+                    )
+            connection.execute(
+                text(
+                    "UPDATE csv_import_rows SET original_currency_code = :home "
+                    "WHERE original_currency_code IS NULL OR original_currency_code = ''"
+                ),
+                {"home": default_home},
+            )
+            connection.execute(
+                text(
+                    "UPDATE csv_import_rows SET original_amount_minor = amount_cents "
+                    "WHERE original_amount_minor IS NULL "
+                    "AND amount_cents IS NOT NULL "
+                    "AND original_currency_code = :home"
+                ),
+                {"home": default_home},
+            )
+            connection.execute(
+                text(
+                    "UPDATE csv_import_rows SET exchange_rate_to_cny = 1 "
+                    "WHERE exchange_rate_to_cny IS NULL "
+                    "AND amount_cents IS NOT NULL "
+                    "AND original_currency_code = :home"
+                ),
+                {"home": default_home},
+            )
+            connection.execute(
+                text(
+                    "UPDATE csv_import_rows SET exchange_rate_source = :source_base "
+                    "WHERE exchange_rate_source IS NULL AND original_currency_code = :home"
+                ),
+                {"source_base": source_base, "home": default_home},
             )
 
         if "duplicate_ignores" in table_names:

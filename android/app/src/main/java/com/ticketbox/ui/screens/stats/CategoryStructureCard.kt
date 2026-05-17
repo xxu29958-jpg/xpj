@@ -26,8 +26,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.CategoryInsight
 import com.ticketbox.domain.model.CategoryStats
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -36,6 +39,7 @@ internal fun CategoryStructureCard(
     totalAmountCents: Long,
     insight: CategoryInsight?,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val topCategories = categories.sortedByDescending { it.amountCents }.take(5)
     val topCategory = topCategories.firstOrNull()
     AppGlassCard(containerAlpha = 0.96f) {
@@ -56,7 +60,7 @@ internal fun CategoryStructureCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text("分类结构", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text("分类结构", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                     Text(
                         text = topCategory?.let { "主要花在「${it.category}」" } ?: "还没有分类支出",
                         color = MaterialTheme.colorScheme.onSurface,
@@ -81,6 +85,7 @@ internal fun CategoryStructureCard(
                         category = category,
                         totalAmountCents = totalAmountCents,
                         index = index,
+                        currencyDisplay = currencyDisplay,
                     )
                 }
             }
@@ -93,6 +98,7 @@ private fun CategoryStructureBarRow(
     category: CategoryStats,
     totalAmountCents: Long,
     index: Int,
+    currencyDisplay: CurrencyDisplay,
 ) {
     val colors = statsCategoryColors()
     val percent = if (totalAmountCents > 0L) {
@@ -126,10 +132,10 @@ private fun CategoryStructureBarRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = formatAmount(category.amountCents),
+                text = formatDisplayAmount(category.amountCents, currencyDisplay),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
                 text = "$percent%",

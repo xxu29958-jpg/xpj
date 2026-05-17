@@ -20,8 +20,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -263,11 +266,23 @@ fun AppScrollableContent(
         horizontalPadding = horizontalPadding,
         includeStatusBarPadding = includeStatusBarPadding,
     ) { layout ->
+        val refreshState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize(),
-            indicator = {},
+            state = refreshState,
+            indicator = {
+                // Material3 默认 indicator，避免下拉时只见手指不见反馈。
+                // 位置在 status bar 下方一格，与列表 contentPadding 一致。
+                PullToRefreshDefaults.Indicator(
+                    state = refreshState,
+                    isRefreshing = isRefreshing,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = layout.statusPadding + 4.dp),
+                )
+            },
         ) {
             LazyColumn(
                 modifier = Modifier

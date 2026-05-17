@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -19,6 +22,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.fx_constants import (
+    DEFAULT_HOME_CURRENCY_CODE,
+    FX_SOURCE_BASE,
+    FX_STATUS_PENDING,
+    FX_STATUS_READY,
+    NO_FRACTION_CURRENCY_CODES,
+)
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -30,6 +40,18 @@ class Expense(Base):
         CheckConstraint(
             "amount_cents IS NULL OR amount_cents >= 0",
             name="ck_expenses_amount_non_negative",
+        ),
+        CheckConstraint(
+            "original_amount_minor IS NULL OR original_amount_minor >= 0",
+            name="ck_expenses_original_amount_non_negative",
+        ),
+        CheckConstraint(
+            "exchange_rate_to_cny IS NULL OR exchange_rate_to_cny > 0",
+            name="ck_expenses_exchange_rate_positive",
+        ),
+        CheckConstraint(
+            f"fx_status IN ('{FX_STATUS_READY}', '{FX_STATUS_PENDING}')",
+            name="ck_expenses_fx_status_valid",
         ),
         CheckConstraint(
             "status IN ('pending', 'confirmed', 'rejected')",
@@ -45,6 +67,31 @@ class Expense(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
     public_id: Mapped[str] = mapped_column(String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True)
     amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_currency_code: Mapped[str] = mapped_column(
+        String(3),
+        default=DEFAULT_HOME_CURRENCY_CODE,
+        server_default=DEFAULT_HOME_CURRENCY_CODE,
+        nullable=False,
+        index=True,
+    )
+    original_currency_code: Mapped[str] = mapped_column(
+        String(3),
+        default=DEFAULT_HOME_CURRENCY_CODE,
+        server_default=DEFAULT_HOME_CURRENCY_CODE,
+        nullable=False,
+        index=True,
+    )
+    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exchange_rate_to_cny: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    exchange_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    exchange_rate_source: Mapped[str | None] = mapped_column(String(32), default=FX_SOURCE_BASE, server_default=FX_SOURCE_BASE, nullable=True)
+    fx_status: Mapped[str] = mapped_column(
+        String(32),
+        default=FX_STATUS_READY,
+        server_default=FX_STATUS_READY,
+        nullable=False,
+        index=True,
+    )
     merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
     category: Mapped[str] = mapped_column(String(64), default="其他", nullable=False)
     note: Mapped[str | None] = mapped_column(Text, default="", nullable=True)
@@ -70,6 +117,39 @@ class Expense(Base):
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     image_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     thumbnail_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def home_amount_cents(self) -> int | None:
+        return self.amount_cents
+
+    @property
+    def home_currency(self) -> str:
+        return self.home_currency_code
+
+    @property
+    def original_currency(self) -> str:
+        return self.original_currency_code
+
+    @property
+    def original_amount(self) -> Decimal | None:
+        if self.original_amount_minor is None:
+            return None
+        units = 0 if self.original_currency_code in NO_FRACTION_CURRENCY_CODES else 2
+        if units == 0:
+            return Decimal(self.original_amount_minor)
+        return Decimal(self.original_amount_minor) / Decimal(100)
+
+    @property
+    def fx_rate(self) -> Decimal | None:
+        return self.exchange_rate_to_cny
+
+    @property
+    def fx_rate_date(self) -> date | None:
+        return self.exchange_rate_date
+
+    @property
+    def fx_source(self) -> str | None:
+        return self.exchange_rate_source
 
 
 Index("ix_expenses_tenant_status_created_at", Expense.tenant_id, Expense.status, Expense.created_at)

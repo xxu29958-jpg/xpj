@@ -7,6 +7,8 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.ServerBindingRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,8 @@ data class AppUiState(
     val unlocked: Boolean = false,
     val binding: Boolean = false,
     val skin: AppSkin = AppSkin.Default,
+    val currency: CurrencyCode = CurrencyCode.Default,
+    val currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
     val backgroundSettings: BackgroundSettings = BackgroundSettings(),
     val authMessage: String? = null,
 )
@@ -33,11 +37,14 @@ class AppViewModel(
         get() = settingsStore.isBound() && tokenStore.getToken() != null
 
     private val initialSkin = normalizedInitialSkin()
+    private val initialCurrency = CurrencyCode.fromStorageKey(settingsStore.currencyCodeKey())
     private val _uiState = MutableStateFlow(
         AppUiState(
             isBound = hasActiveBinding,
             unlocked = hasActiveBinding && (!requireLocalUnlock || !settingsStore.requiresUnlock()),
             skin = initialSkin,
+            currency = initialCurrency,
+            currencyDisplay = CurrencyDisplay.Base,
         ),
     )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -46,6 +53,21 @@ class AppViewModel(
         viewModelScope.launch {
             settingsStore.backgroundSettingsFlow.collect { settings ->
                 _uiState.update { it.copy(backgroundSettings = settings) }
+            }
+        }
+        viewModelScope.launch {
+            settingsStore.observeCurrencyCodeKey().collect { key ->
+                val resolved = CurrencyCode.fromStorageKey(key)
+                _uiState.update { state ->
+                    if (state.currency == resolved) {
+                        state
+                    } else {
+                        state.copy(
+                            currency = resolved,
+                            currencyDisplay = CurrencyDisplay.Base,
+                        )
+                    }
+                }
             }
         }
     }
@@ -113,15 +135,30 @@ class AppViewModel(
         _uiState.update { it.copy(skin = skin, authMessage = "已切换为${skin.displayName}") }
     }
 
+    fun selectCurrency(currency: CurrencyCode) {
+        settingsStore.saveCurrencyCodeKey(currency.storageKey)
+        _uiState.update {
+            it.copy(
+                currency = currency,
+                currencyDisplay = CurrencyDisplay.Base,
+                authMessage = "已切换为${currency.displayName}默认记账币种",
+            )
+        }
+    }
+
     fun clearBinding() {
         val currentSkin = _uiState.value.skin
+        val currentCurrency = _uiState.value.currency
         val currentBackground = _uiState.value.backgroundSettings
         viewModelScope.launch {
             repository.clearBinding()
             settingsStore.saveAppSkinKey(currentSkin.storageKey)
+            settingsStore.saveCurrencyCodeKey(currentCurrency.storageKey)
             _uiState.update {
                 AppUiState(
                     skin = currentSkin,
+                    currency = currentCurrency,
+                    currencyDisplay = CurrencyDisplay.Base,
                     backgroundSettings = currentBackground,
                 )
             }

@@ -48,7 +48,7 @@
     <div>分类</div>
     <div>时间</div>
     <div>状态</div>
-    <div style="text-align:right">金额 (¥)</div>
+    <div style="text-align:right">金额</div>
   </div>
   {% for e in expenses %}
   <a class="exp-row" data-expense-id="{{ e.id }}"
@@ -102,8 +102,9 @@
       {% endif %}
     </div>
     <div style="text-align:right">
-      {% if e.amount_cents %}
-        <span class="exp-amt">{{ e.amount_yuan }}</span>
+      {% if e.amount_label %}
+        <span class="exp-amt">{{ e.amount_label }}</span>
+        {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
       {% else %}
         <span class="exp-amt-missing">未识别</span>
       {% endif %}

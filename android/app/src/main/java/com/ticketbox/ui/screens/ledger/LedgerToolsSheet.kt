@@ -14,13 +14,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.screens.CategoryFilterRow
 import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.viewmodel.LedgerUiState
 
 @Composable
@@ -43,7 +43,7 @@ internal fun LedgerToolsSheet(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.cardPaddingTight),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-            Text("筛选与更新", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text("筛选与更新", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
             Text(
                 text = ledgerCombinedStatusLine(state),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

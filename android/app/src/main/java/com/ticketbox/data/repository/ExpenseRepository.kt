@@ -81,6 +81,12 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         "unsupported_file_type" -> "不支持的图片格式。"
         "expense_not_found" -> "账单不存在。"
         "amount_required" -> "请先填写金额。"
+        "amount_invalid" -> "金额格式不正确。"
+        "currency_not_supported" -> "暂不支持这个币种。"
+        "exchange_rate_required" -> "请先填写这一天的汇率。"
+        "exchange_rate_pending" -> "汇率还没同步完成，稍后再确认。"
+        "exchange_rate_invalid" -> "汇率格式不正确。"
+        "exchange_rate_base_currency" -> "人民币是基准币种，不需要维护汇率。"
         "image_not_found" -> "图片不存在。"
         "rule_not_found" -> "分类规则不存在。"
         "rule_in_use" -> "分类规则仍在使用，不能删除。"
@@ -400,7 +406,7 @@ class ExpenseRepository(
     }
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
-        require(draft.amountCents != null) { "请先填写金额。" }
+        require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
         val ledgerIdAtRequest = activeLedgerIdOrLegacy()
         cacheIfConfirmed(api().createManualExpense(draft.toRequest()), ledgerIdAtRequest).toDomain()
     }

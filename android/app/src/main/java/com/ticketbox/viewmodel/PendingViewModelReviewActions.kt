@@ -67,27 +67,32 @@ fun PendingViewModel.saveQuickMerchant(expenseId: Long, merchant: String) {
     )
 }
 
-fun PendingViewModel.saveAmountDraft(expenseId: Long, amountCents: Long) {
+fun PendingViewModel.saveAmountDraft(expenseId: Long, originalAmountMinor: Long) {
     if (blockReadOnlyWrite(closeSheet = true)) return
-    if (amountCents <= 0L) {
+    if (originalAmountMinor <= 0L) {
         _uiState.update { it.copy(message = "金额必须大于 0。") }
         return
     }
+    val expense = _uiState.value.items.firstOrNull { it.id == expenseId }
     patchExpense(
         expenseId = expenseId,
-        draft = blankDraft().copy(amountCents = amountCents),
+        draft = blankDraft().copy(
+            originalCurrencyCode = expense?.originalCurrencyCode,
+            originalAmountMinor = originalAmountMinor,
+        ),
         successMessage = "已保存金额",
         failureMessageFallback = "没有保存金额，请稍后再试。",
     )
 }
 
-fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, amountCents: Long) {
+fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: Long) {
     if (blockReadOnlyWrite(closeSheet = true)) return
-    if (amountCents <= 0L) {
+    if (originalAmountMinor <= 0L) {
         _uiState.update { it.copy(message = "金额必须大于 0。") }
         return
     }
     if (expenseId in _uiState.value.actionInProgressIds) return
+    val expense = _uiState.value.items.firstOrNull { it.id == expenseId }
     viewModelScope.launch {
         _uiState.update {
             it.copy(
@@ -95,7 +100,13 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, amountCents: Long) {
                 message = null,
             )
         }
-        repository.updateExpense(expenseId, blankDraft().copy(amountCents = amountCents))
+        repository.updateExpense(
+            expenseId,
+            blankDraft().copy(
+                originalCurrencyCode = expense?.originalCurrencyCode,
+                originalAmountMinor = originalAmountMinor,
+            ),
+        )
             .onSuccess { updated ->
                 _uiState.update { state ->
                     PendingUiStateReducer.afterUpdated(

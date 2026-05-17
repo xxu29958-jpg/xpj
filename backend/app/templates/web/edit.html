@@ -26,9 +26,11 @@
     {% endif %}
     <form method="post" action="/web/expenses/{{ expense.id }}/save" class="edit-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      <input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">
       <div class="form-row">
-        <label>金额 (元)</label>
-        <input type="text" name="amount_yuan" value="{{ expense.amount_yuan }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
+        <label>金额 ({{ expense.original_currency_code }})</label>
+        <input type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
+        {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
       </div>
       <div class="form-row">
         <label>商家</label>
@@ -130,9 +132,9 @@
     {% endif %}
     {% if split_rows.total_yuan %}
     <div class="reconcile-line">
-      账单 ¥{{ split_rows.parent_amount_yuan or '0.00' }} · 已拆 ¥{{ split_rows.total_yuan }}
+      账单 {{ home_currency_symbol }}{{ split_rows.parent_amount_yuan or '0.00' }} · 已拆 {{ home_currency_symbol }}{{ split_rows.total_yuan }}
       {% if split_rows.mismatch_yuan and split_rows.mismatch_yuan != '0.00' %}
-      · 差额 ¥{{ split_rows.mismatch_yuan }}
+      · 差额 {{ home_currency_symbol }}{{ split_rows.mismatch_yuan }}
       {% endif %}
     </div>
     {% endif %}

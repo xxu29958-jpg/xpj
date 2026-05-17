@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.fx_constants import FX_STATUS_PENDING
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import (
@@ -27,6 +28,7 @@ from app.services.duplicate_service import (
     mark_duplicate_status,
     mark_not_duplicate,
 )
+from app.services.exchange_rate_service import apply_currency_payload, refresh_currency_snapshot
 from app.services.file_service import SavedUpload, delete_relative_upload
 from app.services.ocr_service import (
     OcrResult,
@@ -90,6 +92,8 @@ def _notification_draft_key(
     source: str,
     merchant: str | None,
     amount_cents: int | None,
+    original_currency: str | None,
+    original_amount: object | None,
     expense_time,
     now,
 ) -> str:
@@ -100,6 +104,8 @@ def _notification_draft_key(
             source,
             merchant_key.casefold(),
             str(amount_cents) if amount_cents is not None else "",
+            (original_currency or "").strip().upper(),
+            str(original_amount) if original_amount is not None else "",
             _notification_window_key(expense_time, fallback_now=now),
         ]
     )
@@ -110,9 +116,13 @@ def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str |
     fields: set[str] = set()
     if payload.amount_cents is not None:
         fields.add("amount_cents")
+    if payload.original_amount is not None or payload.original_amount_minor is not None:
+        fields.add("original_amount")
+    if payload.original_currency or payload.original_currency_code:
+        fields.add("original_currency")
     if _clean_optional_text(payload.merchant):
         fields.add("merchant")
-    if payload.expense_time is not None:
+    if payload.expense_time is not None or payload.spent_at is not None:
         fields.add("expense_time")
     if _clean_optional_text(payload.category):
         fields.add("category")
@@ -126,6 +136,19 @@ def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | 
         return generate_thumbnail(relative_path, tenant_id=tenant_id)
     except Exception:
         return None
+
+
+def _expense_has_pending_fx(expense: Expense) -> bool:
+    return expense.fx_status == FX_STATUS_PENDING or (
+        expense.amount_cents is None and expense.original_amount_minor is not None
+    )
+
+
+def _ensure_expense_can_confirm(expense: Expense) -> None:
+    if _expense_has_pending_fx(expense):
+        raise AppError("exchange_rate_pending", status_code=409)
+    if expense.amount_cents is None:
+        raise AppError("amount_required", status_code=400)
 
 
 def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
@@ -247,9 +270,6 @@ def _begin_immediate_write_if_sqlite(db: Session) -> None:
 def create_manual_expense(
     db: Session, payload: ExpenseManualCreateRequest, tenant_id: str
 ) -> Expense:
-    if payload.amount_cents is None:
-        raise AppError("amount_required", status_code=400)
-
     now = now_utc()
     expense = Expense(
         tenant_id=tenant_id,
@@ -264,7 +284,7 @@ def create_manual_expense(
         raw_text="",
         confidence=None,
         status="confirmed",
-        expense_time=ensure_utc(payload.expense_time) or now,
+        expense_time=ensure_utc(payload.spent_at or payload.expense_time) or now,
         created_at=now,
         updated_at=now,
         confirmed_at=now,
@@ -272,6 +292,18 @@ def create_manual_expense(
         value_score=payload.value_score,
         regret_score=payload.regret_score,
     )
+    apply_currency_payload(
+        db,
+        tenant_id=tenant_id,
+        expense=expense,
+        payload=payload,
+        amount_was_explicit=payload.amount_cents is not None,
+    )
+    if expense.amount_cents is None and expense.original_amount_minor is None:
+        raise AppError("amount_required", status_code=400)
+    if _expense_has_pending_fx(expense):
+        expense.status = "pending"
+        expense.confirmed_at = None
     if expense.category == "其他":
         classify_expense(db, expense)
     db.add(expense)
@@ -294,7 +326,9 @@ def create_notification_draft(
         source=source,
         merchant=payload.merchant,
         amount_cents=payload.amount_cents,
-        expense_time=payload.expense_time,
+        original_currency=payload.original_currency or payload.original_currency_code,
+        original_amount=payload.original_amount or payload.original_amount_minor,
+        expense_time=payload.spent_at or payload.expense_time,
         now=now,
     )
     existing = db.scalar(
@@ -321,9 +355,16 @@ def create_notification_draft(
         ocr_draft_fields=_notification_draft_fields(payload),
         draft_idempotency_key=idempotency_key,
         status="pending",
-        expense_time=ensure_utc(payload.expense_time) if payload.expense_time else None,
+        expense_time=ensure_utc(payload.spent_at or payload.expense_time) if (payload.spent_at or payload.expense_time) else None,
         created_at=now,
         updated_at=now,
+    )
+    apply_currency_payload(
+        db,
+        tenant_id=tenant_id,
+        expense=expense,
+        payload=payload,
+        amount_was_explicit=payload.amount_cents is not None,
     )
     db.add(expense)
     try:
@@ -462,15 +503,15 @@ def update_expense(
         raise AppError("expense_not_found", status_code=404)
 
     updates = payload.model_dump(exclude_unset=True)
-    if "amount_cents" in updates:
-        expense.amount_cents = updates["amount_cents"]
     if "merchant" in updates:
         expense.merchant = _clean_optional_text(updates["merchant"])
     if "category" in updates and updates["category"]:
         expense.category = _clean_category(updates["category"])
     if "note" in updates:
         expense.note = _clean_text(updates["note"])
-    if "expense_time" in updates:
+    if "spent_at" in updates:
+        expense.expense_time = ensure_utc(updates["spent_at"])
+    elif "expense_time" in updates:
         expense.expense_time = ensure_utc(updates["expense_time"])
     if "tags" in updates:
         expense.tags = normalize_tags(updates["tags"])
@@ -478,6 +519,15 @@ def update_expense(
         expense.value_score = updates["value_score"]
     if "regret_score" in updates:
         expense.regret_score = updates["regret_score"]
+    apply_currency_payload(
+        db,
+        tenant_id=tenant_id,
+        expense=expense,
+        payload=payload,
+        amount_was_explicit="amount_cents" in updates,
+    )
+    if expense.status == "confirmed":
+        _ensure_expense_can_confirm(expense)
 
     clear_ocr_draft_fields(expense, list(updates.keys()))
 
@@ -489,7 +539,20 @@ def update_expense(
     if should_auto_classify:
         classify_expense(db, expense)
 
-    if any(field in updates for field in {"amount_cents", "merchant", "expense_time"}):
+    if any(
+        field in updates
+        for field in {
+            "amount_cents",
+            "original_currency",
+            "original_amount",
+            "original_currency_code",
+            "original_amount_minor",
+            "exchange_rate_date",
+            "merchant",
+            "spent_at",
+            "expense_time",
+        }
+    ):
         mark_duplicate_status(db, expense)
     if "tags" in updates:
         sync_expense_tags(db, expense)
@@ -501,6 +564,16 @@ def update_expense(
 
 
 def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
+    expense = get_expense(db, expense_id, tenant_id)
+    if expense.status == "confirmed":
+        return expense
+    if expense.status != "pending":
+        raise AppError("expense_not_found", status_code=404)
+    if _expense_has_pending_fx(expense):
+        refresh_currency_snapshot(db, tenant_id=tenant_id, expense=expense)
+    _ensure_expense_can_confirm(expense)
+    db.flush()
+
     now = now_utc()
     result = db.execute(
         update(Expense)
@@ -516,8 +589,8 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
         expense = get_expense(db, expense_id, tenant_id)
         if expense.status == "confirmed":
             return expense
-        if expense.status == "pending" and expense.amount_cents is None:
-            raise AppError("amount_required", status_code=400)
+        if expense.status == "pending":
+            _ensure_expense_can_confirm(expense)
         raise AppError("expense_not_found", status_code=404)
 
     db.expire_all()

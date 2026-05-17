@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.fx_constants import FX_SOURCE_MANUAL
 from app.services.time_service import to_iso
 
 
@@ -247,6 +249,37 @@ class StatusResponse(BaseModel):
     status: str = "ok"
 
 
+class ExchangeRateRequest(BaseModel):
+    currency_code: str = Field(min_length=3, max_length=3)
+    rate_date: date
+    rate_to_cny: Decimal = Field(gt=0)
+    source: str | None = Field(default=FX_SOURCE_MANUAL, max_length=32)
+
+
+class ExchangeRateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: str
+    currency_code: str
+    rate_date: date
+    rate_to_cny: Decimal
+    source: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return to_iso(value)
+
+    @field_serializer("rate_to_cny")
+    def serialize_rate(self, value: Decimal) -> str:
+        return format(value, "f")
+
+
+class ExchangeRateListResponse(BaseModel):
+    items: list[ExchangeRateResponse]
+
+
 class UploadResponse(BaseModel):
     id: int
     public_id: str
@@ -269,7 +302,14 @@ class UploadCheckResponse(BaseModel):
 
 
 class ExpenseManualCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     amount_cents: int | None = Field(default=None, ge=0)
+    original_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount: Decimal | None = Field(default=None, ge=0)
+    spent_at: datetime | None = None
+    original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount_minor: int | None = Field(default=None, ge=0)
     merchant: str | None = None
     category: str | None = None
     note: str | None = None
@@ -284,13 +324,25 @@ class NotificationDraftCreateRequest(BaseModel):
 
     source: str = Field(min_length=1, max_length=32)
     amount_cents: int | None = Field(default=None, ge=0)
+    original_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount: Decimal | None = Field(default=None, ge=0)
+    spent_at: datetime | None = None
+    original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount_minor: int | None = Field(default=None, ge=0)
     merchant: str | None = Field(default=None, max_length=255)
     category: str | None = Field(default=None, max_length=64)
     expense_time: datetime | None = None
 
 
 class ExpenseUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     amount_cents: int | None = Field(default=None, ge=0)
+    original_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount: Decimal | None = Field(default=None, ge=0)
+    spent_at: datetime | None = None
+    original_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    original_amount_minor: int | None = Field(default=None, ge=0)
     merchant: str | None = None
     category: str | None = None
     note: str | None = None
@@ -325,6 +377,19 @@ class ExpenseResponse(BaseModel):
     id: int
     public_id: str
     amount_cents: int | None
+    home_amount_cents: int | None
+    home_currency: str
+    original_currency: str
+    original_amount: Decimal | None
+    fx_rate: Decimal | None
+    fx_rate_date: date | None
+    fx_source: str | None
+    fx_status: str
+    original_currency_code: str
+    original_amount_minor: int | None
+    exchange_rate_to_cny: Decimal | None
+    exchange_rate_date: date | None
+    exchange_rate_source: str | None
     merchant: str | None
     category: str
     note: str | None
@@ -360,6 +425,10 @@ class ExpenseResponse(BaseModel):
     )
     def serialize_datetime(self, value: datetime | None) -> str | None:
         return to_iso(value)
+
+    @field_serializer("exchange_rate_to_cny", "original_amount", "fx_rate")
+    def serialize_exchange_rate(self, value: Decimal | None) -> str | None:
+        return format(value, "f") if value is not None else None
 
 
 class ExpenseItemRequest(BaseModel):
@@ -470,6 +539,11 @@ class CsvImportRowResponse(BaseModel):
     error_code: str | None
     error_message: str | None
     amount_cents: int | None
+    original_currency_code: str | None
+    original_amount_minor: int | None
+    exchange_rate_to_cny: Decimal | None
+    exchange_rate_date: date | None
+    exchange_rate_source: str | None
     merchant: str | None
     category: str
     note: str | None
@@ -481,6 +555,10 @@ class CsvImportRowResponse(BaseModel):
     @field_serializer("expense_time")
     def serialize_datetime(self, value: datetime | None) -> str | None:
         return to_iso(value)
+
+    @field_serializer("exchange_rate_to_cny")
+    def serialize_exchange_rate(self, value: Decimal | None) -> str | None:
+        return format(value, "f") if value is not None else None
 
 
 class CsvImportRowsResponse(BaseModel):
