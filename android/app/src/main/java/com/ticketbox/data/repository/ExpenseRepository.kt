@@ -182,7 +182,14 @@ class ExpenseRepository(
         }
     }
 
-    private fun persistAuthCheck(check: com.ticketbox.data.remote.dto.AuthCheckDto) {
+    private fun persistAuthCheck(
+        check: com.ticketbox.data.remote.dto.AuthCheckDto,
+        expectedLedgerId: String?,
+        expectedToken: String?,
+    ) {
+        if (expectedToken != null && tokenStore.getToken() != expectedToken) return
+        val currentLedgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
+        if (expectedLedgerId != null && currentLedgerId != expectedLedgerId) return
         settingsStore.saveIdentity(
             accountName = check.accountName,
             ledgerId = check.ledgerId,
@@ -249,7 +256,13 @@ class ExpenseRepository(
     }
 
     suspend fun testConnection(): Result<Unit> = errorHandler.safeCall {
-        persistAuthCheck(api().checkAuth())
+        val expectedLedgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
+        val expectedToken = tokenStore.getToken()
+        persistAuthCheck(
+            check = api().checkAuth(),
+            expectedLedgerId = expectedLedgerId,
+            expectedToken = expectedToken,
+        )
     }
 
     suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> = errorHandler.safeCall {

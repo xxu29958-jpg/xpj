@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from sqlalchemy import and_, or_
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import DuplicateIgnore, Expense
@@ -121,6 +121,7 @@ def _normalize_pair(expense_id: int, duplicate_of_id: int) -> tuple[int, int]:
 
 
 def list_suspected_duplicates(db: Session, tenant_id: str) -> list[Expense]:
+    _clear_rejected_duplicate_targets(db, tenant_id=tenant_id)
     return list(
         db.scalars(
             select(Expense)
@@ -130,6 +131,35 @@ def list_suspected_duplicates(db: Session, tenant_id: str) -> list[Expense]:
             .order_by(Expense.created_at.desc(), Expense.id.desc())
         )
     )
+
+
+def clear_duplicate_references_to(db: Session, *, tenant_id: str, duplicate_of_id: int) -> int:
+    result = db.execute(
+        update(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status != "rejected")
+        .where(Expense.duplicate_of_id == duplicate_of_id)
+        .values(duplicate_status="none", duplicate_of_id=None, duplicate_reason=None)
+        .execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0)
+
+
+def _clear_rejected_duplicate_targets(db: Session, *, tenant_id: str) -> int:
+    rejected_targets = (
+        select(Expense.id)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status == "rejected")
+    )
+    result = db.execute(
+        update(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status != "rejected")
+        .where(Expense.duplicate_of_id.in_(rejected_targets))
+        .values(duplicate_status="none", duplicate_of_id=None, duplicate_reason=None)
+        .execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0)
 
 
 def mark_not_duplicate(db: Session, expense: Expense) -> Expense:

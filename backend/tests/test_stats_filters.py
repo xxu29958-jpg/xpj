@@ -11,6 +11,7 @@ from api_contract_helpers import (
 )
 from app.database import SessionLocal
 from app.models import Expense
+from app.services import web_stats_service
 from conftest import (
     app_headers,
 )
@@ -54,6 +55,33 @@ def test_local_timezone_month_filter_matches_android_display_month(
     months = client.get("/api/expenses/months", headers=app_headers())
     assert months.status_code == 200
     assert months.json()["items"] == ["2026-05"]
+
+
+def test_web_stats_day_grouping_uses_configured_local_timezone(
+    client: TestClient,
+) -> None:
+    del client
+    insert_confirmed_expense(
+        amount_cents=1851,
+        merchant="Web 跨日账单",
+        category="生活",
+        expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
+        confirmed_at=datetime(2026, 4, 30, 16, 31, tzinfo=UTC),
+    )
+
+    with SessionLocal() as db:
+        may_days = web_stats_service.confirmed_by_day(db, "owner", "2026-05")
+        april_days = web_stats_service.confirmed_by_day(db, "owner", "2026-04")
+
+    assert may_days == [
+        {
+            "date": "2026-05-01",
+            "amount_cents": 1851,
+            "amount_yuan": 18.51,
+            "count": 1,
+        }
+    ]
+    assert april_days == []
 
 
 def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(

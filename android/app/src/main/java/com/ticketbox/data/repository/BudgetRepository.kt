@@ -6,11 +6,14 @@ import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import java.time.YearMonth
 import java.util.TimeZone
 
 interface BudgetActions {
     fun canModifyLedger(): Boolean
+    fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
     suspend fun monthlyBudget(month: String): Result<BudgetMonthly>
     suspend fun saveMonthlyBudget(month: String, update: BudgetMonthlyUpdate): Result<BudgetMonthly>
 }
@@ -28,6 +31,8 @@ class BudgetRepository(
     )
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
+
+    override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
 
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
         val cleanMonth = validatedMonth(month)

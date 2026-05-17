@@ -283,6 +283,7 @@ def apply_currency_payload(
             _payload_attr(payload, "expense_time"),
             _payload_attr(payload, "original_currency_code"),
             _payload_attr(payload, "original_amount_minor"),
+            _payload_attr(payload, "exchange_rate_to_cny"),
             _payload_attr(payload, "exchange_rate_date"),
         )
     )
@@ -316,12 +317,20 @@ def apply_currency_payload(
         or expense.exchange_rate_date
         or default_rate_date(expense.expense_time)
     )
-    rate, source, fx_status = resolve_payload_rate(
-        db,
-        tenant_id=tenant_id,
-        currency_code=code,
-        rate_date=rate_date,
-    )
+    explicit_rate = format_decimal_rate(_payload_attr(payload, "exchange_rate_to_cny"))
+    if code == home:
+        rate, source, fx_status = Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY
+    elif explicit_rate is not None:
+        rate = explicit_rate
+        source = (_payload_attr(payload, "exchange_rate_source") or FX_SOURCE_MANUAL).strip()[:32] or FX_SOURCE_MANUAL
+        fx_status = FX_STATUS_READY
+    else:
+        rate, source, fx_status = resolve_payload_rate(
+            db,
+            tenant_id=tenant_id,
+            currency_code=code,
+            rate_date=rate_date,
+        )
     expense.home_currency_code = home
     expense.original_currency_code = code
     expense.original_amount_minor = original_amount

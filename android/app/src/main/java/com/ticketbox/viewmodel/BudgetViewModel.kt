@@ -9,6 +9,8 @@ import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
@@ -49,18 +51,44 @@ class BudgetViewModel(
         ),
     )
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
+    private var requestGeneration = 0
 
     init {
+        observeLedgerChanges()
         refresh()
+    }
+
+    private fun observeLedgerChanges() {
+        viewModelScope.launch {
+            repository.observeActiveLedgerId()
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    requestGeneration += 1
+                    _uiState.update {
+                        it.copy(
+                            loading = true,
+                            saving = false,
+                            budget = null,
+                            form = BudgetFormState(),
+                            message = null,
+                            canModify = repository.canModifyLedger(),
+                        )
+                    }
+                    refresh()
+                }
+        }
     }
 
     fun refresh() {
         viewModelScope.launch {
             val month = _uiState.value.month
+            val generation = requestGeneration
             _uiState.update { it.copy(loading = true, message = null, canModify = repository.canModifyLedger()) }
             repository.monthlyBudget(month)
                 .onSuccess { budget ->
                     _uiState.update {
+                        if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             loading = false,
                             budget = budget,
@@ -71,6 +99,7 @@ class BudgetViewModel(
                 }
                 .onFailure { error ->
                     _uiState.update {
+                        if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             loading = false,
                             message = error.message ?: "预算暂时打不开，请稍后再试。",
@@ -133,6 +162,7 @@ class BudgetViewModel(
             return
         }
         val month = _uiState.value.month
+        val generation = requestGeneration
         val update = parseBudgetUpdate(_uiState.value.form)
             .getOrElse { error ->
                 _uiState.update { it.copy(message = error.message ?: "预算内容不正确。") }
@@ -143,6 +173,7 @@ class BudgetViewModel(
             repository.saveMonthlyBudget(month, update)
                 .onSuccess { budget ->
                     _uiState.update {
+                        if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             saving = false,
                             budget = budget,
@@ -154,6 +185,7 @@ class BudgetViewModel(
                 }
                 .onFailure { error ->
                     _uiState.update {
+                        if (requestGeneration != generation || it.month != month) return@update it
                         it.copy(
                             saving = false,
                             message = error.message ?: "预算没有保存成功。",
@@ -167,6 +199,7 @@ class BudgetViewModel(
     private fun changeMonth(delta: Long) {
         val current = runCatching { YearMonth.parse(_uiState.value.month) }
             .getOrDefault(YearMonth.now())
+        requestGeneration += 1
         _uiState.update {
             it.copy(
                 month = current.plusMonths(delta).toString(),

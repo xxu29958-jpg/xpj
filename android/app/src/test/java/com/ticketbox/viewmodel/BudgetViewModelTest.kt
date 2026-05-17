@@ -4,8 +4,11 @@ import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -124,21 +127,54 @@ class BudgetViewModelTest {
         assertEquals("2026-04", vm.uiState.value.month)
         assertNull(vm.uiState.value.message)
     }
+
+    @Test
+    fun staleMonthResponseDoesNotOverwriteCurrentBudgetForm() = budgetTest {
+        val mayResponse = CompletableDeferred<Result<BudgetMonthly>>()
+        val aprilResponse = CompletableDeferred<Result<BudgetMonthly>>()
+        val fake = FakeBudgetActions(budget = budget(month = "2026-05"))
+        fake.monthlyBudgetResponder = { month ->
+            if (month == "2026-05") mayResponse.await() else aprilResponse.await()
+        }
+        val vm = BudgetViewModel(fake, initialMonth = "2026-05")
+        advanceUntilIdle()
+
+        vm.previousMonth()
+        advanceUntilIdle()
+
+        mayResponse.complete(Result.success(budget(month = "2026-05", totalAmountCents = 999000)))
+        advanceUntilIdle()
+
+        assertEquals("2026-04", vm.uiState.value.month)
+        assertNull(vm.uiState.value.budget)
+
+        aprilResponse.complete(Result.success(budget(month = "2026-04", totalAmountCents = 111000)))
+        advanceUntilIdle()
+
+        assertEquals("2026-04", vm.uiState.value.month)
+        assertEquals(111000L, vm.uiState.value.budget?.totalAmountCents)
+        assertEquals("1110", vm.uiState.value.form.totalAmount)
+    }
 }
 
 private class FakeBudgetActions(
     var budget: BudgetMonthly,
     private val canModify: Boolean = true,
+    private val activeLedgerFlow: Flow<String?> = emptyFlow(),
 ) : BudgetActions {
     val loadedMonths = mutableListOf<String>()
     val savedMonths = mutableListOf<String>()
     val savedRequests = mutableListOf<BudgetMonthlyUpdate>()
     val loadCalls: Int get() = loadedMonths.size
+    var monthlyBudgetResponder: (suspend (String) -> Result<BudgetMonthly>)? = null
 
     override fun canModifyLedger(): Boolean = canModify
 
+    override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
+
     override suspend fun monthlyBudget(month: String): Result<BudgetMonthly> {
         loadedMonths += month
+        monthlyBudgetResponder?.let { return it(month) }
         return Result.success(budget.copy(month = month))
     }
 

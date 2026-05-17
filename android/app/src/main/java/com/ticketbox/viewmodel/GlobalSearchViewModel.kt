@@ -49,6 +49,7 @@ class GlobalSearchViewModel(
 
     private var pendingCache: List<Expense> = emptyList()
     private var confirmedCache: List<Expense> = emptyList()
+    private var requestGeneration = 0
 
     init {
         viewModelScope.launch {
@@ -62,6 +63,7 @@ class GlobalSearchViewModel(
                 .distinctUntilChanged()
                 .drop(1)
                 .collect {
+                    requestGeneration += 1
                     pendingCache = emptyList()
                     confirmedCache = emptyList()
                     _uiState.update {
@@ -93,9 +95,11 @@ class GlobalSearchViewModel(
     fun refreshPending() {
         if (_uiState.value.loadingPending) return
         viewModelScope.launch {
+            val generation = requestGeneration
             _uiState.update { it.copy(loadingPending = true, message = null) }
             repository.fetchPending()
                 .onSuccess { expenses ->
+                    if (requestGeneration != generation) return@onSuccess
                     pendingCache = expenses
                     _uiState.update {
                         it.copy(
@@ -107,6 +111,7 @@ class GlobalSearchViewModel(
                     recompute()
                 }
                 .onFailure { error ->
+                    if (requestGeneration != generation) return@onFailure
                     _uiState.update {
                         it.copy(
                             loadingPending = false,

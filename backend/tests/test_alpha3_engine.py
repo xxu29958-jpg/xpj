@@ -90,6 +90,50 @@ def test_rule_preview_caps_items_by_limit(client: TestClient) -> None:
     assert len(body["items"]) == 2
 
 
+def test_rule_patch_can_clear_optional_filters(client: TestClient) -> None:
+    created = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={
+            "keyword": "Coffee",
+            "category": "餐饮",
+            "enabled": True,
+            "priority": 9,
+            "amount_min_cents": 100,
+            "amount_max_cents": 9999,
+            "source_contains": "alipay",
+            "tag_contains": "work",
+        },
+    )
+    assert created.status_code == 200, created.json()
+    rule_id = created.json()["id"]
+
+    patched = client.patch(
+        f"/api/rules/categories/{rule_id}",
+        headers=app_headers(),
+        json={
+            "amount_min_cents": None,
+            "amount_max_cents": None,
+            "source_contains": None,
+            "tag_contains": None,
+        },
+    )
+
+    assert patched.status_code == 200, patched.json()
+    body = patched.json()
+    assert body["amount_min_cents"] is None
+    assert body["amount_max_cents"] is None
+    assert body["source_contains"] is None
+    assert body["tag_contains"] is None
+    with SessionLocal() as db:
+        rule = db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id))
+        assert rule is not None
+        assert rule.amount_min_cents is None
+        assert rule.amount_max_cents is None
+        assert rule.source_contains is None
+        assert rule.tag_contains is None
+
+
 # --- T18 Rules Apply Pending ---------------------------------------------
 
 

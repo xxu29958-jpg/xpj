@@ -24,6 +24,7 @@ from app.services.category_service import normalize_category
 from app.services.classify_service import classify_expense
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.duplicate_service import (
+    clear_duplicate_references_to,
     list_suspected_duplicates,
     mark_duplicate_status,
     mark_not_duplicate,
@@ -619,6 +620,7 @@ def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
 
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
+    clear_duplicate_references_to(db, tenant_id=tenant_id, duplicate_of_id=expense.id)
     db.commit()
     db.refresh(expense)
     return expense

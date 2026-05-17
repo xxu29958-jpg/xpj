@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -96,3 +97,15 @@ def test_owner_index_no_secret_leak_with_tasks(local_client: TestClient) -> None
     body = local_client.get("/owner").text
     assert cf.CURRENT_APP_TOKEN not in body
     assert cf.CURRENT_ADMIN_TOKEN not in body
+
+
+def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    for script in (
+        project_root / "scripts" / "maintenance_ticketbox.ps1",
+        project_root / "scripts" / "restore_ticketbox_db.ps1",
+    ):
+        text = script.read_text(encoding="utf-8-sig")
+        assert "Resolve-DbPath" in text
+        assert "DATABASE_URL" in text
+        assert '$DbPath = Join-Path $BackendRoot "data\\ticketbox.db"' not in text

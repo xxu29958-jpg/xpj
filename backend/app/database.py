@@ -568,6 +568,46 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             raise RuntimeError("Invalid legacy data: rule_application_changes contains cross-ledger expense references")
 
 
+def _validate_goal_unique_scopes(connection, table_names: set[str]) -> None:
+    """Reject duplicate active goals before SQLite creates partial UNIQUE indexes."""
+
+    if "goals" not in table_names:
+        return
+
+    duplicate_total = connection.execute(
+        text(
+            "SELECT tenant_id, month, goal_type, period, COUNT(*) AS count "
+            "FROM goals "
+            "WHERE status = 'active' AND category IS NULL "
+            "GROUP BY tenant_id, month, goal_type, period "
+            "HAVING COUNT(*) > 1 "
+            "LIMIT 1"
+        )
+    ).mappings().first()
+    if duplicate_total is not None:
+        raise RuntimeError(
+            "Invalid legacy data: goals contains duplicate active total goals "
+            f"for tenant={duplicate_total['tenant_id']} month={duplicate_total['month']}"
+        )
+
+    duplicate_category = connection.execute(
+        text(
+            "SELECT tenant_id, month, goal_type, period, category, COUNT(*) AS count "
+            "FROM goals "
+            "WHERE status = 'active' AND category IS NOT NULL "
+            "GROUP BY tenant_id, month, goal_type, period, category "
+            "HAVING COUNT(*) > 1 "
+            "LIMIT 1"
+        )
+    ).mappings().first()
+    if duplicate_category is not None:
+        raise RuntimeError(
+            "Invalid legacy data: goals contains duplicate active category goals "
+            f"for tenant={duplicate_category['tenant_id']} month={duplicate_category['month']} "
+            f"category={duplicate_category['category']}"
+        )
+
+
 def migrate_sqlite_schema() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
@@ -1011,6 +1051,7 @@ def migrate_sqlite_schema() -> None:
             )
 
         if "goals" in table_names:
+            _validate_goal_unique_scopes(connection, table_names)
             connection.execute(
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_active_total_scope "

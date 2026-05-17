@@ -56,6 +56,7 @@ class PendingViewModel(
 ) : ViewModel() {
     internal val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
+    private var requestGeneration = 0
 
     init {
         val readOnly = !repository.canModifyLedger()
@@ -71,6 +72,7 @@ class PendingViewModel(
                 .distinctUntilChanged()
                 .drop(1)
                 .collect {
+                    requestGeneration += 1
                     val readOnly = isReadOnly()
                     _uiState.value = PendingUiState(
                         readOnly = readOnly,
@@ -113,13 +115,18 @@ class PendingViewModel(
 
     fun refresh() {
         viewModelScope.launch {
+            val generation = requestGeneration
             _uiState.update { it.copy(loading = true, message = null) }
             repository.fetchPending()
                 .onSuccess { expenses ->
+                    if (requestGeneration != generation) return@onSuccess
                     _uiState.update { PendingUiStateReducer.afterRefresh(it, expenses, readOnly = isReadOnly()) }
                     loadThumbnails(expenses)
                 }
-                .onFailure { error -> _uiState.update { it.copy(loading = false, message = error.message ?: "暂时加载不了，请稍后再试。") } }
+                .onFailure { error ->
+                    if (requestGeneration != generation) return@onFailure
+                    _uiState.update { it.copy(loading = false, message = error.message ?: "暂时加载不了，请稍后再试。") }
+                }
         }
     }
 

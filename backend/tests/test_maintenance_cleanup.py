@@ -129,3 +129,35 @@ def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient,
     assert not orphan.exists()
     assert tester_orphan.exists()
     assert os.path.isfile(referenced_path)
+
+
+def test_cleanup_orphans_treats_windows_style_upload_paths_as_referenced(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from app.services import cleanup_service
+
+    expense_id = _upload_png(client)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.image_path is not None
+        image_path = _absolute(expense.image_path)
+        expense.image_path = expense.image_path.replace("/", "\\")
+        if expense.thumbnail_path is not None:
+            expense.thumbnail_path = expense.thumbnail_path.replace("/", "\\")
+        db.commit()
+
+    assert os.path.isfile(image_path)
+    old = (now_utc() - timedelta(hours=3)).timestamp()
+    os.utime(image_path, (old, old))
+
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, orphan_upload_grace_hours=1))
+
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["orphan_files"] == 0
+    assert payload["deleted_files"] == 0
+    assert os.path.isfile(image_path)

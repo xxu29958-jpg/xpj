@@ -492,6 +492,58 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun refreshFamilyMembersSlowResponseDoesNotPersistRoleAfterLedgerSwitch() = runTest {
+        val api = StubApi(
+            membersResult = LedgerMemberListResponseDto(
+                members = listOf(
+                    LedgerMemberDto(
+                        memberId = 1,
+                        accountPublicId = "acc_self",
+                        accountName = "我",
+                        role = "viewer",
+                        createdAt = "2026-05-01T00:00:00Z",
+                        disabledAt = null,
+                        isSelf = true,
+                    ),
+                ),
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "L_family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        api.onLedgerMembers = {
+            store.saveIdentity(
+                accountName = "我",
+                ledgerId = "L_other",
+                ledgerName = "另一个账本",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:05:00Z",
+            )
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = LedgerFakeTokenStore().apply { saveToken("t") },
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val members = repo.refreshFamilyMembers().getOrThrow()
+
+        assertEquals("viewer", members.single().role)
+        assertEquals("L_other", store.activeLedgerId())
+        assertEquals("owner", store.role())
+    }
+
+    @Test
     fun refreshFamilyMembersRejectsMissingActiveLedger() = runTest {
         val repo = makeRepo()
         val failure = repo.refreshFamilyMembers(null).exceptionOrNull()
@@ -734,6 +786,8 @@ private class StubApi(
     val previewRequests: MutableList<InvitationPreviewRequestDto> = mutableListOf(),
     val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf(),
 ) : ApiService {
+    var onLedgerMembers: (() -> Unit)? = null
+
     override suspend fun listLedgers(): LedgerListResponseDto {
         listLedgersError?.let { throw it }
         return listLedgersResult ?: LedgerListResponseDto(ledgers = emptyList())
@@ -757,6 +811,7 @@ private class StubApi(
 
     override suspend fun ledgerMembers(ledgerId: String): LedgerMemberListResponseDto {
         memberLedgerRequests += ledgerId
+        onLedgerMembers?.invoke()
         return membersResult ?: error("Unexpected members call")
     }
 

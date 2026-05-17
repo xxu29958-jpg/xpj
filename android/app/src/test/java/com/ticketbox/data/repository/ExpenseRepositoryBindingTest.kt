@@ -369,6 +369,60 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
+    fun authCheckSlowResponseDoesNotOverwriteNewActiveLedger() = runTest {
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-a") }
+        val apiService = FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+            checkAuthResult = AuthCheckDto(
+                status = "ok",
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                scope = "app",
+            ),
+        )
+        apiService.onCheckAuth = {
+            tokenStore.saveToken("session-b")
+            settingsStore.saveIdentity(
+                accountName = "我",
+                ledgerId = "family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "member",
+                boundAt = "2026-05-01T00:05:00Z",
+            )
+        }
+        val repository = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.testConnection().getOrThrow()
+
+        assertEquals("family", settingsStore.activeLedgerId())
+        assertEquals("家庭账本", settingsStore.ledgerName())
+        assertEquals("member", settingsStore.role())
+        assertEquals("session-b", tokenStore.getToken())
+    }
+
+    @Test
     fun settingsRefreshesIdentityChangedByInvitationAccept() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
@@ -843,6 +897,7 @@ private class FakeApiService(
     val expenseFetchIds = mutableListOf<Long>()
     var onConfirmedRequest: (() -> Unit)? = null
     var onExpenseFetch: (() -> Unit)? = null
+    var onCheckAuth: (() -> Unit)? = null
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -881,7 +936,10 @@ private class FakeApiService(
         )
     }
 
-    override suspend fun checkAuth(): AuthCheckDto = checkAuthResult ?: unsupported()
+    override suspend fun checkAuth(): AuthCheckDto {
+        onCheckAuth?.invoke()
+        return checkAuthResult ?: unsupported()
+    }
 
     override suspend fun pendingExpenses(): List<ExpenseDto> = unsupported()
 

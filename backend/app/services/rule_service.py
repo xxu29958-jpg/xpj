@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Final, cast
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -52,6 +54,8 @@ DEFAULT_RULES = [
     ("中国联通", "通讯", 10),
     ("中国电信", "通讯", 10),
 ]
+
+_UNSET: Final = object()
 
 
 def seed_default_rules(db: Session, tenant_id: str) -> None:
@@ -149,10 +153,10 @@ def update_rule(
     category: str | None = None,
     enabled: bool | None = None,
     priority: int | None = None,
-    amount_min_cents: int | None = None,
-    amount_max_cents: int | None = None,
-    source_contains: str | None = None,
-    tag_contains: str | None = None,
+    amount_min_cents: int | None | object = _UNSET,
+    amount_max_cents: int | None | object = _UNSET,
+    source_contains: str | None | object = _UNSET,
+    tag_contains: str | None | object = _UNSET,
 ) -> CategoryRule:
     if keyword is not None:
         keyword = keyword.strip()
@@ -168,14 +172,22 @@ def update_rule(
         rule.enabled = enabled
     if priority is not None:
         rule.priority = priority
-    if amount_min_cents is not None or amount_max_cents is not None:
-        min_value = amount_min_cents if amount_min_cents is not None else rule.amount_min_cents
-        max_value = amount_max_cents if amount_max_cents is not None else rule.amount_max_cents
+    if amount_min_cents is not _UNSET or amount_max_cents is not _UNSET:
+        min_value = (
+            rule.amount_min_cents
+            if amount_min_cents is _UNSET
+            else cast(int | None, amount_min_cents)
+        )
+        max_value = (
+            rule.amount_max_cents
+            if amount_max_cents is _UNSET
+            else cast(int | None, amount_max_cents)
+        )
         rule.amount_min_cents, rule.amount_max_cents = _clean_amount_range(min_value, max_value)
-    if source_contains is not None:
-        rule.source_contains = _clean_optional_text(source_contains)
-    if tag_contains is not None:
-        rule.tag_contains = _clean_optional_text(tag_contains)
+    if source_contains is not _UNSET:
+        rule.source_contains = _clean_optional_text(cast(str | None, source_contains))
+    if tag_contains is not _UNSET:
+        rule.tag_contains = _clean_optional_text(cast(str | None, tag_contains))
     rule.updated_at = now_utc()
     db.commit()
     db.refresh(rule)

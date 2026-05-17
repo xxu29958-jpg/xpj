@@ -196,7 +196,7 @@ class StatsViewModel(
             }
             // Fire-and-forget recurring reads; stats should remain usable if this section fails.
             launch {
-                recurringRepository.items(includeArchived = false, month = month)
+                recurringRepository.items(status = null, includeArchived = false, month = month)
                     .onSuccess { items ->
                         _uiState.update { it.copy(recurringItems = items) }
                     }

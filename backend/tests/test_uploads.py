@@ -351,6 +351,37 @@ def test_upload_same_image_marks_suspected_duplicate_without_rejecting(
     assert second_payload["image_hash"] == first_payload["image_hash"]
 
 
+def test_rejecting_duplicate_original_clears_other_pending_reference(
+    client: TestClient,
+) -> None:
+    first = client.post(
+        upload_url_path(),
+        headers=upload_headers(),
+        files={"file": ("first.png", PNG_BYTES, "image/png")},
+    )
+    assert first.status_code == 200
+    first_id = first.json()["id"]
+
+    second = client.post(
+        upload_url_path(),
+        headers=upload_headers(),
+        files={"file": ("second.png", PNG_BYTES, "image/png")},
+    )
+    assert second.status_code == 200
+    second_id = second.json()["id"]
+    assert second.json()["duplicate_of_id"] == first_id
+
+    rejected = client.post(f"/api/expenses/{first_id}/reject", headers=app_headers())
+    assert rejected.status_code == 200
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    second_after = next(item for item in pending.json() if item["id"] == second_id)
+    assert second_after["duplicate_status"] == "none"
+    assert second_after["duplicate_of_id"] is None
+    assert second_after["duplicate_reason"] is None
+
+
 def test_upload_stores_relative_paths_and_never_confirms(client: TestClient) -> None:
     response = client.post(
         upload_url_path(),

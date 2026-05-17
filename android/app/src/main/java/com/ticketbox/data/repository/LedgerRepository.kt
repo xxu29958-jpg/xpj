@@ -65,8 +65,10 @@ class LedgerRepository(
         val summaries = response.ledgers.map { it.toSummary() }
         settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
         settingsStore.activeLedgerId()
-            ?.let { activeId -> summaries.firstOrNull { it.ledgerId == activeId } }
-            ?.let { persistCurrentRoleIfChanged(it.role) }
+            ?.let { activeId ->
+                summaries.firstOrNull { it.ledgerId == activeId }
+                    ?.let { persistCurrentRoleIfChanged(it.role, expectedLedgerId = activeId) }
+            }
         summaries
     }
 
@@ -127,7 +129,7 @@ class LedgerRepository(
             "当前账本还没有准备好。"
         }
         val members = api().ledgerMembers(targetLedgerId).members.map { it.toFamilyMember() }
-        members.firstOrNull { it.isSelf }?.let { persistSelfRoleIfChanged(it) }
+        members.firstOrNull { it.isSelf }?.let { persistSelfRoleIfChanged(it, expectedLedgerId = targetLedgerId) }
         members
     }
 
@@ -172,8 +174,8 @@ class LedgerRepository(
         val targetLedgerId = requireActiveLedger(ledgerId)
         val response = api().transferLedgerOwner(targetLedgerId, memberId)
         val result = response.toOwnerTransferResult()
-        persistSelfRoleIfChanged(result.previousOwner)
-        persistSelfRoleIfChanged(result.newOwner)
+        persistSelfRoleIfChanged(result.previousOwner, expectedLedgerId = targetLedgerId)
+        persistSelfRoleIfChanged(result.newOwner, expectedLedgerId = targetLedgerId)
         runCatching { refreshLedgers() }
         result
     }
@@ -276,12 +278,13 @@ class LedgerRepository(
         }
     }
 
-    private fun persistSelfRoleIfChanged(member: FamilyMember) {
+    private fun persistSelfRoleIfChanged(member: FamilyMember, expectedLedgerId: String) {
         if (!member.isSelf) return
-        persistCurrentRoleIfChanged(member.role)
+        persistCurrentRoleIfChanged(member.role, expectedLedgerId)
     }
 
-    private fun persistCurrentRoleIfChanged(role: String) {
+    private fun persistCurrentRoleIfChanged(role: String, expectedLedgerId: String) {
+        if (settingsStore.activeLedgerId() != expectedLedgerId) return
         if (role == settingsStore.role()) return
         val accountName = settingsStore.accountName() ?: return
         val ledgerId = settingsStore.activeLedgerId() ?: return

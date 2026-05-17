@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.GlobalSearchActions
 import com.ticketbox.domain.model.Expense
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -120,6 +121,35 @@ class GlobalSearchViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf(3L), vm.uiState.value.results.map { it.expense.id })
     }
+
+    @Test
+    fun stalePendingResponseAfterLedgerChangeIsIgnored() = searchTest {
+        val ledgerFlow = MutableStateFlow<String?>("owner")
+        val firstResponse = CompletableDeferred<Result<List<Expense>>>()
+        val secondResponse = CompletableDeferred<Result<List<Expense>>>()
+        val fake = FakeGlobalSearchActions(activeLedgerFlow = ledgerFlow)
+        var fetchIndex = 0
+        fake.fetchPendingResponder = {
+            fetchIndex += 1
+            if (fetchIndex == 1) firstResponse.await() else secondResponse.await()
+        }
+        val vm = GlobalSearchViewModel(fake)
+        advanceUntilIdle()
+
+        vm.setQuery("Cafe")
+        ledgerFlow.value = "family"
+        advanceUntilIdle()
+
+        firstResponse.complete(Result.success(listOf(expense(id = 4, status = "pending", merchant = "Old Cafe"))))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.results.isEmpty())
+
+        secondResponse.complete(Result.success(listOf(expense(id = 5, status = "pending", merchant = "New Cafe"))))
+        advanceUntilIdle()
+
+        assertEquals(2, fake.fetchPendingCalls)
+        assertEquals(listOf(5L), vm.uiState.value.results.map { it.expense.id })
+    }
 }
 
 private class FakeGlobalSearchActions(
@@ -130,6 +160,7 @@ private class FakeGlobalSearchActions(
 ) : GlobalSearchActions {
     private val confirmedFlow = MutableStateFlow(confirmed)
     var pendingResult = pendingResult
+    var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null
     var fetchPendingCalls: Int = 0
         private set
 
@@ -139,6 +170,7 @@ private class FakeGlobalSearchActions(
 
     override suspend fun fetchPending(): Result<List<Expense>> {
         fetchPendingCalls += 1
+        fetchPendingResponder?.let { return it() }
         return pendingResult
     }
 }

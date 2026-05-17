@@ -63,6 +63,19 @@ def _relative_upload_path(path: Path) -> str | None:
         return None
 
 
+def _normalize_upload_reference(relative_path: str | None) -> str | None:
+    if not relative_path:
+        return None
+    raw = str(relative_path)
+    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
+        return None
+    normalized = raw.replace("\\", "/")
+    normalized_parts = Path(normalized).parts
+    if any(part == ".." for part in normalized_parts):
+        return None
+    return _relative_upload_path((BACKEND_ROOT / normalized).resolve())
+
+
 def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
     rows = db.execute(
         select(Expense.image_path, Expense.thumbnail_path)
@@ -76,10 +89,12 @@ def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
     )
     referenced: set[str] = set()
     for image_path, thumbnail_path in rows:
-        if image_path:
-            referenced.add(image_path)
-        if thumbnail_path:
-            referenced.add(thumbnail_path)
+        normalized_image = _normalize_upload_reference(image_path)
+        if normalized_image:
+            referenced.add(normalized_image)
+        normalized_thumbnail = _normalize_upload_reference(thumbnail_path)
+        if normalized_thumbnail:
+            referenced.add(normalized_thumbnail)
     return referenced
 
 

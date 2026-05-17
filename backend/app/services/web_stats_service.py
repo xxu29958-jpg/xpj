@@ -10,14 +10,17 @@ selection, view-models) and concentrates the SQL here next to the other
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import AuthToken, Device, Expense
-from app.services.time_service import normalize_month_label, now_utc
+from app.services.time_service import ensure_utc, local_month_bounds_utc, normalize_month_label, now_utc, safe_zone
 
 
 SOURCE_LABELS: dict[str, str] = {
@@ -55,19 +58,27 @@ def sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
 
 def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
     """近 14 个日历日（含今天）的每日确认金额，按 expense_time/confirmed_at 聚合。"""
-    today = now_utc().astimezone().date()
+    zone = _web_stats_zone()
+    today = now_utc().astimezone(zone).date()
     start = today - timedelta(days=13)
+    start_utc = datetime(start.year, start.month, start.day, tzinfo=zone).astimezone(UTC)
+    end_day = today + timedelta(days=1)
+    end_utc = datetime(end_day.year, end_day.month, end_day.day, tzinfo=zone).astimezone(UTC)
     expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
-    rows = db.execute(
-        select(func.strftime("%m-%d", expense_time), func.coalesce(func.sum(Expense.amount_cents), 0))
+    expenses = db.scalars(
+        select(Expense)
         .where(Expense.tenant_id == ledger_id)
         .where(Expense.status == "confirmed")
         .where(Expense.amount_cents.is_not(None))
-        .where(func.date(expense_time) >= start.isoformat())
-        .where(func.date(expense_time) <= today.isoformat())
-        .group_by(func.strftime("%m-%d", expense_time))
+        .where(expense_time >= start_utc)
+        .where(expense_time < end_utc)
     )
-    by_day: dict[str, int] = {label: int(amt or 0) for label, amt in rows}
+    by_day: dict[str, int] = defaultdict(int)
+    for expense in expenses:
+        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        if when is None or expense.amount_cents is None:
+            continue
+        by_day[when.astimezone(zone).strftime("%m-%d")] += int(expense.amount_cents)
     result: list[dict] = []
     for i in range(14):
         d = start + timedelta(days=i)
@@ -83,22 +94,33 @@ def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
 def confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
     """已确认账单在指定月内的每日金额，用于日历热力图。"""
     month = _clean_month_filter(month)
+    zone = _web_stats_zone()
+    start_utc, end_utc = _month_bounds(month, zone)
     expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
-    rows = db.execute(
-        select(
-            func.strftime("%Y-%m-%d", expense_time),
-            func.coalesce(func.sum(Expense.amount_cents), 0),
-            func.count(Expense.id),
-        )
+    expenses = db.scalars(
+        select(Expense)
         .where(Expense.tenant_id == ledger_id)
         .where(Expense.status == "confirmed")
         .where(Expense.amount_cents.is_not(None))
-        .where(func.strftime("%Y-%m", expense_time) == month)
-        .group_by(func.strftime("%Y-%m-%d", expense_time))
+        .where(expense_time >= start_utc)
+        .where(expense_time < end_utc)
     )
+    by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"amount_cents": 0, "count": 0})
+    for expense in expenses:
+        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        if when is None or expense.amount_cents is None:
+            continue
+        key = when.astimezone(zone).date().isoformat()
+        by_day[key]["amount_cents"] += int(expense.amount_cents)
+        by_day[key]["count"] += 1
     return [
-        {"date": d, "amount_cents": int(amt or 0), "amount_yuan": int(amt or 0) / 100.0, "count": int(cnt)}
-        for d, amt, cnt in rows
+        {
+            "date": day,
+            "amount_cents": values["amount_cents"],
+            "amount_yuan": values["amount_cents"] / 100.0,
+            "count": values["count"],
+        }
+        for day, values in sorted(by_day.items())
     ]
 
 
@@ -111,8 +133,10 @@ def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dic
     )
     if month:
         month = _clean_month_filter(month)
+        zone = _web_stats_zone()
+        start_utc, end_utc = _month_bounds(month, zone)
         expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
-        q = q.where(func.strftime("%Y-%m", expense_time) == month)
+        q = q.where(expense_time >= start_utc).where(expense_time < end_utc)
     q = q.group_by(Expense.source)
     rows = list(db.execute(q))
     total = sum(int(c or 0) for _, c in rows) or 1
@@ -131,6 +155,17 @@ def _clean_month_filter(month: str) -> str:
     if cleaned is None:
         raise AppError("invalid_request", status_code=422)
     return cleaned
+
+
+def _web_stats_zone() -> ZoneInfo:
+    return safe_zone(get_settings().ocr_default_timezone)
+
+
+def _month_bounds(month: str, zone: ZoneInfo) -> tuple[datetime, datetime]:
+    bounds = local_month_bounds_utc(month, zone.key)
+    if bounds is None:
+        raise AppError("invalid_request", status_code=422)
+    return bounds
 
 
 def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:

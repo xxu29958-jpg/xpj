@@ -5,6 +5,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ProtectedImage
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -477,6 +478,34 @@ class PendingViewModelReviewActionsTest {
         assertFalse(vm.uiState.value.thumbnails.containsKey(80L))
     }
 
+    @Test
+    fun stalePendingResponseAfterLedgerChangeIsIgnored() = review {
+        val ledgerFlow = MutableStateFlow<String?>("owner")
+        val firstResponse = CompletableDeferred<Result<List<Expense>>>()
+        val secondResponse = CompletableDeferred<Result<List<Expense>>>()
+        val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow)
+        var fetchIndex = 0
+        fake.fetchPendingResponder = {
+            fetchIndex += 1
+            if (fetchIndex == 1) firstResponse.await() else secondResponse.await()
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        ledgerFlow.value = "family"
+        advanceUntilIdle()
+
+        firstResponse.complete(Result.success(listOf(expense(id = 90L, merchant = "Old Ledger"))))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.items.isEmpty())
+
+        secondResponse.complete(Result.success(listOf(expense(id = 91L, merchant = "New Ledger"))))
+        advanceUntilIdle()
+
+        assertEquals(2, fake.fetchPendingCalls)
+        assertEquals(listOf("New Ledger"), vm.uiState.value.items.map { it.merchant })
+    }
+
     private fun expense(
         id: Long,
         amountCents: Long? = 100L,
@@ -533,6 +562,7 @@ private class FakeReviewActions(
     var confirmResponder: (suspend (Long) -> Result<Expense>)? = null
     var rejectResponder: (suspend (Long) -> Result<Expense>)? = null
     var markNotDuplicateResponder: (suspend (Long) -> Result<Expense>)? = null
+    var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null
 
     var updateCalls: Int = 0
         private set
@@ -554,6 +584,7 @@ private class FakeReviewActions(
 
     override suspend fun fetchPending(): Result<List<Expense>> {
         fetchPendingCalls += 1
+        fetchPendingResponder?.let { return it() }
         return Result.success(pending)
     }
 
