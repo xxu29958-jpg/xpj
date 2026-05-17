@@ -1,134 +1,35 @@
 package com.ticketbox.ui.navigation
 
-import android.annotation.SuppressLint
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
+import com.ticketbox.BuildConfig
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
-import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
-import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
-import com.ticketbox.ui.components.AppBottomNav
-import com.ticketbox.ui.components.AppBottomNavItem
-import com.ticketbox.ui.components.AppEmptyStateCard
-import com.ticketbox.ui.components.AppLoadingState
-import com.ticketbox.ui.components.AppPageHeader
-import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppPageScrollableColumn
-import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.BindServerScreen
-import com.ticketbox.ui.screens.BudgetScreen
-import com.ticketbox.ui.screens.ExpenseEditScreen
-import com.ticketbox.ui.screens.LedgerScreen
 import com.ticketbox.ui.screens.LoginScreen
-import com.ticketbox.ui.screens.PendingScreen
-import com.ticketbox.ui.screens.RecurringScreen
-import com.ticketbox.ui.screens.SettingsScreen
-import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.ui.theme.TicketboxTheme
-import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
-import com.ticketbox.viewmodel.BudgetViewModel
-import com.ticketbox.viewmodel.ExpenseEditUiState
-import com.ticketbox.viewmodel.ExpenseEditViewModel
-import com.ticketbox.viewmodel.LedgerViewModel
-import com.ticketbox.viewmodel.PendingViewModel
-import com.ticketbox.viewmodel.RecurringViewModel
-import com.ticketbox.viewmodel.SettingsViewModel
-import com.ticketbox.viewmodel.StatsViewModel
-import com.ticketbox.viewmodel.budgetViewModelFactory
-import com.ticketbox.viewmodel.closeSheet
-import com.ticketbox.viewmodel.confirmReadyExpenses
-import com.ticketbox.viewmodel.expenseEditViewModelFactory
-import com.ticketbox.viewmodel.openBulkConfirm
-import com.ticketbox.viewmodel.openDuplicateAction
-import com.ticketbox.viewmodel.openMissingAmount
-import com.ticketbox.viewmodel.openQuickCategory
-import com.ticketbox.viewmodel.openQuickMerchant
-import com.ticketbox.viewmodel.repositoryViewModelFactory
-import com.ticketbox.viewmodel.recurringViewModelFactory
-import com.ticketbox.viewmodel.saveAmountAndConfirm
-import com.ticketbox.viewmodel.saveAmountDraft
-import com.ticketbox.viewmodel.saveQuickCategory
-import com.ticketbox.viewmodel.saveQuickMerchant
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-private enum class BottomTab(
-    val key: String,
-    val label: String,
-    val icon: ImageVector,
-) {
-    Pending("pending", "待确认", Icons.Default.CheckCircle),
-    Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
-    Stats("stats", "统计", Icons.Default.BarChart),
-    Settings("settings", "设置", Icons.Default.Settings),
-}
-
-private enum class StatsSecondaryPage {
-    Budget,
-    Recurring,
-}
-
-private const val MAIN_ROUTE = "main"
-private const val EXPENSE_ID_ARG = "expenseId"
-private const val EXPENSE_ROUTE = "expense/{$EXPENSE_ID_ARG}"
-
-private fun expenseRoute(expenseId: Long): String = "expense/$expenseId"
 
 @Composable
 fun TicketboxApp(
@@ -240,14 +141,11 @@ private fun TicketboxContent(
         startupMessage = appState.authMessage,
         onStartupMessageShown = onAuthMessageShown,
         onSkinChange = appViewModel::selectSkin,
-        onBindingCleared = {
-            appViewModel.clearBinding()
-        },
+        onBindingCleared = appViewModel::clearBinding,
     )
 }
 
 @Composable
-@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 private fun MainShell(
     repository: ExpenseRepository,
     ledgerRepository: LedgerRepository,
@@ -262,25 +160,27 @@ private fun MainShell(
     onSkinChange: (AppSkin) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
-    var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
-    var statsSecondaryPage by remember { mutableStateOf<StatsSecondaryPage?>(null) }
-    var dashboardCardsRevision by remember { mutableStateOf(0) }
-    var expenseEditCompletionRevision by remember { mutableStateOf(0) }
+    val shellState = rememberMainShellState()
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = currentBackStackEntry?.destination?.route
-    val repositoryFactory = repositoryViewModelFactory(
-        repository = repository,
-        recurringRepository = recurringRepository,
-        budgetRepository = budgetRepository,
-        reportsRepository = reportsRepository,
-    )
-    val currentRole = when {
-        currentRoute == EXPENSE_ROUTE -> SurfaceRole.Edit
-        statsSecondaryPage != null -> SurfaceRole.Stats
-        else -> selectedTab.surfaceRole
-    }
     val snackbarHostState = remember { SnackbarHostState() }
+    val screenFactory = remember(
+        repository,
+        ledgerRepository,
+        recurringRepository,
+        budgetRepository,
+        reportsRepository,
+        settingsViewModelFactory,
+    ) {
+        MainScreenFactory(
+            repository = repository,
+            ledgerRepository = ledgerRepository,
+            recurringRepository = recurringRepository,
+            budgetRepository = budgetRepository,
+            reportsRepository = reportsRepository,
+            settingsViewModelFactory = settingsViewModelFactory,
+        )
+    }
 
     LaunchedEffect(startupMessage) {
         val message = startupMessage ?: return@LaunchedEffect
@@ -291,384 +191,16 @@ private fun MainShell(
     ImmersiveBackgroundScaffold(
         backgroundSettings = backgroundSettings,
         currentSkin = currentSkin,
-        surfaceRole = currentRole,
+        surfaceRole = shellState.surfaceRole(currentBackStackEntry?.destination?.route),
     ) {
-        NavHost(
+        MainNavGraph(
             navController = navController,
-            startDestination = MAIN_ROUTE,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            composable(MAIN_ROUTE) {
-                Scaffold(
-                    containerColor = Color.Transparent,
-                    contentWindowInsets = WindowInsets(0.dp),
-                    snackbarHost = { SnackbarHost(snackbarHostState) },
-                    bottomBar = {
-                        if (statsSecondaryPage == null) {
-                            AppBottomNav(
-                                items = BottomTab.entries.map { it.toBottomNavItem() },
-                                selectedKey = selectedTab.key,
-                                onSelect = { item ->
-                                    BottomTab.entries.firstOrNull { it.key == item.key }?.let { selectedTab = it }
-                                },
-                            )
-                        }
-                    },
-                ) { _ ->
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                val activeStatsSecondaryPage = statsSecondaryPage
-                if (activeStatsSecondaryPage != null) {
-                    when (activeStatsSecondaryPage) {
-                        StatsSecondaryPage.Budget -> {
-                            val budgetViewModel: BudgetViewModel = viewModel(
-                                factory = budgetViewModelFactory(budgetRepository),
-                            )
-                            val state by budgetViewModel.uiState.collectAsStateWithLifecycle()
-                            BudgetScreen(
-                                state = state,
-                                onRefresh = budgetViewModel::refresh,
-                                onPreviousMonth = budgetViewModel::previousMonth,
-                                onNextMonth = budgetViewModel::nextMonth,
-                                onTotalAmountChange = budgetViewModel::updateTotalAmount,
-                                onRolloverAmountChange = budgetViewModel::updateRolloverAmount,
-                                onNonMonthlyAmountChange = budgetViewModel::updateNonMonthlyAmount,
-                                onExcludedCategoriesChange = budgetViewModel::updateExcludedCategories,
-                                onCategoryRowChange = budgetViewModel::updateCategoryRow,
-                                onAddCategoryRow = budgetViewModel::addCategoryRow,
-                                onRemoveCategoryRow = budgetViewModel::removeCategoryRow,
-                                onSave = budgetViewModel::save,
-                                onBack = { statsSecondaryPage = null },
-                            )
-                        }
-
-                        StatsSecondaryPage.Recurring -> {
-                            val recurringViewModel: RecurringViewModel = viewModel(
-                                factory = recurringViewModelFactory(recurringRepository),
-                            )
-                            val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
-                            RecurringScreen(
-                                state = state,
-                                onRefresh = recurringViewModel::refresh,
-                                onConfirmCandidate = recurringViewModel::confirmCandidate,
-                                onPause = recurringViewModel::pause,
-                                onResume = recurringViewModel::resume,
-                                onArchive = recurringViewModel::archive,
-                                onBack = { statsSecondaryPage = null },
-                            )
-                        }
-                    }
-                    return@Box
-                }
-
-                when (selectedTab) {
-                BottomTab.Pending -> {
-                    val pendingViewModel: PendingViewModel = viewModel(factory = repositoryFactory)
-                    val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
-                    val context = LocalContext.current
-                    val uploadScope = rememberCoroutineScope()
-                    LaunchedEffect(expenseEditCompletionRevision) {
-                        if (expenseEditCompletionRevision > 0) {
-                            pendingViewModel.refresh()
-                        }
-                    }
-                    val imagePickerLauncher = rememberLauncherForActivityResult(
-                        contract = ActivityResultContracts.PickVisualMedia(),
-                    ) { uri ->
-                        if (uri == null) return@rememberLauncherForActivityResult
-                        if (!pendingViewModel.markUploadPreparing()) return@rememberLauncherForActivityResult
-                        uploadScope.launch {
-                            val selected = withContext(Dispatchers.IO) {
-                                context.prepareScreenshotUpload(uri)
-                            }
-                            if (selected == null) {
-                                pendingViewModel.uploadPreparationFailed()
-                                return@launch
-                            }
-                            pendingViewModel.uploadScreenshot(
-                                fileName = selected.fileName,
-                                contentType = selected.contentType,
-                                bytes = selected.bytes,
-                                preparationDurationMs = selected.preparationDurationMs,
-                                sourceSizeBytes = selected.sourceSizeBytes,
-                                uploadAlreadyStarted = true,
-                            )
-                        }
-                    }
-                    PendingScreen(
-                        state = state,
-                        onRefresh = pendingViewModel::refresh,
-                        onEdit = {
-                            navController.navigate(expenseRoute(it.id)) {
-                                launchSingleTop = true
-                            }
-                        },
-                        onConfirm = pendingViewModel::confirm,
-                        onReject = pendingViewModel::reject,
-                        onKeepDuplicate = pendingViewModel::markNotDuplicate,
-                        onUploadScreenshot = {
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                            )
-                        },
-                        onQuickCategory = pendingViewModel::openQuickCategory,
-                        onSaveQuickCategory = pendingViewModel::saveQuickCategory,
-                        onQuickMerchant = pendingViewModel::openQuickMerchant,
-                        onSaveQuickMerchant = pendingViewModel::saveQuickMerchant,
-                        onMissingAmount = pendingViewModel::openMissingAmount,
-                        onSaveAmountDraft = pendingViewModel::saveAmountDraft,
-                        onSaveAmountAndConfirm = pendingViewModel::saveAmountAndConfirm,
-                        onOpenBulkConfirm = pendingViewModel::openBulkConfirm,
-                        onConfirmReady = pendingViewModel::confirmReadyExpenses,
-                        onOpenDuplicate = pendingViewModel::openDuplicateAction,
-                        onIgnoreDuplicate = pendingViewModel::reject,
-                        onCloseSheet = pendingViewModel::closeSheet,
-                    )
-                }
-                BottomTab.Ledger -> {
-                    val ledgerViewModel: LedgerViewModel = viewModel(factory = repositoryFactory)
-                    val state by ledgerViewModel.uiState.collectAsStateWithLifecycle()
-                    val context = LocalContext.current
-                    var pendingExport by remember { mutableStateOf<CsvExport?>(null) }
-                    LaunchedEffect(expenseEditCompletionRevision) {
-                        if (expenseEditCompletionRevision > 0) {
-                            ledgerViewModel.sync()
-                        }
-                    }
-                    val exportLauncher = rememberLauncherForActivityResult(
-                        contract = ActivityResultContracts.CreateDocument("text/csv"),
-                    ) { uri ->
-                        val exportFile = pendingExport
-                        pendingExport = null
-                        if (uri == null || exportFile == null) {
-                            ledgerViewModel.exportFinished("已取消导出")
-                            return@rememberLauncherForActivityResult
-                        }
-                        runCatching {
-                            context.contentResolver.openOutputStream(uri)?.use { output ->
-                                output.write(exportFile.bytes)
-                            } ?: error("Output stream is null")
-                        }
-                            .onSuccess { ledgerViewModel.exportFinished("账本已导出") }
-                            .onFailure { ledgerViewModel.exportFinished("没有导出成功，可以换个保存位置再试。") }
-                    }
-
-                    LaunchedEffect(state.exportFile) {
-                        val exportFile = state.exportFile ?: return@LaunchedEffect
-                        pendingExport = exportFile
-                        exportLauncher.launch(exportFile.fileName)
-                        ledgerViewModel.exportLaunchHandled()
-                    }
-
-                    LedgerScreen(
-                        state = state,
-                        onMonthChange = ledgerViewModel::setMonthFilter,
-                        onCategoryChange = ledgerViewModel::setCategoryFilter,
-                        onTagChange = ledgerViewModel::setTagFilter,
-                        onQueryChange = ledgerViewModel::setQuery,
-                        onClearFilters = ledgerViewModel::clearFilters,
-                        onSync = ledgerViewModel::sync,
-                        onExportCsv = ledgerViewModel::exportCsv,
-                        onManualCreate = ledgerViewModel::createManualExpense,
-                        onViewModeChange = ledgerViewModel::setViewMode,
-                        onEdit = {
-                            navController.navigate(expenseRoute(it.id)) {
-                                launchSingleTop = true
-                            }
-                        },
-                    )
-                }
-                BottomTab.Stats -> {
-                    val statsViewModel: StatsViewModel = viewModel(factory = repositoryFactory)
-                    val state by statsViewModel.uiState.collectAsStateWithLifecycle()
-                    LaunchedEffect(dashboardCardsRevision) {
-                        if (dashboardCardsRevision > 0) {
-                            statsViewModel.refresh()
-                        }
-                    }
-                    StatsScreen(
-                        state = state,
-                        onMonthChange = statsViewModel::setMonth,
-                        onTagChange = statsViewModel::setTag,
-                        onRefresh = statsViewModel::refresh,
-                        onOpenBudget = { statsSecondaryPage = StatsSecondaryPage.Budget },
-                        onOpenRecurring = { statsSecondaryPage = StatsSecondaryPage.Recurring },
-                    )
-                }
-                BottomTab.Settings -> {
-                    val settingsViewModel: SettingsViewModel = viewModel(
-                        factory = settingsViewModelFactory,
-                    )
-                    val state by settingsViewModel.uiState.collectAsStateWithLifecycle()
-                    SettingsScreen(
-                        state = state,
-                        currentSkin = currentSkin,
-                        onTestConnection = settingsViewModel::testConnection,
-                        onRunDiagnostics = settingsViewModel::runDiagnostics,
-                        onRefreshServerSettings = settingsViewModel::refreshServerSettings,
-                        onSync = settingsViewModel::sync,
-                        onClearCache = settingsViewModel::clearLocalCache,
-                        onSaveNotificationPreferences = settingsViewModel::saveNotificationPreferences,
-                        onCreateRule = settingsViewModel::createCategoryRule,
-                        onUpdateRule = settingsViewModel::updateCategoryRule,
-                        onToggleRule = settingsViewModel::toggleCategoryRule,
-                        onDeleteRule = settingsViewModel::deleteCategoryRule,
-                        onCreateMerchantAlias = settingsViewModel::createMerchantAlias,
-                        onToggleMerchantAlias = settingsViewModel::toggleMerchantAlias,
-                        onDeleteMerchantAlias = settingsViewModel::deleteMerchantAlias,
-                        onPreviewApplyConfirmedRules = settingsViewModel::previewApplyConfirmedRules,
-                        onConfirmApplyConfirmedRules = settingsViewModel::confirmApplyConfirmedRules,
-                        onRollbackRuleApplication = settingsViewModel::rollbackRuleApplication,
-                        onSkinChange = onSkinChange,
-                        onApplyBackgroundSettings = settingsViewModel::applyBackgroundSettings,
-                        onClearBackgroundImage = settingsViewModel::clearBackgroundImage,
-                        onBackgroundImageError = settingsViewModel::backgroundImageCopyFailed,
-                        onImmersionModeChange = settingsViewModel::setImmersionMode,
-                        onParallaxChange = settingsViewModel::setParallaxEnabled,
-                        onReduceMotionChange = settingsViewModel::setReduceMotion,
-                        onBindingCleared = onBindingCleared,
-                        showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
-                        ledgerRepository = ledgerRepository,
-                        reportsRepository = reportsRepository,
-                        activeLedgerId = ledgerRepository.activeLedgerId(),
-                        onBindingChanged = settingsViewModel::refreshLocalBindingState,
-                        onLedgerSwitched = settingsViewModel::sync,
-                        onDashboardCardsChanged = { dashboardCardsRevision += 1 },
-                    )
-                }
-            }
-        }
-    }
-            }
-            composable(
-                route = EXPENSE_ROUTE,
-                arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }),
-            ) { backStackEntry ->
-                val expenseId = backStackEntry.arguments?.getLong(EXPENSE_ID_ARG) ?: return@composable
-                ExpenseEditRoute(
-                    expenseId = expenseId,
-                    repository = repository,
-                    onBack = { navController.popBackStack() },
-                    onCompleted = {
-                        expenseEditCompletionRevision += 1
-                        navController.popBackStack()
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExpenseEditRoute(
-    expenseId: Long,
-    repository: ExpenseRepository,
-    onBack: () -> Unit,
-    onCompleted: () -> Unit,
-) {
-    val editViewModel: ExpenseEditViewModel = viewModel(
-        key = "expense-edit-$expenseId",
-        factory = expenseEditViewModelFactory(expenseId, repository),
-    )
-    val editState by editViewModel.uiState.collectAsStateWithLifecycle()
-    val expense = editState.expense
-
-    if (expense == null) {
-        ExpenseEditLoadingRoute(
-            state = editState,
-            onBack = onBack,
-            onRetry = editViewModel::retryLoadExpense,
+            shellState = shellState,
+            screenFactory = screenFactory,
+            currentSkin = currentSkin,
+            snackbarHostState = snackbarHostState,
+            onSkinChange = onSkinChange,
+            onBindingCleared = onBindingCleared,
         )
-        return
-    }
-
-    ExpenseEditScreen(
-        expense = expense,
-        state = editState,
-        onSave = editViewModel::save,
-        onConfirm = editViewModel::confirm,
-        onReject = editViewModel::reject,
-        onRetryOcr = editViewModel::retryOcr,
-        onLoadFullImage = editViewModel::loadFullImage,
-        onKeepDuplicate = editViewModel::markNotDuplicate,
-        onDone = {
-            if (editViewModel.consumeDone()) {
-                onCompleted()
-            } else {
-                onBack()
-            }
-        },
-        allowConfirm = expense.status == "pending",
-        allowReject = expense.status == "pending",
-    )
-}
-
-@Composable
-private fun ExpenseEditLoadingRoute(
-    state: ExpenseEditUiState,
-    onBack: () -> Unit,
-    onRetry: () -> Unit,
-) {
-    AppPageScrollableColumn(
-        role = AppPageRole.Edit,
-        hasBottomBar = false,
-        includeStatusBarPadding = true,
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-    ) {
-        AppPageHeader(
-            title = "打开账单",
-            subtitle = "正在读取最新账单内容。",
-            eyebrow = "",
-        )
-
-        if (state.expenseLoading) {
-            AppLoadingState(
-                title = "账单加载中",
-                body = "正在同步金额、分类和截图信息。",
-            )
-        } else {
-            AppEmptyStateCard {
-                Column(
-                    modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-                ) {
-                    Text(
-                        text = "没有打开这张账单",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = state.message ?: "账单可能已经被删除，或当前设备暂时连接不上账本。",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onRetry,
-                    ) {
-                        Text("重新加载")
-                    }
-                    OutlinedButton(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = onBack,
-                    ) {
-                        Text("返回")
-                    }
-                }
-            }
-        }
     }
 }
-
-private val BottomTab.surfaceRole: SurfaceRole
-    get() = when (this) {
-        BottomTab.Pending -> SurfaceRole.Pending
-        BottomTab.Ledger -> SurfaceRole.Ledger
-        BottomTab.Stats -> SurfaceRole.Stats
-        BottomTab.Settings -> SurfaceRole.Settings
-    }
-
-private fun BottomTab.toBottomNavItem(): AppBottomNavItem = AppBottomNavItem(
-    key = key,
-    label = label,
-    icon = icon,
-)
