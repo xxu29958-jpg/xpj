@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,17 +37,22 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.BudgetCategoryBudget
 import com.ticketbox.domain.model.BudgetExcludedCategory
 import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.SafeBadge
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.SkeletonBlock
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.BudgetCategoryInput
 import com.ticketbox.viewmodel.BudgetUiState
+import com.valentinilk.shimmer.shimmer
 
 @Composable
 fun BudgetScreen(
@@ -64,6 +70,8 @@ fun BudgetScreen(
     onSave: () -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     BackHandler(enabled = onBack != null) {
         onBack?.invoke()
     }
@@ -108,7 +116,7 @@ fun BudgetScreen(
         state.message?.let { message ->
             item { Text(message, color = MaterialTheme.colorScheme.secondary) }
         }
-        item { BudgetSummaryCard(budget = state.budget) }
+        item { BudgetSummaryCard(budget = state.budget, loading = state.loading, currencyDisplay = currencyDisplay) }
         item {
             BudgetEditorCard(
                 state = state,
@@ -124,10 +132,10 @@ fun BudgetScreen(
         }
         state.budget?.let { budget ->
             item {
-                CategoryBudgetCard(items = budget.categoryBudgets)
+                CategoryBudgetCard(items = budget.categoryBudgets, currencyDisplay = currencyDisplay)
             }
             item {
-                ExcludedBreakdownCard(items = budget.excludedBreakdown)
+                ExcludedBreakdownCard(items = budget.excludedBreakdown, currencyDisplay = currencyDisplay)
             }
         }
     }
@@ -148,14 +156,18 @@ private fun MonthSwitcher(
         Text(
             text = month,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
         )
         TextButton(onClick = onNextMonth) { Text("下月") }
     }
 }
 
 @Composable
-private fun BudgetSummaryCard(budget: BudgetMonthly?) {
+private fun BudgetSummaryCard(
+    budget: BudgetMonthly?,
+    loading: Boolean,
+    currencyDisplay: CurrencyDisplay,
+) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
@@ -169,7 +181,7 @@ private fun BudgetSummaryCard(budget: BudgetMonthly?) {
                 Text(
                     text = "本月预算",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
                     text = if (budget?.configured == true) "${budget.spentPercent}%" else "未配置",
@@ -178,6 +190,22 @@ private fun BudgetSummaryCard(budget: BudgetMonthly?) {
                 )
             }
             if (budget == null) {
+                if (loading) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shimmer(),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                    ) {
+                        SkeletonBlock(modifier = Modifier.fillMaxWidth(0.8f).height(22.dp))
+                        SkeletonBlock(modifier = Modifier.fillMaxWidth().height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                            SkeletonBlock(modifier = Modifier.weight(1f).height(58.dp))
+                            SkeletonBlock(modifier = Modifier.weight(1f).height(58.dp))
+                        }
+                    }
+                    return@Column
+                }
                 Text(
                     text = "正在读取预算。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -189,36 +217,39 @@ private fun BudgetSummaryCard(budget: BudgetMonthly?) {
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 MetricPill(
                     label = "总额",
-                    value = formatAmount(budget.availableAmountCents),
+                    value = formatDisplayAmount(budget.availableAmountCents, currencyDisplay),
                     modifier = Modifier.weight(1f),
                 )
                 MetricPill(
                     label = if (budget.isOverBudget) "超支" else "剩余",
-                    value = formatAmount(if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents),
+                    value = formatDisplayAmount(
+                        if (budget.isOverBudget) budget.overspentAmountCents else budget.remainingAmountCents,
+                        currencyDisplay,
+                    ),
                     modifier = Modifier.weight(1f),
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 MetricPill(
                     label = "已花",
-                    value = formatAmount(budget.spentAmountCents),
+                    value = formatDisplayAmount(budget.spentAmountCents, currencyDisplay),
                     modifier = Modifier.weight(1f),
                 )
                 MetricPill(
                     label = "灵活可花",
-                    value = formatAmount(budget.flexBudgetCents),
+                    value = formatDisplayAmount(budget.flexBudgetCents, currencyDisplay),
                     modifier = Modifier.weight(1f),
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
                 MetricPill(
                     label = "固定支出",
-                    value = formatAmount(budget.fixedAmountCents),
+                    value = formatDisplayAmount(budget.fixedAmountCents, currencyDisplay),
                     modifier = Modifier.weight(1f),
                 )
                 MetricPill(
                     label = "剔除",
-                    value = formatAmount(budget.excludedAmountCents),
+                    value = formatDisplayAmount(budget.excludedAmountCents, currencyDisplay),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -267,7 +298,7 @@ private fun MetricPill(
         Text(
             text = value,
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
+            fontWeight = AppTextHierarchy.body.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -294,7 +325,7 @@ private fun BudgetEditorCard(
             Text(
                 text = "预算设置",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             if (!state.canModify) {
                 Text(
@@ -338,7 +369,7 @@ private fun BudgetEditorCard(
             Text(
                 text = "分类预算",
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
             state.form.categoryRows.forEachIndexed { index, row ->
                 CategoryInputRow(
@@ -424,7 +455,10 @@ private fun CategoryInputRow(
 }
 
 @Composable
-private fun CategoryBudgetCard(items: List<BudgetCategoryBudget>) {
+private fun CategoryBudgetCard(
+    items: List<BudgetCategoryBudget>,
+    currencyDisplay: CurrencyDisplay,
+) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
@@ -433,7 +467,7 @@ private fun CategoryBudgetCard(items: List<BudgetCategoryBudget>) {
             Text(
                 text = "分类执行",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             if (items.isEmpty()) {
                 Text(
@@ -446,11 +480,11 @@ private fun CategoryBudgetCard(items: List<BudgetCategoryBudget>) {
                     if (index > 0) HorizontalDivider()
                     AmountRow(
                         title = item.category,
-                        detail = "已花 ${formatAmount(item.spentAmountCents)}",
+                        detail = "已花 ${formatDisplayAmount(item.spentAmountCents, currencyDisplay)}",
                         amount = if (item.overspentAmountCents > 0L) {
-                            "超 ${formatAmount(item.overspentAmountCents)}"
+                            "超 ${formatDisplayAmount(item.overspentAmountCents, currencyDisplay)}"
                         } else {
-                            "剩 ${formatAmount(item.remainingAmountCents)}"
+                            "剩 ${formatDisplayAmount(item.remainingAmountCents, currencyDisplay)}"
                         },
                     )
                 }
@@ -460,7 +494,10 @@ private fun CategoryBudgetCard(items: List<BudgetCategoryBudget>) {
 }
 
 @Composable
-private fun ExcludedBreakdownCard(items: List<BudgetExcludedCategory>) {
+private fun ExcludedBreakdownCard(
+    items: List<BudgetExcludedCategory>,
+    currencyDisplay: CurrencyDisplay,
+) {
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
             modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
@@ -469,7 +506,7 @@ private fun ExcludedBreakdownCard(items: List<BudgetExcludedCategory>) {
             Text(
                 text = "剔除明细",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             if (items.isEmpty()) {
                 Text(
@@ -483,7 +520,7 @@ private fun ExcludedBreakdownCard(items: List<BudgetExcludedCategory>) {
                     AmountRow(
                         title = item.category,
                         detail = "${item.count} 笔",
-                        amount = formatAmount(item.amountCents),
+                        amount = formatDisplayAmount(item.amountCents, currencyDisplay),
                     )
                 }
             }
@@ -526,7 +563,7 @@ private fun AmountRow(
         Text(
             text = amount,
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
+            fontWeight = AppTextHierarchy.body.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

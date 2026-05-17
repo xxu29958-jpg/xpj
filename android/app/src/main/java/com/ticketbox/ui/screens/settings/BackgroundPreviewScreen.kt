@@ -97,6 +97,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -112,6 +113,7 @@ fun BackgroundPreviewScreen(
     onApply: (BackgroundSettings) -> Unit,
 ) {
     var previewSettings by remember(initialSettings) { mutableStateOf(initialSettings) }
+    val homeCurrency = LocalCurrencyDisplay.current.homeCurrency
     SettingsPageFrame(
         title = "背景预览",
         subtitle = "$title · 只有点击应用才会保存",
@@ -127,7 +129,7 @@ fun BackgroundPreviewScreen(
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            PreviewReceipt("美团外卖", "¥36.80", "餐饮 · 请核对")
+            PreviewReceipt("美团外卖", formatAmount(3680, homeCurrency), "餐饮 · 请核对")
             PreviewReceipt("建行提醒", "等待你确认金额", "识别建议")
         }
         PreviewRoleCard(
@@ -136,8 +138,8 @@ fun BackgroundPreviewScreen(
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            PreviewReceipt("OpenAI", "¥200.00", "AI订阅 · 2026年5月")
-            PreviewReceipt("美团外卖", "¥36.80", "餐饮 · 午饭")
+            PreviewReceipt("OpenAI", formatAmount(20000, homeCurrency), "AI订阅 · 2026年5月")
+            PreviewReceipt("美团外卖", formatAmount(3680, homeCurrency), "餐饮 · 午饭")
         }
         PreviewRoleCard(
             title = "统计",
@@ -145,8 +147,8 @@ fun BackgroundPreviewScreen(
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            Text("本月支出 ¥4,286.90", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-            Text("餐饮 42% · AI订阅 ¥200.00", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("本月支出 ${formatAmount(428690, homeCurrency)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text("餐饮 42% · AI订阅 ${formatAmount(20000, homeCurrency)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PreviewRoleCard(
             title = "编辑确认",
@@ -154,7 +156,7 @@ fun BackgroundPreviewScreen(
             settings = previewSettings,
             skin = currentSkin,
         ) {
-            PreviewReceipt("金额", "¥36.80", "商家 美团外卖 · 分类 餐饮")
+            PreviewReceipt("金额", formatAmount(3680, homeCurrency), "商家 美团外卖 · 分类 餐饮")
             AppPrimaryButton(
                 text = "确认入账",
                 icon = Icons.Filled.Check,

@@ -11,6 +11,7 @@ class Utf8JSONResponse(JSONResponse):
 
 
 ERROR_MESSAGES = {
+    "exchange_rate_pending": "Exchange rate is still pending. Please retry after the backend sync completes.",
     "invalid_token": "登录已失效，请重新绑定设备。",
     "legacy_auth_removed": "旧版访问方式已停用，请重新绑定。",
     "bootstrap_already_initialized": "小票夹已经初始化过了。",
@@ -24,6 +25,11 @@ ERROR_MESSAGES = {
     "unsupported_file_type": "暂不支持这种图片格式。",
     "expense_not_found": "没有找到这笔账单。",
     "amount_required": "请先填写金额。",
+    "amount_invalid": "金额格式不正确。",
+    "currency_not_supported": "暂不支持这个币种。",
+    "exchange_rate_required": "请先填写这一天的汇率。",
+    "exchange_rate_invalid": "汇率格式不正确。",
+    "exchange_rate_base_currency": "人民币是基准币种，不需要维护汇率。",
     "image_not_found": "图片不存在或已被清理。",
     "rule_not_found": "分类规则不存在。",
     "rule_application_not_found": "规则应用批次不存在。",

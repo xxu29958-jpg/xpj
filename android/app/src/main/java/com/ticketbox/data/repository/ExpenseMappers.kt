@@ -20,9 +20,11 @@ import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.TagStatsDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CategoryStats
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FrequentMerchant
+import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.MonthlyStats
@@ -36,11 +38,26 @@ import com.ticketbox.domain.model.RuleApplyPreviewItem
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.TagStats
 import com.ticketbox.domain.model.normalizeExpenseCategory
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 fun ExpenseDto.toDomain(): Expense = Expense(
     id = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,
+    homeAmountCents = homeAmountCents ?: amountCents,
+    homeCurrency = CurrencyCode.fromStorageKey(homeCurrency),
+    originalCurrency = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
+    originalAmount = originalAmount ?: minorToMajorText(originalAmountMinor, CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode)),
+    fxRate = fxRate,
+    fxRateDate = fxRateDate,
+    fxSource = fxSource,
+    fxStatus = fxStatus.orEmpty(),
+    originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
+    originalAmountMinor = originalAmountMinor,
+    exchangeRateToCny = fxRate,
+    exchangeRateDate = fxRateDate,
+    exchangeRateSource = fxSource,
     merchant = merchant,
     category = normalizeExpenseCategory(category),
     note = note,
@@ -69,6 +86,13 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     serverId = id,
     publicId = requiredPublicId(),
     amountCents = amountCents,
+    homeCurrencyCode = CurrencyCode.fromStorageKey(homeCurrency).storageKey,
+    originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode).storageKey,
+    originalAmountMinor = originalAmountMinor ?: amountCents,
+    exchangeRateToCny = fxRate,
+    exchangeRateDate = fxRateDate,
+    exchangeRateSource = fxSource,
+    fxStatus = fxStatus.orEmpty(),
     merchant = merchant,
     category = normalizeExpenseCategory(category),
     note = note,
@@ -100,6 +124,19 @@ fun ExpenseEntity.toDomain(): Expense = Expense(
     id = serverId,
     publicId = publicId,
     amountCents = amountCents,
+    homeAmountCents = amountCents,
+    homeCurrency = CurrencyCode.fromStorageKey(homeCurrencyCode),
+    originalCurrency = CurrencyCode.fromStorageKey(originalCurrencyCode),
+    originalAmount = minorToMajorText(originalAmountMinor, CurrencyCode.fromStorageKey(originalCurrencyCode)),
+    fxRate = exchangeRateToCny,
+    fxRateDate = exchangeRateDate,
+    fxSource = exchangeRateSource,
+    fxStatus = fxStatus,
+    originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrencyCode),
+    originalAmountMinor = originalAmountMinor,
+    exchangeRateToCny = exchangeRateToCny,
+    exchangeRateDate = exchangeRateDate,
+    exchangeRateSource = exchangeRateSource,
     merchant = merchant,
     category = normalizeExpenseCategory(category),
     note = note,
@@ -123,20 +160,32 @@ fun ExpenseEntity.toDomain(): Expense = Expense(
     rejectedAt = null,
 )
 
-fun ExpenseDraft.toRequest(): ExpenseUpdateRequest = ExpenseUpdateRequest(
-    amountCents = amountCents,
-    merchant = merchant,
-    category = normalizeExpenseCategory(category),
-    note = note,
-    expenseTime = expenseTime,
-    tags = tags,
-    valueScore = valueScore,
-    regretScore = regretScore,
-)
+fun ExpenseDraft.toRequest(): ExpenseUpdateRequest {
+    val submittedOriginalMinor = originalAmountMinor ?: amountCents
+    val submittedCurrency = originalCurrencyCode
+        ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
+    return ExpenseUpdateRequest(
+        originalCurrency = submittedCurrency?.storageKey,
+        originalAmount = minorToMajorText(
+            submittedOriginalMinor,
+            submittedCurrency ?: FxContract.HomeCurrency,
+        ),
+        spentAt = expenseTime,
+        merchant = merchant,
+        category = normalizeExpenseCategory(category),
+        note = note,
+        expenseTime = expenseTime,
+        tags = tags,
+        valueScore = valueScore,
+        regretScore = regretScore,
+    )
+}
 
 fun NotificationDraft.toRequest(): NotificationDraftRequestDto = NotificationDraftRequestDto(
     source = source.apiValue,
-    amountCents = amountCents,
+    originalCurrency = FxContract.HomeCurrency.storageKey,
+    originalAmount = minorToMajorText(amountCents, FxContract.HomeCurrency),
+    spentAt = expenseTime,
     merchant = merchant?.trim()?.takeIf { it.isNotBlank() },
     category = normalizeExpenseCategory(category),
     expenseTime = expenseTime,
@@ -280,3 +329,12 @@ fun ServerSettingsDto.toDomain(): ServerSettings = ServerSettings(
 )
 
 internal fun String?.cleanOptional(): String? = this?.trim()?.takeIf { it.isNotBlank() }
+
+private fun minorToMajorText(amountMinor: Long?, currency: CurrencyCode): String? {
+    if (amountMinor == null) return null
+    return if (currency.noFractionDigits) {
+        amountMinor.toString()
+    } else {
+        BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
+    }
+}

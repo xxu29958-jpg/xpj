@@ -9,6 +9,8 @@ import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.TagStatsDto
 import com.ticketbox.domain.model.CategoryStats
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.TagStats
@@ -41,6 +43,61 @@ class ExpenseMappersTest {
         ).toDomain()
 
         assertEquals("餐饮", expense.category)
+    }
+
+    @Test
+    fun mapsForeignCurrencyFieldsFromServerAndDraftRequests() {
+        val expense = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            originalCurrencyCode = "USD",
+            originalAmountMinor = 12345,
+            fxRate = "7.12340000",
+            fxRateDate = "2026-05-04",
+            fxStatus = "ready",
+        ).toDomain()
+
+        assertEquals(CurrencyCode.USD, expense.originalCurrencyCode)
+        assertEquals(12345, expense.originalAmountMinor)
+        assertEquals("7.12340000", expense.exchangeRateToCny)
+        assertEquals("7.12340000", expense.fxRate)
+        assertEquals("2026-05-04", expense.exchangeRateDate)
+
+        val request = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalAmountMinor = 1200,
+            merchant = "东京交通",
+            category = "交通",
+            note = null,
+            expenseTime = "2026-05-04T04:00:00Z",
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        ).toRequest()
+
+        assertEquals("JPY", request.originalCurrency)
+        assertEquals("1200", request.originalAmount)
+        assertEquals("2026-05-04T04:00:00Z", request.spentAt)
+    }
+
+    @Test
+    fun categoryOnlyDraftDoesNotSubmitSyntheticCurrencyFields() {
+        val request = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = null,
+            originalAmountMinor = null,
+            merchant = null,
+            category = "交通",
+            note = null,
+            expenseTime = null,
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        ).toRequest()
+
+        assertEquals(null, request.originalCurrency)
+        assertEquals(null, request.originalAmount)
+        assertEquals("交通", request.category)
     }
 
     @Test
@@ -169,11 +226,28 @@ class ExpenseMappersTest {
         assertEquals("拆账金额不能为负数。", negativeAmount.message)
     }
 
-    private fun expenseDto(publicId: String?, category: String = "其他"): ExpenseDto {
+    private fun expenseDto(
+        publicId: String?,
+        category: String = "其他",
+        originalCurrencyCode: String? = null,
+        originalAmountMinor: Long? = null,
+        exchangeRateToCny: String? = null,
+        exchangeRateDate: String? = null,
+        fxRate: String? = null,
+        fxRateDate: String? = null,
+        fxStatus: String? = null,
+    ): ExpenseDto {
         return ExpenseDto(
             id = 1,
             publicId = publicId,
             amountCents = 3680,
+            originalCurrencyCode = originalCurrencyCode,
+            originalAmountMinor = originalAmountMinor,
+            exchangeRateToCny = exchangeRateToCny,
+            exchangeRateDate = exchangeRateDate,
+            fxRate = fxRate,
+            fxRateDate = fxRateDate,
+            fxStatus = fxStatus,
             merchant = "测试商家",
             category = category,
             note = "",

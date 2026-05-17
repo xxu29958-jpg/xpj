@@ -41,7 +41,7 @@
           {{ row.category }}
           {% if row.is_uncategorized %}<span class="status-chip warn">未分类</span>{% endif %}
         </td>
-        <td class="num">¥{{ row.amount_yuan }}</td>
+        <td class="num">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
         <td class="num">{{ row.confirmed_count }}</td>
         <td class="num">{{ row.pending_count }}</td>
         <td>

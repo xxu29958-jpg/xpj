@@ -269,13 +269,15 @@ Android Room：
 amountCents: Long?
 ```
 
-单位统一为"分"。界面显示时转换为元：
+`amount_cents` 固定表示 CNY 基准金额，单位统一为"分"。界面显示时转换为元：
 
 ```text
 3680 -> ¥36.80
 ```
 
 确认入账时，如果 `amount_cents` 为空，后端必须拒绝确认并返回 `amount_required`。
+
+外币账单不改变统计口径。单笔记录额外保存原始币种、原始金额、冻结汇率、汇率日期和来源；后端在创建/编辑时计算 CNY `amount_cents`。汇率先查账本手动覆盖，再查后台定时写入 `fx_rates` 的 ECB 参考汇率；仍缺失时返回 `fx_status=pending`，前端不得默认 1:1。
 
 ## 8. 时间规则
 
@@ -306,6 +308,11 @@ Android 展示时转本地时区。
 id: int，自增主键
 public_id: string，公共 UUID，用于导出、同步和排查
 amount_cents: int?，金额，单位分
+original_currency_code: string，原始币种，默认 CNY
+original_amount_minor: int?，原始币种最小单位金额
+exchange_rate_to_cny: decimal?，冻结汇率，1 原始币种 = N CNY
+exchange_rate_date: date?，汇率日期
+exchange_rate_source: string?，汇率来源，默认 base/manual/import
 merchant: string?，商家
 category: string，默认 其他
 note: string?，备注

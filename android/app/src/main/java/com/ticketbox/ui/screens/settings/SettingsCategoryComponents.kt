@@ -75,6 +75,7 @@ import com.ticketbox.domain.model.BackgroundCropMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.ServerSettings
@@ -95,12 +96,12 @@ import com.ticketbox.ui.components.QuietOutlinedButton
 import com.ticketbox.ui.components.SettingsEntryCard
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatAmount
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.components.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.themeVisualsForSkin
@@ -151,6 +152,8 @@ internal fun CategoryRuleCard(
     onEditRule: () -> Unit,
     onDeleteRule: () -> Unit,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     AppGlassCard(containerAlpha = 0.98f) {
         Column(modifier = Modifier.padding(AppSpacing.compactGap), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             Row(
@@ -164,7 +167,7 @@ internal fun CategoryRuleCard(
                 text = "优先级 ${rule.priority} · ${if (rule.enabled) "已启用" else "已停用"}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            val conditionText = categoryRuleConditionText(rule)
+            val conditionText = categoryRuleConditionText(rule, currencyDisplay)
             if (conditionText != null) {
                 Text(
                     text = conditionText,
@@ -189,11 +192,14 @@ internal fun CategoryRuleCard(
     }
 }
 
-private fun categoryRuleConditionText(rule: CategoryRule): String? {
+private fun categoryRuleConditionText(
+    rule: CategoryRule,
+    currencyDisplay: CurrencyDisplay,
+): String? {
     if (!rule.hasConditions) return null
     val parts = buildList {
-        rule.amountMinCents?.let { add("金额 >= ${formatAmount(it)}") }
-        rule.amountMaxCents?.let { add("金额 <= ${formatAmount(it)}") }
+        rule.amountMinCents?.let { add("金额 >= ${formatDisplayAmount(it, currencyDisplay)}") }
+        rule.amountMaxCents?.let { add("金额 <= ${formatDisplayAmount(it, currencyDisplay)}") }
         rule.sourceContains?.takeIf { it.isNotBlank() }?.let { add("来源含 $it") }
         rule.tagContains?.takeIf { it.isNotBlank() }?.let { add("标签 $it") }
     }

@@ -328,11 +328,25 @@ def _parse_amount_yuan(raw: str) -> tuple[int | None, str | None]:
     return cents, None
 
 
+def _parse_original_amount(raw: str) -> tuple[Decimal | None, str | None]:
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        return None, None
+    try:
+        d = Decimal(cleaned)
+    except InvalidOperation:
+        return None, "请填写正确的金额，例如 12.34。"
+    if d < 0:
+        return None, "金额不能为负数。"
+    return d, None
+
+
 @router.post("/expenses/{expense_id}/save", response_class=HTMLResponse)
 def web_save(
     expense_id: int,
     request: Request,
     amount_yuan: str = Form(default=""),
+    original_currency: str = Form(default=""),
     merchant: str = Form(default=""),
     category: str = Form(default=""),
     note: str = Form(default=""),
@@ -343,15 +357,18 @@ def web_save(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
     _require_selected_ledger_write(options, selected_id)
-    amount_cents, error = _parse_amount_yuan(amount_yuan)
+    original_amount, error = _parse_original_amount(amount_yuan)
 
     if error is None:
-        payload = ExpenseUpdateRequest(
-            amount_cents=amount_cents,
-            merchant=merchant.strip() or None,
-            category=category.strip() or None,
-            note=note.strip() or None,
-        )
+        payload_args = {
+            "merchant": merchant.strip() or None,
+            "category": category.strip() or None,
+            "note": note.strip() or None,
+        }
+        if original_amount is not None:
+            payload_args["original_currency"] = (original_currency or "").strip().upper() or None
+            payload_args["original_amount"] = original_amount
+        payload = ExpenseUpdateRequest(**payload_args)
         try:
             update_expense(db, expense_id, selected_id, payload)
         except AppError as exc:

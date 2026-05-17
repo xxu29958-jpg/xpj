@@ -26,16 +26,16 @@
     </div>
     {% set _t_parts = ('%.2f' % month_total_amount_yuan).split('.') %}
     <div class="kpi-amount">
-      <span class="yuan">¥</span>{{ _t_parts[0] }}<span class="decimals">.{{ _t_parts[1] }}</span>
+      <span class="yuan">{{ home_currency_symbol }}</span>{{ _t_parts[0] }}<span class="decimals">.{{ _t_parts[1] }}</span>
     </div>
     <div class="trend-foot" style="margin-top:14px">
       <div>笔数<span class="num">{{ month_total_count }}</span></div>
       {% if month_total_count > 0 %}
-      <div>笔均<span class="num">¥{{ '%.2f' % (month_total_amount_yuan / month_total_count) }}</span></div>
+      <div>笔均<span class="num">{{ home_currency_symbol }}{{ '%.2f' % (month_total_amount_yuan / month_total_count) }}</span></div>
       {% endif %}
       {% if by_day | length > 0 %}
       {% set _day_max = (by_day | map(attribute='amount_yuan') | list | max) %}
-      <div>日峰值<span class="num">¥{{ '%.0f' % _day_max }}</span></div>
+      <div>日峰值<span class="num">{{ home_currency_symbol }}{{ '%.0f' % _day_max }}</span></div>
       {% endif %}
     </div>
   </div>
@@ -67,7 +67,7 @@
         {% set _ratio = ((_hit.amount_cents / _max_amt) if _hit and _max_amt else 0) %}
         <div class="day {% if _hit %}has{% endif %}"
              style="{% if _hit %}background:color-mix(in oklch, var(--brand-primary) {{ (_ratio * 60 + 14) | round | int }}%, var(--surface-sunken));color:{% if _ratio > 0.5 %}var(--surface-card){% else %}var(--text-default){% endif %}{% endif %}"
-             title="{{ _dstr }}{% if _hit %} · ¥{{ '%.2f' % _hit.amount_yuan }}{% endif %}">
+             title="{{ _dstr }}{% if _hit %} · {{ home_currency_symbol }}{{ '%.2f' % _hit.amount_yuan }}{% endif %}">
           {{ i }}
         </div>
         {% endfor %}
@@ -116,7 +116,7 @@
       <div class="day-label">
         <span class="big">{{ d.split('-')[2] if '-' in d else d }}</span>
         {{ d[5:7] }} 月 · {{ _items | length }} 笔
-        <span class="sum">¥{{ '%.2f' % (_day_sum / 100) }}</span>
+        <span class="sum">{{ home_currency_symbol }}{{ '%.2f' % (_day_sum / 100) }}</span>
       </div>
       <div>
         {% for e in _items %}
@@ -133,7 +133,10 @@
               <span style="font-family:var(--font-num)">#{{ e.id }}</span>
             </div>
           </div>
-          <div class="timeline-amt">¥{{ e.amount_yuan }}</div>
+          <div class="timeline-amt">
+            {{ e.amount_label or '未识别' }}
+            {% if e.fx_meta %}<div class="timeline-meta">{{ e.fx_meta }}</div>{% endif %}
+          </div>
         </a>
         {% endfor %}
       </div>

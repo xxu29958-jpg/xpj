@@ -20,32 +20,32 @@
 <div class="summary-grid compact">
   <div class="summary-card primary">
     <div class="summary-card-label">月度总预算</div>
-    <div class="summary-card-num">¥{{ budget.total_yuan }}</div>
+    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.total_yuan }}</div>
     <div class="summary-card-hint">{{ '已配置' if budget.configured else '未配置' }}</div>
   </div>
   <div class="summary-card {{ 'warn' if budget.is_over_budget else 'ok' }}">
     <div class="summary-card-label">剩余可花</div>
-    <div class="summary-card-num">¥{{ budget.remaining_yuan }}</div>
+    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.remaining_yuan }}</div>
     <div class="summary-card-hint">不含排除分类</div>
   </div>
   <div class="summary-card">
     <div class="summary-card-label">已花</div>
-    <div class="summary-card-num">¥{{ budget.spent_yuan }}</div>
+    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.spent_yuan }}</div>
     <div class="summary-card-hint">{{ budget.spent_percent }}% of total</div>
   </div>
   <div class="summary-card">
     <div class="summary-card-label">固定支出</div>
-    <div class="summary-card-num">¥{{ budget.fixed_yuan }}</div>
+    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.fixed_yuan }}</div>
     <div class="summary-card-hint">来自正式固定支出</div>
   </div>
   <div class="summary-card">
     <div class="summary-card-label">Flex 可花</div>
-    <div class="summary-card-num">¥{{ budget.flex_yuan }}</div>
+    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.flex_yuan }}</div>
     <div class="summary-card-hint">总额 + 结转 - 固定 - 预留</div>
   </div>
   <div class="summary-card">
     <div class="summary-card-label">排除金额</div>
-    <div class="summary-card-num">¥{{ budget.excluded_yuan }}</div>
+    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.excluded_yuan }}</div>
     <div class="summary-card-hint">报销、医疗等</div>
   </div>
 </div>
@@ -63,14 +63,14 @@
     <div class="budget-progress-fill {{ 'is-over' if budget.is_over_budget else '' }}" style="width: {{ budget.spent_percent }}%"></div>
   </div>
   <div class="budget-progress-meta">
-    <span>已花 ¥{{ budget.spent_yuan }}</span>
-    <span>总预算 ¥{{ budget.total_yuan }}</span>
+    <span>已花 {{ home_currency_symbol }}{{ budget.spent_yuan }}</span>
+    <span>总预算 {{ home_currency_symbol }}{{ budget.total_yuan }}</span>
   </div>
   {% if budget.excluded_breakdown %}
   <div class="budget-excluded">
     <div class="row-title">排除分类</div>
     {% for item in budget.excluded_breakdown %}
-    <span class="category-badge">{{ item.category }} ¥{{ item.amount_yuan }} · {{ item.count }} 笔</span>
+    <span class="category-badge">{{ item.category }} {{ home_currency_symbol }}{{ item.amount_yuan }} · {{ item.count }} 笔</span>
     {% endfor %}
   </div>
   {% endif %}
@@ -115,9 +115,9 @@
       <div class="budget-category-row">
         <input type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮">
         <input type="text" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" inputmode="decimal" placeholder="1000.00">
-        <span>{{ '¥' ~ row.spent_yuan if not row.is_blank else '—' }}</span>
+        <span>{{ home_currency_symbol ~ row.spent_yuan if not row.is_blank else '—' }}</span>
         <span class="{{ 'budget-over' if row.overspent_yuan != '0.00' and not row.is_blank else '' }}">
-          {{ '¥' ~ row.remaining_yuan if not row.is_blank else '—' }}
+          {{ home_currency_symbol ~ row.remaining_yuan if not row.is_blank else '—' }}
         </span>
       </div>
       {% endfor %}
@@ -153,12 +153,12 @@
     {% for row in configured_rows %}
       <tr>
         <td><span class="category-badge">{{ row.category }}</span></td>
-        <td class="amount">¥{{ row.amount_yuan }}</td>
-        <td class="amount">¥{{ row.spent_yuan }}</td>
-        <td class="amount {{ 'budget-over' if row.overspent_yuan != '0.00' else '' }}">¥{{ row.remaining_yuan }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ row.spent_yuan }}</td>
+        <td class="amount {{ 'budget-over' if row.overspent_yuan != '0.00' else '' }}">{{ home_currency_symbol }}{{ row.remaining_yuan }}</td>
         <td>
           {% if row.overspent_yuan != '0.00' %}
-          <span class="status-chip warn">超支 ¥{{ row.overspent_yuan }}</span>
+          <span class="status-chip warn">超支 {{ home_currency_symbol }}{{ row.overspent_yuan }}</span>
           {% else %}
           <span class="status-chip ok">正常</span>
           {% endif %}

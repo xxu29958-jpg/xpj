@@ -23,9 +23,12 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatExpenseExchangeMeta
+import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -34,7 +37,7 @@ internal fun LedgerDayHeader(label: String) {
         text = label,
         color = MaterialTheme.colorScheme.onBackground,
         style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Black,
+        fontWeight = AppTextHierarchy.heading.weight,
         modifier = Modifier.padding(top = AppSpacing.miniGap, bottom = AppSpacing.tinyGap),
     )
 }
@@ -44,7 +47,9 @@ internal fun LedgerExpenseCard(
     expense: Expense,
     onEdit: () -> Unit,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val visuals = LocalThemeVisuals.current
+    val exchangeMeta = formatExpenseExchangeMeta(expense)
     AppGlassCard(
         modifier = Modifier.clickable(onClick = onEdit),
         containerAlpha = 0.995f,
@@ -63,7 +68,7 @@ internal fun LedgerExpenseCard(
                     text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.body.weight,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -88,12 +93,21 @@ internal fun LedgerExpenseCard(
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             ) {
                 Text(
-                    text = expense.amountCents?.let(::formatAmount) ?: "待填写",
+                    text = if (expense.amountCents == null) "待填写" else formatExpensePrimaryAmount(expense, currencyDisplay),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                     maxLines = 1,
                 )
+                exchangeMeta?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     text = expense.category,
                     modifier = Modifier
@@ -102,7 +116,7 @@ internal fun LedgerExpenseCard(
                         .padding(horizontal = AppSpacing.contentGap, vertical = AppSpacing.miniGap + AppSpacing.tinyGap),
                     color = visuals.primary,
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = AppTextHierarchy.caption.weight,
                     maxLines = 1,
                 )
             }
@@ -124,7 +138,7 @@ private fun LedgerCategoryMark(category: String) {
             text = category.take(1).ifBlank { "账" },
             color = visuals.primary,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
             textAlign = TextAlign.Center,
         )
     }

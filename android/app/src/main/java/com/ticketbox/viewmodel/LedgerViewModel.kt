@@ -180,7 +180,7 @@ class LedgerViewModel(
             return
         }
         viewModelScope.launch {
-            if (draft.amountCents == null) {
+            if (draft.amountCents == null && draft.originalAmountMinor == null) {
                 _uiState.update { it.copy(message = "请先填写金额。") }
                 return@launch
             }

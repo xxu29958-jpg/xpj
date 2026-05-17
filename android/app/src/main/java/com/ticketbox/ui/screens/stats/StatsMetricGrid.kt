@@ -21,12 +21,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.CategoryInsight
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
@@ -36,6 +39,7 @@ internal fun StatsMetricGrid(
     insight: CategoryInsight?,
     budget: BudgetProgress?,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val aiCategoryAmount = stats.byCategory
         .firstOrNull { it.category == "AI订阅" || it.category == "AI 订阅" }
         ?.amountCents
@@ -45,15 +49,15 @@ internal fun StatsMetricGrid(
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
                 label = "AI 订阅",
-                value = lifestyle?.aiSubscriptionAmountCents?.takeIf { it > 0L }?.let(::formatAmount)
-                    ?: aiCategoryAmount?.let(::formatAmount)
+                value = lifestyle?.aiSubscriptionAmountCents?.takeIf { it > 0L }?.let { formatDisplayAmount(it, currencyDisplay) }
+                    ?: aiCategoryAmount?.let { formatDisplayAmount(it, currencyDisplay) }
                     ?: "暂无记录",
                 accent = 0,
             )
             StatsMetricCard(
                 modifier = Modifier.weight(1f),
                 label = "最大一笔",
-                value = lifestyle?.maxExpense?.amountCents?.let(::formatAmount) ?: "暂无记录",
+                value = lifestyle?.maxExpense?.amountCents?.let { formatDisplayAmount(it, currencyDisplay) } ?: "暂无记录",
                 caption = lifestyle?.maxExpense?.merchant?.takeIf { it.isNotBlank() },
                 accent = 1,
             )
@@ -74,12 +78,15 @@ internal fun StatsMetricGrid(
                 accent = 3,
             )
         }
-        budget?.let { BudgetProgressCard(it) }
+        budget?.let { BudgetProgressCard(it, currencyDisplay) }
     }
 }
 
 @Composable
-private fun BudgetProgressCard(budget: BudgetProgress) {
+private fun BudgetProgressCard(
+    budget: BudgetProgress,
+    currencyDisplay: CurrencyDisplay,
+) {
     val visuals = LocalThemeVisuals.current
     val progress = budget.progress.coerceIn(0f, 1f)
     AppGlassCard(containerAlpha = 0.94f) {
@@ -95,16 +102,16 @@ private fun BudgetProgressCard(budget: BudgetProgress) {
                 Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                     Text("月度预算", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        text = if (budget.overBudget) "已超过预算" else "还可花 ${formatAmount(budget.remainingCents)}",
+                        text = if (budget.overBudget) "已超过预算" else "还可花 ${formatDisplayAmount(budget.remainingCents, currencyDisplay)}",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = AppTextHierarchy.heading.weight,
                     )
                 }
                 Text(
                     text = "${(progress * 100).toInt()}%",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = AppTextHierarchy.body.weight,
                 )
             }
             Box(
@@ -186,7 +193,7 @@ private fun StatsMetricCard(
                 } else {
                     MaterialTheme.typography.titleMedium
                 },
-                fontWeight = FontWeight.Black,
+                fontWeight = if (isEmptyValue) AppTextHierarchy.caption.weight else AppTextHierarchy.body.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

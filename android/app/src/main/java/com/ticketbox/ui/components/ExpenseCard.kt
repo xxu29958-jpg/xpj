@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,7 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppTypography
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.tabularNum
 
 enum class ExpensePreviewMode {
@@ -60,12 +63,14 @@ fun ExpenseCard(
     onReject: () -> Unit = {},
     onKeepDuplicate: () -> Unit = {},
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     var showRejectDialog by remember(expense.id) { mutableStateOf(false) }
     val isCompact = previewMode == ExpensePreviewMode.Compact
     val cardPadding = if (isCompact) 10.dp else 14.dp
     val contentGap = if (isCompact) 8.dp else 12.dp
     val rowGap = if (isCompact) 10.dp else 12.dp
     val imageSize = if (isCompact) DpSize(width = 82.dp, height = 110.dp) else DpSize(width = 96.dp, height = 128.dp)
+    val exchangeMeta = formatExpenseExchangeMeta(expense)
 
     if (showRejectDialog) {
         AlertDialog(
@@ -108,9 +113,10 @@ fun ExpenseCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (expense.imagePath != null) {
-                    ExpenseImagePreview(
+                    AppAsyncImage(
                         image = thumbnail,
-                        placeholder = "截图",
+                        placeholder = "截图缩略图加载中",
+                        contentScale = ContentScale.Crop,
                         compact = true,
                         compactSize = imageSize,
                     )
@@ -125,7 +131,7 @@ fun ExpenseCard(
                         text = expense.merchant?.takeIf { it.isNotBlank() } ?: "待填写商家",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = AppTextHierarchy.body.weight,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -139,7 +145,7 @@ fun ExpenseCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = expense.amountCents?.let(::formatAmount) ?: "等待你确认金额",
+                        text = if (expense.amountCents == null) "等待你确认金额" else formatExpensePrimaryAmount(expense, currencyDisplay),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = AppTypography.amountMedium.size,
                             lineHeight = 28.sp,
@@ -150,6 +156,15 @@ fun ExpenseCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    exchangeMeta?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -186,9 +201,10 @@ fun ExpenseCard(
                 } else {
                     "截图已保存，点开后可查看"
                 }
-                ExpenseImagePreview(
+                AppAsyncImage(
                     image = thumbnail,
                     placeholder = imagePlaceholder,
+                    contentScale = ContentScale.Crop,
                 )
             }
 
@@ -279,7 +295,7 @@ private fun CategoryMark(category: String) {
             text = category.take(1).ifBlank { "账" },
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
             textAlign = TextAlign.Center,
         )
     }

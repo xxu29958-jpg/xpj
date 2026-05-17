@@ -33,7 +33,10 @@ import androidx.compose.ui.unit.dp
 import android.view.View
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalChartTokens
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalDashboardCardTokens
 import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.LocalStateTokens
@@ -144,6 +147,8 @@ fun backgroundBrushForSkin(skin: AppSkin): Brush {
 @Composable
 fun TicketboxTheme(
     skin: AppSkin,
+    currency: CurrencyCode = CurrencyCode.Default,
+    currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
     content: @Composable () -> Unit,
 ) {
     val view = LocalView.current
@@ -167,6 +172,8 @@ fun TicketboxTheme(
                 LocalChartTokens provides chartTokensForSkin(skin),
                 LocalGoalTokens provides goalTokensForSkin(skin),
                 LocalDashboardCardTokens provides dashboardCardTokensForSkin(skin),
+                com.ticketbox.ui.design.LocalCurrencyCode provides currency,
+                LocalCurrencyDisplay provides currencyDisplay,
             ) {
                 content()
             }

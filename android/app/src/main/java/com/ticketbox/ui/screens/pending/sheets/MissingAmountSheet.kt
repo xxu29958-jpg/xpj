@@ -22,12 +22,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.components.formatMinorAmountInput
+import com.ticketbox.ui.components.parseMinorAmount
 
 /**
  * MissingAmount BottomSheet — slice 3 M4。
- * 金额输入以元显示，提交时转 amount_cents。
+ * 金额输入以原始币种显示，提交后由后端计算入账金额。
  * 「保存草稿」走 updateExpense，「保存并确认」走 updateExpense + confirmExpense。
  * 不允许负数；空值不可确认；不直接写 confirmed。
  */
@@ -40,10 +40,13 @@ internal fun MissingAmountSheetContent(
     onSaveAndConfirm: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var input by remember(expense.id) { mutableStateOf(formatAmountInput(expense.amountCents)) }
-    val cents = parseAmountCents(input)
-    val invalid = input.isNotBlank() && (cents == null || cents <= 0)
-    val canSave = cents != null && cents > 0 && !saving
+    val currency = expense.originalCurrencyCode
+    var input by remember(expense.id) {
+        mutableStateOf(formatMinorAmountInput(expense.originalAmountMinor ?: expense.amountCents, currency))
+    }
+    val originalMinor = parseMinorAmount(input, currency)
+    val invalid = input.isNotBlank() && (originalMinor == null || originalMinor <= 0)
+    val canSave = originalMinor != null && originalMinor > 0 && !saving
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
@@ -51,7 +54,7 @@ internal fun MissingAmountSheetContent(
     ) {
         Text("补一下金额", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
         Text(
-            text = "金额按元为单位输入，例如 12.34。提交后会按 amount_cents 存储。",
+            text = "金额按原始币种输入，例如 12.34。保存后由后端按消费时间计算入账金额。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -59,12 +62,14 @@ internal fun MissingAmountSheetContent(
         OutlinedTextField(
             value = input,
             onValueChange = { raw ->
-                input = raw.filter { c -> c.isDigit() || c == '.' }.take(12)
+                input = raw
+                    .filter { c -> c.isDigit() || (!currency.noFractionDigits && c == '.') }
+                    .take(12)
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            label = { Text("金额 (元)") },
-            placeholder = { Text("例如 12.34") },
+            label = { Text("金额 (${currency.storageKey})") },
+            placeholder = { Text(if (currency.noFractionDigits) "例如 1200" else "例如 12.34") },
             modifier = Modifier.fillMaxWidth(),
             enabled = !saving,
             isError = invalid,
@@ -84,12 +89,12 @@ internal fun MissingAmountSheetContent(
                 text = if (saving) "保存中" else "仅保存",
                 modifier = Modifier.weight(1f),
                 enabled = canSave,
-                onClick = { cents?.let(onSaveDraft) },
+                onClick = { originalMinor?.let(onSaveDraft) },
             )
             Button(
                 modifier = Modifier.weight(1.2f),
                 enabled = canSave,
-                onClick = { cents?.let(onSaveAndConfirm) },
+                onClick = { originalMinor?.let(onSaveAndConfirm) },
             ) {
                 Text(if (saving) "处理中" else "保存并确认")
             }

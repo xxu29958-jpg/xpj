@@ -21,9 +21,11 @@ backend/bootstrap/*
 
 # Android / Gradle
 .gradle/
+.gradle-user/
 .toolchains/
 build/
 android/.gradle/
+android/.gradle-user/
 android/.kotlin/
 android/build/
 android/app/build/

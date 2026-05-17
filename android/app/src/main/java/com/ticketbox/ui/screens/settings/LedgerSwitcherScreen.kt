@@ -28,7 +28,9 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppSpacing
+import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.launch
 
 private const val LEDGER_NAME_MAX = 60
@@ -78,7 +80,11 @@ fun LedgerSwitcherScreen(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
-                    if (ledgers.isEmpty() && !loading) {
+                    if (ledgers.isEmpty() && loading) {
+                        Column(modifier = Modifier.shimmer()) {
+                            repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
+                        }
+                    } else if (ledgers.isEmpty()) {
                         Text(
                             text = "还没有可显示的账本。请稍后下拉刷新。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

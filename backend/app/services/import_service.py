@@ -14,6 +14,10 @@ Accepted columns (case-insensitive, BOM-aware):
 * ``expense_time`` — optional ISO-8601, naive interpreted as Asia/Shanghai
 * ``tags`` — optional
 * ``source`` — optional, defaults to ``"CSV导入"``
+* ``original_currency_code`` / ``original_amount_minor`` /
+  ``exchange_rate_to_cny`` / ``exchange_rate_date`` — optional legacy
+  metadata. Imported expenses still go through the backend FX resolver before
+  a home amount is frozen.
 
 Unknown columns are ignored. Each row is validated independently; rows
 with errors are reported in the preview but skipped on import.
@@ -23,7 +27,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from io import StringIO
 
@@ -32,6 +36,13 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Expense
 from app.services.category_service import normalize_category
+from app.services.exchange_rate_service import (
+    BASE_CURRENCY_CODE,
+    apply_currency_payload,
+    format_decimal_rate,
+    home_currency_code,
+    normalize_currency_code,
+)
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
 
@@ -45,6 +56,11 @@ class ParsedRow:
     line_number: int
     amount_cents: int | None = None
     amount_display: str = ""
+    original_currency_code: str = BASE_CURRENCY_CODE
+    original_amount_minor: int | None = None
+    exchange_rate_to_cny: Decimal | None = None
+    exchange_rate_date: date | None = None
+    exchange_rate_source: str | None = None
     merchant: str = ""
     category: str = "其他"
     note: str = ""
@@ -114,6 +130,39 @@ def _parse_expense_time(raw: str) -> tuple[datetime | None, str, str | None]:
     return parsed, text, None
 
 
+def _parse_optional_int(raw: str, label: str) -> tuple[int | None, str | None]:
+    text = raw.strip()
+    if not text:
+        return None, None
+    try:
+        value = int(text)
+    except ValueError:
+        return None, f"{label} 不是整数"
+    if value < 0:
+        return None, f"{label} 不能为负"
+    return value, None
+
+
+def _parse_optional_decimal(raw: str, label: str) -> tuple[Decimal | None, str | None]:
+    text = raw.strip()
+    if not text:
+        return None, None
+    try:
+        return format_decimal_rate(Decimal(text)), None
+    except (InvalidOperation, ValueError, AppError):
+        return None, f"{label} 不是合法数字"
+
+
+def _parse_optional_date(raw: str) -> tuple[date | None, str | None]:
+    text = raw.strip()
+    if not text:
+        return None, None
+    try:
+        return date.fromisoformat(text[:10]), None
+    except ValueError:
+        return None, "exchange_rate_date 不是合法日期"
+
+
 def parse_csv_preview(content: str) -> CsvPreview:
     """Parse ``content`` into a preview structure.
 
@@ -151,19 +200,68 @@ def parse_csv_row(headers: list[str], row: list[str], *, line_number: int) -> Pa
     amount_cents, amount_display, amount_error = _parse_amount(
         cells.get("amount_yuan", ""), cells.get("amount_cents", "")
     )
+    original_currency_raw = cells.get("original_currency_code", "").strip()
+    original_currency_code = BASE_CURRENCY_CODE
+    currency_error = None
+    if original_currency_raw:
+        try:
+            original_currency_code = normalize_currency_code(original_currency_raw)
+        except AppError:
+            currency_error = "original_currency_code 暂不支持"
+    original_amount_minor, original_amount_error = _parse_optional_int(
+        cells.get("original_amount_minor", ""),
+        "original_amount_minor",
+    )
+    exchange_rate_to_cny, exchange_rate_error = _parse_optional_decimal(
+        cells.get("exchange_rate_to_cny", ""),
+        "exchange_rate_to_cny",
+    )
+    exchange_rate_date, exchange_rate_date_error = _parse_optional_date(cells.get("exchange_rate_date", ""))
     expense_time, etime_display, etime_error = _parse_expense_time(
         cells.get("expense_time", "")
     )
+    if exchange_rate_date is None and expense_time is not None:
+        exchange_rate_date = expense_time.date()
+    has_original_currency_fields = any(
+        cells.get(column, "").strip()
+        for column in (
+            "original_currency_code",
+            "original_amount_minor",
+            "exchange_rate_to_cny",
+            "exchange_rate_date",
+        )
+    )
+    if (
+        has_original_currency_fields
+        and original_amount_minor is not None
+        and original_currency_code != home_currency_code()
+        and not cells.get("amount_cents", "").strip()
+    ):
+        amount_cents = None
+        amount_display = ""
+        amount_error = None
     category = normalize_category(cells.get("category", ""))
     merchant = cells.get("merchant", "").strip()
     note = cells.get("note", "").strip()
     tags = cells.get("tags", "").strip()
     source = cells.get("source", "").strip() or DEFAULT_SOURCE
-    error = amount_error or etime_error
+    error = (
+        currency_error
+        or original_amount_error
+        or exchange_rate_error
+        or exchange_rate_date_error
+        or amount_error
+        or etime_error
+    )
     return ParsedRow(
         line_number=line_number,
         amount_cents=amount_cents,
         amount_display=amount_display,
+        original_currency_code=original_currency_code,
+        original_amount_minor=original_amount_minor if has_original_currency_fields else amount_cents,
+        exchange_rate_to_cny=exchange_rate_to_cny if has_original_currency_fields else Decimal("1"),
+        exchange_rate_date=exchange_rate_date,
+        exchange_rate_source=cells.get("exchange_rate_source", "").strip() or ("import" if has_original_currency_fields else "base"),
         merchant=merchant,
         category=category,
         note=note,
@@ -187,11 +285,11 @@ def import_rows(
     now = now_utc()
     created: list[Expense] = []
     for row in rows:
-        if not row.is_valid or row.amount_cents is None:
+        if not row.is_valid or (row.amount_cents is None and row.original_amount_minor is None):
             continue
         expense = Expense(
             tenant_id=tenant_id,
-            amount_cents=row.amount_cents,
+            amount_cents=None,
             merchant=row.merchant or None,
             category=row.category or "其他",
             note=row.note or "",
@@ -201,6 +299,13 @@ def import_rows(
             status="pending",
             created_at=now,
             updated_at=now,
+        )
+        apply_currency_payload(
+            db,
+            tenant_id=tenant_id,
+            expense=expense,
+            payload=row,
+            amount_was_explicit=row.original_currency_code == home_currency_code() and row.amount_cents is not None,
         )
         db.add(expense)
         created.append(expense)

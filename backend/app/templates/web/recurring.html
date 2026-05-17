@@ -56,10 +56,10 @@
       <tr>
         <td>
           <div class="row-title">{{ item.merchant }}</div>
-          <div class="row-sub">出现 {{ item.occurrence_count }} 次 · 基准 ¥{{ item.baseline_amount_yuan }}</div>
+          <div class="row-sub">出现 {{ item.occurrence_count }} 次 · 基准 {{ home_currency_symbol }}{{ item.baseline_amount_yuan }}</div>
         </td>
         <td>{{ item.frequency }}</td>
-        <td class="amount">¥{{ item.last_amount_yuan }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ item.last_amount_yuan }}</td>
         <td>{{ item.next_expected_date or '—' }}</td>
         <td>
           {% if item.status == 'active' %}<span class="status-chip ok">{{ item.status_label }}</span>
@@ -69,7 +69,7 @@
         <td>
           {% if item.anomaly_status == 'higher_than_average' %}
             <span class="status-chip warn">{{ item.anomaly_label }} {{ item.amount_delta_percent }}%</span>
-            <div class="row-sub">本月 ¥{{ item.current_month_amount_yuan }} · 均值 ¥{{ item.historical_average_amount_yuan }}</div>
+            <div class="row-sub">本月 {{ home_currency_symbol }}{{ item.current_month_amount_yuan }} · 均值 {{ home_currency_symbol }}{{ item.historical_average_amount_yuan }}</div>
           {% else %}
             <span class="status-chip muted">正常</span>
           {% endif %}
@@ -132,7 +132,7 @@
           <div class="row-title">{{ candidate.merchant }}</div>
           <div class="row-sub">{{ candidate.reason }}</div>
         </td>
-        <td class="amount">¥{{ candidate.amount_yuan }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ candidate.amount_yuan }}</td>
         <td>{{ candidate.occurrence_count }}</td>
         <td>{{ candidate.last_seen_at or '—' }}</td>
         <td><span class="status-chip ok">{{ candidate.confidence }}</span></td>

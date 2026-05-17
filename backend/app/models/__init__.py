@@ -17,6 +17,7 @@ from app.models.classification import (
     RuleApplicationChange,
 )
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
+from app.models.exchange import ExchangeRate, FxRate
 from app.models.identity import (
     Account,
     AuthToken,
@@ -44,6 +45,8 @@ __all__ = [
     "ExpenseItem",
     "ExpenseSplit",
     "ExpenseTag",
+    "ExchangeRate",
+    "FxRate",
     "Goal",
     "Invitation",
     "Ledger",

@@ -139,6 +139,8 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "budgets" in inspector.get_table_names()
     assert "budget_categories" in inspector.get_table_names()
     assert "goals" in inspector.get_table_names()
+    assert "exchange_rates" in inspector.get_table_names()
+    assert "fx_rates" in inspector.get_table_names()
     assert "dashboard_card_preferences" in inspector.get_table_names()
     assert "rule_application_batches" in inspector.get_table_names()
     assert "rule_application_changes" in inspector.get_table_names()
@@ -149,6 +151,11 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
         "thumbnail_path",
         "duplicate_status",
         "draft_idempotency_key",
+        "original_currency_code",
+        "original_amount_minor",
+        "exchange_rate_to_cny",
+        "exchange_rate_date",
+        "exchange_rate_source",
     }.issubset(_expense_columns())
     assert "ix_ledger_audit_logs_ledger_created_at" in _indexes("ledger_audit_logs")
     assert "ix_expenses_tenant_draft_idempotency_key" in _indexes("expenses")
@@ -176,6 +183,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_goals_tenant_month_status" in _indexes("goals")
     assert "ix_goals_tenant_category_month" in _indexes("goals")
     assert "ix_goals_tenant_public_id" in _indexes("goals")
+    assert "ix_exchange_rates_tenant_currency_date" in _indexes("exchange_rates")
+    assert "ix_fx_rates_source_home_currency_date" in _indexes("fx_rates")
+    assert "ix_expenses_tenant_original_currency_date" in _indexes("expenses")
     assert "ix_dashboard_cards_tenant_surface_position" in _indexes(
         "dashboard_card_preferences"
     )
@@ -234,6 +244,12 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ck_goals_period_valid" in goals_sql
     assert "ck_goals_status_valid" in goals_sql
     assert "ck_goals_target_positive" in goals_sql
+    exchange_rates_sql = _table_create_sql("exchange_rates")
+    assert "uq_exchange_rates_tenant_currency_date" in exchange_rates_sql
+    assert "ck_exchange_rates_rate_positive" in exchange_rates_sql
+    fx_rates_sql = _table_create_sql("fx_rates")
+    assert "uq_fx_rates_source_home_currency_date" in fx_rates_sql
+    assert "ck_fx_rates_rate_positive" in fx_rates_sql
     dashboard_cards_sql = _table_create_sql("dashboard_card_preferences")
     assert "ck_dashboard_cards_surface_valid" in dashboard_cards_sql
     assert "ck_dashboard_cards_position_non_negative" in dashboard_cards_sql
@@ -298,11 +314,14 @@ def test_legacy_database_with_cross_ledger_expense_splits_fails_startup() -> Non
                     """
                     INSERT INTO expenses (
                         tenant_id, public_id, amount_cents, merchant, category,
-                        note, source, status, duplicate_status, created_at, updated_at
+                        original_currency_code, original_amount_minor, exchange_rate_to_cny,
+                        exchange_rate_date, exchange_rate_source, note, source, status,
+                        duplicate_status, created_at, updated_at
                     )
                     VALUES (
                         'owner', '11111111-1111-1111-1111-111111111111',
-                        1000, '坏数据', '其他', '', 'pytest', 'confirmed', 'none',
+                        1000, '坏数据', '其他', 'CNY', 1000, 1,
+                        '2026-05-04', 'base', '', 'pytest', 'confirmed', 'none',
                         '2026-05-04 08:00:00', '2026-05-04 08:00:00'
                     )
                     """
@@ -438,6 +457,11 @@ def test_v01_schema_migrates_without_losing_expense_data() -> None:
     assert migrated["amount_cents"] == 3680
     assert migrated["merchant"] == "老商家"
     assert migrated["tenant_id"] == "owner"
+    assert migrated["original_currency_code"] == "CNY"
+    assert migrated["original_amount_minor"] == 3680
+    assert str(migrated["exchange_rate_to_cny"]) in {"1", "1.0", "1.00000000"}
+    assert migrated["exchange_rate_source"] == "base"
+    assert str(migrated["exchange_rate_date"]).startswith("2026-05-04")
     UUID(str(migrated["public_id"]))
     assert migrated["duplicate_status"] == "none"
     assert {"tenant_id", "public_id", "thumbnail_path", "tags", "image_deleted_at"}.issubset(_expense_columns())

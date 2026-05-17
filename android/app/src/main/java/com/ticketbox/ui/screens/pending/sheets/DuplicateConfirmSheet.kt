@@ -16,7 +16,9 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 
 /**
  * DuplicateConfirmSheet — slice 3 M6。
@@ -37,11 +39,13 @@ internal fun DuplicateConfirmSheetContent(
     onIgnoreCurrent: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("处理疑似重复", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text("处理疑似重复", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
             text = "请你来决定。我们不会自动删除，也不会自动确认入账。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -56,12 +60,12 @@ internal fun DuplicateConfirmSheetContent(
                 Text(
                     text = expense.merchant?.takeIf { it.isNotBlank() } ?: "未填写商家",
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.body.weight,
                 )
                 Text(
-                    text = formatAmount(expense.amountCents),
+                    text = formatDisplayAmount(expense.amountCents, currencyDisplay),
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = AppTextHierarchy.body.weight,
                 )
                 expense.duplicateReason?.takeIf { it.isNotBlank() }?.let {
                     Text(

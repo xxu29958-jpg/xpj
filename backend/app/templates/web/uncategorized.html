@@ -36,7 +36,7 @@
           <td><input type="checkbox" name="expense_ids" value="{{ item.id }}" {% if not can_write %}disabled{% endif %}></td>
           <td>{{ item.created_at }}</td>
           <td>{{ item.merchant or '—' }}</td>
-          <td class="num">{% if item.amount_yuan %}¥{{ item.amount_yuan }}{% else %}—{% endif %}</td>
+          <td class="num">{% if item.amount_yuan %}{{ home_currency_symbol }}{{ item.amount_yuan }}{% else %}—{% endif %}</td>
           <td>{{ item.category or '未分类' }}</td>
           <td>{{ item.note or '' }}</td>
         </tr>

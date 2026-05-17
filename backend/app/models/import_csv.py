@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -16,6 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -77,6 +81,15 @@ class CsvImportRow(Base):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_currency_code: Mapped[str] = mapped_column(
+        String(3),
+        default=DEFAULT_HOME_CURRENCY_CODE,
+        nullable=False,
+    )
+    original_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exchange_rate_to_cny: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    exchange_rate_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    exchange_rate_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
     category: Mapped[str] = mapped_column(String(64), default="其他", nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

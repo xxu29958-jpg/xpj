@@ -74,6 +74,7 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.BackgroundSource
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.ConnectionDiagnostics
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.ServerSettings
@@ -104,8 +105,10 @@ import kotlinx.coroutines.withContext
 fun AppearanceScreen(
     state: SettingsUiState,
     currentSkin: AppSkin,
+    currentCurrency: CurrencyCode,
     onBack: () -> Unit,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (CurrencyCode) -> Unit,
     onOpenGallery: () -> Unit,
     onPickCustomImage: () -> Unit,
     onPreviewThemeDefault: () -> Unit,
@@ -139,6 +142,10 @@ fun AppearanceScreen(
                 }
             }
         }
+        CurrencySection(
+            currentCurrency = currentCurrency,
+            onCurrencyChange = onCurrencyChange,
+        )
         SettingsSection(title = "背景", icon = Icons.Filled.Image) {
             AppGlassCard(containerAlpha = 0.96f) {
                 Column(

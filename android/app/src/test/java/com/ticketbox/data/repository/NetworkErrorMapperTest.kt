@@ -1,4 +1,4 @@
-package com.ticketbox.data.repository
+﻿package com.ticketbox.data.repository
 
 import com.ticketbox.BuildConfig
 import java.net.ConnectException
@@ -26,7 +26,7 @@ class NetworkErrorMapperTest {
     fun explainsTlsFailuresAsPossibleNetworkOrVpnInterception() {
         val message = userNetworkMessage(
             error = SSLHandshakeException("connection closed"),
-            serverUrl = "https://api.zen70.cn",
+            serverUrl = "https://api.example.com",
         )
 
         assertTrue(message.contains("VPN"))
@@ -37,7 +37,7 @@ class NetworkErrorMapperTest {
     fun keepsDomainResolutionMessageUserFriendly() {
         val message = userNetworkMessage(
             error = UnknownHostException(),
-            serverUrl = "https://api.zen70.cn",
+            serverUrl = "https://api.example.com",
         )
 
         assertEquals("当前网络解析不到小票夹服务，请切换网络后重试。", message)
@@ -47,7 +47,7 @@ class NetworkErrorMapperTest {
     fun explainsServiceUnreachableWithoutTechnicalDetails() {
         val message = userNetworkMessage(
             error = ConnectException("failed to connect"),
-            serverUrl = "https://api.zen70.cn",
+            serverUrl = "https://api.example.com",
         )
 
         assertTrue(message.contains("服务暂时没有响应"))
@@ -61,7 +61,7 @@ class NetworkErrorMapperTest {
     fun explainsInterruptedTimeoutAsWeakNetworkOrVpn() {
         val message = userNetworkMessage(
             error = InterruptedIOException("timeout"),
-            serverUrl = "https://api.zen70.cn",
+            serverUrl = "https://api.example.com",
         )
 
         assertTrue(message.contains("VPN"))
@@ -72,21 +72,21 @@ class NetworkErrorMapperTest {
     fun writesTechnicalReasonForLogs() {
         val message = networkDiagnosticMessage(
             error = UnknownHostException(),
-            serverUrl = "https://api.zen70.cn",
+            serverUrl = "https://api.example.com",
         )
 
         assertTrue(message.contains("DNS lookup failed"))
-        assertTrue(!message.contains("https://api.zen70.cn"))
+        assertTrue(!message.contains("https://api.example.com"))
     }
 
     @Test
     fun normalizesBindingServerUrl() {
         val normalized = validateBindingInput(
-            serverUrl = " https://api.zen70.cn/ ",
+            serverUrl = " https://api.example.com/ ",
             pairingCode = "123456",
         )
 
-        assertEquals("https://api.zen70.cn", normalized)
+        assertEquals("https://api.example.com", normalized)
     }
 
     @Test
@@ -133,7 +133,7 @@ class NetworkErrorMapperTest {
     @Test
     fun rejectsBlankBindingPairingCode() {
         val error = assertFailsWith<IllegalArgumentException> {
-            validateBindingInput(serverUrl = "https://api.zen70.cn", pairingCode = " ")
+            validateBindingInput(serverUrl = "https://api.example.com", pairingCode = " ")
         }
 
         assertEquals("请输入绑定码。", error.message)

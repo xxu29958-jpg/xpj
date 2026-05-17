@@ -22,14 +22,17 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.LedgerUiState
 
 @Composable
 internal fun LedgerSummaryStrip(state: LedgerUiState) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val total = state.items.sumOf { it.amountCents ?: 0L }
     AppGlassCard(containerAlpha = 0.98f) {
         Column(
@@ -54,10 +57,10 @@ internal fun LedgerSummaryStrip(state: LedgerUiState) {
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        text = formatAmount(total),
+                        text = formatDisplayAmount(total, currencyDisplay),
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = AppTextHierarchy.heading.weight,
                     )
                 }
                 Column(

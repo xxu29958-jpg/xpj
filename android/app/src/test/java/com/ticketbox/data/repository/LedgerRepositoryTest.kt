@@ -1,4 +1,4 @@
-package com.ticketbox.data.repository
+﻿package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.ExpenseEntity
@@ -86,7 +86,7 @@ class LedgerRepositoryTest {
             ledgerDto("L_house", "家庭账本", role = "viewer", isDefault = false),
         )
         val api = StubApi(listLedgersResult = LedgerListResponseDto(ledgers))
-        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val dao = LedgerFakeDao()
         val repo = LedgerRepository(
@@ -131,7 +131,7 @@ class LedgerRepositoryTest {
                 deviceName = "Pixel",
             ),
         )
-        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val dao = LedgerFakeDao().apply {
             // Pre-seed the cache for both ledgers.
@@ -163,7 +163,7 @@ class LedgerRepositoryTest {
                 Response.error<Any>(403, errorJson.toResponseBody("application/json".toMediaType())),
             ),
         )
-        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val repo = LedgerRepository(
             apiClient = LedgerStubApiFactory(api),
@@ -196,7 +196,7 @@ class LedgerRepositoryTest {
                 ledgers = listOf(ledgerDto("L_family", "家庭账本", role = "member")),
             ),
         )
-        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val dao = LedgerFakeDao().apply {
             // Pre-seed cache for the target ledger so we can prove it gets wiped.
@@ -245,7 +245,7 @@ class LedgerRepositoryTest {
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "旧账号",
                 ledgerId = "L_old",
@@ -288,7 +288,7 @@ class LedgerRepositoryTest {
     fun previewInvitationNetworkFailurePreservesExistingBinding() = runTest {
         val api = StubApi(previewError = IOException("timeout"))
         val store = LedgerFakeSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "旧账号",
                 ledgerId = "L_old",
@@ -335,7 +335,7 @@ class LedgerRepositoryTest {
                 Response.error<Any>(400, errorJson.toResponseBody("application/json".toMediaType())),
             ),
         )
-        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val repo = LedgerRepository(
             apiClient = LedgerStubApiFactory(api),
@@ -383,7 +383,7 @@ class LedgerRepositoryTest {
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
         val repo = LedgerRepository(
@@ -435,7 +435,7 @@ class LedgerRepositoryTest {
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
         val repo = LedgerRepository(
@@ -480,7 +480,7 @@ class LedgerRepositoryTest {
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
         val repo = LedgerRepository(
@@ -520,7 +520,7 @@ class LedgerRepositoryTest {
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveActiveLedger("L_family", "家庭账本")
         }
         val repo = LedgerRepository(
@@ -565,7 +565,7 @@ class LedgerRepositoryTest {
             ),
         )
         val store = LedgerFakeSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "L_family",
@@ -592,7 +592,7 @@ class LedgerRepositoryTest {
     }
 
     private fun makeRepo(): LedgerRepository {
-        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.zen70.cn") }
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("t") }
         return LedgerRepository(
             apiClient = LedgerStubApiFactory(StubApi()),
@@ -877,6 +877,9 @@ private class LedgerFakeSettingsStore : TicketboxSettingsStore {
     override fun lastUploadAt(): String? = null
     override fun saveLastUploadAt(value: String) = Unit
     override fun saveAppSkinKey(skinKey: String) = Unit
+    override fun currencyCodeKey(): String? = null
+    override fun saveCurrencyCodeKey(currencyKey: String) = Unit
+    override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)
     override fun saveServerUrl(serverUrl: String) {
         this.serverUrl = serverUrl.trim().trimEnd('/')
     }

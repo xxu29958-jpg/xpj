@@ -133,7 +133,11 @@ fun TicketboxApp(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    TicketboxTheme(skin = appState.skin) {
+    TicketboxTheme(
+        skin = appState.skin,
+        currency = appState.currency,
+        currencyDisplay = appState.currencyDisplay,
+    ) {
         TicketboxContent(
             appState = appState,
             appViewModel = appViewModel,
@@ -210,10 +214,12 @@ private fun TicketboxContent(
         reportsRepository = reportsRepository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
+        currentCurrency = appState.currency,
         backgroundSettings = appState.backgroundSettings,
         startupMessage = appState.authMessage,
         onStartupMessageShown = onAuthMessageShown,
         onSkinChange = appViewModel::selectSkin,
+        onCurrencyChange = appViewModel::selectCurrency,
         onBindingCleared = {
             appViewModel.clearBinding()
         },
@@ -230,10 +236,12 @@ private fun MainShell(
     reportsRepository: ReportsActions,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
+    currentCurrency: com.ticketbox.domain.model.CurrencyCode,
     backgroundSettings: BackgroundSettings,
     startupMessage: String?,
     onStartupMessageShown: () -> Unit,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (com.ticketbox.domain.model.CurrencyCode) -> Unit,
     onBindingCleared: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
@@ -488,6 +496,7 @@ private fun MainShell(
                     SettingsScreen(
                         state = state,
                         currentSkin = currentSkin,
+                        currentCurrency = currentCurrency,
                         onTestConnection = settingsViewModel::testConnection,
                         onRunDiagnostics = settingsViewModel::runDiagnostics,
                         onRefreshServerSettings = settingsViewModel::refreshServerSettings,
@@ -505,6 +514,7 @@ private fun MainShell(
                         onConfirmApplyConfirmedRules = settingsViewModel::confirmApplyConfirmedRules,
                         onRollbackRuleApplication = settingsViewModel::rollbackRuleApplication,
                         onSkinChange = onSkinChange,
+                        onCurrencyChange = onCurrencyChange,
                         onApplyBackgroundSettings = settingsViewModel::applyBackgroundSettings,
                         onClearBackgroundImage = settingsViewModel::clearBackgroundImage,
                         onBackgroundImageError = settingsViewModel::backgroundImageCopyFailed,

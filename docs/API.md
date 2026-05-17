@@ -23,8 +23,12 @@ https://api.我的域名.com
 
 金额：
 
-- 全链路使用 `amount_cents`。
-- 单位为分。
+- `amount_cents` 是后端权威计算后的 home amount minor 字段；当前默认 home currency 为 `CNY`，历史字段名保持不变以兼容旧数据。
+- 统计、预算、报表、Goals 均只汇总后端返回的 home amount，不直接相加外币原始金额。
+- 单笔外币账单保存原始金额快照和当时汇率快照：`original_currency_code`、`original_amount_minor`、`exchange_rate_to_cny`、`exchange_rate_date`、`exchange_rate_source`。
+- 新客户端提交账单时只提交 `original_currency`、`original_amount`、`spent_at` 和用户确认信息；不得提交汇率，不得自行折算 home amount。
+- 旧客户端只传 `amount_cents` 时，后端按当前 home currency 原始金额和 `rate=1` 兼容。
+- 汇率缺失时后端返回 `fx_status=pending`，不得由前端默认 1:1。
 - 不使用 float/double 保存金额。
 
 标识：
@@ -56,6 +60,11 @@ file_too_large
 unsupported_file_type
 expense_not_found
 amount_required
+amount_invalid
+currency_not_supported
+exchange_rate_required
+exchange_rate_invalid
+exchange_rate_base_currency
 image_not_found
 rule_not_found
 import_batch_not_found
@@ -123,6 +132,8 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/export.csv` | GET | `backend/app/routes/expenses.py` | `exportCsv(month,category,timezone)` | query `month/category/tag/timezone` | streaming `text/csv` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, smoke | gray/internal 导出 |
+| `/api/exchange-rates` | GET | `backend/app/routes/exchange_rates.py` | 无 | query `currency_code/limit` | `ExchangeRateListDto` | Session Token | `backend/tests/test_exchange_rates.py` | 每账本每日汇率，viewer 可读；Android 不直接读写汇率 |
+| `/api/exchange-rates/{currency_code}/{rate_date}` | PUT | `backend/app/routes/exchange_rates.py` | 无 | `ExchangeRateRequest` | `ExchangeRateDto` | Session Token，owner/member 写权限 | `backend/tests/test_exchange_rates.py` | 后端维护/人工修正入口；客户端记账不得提交汇率 |
 | `/api/imports/csv` | POST | `backend/app/routes/imports.py` | 无 | multipart `csv_file` | `CsvImportBatchResponse` | Session Token，owner/member 写权限 | `backend/tests/test_csv_import_batches.py` | v1.0 大 CSV 导入批次创建 |
 | `/api/imports/csv/{public_id}` | GET | `backend/app/routes/imports.py` | 无 | path `public_id` | `CsvImportBatchResponse` | Session Token | `backend/tests/test_csv_import_batches.py` | v1.0 导入批次状态 |
 | `/api/imports/csv/{public_id}/rows` | GET | `backend/app/routes/imports.py` | 无 | query `page/page_size/status` | `CsvImportRowsResponse` | Session Token | `backend/tests/test_csv_import_batches.py` | v1.0 导入行分页预览 |
@@ -589,20 +600,35 @@ Authorization: Bearer <session_token>
 
 ```json
 {
-  "amount_cents": 1280,
+  "original_currency": "CNY",
+  "original_amount": "12.80",
+  "spent_at": "2026-05-04T00:30:00Z",
   "merchant": "便利店",
   "category": "生活",
-  "note": "上班路上",
-  "expense_time": "2026-05-04T00:30:00Z"
+  "note": "上班路上"
+}
+```
+
+外币账单请求体示例：
+
+```json
+{
+  "original_currency": "USD",
+  "original_amount": "123.45",
+  "spent_at": "2026-05-04T02:00:00Z",
+  "merchant": "海外咖啡",
+  "category": "餐饮"
 }
 ```
 
 规则：
 
-- `amount_cents` 必填，单位为分。
-- `expense_time` 可为空；为空时后端使用确认时间。
+- 新客户端只传原始币种、原始金额和发生时间；后端按 `spent_at` 日期、原始币种、home currency 和汇率优先级计算并冻结 `amount_cents`。
+- 客户端不得在账单创建/编辑请求里提交 `exchange_rate_to_cny`、`fx_rate` 或 home amount 计算结果。
+- 旧客户端可只传 `amount_cents`；后端按当前 home currency 原始金额和 `rate=1` 兼容。
+- `spent_at` 可为空；为空时后端使用确认时间。
 - `source` 固定为 `手动记账`。
-- `status` 固定为 `confirmed`。
+- 有可用汇率时直接 `confirmed`；汇率缺失时保留 `pending` 并返回 `fx_status=pending`。
 - 不保存图片路径，不暴露本机路径。
 
 ### POST /api/expenses/notification-drafts
@@ -622,7 +648,9 @@ Content-Type: application/json
 {
   "source": "wechat",
   "merchant": "星巴克",
-  "amount_cents": 2680,
+  "original_currency": "CNY",
+  "original_amount": "26.80",
+  "spent_at": "2026-05-13T10:05:00Z",
   "category": "餐饮",
   "expense_time": "2026-05-13T10:05:00Z"
 }
@@ -632,6 +660,7 @@ Content-Type: application/json
 
 - `source` 仅支持 `wechat` / `alipay` / `bank_sms` / `bank_app` / `other`。
 - 请求体禁止 `raw_text` 等原文类字段；校验失败返回 `invalid_request`。
+- 请求体不得包含汇率字段；后端负责计算或标记 `fx_status=pending`。
 - 后端按当前账本、来源、商家、金额、30 分钟时间窗口计算幂等键；重复请求返回同一条草稿，不重复生成 pending。
 - `viewer` 返回 `permission_denied`。
 - 不保存图片路径，不自动确认，不更新固定支出记录。
@@ -745,6 +774,57 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
 
 返回 `text/csv`，用于导出已确认账单。导出接口只返回账单数据，不提供文件目录浏览或任意文件下载。
 
+CSV 会包含原始币种、原始金额、汇率、汇率日期和汇率来源列；旧导入文件缺少这些列时按当前 home currency 兼容。
+
+### GET /api/exchange-rates
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+查询参数：
+
+```text
+currency_code: 可选，CNY/USD/EUR/GBP/JPY/HKD/KRW
+limit: 默认 90，最大 365
+```
+
+返回当前账本的手动汇率覆盖列表。`viewer` 可读。
+
+说明：
+
+- 这是账本内手动校正/补录接口，不是移动端记账流程依赖的外部汇率接口。
+- 账单写入时，后端优先使用账本手动汇率；没有手动汇率时使用后台定时写入 `fx_rates` 的官方参考汇率；仍缺失则返回 `fx_status=pending`。
+- Android / iOS / Web 客户端不得为了创建账单直接请求外部汇率 API，也不得把自己计算出的汇率提交到账单写入接口。
+
+### PUT /api/exchange-rates/{currency_code}/{rate_date}
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "currency_code": "USD",
+  "rate_date": "2026-05-04",
+  "rate_to_cny": "7.1234",
+  "source": "manual"
+}
+```
+
+规则：
+
+- 汇率按当前账本、币种、日期唯一保存。
+- 只允许维护非 home currency 汇率。
+- `owner` / `member` 可写，`viewer` 返回 `permission_denied`。
+
 ### POST /api/imports/csv
 
 请求头：
@@ -754,12 +834,13 @@ Authorization: Bearer <session_token>
 Content-Type: multipart/form-data
 ```
 
-表单字段：`csv_file`。CSV 必须包含 `amount_yuan` 或 `amount_cents`，可选列包括 `merchant/category/note/expense_time/tags/source`。接口会持久化导入批次和行级校验结果，不直接写入账单；viewer 返回 `permission_denied`。
+表单字段：`csv_file`。CSV 必须包含 `amount_yuan` 或 `amount_cents`，可选列包括 `merchant/category/note/expense_time/tags/source/original_currency_code/original_amount_minor/exchange_rate_to_cny/exchange_rate_date/exchange_rate_source`。接口会持久化导入批次和行级校验结果，不直接写入账单；viewer 返回 `permission_denied`。
 
 规则：
 
 - 单批最多 20000 个非空数据行。
 - 行级错误不会阻断批次创建，错误行通过分页预览和 `errors.csv` 查看。
+- CSV 的汇率列仅用于历史文件兼容和审计展示；真正写入账单时仍由后端汇率解析器按日期、币种和汇率优先级冻结 home amount。
 - 服务端只保存文件名，不保存客户端路径、不返回本机路径。
 
 ### GET /api/imports/csv/{public_id}
@@ -807,7 +888,9 @@ Content-Type: application/json
 
 ```json
 {
-  "amount_cents": 3680,
+  "original_currency": "USD",
+  "original_amount": "5.18",
+  "spent_at": "2026-05-03T04:20:00Z",
   "merchant": "美团外卖",
   "category": "餐饮",
   "note": "午饭",
@@ -818,7 +901,7 @@ Content-Type: application/json
 }
 ```
 
-只能修改 `pending` 或 `confirmed`。
+只能修改 `pending` 或 `confirmed`。如果请求包含原始币种、原始金额或发生时间，后端会按汇率优先级重新解析并冻结 home amount；客户端不得提交汇率或自行折算后的 home amount。只传 `amount_cents` 时仍按旧客户端 home currency 兼容。
 
 ### GET /api/expenses/{id}
 

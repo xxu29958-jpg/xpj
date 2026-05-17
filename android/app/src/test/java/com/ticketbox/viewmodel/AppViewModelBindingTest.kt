@@ -1,4 +1,4 @@
-package com.ticketbox.viewmodel
+﻿package com.ticketbox.viewmodel
 
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.BindServerResult
@@ -33,7 +33,7 @@ class AppViewModelBindingTest {
                 tokenStore = FakeSessionTokenStore(initialToken = null),
             )
 
-            viewModel.bind("https://api.zen70.cn", "123456")
+            viewModel.bind("https://api.example.com", "123456")
             advanceUntilIdle()
 
             val state = viewModel.uiState.value
@@ -158,6 +158,12 @@ private class FakeAppSettingsStore(
     override fun saveLastUploadAt(value: String) = Unit
 
     override fun saveAppSkinKey(skinKey: String) = Unit
+
+    override fun currencyCodeKey(): String? = null
+
+    override fun saveCurrencyCodeKey(currencyKey: String) = Unit
+
+    override fun observeCurrencyCodeKey(): Flow<String?> = emptyFlow()
 
     override fun saveServerUrl(serverUrl: String) = Unit
 

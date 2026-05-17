@@ -152,6 +152,10 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.coroutines.android)
     implementation(libs.vico.compose.m3)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.compose.shimmer)
+    implementation(libs.lottie.compose)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.coroutines.test)

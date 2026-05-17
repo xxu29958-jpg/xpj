@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 import conftest as cf
 from app.main import app
@@ -13,10 +16,10 @@ from app.services.import_service import (
     import_rows,
     parse_csv_preview,
 )
-from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import CsvImportBatch, Expense
+from app.services.fx_rate_provider import upsert_fx_rate
 
 
 @pytest.fixture()
@@ -52,6 +55,22 @@ def test_parse_csv_preview_accepts_amount_yuan() -> None:
     assert row.amount_cents == 1234
     assert row.merchant == "Starbucks"
     assert row.category == "餐饮"
+
+
+def test_parse_csv_preview_accepts_foreign_currency_columns() -> None:
+    csv = (
+        "amount_cents,original_currency_code,original_amount_minor,"
+        "exchange_rate_to_cny,exchange_rate_date,merchant,category\n"
+        "0,USD,12345,7.1234,2026-05-04,Overseas Cafe,餐饮\n"
+    )
+    preview = parse_csv_preview(csv)
+    assert preview.valid_count == 1
+    row = preview.rows[0]
+    assert row.amount_cents == 0
+    assert row.original_currency_code == "USD"
+    assert row.original_amount_minor == 12345
+    assert str(row.exchange_rate_to_cny) == "7.12340000"
+    assert row.exchange_rate_date and row.exchange_rate_date.isoformat() == "2026-05-04"
 
 
 def test_parse_csv_preview_flags_invalid_rows() -> None:
@@ -185,3 +204,33 @@ def test_import_rows_skips_invalid() -> None:
     with SessionLocal() as db:
         inserted = import_rows(db, tenant_id="owner", rows=preview.rows)
     assert inserted == 1
+
+
+def test_import_rows_persists_foreign_currency_metadata() -> None:
+    preview = parse_csv_preview(
+        "amount_cents,original_currency_code,original_amount_minor,"
+        "exchange_rate_to_cny,exchange_rate_date,merchant\n"
+        "0,JPY,1200,0.048,2026-05-04,Tokyo Metro\n",
+    )
+    with SessionLocal() as db:
+        upsert_fx_rate(
+            db,
+            currency_code="JPY",
+            rate_date=preview.rows[0].exchange_rate_date,
+            rate_to_home=Decimal("0.048"),
+        )
+        db.commit()
+        inserted = import_rows(db, tenant_id="owner", rows=preview.rows)
+        rows = db.execute(
+            select(Expense)
+            .where(Expense.tenant_id == "owner")
+            .where(Expense.source == "CSV导入")
+            .where(Expense.merchant == "Tokyo Metro")
+        ).scalars().all()
+    assert inserted == 1
+    assert len(rows) == 1
+    expense = rows[0]
+    assert expense.amount_cents == 5760
+    assert expense.original_currency_code == "JPY"
+    assert expense.original_amount_minor == 1200
+    assert str(expense.exchange_rate_to_cny) == "0.04800000"

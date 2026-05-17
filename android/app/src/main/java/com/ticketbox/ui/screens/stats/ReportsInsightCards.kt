@@ -34,14 +34,17 @@ import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLa
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.common.Fill
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalChartTokens
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -51,6 +54,7 @@ internal fun ReportsInsightCard(
     overview: ReportsOverview,
     modifier: Modifier = Modifier,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val chartPoints = remember(overview.trend) { reportTrendChartPoints(overview.trend) }
 
     AppGlassCard(modifier = modifier, containerAlpha = 0.96f) {
@@ -67,7 +71,7 @@ internal fun ReportsInsightCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text("动态图表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text("动态图表", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
                     Text(
                         text = "${overview.month} · 服务端聚合 · ${overview.count} 笔",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -77,14 +81,14 @@ internal fun ReportsInsightCard(
                     )
                 }
                 Text(
-                    text = formatAmount(overview.totalAmountCents),
+                    text = formatDisplayAmount(overview.totalAmountCents, currencyDisplay),
                     color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
             }
             if (chartPoints.any { it.amountCents > 0L }) {
-                ReportsTrendLineChart(points = chartPoints)
+                ReportsTrendLineChart(points = chartPoints, currencyDisplay = currencyDisplay)
             } else {
                 Text(
                     text = "这个月份还没有可画出的确认支出。",
@@ -96,10 +100,11 @@ internal fun ReportsInsightCard(
                 RankingBlock(
                     title = "商家排行",
                     rows = overview.merchantRanking.take(5),
+                    currencyDisplay = currencyDisplay,
                 )
             }
             if (overview.categoryComparison.isNotEmpty()) {
-                CategoryComparisonBlock(rows = overview.categoryComparison.take(5))
+                CategoryComparisonBlock(rows = overview.categoryComparison.take(5), currencyDisplay = currencyDisplay)
             }
         }
     }
@@ -110,6 +115,7 @@ internal fun GoalsSummaryCard(
     goals: List<Goal>,
     modifier: Modifier = Modifier,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
     val visibleGoals = goals.filterNot { it.isArchived }.take(4)
 
     AppGlassCard(modifier = modifier, containerAlpha = 0.94f) {
@@ -117,7 +123,7 @@ internal fun GoalsSummaryCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("月度目标", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            Text("月度目标", style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)
             if (visibleGoals.isEmpty()) {
                 Text(
                     text = "本月还没有目标。",
@@ -126,7 +132,7 @@ internal fun GoalsSummaryCard(
                 )
             } else {
                 visibleGoals.forEach { goal ->
-                    GoalProgressRow(goal)
+                    GoalProgressRow(goal, currencyDisplay)
                 }
             }
         }
@@ -134,7 +140,10 @@ internal fun GoalsSummaryCard(
 }
 
 @Composable
-private fun ReportsTrendLineChart(points: List<ReportTrendChartPoint>) {
+private fun ReportsTrendLineChart(
+    points: List<ReportTrendChartPoint>,
+    currencyDisplay: CurrencyDisplay,
+) {
     val chartTokens = LocalChartTokens.current
     val modelProducer = remember { CartesianChartModelProducer() }
     val labels = remember(points) { points.map { it.label } }
@@ -142,7 +151,7 @@ private fun ReportsTrendLineChart(points: List<ReportTrendChartPoint>) {
         labels.getOrNull(value.toInt()).orEmpty()
     }
     val startAxisValueFormatter = CartesianValueFormatter { _, value, _ ->
-        compactAmountCentsLabel(value.toLong())
+        compactAmountCentsLabel(value.toLong(), currencyDisplay)
     }
     val lineColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
 
@@ -189,29 +198,34 @@ private fun ReportsTrendLineChart(points: List<ReportTrendChartPoint>) {
 private fun RankingBlock(
     title: String,
     rows: List<ReportMerchantRanking>,
+    currencyDisplay: CurrencyDisplay,
 ) {
     val maxAmount = rows.maxOfOrNull { it.amountCents } ?: 0L
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.body.weight)
         rows.forEach { row ->
             AmountBarRow(
                 label = row.merchant.ifBlank { "未填写商家" },
                 amountCents = row.amountCents,
                 count = row.count,
                 maxAmountCents = maxAmount,
+                currencyDisplay = currencyDisplay,
             )
         }
     }
 }
 
 @Composable
-private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
+private fun CategoryComparisonBlock(
+    rows: List<ReportCategoryComparison>,
+    currencyDisplay: CurrencyDisplay,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text("分类环比", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text("分类环比", style = MaterialTheme.typography.titleSmall, fontWeight = AppTextHierarchy.body.weight)
         rows.forEach { row ->
             val deltaText = when {
-                row.deltaAmountCents > 0L -> "多 ${formatAmount(row.deltaAmountCents)}"
-                row.deltaAmountCents < 0L -> "少 ${formatAmount(abs(row.deltaAmountCents))}"
+                row.deltaAmountCents > 0L -> "多 ${formatDisplayAmount(row.deltaAmountCents, currencyDisplay)}"
+                row.deltaAmountCents < 0L -> "少 ${formatDisplayAmount(abs(row.deltaAmountCents), currencyDisplay)}"
                 else -> "持平"
             }
             AmountBarRow(
@@ -219,6 +233,7 @@ private fun CategoryComparisonBlock(rows: List<ReportCategoryComparison>) {
                 amountCents = row.amountCents,
                 count = row.count,
                 maxAmountCents = rows.maxOfOrNull { it.amountCents } ?: 0L,
+                currencyDisplay = currencyDisplay,
                 trailingText = deltaText,
             )
         }
@@ -231,6 +246,7 @@ private fun AmountBarRow(
     amountCents: Long,
     count: Int,
     maxAmountCents: Long,
+    currencyDisplay: CurrencyDisplay,
     trailingText: String = "${count} 笔",
 ) {
     val chartTokens = LocalChartTokens.current
@@ -253,9 +269,9 @@ private fun AmountBarRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = formatAmount(amountCents),
+                text = formatDisplayAmount(amountCents, currencyDisplay),
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
             Text(
                 text = trailingText,
@@ -282,7 +298,10 @@ private fun AmountBarRow(
 }
 
 @Composable
-private fun GoalProgressRow(goal: Goal) {
+private fun GoalProgressRow(
+    goal: Goal,
+    currencyDisplay: CurrencyDisplay,
+) {
     val chartTokens = LocalChartTokens.current
     val color = if (goal.isOverLimit) chartTokens.overspend else chartTokens.series.first()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -303,7 +322,7 @@ private fun GoalProgressRow(goal: Goal) {
                 text = "${goal.progressPercent.coerceAtLeast(0)}%",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
         }
         LinearProgressIndicator(
@@ -316,7 +335,7 @@ private fun GoalProgressRow(goal: Goal) {
             trackColor = chartTokens.grid,
         )
         Text(
-            text = "${goal.category ?: "总支出"} · 已花 ${formatAmount(goal.spentAmountCents)} · 剩 ${formatAmount(goal.remainingAmountCents)}",
+            text = "${goal.category ?: "总支出"} · 已花 ${formatDisplayAmount(goal.spentAmountCents, currencyDisplay)} · 剩 ${formatDisplayAmount(goal.remainingAmountCents, currencyDisplay)}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
@@ -342,13 +361,21 @@ internal fun reportTrendChartPoints(trend: List<ReportTrendPoint>): List<ReportT
         )
     }
 
-internal fun compactAmountCentsLabel(amountCents: Long): String {
+internal fun compactAmountCentsLabel(
+    amountCents: Long,
+    currencyDisplay: CurrencyDisplay = CurrencyDisplay.Base,
+): String {
     val sign = if (amountCents < 0L) "-" else ""
-    val absCents = abs(amountCents)
+    val currency = currencyDisplay.homeCurrency
+    val minorAmount = amountCents
+    val absMinor = abs(minorAmount)
+    val symbol = currency.symbol
+    val majorDivisor = if (currency.noFractionDigits) 1L else 100L
+    val tenThousandMajorMinor = majorDivisor * 10_000L
     return when {
-        absCents >= 1_000_000L -> "${sign}¥${decimal(absCents, 1_000_000L)}万"
-        absCents >= 100_000L -> "${sign}¥${decimal(absCents, 100_000L)}k"
-        else -> "${sign}¥${decimal(absCents, 100L)}"
+        absMinor >= tenThousandMajorMinor -> "${sign}${symbol}${decimal(absMinor, tenThousandMajorMinor)}万"
+        absMinor >= majorDivisor * 1_000L -> "${sign}${symbol}${decimal(absMinor, majorDivisor * 1_000L)}k"
+        else -> "${sign}${symbol}${decimal(absMinor, majorDivisor)}"
     }
 }
 

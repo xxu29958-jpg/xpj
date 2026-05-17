@@ -1,8 +1,13 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.FxContract
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.text.NumberFormat
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -14,10 +19,106 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-fun formatAmount(amountCents: Long?): String {
+/**
+ * 把分单位金额格式化为带币种符号的字符串。
+ *
+ * - `amount_cents` 仍是后端契约存储单位（不变）
+ * - 仅 UI 表达层应用 [currency] 的符号、locale、小数位
+ * - 无小数币种（JPY/KRW）按整数显示
+ *
+ * 注意：本函数只按给定币种格式化“该币种自己的 minor amount”，不做汇率折算。
+ * 展示后端 home amount 时应优先使用 [formatDisplayAmount]。
+ */
+fun formatAmount(amountCents: Long?, currency: CurrencyCode = CurrencyCode.Default): String {
     if (amountCents == null) return "待填写金额"
-    val yuan = BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
-    return NumberFormat.getCurrencyInstance(Locale.CHINA).format(yuan)
+    val locale = Locale.forLanguageTag(currency.localeTag)
+    val symbols = DecimalFormatSymbols.getInstance(locale)
+    return if (currency.noFractionDigits) {
+        // JPY/KRW 等无小数币种：仍除以 100，只保留整数
+        val whole = BigDecimal(amountCents).divide(BigDecimal(100), 0, RoundingMode.HALF_UP).toLong()
+        val pattern = DecimalFormat("#,##0", symbols)
+        "${currency.symbol}${pattern.format(whole)}"
+    } else {
+        val yuan = BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+        val pattern = DecimalFormat("#,##0.00", symbols)
+        "${currency.symbol}${pattern.format(yuan)}"
+    }
+}
+
+fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyDisplay.Base): String {
+    if (amountCents == null) return "待填写金额"
+    return formatAmount(amountCents, display.homeCurrency)
+}
+
+fun formatMinorAmount(amountMinor: Long?, currency: CurrencyCode): String {
+    if (amountMinor == null) return "待填写金额"
+    val locale = Locale.forLanguageTag(currency.localeTag)
+    val symbols = DecimalFormatSymbols.getInstance(locale)
+    return if (currency.noFractionDigits) {
+        val pattern = DecimalFormat("#,##0", symbols)
+        "${currency.symbol}${pattern.format(amountMinor)}"
+    } else {
+        val major = BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+        val pattern = DecimalFormat("#,##0.00", symbols)
+        "${currency.symbol}${pattern.format(major)}"
+    }
+}
+
+fun formatMinorAmountInput(amountMinor: Long?, currency: CurrencyCode): String {
+    if (amountMinor == null) return ""
+    return if (currency.noFractionDigits) {
+        amountMinor.toString()
+    } else {
+        BigDecimal(amountMinor).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
+    }
+}
+
+fun parseMinorAmount(input: String, currency: CurrencyCode): Long? {
+    val trimmed = input.trim()
+    if (trimmed.isBlank()) return null
+    return runCatching {
+        val decimal = BigDecimal(trimmed)
+        val scaled = if (currency.noFractionDigits) {
+            decimal.setScale(0, RoundingMode.HALF_UP)
+        } else {
+            decimal.multiply(BigDecimal(100)).setScale(0, RoundingMode.HALF_UP)
+        }
+        if (scaled < BigDecimal.ZERO) return null
+        scaled.longValueExact()
+    }.getOrNull()
+}
+
+fun formatExpensePrimaryAmount(
+    expense: Expense,
+    display: CurrencyDisplay = CurrencyDisplay.Base,
+): String {
+    val currency = expense.originalCurrencyCode
+    val originalAmount = expense.originalAmountMinor
+    return if (currency == FxContract.HomeCurrency || originalAmount == null) {
+        formatDisplayAmount(expense.homeAmountCents ?: expense.amountCents, display)
+    } else {
+        formatMinorAmount(originalAmount, currency)
+    }
+}
+
+fun formatExpenseExchangeMeta(expense: Expense): String? {
+    val currency = expense.originalCurrencyCode
+    if (currency == FxContract.HomeCurrency) return null
+    val date = (expense.fxRateDate ?: expense.exchangeRateDate)?.takeIf { it.isNotBlank() }
+    if (expense.fxStatus == FxContract.StatusPending || expense.fxRate.isNullOrBlank() || expense.homeAmountCents == null) {
+        return buildString {
+            append("汇率待同步")
+            if (date != null) append(" · ").append(date)
+        }
+    }
+    val rate = expense.fxRate.trim()
+    val cny = formatAmount(expense.homeAmountCents, expense.homeCurrency)
+    return buildString {
+        append("≈ ").append(cny)
+        append(" · 汇率 1 ").append(currency.storageKey).append(" = ").append(rate).append(" ")
+        append(expense.homeCurrency.storageKey)
+        if (date != null) append(" · ").append(date)
+    }
 }
 
 fun formatAmountInput(amountCents: Long?): String {

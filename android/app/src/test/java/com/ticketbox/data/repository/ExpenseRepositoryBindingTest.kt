@@ -1,4 +1,4 @@
-package com.ticketbox.data.repository
+﻿package com.ticketbox.data.repository
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -92,10 +92,10 @@ class ExpenseRepositoryBindingTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val result = repository.bindServer("https://api.zen70.cn/", "123456").getOrThrow()
+        val result = repository.bindServer("https://api.example.com/", "123456").getOrThrow()
 
         assertTrue(result.confirmedRestoreFailed)
-        assertEquals("https://api.zen70.cn", settingsStore.serverUrl())
+        assertEquals("https://api.example.com", settingsStore.serverUrl())
         assertEquals("session-token", tokenStore.getToken())
         assertEquals("我", settingsStore.accountName())
         assertEquals("我的小票夹", settingsStore.ledgerName())
@@ -123,7 +123,7 @@ class ExpenseRepositoryBindingTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val bindResult = repository.bindServer("https://api.zen70.cn", "123456").getOrThrow()
+        val bindResult = repository.bindServer("https://api.example.com", "123456").getOrThrow()
         val syncResult = repository.syncConfirmed().getOrThrow()
 
         assertTrue(bindResult.confirmedRestoreFailed)
@@ -136,7 +136,7 @@ class ExpenseRepositoryBindingTest {
     fun confirmedSyncForwardsSelectedTagFilter() = runTest {
         val events = mutableListOf<String>()
         val settingsStore = FakeTicketboxSettingsStore(events).apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "owner",
@@ -165,7 +165,7 @@ class ExpenseRepositoryBindingTest {
     @Test
     fun authCheckRefreshesStoredIdentityAndRole() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "owner",
@@ -212,7 +212,7 @@ class ExpenseRepositoryBindingTest {
         val viewModelStore = ViewModelStore()
         try {
             val settingsStore = FakeTicketboxSettingsStore().apply {
-                saveServerUrl("https://api.zen70.cn")
+                saveServerUrl("https://api.example.com")
                 saveIdentity(
                     accountName = "我",
                     ledgerId = "old",
@@ -284,7 +284,7 @@ class ExpenseRepositoryBindingTest {
     @Test
     fun serverSettingsDoesNotPersistMismatchedLedgerSnapshot() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "family",
@@ -335,7 +335,7 @@ class ExpenseRepositoryBindingTest {
     fun notificationDraftUploadsStructuredFieldsOnlyAndDoesNotCachePending() = runTest {
         val dao = FakeExpenseDao()
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "owner",
@@ -376,7 +376,7 @@ class ExpenseRepositoryBindingTest {
     fun ruleGovernancePreviewAndConfirmUseConfirmedEndpointAndRefreshCache() = runTest {
         val dao = FakeExpenseDao()
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "owner",
@@ -417,7 +417,7 @@ class ExpenseRepositoryBindingTest {
     @Test
     fun ruleApplicationRollbackPostsPublicIdAndRefreshesHistory() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "owner",
@@ -445,7 +445,7 @@ class ExpenseRepositoryBindingTest {
     @Test
     fun merchantAliasCrudTrimsInputAndUsesPublicIds() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "owner",
@@ -479,7 +479,7 @@ class ExpenseRepositoryBindingTest {
     @Test
     fun expenseItemsAndSplitsUseV1DetailEndpoints() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "我",
                 ledgerId = "owner",
@@ -535,7 +535,7 @@ class ExpenseRepositoryBindingTest {
     @Test
     fun viewerCannotReplaceExpenseItemsOrSplitsLocally() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
             saveIdentity(
                 accountName = "只读",
                 ledgerId = "owner",
@@ -657,7 +657,10 @@ private class FakeApiService(
         return ExpenseDto(
             id = 12,
             publicId = "8f939f48-e646-4afb-b54f-7bb6b536d9ef",
-            amountCents = request.amountCents,
+            amountCents = null,
+            originalCurrency = request.originalCurrency,
+            originalAmount = request.originalAmount,
+            fxStatus = "pending",
             merchant = request.merchant,
             category = request.category ?: "其他",
             note = "",
@@ -1135,6 +1138,12 @@ private class FakeTicketboxSettingsStore(
     override fun saveAppSkinKey(skinKey: String) {
         appSkinKey = skinKey
     }
+
+    override fun currencyCodeKey(): String? = null
+
+    override fun saveCurrencyCodeKey(currencyKey: String) = Unit
+
+    override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)
 
     override fun saveServerUrl(serverUrl: String) {
         events += "saveServerUrl"

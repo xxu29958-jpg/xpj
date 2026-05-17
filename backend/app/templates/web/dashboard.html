@@ -9,7 +9,7 @@
   <div class="page-sub">
     本月已确认 {{ cards.confirmed_count }} 笔，待确认 {{ cards.pending_count }} 笔。
     {% if cards.budget_configured %}
-      预算 ¥{{ cards.budget_total_yuan }}{% if cards.budget_is_over %}（已超 ¥{{ cards.budget_overspent_yuan }}）{% else %}，剩 ¥{{ cards.budget_remaining_yuan }}{% endif %}。
+      预算 {{ home_currency_symbol }}{{ cards.budget_total_yuan }}{% if cards.budget_is_over %}（已超 {{ home_currency_symbol }}{{ cards.budget_overspent_yuan }}）{% else %}，剩 {{ home_currency_symbol }}{{ cards.budget_remaining_yuan }}{% endif %}。
     {% else %}
       尚未设置预算。
     {% endif %}
@@ -99,16 +99,16 @@
         {% set _total_yuan = cards.total_amount_yuan or '0.00' %}
         {% set _parts = _total_yuan.split('.') %}
         <div class="kpi-amount">
-          <span class="yuan">¥</span>{{ _parts[0] }}<span class="decimals">.{{ _parts[1] if _parts|length > 1 else '00' }}</span>
+          <span class="yuan">{{ home_currency_symbol }}</span>{{ _parts[0] }}<span class="decimals">.{{ _parts[1] if _parts|length > 1 else '00' }}</span>
         </div>
         {% if cards.delta_direction and cards.delta_direction != 'none' %}
         <div class="delta-pill-row" style="margin-top:8px">
           <span class="delta-pill delta-{{ cards.delta_direction }}">
-            {% if cards.delta_direction == 'up' %}↑ ¥{{ cards.delta_amount_yuan }}{% if cards.delta_percent is not none %} +{{ cards.delta_percent }}%{% endif %}
-            {% elif cards.delta_direction == 'down' %}↓ ¥{{ cards.delta_amount_yuan }}{% if cards.delta_percent is not none %} -{{ cards.delta_percent }}%{% endif %}
+            {% if cards.delta_direction == 'up' %}↑ {{ home_currency_symbol }}{{ cards.delta_amount_yuan }}{% if cards.delta_percent is not none %} +{{ cards.delta_percent }}%{% endif %}
+            {% elif cards.delta_direction == 'down' %}↓ {{ home_currency_symbol }}{{ cards.delta_amount_yuan }}{% if cards.delta_percent is not none %} -{{ cards.delta_percent }}%{% endif %}
             {% else %}持平{% endif %}
           </span>
-          <span class="delta-pill-prev">较上月 ¥{{ cards.previous_total_amount_yuan }}</span>
+          <span class="delta-pill-prev">较上月 {{ home_currency_symbol }}{{ cards.previous_total_amount_yuan }}</span>
         </div>
         {% endif %}
         <svg class="spark" viewBox="0 0 280 56" width="100%" height="56" preserveAspectRatio="none"
@@ -122,11 +122,11 @@
           </defs>
         </svg>
         <div class="trend-foot">
-          {% if cards.budget_configured %}<div>预算<span class="num">¥{{ cards.budget_total_yuan }}</span></div>{% endif %}
+          {% if cards.budget_configured %}<div>预算<span class="num">{{ home_currency_symbol }}{{ cards.budget_total_yuan }}</span></div>{% endif %}
           {% if cards.budget_is_over %}
-          <div>超支<span class="num" style="color:var(--state-danger-fg)">¥{{ cards.budget_overspent_yuan }}</span></div>
+          <div>超支<span class="num" style="color:var(--state-danger-fg)">{{ home_currency_symbol }}{{ cards.budget_overspent_yuan }}</span></div>
           {% elif cards.budget_configured %}
-          <div>剩余<span class="num">¥{{ cards.budget_remaining_yuan }}</span></div>
+          <div>剩余<span class="num">{{ home_currency_symbol }}{{ cards.budget_remaining_yuan }}</span></div>
           {% endif %}
           <div>笔数<span class="num">{{ cards.confirmed_count }}</span></div>
           <div>近 7 日上传<span class="num">{{ cards.recent_count }}</span></div>
@@ -150,7 +150,7 @@
             <div class="cat-bar">
               <div class="cat-bar-fill" style="width:{{ (c.amount_cents / _max_cat * 100) if _max_cat else 0 }}%;background:{% if loop.index0 == 0 %}var(--brand-primary){% else %}var(--text-default){% endif %};opacity:{{ 1 - loop.index0 * 0.12 }}"></div>
             </div>
-            <div class="cat-amt">¥{{ '%.0f' % c.amount_yuan }}</div>
+            <div class="cat-amt">{{ home_currency_symbol }}{{ '%.0f' % c.amount_yuan }}</div>
           </div>
           {% else %}
           <div style="font-size:12.5px;color:var(--text-meta);padding:14px 0">本月还没有已确认账单。</div>
@@ -173,9 +173,9 @@
             <div class="budget-label">总额</div>
             <div class="budget-val">
               {% if cards.budget_is_over %}
-                <span style="color:var(--state-danger-fg)">¥{{ cards.budget_total_yuan }}（超 ¥{{ cards.budget_overspent_yuan }}）</span>
+                <span style="color:var(--state-danger-fg)">{{ home_currency_symbol }}{{ cards.budget_total_yuan }}（超 {{ home_currency_symbol }}{{ cards.budget_overspent_yuan }}）</span>
               {% else %}
-                ¥{{ cards.budget_total_yuan }} · 剩 ¥{{ cards.budget_remaining_yuan }}
+                {{ home_currency_symbol }}{{ cards.budget_total_yuan }} · 剩 {{ home_currency_symbol }}{{ cards.budget_remaining_yuan }}
               {% endif %}
             </div>
           </div>

@@ -64,14 +64,14 @@
           {% if goal.is_archived %}<span class="status-chip muted">已归档</span>{% endif %}
           {% if goal.is_over_limit %}<span class="status-chip warn">已超出</span>{% endif %}
         </div>
-        <div class="amount">¥{{ goal.spent_yuan }} / ¥{{ goal.target_yuan }}</div>
+        <div class="amount">{{ home_currency_symbol }}{{ goal.spent_yuan }} / {{ home_currency_symbol }}{{ goal.target_yuan }}</div>
       </div>
       <div class="budget-progress">
         <div class="budget-progress-fill {{ 'is-over' if goal.is_over_limit else '' }}" style="width: {{ goal.bar_percent }}%"></div>
       </div>
       <div class="budget-progress-meta">
         <span>{{ goal.progress_percent }}%</span>
-        <span>剩余 ¥{{ goal.remaining_yuan }}</span>
+        <span>剩余 {{ home_currency_symbol }}{{ goal.remaining_yuan }}</span>
       </div>
       {% if can_write and not goal.is_archived %}
       <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="inline">

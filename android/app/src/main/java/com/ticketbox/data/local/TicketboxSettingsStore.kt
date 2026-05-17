@@ -98,6 +98,18 @@ interface TicketboxSettingsStore {
 
     fun saveAppSkinKey(skinKey: String)
 
+    /**
+     * 已存储的币种 storage key（如 "CNY"/"USD"）。空表示沿用默认。
+     */
+    fun currencyCodeKey(): String?
+
+    fun saveCurrencyCodeKey(currencyKey: String)
+
+    /**
+     * 币种偏好变更 hot flow。订阅时立即 emit 当前值。
+     */
+    fun observeCurrencyCodeKey(): Flow<String?>
+
     fun saveServerUrl(serverUrl: String)
 
     fun isBound(): Boolean

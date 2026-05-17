@@ -16,6 +16,7 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
+import com.ticketbox.ui.design.LocalCurrencyCode
 import com.ticketbox.ui.screens.ledger.EmptyLedgerState
 import com.ticketbox.ui.screens.ledger.LedgerDayHeader
 import com.ticketbox.ui.screens.ledger.LedgerExpenseCard
@@ -40,6 +41,7 @@ fun LedgerScreen(
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
     var showLedgerTools by rememberSaveable { mutableStateOf(false) }
+    val selectedCurrency = LocalCurrencyCode.current
     val canExport = state.items.isNotEmpty() && !state.exporting
 
     if (showMonthPicker) {
@@ -61,6 +63,7 @@ fun LedgerScreen(
             ManualExpenseSheet(
                 categories = state.categories,
                 saving = state.creatingManual,
+                initialCurrency = selectedCurrency,
                 onCreate = { draft ->
                     showManualSheet = false
                     onManualCreate(draft)

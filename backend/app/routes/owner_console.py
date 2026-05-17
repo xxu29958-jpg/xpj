@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
 from app.network_boundary import require_owner_console_local
 from app.services import owner_console_service as svc
 from app.version import BACKEND_VERSION
@@ -109,10 +110,13 @@ def _base(request: Request, db: Session) -> dict:
     """Common template context injected into every page."""
     cfg = get_settings()
     upload_status = "ok" if cfg.upload_dir.is_dir() else "missing"
+    home_currency = (cfg.fx_home_currency_code or DEFAULT_HOME_CURRENCY_CODE).upper()
     return {
         "backend_version": BACKEND_VERSION,
         "upload_dir_status": upload_status,
         "ui_theme": _read_ui_theme(request),
+        "home_currency_code": home_currency,
+        "home_currency_symbol": CURRENCY_SYMBOLS.get(home_currency, f"{home_currency} "),
     }
 
 

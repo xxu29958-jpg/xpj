@@ -316,8 +316,8 @@
         <td><span class="category-badge">{{ r.category }}</span></td>
         <td>
           {% set conditions = [] %}
-          {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ¥%.2f' % (r.amount_min_cents / 100)) %}{% endif %}
-          {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ¥%.2f' % (r.amount_max_cents / 100)) %}{% endif %}
+          {% if r.amount_min_cents is not none %}{% set _ = conditions.append('≥ ' ~ home_currency_symbol ~ ('%.2f' % (r.amount_min_cents / 100))) %}{% endif %}
+          {% if r.amount_max_cents is not none %}{% set _ = conditions.append('≤ ' ~ home_currency_symbol ~ ('%.2f' % (r.amount_max_cents / 100))) %}{% endif %}
           {% if r.source_contains %}{% set _ = conditions.append('来源含“' ~ r.source_contains ~ '”') %}{% endif %}
           {% if r.tag_contains %}{% set _ = conditions.append('标签“' ~ r.tag_contains ~ '”') %}{% endif %}
           {{ conditions|join(' · ') if conditions else '—' }}

@@ -96,6 +96,20 @@
     (root || document).querySelectorAll(".spark[data-points]").forEach(renderSpark);
   }
 
+  function homeCurrencySymbol() {
+    return document.documentElement.getAttribute("data-home-currency-symbol") ||
+      document.documentElement.getAttribute("data-home-currency") ||
+      "";
+  }
+
+  function homeMoney(value) {
+    return homeCurrencySymbol() + escapeHtml(value);
+  }
+
+  function homeMoneyRounded(value) {
+    return homeCurrencySymbol() + escapeHtml(Math.round(Number(value || 0)));
+  }
+
   // ─── Drawer (single expense edit) ───────────────────────────────
   function initDrawer() {
     const drawer = document.getElementById("drawer");
@@ -264,15 +278,15 @@
     if (!direction || direction === "none") return "";
     let label = "持平";
     if (direction === "up") {
-      label = "↑ ¥" + escapeHtml(cards.delta_amount_yuan) +
+      label = "↑ " + homeMoney(cards.delta_amount_yuan) +
         (cards.delta_percent != null ? " +" + escapeHtml(cards.delta_percent) + "%" : "");
     } else if (direction === "down") {
-      label = "↓ ¥" + escapeHtml(cards.delta_amount_yuan) +
+      label = "↓ " + homeMoney(cards.delta_amount_yuan) +
         (cards.delta_percent != null ? " -" + escapeHtml(cards.delta_percent) + "%" : "");
     }
     return '<div class="delta-pill-row" style="margin-top:8px">' +
       '<span class="delta-pill delta-' + escapeHtml(direction) + '">' + label + "</span>" +
-      '<span class="delta-pill-prev">较上月 ¥' + escapeHtml(cards.previous_total_amount_yuan) + "</span>" +
+      '<span class="delta-pill-prev">较上月 ' + homeMoney(cards.previous_total_amount_yuan) + "</span>" +
       "</div>";
   }
 
@@ -305,7 +319,7 @@
       return '<div class="cat-row"><div class="cat-name">' + escapeHtml(c.name) + '</div>' +
         '<div class="cat-bar"><div class="cat-bar-fill" style="width:' + width.toFixed(2) +
         "%;background:" + color + ";opacity:" + opacity.toFixed(2) + '"></div></div>' +
-        '<div class="cat-amt">¥' + escapeHtml(Math.round(Number(c.amount_yuan || 0))) + "</div></div>";
+        '<div class="cat-amt">' + homeMoneyRounded(c.amount_yuan) + "</div></div>";
     }).join("");
   }
 
@@ -334,13 +348,13 @@
         '<div class="card-head"><div><div class="card-title">本月支出</div><div class="card-sub" style="margin-top:4px">' +
         escapeHtml(cards.month) + ' · 已确认</div></div><a class="card-sub" href="' +
         dashboardUrl("/web/reports", ledgerId, { month: cards.month || "" }) + '" style="text-decoration:none">报表 →</a></div>' +
-        '<div class="kpi-amount"><span class="yuan">¥</span>' + escapeHtml(parts[0]) +
+        '<div class="kpi-amount"><span class="yuan">' + escapeHtml(homeCurrencySymbol()) + '</span>' + escapeHtml(parts[0]) +
         '<span class="decimals">.' + escapeHtml(parts[1]) + '</span></div>' +
         renderDashboardDelta(cards) + renderSparkShell(data.trend14) +
         '<div class="trend-foot">' +
-        (cards.budget_configured ? '<div>预算<span class="num">¥' + escapeHtml(cards.budget_total_yuan) + "</span></div>" : "") +
-        (cards.budget_is_over ? '<div>超支<span class="num" style="color:var(--state-danger-fg)">¥' + escapeHtml(cards.budget_overspent_yuan) + "</span></div>" :
-          (cards.budget_configured ? '<div>剩余<span class="num">¥' + escapeHtml(cards.budget_remaining_yuan) + "</span></div>" : "")) +
+        (cards.budget_configured ? '<div>预算<span class="num">' + homeMoney(cards.budget_total_yuan) + "</span></div>" : "") +
+        (cards.budget_is_over ? '<div>超支<span class="num" style="color:var(--state-danger-fg)">' + homeMoney(cards.budget_overspent_yuan) + "</span></div>" :
+          (cards.budget_configured ? '<div>剩余<span class="num">' + homeMoney(cards.budget_remaining_yuan) + "</span></div>" : "")) +
         '<div>笔数<span class="num">' + escapeHtml(cards.confirmed_count) + '</span></div>' +
         '<div>近 7 日上传<span class="num">' + escapeHtml(cards.recent_count) + '</span></div></div></div></div>';
     }
@@ -356,8 +370,8 @@
         dashboardUrl("/web/budgets", ledgerId) + '" style="text-decoration:none">管理 →</a></div>' +
         (cards.budget_configured ?
           '<div><div class="budget-row"><div class="budget-label">总额</div><div class="budget-val">' +
-          (cards.budget_is_over ? '<span style="color:var(--state-danger-fg)">¥' + escapeHtml(cards.budget_total_yuan) + '（超 ¥' + escapeHtml(cards.budget_overspent_yuan) + '）</span>' :
-            '¥' + escapeHtml(cards.budget_total_yuan) + ' · 剩 ¥' + escapeHtml(cards.budget_remaining_yuan)) + "</div></div></div>" :
+          (cards.budget_is_over ? '<span style="color:var(--state-danger-fg)">' + homeMoney(cards.budget_total_yuan) + '（超 ' + homeMoney(cards.budget_overspent_yuan) + '）</span>' :
+            homeMoney(cards.budget_total_yuan) + ' · 剩 ' + homeMoney(cards.budget_remaining_yuan)) + "</div></div></div>" :
           '<div class="empty-state"><div class="empty-state__title">本月还没有预算</div><div class="empty-state__body">设个月度上限，超支会在卡片里给提示。</div><a class="empty-state__cta" href="' +
           dashboardUrl("/web/budgets", ledgerId) + '">去设置月度预算 →</a></div>') + "</div></div>";
     }
@@ -474,8 +488,8 @@
               return '<div style="display:flex;justify-content:space-between;gap:14px;font-size:12px">' +
                 '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
                 p.color + ';margin-right:6px;vertical-align:1px"></span>' + p.seriesName + "</span>" +
-                '<b style="font-variant-numeric:tabular-nums">¥' +
-                (p.value || 0).toLocaleString() + "</b></div>";
+                '<b style="font-variant-numeric:tabular-nums">' +
+                homeMoney((p.value || 0).toLocaleString()) + "</b></div>";
             }).join("");
           },
         },
@@ -556,8 +570,8 @@
           borderColor: readVar("--chart-tooltip-border"),
           textStyle: { color: readVar("--chart-tooltip-fg"), fontFamily: "'Noto Sans SC', Inter" },
           formatter: function (p) {
-            return '<div style="font-size:12px"><b>' + p.name + "</b><br/>¥" +
-                   (p.value || 0).toLocaleString() + " · " + p.percent + "%</div>";
+            return '<div style="font-size:12px"><b>' + p.name + "</b><br/>" +
+                   homeMoney((p.value || 0).toLocaleString()) + " · " + p.percent + "%</div>";
           },
         },
         legend: { show: false },
@@ -575,7 +589,7 @@
               show: true, position: "center", color: ink,
               fontFamily: "Newsreader, 'Source Han Serif SC', serif", fontSize: 22,
               formatter: function (p) {
-                return "{n|" + p.name + "}\n{v|¥" + Math.round(p.value || 0).toLocaleString() +
+                return "{n|" + p.name + "}\n{v|" + homeCurrencySymbol() + Math.round(p.value || 0).toLocaleString() +
                        "}\n{p|" + p.percent + "%}";
               },
               rich: {

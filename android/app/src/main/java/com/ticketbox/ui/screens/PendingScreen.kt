@@ -3,6 +3,7 @@
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
@@ -34,6 +35,7 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.ExpensePreviewMode
+import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.pending.BulkConfirmEntry
@@ -51,6 +53,7 @@ import com.ticketbox.ui.screens.pending.UploadFlowCard
 import com.ticketbox.ui.screens.pending.UploadProgressCard
 import com.ticketbox.ui.screens.pending.applyNeedsReviewFilter
 import com.ticketbox.viewmodel.PendingUiState
+import com.valentinilk.shimmer.shimmer
 
 /**
  * 待确认账单页面入口（slice 3 拆分后）。
@@ -166,14 +169,11 @@ fun PendingScreen(
         when {
             state.items.isEmpty() && state.loading -> {
                 item {
-                    EmptyPendingState(
-                        uploading = state.uploading,
-                        loading = true,
-                        readOnly = readOnly,
-                        showUploadGuide = showUploadGuide,
-                        onToggleGuide = { showUploadGuide = !showUploadGuide },
-                        onRefresh = onRefresh,
-                    )
+                    Column(modifier = Modifier.shimmer()) {
+                        repeat(5) {
+                            ListItemSkeleton(horizontalPadding = 0.dp)
+                        }
+                    }
                 }
             }
 

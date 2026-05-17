@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplit
@@ -22,7 +23,9 @@ import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
 import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 
 @Composable
 internal fun ExpenseEditV1DetailsSection(
@@ -33,15 +36,19 @@ internal fun ExpenseEditV1DetailsSection(
     itemsMessage: String?,
     splitsMessage: String?,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     ExpenseItemsPanel(
         expenseItems = expenseItems,
         loading = itemsLoading,
         message = itemsMessage,
+        currencyDisplay = currencyDisplay,
     )
     ExpenseSplitsPanel(
         expenseSplits = expenseSplits,
         loading = splitsLoading,
         message = splitsMessage,
+        currencyDisplay = currencyDisplay,
     )
 }
 
@@ -50,6 +57,7 @@ private fun ExpenseItemsPanel(
     expenseItems: ExpenseItems?,
     loading: Boolean,
     message: String?,
+    currencyDisplay: CurrencyDisplay,
 ) {
     AppSolidCard {
         Column(
@@ -59,7 +67,7 @@ private fun ExpenseItemsPanel(
             DetailHeader(
                 title = "小票明细",
                 subtitle = "商品级记录不改变账单金额、统计或导出",
-                trailing = expenseItems?.itemsTotalAmountCents?.let(::formatAmount),
+                trailing = expenseItems?.itemsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
             )
             when {
                 loading -> DetailLoadingState(
@@ -73,10 +81,11 @@ private fun ExpenseItemsPanel(
                         parentAmountCents = expenseItems.parentAmountCents,
                         detailTotalAmountCents = expenseItems.itemsTotalAmountCents,
                         mismatchCents = expenseItems.mismatchCents,
+                        currencyDisplay = currencyDisplay,
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         expenseItems.items.forEach { item ->
-                            ExpenseItemRow(item)
+                            ExpenseItemRow(item, currencyDisplay)
                         }
                     }
                 }
@@ -90,6 +99,7 @@ private fun ExpenseSplitsPanel(
     expenseSplits: ExpenseSplits?,
     loading: Boolean,
     message: String?,
+    currencyDisplay: CurrencyDisplay,
 ) {
     AppSolidCard {
         Column(
@@ -99,7 +109,7 @@ private fun ExpenseSplitsPanel(
             DetailHeader(
                 title = "家庭拆账",
                 subtitle = "拆账只记录家庭分摊，不改动原始账单金额",
-                trailing = expenseSplits?.splitsTotalAmountCents?.let(::formatAmount),
+                trailing = expenseSplits?.splitsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
             )
             when {
                 loading -> DetailLoadingState(
@@ -113,10 +123,11 @@ private fun ExpenseSplitsPanel(
                         parentAmountCents = expenseSplits.parentAmountCents,
                         detailTotalAmountCents = expenseSplits.splitsTotalAmountCents,
                         mismatchCents = expenseSplits.mismatchCents,
+                        currencyDisplay = currencyDisplay,
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         expenseSplits.splits.forEach { split ->
-                            ExpenseSplitRow(split)
+                            ExpenseSplitRow(split, currencyDisplay)
                         }
                     }
                 }
@@ -152,7 +163,7 @@ private fun DetailHeader(
                 text = it,
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -165,6 +176,7 @@ private fun TotalReconcileLine(
     parentAmountCents: Long?,
     detailTotalAmountCents: Long?,
     mismatchCents: Long?,
+    currencyDisplay: CurrencyDisplay,
 ) {
     val mismatch = mismatchCents ?: 0L
     Row(
@@ -172,9 +184,12 @@ private fun TotalReconcileLine(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StatusPill(if (mismatch == 0L) "合计一致" else "差额 ${formatAmount(mismatch)}", active = mismatch == 0L)
+        StatusPill(
+            if (mismatch == 0L) "合计一致" else "差额 ${formatDisplayAmount(mismatch, currencyDisplay)}",
+            active = mismatch == 0L,
+        )
         Text(
-            text = "账单 ${formatAmount(parentAmountCents)} · 明细 ${formatAmount(detailTotalAmountCents)}",
+            text = "账单 ${formatDisplayAmount(parentAmountCents, currencyDisplay)} · 明细 ${formatDisplayAmount(detailTotalAmountCents, currencyDisplay)}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
@@ -184,7 +199,7 @@ private fun TotalReconcileLine(
 }
 
 @Composable
-private fun ExpenseItemRow(item: ExpenseItem) {
+private fun ExpenseItemRow(item: ExpenseItem, currencyDisplay: CurrencyDisplay) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -206,7 +221,7 @@ private fun ExpenseItemRow(item: ExpenseItem) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = itemSubtitle(item),
+                    text = itemSubtitle(item, currencyDisplay),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -214,10 +229,10 @@ private fun ExpenseItemRow(item: ExpenseItem) {
                 )
             }
             Text(
-                text = formatAmount(item.amountCents),
+                text = formatDisplayAmount(item.amountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -226,7 +241,7 @@ private fun ExpenseItemRow(item: ExpenseItem) {
 }
 
 @Composable
-private fun ExpenseSplitRow(split: ExpenseSplit) {
+private fun ExpenseSplitRow(split: ExpenseSplit, currencyDisplay: CurrencyDisplay) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -256,10 +271,10 @@ private fun ExpenseSplitRow(split: ExpenseSplit) {
                 )
             }
             Text(
-                text = formatAmount(split.amountCents),
+                text = formatDisplayAmount(split.amountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -296,10 +311,10 @@ private fun DetailEmptyState(text: String) {
     }
 }
 
-private fun itemSubtitle(item: ExpenseItem): String {
+private fun itemSubtitle(item: ExpenseItem, currencyDisplay: CurrencyDisplay): String {
     val parts = mutableListOf<String>()
     item.quantityText?.takeIf { it.isNotBlank() }?.let { parts += it }
-    item.unitPriceCents?.let { parts += "单价 ${formatAmount(it)}" }
+    item.unitPriceCents?.let { parts += "单价 ${formatDisplayAmount(it, currencyDisplay)}" }
     item.category.takeIf { it.isNotBlank() }?.let { parts += it }
     if (item.isOcrDraft) parts += "OCR草稿"
     return parts.joinToString(" · ").ifBlank { "未补充明细信息" }

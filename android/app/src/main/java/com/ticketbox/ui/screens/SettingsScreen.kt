@@ -18,6 +18,7 @@ import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.NotificationPreferences
@@ -47,6 +48,7 @@ import com.ticketbox.viewmodel.SettingsUiState
 fun SettingsScreen(
     state: SettingsUiState,
     currentSkin: AppSkin,
+    currentCurrency: CurrencyCode,
     onTestConnection: () -> Unit,
     onRunDiagnostics: () -> Unit,
     onRefreshServerSettings: () -> Unit,
@@ -64,6 +66,7 @@ fun SettingsScreen(
     onConfirmApplyConfirmedRules: () -> Unit,
     onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
     onSkinChange: (AppSkin) -> Unit,
+    onCurrencyChange: (CurrencyCode) -> Unit,
     onApplyBackgroundSettings: (BackgroundSettings) -> Unit,
     onClearBackgroundImage: () -> Unit,
     onBackgroundImageError: (String) -> Unit = {},
@@ -147,8 +150,10 @@ fun SettingsScreen(
         SettingsRoute.Appearance -> AppearanceScreen(
             state = state,
             currentSkin = currentSkin,
+            currentCurrency = currentCurrency,
             onBack = { route = SettingsRoute.Root },
             onSkinChange = onSkinChange,
+            onCurrencyChange = onCurrencyChange,
             onOpenGallery = { route = SettingsRoute.BackgroundGallery },
             onPickCustomImage = ::launchImagePicker,
             onPreviewThemeDefault = ::previewThemeDefault,

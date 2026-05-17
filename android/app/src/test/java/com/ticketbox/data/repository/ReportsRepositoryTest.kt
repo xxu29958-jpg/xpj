@@ -1,4 +1,4 @@
-package com.ticketbox.data.repository
+﻿package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
@@ -195,7 +195,7 @@ class ReportsRepositoryTest {
         role: String = "owner",
     ): ReportsRepository {
         val settings = ReportsFakeSettingsStore(role = role).apply {
-            saveServerUrl("https://api.zen70.cn")
+            saveServerUrl("https://api.example.com")
         }
         val tokenStore = ReportsFakeTokenStore().apply { saveToken("session-token") }
         return ReportsRepository(
@@ -433,6 +433,9 @@ private class ReportsFakeSettingsStore(
     override fun lastUploadAt(): String? = null
     override fun saveLastUploadAt(value: String) = Unit
     override fun saveAppSkinKey(skinKey: String) = Unit
+    override fun currencyCodeKey(): String? = null
+    override fun saveCurrencyCodeKey(currencyKey: String) = Unit
+    override fun observeCurrencyCodeKey(): Flow<String?> = MutableStateFlow(null)
     override fun saveServerUrl(serverUrl: String) {
         this.serverUrl = serverUrl.trim().trimEnd('/')
     }

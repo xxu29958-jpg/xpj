@@ -3,6 +3,7 @@ package com.ticketbox.data.local
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.ticketbox.domain.model.FxContract
 
 @Entity(
     tableName = "expenses",
@@ -22,6 +23,13 @@ data class ExpenseEntity(
     val serverId: Long,
     val publicId: String,
     val amountCents: Long?,
+    val homeCurrencyCode: String = FxContract.HomeCurrency.storageKey,
+    val originalCurrencyCode: String = FxContract.HomeCurrency.storageKey,
+    val originalAmountMinor: Long? = null,
+    val exchangeRateToCny: String? = null,
+    val exchangeRateDate: String? = null,
+    val exchangeRateSource: String? = null,
+    val fxStatus: String = FxContract.StatusReady,
     val merchant: String?,
     val category: String,
     val note: String?,

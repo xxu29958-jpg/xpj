@@ -20,13 +20,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.ui.components.AppContentCard
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppTypography
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
 
@@ -36,6 +39,8 @@ internal fun StatsOverviewCard(
     recent7DaysAmountCents: Long,
     comparison: MonthComparison?,
 ) {
+    val currencyDisplay = LocalCurrencyDisplay.current
+
     AppContentCard(
         contentPadding = PaddingValues(
             horizontal = AppSpacing.cardPaddingSmall,
@@ -57,7 +62,7 @@ internal fun StatsOverviewCard(
         ) {
             Text(
                 modifier = Modifier.weight(1f),
-                text = formatAmount(stats.totalAmountCents),
+                text = formatDisplayAmount(stats.totalAmountCents, currencyDisplay),
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontSize = AppTypography.amountLarge.size,
@@ -68,7 +73,7 @@ internal fun StatsOverviewCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            comparison?.let { MonthDeltaPill(it) }
+            comparison?.let { MonthDeltaPill(it, currencyDisplay) }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -81,7 +86,7 @@ internal fun StatsOverviewCard(
             )
             CompactMetric(
                 label = "最近 7 天",
-                value = formatAmount(recent7DaysAmountCents),
+                value = formatDisplayAmount(recent7DaysAmountCents, currencyDisplay),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -89,7 +94,10 @@ internal fun StatsOverviewCard(
     }
 }
 @Composable
-private fun MonthDeltaPill(comparison: MonthComparison) {
+private fun MonthDeltaPill(
+    comparison: MonthComparison,
+    currencyDisplay: CurrencyDisplay,
+) {
     if (comparison.previousAmountCents == 0L) return
     val visuals = LocalThemeVisuals.current
     val delta = comparison.deltaAmountCents
@@ -97,11 +105,11 @@ private fun MonthDeltaPill(comparison: MonthComparison) {
         delta == 0L -> "持平" to MaterialTheme.colorScheme.onSurfaceVariant
         delta > 0L -> {
             val percent = comparison.percentChange?.let { " +${it}%" }.orEmpty()
-            "↑ ${formatAmount(kotlin.math.abs(delta))}$percent" to visuals.warningTint
+            "↑ ${formatDisplayAmount(kotlin.math.abs(delta), currencyDisplay)}$percent" to visuals.warningTint
         }
         else -> {
             val percent = comparison.percentChange?.let { " ${kotlin.math.abs(it)}%" }.orEmpty()
-            "↓ ${formatAmount(kotlin.math.abs(delta))}$percent" to visuals.primary
+            "↓ ${formatDisplayAmount(kotlin.math.abs(delta), currencyDisplay)}$percent" to visuals.primary
         }
     }
     Box(
@@ -142,7 +150,7 @@ private fun CompactMetric(
             text = value,
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleMedium.tabularNum(),
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.body.weight,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

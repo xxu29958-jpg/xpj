@@ -18,15 +18,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.components.AppGlassCard
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.ui.design.AppTextHierarchy
+import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
     if (candidates.isEmpty()) return
+    val currencyDisplay = LocalCurrencyDisplay.current
     val visuals = LocalThemeVisuals.current
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
@@ -41,7 +45,7 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
                 Text(
                     text = "固定支出候选（未确认）",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
                     text = "${candidates.size} 项",
@@ -58,7 +62,7 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
                 if (index > 0) {
                     HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
                 }
-                RecurringCandidateRow(candidate)
+                RecurringCandidateRow(candidate, currencyDisplay)
             }
         }
     }
@@ -67,6 +71,7 @@ internal fun RecurringCandidatesCard(candidates: List<RecurringCandidate>) {
 @Composable
 internal fun RecurringItemsSummaryCard(items: List<RecurringItem>) {
     if (items.isEmpty()) return
+    val currencyDisplay = LocalCurrencyDisplay.current
     val visuals = LocalThemeVisuals.current
     AppGlassCard(containerAlpha = 0.94f) {
         Column(
@@ -81,7 +86,7 @@ internal fun RecurringItemsSummaryCard(items: List<RecurringItem>) {
                 Text(
                     text = "正式固定支出",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = AppTextHierarchy.heading.weight,
                 )
                 Text(
                     text = "${items.count { it.status == "active" }} 活跃",
@@ -98,14 +103,17 @@ internal fun RecurringItemsSummaryCard(items: List<RecurringItem>) {
                 if (index > 0) {
                     HorizontalDivider(color = visuals.chipUnselected.copy(alpha = 0.72f))
                 }
-                RecurringItemSummaryRow(item)
+                RecurringItemSummaryRow(item, currencyDisplay)
             }
         }
     }
 }
 
 @Composable
-private fun RecurringItemSummaryRow(item: RecurringItem) {
+private fun RecurringItemSummaryRow(
+    item: RecurringItem,
+    currencyDisplay: CurrencyDisplay,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -123,9 +131,9 @@ private fun RecurringItemSummaryRow(item: RecurringItem) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = formatAmount(item.lastAmountCents),
+                text = formatDisplayAmount(item.lastAmountCents, currencyDisplay),
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
         }
         Row(
@@ -147,7 +155,10 @@ private fun RecurringItemSummaryRow(item: RecurringItem) {
 }
 
 @Composable
-private fun RecurringCandidateRow(candidate: RecurringCandidate) {
+private fun RecurringCandidateRow(
+    candidate: RecurringCandidate,
+    currencyDisplay: CurrencyDisplay,
+) {
     val visuals = LocalThemeVisuals.current
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -166,9 +177,9 @@ private fun RecurringCandidateRow(candidate: RecurringCandidate) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = formatAmount(candidate.amountCents),
+                text = formatDisplayAmount(candidate.amountCents, currencyDisplay),
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = AppTextHierarchy.body.weight,
             )
         }
         Row(
