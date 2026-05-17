@@ -162,13 +162,37 @@ td.amount { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: 
     cursor: pointer;
     text-decoration: none;
     font-family: inherit;
+    outline: none;
+    transition:
+        background-color var(--motion-fast, 120ms) var(--ease-standard, ease),
+        border-color var(--motion-fast, 120ms) var(--ease-standard, ease),
+        color var(--motion-fast, 120ms) var(--ease-standard, ease),
+        transform var(--motion-fast, 120ms) var(--ease-standard, ease),
+        box-shadow var(--motion-fast, 120ms) var(--ease-standard, ease);
+    -webkit-tap-highlight-color: transparent;
 }
 .btn-primary  { background: var(--brand-primary); color: #fff; }
 .btn-primary:hover { background: var(--brand-primary-strong); }
 .btn-success  { background: var(--state-success-fg); color: #fff; }
 .btn-success:hover { background: #15803d; }
-.btn-secondary { background: #fff; color: #334155; border-color: var(--border-input); }
+.btn-secondary { background: var(--surface-card); color: var(--text-muted); border-color: var(--control-border); }
 .btn-secondary:hover { background: var(--surface-sunken); }
+.btn:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+.btn:active {
+    border-color: var(--control-border-active);
+    background: var(--control-press-bg);
+    transform: translateY(1px);
+}
+.btn-primary:active,
+.btn-success:active {
+    border-color: transparent;
+    filter: brightness(0.96);
+}
+.btn:focus-visible {
+    outline: none;
+    border-color: var(--control-border-active);
+    box-shadow: 0 0 0 3px var(--brand-focus-ring);
+}
 .btn:disabled,
 .btn[aria-disabled="true"] {
     cursor: not-allowed;
@@ -288,7 +312,7 @@ form.inline { margin: 0; }
 .form-stack input { padding: 6px 10px; border: 1px solid var(--border-subtle, #cbd5e1); border-radius: 6px; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .card-header h2 { margin: 0; }
-.btn-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.btn-danger { background: var(--state-danger-bg); color: var(--state-danger-fg); border: 1px solid var(--state-danger-border); padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .btn-danger:hover { background: #fecaca; }
 .transaction-table.compact th, .transaction-table.compact td { padding: 6px 8px; font-size: 13px; }
 .import-batch-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }

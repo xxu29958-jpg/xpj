@@ -22,7 +22,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.displayDateTime
@@ -206,7 +206,7 @@ fun ManualExpenseSheet(
                 Text("消费时间", style = MaterialTheme.typography.titleSmall)
                 Text(displayDateTime(expenseTime), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-                    OutlinedButton(onClick = { showDatePicker = true }) {
+                    AppOutlinedButton(onClick = { showDatePicker = true }) {
                         Text("选日期")
                     }
                     TextButton(onClick = { showTimePicker = true }) {
@@ -222,7 +222,7 @@ fun ManualExpenseSheet(
             Text(it, color = MaterialTheme.colorScheme.secondary)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap)) {
-            OutlinedButton(
+            AppOutlinedButton(
                 modifier = Modifier.weight(1f),
                 onClick = onDismiss,
             ) {

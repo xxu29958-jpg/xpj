@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +26,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppLoadingState
+import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.components.ExpenseImagePreview
 import com.ticketbox.ui.components.StatusPill
@@ -85,7 +85,7 @@ internal fun EditDraftPreviewCard(
                 }
                 if (expense.imagePath != null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
+                        AppOutlinedButton(
                             modifier = Modifier
                                 .weight(0.82f)
                                 .height(40.dp),
@@ -107,7 +107,7 @@ internal fun EditDraftPreviewCard(
                             )
                         }
                         if (!readOnly) {
-                            OutlinedButton(
+                            AppOutlinedButton(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(40.dp),
@@ -191,7 +191,7 @@ internal fun ExpenseDateField(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                OutlinedButton(enabled = enabled, onClick = onPickDate) {
+                AppOutlinedButton(enabled = enabled, onClick = onPickDate) {
                     Text("选日期")
                 }
             }

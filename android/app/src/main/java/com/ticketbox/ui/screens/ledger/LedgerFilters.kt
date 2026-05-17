@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -22,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.screens.SelectableFilterChip
@@ -173,7 +173,7 @@ internal fun LedgerInlineButton(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    OutlinedButton(
+    AppOutlinedButton(
         modifier = modifier.heightIn(min = AppSpacing.controlMinHeight),
         enabled = enabled,
         onClick = onClick,

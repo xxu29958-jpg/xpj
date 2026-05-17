@@ -4,13 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.components.AppOutlinedButton
 
 @Composable
 internal fun ExpenseEditPrimaryActions(
@@ -23,7 +21,7 @@ internal fun ExpenseEditPrimaryActions(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        OutlinedButton(
+        AppOutlinedButton(
             modifier = Modifier.weight(1f),
             enabled = !saving,
             onClick = onBack,
@@ -65,12 +63,10 @@ internal fun ExpenseEditConfirmActions(
             }
         }
         if (allowReject) {
-            OutlinedButton(
+            AppOutlinedButton(
                 modifier = Modifier.weight(if (allowConfirm) 0.72f else 1f),
                 enabled = !saving,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
-                ),
+                danger = true,
                 onClick = onRequestReject,
             ) {
                 Text("删除")

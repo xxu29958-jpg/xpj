@@ -1,12 +1,17 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,6 +22,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -31,6 +38,11 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
+
+private const val ControlBorderIdleAlpha = 0.28f
+private const val ControlBorderPressedAlpha = 0.62f
+private const val ControlContainerIdleAlpha = 0.62f
+private const val ControlContainerPressedAlpha = 0.86f
 
 @Composable
 fun AppPrimaryButton(
@@ -104,18 +116,10 @@ fun QuietOutlinedButton(
     leadingIcon: ImageVector? = null,
     onClick: () -> Unit,
 ) {
-    OutlinedButton(
+    AppOutlinedButton(
         modifier = modifier,
         enabled = enabled,
         onClick = onClick,
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
-        ),
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
-        ),
     ) {
         leadingIcon?.let {
             Icon(it, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -128,6 +132,50 @@ fun QuietOutlinedButton(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+@Composable
+fun AppOutlinedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    danger: Boolean = false,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val visuals = LocalThemeVisuals.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val roleColor = if (danger) MaterialTheme.colorScheme.error else visuals.primary
+    val borderColor by animateColorAsState(
+        targetValue = roleColor.copy(
+            alpha = if (pressed && enabled) ControlBorderPressedAlpha else ControlBorderIdleAlpha,
+        ),
+        label = "appOutlinedButtonBorder",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (pressed && enabled) {
+            visuals.chipSelected.copy(alpha = ControlContainerPressedAlpha)
+        } else {
+            visuals.solidCard.copy(alpha = ControlContainerIdleAlpha)
+        },
+        label = "appOutlinedButtonContainer",
+    )
+    OutlinedButton(
+        modifier = modifier,
+        enabled = enabled,
+        onClick = onClick,
+        interactionSource = interactionSource,
+        contentPadding = contentPadding,
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f),
+            containerColor = containerColor,
+            disabledContainerColor = visuals.solidCard.copy(alpha = 0.38f),
+        ),
+        border = BorderStroke(width = 1.dp, color = borderColor),
+        content = content,
+    )
 }
 
 private fun Color.tonalDarken(multiplier: Float): Color {

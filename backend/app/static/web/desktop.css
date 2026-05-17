@@ -889,7 +889,7 @@
 
 .dt-btn {
     padding: 6px 12px;
-    border: 1px solid var(--border-input);
+    border: 1px solid var(--control-border);
     background: var(--surface-card);
     border-radius: var(--r-sm);
     cursor: pointer;
@@ -900,12 +900,34 @@
     align-items: center;
     gap: 6px;
     text-decoration: none;
+    outline: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+        background-color var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        transform var(--motion-fast) var(--ease-standard),
+        box-shadow var(--motion-fast) var(--ease-standard);
 }
-.dt-btn:hover { border-color: var(--text-meta); color: var(--text-default); }
+.dt-btn:hover { border-color: var(--control-border-hover); color: var(--text-default); }
+.dt-btn:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+.dt-btn:active {
+    border-color: var(--control-border-active);
+    background: var(--control-press-bg);
+    transform: translateY(1px);
+}
+.dt-btn:focus-visible {
+    outline: none;
+    border-color: var(--control-border-active);
+    box-shadow: 0 0 0 3px var(--brand-focus-ring);
+}
 .dt-btn.primary { background: var(--text-default); color: var(--surface-card); border-color: var(--text-default); }
 .dt-btn.primary:hover { background: var(--text-muted); color: var(--surface-card); }
+.dt-btn.primary:active { border-color: var(--text-default); filter: brightness(0.96); }
 .dt-btn.ghost { background: transparent; border-color: transparent; color: var(--text-meta); }
 .dt-btn.ghost:hover { color: var(--text-default); }
+.dt-btn.ghost:active { border-color: transparent; background: var(--control-press-bg); }
 
 /* ───── Expense table ───── */
 .exp-table { border: 1px solid var(--border-card); border-radius: var(--r-md); background: var(--surface-card); overflow: hidden; }
@@ -1166,6 +1188,10 @@
     color: var(--surface-card);
 }
 .bulk-bar .dt-btn:hover { background: rgba(255,255,255,0.16); color: var(--surface-card); border-color: rgba(255,255,255,0.32); }
+.bulk-bar .dt-btn:active {
+    background: rgba(255,255,255,0.20);
+    border-color: var(--brand-primary);
+}
 .bulk-bar .dt-btn.primary { background: var(--brand-primary); color: var(--text-on-primary); border-color: var(--brand-primary); }
 .bulk-bar .dt-btn.primary:hover { background: var(--brand-primary); border-color: var(--brand-primary); filter: brightness(1.1); }
 
@@ -1900,7 +1926,7 @@
 /* legacy .btn family — 对齐 .dt-btn */
 .desktop-shell-active .btn {
     padding: 6px 12px;
-    border: 1px solid var(--border-input);
+    border: 1px solid var(--control-border);
     background: var(--surface-card);
     border-radius: var(--r-sm);
     font-size: 12.5px;
@@ -1909,11 +1935,34 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    outline: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+        background-color var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        transform var(--motion-fast) var(--ease-standard),
+        box-shadow var(--motion-fast) var(--ease-standard);
 }
 .desktop-shell-active .btn:hover {
-    border-color: var(--text-meta);
+    border-color: var(--control-border-hover);
     color: var(--text-default);
     background: var(--surface-card);
+}
+.desktop-shell-active .btn:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+}
+.desktop-shell-active .btn:active {
+    border-color: var(--control-border-active);
+    background: var(--control-press-bg);
+    transform: translateY(1px);
+}
+.desktop-shell-active .btn:focus-visible {
+    outline: none;
+    border-color: var(--control-border-active);
+    box-shadow: 0 0 0 3px var(--brand-focus-ring);
 }
 .desktop-shell-active .btn-primary {
     background: var(--text-default);
@@ -1925,10 +1974,14 @@
     color: var(--surface-card);
     border-color: var(--text-muted);
 }
+.desktop-shell-active .btn-primary:active {
+    border-color: var(--text-default);
+    filter: brightness(0.96);
+}
 .desktop-shell-active .btn-secondary {
     background: var(--surface-card);
     color: var(--text-muted);
-    border-color: var(--border-input);
+    border-color: var(--control-border);
 }
 .desktop-shell-active .btn-secondary:hover {
     background: var(--surface-sunken);
@@ -1957,6 +2010,10 @@
     padding: 6px 8px;
 }
 .desktop-shell-active .btn-link:hover { text-decoration: underline; }
+.desktop-shell-active button,
+.desktop-shell-active a {
+    -webkit-tap-highlight-color: transparent;
+}
 
 /* legacy .status-chip — 对齐 .dt-pill */
 .desktop-shell-active .status-chip {
@@ -2403,6 +2460,11 @@
     outline: 2px solid var(--brand-focus-ring);
     outline-offset: 2px;
     border-radius: 2px;
+}
+.desktop-shell-active .dt-btn:focus-visible,
+.desktop-shell-active .btn:focus-visible,
+.desktop-shell-active button:focus-visible {
+    outline: none;
 }
 /* 表单控件已用 border-color 反馈焦点，避免再叠一圈 outline */
 .dt-input:focus-visible,

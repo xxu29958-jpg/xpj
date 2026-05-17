@@ -46,6 +46,10 @@
     /* Borders / radii / shadows */
     --border-card: #e3e0d6;
     --border-input: #c8c2b3;
+    --control-border: rgba(138, 90, 43, 0.26);
+    --control-border-hover: rgba(138, 90, 43, 0.44);
+    --control-border-active: rgba(138, 90, 43, 0.62);
+    --control-press-bg: rgba(138, 90, 43, 0.10);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
@@ -129,6 +133,10 @@
 
     --border-card: #dad9d4;
     --border-input: #b8b7b3;
+    --control-border: rgba(14, 14, 12, 0.24);
+    --control-border-hover: rgba(14, 14, 12, 0.42);
+    --control-border-active: rgba(14, 14, 12, 0.62);
+    --control-press-bg: rgba(14, 14, 12, 0.08);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;
@@ -209,6 +217,10 @@
 
     --border-card: #262932;
     --border-input: #3a3e48;
+    --control-border: rgba(214, 180, 135, 0.28);
+    --control-border-hover: rgba(214, 180, 135, 0.46);
+    --control-border-active: rgba(214, 180, 135, 0.68);
+    --control-press-bg: rgba(214, 180, 135, 0.12);
     --radius-card: 10px;
     --radius-input: 6px;
     --radius-pill: 999px;

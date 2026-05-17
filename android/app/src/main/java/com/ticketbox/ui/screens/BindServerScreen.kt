@@ -15,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppSolidCard
 import com.ticketbox.ui.design.AppSpacing
 
@@ -94,7 +94,7 @@ fun BindServerScreen(
                     ) {
                         Text(if (loading) "正在绑定" else "绑定账本")
                     }
-                    OutlinedButton(
+                    AppOutlinedButton(
                         enabled = false,
                         modifier = Modifier.weight(1f),
                         onClick = {},
