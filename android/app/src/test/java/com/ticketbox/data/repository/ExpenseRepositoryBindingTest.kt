@@ -533,6 +533,37 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
+    fun fetchExpenseUsesDetailEndpointAndCachesConfirmedRows() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "Account",
+                ledgerId = "owner",
+                ledgerName = "Family Ledger",
+                deviceName = "Pixel",
+                role = "member",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val expense = repository.fetchExpense(9).getOrThrow()
+
+        assertEquals(9L, expense.id)
+        assertEquals("confirmed", expense.status)
+        assertEquals(listOf(9L), apiService.expenseFetchIds)
+        assertEquals(9L, dao.getConfirmed("owner").single().serverId)
+    }
+
+    @Test
     fun viewerCannotReplaceExpenseItemsOrSplitsLocally() = runTest {
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
@@ -602,6 +633,7 @@ private class FakeApiService(
     val splitFetchIds = mutableListOf<Long>()
     val splitReplaceIds = mutableListOf<Long>()
     val splitReplaceRequests = mutableListOf<ExpenseSplitReplaceRequestDto>()
+    val expenseFetchIds = mutableListOf<Long>()
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
         return PairResponseDto(
@@ -683,6 +715,11 @@ private class FakeApiService(
     }
 
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = unsupported()
+
+    override suspend fun expense(id: Long): ExpenseDto {
+        expenseFetchIds += id
+        return confirmedExpenseDto()
+    }
 
     override suspend fun updateExpense(id: Long, request: ExpenseUpdateRequest): ExpenseDto = unsupported()
 

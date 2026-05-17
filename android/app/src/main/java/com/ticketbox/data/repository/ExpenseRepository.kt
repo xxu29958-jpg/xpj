@@ -323,6 +323,10 @@ class ExpenseRepository(
         api().pendingExpenses().map { it.toDomain() }
     }
 
+    suspend fun fetchExpense(id: Long): Result<Expense> = errorHandler.safeCall {
+        cacheIfConfirmed(api().expense(id)).toDomain()
+    }
+
     override suspend fun uploadScreenshot(
         fileName: String,
         contentType: String?,

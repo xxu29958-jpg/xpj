@@ -1,9 +1,13 @@
 package com.ticketbox.ui.navigation
 
 import android.annotation.SuppressLint
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,9 +16,13 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +42,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
@@ -43,12 +57,17 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CsvExport
-import com.ticketbox.domain.model.Expense
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.components.AppBottomNav
 import com.ticketbox.ui.components.AppBottomNavItem
+import com.ticketbox.ui.components.AppEmptyStateCard
+import com.ticketbox.ui.components.AppLoadingState
+import com.ticketbox.ui.components.AppPageHeader
+import com.ticketbox.ui.components.AppPageRole
+import com.ticketbox.ui.components.AppPageScrollableColumn
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.ExpenseEditScreen
@@ -63,6 +82,7 @@ import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.AppUiState
 import com.ticketbox.viewmodel.AppViewModel
 import com.ticketbox.viewmodel.BudgetViewModel
+import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.LedgerViewModel
 import com.ticketbox.viewmodel.PendingViewModel
@@ -103,6 +123,12 @@ private enum class StatsSecondaryPage {
     Budget,
     Recurring,
 }
+
+private const val MAIN_ROUTE = "main"
+private const val EXPENSE_ID_ARG = "expenseId"
+private const val EXPENSE_ROUTE = "expense/{$EXPENSE_ID_ARG}"
+
+private fun expenseRoute(expenseId: Long): String = "expense/$expenseId"
 
 @Composable
 fun TicketboxApp(
@@ -238,9 +264,11 @@ private fun MainShell(
 ) {
     var selectedTab by remember { mutableStateOf(BottomTab.Pending) }
     var statsSecondaryPage by remember { mutableStateOf<StatsSecondaryPage?>(null) }
-    var editingExpense by remember { mutableStateOf<Expense?>(null) }
     var dashboardCardsRevision by remember { mutableStateOf(0) }
     var expenseEditCompletionRevision by remember { mutableStateOf(0) }
+    val navController = rememberNavController()
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
     val repositoryFactory = repositoryViewModelFactory(
         repository = repository,
         recurringRepository = recurringRepository,
@@ -248,7 +276,7 @@ private fun MainShell(
         reportsRepository = reportsRepository,
     )
     val currentRole = when {
-        editingExpense != null -> SurfaceRole.Edit
+        currentRoute == EXPENSE_ROUTE -> SurfaceRole.Edit
         statsSecondaryPage != null -> SurfaceRole.Stats
         else -> selectedTab.surfaceRole
     }
@@ -265,52 +293,31 @@ private fun MainShell(
         currentSkin = currentSkin,
         surfaceRole = currentRole,
     ) {
-        editingExpense?.let { expense ->
-            val editViewModel: ExpenseEditViewModel = viewModel(
-                key = "expense-edit-${expense.id}",
-                factory = expenseEditViewModelFactory(expense.id, repository),
-            )
-            val editState by editViewModel.uiState.collectAsStateWithLifecycle()
-            ExpenseEditScreen(
-                expense = expense,
-                state = editState,
-                onSave = editViewModel::save,
-                onConfirm = editViewModel::confirm,
-                onReject = editViewModel::reject,
-                onRetryOcr = editViewModel::retryOcr,
-                onLoadFullImage = editViewModel::loadFullImage,
-                onKeepDuplicate = editViewModel::markNotDuplicate,
-                onDone = {
-                    if (editViewModel.consumeDone()) {
-                        expenseEditCompletionRevision += 1
-                    }
-                    editingExpense = null
-                },
-                allowConfirm = expense.status == "pending",
-                allowReject = expense.status == "pending",
-            )
-            return@ImmersiveBackgroundScaffold
-        }
-
-        Scaffold(
-            containerColor = Color.Transparent,
-            contentWindowInsets = WindowInsets(0.dp),
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            bottomBar = {
-                if (statsSecondaryPage == null) {
-                    AppBottomNav(
-                        items = BottomTab.entries.map { it.toBottomNavItem() },
-                        selectedKey = selectedTab.key,
-                        onSelect = { item ->
-                            BottomTab.entries.firstOrNull { it.key == item.key }?.let { selectedTab = it }
-                        },
-                    )
-                }
-            },
-        ) { _ ->
-            Box(
-                modifier = Modifier.fillMaxSize(),
-            ) {
+        NavHost(
+            navController = navController,
+            startDestination = MAIN_ROUTE,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            composable(MAIN_ROUTE) {
+                Scaffold(
+                    containerColor = Color.Transparent,
+                    contentWindowInsets = WindowInsets(0.dp),
+                    snackbarHost = { SnackbarHost(snackbarHostState) },
+                    bottomBar = {
+                        if (statsSecondaryPage == null) {
+                            AppBottomNav(
+                                items = BottomTab.entries.map { it.toBottomNavItem() },
+                                selectedKey = selectedTab.key,
+                                onSelect = { item ->
+                                    BottomTab.entries.firstOrNull { it.key == item.key }?.let { selectedTab = it }
+                                },
+                            )
+                        }
+                    },
+                ) { _ ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
                 val activeStatsSecondaryPage = statsSecondaryPage
                 if (activeStatsSecondaryPage != null) {
                     when (activeStatsSecondaryPage) {
@@ -392,7 +399,11 @@ private fun MainShell(
                     PendingScreen(
                         state = state,
                         onRefresh = pendingViewModel::refresh,
-                        onEdit = { editingExpense = it },
+                        onEdit = {
+                            navController.navigate(expenseRoute(it.id)) {
+                                launchSingleTop = true
+                            }
+                        },
                         onConfirm = pendingViewModel::confirm,
                         onReject = pendingViewModel::reject,
                         onKeepDuplicate = pendingViewModel::markNotDuplicate,
@@ -461,7 +472,11 @@ private fun MainShell(
                         onExportCsv = ledgerViewModel::exportCsv,
                         onManualCreate = ledgerViewModel::createManualExpense,
                         onViewModeChange = ledgerViewModel::setViewMode,
-                        onEdit = { editingExpense = it },
+                        onEdit = {
+                            navController.navigate(expenseRoute(it.id)) {
+                                launchSingleTop = true
+                            }
+                        },
                     )
                 }
                 BottomTab.Stats -> {
@@ -525,7 +540,123 @@ private fun MainShell(
             }
         }
     }
+            }
+            composable(
+                route = EXPENSE_ROUTE,
+                arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }),
+            ) { backStackEntry ->
+                val expenseId = backStackEntry.arguments?.getLong(EXPENSE_ID_ARG) ?: return@composable
+                ExpenseEditRoute(
+                    expenseId = expenseId,
+                    repository = repository,
+                    onBack = { navController.popBackStack() },
+                    onCompleted = {
+                        expenseEditCompletionRevision += 1
+                        navController.popBackStack()
+                    },
+                )
+            }
+        }
+    }
 }
+
+@Composable
+private fun ExpenseEditRoute(
+    expenseId: Long,
+    repository: ExpenseRepository,
+    onBack: () -> Unit,
+    onCompleted: () -> Unit,
+) {
+    val editViewModel: ExpenseEditViewModel = viewModel(
+        key = "expense-edit-$expenseId",
+        factory = expenseEditViewModelFactory(expenseId, repository),
+    )
+    val editState by editViewModel.uiState.collectAsStateWithLifecycle()
+    val expense = editState.expense
+
+    if (expense == null) {
+        ExpenseEditLoadingRoute(
+            state = editState,
+            onBack = onBack,
+            onRetry = editViewModel::retryLoadExpense,
+        )
+        return
+    }
+
+    ExpenseEditScreen(
+        expense = expense,
+        state = editState,
+        onSave = editViewModel::save,
+        onConfirm = editViewModel::confirm,
+        onReject = editViewModel::reject,
+        onRetryOcr = editViewModel::retryOcr,
+        onLoadFullImage = editViewModel::loadFullImage,
+        onKeepDuplicate = editViewModel::markNotDuplicate,
+        onDone = {
+            if (editViewModel.consumeDone()) {
+                onCompleted()
+            } else {
+                onBack()
+            }
+        },
+        allowConfirm = expense.status == "pending",
+        allowReject = expense.status == "pending",
+    )
+}
+
+@Composable
+private fun ExpenseEditLoadingRoute(
+    state: ExpenseEditUiState,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    AppPageScrollableColumn(
+        role = AppPageRole.Edit,
+        hasBottomBar = false,
+        includeStatusBarPadding = true,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+    ) {
+        AppPageHeader(
+            title = "打开账单",
+            subtitle = "正在读取最新账单内容。",
+            eyebrow = "",
+        )
+
+        if (state.expenseLoading) {
+            AppLoadingState(
+                title = "账单加载中",
+                body = "正在同步金额、分类和截图信息。",
+            )
+        } else {
+            AppEmptyStateCard {
+                Column(
+                    modifier = Modifier.padding(AppSpacing.cardPaddingSmall),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+                ) {
+                    Text(
+                        text = "没有打开这张账单",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = state.message ?: "账单可能已经被删除，或当前设备暂时连接不上账本。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onRetry,
+                    ) {
+                        Text("重新加载")
+                    }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onBack,
+                    ) {
+                        Text("返回")
+                    }
+                }
+            }
+        }
+    }
 }
 
 private val BottomTab.surfaceRole: SurfaceRole
