@@ -1,10 +1,10 @@
 # 后端开发规则
 
-v0.3 后端必须遵守 `docs/ACCOUNT_SYSTEM.md`、`docs/API.md` 和 `docs/SECURITY.md`。所有账单、图片、统计、分类规则、重复检测、CSV 导出和 App 上传接口必须按 `ledger_id` 隔离；数据库字段名暂保留 `tenant_id` 时，其语义也必须是 `ledger_id`。不得用前端过滤代替后端隔离。
+v0.3 后端必须遵守 `docs/architecture/ACCOUNT_SYSTEM.md`、`docs/architecture/API.md` 和 `docs/architecture/SECURITY.md`。所有账单、图片、统计、分类规则、重复检测、CSV 导出和 App 上传接口必须按 `ledger_id` 隔离；数据库字段名暂保留 `tenant_id` 时，其语义也必须是 `ledger_id`。不得用前端过滤代替后端隔离。
 
 ## 分层
 
-后端采用 `routes -> services -> database/models` 三层架构。各层职责、禁止项和 schemas 规则详见 `docs/ENGINEERING_RULES.md` §3（后端分层）。
+后端采用 `routes -> services -> database/models` 三层架构。各层职责、禁止项和 schemas 规则详见 `docs/rules/ENGINEERING_RULES.md` §3（后端分层）。
 
 ## 查询性能
 
@@ -44,13 +44,3 @@ cd /d E:\projects\xiaopiaojia\backend
 .venv\Scripts\python.exe scripts\smoke_test.py
 ```
 
-## Windows 脚本编码
-
-`backend/scripts/*.ps1` 必须能被 Windows PowerShell 5.1 直接执行。
-
-规则：
-
-- 使用 UTF-8 with BOM 保存包含中文输出的 `.ps1`。
-- `.bat` 入口使用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ...`。
-- 不要求用户安装 PowerShell 7、WSL 或容器。
-- 修改脚本后必须实际运行一次，不只做静态语法检查。

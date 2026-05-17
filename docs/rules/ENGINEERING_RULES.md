@@ -4,7 +4,7 @@
 
 小票夹以稳定闭环为最高优先级。
 
-当前开发基准以 `docs/ARCHITECTURE.md` 为总入口，并以 `docs/ACCOUNT_SYSTEM.md`、`docs/API.md`、`docs/SECURITY.md`、`docs/ANDROID_RULES.md`、`docs/BACKEND_RULES.md` 和 `docs/GRAY_ACCEPTANCE_EXECUTION.md` 作为验收边界。后续实现不得跳过这些文档中的身份、账本隔离、Android 上传、UI 去开发味、release 包、诊断分层和验收要求。
+当前开发基准以 `docs/architecture/ARCHITECTURE.md` 为总入口，并以 `docs/architecture/ACCOUNT_SYSTEM.md`、`docs/architecture/API.md`、`docs/architecture/SECURITY.md`、`docs/rules/ANDROID_RULES.md`、`docs/rules/BACKEND_RULES.md` 和 `docs/runbook/GRAY_ACCEPTANCE_EXECUTION.md` 作为验收边界。后续实现不得跳过这些文档中的身份、账本隔离、Android 上传、UI 去开发味、release 包、诊断分层和验收要求。
 
 优先级：
 
@@ -17,14 +17,6 @@
 7. 扩展能力。
 
 当前不追求复杂架构，不引入不必要的大型框架。
-
-## 2. 阶段约束
-
-默认先按用户当前明确阶段推进。
-
-如果用户只要求后端，只实现 `backend/`。
-
-如果用户明确要求完整软件、Android App、全部版本或端到端闭环，可以进入 `backend/`、`android/` 和 `docs/`。进入 Android 前仍需遵守本文档的 Android 分层规则。
 
 ## 3. 后端分层规范
 
@@ -167,7 +159,7 @@ OCR 强制边界：
 - 禁止为了赶进度写强耦合、弱抽象、难测试的代码。
 - 禁止 UI 层、route 层、数据库层互相穿透。
 - 关键技术决策必须写进 `docs/DECISIONS/`。
-- 新增依赖必须先查 `docs/REFERENCES.md` 所列官方文档或 Maven/包管理元数据。
+- 新增依赖必须先查 `docs/rules/REFERENCES.md` 所列官方文档或 Maven/包管理元数据。
 - 新增 API 或依赖不是机械禁止项；只有在收益、维护成本、离线部署、安全边界和验证矩阵都说得通时才进入主线。
 - 普通用户主体验不得暴露服务器域名、token、接口名、Cloudflare、端口、日志、计划任务或诊断脚本。
 - 账本隔离不得用前端过滤代替后端 `ledger_id` 语义隔离。
@@ -405,14 +397,14 @@ Windows PowerShell 5.1 对无 BOM 的 UTF-8 脚本可能按 ANSI 解析。
 
 ```powershell
 Get-Content -Raw -Encoding UTF8 README.md
-Get-Content -Raw -Encoding UTF8 docs\ENGINEERING_RULES.md
+Get-Content -Raw -Encoding UTF8 docs\rules\ENGINEERING_RULES.md
 ```
 
 禁止：
 
 ```powershell
 Get-Content -Raw README.md
-Get-Content -Raw docs\ENGINEERING_RULES.md
+Get-Content -Raw docs\rules\ENGINEERING_RULES.md
 ```
 
 原因是 Windows PowerShell 5.1 在无 BOM 文件上可能按系统 ANSI 代码页读取，中文会显示为常见 UTF-8/ANSI 误读乱码。文件本身可以是 UTF-8，但读取命令必须显式声明编码。
@@ -724,36 +716,6 @@ powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1
 - 真机联调仍然不能把后端监听地址改成 `0.0.0.0`。
 - Cloudflare Tunnel 只映射到 `http://127.0.0.1:8000`。
 
-## 18. Git 提交规范
-
-推荐提交粒度：
-
-```text
-init backend skeleton
-implement auth and errors
-implement upload screenshot
-implement pending expenses
-implement confirm reject
-implement protected image endpoint
-implement confirmed pagination
-implement monthly stats
-init android skeleton
-implement server binding
-implement biometric unlock
-implement pending screen
-implement edit screen
-implement room cache
-implement settings screen
-```
-
-禁止：
-
-```text
-一个 commit 混合大改后端、Android、文档、UI
-一个 commit 同时做多个无关功能
-测试没跑就提交
-```
-
 ## 19. 后端验收清单
 
 每次后端阶段完成必须能测试：
@@ -817,67 +779,3 @@ Token 错误显示中文错误
 .\gradlew.bat --no-daemon :app:lintGrayDebug
 ```
 
-## 21. 文档规范
-
-docs 目录建议：
-
-```text
-docs/
-  ARCHITECTURE.md
-  PROJECT_STRUCTURE.md
-  API.md
-  SECURITY.md
-  ENGINEERING_RULES.md
-  BACKEND_RULES.md
-  ANDROID_RULES.md
-  V2_ROADMAP.md
-  DECISIONS/
-    0001-money-uses-cents.md
-    0002-expense-time-vs-created-at.md
-    0003-uploads-not-public.md
-    0004-room-serverid-upsert.md
-```
-
-关键决策必须写入 `docs/DECISIONS/`。
-
-## 22. 扩展性原则
-
-小票夹采用：
-
-```text
-接口化，不平台化
-可替换，不动态加载
-边界清楚，不复杂分层
-```
-
-当前已经有可替换 provider 和 service 边界；继续扩展时保持接口化，不引入动态插件平台：
-
-```text
-OCR
-自动分类
-重复检测
-缩略图
-图片清理
-生活化统计
-Web 管理端
-```
-
-后续扩展不应破坏当前核心闭环。
-
-## 23. 不允许回退的决定
-
-后续开发不得改回：
-
-```text
-amount: float
-amount: Double?
-公开 uploads
-用 /api/health 验证 Token
-API 返回 Windows 真实路径
-Android 直接访问 uploads
-UI 直接调 Retrofit
-UI 直接调 Room
-Android 自己生成 confirmed_at
-confirmed 同步重复插入
-错误格式不统一
-```

@@ -21,8 +21,8 @@ class SchemaMigration(Base):
     ``CREATE INDEX IF NOT EXISTS``), so this table is **purely informational**
     today — it does not gate execution. It exists so that future incremental
     migration scripts can record a stable identifier (e.g. ``"v0.9-add-foo"``)
-    and be skipped on subsequent boots. See ``docs/V2_ROADMAP.md`` and the
-    audit notes in ``docs/VERSION.md``.
+    and be skipped on subsequent boots. See ``docs/roadmap/V2_ROADMAP.md`` and the
+    audit notes in ``docs/architecture/VERSION.md``.
     """
 
     __tablename__ = "schema_migrations"

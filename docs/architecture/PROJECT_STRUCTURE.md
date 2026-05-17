@@ -202,34 +202,55 @@ android\
 
 ## docs
 
+文档按读者意图分到子目录。完整导览见 [docs/README.md](../README.md)。
+
 ```text
 docs\
-  API.md
-  ARCHITECTURE.md
-  ANDROID_RULES.md
-  BACKEND_RULES.md
-  CI.md
-  CLOUDFLARE_TUNNEL.md
-  DATA_RETENTION.md
-  ENGINEERING_RULES.md
-  ACCOUNT_SYSTEM.md
-  BOOTSTRAP.md
-  ANDROID_STATE_FLOW.md
-  ANDROID_APPEARANCE_BACKGROUND.md
-  ANDROID_UPLOAD.md
-  RELEASE_PACKAGING.md
-  GRAY_ACCEPTANCE_EXECUTION.md
-  CHANGELOG.md
-  MONARCH_CAPABILITY_ROADMAP.md
-  POST_BETA_DEVELOPMENT_ROADMAP.md
-  IOS_SHORTCUT.md
-  REAL_DEVICE_RUNBOOK.md
-  WINDOWS_SERVICE_RUNBOOK.md
-  SECURITY.md
-  V2_ROADMAP.md
-  PROJECT_STRUCTURE.md
-  REFERENCES.md
-  DECISIONS\
+  README.md                  # 文档导览（入口）
+  rules\                     # 开发规范（必读）
+    ENGINEERING_RULES.md
+    BACKEND_RULES.md
+    ANDROID_RULES.md
+    DEPENDENCIES.md
+    REFERENCES.md
+    ERROR_MESSAGE_MAPPING.md
+  architecture\              # 系统契约与架构
+    ARCHITECTURE.md
+    PROJECT_STRUCTURE.md
+    ACCOUNT_SYSTEM.md
+    API.md
+    SECURITY.md
+    VERSION.md
+    DATA_RETENTION.md
+    ANDROID_STATE_FLOW.md
+    ANDROID_UPLOAD.md
+    ANDROID_APPEARANCE_BACKGROUND.md
+  runbook\                   # 部署与运维
+    BOOTSTRAP.md
+    CI.md
+    CLOUDFLARE_TUNNEL.md
+    WINDOWS_SERVICE_RUNBOOK.md
+    WINDOWS_BACKUP_TASK.md
+    REAL_DEVICE_RUNBOOK.md
+    RELEASE_PACKAGING.md
+    GRAY_ACCEPTANCE_EXECUTION.md
+    ROLLBACK.md
+    IOS_SHORTCUT.md
+  roadmap\                   # 产品规划与设计
+    POST_BETA_DEVELOPMENT_ROADMAP.md
+    MONARCH_CAPABILITY_ROADMAP.md
+    MONARCH_INSPIRED_UI.md
+    TRI_SURFACE_INFORMATION_ARCHITECTURE.md
+    V2_ROADMAP.md
+    UI_IMPLEMENTATION_PLAN.md
+    UI_SCREENSHOT_ACCEPTANCE.md
+  current\                   # 当前版本（v0.9）资产
+    CHANGELOG.md
+    V0_9_REPORT.md
+    V0_9_DESIGN_FUNCTION_TABLE.md
+    V0_9_DESIGN_TOKEN_REFERENCE.md
+  DECISIONS\                 # ADR（编号 0001-0027，0018 撤回）
+  design_reference\          # 设计稿真值（图片与说明）
 ```
 
 ## 当前初始化范围

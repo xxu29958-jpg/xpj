@@ -20,54 +20,62 @@ iPhone UploadLink 或 Android 上传截图
 
 ## 文档
 
+文档按读者意图分组放在 docs/ 子目录下；完整索引见 [docs/README.md](docs/README.md)。这里只列常用入口。
+
 ### 核心架构
 
-- [完整架构](docs/ARCHITECTURE.md)
-- [项目结构](docs/PROJECT_STRUCTURE.md)
-- [账号 / 账本 / 设备模型](docs/ACCOUNT_SYSTEM.md)
-- [API 文档](docs/API.md)
-- [安全说明](docs/SECURITY.md)
-- [版本真值源](docs/VERSION.md)
+- [完整架构](docs/architecture/ARCHITECTURE.md)
+- [项目结构](docs/architecture/PROJECT_STRUCTURE.md)
+- [账号 / 账本 / 设备模型](docs/architecture/ACCOUNT_SYSTEM.md)
+- [API 文档](docs/architecture/API.md)
+- [安全说明](docs/architecture/SECURITY.md)
+- [版本真值源](docs/architecture/VERSION.md)
+- [数据保留与清理](docs/architecture/DATA_RETENTION.md)
+- [Android 状态流](docs/architecture/ANDROID_STATE_FLOW.md)
+- [Android 上传规格](docs/architecture/ANDROID_UPLOAD.md)
+- [Android 外观 / 背景 / 沉浸模式](docs/architecture/ANDROID_APPEARANCE_BACKGROUND.md)
 
 ### 开发规范
 
-- [工程规范](docs/ENGINEERING_RULES.md)（单一权威来源）
-- [后端开发规则](docs/BACKEND_RULES.md)（后端补充）
-- [Android 开发规则](docs/ANDROID_RULES.md)（Android 补充）
+- [工程规范](docs/rules/ENGINEERING_RULES.md)（单一权威来源）
+- [后端开发规则](docs/rules/BACKEND_RULES.md)（后端补充）
+- [Android 开发规则](docs/rules/ANDROID_RULES.md)（Android 补充）
 - [关键决策](docs/DECISIONS/)
-- [官方资料与依赖来源](docs/REFERENCES.md)
-- [依赖管理](docs/DEPENDENCIES.md)
-- [错误码文案映射](docs/ERROR_MESSAGE_MAPPING.md)
+- [官方资料与依赖来源](docs/rules/REFERENCES.md)
+- [依赖管理](docs/rules/DEPENDENCIES.md)
+- [错误码文案映射](docs/rules/ERROR_MESSAGE_MAPPING.md)
 
 ### 部署与运维
 
-- [Bootstrap Owner](docs/BOOTSTRAP.md)
-- [Cloudflare Tunnel 配置](docs/CLOUDFLARE_TUNNEL.md)
-- [Windows 长期运行 Runbook](docs/WINDOWS_SERVICE_RUNBOOK.md)
-- [Windows 备份任务](docs/WINDOWS_BACKUP_TASK.md)
-- [实机联调 Runbook](docs/REAL_DEVICE_RUNBOOK.md)
-- [Release 打包](docs/RELEASE_PACKAGING.md)
-- [CI 说明](docs/CI.md)
-- [灰度验收执行清单](docs/GRAY_ACCEPTANCE_EXECUTION.md)
-- [回滚说明](docs/ROLLBACK.md)
-- [iPhone 快捷指令](docs/IOS_SHORTCUT.md)
+- [Bootstrap Owner](docs/runbook/BOOTSTRAP.md)
+- [Cloudflare Tunnel 配置](docs/runbook/CLOUDFLARE_TUNNEL.md)
+- [Windows 长期运行 Runbook](docs/runbook/WINDOWS_SERVICE_RUNBOOK.md)
+- [Windows 备份任务](docs/runbook/WINDOWS_BACKUP_TASK.md)
+- [实机联调 Runbook](docs/runbook/REAL_DEVICE_RUNBOOK.md)
+- [Release 打包](docs/runbook/RELEASE_PACKAGING.md)
+- [CI 说明](docs/runbook/CI.md)
+- [灰度验收执行清单](docs/runbook/GRAY_ACCEPTANCE_EXECUTION.md)
+- [版本回滚 Runbook](docs/runbook/ROLLBACK.md)
+- [iPhone 快捷指令](docs/runbook/IOS_SHORTCUT.md)
 
 ### 产品规划
 
-- [v0.5→v1.0 工程主控路线图](docs/POST_BETA_DEVELOPMENT_ROADMAP.md)
-- [能力路线图（Monarch 参照）](docs/MONARCH_CAPABILITY_ROADMAP.md)
-- [Monarch 设计参考边界](docs/MONARCH_INSPIRED_UI.md)
-- [三端信息架构](docs/TRI_SURFACE_INFORMATION_ARCHITECTURE.md)
-- [v0.9 设计包功能表](docs/V0_9_DESIGN_FUNCTION_TABLE.md)
-- [v0.9 设计 Token 参考](docs/V0_9_DESIGN_TOKEN_REFERENCE.md)
-- [第二版能力说明](docs/V2_ROADMAP.md)
-- [v0.5 Household 权限模型](docs/V0_5_HOUSEHOLD_MODEL.md)
+- [v0.5→v1.0 工程主控路线图](docs/roadmap/POST_BETA_DEVELOPMENT_ROADMAP.md)
+- [能力路线图（Monarch 参照）](docs/roadmap/MONARCH_CAPABILITY_ROADMAP.md)
+- [Monarch 设计参考边界](docs/roadmap/MONARCH_INSPIRED_UI.md)
+- [三端信息架构](docs/roadmap/TRI_SURFACE_INFORMATION_ARCHITECTURE.md)
+- [v0.9 设计包功能表](docs/current/V0_9_DESIGN_FUNCTION_TABLE.md)
+- [v0.9 设计 Token 参考](docs/current/V0_9_DESIGN_TOKEN_REFERENCE.md)
+- [第二版能力说明](docs/roadmap/V2_ROADMAP.md)
 
 ### 当前版本
 
-- [v0.9 Reports / Goals 收口报告](docs/V0_9_REPORT.md)
-- [v0.8 Budget 收口报告](docs/V0_8_BUDGET_REPORT.md)
-- [CHANGELOG](docs/CHANGELOG.md)
+- [v0.9 Reports / Goals 收口报告](docs/current/V0_9_REPORT.md)
+- [CHANGELOG](docs/current/CHANGELOG.md)
+
+### 设计参考
+
+- [设计稿与主题缩略图](docs/design_reference/)（设计稿真值，新主题真值见 [V0_9_DESIGN_TOKEN_REFERENCE.md](docs/current/V0_9_DESIGN_TOKEN_REFERENCE.md)）
 
 ## 项目组成
 
@@ -182,7 +190,7 @@ v0.3 推荐 iOS UploadLink，不再手填 `Upload-Token`：
 https://api.我的域名.com/u/<upload_key>?tz=Asia/Shanghai
 ```
 
-快捷指令只需要分享图像、可选转换图像、获取 URL 内容、方法 POST、请求正文为文件。详见 [iPhone 快捷指令](docs/IOS_SHORTCUT.md)。
+快捷指令只需要分享图像、可选转换图像、获取 URL 内容、方法 POST、请求正文为文件。详见 [iPhone 快捷指令](docs/runbook/IOS_SHORTCUT.md)。
 
 ## 验证命令
 

@@ -38,7 +38,7 @@ class ApiClient(context: Context? = null) : ApiServiceFactory {
             level = HttpLoggingInterceptor.Level.BASIC
             // Never let bearer tokens or session cookies appear in logcat,
             // even when SHOW_ADVANCED_TOOLS unlocks the logging interceptor
-            // for debug builds. See docs/SECURITY.md.
+            // for debug builds. See docs/architecture/SECURITY.md.
             redactHeader("Authorization")
             redactHeader("Cookie")
             redactHeader("Set-Cookie")

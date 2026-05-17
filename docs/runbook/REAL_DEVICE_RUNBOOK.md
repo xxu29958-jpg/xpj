@@ -59,7 +59,7 @@ api.你的域名.com -> http://127.0.0.1:8000
 详细配置见：
 
 ```text
-docs\CLOUDFLARE_TUNNEL.md
+docs\runbook\CLOUDFLARE_TUNNEL.md
 ```
 
 安全边界：

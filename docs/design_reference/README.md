@@ -7,18 +7,23 @@ direction without depending on local artifact paths.
 
 ## Source Packs
 
-Local source archives:
+Two local design archives drive the UI acceptance baseline. They are large and
+contain unreleased art; **do not commit the original zips or full-size renders**.
 
-- `C:\Users\Xy172\Downloads\ticketbox_ui_redesign_pack.zip`
-- `C:\Users\Xy172\Downloads\ticketbox_theme_ux_pack.zip`
+- `ticketbox_ui_redesign_pack.zip` — page redesigns (Pending, Edit, Ledger, Stats, Settings)
+- `ticketbox_theme_ux_pack.zip` — theme proposals + UX interaction reference
 
-Working extraction path used by Codex:
+Keep the zips outside the repo (downloads folder or similar). After extraction,
+put the working copy under:
 
 - `artifacts/design_packs/ui_redesign/`
 - `artifacts/design_packs/theme_ux/`
 
-Do not commit the original zip files or full-size screenshots unless explicitly
-requested. Use `artifacts/` for large local screenshots and validation captures.
+`artifacts/` is gitignored — use it for large local screenshots and validation captures.
+
+> **主题命名说明**：本目录的"松雾 / 柚光 / 港湾 / 莓果 / 夜幕"是设计稿原始命名，
+> 仅作为视觉灵感参考。**v0.9 起的真值主题为 paper / mono / midnight**，详见
+> [../current/V0_9_DESIGN_TOKEN_REFERENCE.md](../current/V0_9_DESIGN_TOKEN_REFERENCE.md)。
 
 ## Page Mapping
 

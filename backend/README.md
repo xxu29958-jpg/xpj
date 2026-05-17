@@ -155,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall_startup_task.ps1
 Get-ScheduledTask -TaskName TicketboxBackend
 ```
 
-长期运行、睡眠设置和外网诊断见 [Windows 长期运行 Runbook](../docs/WINDOWS_SERVICE_RUNBOOK.md)。
+长期运行、睡眠设置和外网诊断见 [Windows 长期运行 Runbook](../docs/runbook/WINDOWS_SERVICE_RUNBOOK.md)。
 
 ## 数据库备份
 

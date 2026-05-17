@@ -1,13 +1,13 @@
 # 小票夹 vs Monarch 能力路线图
 
 > **定位**：本文是产品能力规划（以 Monarch 为参照），用于理解"做什么"和"不做什么"。
-> 工程排期和验收闸门见 `docs/POST_BETA_DEVELOPMENT_ROADMAP.md`。
+> 工程排期和验收闸门见 `docs/roadmap/POST_BETA_DEVELOPMENT_ROADMAP.md`。
 
 版本范围：`v0.4-alpha3-rc1 -> v1.0`
 
 本文记录小票夹从 `v0.4-alpha3-rc1` 到 `v1.0` 的结构化能力规划。Monarch Money 只作为成熟个人财务产品的信息架构参考，不复制其银行聚合、投资净资产、品牌视觉、专有文案或家庭共享权限模型。
 
-基于当前 `main` 代码基线继续排期时，以 `docs/POST_BETA_DEVELOPMENT_ROADMAP.md` 作为后续开发顺序、先修风险和验收闸门。
+基于当前 `main` 代码基线继续排期时，以 `docs/roadmap/POST_BETA_DEVELOPMENT_ROADMAP.md` 作为后续开发顺序、先修风险和验收闸门。
 
 ## 1. 设计原则
 
@@ -18,7 +18,7 @@
 - 图表库受控引入：`v0.4-alpha3 GA` 到 `v0.7` 不引入图表库；`v0.8` 可开始评估；`v0.9` 报表增强阶段允许经过依赖审计和 ADR 后引入一个展示层图表库。后端仍只返回结构化统计数据，不承担图表渲染。
 - 统计图美化是产品能力：预算、趋势、排行和目标图表必须有清楚的信息层级、深色模式配色、空状态、加载态、错误态、长标签处理和移动端布局，不把"能画出来"当完成。
 - 三端 UI/UX 统一是产品能力：Android、`/web`、`/owner` 不强行做成同一布局，但必须共享信息结构、状态词、颜色语义、卡片节奏、空状态、加载态、错误态和用户可读文案。
-- 新依赖默认不引入：任何 Android / Web 新依赖都必须先查官方资料或一手元数据，记录到 `docs/REFERENCES.md` 或 `docs/DECISIONS/`，并通过完整验证矩阵。
+- 新依赖默认不引入：任何 Android / Web 新依赖都必须先查官方资料或一手元数据，记录到 `docs/rules/REFERENCES.md` 或 `docs/DECISIONS/`，并通过完整验证矩阵。
 
 图表库具体政策见 `docs/DECISIONS/0023-chart-library-policy.md`。
 
@@ -82,7 +82,7 @@ PR #16：
 
 ### v0.5 Household 权限硬化
 
-viewer 全链路写保护、权限错误契约统一（`permission_denied`）、成员审计、owner 转让、三端角色词统一（拥有者/成员/只读）。详见 `docs/V0_5_HOUSEHOLD_MODEL.md`。
+viewer 全链路写保护、权限错误契约统一（`permission_denied`）、成员审计、owner 转让、三端角色词统一（拥有者/成员/只读）。
 
 ### v0.6-v0.7 Recurring + Rules + Tags + Merchant
 
@@ -90,7 +90,7 @@ viewer 全链路写保护、权限错误契约统一（`permission_denied`）、
 
 ### v0.8 Budget + 月度可花 + Dashboard 基线
 
-服务端预算模型（月度/弹性/分类预算）、月度可花卡片、共享预算（仅共享账本）、预算排除分类、三端 Dashboard UI/UX 基线统一。详见 `docs/V0_8_BUDGET_REPORT.md`。
+服务端预算模型（月度/弹性/分类预算）、月度可花卡片、共享预算（仅共享账本）、预算排除分类、三端 Dashboard UI/UX 基线统一。
 
 ## 3. v0.4-alpha3-ga（历史计划项，已跳过）
 
@@ -104,7 +104,7 @@ viewer 全链路写保护、权限错误契约统一（`permission_denied`）、
 
 - T01 修复 `KNOWN_ISSUES` 中 P2-1：`test_admin_devices_and_upload_links.py` 排序 flake（fixture isolation）。
 - T02 修复 P2-4：`check_public_boundary.ps1` / `check_selfuse_health.ps1` 默认 `BaseUrl` 不再用占位符，改为必填并提供友好报错。
-- T03 `docs/CLOUDFLARE_TUNNEL.md` runbook 顶部增加"重启后检查任务状态"。
+- T03 `docs/runbook/CLOUDFLARE_TUNNEL.md` runbook 顶部增加"重启后检查任务状态"。
 - T04 新增 `scripts\daily_health.ps1`，每天自动运行 selfuse health + boundary 并写日志。
 - T05 GA tag `v0.4-alpha3` + GitHub Release notes。
 
@@ -138,7 +138,7 @@ viewer 全链路写保护、权限错误契约统一（`permission_denied`）、
 - T16 ledger 共享状态显式化：个人账本 / 共享账本文案与 badge，不改变账本隔离模型。
 - T17 家庭共享预算接入前置：只允许共享账本启用，个人账本保持独立预算。
 - T18 隐私不变式测试继续扩展：成员 A 无法访问成员 B 私有账本，角色调整不扩大可见账本。
-- T19 文档：`docs/V0_5_HOUSEHOLD_MODEL.md` + 邀请 / 停用 / 角色调整 / owner 转让流程图。
+- T19 文档：邀请 / 停用 / 角色调整 / owner 转让流程图（v0.5 已收口，详见 `docs/current/CHANGELOG.md`）。
 
 红线：
 

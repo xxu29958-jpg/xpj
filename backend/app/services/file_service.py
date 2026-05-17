@@ -219,7 +219,7 @@ def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[
     Legacy v0.2 paths (``uploads/YYYY/MM/foo.png`` without a tenant prefix) are
     accepted as long as they remain inside the uploads root. New uploads are
     written under ``uploads/<tenant>/...`` but old files are not moved on
-    startup (see docs/ROLLBACK.md).
+    startup (see docs/runbook/ROLLBACK.md).
     """
 
     if not relative_path:
