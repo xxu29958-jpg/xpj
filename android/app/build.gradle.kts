@@ -3,23 +3,33 @@ import java.util.Properties
 val ticketboxVersionCode = 90000
 val ticketboxVersionName = "0.9.0a1"
 val ticketboxRequireLocalUnlock = false
+val ticketboxLocalProperties: Properties = Properties().also { props ->
+    val propsFile = rootProject.file("local.properties")
+    if (propsFile.exists()) {
+        propsFile.inputStream().use { stream -> props.load(stream) }
+    }
+}
+
+fun ticketboxLocalProperty(name: String): String? =
+    ticketboxLocalProperties.getProperty(name)?.trim()?.takeIf { it.isNotBlank() }
+
+fun ticketboxEnvOrLocal(envName: String, propertyName: String): String? =
+    System.getenv(envName)?.trim()?.takeIf { it.isNotBlank() } ?: ticketboxLocalProperty(propertyName)
 
 // Server URL precedence:
 //   1. ENV: TICKETBOX_SERVER_URL
 //   2. local.properties: ticketbox.serverUrl=...
 //   3. fallback: https://api.example.com (placeholder; replace before publishing)
-val ticketboxServerUrl: String = run {
-    val envUrl: String? = System.getenv("TICKETBOX_SERVER_URL")
-    if (!envUrl.isNullOrBlank()) return@run envUrl.trim()
-    val propsFile = rootProject.file("local.properties")
-    if (propsFile.exists()) {
-        val props = Properties()
-        propsFile.inputStream().use { stream -> props.load(stream) }
-        val v: String? = props.getProperty("ticketbox.serverUrl")
-        if (!v.isNullOrBlank()) return@run v.trim()
-    }
-    "https://api.example.com"
-}
+val ticketboxServerUrl: String =
+    ticketboxEnvOrLocal("TICKETBOX_SERVER_URL", "ticketbox.serverUrl") ?: "https://api.example.com"
+val ticketboxDebugKeystorePath: String? =
+    ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEYSTORE_PATH", "ticketbox.debug.keystore")
+val ticketboxDebugKeyAlias: String? =
+    ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEY_ALIAS", "ticketbox.debug.keyAlias")
+val ticketboxDebugKeystorePassword: String? =
+    ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEYSTORE_PASSWORD", "ticketbox.debug.storePassword")
+val ticketboxDebugKeyPassword: String? =
+    ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEY_PASSWORD", "ticketbox.debug.keyPassword")
 
 plugins {
     alias(libs.plugins.android.application)
@@ -65,6 +75,20 @@ android {
     }
 
     signingConfigs {
+        if (
+            ticketboxDebugKeystorePath != null &&
+            ticketboxDebugKeyAlias != null &&
+            ticketboxDebugKeystorePassword != null &&
+            ticketboxDebugKeyPassword != null
+        ) {
+            create("stableDebug") {
+                storeFile = rootProject.file(ticketboxDebugKeystorePath)
+                storePassword = ticketboxDebugKeystorePassword
+                keyAlias = ticketboxDebugKeyAlias
+                keyPassword = ticketboxDebugKeyPassword
+            }
+        }
+
         val releaseKeystorePath = System.getenv("TICKETBOX_KEYSTORE_PATH")
         val releaseKeyAlias = System.getenv("TICKETBOX_KEY_ALIAS")
         val releaseKeystorePassword = System.getenv("TICKETBOX_KEYSTORE_PASSWORD")
@@ -87,6 +111,9 @@ android {
     buildTypes {
         debug {
             buildConfigField("Boolean", "REQUIRE_LOCAL_UNLOCK", ticketboxRequireLocalUnlock.toString())
+            signingConfigs.findByName("stableDebug")?.let { stableDebugSigning ->
+                signingConfig = stableDebugSigning
+            }
         }
         release {
             isDebuggable = false
