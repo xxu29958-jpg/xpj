@@ -85,6 +85,58 @@ def test_web_save_remote_returns_403(client: TestClient) -> None:
     assert client.post("/web/expenses/1/save", data={"amount_yuan": "1.00"}).status_code == 403
 
 
+def test_web_local_post_rejects_cross_site_origin(client: TestClient) -> None:
+    del client
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:8000",
+        client=("127.0.0.1", 53001),
+    ) as local_client:
+        resp = local_client.post(
+            "/web/confirmed/batch-update",
+            headers={"Origin": "https://evil.example"},
+            data={"action": "set_category", "ledger_id": "owner"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 403
+    assert resp.json()["error"] == "invalid_request"
+
+
+def test_web_local_post_accepts_same_origin_source(client: TestClient) -> None:
+    del client
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:8000",
+        client=("127.0.0.1", 53002),
+    ) as local_client:
+        resp = local_client.post(
+            "/web/confirmed/batch-update",
+            headers={"Origin": "http://127.0.0.1:8000"},
+            data={"action": "set_category", "ledger_id": "owner"},
+            follow_redirects=False,
+        )
+    assert resp.status_code in {303, 307}
+
+
+def test_owner_local_post_rejects_cross_site_fetch_metadata(client: TestClient) -> None:
+    del client
+    with TestClient(
+        app,
+        base_url="http://127.0.0.1:8000",
+        client=("127.0.0.1", 53003),
+    ) as local_client:
+        resp = local_client.post(
+            "/owner/backups",
+            headers={
+                "Origin": "https://evil.example",
+                "Sec-Fetch-Site": "cross-site",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 403
+    assert resp.json()["error"] == "invalid_request"
+
+
 # ── Local pages render OK ───────────────────────────────────────────────────
 
 def test_web_pending_local_returns_200(web_client: TestClient) -> None:
@@ -103,6 +155,23 @@ def test_web_stats_local_returns_200(web_client: TestClient) -> None:
     resp = web_client.get("/web/stats?month=2026-05")
     assert resp.status_code == 200
     assert "月度统计" in resp.text
+
+
+def test_web_stats_reports_recurring_candidate_errors(
+    web_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routes import web_stats as web_stats_module
+
+    def fail_recurring_candidates(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(web_stats_module, "recurring_candidates", fail_recurring_candidates)
+
+    resp = web_client.get("/web/stats?month=2026-05")
+
+    assert resp.status_code == 200
+    assert "固定支出候选分析暂时不可用" in resp.text
 
 
 # ── Ledger selector contract ────────────────────────────────────────────────
@@ -431,10 +500,12 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient) -> None:
             "ledger_id": "owner",
             "expense_ids": [str(expense_id)],
             "category": "Batch Web Cat",
+            "page": "2",
         },
         follow_redirects=False,
     )
     assert category_resp.status_code in {303, 307}
+    assert "page=2" in category_resp.headers["location"]
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "Batch Web Cat" in detail.text
 

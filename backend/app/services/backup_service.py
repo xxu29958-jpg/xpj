@@ -16,6 +16,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from app.config import get_settings
 from app.errors import AppError
@@ -60,6 +61,8 @@ def list_backups() -> list[BackupEntry]:
     for path in directory.glob(f"{_PREFIX}*{_SUFFIX}"):
         if not path.is_file():
             continue
+        if not _sqlite_integrity_ok(path):
+            continue
         try:
             stat = path.stat()
         except OSError:
@@ -80,6 +83,15 @@ def list_backups() -> list[BackupEntry]:
 def latest_backup() -> BackupEntry | None:
     items = list_backups()
     return items[0] if items else None
+
+
+def is_backup_valid(file_name: str) -> bool:
+    """Return True only for an existing, well-formed backup file."""
+    if Path(file_name).name != file_name:
+        return False
+    if not file_name.startswith(_PREFIX) or not file_name.endswith(_SUFFIX):
+        return False
+    return _sqlite_integrity_ok(_backup_dir() / file_name)
 
 
 def create_manual_backup() -> BackupEntry:
@@ -128,16 +140,31 @@ def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
         target = directory / f"{prefix}-{stamp}-{counter}.db"
         counter += 1
 
-    # SQLite Online Backup API — safe under WAL / concurrent writes.
-    src_conn = sqlite3.connect(str(db_path))
+    temp_target = directory / f".{target.name}.tmp-{uuid4().hex}"
     try:
-        dst_conn = sqlite3.connect(str(target))
+        # SQLite Online Backup API — safe under WAL / concurrent writes.
+        src_conn = sqlite3.connect(str(db_path))
         try:
-            src_conn.backup(dst_conn)
+            dst_conn = sqlite3.connect(str(temp_target))
+            try:
+                src_conn.backup(dst_conn)
+            finally:
+                dst_conn.close()
         finally:
-            dst_conn.close()
+            src_conn.close()
+
+        if not _sqlite_integrity_ok(temp_target):
+            raise AppError(
+                "invalid_request",
+                "数据库备份校验失败，未写入最终备份文件。",
+                status_code=500,
+            )
+        temp_target.replace(target)
     finally:
-        src_conn.close()
+        try:
+            temp_target.unlink()
+        except FileNotFoundError:
+            pass
 
     stat = target.stat()
     created_at = datetime.fromtimestamp(stat.st_mtime).astimezone()
@@ -147,3 +174,17 @@ def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
         created_at=created_at,
         kind=kind,
     )
+
+
+def _sqlite_integrity_ok(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        conn = sqlite3.connect(str(path))
+        try:
+            result = conn.execute("PRAGMA integrity_check").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+    return bool(result and result[0] == "ok")

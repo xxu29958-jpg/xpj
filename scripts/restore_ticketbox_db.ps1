@@ -58,6 +58,9 @@ function Test-SqliteBackup {
 
     $python = Resolve-Python
     & $python -c "import sqlite3, sys; con = sqlite3.connect(sys.argv[1]); result = con.execute('PRAGMA integrity_check').fetchone()[0]; con.close(); raise SystemExit(0 if result == 'ok' else 1)" $Path
+    if ($LASTEXITCODE -ne 0) {
+        throw "SQLite 校验失败：$Path"
+    }
 }
 
 $source = Assert-PathInside -Path (Resolve-Path -LiteralPath $BackupPath).Path -Root $BackupDir
@@ -83,6 +86,7 @@ if (Test-Path -LiteralPath $DbPath) {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
     $preRestore = Join-Path $BackupDir "ticketbox-before-restore-$stamp.db"
     $preRestore = Assert-PathInside -Path $preRestore -Root $BackupDir
+    $preRestoreTemp = "$preRestore.tmp-$PID"
     $python = Resolve-Python
     $script = @'
 import sqlite3
@@ -102,13 +106,36 @@ try:
 finally:
     src.close()
 '@
-    & $python -c $script $DbPath $preRestore
-    if ($LASTEXITCODE -ne 0) {
-        throw "恢复前备份失败。"
+    try {
+        & $python -c $script $DbPath $preRestoreTemp
+        if ($LASTEXITCODE -ne 0) {
+            throw "恢复前备份失败。"
+        }
+        Move-Item -LiteralPath $preRestoreTemp -Destination $preRestore -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $preRestoreTemp) {
+            Remove-Item -LiteralPath $preRestoreTemp -Force
+        }
     }
     Write-Host "已创建恢复前备份：$preRestore"
 }
 
-Copy-Item -LiteralPath $source -Destination $DbPath -Force
+$restoreTemp = Join-Path (Split-Path -Parent $DbPath) "ticketbox.restore-$PID.tmp"
+try {
+    Copy-Item -LiteralPath $source -Destination $restoreTemp -Force
+    Test-SqliteBackup -Path $restoreTemp
+    if (Test-Path -LiteralPath $DbPath) {
+        [System.IO.File]::Replace($restoreTemp, $DbPath, $null, $true)
+    }
+    else {
+        Move-Item -LiteralPath $restoreTemp -Destination $DbPath -Force
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $restoreTemp) {
+        Remove-Item -LiteralPath $restoreTemp -Force
+    }
+}
 Test-SqliteBackup -Path $DbPath
 Write-Host "数据库恢复完成：$DbPath"

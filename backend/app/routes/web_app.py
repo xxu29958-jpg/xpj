@@ -246,10 +246,12 @@ def _confirmed_redirect(
     *,
     month: str = "",
     tag: str = "",
+    page: int = 1,
     msg: str = "",
 ) -> RedirectResponse:
+    page_value = str(page) if page > 1 else ""
     return RedirectResponse(
-        url=_with_ledger("/web/confirmed", selected_id, month=month, tag=tag, msg=msg),
+        url=_with_ledger("/web/confirmed", selected_id, month=month, tag=tag, page=page_value, msg=msg),
         status_code=303,
     )
 
@@ -320,6 +322,7 @@ def web_confirmed_batch_update(
     tags: str = Form(default=""),
     month: str = Form(default=""),
     tag: str = Form(default=""),
+    page: int = Form(default=1),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -328,13 +331,13 @@ def web_confirmed_batch_update(
     _require_selected_ledger_write(options, selected_id)
 
     if not expense_ids:
-        return _confirmed_redirect(selected_id, month=month, tag=tag, msg="请先勾选账单。")
+        return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="请先勾选账单。")
 
     action_clean = (action or "").strip()
     if action_clean == "set_category":
         category_clean = category.strip()
         if not category_clean:
-            return _confirmed_redirect(selected_id, month=month, tag=tag, msg="请填写分类。")
+            return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="请填写分类。")
         payload = ConfirmedExpenseBatchUpdateRequest(
             expense_ids=expense_ids,
             category=category_clean,
@@ -342,7 +345,7 @@ def web_confirmed_batch_update(
     elif action_clean == "set_tags":
         tags_clean = tags.strip()
         if not tags_clean:
-            return _confirmed_redirect(selected_id, month=month, tag=tag, msg="请填写标签。")
+            return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="请填写标签。")
         payload = ConfirmedExpenseBatchUpdateRequest(
             expense_ids=expense_ids,
             tags=tags_clean,
@@ -364,6 +367,7 @@ def web_confirmed_batch_update(
         selected_id,
         month=month,
         tag=tag,
+        page=page,
         msg="；".join(parts) + "。",
     )
 

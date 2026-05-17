@@ -38,6 +38,19 @@ def test_owner_backups_create_makes_file(local_client: TestClient, tmp_path) -> 
     assert len(backup_service.list_backups()) == initial + 1
 
 
+def test_owner_backups_skip_invalid_partial_files(local_client: TestClient, tmp_path) -> None:
+    del local_client
+    from app.services import backup_service
+
+    partial = backup_service._backup_dir() / "ticketbox-29991231-235959.db"  # noqa: SLF001
+    partial.write_bytes(b"not a sqlite database")
+    try:
+        assert backup_service.is_backup_valid(partial.name) is False
+        assert partial.name not in {entry.file_name for entry in backup_service.list_backups()}
+    finally:
+        partial.unlink(missing_ok=True)
+
+
 def test_owner_backups_no_uploads_path_leak(local_client: TestClient) -> None:
     resp = local_client.get("/owner/backups")
     assert resp.status_code == 200

@@ -14,8 +14,6 @@
   </div>
 </div>
 
-{% set _q = '?ledger_id=' ~ selected_ledger_id ~ '&month=' ~ r.month %}
-
 {# KPI strip #}
 {% set _cur = six_month_trend[-1].amount_cents if six_month_trend else 0 %}
 {% set _prev = six_month_trend[-2].amount_cents if six_month_trend and (six_month_trend | length) > 1 else 0 %}
@@ -106,7 +104,7 @@
           <div class="card-title">商家排行</div>
           <div class="card-sub" style="margin-top:4px">按本月支出金额降序 · 前 8 名</div>
         </div>
-        <a class="dt-btn ghost" href="/web/reports/export.csv{{ _q }}">导出 CSV</a>
+        <a class="dt-btn ghost" href="/web/reports/export.csv?{{ report_export_query }}">导出 CSV</a>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
         {% set _merchants = r.merchant_ranking[:8] %}

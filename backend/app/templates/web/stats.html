@@ -163,6 +163,11 @@
     {% endfor %}
     </tbody>
   </table>
+  {% elif recurring_candidates_error %}
+  <div class="empty-state">
+    <div class="empty-state-title">固定支出候选分析暂时不可用</div>
+    <div class="empty-state-hint">已确认账单统计仍可查看，请稍后刷新本页。</div>
+  </div>
   {% else %}
   <div class="empty-state">
     <div class="empty-state-title">暂无固定支出候选</div>

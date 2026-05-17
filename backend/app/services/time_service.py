@@ -59,6 +59,8 @@ def parse_month_label(month: str | None) -> tuple[int, int] | None:
         return None
     if year < 1 or not 1 <= month_number <= 12:
         return None
+    if year == 9999 and month_number == 12:
+        return None
     return year, month_number
 
 
@@ -80,9 +82,12 @@ def local_month_bounds_utc(month: str, timezone_name: str | None) -> tuple[datet
             end_local = datetime(year + 1, 1, 1, tzinfo=zone)
         else:
             end_local = datetime(year, month_number + 1, 1, tzinfo=zone)
-    except ValueError:
+    except (OverflowError, ValueError):
         return None
-    return start_local.astimezone(UTC), end_local.astimezone(UTC)
+    try:
+        return start_local.astimezone(UTC), end_local.astimezone(UTC)
+    except OverflowError:
+        return None
 
 
 def local_month_label(value: datetime | None, timezone_name: str | None) -> str | None:

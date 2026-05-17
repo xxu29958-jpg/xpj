@@ -83,6 +83,7 @@ function Backup-SqliteDatabase {
     )
 
     $python = Resolve-Python
+    $tempPath = "$TargetPath.tmp-$PID"
     $script = @'
 import sqlite3
 import sys
@@ -101,9 +102,17 @@ try:
 finally:
     src.close()
 '@
-    & $python -c $script $SourcePath $TargetPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "SQLite 备份失败。"
+    try {
+        & $python -c $script $SourcePath $tempPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "SQLite 备份失败。"
+        }
+        Move-Item -LiteralPath $tempPath -Destination $TargetPath -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempPath) {
+            Remove-Item -LiteralPath $tempPath -Force
+        }
     }
 }
 

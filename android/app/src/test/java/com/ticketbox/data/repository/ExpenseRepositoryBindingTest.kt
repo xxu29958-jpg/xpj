@@ -82,7 +82,9 @@ class ExpenseRepositoryBindingTest {
     @Test
     fun bindSavesSessionAndIdentityBeforeConfirmedRestoreFailure() = runTest {
         val events = mutableListOf<String>()
-        val settingsStore = FakeTicketboxSettingsStore(events)
+        val settingsStore = FakeTicketboxSettingsStore(events).apply {
+            saveLastConfirmedSyncAt("2026-05-01T00:00:00Z")
+        }
         val tokenStore = FakeSessionTokenStore(events)
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 1)
         val repository = ExpenseRepository(
@@ -102,6 +104,7 @@ class ExpenseRepositoryBindingTest {
         assertEquals("我的小票夹", settingsStore.ledgerName())
         assertEquals("Android Test Device", settingsStore.deviceName())
         assertEquals("owner", settingsStore.role())
+        assertNull(settingsStore.lastConfirmedSyncAt())
         assertTrue(settingsStore.isBound())
         assertTrue(events.indexOf("saveServerUrl") < events.indexOf("syncConfirmed"))
         assertTrue(events.indexOf("saveToken") < events.indexOf("syncConfirmed"))

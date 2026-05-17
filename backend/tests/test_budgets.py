@@ -292,3 +292,21 @@ def test_budget_rejects_invalid_month_and_duplicate_normalized_categories(
     )
     assert duplicate_category.status_code == 422, duplicate_category.json()
     assert duplicate_category.json()["error"] == "invalid_request"
+
+
+def test_budget_rejects_unbounded_month_without_persisting(client: TestClient) -> None:
+    response = client.put(
+        "/api/budgets/monthly/9999-12?timezone=UTC",
+        headers=app_headers(),
+        json={"total_amount_cents": 50000},
+    )
+    assert response.status_code == 422, response.json()
+    assert response.json()["error"] == "invalid_request"
+
+    with SessionLocal() as db:
+        budget_count = db.scalar(
+            select(func.count(Budget.id))
+            .where(Budget.tenant_id == "owner")
+            .where(Budget.month == "9999-12")
+        )
+    assert budget_count == 0

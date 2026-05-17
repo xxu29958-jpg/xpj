@@ -82,7 +82,10 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient) ->
         gray=True,
     )
 
-    response = web_client.get("/web/reports?ledger_id=owner&month=2026-05&granularity=day")
+    response = web_client.get(
+        "/web/reports?ledger_id=owner&month=2026-05&granularity=week"
+        "&ranking_metric=count&merchant_category=餐饮"
+    )
 
     assert response.status_code == 200
     assert "动态报表" in response.text
@@ -91,6 +94,9 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient) ->
     assert "分类环比" in response.text
     assert "灰度账本商家" not in response.text
     assert "/web/reports/export.csv" in response.text
+    assert "granularity=week" in response.text
+    assert "ranking_metric=count" in response.text
+    assert "merchant_category=%E9%A4%90%E9%A5%AE" in response.text
     assert 'id="chart-trend"' in response.text
     assert 'data-series=' in response.text
     assert 'id="chart-category"' in response.text

@@ -9,6 +9,7 @@ import conftest as cf  # noqa: F401
 from app.main import app
 from app.routes.owner_console import _require_local
 from app.services import backup_service
+from app.services.migration_readiness_service import build_v1_migration_readiness_report
 
 
 @pytest.fixture()
@@ -68,6 +69,22 @@ def test_owner_migration_readiness_create_pre_v1_backup(local_client: TestClient
     finally:
         for file_name in created:
             _delete_backup(file_name)
+
+
+def test_owner_migration_readiness_does_not_trust_invalid_pre_v1_backup(
+    local_client: TestClient,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del local_client
+    monkeypatch.setattr(backup_service, "_BACKUP_DIR", tmp_path)
+    (tmp_path / "ticketbox-pre-v1.0-29991231-235959.db").write_bytes(b"not sqlite")
+
+    report = build_v1_migration_readiness_report(create_backup=False)
+    backup_check = next(check for check in report.checks if check.code == "backup_available")
+
+    assert report.latest_backup is None
+    assert backup_check.status == "error"
 
 
 def test_owner_migration_readiness_does_not_leak_sensitive_values(

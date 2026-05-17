@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import StringIO, TextIOWrapper
 from pathlib import Path
 from typing import BinaryIO
@@ -28,6 +28,7 @@ from app.services.time_service import ensure_utc, now_utc
 MAX_CSV_IMPORT_ROWS = 20_000
 DEFAULT_BATCH_FILE_NAME = "import.csv"
 APPLY_LEASE_MINUTES = 5
+ROW_APPLY_LEASE_MINUTES = APPLY_LEASE_MINUTES
 
 
 def create_csv_import_batch(
@@ -160,6 +161,12 @@ def apply_csv_import_batch(
     inserted = 0
     claimed_row_ids: list[int] = []
     try:
+        _recover_stale_csv_import_rows(
+            db,
+            tenant_id=tenant_id,
+            batch_id=batch.id,
+            stale_before=now_utc() - timedelta(minutes=ROW_APPLY_LEASE_MINUTES),
+        )
         claimed_row_ids = _claim_csv_import_rows(
             db,
             tenant_id=tenant_id,
@@ -365,6 +372,30 @@ def _reset_claimed_csv_import_rows(
         .execution_options(synchronize_session=False)
     )
     db.commit()
+
+
+def _recover_stale_csv_import_rows(
+    db: Session,
+    *,
+    tenant_id: str,
+    batch_id: int,
+    stale_before: datetime,
+) -> int:
+    result = db.execute(
+        update(CsvImportRow)
+        .where(CsvImportRow.tenant_id == tenant_id)
+        .where(CsvImportRow.batch_id == batch_id)
+        .where(CsvImportRow.status == "applying")
+        .where(CsvImportRow.expense_id.is_(None))
+        .where(CsvImportRow.updated_at <= stale_before)
+        .values(status="valid", updated_at=now_utc())
+        .execution_options(synchronize_session=False)
+    )
+    recovered = int(result.rowcount or 0)
+    if recovered:
+        db.commit()
+        db.expire_all()
+    return recovered
 
 
 def _mark_csv_import_apply_failed(

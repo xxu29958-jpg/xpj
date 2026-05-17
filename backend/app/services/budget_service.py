@@ -307,10 +307,16 @@ def upsert_monthly_budget(
         if category not in requested_categories:
             db.delete(row)
 
-    db.commit()
-    return _budget_response(
-        db,
-        tenant_id=tenant_id,
-        month=clean_month,
-        timezone_name=timezone_name,
-    )
+    try:
+        db.flush()
+        response = _budget_response(
+            db,
+            tenant_id=tenant_id,
+            month=clean_month,
+            timezone_name=timezone_name,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return response

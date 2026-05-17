@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -144,6 +146,15 @@ def web_reports(
     ctx.update(
         {
             "report": _view_model(payload),
+            "report_export_query": urlencode(
+                {
+                    "ledger_id": selected_id,
+                    "month": target_month,
+                    "granularity": selected_granularity,
+                    "ranking_metric": selected_metric,
+                    "merchant_category": (merchant_category or "").strip(),
+                }
+            ),
             "month": target_month,
             "granularity_options": [("day", "日"), ("week", "周"), ("month", "月")],
             "ranking_metric_options": [("amount", "金额"), ("count", "笔数")],

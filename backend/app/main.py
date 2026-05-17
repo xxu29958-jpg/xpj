@@ -32,6 +32,7 @@ from app.routes import web_rules as web_rules_routes
 from app.routes import web_search
 from app.routes import web_stats
 from app.schemas import HealthResponse
+from app.middleware.csrf import csrf_loopback_form_guard
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 from app.middleware.logging import SanitizedLoggingMiddleware
@@ -63,6 +64,7 @@ app = FastAPI(
 
 add_exception_handlers(app)
 app.add_middleware(SanitizedLoggingMiddleware)
+app.middleware("http")(csrf_loopback_form_guard)
 
 app.include_router(auth.router)
 app.include_router(bootstrap.router)

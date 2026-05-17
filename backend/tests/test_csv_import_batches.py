@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.database import SessionLocal
 from app.models import CsvImportRow, Expense, LedgerMember
@@ -16,6 +17,7 @@ from app.services.csv_import_batch_service import (
     create_csv_import_batch,
     list_csv_import_rows,
 )
+from app.services.time_service import now_utc
 from conftest import app_headers, gray_app_headers
 
 
@@ -129,7 +131,7 @@ def test_csv_import_apply_lease_is_atomically_claimed(client: TestClient) -> Non
         assert inserted == 0
 
 
-def test_csv_import_row_claim_prevents_duplicate_apply_after_batch_lease_expires(client: TestClient) -> None:
+def test_csv_import_row_claim_recovers_stale_apply_after_batch_lease_expires(client: TestClient) -> None:
     del client
     with SessionLocal() as setup_db:
         batch = create_csv_import_batch(
@@ -192,6 +194,41 @@ def test_csv_import_row_claim_prevents_duplicate_apply_after_batch_lease_expires
             .where(Expense.source == "CSV导入")
         )
         assert inserted_after_retry == 1
+
+        db.execute(
+            update(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.batch_id == batch_id)
+            .where(CsvImportRow.status == "applying")
+            .values(updated_at=now_utc() - timedelta(minutes=10))
+        )
+        db.commit()
+
+        recovered = apply_csv_import_batch(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            batch_size=10,
+        )
+        assert recovered.inserted_count == 1
+        assert recovered.remaining_valid_rows == 0
+
+        final_rows = list(
+            db.scalars(
+                select(CsvImportRow)
+                .where(CsvImportRow.tenant_id == "owner")
+                .where(CsvImportRow.batch_id == batch_id)
+            )
+        )
+        assert sorted(row.status for row in final_rows) == ["applied", "applied"]
+
+        final_inserted = db.scalar(
+            select(func.count())
+            .select_from(Expense)
+            .where(Expense.tenant_id == "owner")
+            .where(Expense.source == "CSV导入")
+        )
+        assert final_inserted == 2
 
 
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient) -> None:

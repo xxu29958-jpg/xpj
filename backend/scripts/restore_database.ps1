@@ -67,6 +67,7 @@ function Backup-SqliteDatabase {
         [Parameter(Mandatory = $true)][string]$TargetPath
     )
 
+    $tempPath = "$TargetPath.tmp-$PID"
     $script = @'
 import sqlite3
 import sys
@@ -85,7 +86,15 @@ try:
 finally:
     src.close()
 '@
-    Invoke-Sqlite -Script $script -Arguments @($SourcePath, $TargetPath)
+    try {
+        Invoke-Sqlite -Script $script -Arguments @($SourcePath, $tempPath)
+        Move-Item -LiteralPath $tempPath -Destination $TargetPath -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempPath) {
+            Remove-Item -LiteralPath $tempPath -Force
+        }
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
@@ -107,6 +116,21 @@ if (Test-Path -LiteralPath $DatabasePath) {
     Write-Host "恢复前已备份当前数据库到 $safetyBackup"
 }
 
-Copy-Item -LiteralPath $resolvedBackupFile -Destination $DatabasePath -Force
+$restoreTemp = Join-Path (Split-Path -Parent $DatabasePath) "ticketbox.restore-$PID.tmp"
+try {
+    Copy-Item -LiteralPath $resolvedBackupFile -Destination $restoreTemp -Force
+    Test-SqliteBackup -Path $restoreTemp
+    if (Test-Path -LiteralPath $DatabasePath) {
+        [System.IO.File]::Replace($restoreTemp, $DatabasePath, $null, $true)
+    }
+    else {
+        Move-Item -LiteralPath $restoreTemp -Destination $DatabasePath -Force
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $restoreTemp) {
+        Remove-Item -LiteralPath $restoreTemp -Force
+    }
+}
 Test-SqliteBackup -Path $DatabasePath
 Write-Host "已从 $resolvedBackupFile 恢复到 $DatabasePath"

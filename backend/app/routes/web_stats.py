@@ -5,6 +5,7 @@ Split from ``web_app.py`` to keep each /web route module under 280 lines.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
@@ -26,6 +27,7 @@ from app.services.recurring_service import list_recurring_items, recurring_amoun
 from app.services.stats_service import _confirmed_query, monthly_stats
 
 router = APIRouter(prefix="/web", tags=["web"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/stats", response_class=HTMLResponse)
@@ -69,12 +71,15 @@ def web_stats(
             }
         )
 
+    recurring_candidates_error = False
     try:
         rc_items = recurring_candidates(
             db, tenant_id=selected_id, timezone_name="Asia/Shanghai"
         )
     except Exception:  # noqa: BLE001 - stats page must never 500 on insight
+        logger.warning("Recurring candidate insight failed for /web/stats.", exc_info=True)
         rc_items = []
+        recurring_candidates_error = True
     recurring = [
         {
             "merchant": item["merchant"],
@@ -117,5 +122,6 @@ def web_stats(
     ctx["by_category"] = by_category
     ctx["top_expenses"] = top_rows
     ctx["recurring_candidates"] = recurring
+    ctx["recurring_candidates_error"] = recurring_candidates_error
     ctx["recurring_formal"] = recurring_formal
     return templates.TemplateResponse(request=request, name="stats.html", context=ctx)

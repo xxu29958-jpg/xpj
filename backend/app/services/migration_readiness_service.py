@@ -155,6 +155,14 @@ def build_v1_migration_readiness_report(*, create_backup: bool = False) -> Migra
     latest_backup = backup_service.latest_backup()
     if latest_backup is None:
         checks.append(_check("backup_available", "error", "迁移前必须先创建 pre-v1.0 数据库备份。"))
+    elif not backup_service.is_backup_valid(latest_backup.file_name):
+        checks.append(
+            _check(
+                "backup_available",
+                "error",
+                "最新数据库备份未通过 SQLite 完整性校验；请重新运行 --create-backup。",
+            )
+        )
     elif latest_backup.kind != "pre-v1.0":
         checks.append(
             _check(

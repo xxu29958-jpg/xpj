@@ -228,6 +228,7 @@ class ExpenseRepository(
             )
             settingsStore.markUnlocked()
             expenseDao.clearForLedger(pairResponse.ledgerId)
+            settingsStore.clearLastConfirmedSyncAt()
             val restoreFailed = try {
                 syncConfirmedFromService(
                     service = api(normalized, pairResponse.sessionToken),
