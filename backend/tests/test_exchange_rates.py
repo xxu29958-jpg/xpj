@@ -6,8 +6,10 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import LedgerMember
+from app.services.exchange_rate_service import calculate_cny_cents
 from app.services.fx_rate_provider import cross_rate_to_home, parse_ecb_daily_rates, upsert_fx_rate
 from conftest import app_headers, gray_app_headers
 
@@ -198,6 +200,30 @@ def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient) -> N
     assert payload["home_amount_cents"] == 1280
     assert payload["home_currency"] == "CNY"
     assert payload["fx_status"] == "ready"
+
+
+def test_calculate_home_minor_units_respects_no_fraction_home_currency(monkeypatch) -> None:
+    monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
+    get_settings.cache_clear()
+    try:
+        assert (
+            calculate_cny_cents(
+                original_currency_code="JPY",
+                original_amount_minor=1000,
+                exchange_rate_to_cny=None,
+            )
+            == 1000
+        )
+        assert (
+            calculate_cny_cents(
+                original_currency_code="USD",
+                original_amount_minor=12345,
+                exchange_rate_to_cny=Decimal("150"),
+            )
+            == 18518
+        )
+    finally:
+        get_settings.cache_clear()
 
 
 def test_expense_write_rejects_client_submitted_exchange_rate(client: TestClient) -> None:

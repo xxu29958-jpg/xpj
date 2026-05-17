@@ -71,7 +71,7 @@ jobs:
         run: ruff check app scripts tests
 
       - name: Test
-        run: python -m pytest
+        run: python -m pytest --cov=app --cov-report=term-missing
 
       - name: Smoke test
         run: python scripts\smoke_test.py

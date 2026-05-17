@@ -4,7 +4,6 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Protocol
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -111,6 +110,13 @@ def calculate_cny_cents(
     original_amount_minor: int | None,
     exchange_rate_to_cny: Decimal | None,
 ) -> int | None:
+    """Convert original currency minor units → home currency minor units.
+
+    The legacy name says "cny_cents" but the result is always expressed in the
+    configured home currency's minor units. If `FX_HOME_CURRENCY_CODE` is a
+    no-fraction currency (JPY/KRW), the multiplier collapses to 1 so that 1,000
+    JPY persists as `amount_cents=1000` rather than 100,000.
+    """
     if original_amount_minor is None:
         return None
     if original_amount_minor < 0:
@@ -121,7 +127,9 @@ def calculate_cny_cents(
         return None
     divisor = Decimal(1) if minor_units_for_currency(currency_code) == 0 else Decimal(100)
     amount_major = Decimal(original_amount_minor) / divisor
-    return int((amount_major * rate * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    home_units = minor_units_for_currency(home_currency_code())
+    home_multiplier = Decimal(1) if home_units == 0 else Decimal(100)
+    return int((amount_major * rate * home_multiplier).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def default_rate_date(expense_time: datetime | None = None) -> date:

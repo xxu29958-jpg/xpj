@@ -528,6 +528,15 @@ def migrate_sqlite_schema() -> None:
         )
         connection.execute(
             text(
+                "UPDATE expenses SET exchange_rate_source = NULL "
+                "WHERE original_currency_code != :home "
+                "AND amount_cents IS NULL "
+                "AND exchange_rate_to_cny IS NULL"
+            ),
+            {"home": default_home},
+        )
+        connection.execute(
+            text(
                 "UPDATE expenses SET exchange_rate_source = :source_base "
                 "WHERE exchange_rate_source IS NULL AND original_currency_code = :home"
             ),
@@ -541,11 +550,19 @@ def migrate_sqlite_schema() -> None:
         )
         connection.execute(
             text(
-                "UPDATE expenses SET fx_status = CASE WHEN amount_cents IS NULL AND original_amount_minor IS NOT NULL "
-                "AND original_currency_code != :home THEN :pending ELSE :ready END "
+                "UPDATE expenses SET fx_status = :pending "
+                "WHERE amount_cents IS NULL "
+                "AND original_amount_minor IS NOT NULL "
+                "AND original_currency_code != :home"
+            ),
+            {"home": default_home, "pending": status_pending},
+        )
+        connection.execute(
+            text(
+                "UPDATE expenses SET fx_status = :ready "
                 "WHERE fx_status IS NULL OR fx_status = ''"
             ),
-            {"home": default_home, "pending": status_pending, "ready": status_ready},
+            {"ready": status_ready},
         )
         public_id_rows = connection.execute(
             text("SELECT id FROM expenses WHERE public_id IS NULL OR public_id = ''")

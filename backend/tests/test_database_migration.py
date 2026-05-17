@@ -457,16 +457,55 @@ def test_v01_schema_migrates_without_losing_expense_data() -> None:
     assert migrated["amount_cents"] == 3680
     assert migrated["merchant"] == "老商家"
     assert migrated["tenant_id"] == "owner"
+    assert migrated["home_currency_code"] == "CNY"
     assert migrated["original_currency_code"] == "CNY"
     assert migrated["original_amount_minor"] == 3680
     assert str(migrated["exchange_rate_to_cny"]) in {"1", "1.0", "1.00000000"}
     assert migrated["exchange_rate_source"] == "base"
     assert str(migrated["exchange_rate_date"]).startswith("2026-05-04")
+    assert migrated["fx_status"] == "ready"
     UUID(str(migrated["public_id"]))
     assert migrated["duplicate_status"] == "none"
     assert {"tenant_id", "public_id", "thumbnail_path", "tags", "image_deleted_at"}.issubset(_expense_columns())
     assert "ix_expenses_public_id" in _indexes("expenses")
     assert "ledger_audit_logs" in inspect(engine).get_table_names()
+
+
+def test_legacy_foreign_expense_without_rate_migrates_to_fx_pending() -> None:
+    _reset_empty_database()
+    _create_v01_expenses_table()
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE expenses ADD COLUMN original_currency_code VARCHAR(3)"))
+        connection.execute(text("ALTER TABLE expenses ADD COLUMN original_amount_minor INTEGER"))
+        connection.execute(text("ALTER TABLE expenses ADD COLUMN exchange_rate_to_cny NUMERIC(18, 8)"))
+        connection.execute(text("ALTER TABLE expenses ADD COLUMN exchange_rate_source VARCHAR(32)"))
+
+    expense_id = _insert_legacy_expense(amount_cents=12345, status="pending")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE expenses
+                SET original_currency_code = 'USD',
+                    original_amount_minor = 12345,
+                    exchange_rate_to_cny = NULL,
+                    exchange_rate_source = NULL
+                WHERE id = :id
+                """
+            ),
+            {"id": expense_id},
+        )
+
+    init_db()
+
+    migrated = _fetch_expense(expense_id)
+    assert migrated["home_currency_code"] == "CNY"
+    assert migrated["original_currency_code"] == "USD"
+    assert migrated["original_amount_minor"] == 12345
+    assert migrated["amount_cents"] is None
+    assert migrated["exchange_rate_to_cny"] is None
+    assert migrated["exchange_rate_source"] is None
+    assert migrated["fx_status"] == "pending"
 
 
 def test_legacy_expense_tags_backfill_normalized_relation_rows() -> None:
