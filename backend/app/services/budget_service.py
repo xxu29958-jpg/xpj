@@ -196,7 +196,12 @@ def _budget_response(
         available_amount_cents - fixed_amount_cents - non_monthly_amount_cents,
         0,
     )
-    remaining_amount_cents = available_amount_cents - spent_amount_cents
+    remaining_amount_cents = (
+        available_amount_cents - spent_amount_cents if budget is not None else 0
+    )
+    overspent_amount_cents = (
+        max(-remaining_amount_cents, 0) if budget is not None else 0
+    )
 
     category_budgets = []
     for category_budget in category_rows:
@@ -225,7 +230,7 @@ def _budget_response(
         spent_amount_cents=spent_amount_cents,
         excluded_amount_cents=excluded_amount_cents,
         remaining_amount_cents=remaining_amount_cents,
-        overspent_amount_cents=max(-remaining_amount_cents, 0),
+        overspent_amount_cents=overspent_amount_cents,
         excluded_categories=excluded_categories,
         excluded_breakdown=sorted(
             excluded_breakdown,

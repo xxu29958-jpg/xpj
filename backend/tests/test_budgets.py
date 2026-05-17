@@ -181,6 +181,8 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     assert gray_payload["total_amount_cents"] == 0
     assert gray_payload["fixed_amount_cents"] == 9900
     assert gray_payload["spent_amount_cents"] == 7777
+    assert gray_payload["remaining_amount_cents"] == 0
+    assert gray_payload["overspent_amount_cents"] == 0
     assert gray_payload["category_budgets"] == []
 
 
