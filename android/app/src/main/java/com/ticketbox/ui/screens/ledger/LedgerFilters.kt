@@ -22,10 +22,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 import com.ticketbox.ui.screens.SelectableFilterChip
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.LedgerUiState
+import com.ticketbox.viewmodel.LedgerViewMode
 
 @Composable
 internal fun LedgerFilterPanel(
@@ -34,9 +37,14 @@ internal fun LedgerFilterPanel(
     onOpenTools: () -> Unit,
     onManualAdd: () -> Unit,
     onCategoryChange: (String) -> Unit,
+    onViewModeChange: (LedgerViewMode) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.compactPadding)) {
         LedgerHeader(state = state, onManualAdd = onManualAdd)
+        LedgerViewModeToggle(
+            selectedMode = state.viewMode,
+            onViewModeChange = onViewModeChange,
+        )
         LedgerInlineFilters(
             state = state,
             onOpenMonthPicker = onOpenMonthPicker,
@@ -52,6 +60,26 @@ internal fun LedgerFilterPanel(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+@Composable
+private fun LedgerViewModeToggle(
+    selectedMode: LedgerViewMode,
+    onViewModeChange: (LedgerViewMode) -> Unit,
+) {
+    AppSegmentedControl(
+        options = LedgerViewMode.entries.map { mode ->
+            AppSegmentedItem(value = mode, label = ledgerViewModeLabel(mode))
+        },
+        selectedValue = selectedMode,
+        onValueChange = onViewModeChange,
+    )
+}
+
+private fun ledgerViewModeLabel(mode: LedgerViewMode): String = when (mode) {
+    LedgerViewMode.Card -> "卡片"
+    LedgerViewMode.List -> "列表"
+    LedgerViewMode.Table -> "表格"
 }
 
 @Composable

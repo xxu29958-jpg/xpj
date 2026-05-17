@@ -460,6 +460,7 @@ private fun MainShell(
                         onSync = ledgerViewModel::sync,
                         onExportCsv = ledgerViewModel::exportCsv,
                         onManualCreate = ledgerViewModel::createManualExpense,
+                        onViewModeChange = ledgerViewModel::setViewMode,
                         onEdit = { editingExpense = it },
                     )
                 }

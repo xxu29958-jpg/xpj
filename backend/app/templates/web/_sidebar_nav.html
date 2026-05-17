@@ -81,8 +81,8 @@
     </a>
   </div>
 
-  <div class="nav-group">
-    <div class="nav-group-title">治理</div>
+  <details class="nav-group nav-group-collapsible" {% if '/budgets' in _p or '/goals' in _p or '/categories' in _p or '/rules' in _p or '/merchants' in _p or '/recurring' in _p or '/stats' in _p or '/data-quality' in _p %}open{% endif %}>
+    <summary class="nav-group-title">治理</summary>
     <a class="nav-item {% if '/budgets' in _p %}active{% endif %}" href="/web/budgets{{ q }}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
@@ -164,7 +164,7 @@
       </span>
       <span>数据体检</span>
     </a>
-  </div>
+  </details>
 
   <div class="sidebar-foot">
     <span class="dot"></span>

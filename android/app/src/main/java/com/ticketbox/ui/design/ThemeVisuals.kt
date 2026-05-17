@@ -4,6 +4,14 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.ticketbox.domain.model.AppSkin
 
+data class ReceiptStubPalette(
+    val paperTop: Color,
+    val paperBottom: Color,
+    val border: Color,
+    val line: Color,
+    val footer: Color,
+)
+
 data class ThemeVisuals(
     val primary: Color,
     val primaryDark: Color,
@@ -25,6 +33,7 @@ data class ThemeVisuals(
     val coolMist: Color,
     val surfaceRaised: Color,
     val focusRing: Color,
+    val receiptStub: ReceiptStubPalette,
 )
 
 val LocalThemeVisuals = compositionLocalOf { themeVisualsForSkin(AppSkin.Default) }
@@ -56,6 +65,13 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             coolMist = Color(0xFFC8C2B3),
             surfaceRaised = Color(0xFFFFFFFF),
             focusRing = Color(0xFF8A5A2B),
+            receiptStub = ReceiptStubPalette(
+                paperTop = Color(0xFFFFFBF3),
+                paperBottom = Color(0xFFF1E9DB),
+                border = Color(0xFFE2D8C8),
+                line = Color(0xFFBDB7AB),
+                footer = Color(0xFFE0D5C4),
+            ),
         )
         AppSkin.Mono -> ThemeVisuals(
             primary = Color(0xFF0E0E0C),
@@ -82,6 +98,13 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             coolMist = Color(0xFFB8B7B3),
             surfaceRaised = Color(0xFFFFFFFF),
             focusRing = Color(0xFF0E0E0C),
+            receiptStub = ReceiptStubPalette(
+                paperTop = Color(0xFFFAFAF8),
+                paperBottom = Color(0xFFEDEDEA),
+                border = Color(0xFFD7D6D1),
+                line = Color(0xFFACABA6),
+                footer = Color(0xFFE0DFDA),
+            ),
         )
         AppSkin.Midnight -> ThemeVisuals(
             primary = Color(0xFFD6B487),
@@ -108,6 +131,13 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             coolMist = Color(0xFF8A6A3E),
             surfaceRaised = Color(0xFF222530),
             focusRing = Color(0xFFD6B487),
+            receiptStub = ReceiptStubPalette(
+                paperTop = Color(0xFF252830),
+                paperBottom = Color(0xFF1A1D24),
+                border = Color(0xFF3A3E48),
+                line = Color(0xFF8A806F),
+                footer = Color(0xFF343742),
+            ),
         )
     }
 }

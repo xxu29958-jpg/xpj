@@ -46,11 +46,11 @@ internal fun LedgerHeader(
     state: LedgerUiState,
     onManualAdd: () -> Unit,
 ) {
-    val total = state.items.sumOf { it.amountCents ?: 0L }
-    val monthLabel = state.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
+    val summary = state.summary
+    val monthLabel = summary.monthFilter.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份"
     val statusText = when {
-        state.syncing -> "更新中"
-        state.lastSyncAt != null -> "已更新 ${ledgerSyncClock(state.lastSyncAt)}"
+        summary.syncing -> "更新中"
+        summary.lastSyncAt != null -> "已更新 ${ledgerSyncClock(summary.lastSyncAt)}"
         else -> "本机账本可用"
     }
     PaperLedgerPanel {
@@ -84,7 +84,7 @@ internal fun LedgerHeader(
                         maxLines = 1,
                     )
                 }
-                LedgerStatusPill(text = statusText, active = state.syncing)
+                LedgerStatusPill(text = statusText, active = summary.syncing)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -92,13 +92,13 @@ internal fun LedgerHeader(
             ) {
                 LedgerKpiCell(
                     label = "$monthLabel 合计",
-                    value = formatAmount(total),
+                    value = formatAmount(summary.totalAmountCents),
                     modifier = Modifier.weight(1.45f),
                     emphasized = true,
                 )
                 LedgerKpiCell(
                     label = "账单",
-                    value = "${state.items.size} 笔",
+                    value = "${summary.itemCount} 笔",
                     modifier = Modifier.weight(1f),
                 )
             }

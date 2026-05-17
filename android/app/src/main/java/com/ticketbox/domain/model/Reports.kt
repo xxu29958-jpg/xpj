@@ -131,6 +131,14 @@ const val DASHBOARD_CARD_GOALS = "goals"
 const val DASHBOARD_CARD_RECURRING = "recurring"
 const val DASHBOARD_CARD_RECENT_UPLOADS = "recent_uploads"
 
+enum class StatsTab {
+    Overview,
+    Trend,
+    Category,
+    Budget,
+    Goals,
+}
+
 val DefaultAndroidDashboardCardKeys: List<String> = listOf(
     DASHBOARD_CARD_PENDING,
     DASHBOARD_CARD_MONTHLY_SPEND,
@@ -172,4 +180,25 @@ fun visibleDashboardCardKeys(cards: List<DashboardCard>): List<String> {
                 .thenBy { it.key },
         )
         .map { it.key }
+}
+
+fun statsDashboardKeysForTab(
+    tab: StatsTab,
+    keys: List<String>,
+): List<String> {
+    val allowedKeys = when (tab) {
+        StatsTab.Overview -> setOf(
+            DASHBOARD_CARD_MONTHLY_SPEND,
+            DASHBOARD_CARD_PENDING,
+            DASHBOARD_CARD_RECENT_UPLOADS,
+        )
+        StatsTab.Trend -> setOf(DASHBOARD_CARD_REPORTS)
+        StatsTab.Category -> setOf(DASHBOARD_CARD_REPORTS)
+        StatsTab.Budget -> setOf(
+            DASHBOARD_CARD_BUDGET,
+            DASHBOARD_CARD_RECURRING,
+        )
+        StatsTab.Goals -> setOf(DASHBOARD_CARD_GOALS)
+    }
+    return keys.filter { it in allowedKeys }
 }

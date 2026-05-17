@@ -38,4 +38,34 @@ class DashboardCardsTest {
             visibleDashboardCardKeys(cards),
         )
     }
+
+    @Test
+    fun statsTabMappingKeepsUserVisibilityAndSavedOrder() {
+        val visibleKeys = visibleDashboardCardKeys(
+            listOf(
+                DashboardCard(DASHBOARD_CARD_RECURRING, "recurring", visible = true, position = 0),
+                DashboardCard(DASHBOARD_CARD_BUDGET, "budget", visible = true, position = 10),
+                DashboardCard(DASHBOARD_CARD_REPORTS, "reports", visible = true, position = 20),
+                DashboardCard(DASHBOARD_CARD_GOALS, "goals", visible = false, position = 30),
+                DashboardCard(DASHBOARD_CARD_PENDING, "pending", visible = true, position = 40),
+            ),
+        )
+
+        assertEquals(
+            listOf(DASHBOARD_CARD_RECURRING, DASHBOARD_CARD_BUDGET),
+            statsDashboardKeysForTab(StatsTab.Budget, visibleKeys),
+        )
+        assertEquals(
+            listOf(DASHBOARD_CARD_REPORTS),
+            statsDashboardKeysForTab(StatsTab.Trend, visibleKeys),
+        )
+        assertEquals(
+            emptyList(),
+            statsDashboardKeysForTab(StatsTab.Goals, visibleKeys),
+        )
+        assertEquals(
+            listOf(DASHBOARD_CARD_PENDING),
+            statsDashboardKeysForTab(StatsTab.Overview, visibleKeys),
+        )
+    }
 }

@@ -19,9 +19,12 @@ import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.screens.ledger.EmptyLedgerState
 import com.ticketbox.ui.screens.ledger.LedgerDayHeader
 import com.ticketbox.ui.screens.ledger.LedgerExpenseCard
+import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
+import com.ticketbox.ui.screens.ledger.LedgerExpenseTableRow
 import com.ticketbox.ui.screens.ledger.LedgerFilterPanel
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
 import com.ticketbox.viewmodel.LedgerUiState
+import com.ticketbox.viewmodel.LedgerViewMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +38,7 @@ fun LedgerScreen(
     onSync: () -> Unit,
     onExportCsv: () -> Unit,
     onManualCreate: (ExpenseDraft) -> Unit,
+    onViewModeChange: (LedgerViewMode) -> Unit,
     onEdit: (Expense) -> Unit,
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
@@ -101,6 +105,7 @@ fun LedgerScreen(
                 onOpenTools = { showLedgerTools = true },
                 onManualAdd = { if (!state.readOnly) showManualSheet = true },
                 onCategoryChange = onCategoryChange,
+                onViewModeChange = onViewModeChange,
             )
         }
         if (state.items.isEmpty()) {
@@ -118,10 +123,20 @@ fun LedgerScreen(
                 LedgerDayHeader(group.label)
             }
             items(group.items, key = { it.id }) { expense ->
-                LedgerExpenseCard(
-                    expense = expense,
-                    onEdit = { onEdit(expense) },
-                )
+                when (state.viewMode) {
+                    LedgerViewMode.Card -> LedgerExpenseCard(
+                        expense = expense,
+                        onEdit = { onEdit(expense) },
+                    )
+                    LedgerViewMode.List -> LedgerExpenseListRow(
+                        expense = expense,
+                        onEdit = { onEdit(expense) },
+                    )
+                    LedgerViewMode.Table -> LedgerExpenseTableRow(
+                        expense = expense,
+                        onEdit = { onEdit(expense) },
+                    )
+                }
             }
         }
     }

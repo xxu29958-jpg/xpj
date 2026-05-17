@@ -497,6 +497,7 @@ fun ReceiptStub(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) {
+    val palette = LocalThemeVisuals.current.receiptStub
     val width = if (compact) 76.dp else 110.dp
     val height = if (compact) 92.dp else 132.dp
     Box(
@@ -506,12 +507,12 @@ fun ReceiptStub(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFFFFFBF3),
-                        Color(0xFFF1E9DB),
+                        palette.paperTop,
+                        palette.paperBottom,
                     ),
                 ),
             )
-            .border(1.dp, Color(0xFFE2D8C8), MaterialTheme.shapes.medium)
+            .border(1.dp, palette.border, MaterialTheme.shapes.medium)
             .padding(horizontal = 14.dp, vertical = 14.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 11.dp)) {
@@ -521,7 +522,7 @@ fun ReceiptStub(
                         .width(if (index % 3 == 0) width - 34.dp else width - 48.dp)
                         .height(3.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFBDB7AB)),
+                        .background(palette.line),
                 )
             }
         }
@@ -531,7 +532,7 @@ fun ReceiptStub(
                 .fillMaxWidth(0.72f)
                 .height(14.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFE0D5C4)),
+                .background(palette.footer),
         )
     }
 }

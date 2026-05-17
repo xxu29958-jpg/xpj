@@ -23,7 +23,7 @@ $TextExtensions = @(
     ".xml", ".yaml", ".yml"
 )
 $IgnoredDirectories = @(
-    ".git", ".gradle", ".idea", ".pytest_cache", ".ruff_cache", ".toolchains",
+    ".claude", ".git", ".gradle", ".gradle-user", ".idea", ".pytest_cache", ".ruff_cache", ".toolchains",
     ".venv", "build", "__pycache__"
 )
 
@@ -86,7 +86,7 @@ function Test-TextFile {
     }
 }
 
-Get-ChildItem -LiteralPath $ProjectRoot -File -Recurse | ForEach-Object {
+Get-ChildItem -LiteralPath $ProjectRoot -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
     Test-TextFile -File $_
 }
 

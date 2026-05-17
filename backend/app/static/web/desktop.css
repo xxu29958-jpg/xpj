@@ -69,6 +69,11 @@
 
     --sidebar-w: 224px;
     --topbar-h: 60px;
+
+    --motion-fast: 120ms;
+    --motion-normal: 180ms;
+    --motion-slow: 320ms;
+    --ease-standard: cubic-bezier(.2, 0, 0, 1);
 }
 
 /* ───── Body 噪点纸本质感（midnight 弱化） ───── */
@@ -165,6 +170,28 @@
 }
 
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group-collapsible {
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+.nav-group-collapsible > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.nav-group-collapsible > summary::-webkit-details-marker { display: none; }
+.nav-group-collapsible > summary::before {
+    content: "▸";
+    display: inline-block;
+    transform: rotate(0deg);
+    transition: transform var(--motion-fast) var(--ease-standard);
+}
+.nav-group-collapsible[open] > summary::before {
+    transform: rotate(90deg);
+}
 .nav-group-title {
     font-size: 10px;
     letter-spacing: 0.18em;
@@ -187,7 +214,7 @@
     position: relative;
     user-select: none;
     text-decoration: none;
-    transition: background 120ms ease, color 120ms ease;
+    transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
 }
 .nav-item:hover { background: var(--surface-sunken); color: var(--text-default); }
 .nav-item.active {
@@ -272,7 +299,7 @@
     border-radius: var(--r-sm);
     cursor: pointer;
     background: var(--surface-card);
-    transition: border-color 120ms ease, background 120ms ease;
+    transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
     position: relative;
     color: inherit;
     text-decoration: none;
@@ -376,7 +403,7 @@
     color: var(--text-muted);
     display: grid;
     place-items: center;
-    transition: border-color 120ms ease, color 120ms ease;
+    transition: border-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
 }
 .icon-btn:hover { border-color: var(--text-meta); color: var(--text-default); }
 
@@ -426,6 +453,15 @@
     border-radius: var(--r-md);
     padding: 20px 22px;
     position: relative;
+    transition:
+        transform var(--motion-normal) var(--ease-standard),
+        box-shadow var(--motion-normal) var(--ease-standard),
+        border-color var(--motion-normal) var(--ease-standard);
+}
+.dt-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-raised);
+    border-color: var(--border-input);
 }
 .dt-card-tight { padding: 16px 18px; }
 .card-head {
@@ -562,17 +598,57 @@
 @media (max-width: 900px) {
     .app {
         grid-template-columns: 1fr;
+        min-height: auto;
     }
     .sidebar {
         position: static;
         height: auto;
         border-right: 0;
         border-bottom: 1px solid var(--border-card);
-        padding: 18px 20px;
-        gap: 18px;
+        padding: 14px 20px 12px;
+        gap: 10px;
+        overflow: hidden;
+    }
+    .brand {
+        padding: 0;
+        margin-bottom: 4px;
+    }
+    .sidebar .nav-group {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 0 0 4px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .sidebar .nav-group::-webkit-scrollbar { display: none; }
+    .sidebar .nav-group:not(.nav-group-collapsible) .nav-group-title {
+        display: none;
+    }
+    .nav-group-collapsible > summary {
+        flex: 0 0 auto;
+        min-height: 34px;
+        padding: 7px 10px;
+        border: 1px solid var(--border-card);
+        border-radius: var(--r-sm);
+        background: var(--surface-sunken);
+        color: var(--text-muted);
+    }
+    .nav-group-collapsible[open] {
+        align-items: center;
+    }
+    .sidebar .nav-item {
+        flex: 0 0 auto;
+        min-height: 34px;
+        padding: 7px 10px;
+        white-space: nowrap;
+    }
+    .nav-item.active::before {
+        display: none;
     }
     .sidebar-foot {
-        margin-top: 0;
+        display: none;
     }
     .topbar {
         position: static;
@@ -648,7 +724,7 @@
     height: 100%;
     background: var(--text-default);
     border-radius: inherit;
-    transition: width 600ms ease;
+    transition: width var(--motion-slow) var(--ease-standard);
 }
 .bar-fill.over { background: var(--state-danger-fg); }
 .bar-fill.warn { background: var(--brand-primary); }
@@ -853,7 +929,7 @@
     padding: 14px 18px;
     align-items: center;
     cursor: pointer;
-    transition: background 120ms ease;
+    transition: background var(--motion-fast) var(--ease-standard);
     color: inherit;
     text-decoration: none;
 }
@@ -919,6 +995,109 @@
     gap: 4px;
 }
 .exp-cat-missing { color: var(--brand-primary); }
+
+@media (max-width: 900px) {
+    .toolbar {
+        align-items: stretch;
+    }
+    .toolbar > div[style*="flex:1"] {
+        display: none;
+    }
+    .seg {
+        max-width: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .seg::-webkit-scrollbar { display: none; }
+    .seg button,
+    .seg a {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+    .exp-table {
+        border: 0;
+        background: transparent;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .exp-head {
+        display: none;
+    }
+    .exp-row {
+        grid-template-columns: 24px 56px minmax(0, 1fr) auto;
+        grid-template-rows: auto auto auto;
+        gap: 10px 12px;
+        padding: 12px;
+        border: 1px solid var(--border-card);
+        border-radius: var(--r-md);
+        background: var(--surface-card);
+    }
+    .exp-row + .exp-row {
+        border-top: 1px solid var(--border-card);
+    }
+    .exp-row > :nth-child(1) {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        align-self: start;
+        margin-top: 4px;
+    }
+    .exp-row > :nth-child(2) {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+    }
+    .exp-row > :nth-child(3) {
+        grid-column: 3;
+        grid-row: 1;
+        min-width: 0;
+    }
+    .exp-row > :nth-child(4) {
+        grid-column: 3;
+        grid-row: 2;
+        align-self: center;
+        justify-self: start;
+    }
+    .exp-row > :nth-child(n+5) {
+        min-width: 0;
+    }
+    .exp-row > :nth-child(5) {
+        grid-column: 3 / -1;
+        grid-row: 3;
+    }
+    .exp-row > :nth-child(6) {
+        grid-column: 4;
+        grid-row: 2;
+        justify-self: end;
+        align-self: center;
+    }
+    .exp-row > :nth-child(7) {
+        grid-column: 4;
+        grid-row: 1;
+        justify-self: end;
+        align-self: start;
+    }
+    .exp-thumb {
+        width: 48px;
+        height: 64px;
+    }
+    .exp-meta {
+        flex-wrap: wrap;
+    }
+    .exp-amt {
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 560px) {
+    .toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .toolbar > .dt-btn {
+        justify-self: start;
+    }
+}
 
 .checkbox {
     width: 16px;
@@ -1046,7 +1225,7 @@
     z-index: 30;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 200ms ease;
+    transition: opacity var(--motion-normal) var(--ease-standard);
     backdrop-filter: blur(2px);
 }
 .scrim.on { opacity: 1; pointer-events: auto; }
@@ -1061,7 +1240,7 @@
     background: var(--surface-app);
     z-index: 31;
     transform: translateX(100%);
-    transition: transform 320ms cubic-bezier(.32,.72,.24,1);
+    transition: transform var(--motion-slow) cubic-bezier(.32,.72,.24,1);
     display: grid;
     grid-template-columns: 320px 1fr;
     border-left: 1px solid var(--border-input);
@@ -1192,7 +1371,7 @@
     font-size: 14px;
     color: var(--text-default);
     outline: none;
-    transition: border-color 120ms ease;
+    transition: border-color var(--motion-fast) var(--ease-standard);
 }
 .dt-input:hover { border-color: var(--text-meta); }
 .dt-input:focus { border-color: var(--text-default); }
@@ -1503,21 +1682,16 @@
     font-size: 12.5px;
 }
 
-/* ─────────────────────────────────────────────────────────────────
- * LEGACY COMPAT LAYER · v0.10
+/* --------------------------------------------------------------------------
+ * LEGACY COMPAT LAYER - v0.10
  *
- * 9 个未单独重写的 /web 页面 (budgets / goals / categories / rules /
- * merchants / recurring / import / stats / data-quality / dashboard_cards /
- * uncategorized / edit-as-page) 仍引用 web.css 里的旧 class 名
- * (.card, .summary-card, .btn-primary, .status-chip, .transaction-table,
- * .form-row, .filter-tab 等)。web.css 里这些 class 大量硬编码 slate/blue
- * 16 进制（#334155 / #94a3b8 / #fee2e2 / …），跟新 paper/mono/midnight
- * 主题色割裂。
- *
- * 这一段不动 web.css，直接在加载顺序之后覆盖：以 token 重新着色 + 把
- * 视觉骨架（圆角/阴影/字号/边框）对齐到桌面账本的新设计语言。零模板
- * 改动，9 个 legacy 页面整体跟随主题切换。
- * ─────────────────────────────────────────────────────────────── */
+ * Several older /web pages still use legacy classes from web.css, including
+ * .card, .summary-card, .btn-primary, .status-chip, .transaction-table,
+ * .form-row, and .filter-tab. This layer overrides those classes after
+ * web.css loads so budgets, goals, categories, rules, merchants, recurring,
+ * import, stats, data-quality, dashboard cards, uncategorized, and edit pages
+ * follow the paper / mono / midnight token system without template rewrites.
+ * -------------------------------------------------------------------------- */
 
 .desktop-shell-active h1 {
     font-family: var(--font-serif);
@@ -1820,7 +1994,7 @@
     font-size: 13.5px;
     color: var(--text-default);
     outline: none;
-    transition: border-color 120ms ease;
+    transition: border-color var(--motion-fast) var(--ease-standard);
 }
 .desktop-shell-active .form-row input:hover,
 .desktop-shell-active .form-row textarea:hover,
@@ -2076,7 +2250,7 @@
 .desktop-shell-active .compare-bar.current { background: var(--brand-primary); }
 .desktop-shell-active .compare-bar.previous { background: var(--text-meta); }
 
-/* legacy trend-chart (stats 页的纯 CSS 柱图) —— .trend-bar 已用 --fg-primary
+/* legacy trend-chart (stats 页的纯 CSS 柱图) —— .trend-bar 已用 --brand-primary
    alias，无需覆盖；只把标签字体对齐 */
 .desktop-shell-active .trend-label { color: var(--text-meta); font-family: var(--font-num); }
 
@@ -2176,6 +2350,14 @@
     border-radius: 3px;
 }
 @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+    }
     .skeleton {
         animation: none;
     }
