@@ -3,8 +3,8 @@ package com.ticketbox.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,9 +15,13 @@ import com.ticketbox.ui.design.AppTextHierarchy
 /**
  * 统一加载占位组件。
  *
- * - 内部使用 [AppEmptyStateCard]，与空状态共享卡片底版，保证不同页面的"等待 / 占位"
- *   视觉骨架一致。
+ * - 内部使用 [AppEmptyStateCard]，与空状态共享卡片底版。
  * - 仅做展示职责：不发起任何业务调用，由调用方决定何时显示。
+ *
+ * v0.10：进度条改为 [SkeletonScaffold] 包裹的骸屏行，按
+ * [com.ticketbox.ui.design.LocalSkeletonTokens] 渲染主题色板
+ * (midnight 用暖金 alpha，paper / mono 用墨灰)。调用方签名不变；
+ * 若调用方未来升级为接管 isLoading 切换，可直接换用 [SkeletonScaffold]。
  */
 @Composable
 fun AppLoadingState(
@@ -44,7 +48,16 @@ fun AppLoadingState(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            SkeletonScaffold(
+                isLoading = true,
+                skeleton = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SkeletonBlock(modifier = Modifier.fillMaxWidth(fraction = 0.78f).height(10.dp))
+                        SkeletonBlock(modifier = Modifier.fillMaxWidth(fraction = 0.55f).height(10.dp))
+                    }
+                },
+                content = {},
+            )
         }
     }
 }

@@ -1,0 +1,23 @@
+{# v0.10 Owner 左 sidebar (分两组: 运维高频 / 治理低频), 替代旧的扁平横向 nav #}
+<aside class="owner-sidebar">
+  <a class="owner-sidebar__brand" href="/owner">🎫 小票夹</a>
+  <nav class="owner-sidebar__nav">
+    <div class="owner-sidebar__group">
+      <div class="owner-sidebar__group-label">运维</div>
+      <a href="/owner" {% if request.url.path == '/owner' %}class="is-active"{% endif %}>仪表盘</a>
+      <a href="/owner/devices" {% if '/devices' in request.url.path %}class="is-active"{% endif %}>设备</a>
+      <a href="/owner/ledgers" {% if '/ledgers' in request.url.path %}class="is-active"{% endif %}>账本</a>
+      <a href="/owner/backups" {% if '/backups' in request.url.path %}class="is-active"{% endif %}>备份</a>
+      <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="is-active"{% endif %}>诊断</a>
+    </div>
+    <div class="owner-sidebar__group">
+      <div class="owner-sidebar__group-label">治理</div>
+      <a href="/owner/pairing" {% if '/pairing' in request.url.path %}class="is-active"{% endif %}>绑定码</a>
+      <a href="/owner/upload-links" {% if '/upload-links' in request.url.path %}class="is-active"{% endif %}>上传链接</a>
+      <a href="/owner/migration-readiness" {% if '/migration-readiness' in request.url.path %}class="is-active"{% endif %}>迁移预检</a>
+      <a href="/owner/rule-applications" {% if '/rule-applications' in request.url.path %}class="is-active"{% endif %}>规则审计</a>
+      <a href="/owner/settings" {% if '/settings' in request.url.path %}class="is-active"{% endif %}>设置</a>
+    </div>
+  </nav>
+  <div class="owner-sidebar__foot">v{{ backend_version }} · 本机管理</div>
+</aside>

@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
@@ -27,10 +28,11 @@ internal enum class BottomTab(
     val label: String,
     val icon: ImageVector,
 ) {
-    Pending("pending", "待确认", Icons.Default.CheckCircle),
+    // v0.10 IA 重排: 账本作主入口, Reports 独立 tab (从 Stats 二级拆出, 内容 V0.11 再拆分)
     Ledger("ledger", "账本", Icons.AutoMirrored.Filled.ReceiptLong),
+    Reports("reports", "报表", Icons.Default.Insights),
+    Pending("pending", "待确认", Icons.Default.CheckCircle),
     Search("search", "搜索", Icons.Default.Search),
-    Stats("stats", "统计", Icons.Default.BarChart),
     Settings("settings", "设置", Icons.Default.Settings),
 }
 
@@ -40,7 +42,7 @@ internal enum class StatsSecondaryPage {
 }
 
 internal class MainShellState {
-    var selectedTab by mutableStateOf(BottomTab.Pending)
+    var selectedTab by mutableStateOf(BottomTab.Ledger)
         private set
 
     var statsSecondaryPage by mutableStateOf<StatsSecondaryPage?>(null)
@@ -90,8 +92,8 @@ internal val BottomTab.surfaceRole: SurfaceRole
     get() = when (this) {
         BottomTab.Pending -> SurfaceRole.Pending
         BottomTab.Ledger -> SurfaceRole.Ledger
+        BottomTab.Reports -> SurfaceRole.Stats
         BottomTab.Search -> SurfaceRole.Ledger
-        BottomTab.Stats -> SurfaceRole.Stats
         BottomTab.Settings -> SurfaceRole.Settings
     }
 

@@ -4,7 +4,7 @@
 <div class="page-header-row">
   <div>
     <h1>仪表盘卡片</h1>
-    <p class="page-hint">调整当前账本在 /web 首页的卡片顺序和可见状态。</p>
+    <p class="page-hint">调整当前账本在 /web 首页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
   </div>
   <a class="btn btn-secondary" href="/web{{ q }}">返回仪表盘</a>
 </div>
@@ -14,43 +14,52 @@
 {% endif %}
 
 <div class="card dashboard-card-settings-card">
-  <form method="post" action="/web/dashboard/cards/save" class="dashboard-card-settings">
+  <form method="post" action="/web/dashboard/cards/save" class="dashboard-card-settings" id="dashboard-cards-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <div class="dashboard-card-settings-head">
       <span>卡片</span>
       <span>显示</span>
-      <span>顺序</span>
+      <span>排序</span>
     </div>
+    <div data-drag-reorder id="dashboard-cards-list">
     {% for item in dashboard_cards %}
-    <div class="dashboard-card-setting-row" data-dashboard-card-row="{{ item.key }}">
-      <input type="hidden" name="card_key" value="{{ item.key }}">
-      <div class="dashboard-card-setting-title">
-        <strong>{{ item.title }}</strong>
-        <span>{{ item.key }}</span>
+      <div class="dashboard-card-setting-row"
+           data-dashboard-card-row="{{ item.key }}"
+           data-reorder-key="{{ item.key }}"
+           draggable="{{ 'true' if can_write else 'false' }}">
+        <input type="hidden" name="card_key" value="{{ item.key }}">
+        <div class="dashboard-card-setting-title">
+          <span class="dashboard-card-drag-handle" aria-hidden="true">⋮⋮</span>
+          <div>
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.key }}</span>
+          </div>
+        </div>
+        <label class="dashboard-card-switch">
+          <input
+            type="checkbox"
+            name="visible_key"
+            value="{{ item.key }}"
+            {% if item.visible %}checked{% endif %}
+            {% if not can_write %}disabled{% endif %}
+          >
+          <span>显示</span>
+        </label>
+        <label class="dashboard-card-position">
+          <span>顺序</span>
+          <input
+            type="number"
+            name="card_position"
+            value="{{ item.position }}"
+            min="0"
+            step="1"
+            {% if not can_write %}readonly{% endif %}
+            data-card-position
+          >
+        </label>
       </div>
-      <label class="dashboard-card-switch">
-        <input
-          type="checkbox"
-          name="visible_key"
-          value="{{ item.key }}"
-          {% if item.visible %}checked{% endif %}
-          {% if not can_write %}disabled{% endif %}
-        >
-        <span>显示</span>
-      </label>
-      <label class="dashboard-card-position">
-        <span>顺序</span>
-        <input
-          type="number"
-          name="card_position"
-          value="{{ item.position }}"
-          min="0"
-          step="1"
-          {% if not can_write %}readonly{% endif %}
-        >
-      </label>
-    </div>
     {% endfor %}
+    </div>
 
     {% if can_write %}
     <div class="actions dashboard-card-actions">
@@ -68,4 +77,19 @@
   </form>
   {% endif %}
 </div>
+
+<script>
+// v0.10 progressive enhancement: 拖排后 sync position 数字输入框，让现有 form POST 不变.
+(function () {
+  var list = document.getElementById('dashboard-cards-list');
+  if (!list) return;
+  list.addEventListener('drag-reorder-change', function () {
+    var rows = list.querySelectorAll('[data-reorder-key]');
+    rows.forEach(function (row, idx) {
+      var posInput = row.querySelector('[data-card-position]');
+      if (posInput) posInput.value = idx;
+    });
+  });
+})();
+</script>
 {% endblock %}

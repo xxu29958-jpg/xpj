@@ -39,14 +39,18 @@ import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalDashboardCardTokens
 import com.ticketbox.ui.design.LocalGoalTokens
+import com.ticketbox.ui.design.LocalSkeletonTokens
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.ui.design.LocalSwipeActionTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.backgroundVisualsForSkin
 import com.ticketbox.ui.design.chartTokensForSkin
 import com.ticketbox.ui.design.dashboardCardTokensForSkin
 import com.ticketbox.ui.design.goalTokensForSkin
+import com.ticketbox.ui.design.skeletonTokensForSkin
 import com.ticketbox.ui.design.stateTokensForSkin
+import com.ticketbox.ui.design.swipeActionTokensForSkin
 import com.ticketbox.ui.design.themeVisualsForSkin
 
 private val PaperScheme = lightColorScheme(
@@ -172,6 +176,8 @@ fun TicketboxTheme(
                 LocalChartTokens provides chartTokensForSkin(skin),
                 LocalGoalTokens provides goalTokensForSkin(skin),
                 LocalDashboardCardTokens provides dashboardCardTokensForSkin(skin),
+                LocalSkeletonTokens provides skeletonTokensForSkin(skin),
+                LocalSwipeActionTokens provides swipeActionTokensForSkin(skin),
                 com.ticketbox.ui.design.LocalCurrencyCode provides currency,
                 LocalCurrencyDisplay provides currencyDisplay,
             ) {

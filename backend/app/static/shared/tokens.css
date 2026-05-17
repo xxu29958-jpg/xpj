@@ -100,6 +100,36 @@
     --card-budget-accent:        #8a5a2b; --card-budget-icon:        #5a3a14; --card-budget-surface:        #fbf8f1;
     --card-backup-accent:        #807968; --card-backup-icon:        #4a463f; --card-backup-surface:        #fbf8f1;
     --card-device-accent:        #5a4a6e; --card-device-icon:        #382d44; --card-device-surface:        #fbf8f1;
+
+    /* v0.10 Motion (layout 级，三主题共享值；放在 :root 默认块) */
+    --motion-fast: 120ms;
+    --motion-normal: 220ms;
+    --motion-slow: 320ms;
+    --motion-drag-lift: 160ms;
+    --motion-swipe-reveal: 180ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+    --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
+    --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* v0.10 Layout: --sidebar-w 由 web/desktop.css 与 owner/owner.css 各自定义，shared 层只管 drawer 宽度 */
+    --drawer-w: 380px;
+
+    /* v0.10 Elevation 扩展 */
+    --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.18);
+    --elevation-swipe-row: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+    /* v0.10 Skeleton (paper: 墨灰 + 白光带) */
+    --skeleton-base-bg: rgba(28, 26, 24, 0.08);
+    --skeleton-shine-bg: rgba(255, 255, 255, 0.20);
+
+    /* v0.10 Swipe actions */
+    --swipe-confirm-bg: #4f6b3a; --swipe-confirm-fg: #fbf8f1;
+    --swipe-ignore-bg:  #807968; --swipe-ignore-fg:  #fbf8f1;
+    --swipe-delete-bg:  #a4361c; --swipe-delete-fg:  #fbf8f1;
+
+    /* v0.10 Drawer overlay */
+    --drawer-overlay-bg: rgba(28, 26, 24, 0.32);
 }
 
 :root[data-theme="mono"] {
@@ -184,6 +214,16 @@
     --card-budget-accent:        #0e0e0c; --card-budget-icon:        #000000; --card-budget-surface:        #fafaf8;
     --card-backup-accent:        #6f6e6a; --card-backup-icon:        #3a3a37; --card-backup-surface:        #fafaf8;
     --card-device-accent:        #5a4a6e; --card-device-icon:        #382d44; --card-device-surface:        #fafaf8;
+
+    /* v0.10 Mono theme-specific elevation / skeleton / swipe / drawer overlay */
+    --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.18);
+    --elevation-swipe-row: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --skeleton-base-bg: rgba(14, 14, 12, 0.08);
+    --skeleton-shine-bg: rgba(255, 255, 255, 0.20);
+    --swipe-confirm-bg: #2c5036; --swipe-confirm-fg: #fafaf8;
+    --swipe-ignore-bg:  #6f6e6a; --swipe-ignore-fg:  #fafaf8;
+    --swipe-delete-bg:  #8e1d12; --swipe-delete-fg:  #fafaf8;
+    --drawer-overlay-bg: rgba(14, 14, 12, 0.32);
 }
 
 :root[data-theme="midnight"] {
@@ -268,4 +308,14 @@
     --card-budget-accent:        #d6b487; --card-budget-icon:        #f0d9b3; --card-budget-surface:        #15171c;
     --card-backup-accent:        #7c8a6a; --card-backup-icon:        #b8c4a3; --card-backup-surface:        #15171c;
     --card-device-accent:        #8a7eac; --card-device-icon:        #c3b9d9; --card-device-surface:        #15171c;
+
+    /* v0.10 Midnight theme-specific: skeleton 必须用暖金 alpha, 否则深底上不可见 */
+    --elevation-dragging-card: 0 8px 24px rgba(0, 0, 0, 0.50);
+    --elevation-swipe-row: 0 2px 10px rgba(0, 0, 0, 0.40);
+    --skeleton-base-bg: rgba(214, 180, 135, 0.06);
+    --skeleton-shine-bg: rgba(214, 180, 135, 0.12);
+    --swipe-confirm-bg: #2e3d2a; --swipe-confirm-fg: #a8b88a;
+    --swipe-ignore-bg:  #2a2d35; --swipe-ignore-fg:  #b8b4a8;
+    --swipe-delete-bg:  #3d2823; --swipe-delete-fg:  #d97757;
+    --drawer-overlay-bg: rgba(0, 0, 0, 0.48);
 }
