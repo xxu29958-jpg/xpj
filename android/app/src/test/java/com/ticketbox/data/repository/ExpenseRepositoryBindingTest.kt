@@ -223,21 +223,37 @@ class ExpenseRepositoryBindingTest {
                 )
             }
             val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+            val apiClient = FakeApiServiceFactory(
+                FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0),
+            )
             val repository = ExpenseRepository(
                 expenseDao = FakeExpenseDao(),
-                apiClient = FakeApiServiceFactory(
-                    FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0),
-                ),
+                apiClient = apiClient,
                 settingsStore = settingsStore,
                 tokenStore = tokenStore,
                 deviceNameProvider = { "Android Test Device" },
+            )
+            val ruleRepository = RuleRepository(
+                apiClient = apiClient,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
+            )
+            val merchantRepository = MerchantRepository(
+                apiClient = apiClient,
+                settingsStore = settingsStore,
+                tokenStore = tokenStore,
             )
             val viewModel = ViewModelProvider(
                 viewModelStore,
                 object : ViewModelProvider.Factory {
                     @Suppress("UNCHECKED_CAST")
                     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                        return SettingsViewModel(repository, settingsStore) as T
+                        return SettingsViewModel(
+                            repository,
+                            ruleRepository,
+                            merchantRepository,
+                            settingsStore,
+                        ) as T
                     }
                 },
             )[SettingsViewModel::class.java]
@@ -371,16 +387,24 @@ class ExpenseRepositoryBindingTest {
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
+        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val apiClient = FakeApiServiceFactory(apiService)
+        val expenseRepository = ExpenseRepository(
             expenseDao = dao,
-            apiClient = FakeApiServiceFactory(apiService),
+            apiClient = apiClient,
             settingsStore = settingsStore,
-            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            tokenStore = tokenStore,
             deviceNameProvider = { "Android Test Device" },
         )
+        val ruleRepository = RuleRepository(
+            apiClient = apiClient,
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            onConfirmedChanged = { expenseRepository.syncConfirmed() },
+        )
 
-        val preview = repository.previewApplyConfirmedRules().getOrThrow()
-        val confirmed = repository.confirmApplyConfirmedRules(requireNotNull(preview.previewToken)).getOrThrow()
+        val preview = ruleRepository.previewApplyConfirmedRules().getOrThrow()
+        val confirmed = ruleRepository.confirmApplyConfirmedRules(requireNotNull(preview.previewToken)).getOrThrow()
 
         assertTrue(preview.dryRun)
         assertEquals(1, preview.changedCount)
@@ -404,16 +428,14 @@ class ExpenseRepositoryBindingTest {
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
-            expenseDao = FakeExpenseDao(),
+        val ruleRepository = RuleRepository(
             apiClient = FakeApiServiceFactory(apiService),
             settingsStore = settingsStore,
             tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
-            deviceNameProvider = { "Android Test Device" },
         )
 
-        val applications = repository.ruleApplications().getOrThrow()
-        val rollback = repository.rollbackRuleApplication(" batch-1 ").getOrThrow()
+        val applications = ruleRepository.ruleApplications().getOrThrow()
+        val rollback = ruleRepository.rollbackRuleApplication(" batch-1 ").getOrThrow()
 
         assertEquals("batch-1", applications.single().publicId)
         assertEquals("batch-1", apiService.rollbackPublicIds.single())
@@ -434,18 +456,16 @@ class ExpenseRepositoryBindingTest {
             )
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
-        val repository = ExpenseRepository(
-            expenseDao = FakeExpenseDao(),
+        val merchantRepository = MerchantRepository(
             apiClient = FakeApiServiceFactory(apiService),
             settingsStore = settingsStore,
             tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
-            deviceNameProvider = { "Android Test Device" },
         )
 
-        val listed = repository.merchantAliases().getOrThrow()
-        val created = repository.createMerchantAlias(" 星巴克 ", " Starbucks ").getOrThrow()
-        val disabled = repository.updateMerchantAlias(created.publicId, enabled = false).getOrThrow()
-        repository.deleteMerchantAlias(" ${created.publicId} ").getOrThrow()
+        val listed = merchantRepository.merchantAliases().getOrThrow()
+        val created = merchantRepository.createMerchantAlias(" 星巴克 ", " Starbucks ").getOrThrow()
+        val disabled = merchantRepository.updateMerchantAlias(created.publicId, enabled = false).getOrThrow()
+        merchantRepository.deleteMerchantAlias(" ${created.publicId} ").getOrThrow()
 
         assertEquals("alias-1", listed.single().publicId)
         assertEquals("星巴克", apiService.merchantAliasRequests.first().canonicalMerchant)

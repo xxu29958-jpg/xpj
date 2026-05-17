@@ -1,21 +1,11 @@
 package com.ticketbox.data.repository
 
-import android.util.Log
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import retrofit2.HttpException
-import java.io.IOException
 import java.util.TimeZone
 
 class RecurringRepository(
@@ -24,14 +14,11 @@ class RecurringRepository(
     private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) {
-    private companion object {
-        const val NETWORK_LOG_TAG = "TicketboxNetwork"
-    }
-
-    private val errorAdapter = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-        .adapter(ErrorDto::class.java)
+    private val errorHandler = NetworkErrorHandler(
+        settingsStore = settingsStore,
+        context = "Recurring",
+        statusMessages = mapOf(404 to "固定支出不存在。"),
+    )
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
 
@@ -39,52 +26,12 @@ class RecurringRepository(
 
     private fun api() = apiProvider.current()
 
-    private suspend fun <T> safeCall(block: suspend () -> T): Result<T> {
-        return try {
-            Result.success(withContext(Dispatchers.IO) { block() })
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: HttpException) {
-            Result.failure(RepositoryException(parseHttpError(error)))
-        } catch (error: RepositoryException) {
-            Result.failure(error)
-        } catch (error: IOException) {
-            val serverUrl = settingsStore.serverUrl()
-            Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, serverUrl), error)
-            Result.failure(RepositoryException(userNetworkMessage(error, serverUrl)))
-        } catch (error: IllegalArgumentException) {
-            if (BuildConfig.DEBUG) {
-                Log.w(NETWORK_LOG_TAG, "Recurring request argument error: ${error.message}", error)
-            }
-            Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
-        } catch (error: Exception) {
-            if (BuildConfig.DEBUG) {
-                Log.w(NETWORK_LOG_TAG, "Recurring request failed: ${error::class.java.name}: ${error.message}", error)
-            }
-            Result.failure(RepositoryException(error.message ?: "操作失败。"))
-        }
-    }
-
-    private fun parseHttpError(error: HttpException): String {
-        val body = error.response()?.errorBody()?.string()
-        if (!body.isNullOrBlank()) {
-            runCatching { errorAdapter.fromJson(body) }
-                .getOrNull()
-                ?.let { return backendErrorUserMessage(it.error, it.message) }
-        }
-        return when (error.code()) {
-            401, 403 -> "绑定已失效，请重新绑定账本。"
-            404 -> "固定支出不存在。"
-            else -> "连接出错（${error.code()}），请稍后再试。"
-        }
-    }
-
     suspend fun items(
         status: String? = null,
         includeArchived: Boolean = false,
         month: String? = null,
     ): Result<List<RecurringItem>> =
-        safeCall {
+        errorHandler.safeCall {
             api().recurringItems(
                 status = status?.trim()?.ifBlank { null },
                 includeArchived = includeArchived,
@@ -93,11 +40,11 @@ class RecurringRepository(
             ).items.map { it.toDomain() }
         }
 
-    suspend fun candidates(): Result<List<RecurringCandidate>> = safeCall {
+    suspend fun candidates(): Result<List<RecurringCandidate>> = errorHandler.safeCall {
         api().recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
     }
 
-    suspend fun detail(publicId: String, month: String? = null): Result<RecurringItem> = safeCall {
+    suspend fun detail(publicId: String, month: String? = null): Result<RecurringItem> = errorHandler.safeCall {
         require(publicId.isNotBlank()) { "固定支出不存在。" }
         api().recurringItem(
             publicId = publicId.trim(),
@@ -109,24 +56,24 @@ class RecurringRepository(
     suspend fun confirmCandidate(
         candidate: RecurringCandidate,
         nextExpectedDate: String? = null,
-    ): Result<RecurringItem> = safeCall {
+    ): Result<RecurringItem> = errorHandler.safeCall {
         api().confirmRecurringCandidate(
             request = candidate.toConfirmRequest(nextExpectedDate = nextExpectedDate?.trim()?.ifBlank { null }),
             timezone = currentTimezoneId(),
         ).toDomain()
     }
 
-    suspend fun pause(publicId: String): Result<RecurringItem> = safeCall {
+    suspend fun pause(publicId: String): Result<RecurringItem> = errorHandler.safeCall {
         require(publicId.isNotBlank()) { "固定支出不存在。" }
         api().pauseRecurringItem(publicId.trim()).toDomain()
     }
 
-    suspend fun resume(publicId: String): Result<RecurringItem> = safeCall {
+    suspend fun resume(publicId: String): Result<RecurringItem> = errorHandler.safeCall {
         require(publicId.isNotBlank()) { "固定支出不存在。" }
         api().resumeRecurringItem(publicId.trim()).toDomain()
     }
 
-    suspend fun archive(publicId: String): Result<RecurringItem> = safeCall {
+    suspend fun archive(publicId: String): Result<RecurringItem> = errorHandler.safeCall {
         require(publicId.isNotBlank()) { "固定支出不存在。" }
         api().archiveRecurringItem(publicId.trim()).toDomain()
     }

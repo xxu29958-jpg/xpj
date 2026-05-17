@@ -1,12 +1,7 @@
 package com.ticketbox.data.repository
 
-import android.util.Log
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.ErrorDto
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DashboardCardUpdate
 import com.ticketbox.domain.model.DashboardCards
@@ -19,12 +14,7 @@ import com.ticketbox.domain.model.ReportsOverviewQuery
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import com.ticketbox.security.SessionTokenStore
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import retrofit2.HttpException
 import retrofit2.Response
-import java.io.IOException
 import java.time.YearMonth
 import java.util.TimeZone
 
@@ -50,21 +40,18 @@ class ReportsRepository(
     private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) : ReportsActions {
-    private companion object {
-        const val NETWORK_LOG_TAG = "TicketboxNetwork"
-    }
-
-    private val errorAdapter = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-        .adapter(ErrorDto::class.java)
+    private val errorHandler = NetworkErrorHandler(
+        settingsStore = settingsStore,
+        context = "Reports",
+        statusMessages = mapOf(404 to "没有找到目标。"),
+    )
 
     override fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
     override suspend fun reportsOverview(query: ReportsOverviewQuery): Result<ReportsOverview> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             api().reportsOverview(
                 month = cleanQuery.month,
                 granularity = cleanQuery.granularity.apiValue,
@@ -79,7 +66,7 @@ class ReportsRepository(
     override suspend fun exportReportsOverviewCsv(query: ReportsOverviewQuery): Result<CsvExport> {
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             val response = api().reportsOverviewCsv(
                 month = cleanQuery.month,
                 granularity = cleanQuery.granularity.apiValue,
@@ -99,7 +86,7 @@ class ReportsRepository(
     override suspend fun goals(month: String?, includeArchived: Boolean): Result<List<Goal>> {
         val cleanMonth = month.cleanMonthOrNull()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             api().goals(
                 month = cleanMonth,
                 includeArchived = includeArchived,
@@ -114,7 +101,7 @@ class ReportsRepository(
         }
         val cleanDraft = draft.validated()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             api().createGoal(
                 request = cleanDraft.toRequest(),
                 timezone = currentTimezoneId(),
@@ -125,7 +112,7 @@ class ReportsRepository(
     override suspend fun goal(publicId: String): Result<Goal> {
         val cleanPublicId = publicId.cleanPublicId()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             api().goal(
                 publicId = cleanPublicId,
                 timezone = currentTimezoneId(),
@@ -141,7 +128,7 @@ class ReportsRepository(
             .getOrElse { return Result.failure(it) }
         val cleanUpdate = update.validated()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             api().updateGoal(
                 publicId = cleanPublicId,
                 request = cleanUpdate.toRequest(),
@@ -156,7 +143,7 @@ class ReportsRepository(
         }
         val cleanPublicId = publicId.cleanPublicId()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             api().archiveGoal(
                 publicId = cleanPublicId,
                 timezone = currentTimezoneId(),
@@ -164,7 +151,7 @@ class ReportsRepository(
         }
     }
 
-    override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> = safeCall {
+    override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> = errorHandler.safeCall {
         api().dashboardCards(surface = surface.apiValue).toDomain()
     }
 
@@ -177,7 +164,7 @@ class ReportsRepository(
         }
         val cleanUpdates = updates.validatedDashboardUpdates()
             .getOrElse { return Result.failure(it) }
-        return safeCall {
+        return errorHandler.safeCall {
             api().updateDashboardCards(
                 request = cleanUpdates.toRequest(),
                 surface = surface.apiValue,
@@ -189,51 +176,9 @@ class ReportsRepository(
 
     private fun api() = apiProvider.current()
 
-    private suspend fun <T> safeCall(block: suspend () -> T): Result<T> {
-        return try {
-            Result.success(withContext(Dispatchers.IO) { block() })
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: HttpException) {
-            Result.failure(RepositoryException(parseHttpError(error)))
-        } catch (error: RepositoryException) {
-            Result.failure(error)
-        } catch (error: IOException) {
-            val serverUrl = settingsStore.serverUrl()
-            Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, serverUrl), error)
-            Result.failure(RepositoryException(userNetworkMessage(error, serverUrl)))
-        } catch (error: IllegalArgumentException) {
-            if (BuildConfig.DEBUG) {
-                Log.w(NETWORK_LOG_TAG, "Reports request argument error: ${error.message}", error)
-            }
-            Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
-        } catch (error: Exception) {
-            if (BuildConfig.DEBUG) {
-                Log.w(NETWORK_LOG_TAG, "Reports request failed: ${error::class.java.name}: ${error.message}", error)
-            }
-            Result.failure(RepositoryException(error.message ?: "操作失败。"))
-        }
-    }
-
-    private fun parseHttpError(error: HttpException): String =
-        parseErrorMessage(error.code(), error.response()?.errorBody()?.string())
-
-    private fun parseErrorMessage(statusCode: Int, body: String?): String {
-        if (!body.isNullOrBlank()) {
-            runCatching { errorAdapter.fromJson(body) }
-                .getOrNull()
-                ?.let { return backendErrorUserMessage(it.error, it.message) }
-        }
-        return when (statusCode) {
-            401, 403 -> "绑定已失效，请重新绑定账本。"
-            404 -> "没有找到目标。"
-            else -> "连接出错（$statusCode），请稍后再试。"
-        }
-    }
-
     private fun readExportBody(response: Response<okhttp3.ResponseBody>): ByteArray {
         if (!response.isSuccessful) {
-            throw RepositoryException(parseErrorMessage(response.code(), response.errorBody()?.string()))
+            throw RepositoryException(errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string()))
         }
         val body = response.body() ?: throw RepositoryException("导出内容为空。")
         return body.use { it.bytes() }

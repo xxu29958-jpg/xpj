@@ -1,8 +1,7 @@
 # v0.4-alpha2 Monarch-inspired Tri-surface UI/UX
 
-> 状态：**进行中**。基线 = main `5a9e18b`（PR #11 已合并，v0.4-alpha1 多账本地基）。
-> 身份契约保持 `identity_schema=v0.3`，不改 Account / Ledger / Device / AuthToken /
-> UploadLink / PairingCode 表，也不改 Room schema version。
+> 状态：**已完成**。三端信息架构已稳定。后续以
+> `docs/TRI_SURFACE_INFORMATION_ARCHITECTURE.md` 为实施参考。
 
 ## 目标
 

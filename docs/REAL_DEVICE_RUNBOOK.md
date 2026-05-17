@@ -391,4 +391,4 @@ artifacts\e2e_logcat.txt
 
 `artifacts\` 已在 `.gitignore` 中，不要把截图 / logcat / pairing code 提交进 git。
 
-完整自用清单见 `docs\V0_3_2_SELFUSE_CHECKLIST.md`。
+人工验收步骤见本文档 §8 端到端验收。

@@ -1,10 +1,13 @@
 # 小票夹 vs Monarch 能力路线图
 
+> **定位**：本文是产品能力规划（以 Monarch 为参照），用于理解"做什么"和"不做什么"。
+> 工程排期和验收闸门见 `docs/POST_BETA_DEVELOPMENT_ROADMAP.md`。
+
 版本范围：`v0.4-alpha3-rc1 -> v1.0`
 
 本文记录小票夹从 `v0.4-alpha3-rc1` 到 `v1.0` 的结构化能力规划。Monarch Money 只作为成熟个人财务产品的信息架构参考，不复制其银行聚合、投资净资产、品牌视觉、专有文案或家庭共享权限模型。
 
-基于当前 `main` 代码基线继续排期时，以 `docs/POST_BETA_DEVELOPMENT_ROADMAP.md` 作为后续开发顺序、先修风险和验收闸门。`v0.4-beta1-family-ledger-foundation` 仅保留 beta1 切片历史和回溯价值，不作为新的开发分叉。
+基于当前 `main` 代码基线继续排期时，以 `docs/POST_BETA_DEVELOPMENT_ROADMAP.md` 作为后续开发顺序、先修风险和验收闸门。
 
 ## 1. 设计原则
 
@@ -71,23 +74,31 @@ PR #16：
 
 ### v0.4-beta1 Family Ledger Foundation
 
-分支：`v0.4-beta1-family-ledger-foundation`
-
-状态：家庭账本基础已落地，详见 `docs/V0_4_BETA1_REPORT.md`。
-
 - 新增 `Invitation` 表、邀请创建 / 接受 / 撤销 API。
 - Owner Console 成员 / 邀请页，邀请明文只显示一次。
 - Android 设置 -> 加入家庭账本入口。
 - `/web` 角色 chip + viewer 只读视图。
 - 20 个家庭权限 / 邀请后端测试，覆盖成员看不到他人个人账本的隐私不变式。
 
-## 3. v0.4-alpha3-ga
+### v0.5 Household 权限硬化
+
+viewer 全链路写保护、权限错误契约统一（`permission_denied`）、成员审计、owner 转让、三端角色词统一（拥有者/成员/只读）。详见 `docs/V0_5_HOUSEHOLD_MODEL.md`。
+
+### v0.6-v0.7 Recurring + Rules + Tags + Merchant
+
+固定支出正式化（`recurring_items` 表 + 状态机）、通知草稿幂等、通知偏好开关、商家别名、标签多对多、规则增强、dry-run + 审计 + 回滚、分类组管理和性能索引。
+
+### v0.8 Budget + 月度可花 + Dashboard 基线
+
+服务端预算模型（月度/弹性/分类预算）、月度可花卡片、共享预算（仅共享账本）、预算排除分类、三端 Dashboard UI/UX 基线统一。详见 `docs/V0_8_BUDGET_REPORT.md`。
+
+## 3. v0.4-alpha3-ga（历史计划项，已跳过）
 
 周期：1-2 周
 
 目标：把 RC1 推进到 GA。零新功能，纯打磨。
 
-当前状态：历史计划项。当前分支已经进入 `v0.4-beta1-family-ledger-foundation`，后续 GA 打磨只在需要补发 alpha3 GA 时回看。
+当前状态：历史计划项，已直接进入 beta1。
 
 任务：
 
@@ -104,7 +115,7 @@ PR #16：
 - 不动新功能。
 - 本阶段不引入图表库或任何 UI 依赖。
 
-## 4. v0.5 Household & 家庭协作收口
+## 4. v0.5 Household & 家庭协作收口（已完成）
 
 周期：4-6 周
 
@@ -136,7 +147,7 @@ PR #16：
 - 不引入图表库。
 - 不做 Monarch 式 household 全账户可见。
 
-## 5. v0.6 Recurring + Android 通知草稿
+## 5. v0.6 Recurring + Android 通知草稿（已完成）
 
 周期：4 周
 
@@ -159,7 +170,7 @@ PR #16：
 - 不上传通知原文到服务端。
 - 不引入图表库。
 
-## 6. v0.7 Rules / Tags / Merchant 系统
+## 6. v0.7 Rules / Tags / Merchant 系统（已完成）
 
 周期：3-4 周
 
@@ -182,7 +193,7 @@ PR #16：
 - 用户可一键回滚最近 N 条规则应用。
 - 不引入图表库。
 
-## 7. v0.8 Budget + 月度可花
+## 7. v0.8 Budget + 月度可花（已完成）
 
 周期：3-4 周
 

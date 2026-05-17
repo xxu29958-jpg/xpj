@@ -14,7 +14,7 @@
 
     本脚本不携带任何真实绑定码、token 或域名常量；所有敏感参数走命令行入参。
     UI 自动点击/输入是 best-effort，Compose 导航有时会忽略 ADB tap，
-    失败时按 docs\REAL_DEVICE_RUNBOOK.md 与 docs\V0_3_2_SELFUSE_CHECKLIST.md 人工点按。
+    失败时按 docs\REAL_DEVICE_RUNBOOK.md §7-8 人工点按。
 
     截图与 logcat 会写入 artifacts\ 目录（已在 .gitignore 中，不会进入仓库）。
 
@@ -151,5 +151,5 @@ if ($ServerUrl) {
 Write-Host ""
 Write-Host "下一步（人工）：" -ForegroundColor Yellow
 Write-Host "  · 在 App 内确认绑定状态、已确认账单恢复、飞行模式下账本可读。"
-Write-Host "  · 详细步骤见 docs\V0_3_2_SELFUSE_CHECKLIST.md。"
+Write-Host "  · 详细步骤见 docs\REAL_DEVICE_RUNBOOK.md §8 端到端验收。"
 Write-Host "  · 不要把 artifacts\ 内的截图/logcat 提交进 git。"

@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import (
+    DateTime,
+    String,
+    Text,
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+from app.services.time_service import now_utc
+
+
+class SchemaMigration(Base):
+    """Tracks which named migration steps have been applied to the SQLite DB.
+
+    The legacy hand-written ``migrate_sqlite_schema`` in
+    :mod:`app.database` is idempotent (uses ``ADD COLUMN`` /
+    ``CREATE INDEX IF NOT EXISTS``), so this table is **purely informational**
+    today — it does not gate execution. It exists so that future incremental
+    migration scripts can record a stable identifier (e.g. ``"v0.9-add-foo"``)
+    and be skipped on subsequent boots. See ``docs/V2_ROADMAP.md`` and the
+    audit notes in ``docs/VERSION.md``.
+    """
+
+    __tablename__ = "schema_migrations"
+
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    backend_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)

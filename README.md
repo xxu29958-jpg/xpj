@@ -20,32 +20,54 @@ iPhone UploadLink 或 Android 上传截图
 
 ## 文档
 
-- [账号 / 账本 / 设备模型](docs/ACCOUNT_SYSTEM.md)
-- [Bootstrap Owner](docs/BOOTSTRAP.md)
-- [回滚说明](docs/ROLLBACK.md)
+### 核心架构
+
 - [完整架构](docs/ARCHITECTURE.md)
+- [项目结构](docs/PROJECT_STRUCTURE.md)
+- [账号 / 账本 / 设备模型](docs/ACCOUNT_SYSTEM.md)
 - [API 文档](docs/API.md)
 - [安全说明](docs/SECURITY.md)
-- [iPhone 快捷指令](docs/IOS_SHORTCUT.md)
-- [Cloudflare Tunnel 配置](docs/CLOUDFLARE_TUNNEL.md)
-- [Windows 长期运行 Runbook](docs/WINDOWS_SERVICE_RUNBOOK.md)
-- [实机联调 Runbook](docs/REAL_DEVICE_RUNBOOK.md)
-- [第二版路线](docs/V2_ROADMAP.md)
-- [项目结构](docs/PROJECT_STRUCTURE.md)
-- [CI 说明](docs/CI.md)
-- [工程规范](docs/ENGINEERING_RULES.md)
-- [后端开发规则](docs/BACKEND_RULES.md)
-- [Android 开发规则](docs/ANDROID_RULES.md)
+- [版本真值源](docs/VERSION.md)
+
+### 开发规范
+
+- [工程规范](docs/ENGINEERING_RULES.md)（单一权威来源）
+- [后端开发规则](docs/BACKEND_RULES.md)（后端补充）
+- [Android 开发规则](docs/ANDROID_RULES.md)（Android 补充）
 - [关键决策](docs/DECISIONS/)
 - [官方资料与依赖来源](docs/REFERENCES.md)
 - [依赖管理](docs/DEPENDENCIES.md)
-- [灰度验收执行清单](docs/GRAY_ACCEPTANCE_EXECUTION.md)
-- [v0.5 Household 权限模型](docs/V0_5_HOUSEHOLD_MODEL.md)
-- [v0.3.2 自用稳定版验收清单](docs/V0_3_2_SELFUSE_CHECKLIST.md)
 - [错误码文案映射](docs/ERROR_MESSAGE_MAPPING.md)
-- [v0.8 Budget 收口报告](docs/V0_8_BUDGET_REPORT.md)
+
+### 部署与运维
+
+- [Bootstrap Owner](docs/BOOTSTRAP.md)
+- [Cloudflare Tunnel 配置](docs/CLOUDFLARE_TUNNEL.md)
+- [Windows 长期运行 Runbook](docs/WINDOWS_SERVICE_RUNBOOK.md)
+- [Windows 备份任务](docs/WINDOWS_BACKUP_TASK.md)
+- [实机联调 Runbook](docs/REAL_DEVICE_RUNBOOK.md)
+- [Release 打包](docs/RELEASE_PACKAGING.md)
+- [CI 说明](docs/CI.md)
+- [灰度验收执行清单](docs/GRAY_ACCEPTANCE_EXECUTION.md)
+- [回滚说明](docs/ROLLBACK.md)
+- [iPhone 快捷指令](docs/IOS_SHORTCUT.md)
+
+### 产品规划
+
+- [v0.5→v1.0 工程主控路线图](docs/POST_BETA_DEVELOPMENT_ROADMAP.md)
+- [能力路线图（Monarch 参照）](docs/MONARCH_CAPABILITY_ROADMAP.md)
+- [Monarch 设计参考边界](docs/MONARCH_INSPIRED_UI.md)
+- [三端信息架构](docs/TRI_SURFACE_INFORMATION_ARCHITECTURE.md)
 - [v0.9 设计包功能表](docs/V0_9_DESIGN_FUNCTION_TABLE.md)
+- [v0.9 设计 Token 参考](docs/V0_9_DESIGN_TOKEN_REFERENCE.md)
+- [第二版能力说明](docs/V2_ROADMAP.md)
+- [v0.5 Household 权限模型](docs/V0_5_HOUSEHOLD_MODEL.md)
+
+### 当前版本
+
 - [v0.9 Reports / Goals 收口报告](docs/V0_9_REPORT.md)
+- [v0.8 Budget 收口报告](docs/V0_8_BUDGET_REPORT.md)
+- [CHANGELOG](docs/CHANGELOG.md)
 
 ## 项目组成
 
@@ -91,7 +113,7 @@ v0.3.3 起，后端额外提供一个轻量网页版账本视图，方便在 PC 
 http://127.0.0.1:8000/web
 ```
 
-包括待确认列表、已确认列表（按月份过滤）、月度统计、单笔编辑 / 确认 / 拒绝。仅本机可访问，公网仍 403。详见 [docs/V0_3_3_PRODUCTIZATION.md](docs/V0_3_3_PRODUCTIZATION.md)。
+包括待确认列表、已确认列表（按月份过滤）、月度统计、单笔编辑 / 确认 / 拒绝。仅本机可访问，公网仍 403。
 
 ## 首次初始化 Owner 身份
 

@@ -30,6 +30,8 @@ class MainActivity : FragmentActivity() {
                 ),
                 settingsViewModelFactory = settingsViewModelFactory(
                     repository = container.expenseRepository,
+                    ruleRepository = container.ruleRepository,
+                    merchantRepository = container.merchantRepository,
                     settingsStore = container.settingsStore,
                 ),
                 biometricAuthManager = biometricAuthManager,

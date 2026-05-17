@@ -16,18 +16,17 @@ from urllib.parse import urlencode
 
 from fastapi import Depends, Request
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.network_boundary import require_owner_console_local
-from app.models import AuthToken, Device, Expense
 from app.services import backup_service
+from app.services import owner_console_service as owner_svc
+from app.services import web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.dashboard_service import list_dashboard_cards
-from app.services.goal_service import list_goals
-from app.services import owner_console_service as owner_svc
 from app.services.expense_service import list_pending
+from app.services.goal_service import list_goals
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
 from app.services.stats_service import monthly_stats
@@ -140,28 +139,8 @@ def _read_ui_theme(request: Request) -> str:
 
 
 def _sidebar_counts(db: Session, ledger_id: str) -> tuple[int, int]:
-    """Cheap counts for the sidebar nav badges (pending + suspected duplicates).
-
-    Avoids loading full ``list_pending()`` rows on pages that don't need them.
-    """
-    pending_count = int(
-        db.scalar(
-            select(func.count(Expense.id))
-            .where(Expense.tenant_id == ledger_id)
-            .where(Expense.status == "pending")
-        )
-        or 0
-    )
-    suspected_count = int(
-        db.scalar(
-            select(func.count(Expense.id))
-            .where(Expense.tenant_id == ledger_id)
-            .where(Expense.status == "pending")
-            .where(Expense.duplicate_status == "suspected")
-        )
-        or 0
-    )
-    return pending_count, suspected_count
+    """Sidebar pending + suspected counts. Delegates to web_stats_service."""
+    return web_stats_service.sidebar_counts(db, ledger_id)
 
 
 def _base_ctx(
@@ -205,90 +184,21 @@ def _amount_yuan(amount_cents: int | None) -> str:
 
 
 def _trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
-    """近 14 个日历日（含今天）的每日确认金额，按 expense_time/confirmed_at 聚合。
-
-    返回顺序：从最早到今天，每项 {'d': 'MM-DD', 'amount_yuan': float}。
-    日期为空的 expense 会 fallback 到 confirmed_at；都没有则忽略。
-    """
-    today = now_utc().astimezone().date()
-    start = today - timedelta(days=13)
-    expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
-    rows = db.execute(
-        select(func.strftime("%m-%d", expense_time), func.coalesce(func.sum(Expense.amount_cents), 0))
-        .where(Expense.tenant_id == ledger_id)
-        .where(Expense.status == "confirmed")
-        .where(func.date(expense_time) >= start.isoformat())
-        .where(func.date(expense_time) <= today.isoformat())
-        .group_by(func.strftime("%m-%d", expense_time))
-    )
-    by_day: dict[str, int] = {label: int(amt or 0) for label, amt in rows}
-    result: list[dict] = []
-    for i in range(14):
-        d = start + timedelta(days=i)
-        label = d.strftime("%m-%d")
-        result.append({
-            "d": label,
-            "amount_yuan": by_day.get(label, 0) / 100.0,
-            "amount_cents": by_day.get(label, 0),
-        })
-    return result
+    """14-day trend. Delegates to web_stats_service."""
+    return web_stats_service.trend14_amounts(db, ledger_id)
 
 
 def _confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
-    """已确认账单在指定月内的每日金额，用于日历热力图。
-
-    返回 [{'date': 'YYYY-MM-DD', 'amount_cents': int, 'count': int}]，
-    只包含该月有支出的天；模板自己填空日。
-    """
-    if not month or "-" not in month:
-        return []
-    expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
-    rows = db.execute(
-        select(
-            func.strftime("%Y-%m-%d", expense_time),
-            func.coalesce(func.sum(Expense.amount_cents), 0),
-            func.count(Expense.id),
-        )
-        .where(Expense.tenant_id == ledger_id)
-        .where(Expense.status == "confirmed")
-        .where(func.strftime("%Y-%m", expense_time) == month)
-        .group_by(func.strftime("%Y-%m-%d", expense_time))
-    )
-    return [
-        {"date": d, "amount_cents": int(amt or 0), "amount_yuan": int(amt or 0) / 100.0, "count": int(cnt)}
-        for d, amt, cnt in rows
-    ]
+    """Per-day confirmed totals in month. Delegates to web_stats_service."""
+    return web_stats_service.confirmed_by_day(db, ledger_id, month)
 
 
 def _confirmed_source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dict]:
-    """指定月的已确认账单来源占比。返回 [{'label', 'count', 'percent'}]。"""
-    q = (
-        select(Expense.source, func.count(Expense.id))
-        .where(Expense.tenant_id == ledger_id)
-        .where(Expense.status == "confirmed")
-    )
-    if month:
-        expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
-        q = q.where(func.strftime("%Y-%m", expense_time) == month)
-    q = q.group_by(Expense.source)
-    rows = list(db.execute(q))
-    total = sum(int(c or 0) for _, c in rows) or 1
-    return [
-        {
-            "label": _SOURCE_LABELS.get((s or "").strip(), "其他"),
-            "count": int(c),
-            "percent": int(round(int(c) / total * 100)),
-        }
-        for s, c in sorted(rows, key=lambda r: -int(r[1] or 0))
-    ]
+    """Source breakdown. Delegates to web_stats_service."""
+    return web_stats_service.source_breakdown(db, ledger_id, month)
 
 
-_SOURCE_LABELS: dict[str, str] = {
-    "ios_upload_link": "iPhone",
-    "android_upload": "Android",
-    "manual": "手动",
-    "web": "网页",
-}
+_SOURCE_LABELS = web_stats_service.SOURCE_LABELS
 
 
 def _expense_view(expense) -> dict:
@@ -359,26 +269,8 @@ def _dashboard_cards(db: Session, ledger_id: str) -> dict:
     goal_risk_count = sum(1 for goal in goals if goal.progress_state in {"near_limit", "over_limit"})
     now = now_utc()
     week_ago = now - timedelta(days=7)
-    recent_count = int(
-        db.scalar(
-            select(func.count())
-            .select_from(Expense)
-            .where(Expense.tenant_id == ledger_id)
-            .where(Expense.created_at >= week_ago)
-        )
-        or 0
-    )
-    active_device_count = int(
-        db.scalar(
-            select(func.count(func.distinct(Device.id)))
-            .select_from(Device)
-            .join(AuthToken, AuthToken.device_id == Device.id)
-            .where(AuthToken.ledger_id == ledger_id)
-            .where(AuthToken.revoked_at.is_(None))
-            .where(Device.revoked_at.is_(None))
-        )
-        or 0
-    )
+    recent_count = web_stats_service.recent_expense_count(db, ledger_id, week_ago)
+    active_device_count = web_stats_service.active_device_count(db, ledger_id)
     latest_backup = backup_service.latest_backup()
     backup_age_days = None
     if latest_backup is not None:
