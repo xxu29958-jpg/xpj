@@ -8,7 +8,9 @@ from sqlalchemy import select
 
 from api_contract_helpers import insert_confirmed_expense, upload_png
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
+from app.models import CategoryRule, Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
+from app.services.rule_application_service import _try_apply_rule_category
+from app.services.time_service import now_utc
 from conftest import app_headers, gray_app_headers
 
 
@@ -266,6 +268,53 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
     response = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
     assert response.status_code == 403
     assert response.json()["error"] == "permission_denied"
+
+
+def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "RaceCafe")
+    created = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "RaceCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    assert created.status_code == 200
+    rule_id = created.json()["id"]
+
+    with SessionLocal() as stale_db:
+        stale_expense = stale_db.scalar(select(Expense).where(Expense.id == pending_id))
+        stale_rule = stale_db.scalar(select(CategoryRule).where(CategoryRule.id == rule_id))
+        assert stale_expense is not None
+        assert stale_rule is not None
+        assert stale_expense.category == "其他"
+        stale_db.expunge(stale_expense)
+        stale_db.expunge(stale_rule)
+
+    with SessionLocal() as user_db:
+        expense = user_db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        expense.category = "交通"
+        expense.updated_at = now_utc()
+        user_db.commit()
+
+    with SessionLocal() as apply_db:
+        applied = _try_apply_rule_category(
+            apply_db,
+            tenant_id="owner",
+            status="pending",
+            expense=stale_expense,
+            rule=stale_rule,
+            before_category="其他",
+            after_category="餐饮",
+            now=now_utc(),
+        )
+        apply_db.rollback()
+
+    assert applied is None
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        assert expense.category == "交通"
 
 
 def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -130,8 +130,36 @@ def _haystack_for(expense: Expense, match_field: str, alias_map: dict[str, str])
     )
 
 
-def _is_auto_fillable_category(value: str | None) -> bool:
-    return normalize_category(value or "") in _AUTO_FILLABLE_CATEGORIES
+def _updated_at_matches(value):
+    if value is None:
+        return Expense.updated_at.is_(None)
+    return Expense.updated_at == value
+
+
+def _try_apply_rule_category(
+    db: Session,
+    *,
+    tenant_id: str,
+    status: str,
+    expense: Expense,
+    rule: CategoryRule,
+    before_category: str,
+    after_category: str,
+    now,
+) -> tuple[int, int, str, str, str] | None:
+    result = db.execute(
+        update(Expense)
+        .where(ledger_filter(Expense, tenant_id))
+        .where(Expense.id == expense.id)
+        .where(Expense.status == status)
+        .where(_auto_fillable_category_filter())
+        .where(_updated_at_matches(expense.updated_at))
+        .values(category=after_category, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        return None
+    return (int(expense.id), int(rule.id), rule.keyword, before_category, after_category)
 
 
 def _matching_rule_category(
@@ -329,63 +357,15 @@ def apply_rules_to_pending(
 
     Returns ``(pending_scanned, changed_count, scan_limit_reached)``.
     """
-    pending, scan_limit_reached = _rule_application_candidates(
+    return _apply_rules_to_status(
         db,
         tenant_id=tenant_id,
         status="pending",
+        audit_status="applied",
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
         max_scan=max_scan,
     )
-    rules = list(
-        db.scalars(
-            ledger_scoped_select(CategoryRule, tenant_id)
-            .where(CategoryRule.enabled == True)  # noqa: E712
-            .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
-        )
-    )
-    if not rules:
-        return len(pending), 0, scan_limit_reached
-
-    alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    changes: list[tuple[Expense, CategoryRule, str, str]] = []
-    now = now_utc()
-    for expense in pending:
-        match = _matching_rule_category(expense, rules, alias_map)
-        if match is None:
-            continue
-        rule, new_category = match
-        before_category = normalize_category(expense.category)
-        if new_category != before_category:
-            expense.category = new_category
-            expense.updated_at = now
-            changes.append((expense, rule, before_category, new_category))
-    if changes:
-        batch = RuleApplicationBatch(
-            tenant_id=tenant_id,
-            status="applied",
-            pending_scanned=len(pending),
-            changed_count=len(changes),
-            actor_account_id=actor_account_id,
-            actor_device_id=actor_device_id,
-            created_at=now,
-        )
-        db.add(batch)
-        db.flush()
-        for expense, rule, before_category, after_category in changes:
-            db.add(
-                RuleApplicationChange(
-                    tenant_id=tenant_id,
-                    batch_id=batch.id,
-                    expense_id=expense.id,
-                    rule_id=rule.id,
-                    matched_keyword=rule.keyword,
-                    before_category=before_category,
-                    after_category=after_category,
-                    status="applied",
-                    created_at=now,
-                )
-            )
-        db.commit()
-    return len(pending), len(changes), scan_limit_reached
 
 
 def apply_rules_to_confirmed(
@@ -403,10 +383,31 @@ def apply_rules_to_confirmed(
     is still auto-fillable (其他 / 未分类 / 空), and callers must require an
     explicit confirmation before invoking this mutating service.
     """
-    confirmed, scan_limit_reached = _rule_application_candidates(
+    return _apply_rules_to_status(
         db,
         tenant_id=tenant_id,
         status="confirmed",
+        audit_status="applied_confirmed",
+        actor_account_id=actor_account_id,
+        actor_device_id=actor_device_id,
+        max_scan=max_scan,
+    )
+
+
+def _apply_rules_to_status(
+    db: Session,
+    *,
+    tenant_id: str,
+    status: str,
+    audit_status: str,
+    actor_account_id: int | None,
+    actor_device_id: int | None,
+    max_scan: int | None,
+) -> tuple[int, int, bool]:
+    expenses, scan_limit_reached = _rule_application_candidates(
+        db,
+        tenant_id=tenant_id,
+        status=status,
         max_scan=max_scan,
     )
     rules = list(
@@ -417,26 +418,36 @@ def apply_rules_to_confirmed(
         )
     )
     if not rules:
-        return len(confirmed), 0, scan_limit_reached
+        return len(expenses), 0, scan_limit_reached
 
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    changes: list[tuple[Expense, CategoryRule, str, str]] = []
+    changes: list[tuple[int, int, str, str, str]] = []
     now = now_utc()
-    for expense in confirmed:
+    for expense in expenses:
         match = _matching_rule_category(expense, rules, alias_map)
         if match is None:
             continue
         rule, new_category = match
         before_category = normalize_category(expense.category)
-        if new_category != before_category:
-            expense.category = new_category
-            expense.updated_at = now
-            changes.append((expense, rule, before_category, new_category))
+        if new_category == before_category:
+            continue
+        applied = _try_apply_rule_category(
+            db,
+            tenant_id=tenant_id,
+            status=status,
+            expense=expense,
+            rule=rule,
+            before_category=before_category,
+            after_category=new_category,
+            now=now,
+        )
+        if applied is not None:
+            changes.append(applied)
     if changes:
         batch = RuleApplicationBatch(
             tenant_id=tenant_id,
-            status="applied_confirmed",
-            pending_scanned=len(confirmed),
+            status=audit_status,
+            pending_scanned=len(expenses),
             changed_count=len(changes),
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
@@ -444,14 +455,14 @@ def apply_rules_to_confirmed(
         )
         db.add(batch)
         db.flush()
-        for expense, rule, before_category, after_category in changes:
+        for expense_id, rule_id, matched_keyword, before_category, after_category in changes:
             db.add(
                 RuleApplicationChange(
                     tenant_id=tenant_id,
                     batch_id=batch.id,
-                    expense_id=expense.id,
-                    rule_id=rule.id,
-                    matched_keyword=rule.keyword,
+                    expense_id=expense_id,
+                    rule_id=rule_id,
+                    matched_keyword=matched_keyword,
                     before_category=before_category,
                     after_category=after_category,
                     status="applied",
@@ -459,7 +470,7 @@ def apply_rules_to_confirmed(
                 )
             )
         db.commit()
-    return len(confirmed), len(changes), scan_limit_reached
+    return len(expenses), len(changes), scan_limit_reached
 
 
 def list_rule_applications(
