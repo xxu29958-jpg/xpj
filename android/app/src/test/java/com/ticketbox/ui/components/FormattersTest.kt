@@ -37,8 +37,9 @@ class FormattersTest {
     fun formatsDisplayCurrencyAmounts() {
         assertEquals("¥123.45", formatAmount(12345, CurrencyCode.CNY))
         assertEquals("$123.45", formatAmount(12345, CurrencyCode.USD))
-        assertEquals("¥123", formatAmount(12345, CurrencyCode.JPY))
-        assertEquals("₩123", formatAmount(12345, CurrencyCode.KRW))
+        // JPY / KRW 等无小数币种：amountCents 已等于 major unit，直接整数显示
+        assertEquals("¥12,345", formatAmount(12345, CurrencyCode.JPY))
+        assertEquals("₩12,345", formatAmount(12345, CurrencyCode.KRW))
         assertEquals("待填写金额", formatAmount(null, CurrencyCode.USD))
     }
 
@@ -56,6 +57,13 @@ class FormattersTest {
             formatDisplayAmount(
                 amountCents = 388367,
                 display = CurrencyDisplay(homeCurrency = CurrencyCode.USD),
+            ),
+        )
+        assertEquals(
+            "¥3,883",
+            formatDisplayAmount(
+                amountCents = 3883,
+                display = CurrencyDisplay(homeCurrency = CurrencyCode.JPY),
             ),
         )
     }
@@ -87,6 +95,44 @@ class FormattersTest {
                 expense = expense,
                 display = CurrencyDisplay.Base,
             ),
+        )
+    }
+
+    @Test
+    fun hidesExchangeMetaForExpenseAlreadyInBackendHomeCurrency() {
+        val expense = formatterExpense(
+            amountCents = 12345,
+            homeCurrency = CurrencyCode.JPY,
+            originalCurrencyCode = CurrencyCode.JPY,
+            originalAmountMinor = 12345,
+            exchangeRateToCny = "1.00000000",
+        )
+
+        assertEquals(
+            "¥12,345",
+            formatExpensePrimaryAmount(
+                expense = expense,
+                display = CurrencyDisplay(homeCurrency = CurrencyCode.JPY),
+            ),
+        )
+        assertNull(formatExpenseExchangeMeta(expense))
+    }
+
+    @Test
+    fun formatsForeignExpenseWithNoFractionHomeCurrencyMeta() {
+        val expense = formatterExpense(
+            amountCents = 18518,
+            homeCurrency = CurrencyCode.JPY,
+            originalCurrencyCode = CurrencyCode.USD,
+            originalAmountMinor = 12345,
+            exchangeRateToCny = "150.00000000",
+            exchangeRateDate = "2026-05-04",
+        )
+
+        assertEquals("$123.45", formatExpensePrimaryAmount(expense))
+        assertEquals(
+            "≈ ¥18,518 · 汇率 1 USD = 150.00000000 JPY · 2026-05-04",
+            formatExpenseExchangeMeta(expense),
         )
     }
 
@@ -170,6 +216,7 @@ class FormattersTest {
 
 private fun formatterExpense(
     amountCents: Long?,
+    homeCurrency: CurrencyCode = CurrencyCode.CNY,
     originalCurrencyCode: CurrencyCode = CurrencyCode.CNY,
     originalAmountMinor: Long? = amountCents,
     exchangeRateToCny: String? = "1",
@@ -180,7 +227,7 @@ private fun formatterExpense(
     publicId = "formatter-expense",
     amountCents = amountCents,
     homeAmountCents = amountCents,
-    homeCurrency = CurrencyCode.CNY,
+    homeCurrency = homeCurrency,
     originalCurrency = originalCurrencyCode,
     originalAmount = null,
     fxRate = exchangeRateToCny,

@@ -34,6 +34,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.ExpenseCard
+import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppRadius
@@ -43,6 +44,7 @@ import com.ticketbox.ui.screens.pending.EmptyPendingState
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
 import com.ticketbox.ui.screens.pending.NeedsReviewFilter
 import com.ticketbox.ui.screens.pending.NeedsReviewFilterBar
+import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
 import com.ticketbox.ui.screens.pending.PendingHeader
 import com.ticketbox.ui.screens.pending.PendingMessageCard
@@ -99,6 +101,20 @@ fun PendingScreen(
     }
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
+    val haptics = rememberAppHaptics()
+    // 待确认清零庆祝：previousItemCount > 0 → 0 时触发 1.5s 庆祝动画。
+    // 用 remember 持有上一帧的 count，state 一旦回到 0 就 flip showCelebration。
+    var previousItemCount by remember { mutableStateOf(state.items.size) }
+    var showCelebration by remember { mutableStateOf(false) }
+    LaunchedEffect(state.items.size, state.loading) {
+        val nowEmpty = state.items.isEmpty() && !state.loading
+        if (previousItemCount > 0 && nowEmpty) {
+            showCelebration = true
+            kotlinx.coroutines.delay(1800)
+            showCelebration = false
+        }
+        previousItemCount = state.items.size
+    }
 
     LaunchedEffect(state.loading) {
         if (wasLoading && !state.loading) {
@@ -155,6 +171,7 @@ fun PendingScreen(
         }
 
         if (state.items.isEmpty() && !readOnly) {
+            item { PendingClearCelebration(visible = showCelebration) }
             item { UploadFlowCard() }
         }
 
@@ -229,6 +246,7 @@ fun PendingScreen(
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { value ->
                             if (canSwipe && value == SwipeToDismissBoxValue.EndToStart) {
+                                haptics.reject()
                                 onReject(expense)
                                 true
                             } else {
@@ -238,6 +256,7 @@ fun PendingScreen(
                         positionalThreshold = { totalDistance -> totalDistance * 0.5f },
                     )
                     SwipeToDismissBox(
+                        modifier = Modifier.animateItem(),
                         state = dismissState,
                         enableDismissFromStartToEnd = false,
                         enableDismissFromEndToStart = canSwipe,
@@ -259,10 +278,16 @@ fun PendingScreen(
                                     expense.duplicateStatus == "suspected" -> onOpenDuplicate(expense)
                                     expense.category.isBlank() -> onQuickCategory(expense)
                                     expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
-                                    else -> onConfirm(expense)
+                                    else -> {
+                                        haptics.confirm()
+                                        onConfirm(expense)
+                                    }
                                 }
                             },
-                            onReject = { onReject(expense) },
+                            onReject = {
+                                haptics.reject()
+                                onReject(expense)
+                            },
                             onKeepDuplicate = { onKeepDuplicate(expense) },
                         )
                     }

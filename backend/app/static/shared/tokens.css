@@ -1,17 +1,17 @@
 /* v0.10 设计 token 共享层 — 由 /web 和 /owner 通过 @import 引入。
  *
  * 维护原则：
- * 1. 这里只放 :root / [data-theme=…] 选择器和 v0.4 alias shim，不写组件样式。
+ * 1. 这里只放 :root / [data-theme=…] 选择器，不写组件样式。
  * 2. 3 套主题 (paper / mono / midnight) 字段名与 Android ThemeVisuals 镜像，
  *    语义分组：surface / text / brand / state / chart / goal / card。
- * 3. v0.4 alias shim (--bg-app / --fg-* / --chip-*-bg/fg / --pill-*) 必须保留，
- *    直到所有页面消费方迁完到新名字。删除前需要一次 "pages refactor" commit。
- * 4. :root 默认调色板 = paper，与 Android AppSkin.Default 对齐。
- * 5. Midnight 是显式主题，不依赖 prefers-color-scheme。
- * 6. v0.10 旧 5 套主题 (pine / pomelo / harbor / berry / night) 已被替换为 3 套。
+ * 3. :root 默认调色板 = paper，与 Android AppSkin.Default 对齐。
+ * 4. Midnight 是显式主题，不依赖 prefers-color-scheme。
+ * 5. v0.10 旧 5 套主题 (pine / pomelo / harbor / berry / night) 已被替换为 3 套。
  *    Android 端 AppSkin.fromStorageKey() 会把旧 storageKey 自动映射到新值：
  *    pine/pomelo/harbor → paper，berry → mono，night → midnight。
- * 7. 新增两个 token：--text-faint（第四级文本）、--brand-primary-bg（强调底）。
+ * 6. v0.4 alias shim (--bg-app / --fg-* / --chip-* / --pill-*) 已在 v0.10 删除，
+ *    所有消费方迁到 --surface-* / --text-* / --brand-* / --state-* 新名。
+ *    详见 ENGINEERING_RULES.md 的 token 翻译表。
  */
 
 :root,
@@ -259,29 +259,8 @@
     --card-device-accent:        #8a7eac; --card-device-icon:        #c3b9d9; --card-device-surface:        #15171c;
 }
 
-/* v0.4 alias shim — 保留旧名直到所有页面消费方迁完。
- * 不要在这里新增 alias；新代码必须直接用 v0.10 token 名。
+/* v0.4 alias shim 已在 v0.10 全量删除（2026-05）。
+ * 所有 --bg-* / --fg-* / --pill-* / --chip-* 旧名已替换为对应的
+ * --surface-* / --text-* / --brand-* / --state-* token，详见 commit history。
+ * 新代码请直接使用 v0.10 token 名。
  */
-:root {
-    --bg-app: var(--surface-app);
-    --bg-card: var(--surface-card);
-    --bg-nav: var(--surface-nav);
-    --bg-surface-2: var(--surface-sunken);
-
-    --fg-default: var(--text-default);
-    --fg-muted: var(--text-muted);
-    --fg-meta: var(--text-meta);
-    --fg-primary: var(--brand-primary);
-    --fg-primary-strong: var(--brand-primary-strong);
-    --fg-success: var(--state-success-fg);
-    --fg-warn: var(--state-warn-fg);
-    --fg-danger: var(--state-danger-fg);
-
-    --pill-default-bg: var(--state-info-bg);    --pill-default-fg: var(--state-info-fg);
-    --pill-secondary-bg: var(--state-warn-bg);  --pill-secondary-fg: var(--state-warn-fg);
-
-    --chip-pending-bg: var(--state-info-bg);    --chip-pending-fg: var(--state-info-fg);
-    --chip-warn-bg:    var(--state-warn-bg);    --chip-warn-fg:    var(--state-warn-fg);
-    --chip-ok-bg:      var(--state-success-bg); --chip-ok-fg:      var(--state-success-fg);
-    --chip-muted-bg:   var(--state-neutral-bg); --chip-muted-fg:   var(--state-neutral-fg);
-}

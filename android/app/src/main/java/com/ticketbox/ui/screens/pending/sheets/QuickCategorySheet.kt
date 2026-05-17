@@ -18,12 +18,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
  * QuickCategory BottomSheet — slice 3 M2。
@@ -46,7 +46,7 @@ internal fun QuickCategorySheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("补一下分类", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text("补一下分类", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
             text = "选一个常用分类，或自定义。保存后不会自动确认入账。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,

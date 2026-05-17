@@ -15,12 +15,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.SafeBadge
+import com.ticketbox.ui.design.AppTextHierarchy
 
 @Composable
 internal fun PendingMessageCard(message: String) {
@@ -84,13 +84,14 @@ internal fun PendingTop(
                         text = "纸本待办",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = AppTextHierarchy.caption.weight,
                     )
                     Text(
+                        // 页面唯一焦点：今日待办数量（hero 字重）
                         text = pendingCount.toString(),
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = AppTextHierarchy.hero.weight,
                     )
                     Text(
                         text = "待确认截图",
@@ -136,16 +137,17 @@ private fun PendingLedgerMetric(value: String, label: String, modifier: Modifier
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Text(
+            // metric 数字按 heading 处理（次要焦点），上面已经有一个 hero 主数字
             text = value,
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black,
+            fontWeight = AppTextHierarchy.heading.weight,
         )
         Text(
             text = label,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Medium,
+            fontWeight = AppTextHierarchy.caption.weight,
         )
     }
 }

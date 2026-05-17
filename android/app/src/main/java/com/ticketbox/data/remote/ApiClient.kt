@@ -137,7 +137,16 @@ internal class GetIoRetryInterceptor(
                     throw error
                 }
                 attempt += 1
-                runCatching { Thread.sleep(retryDelayMs * attempt) }
+                // OkHttp Interceptor 必须同步执行——这里没法用 coroutine delay。
+                // 但旧 `runCatching` 会吞掉 InterruptedException，导致上游协程取消时
+                // 网络线程还会再睡一轮再重试。改为：被中断就把中断状态重新点回来，
+                // 并抛出原 IOException，让 Call.cancel() 真正生效。
+                try {
+                    Thread.sleep(retryDelayMs * attempt)
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw error
+                }
             }
         }
     }

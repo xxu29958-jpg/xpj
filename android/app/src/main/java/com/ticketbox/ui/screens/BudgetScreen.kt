@@ -260,7 +260,18 @@ private fun BudgetSummaryCard(
 @Composable
 private fun BudgetProgressBar(progress: Float) {
     val track = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f)
-    val fill = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f)
+    val visuals = LocalThemeVisuals.current
+    val stateTokens = com.ticketbox.ui.design.LocalStateTokens.current
+    // 三档渐变：< 80% safe（primary 调色板）；80%-100% warn（黄褐）；> 100% over（红/danger）。
+    // 进度条 fill 用渐变方向左→右，并让较高使用率叠一层"超线警示"色，给清晰边界感。
+    val clamped = progress.coerceAtLeast(0f)
+    val safeEnd = 0.80f
+    val warnEnd = 1.00f
+    val (start, end) = when {
+        clamped <= safeEnd -> visuals.primary.copy(alpha = 0.78f) to visuals.primary.copy(alpha = 0.92f)
+        clamped <= warnEnd -> stateTokens.warn.fg.copy(alpha = 0.78f) to stateTokens.warn.fg.copy(alpha = 0.95f)
+        else -> stateTokens.danger.fg.copy(alpha = 0.82f) to stateTokens.danger.fg.copy(alpha = 1.0f)
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -269,8 +280,10 @@ private fun BudgetProgressBar(progress: Float) {
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .background(fill)
+                .fillMaxWidth(clamped.coerceAtMost(1f))
+                .background(
+                    androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(start, end)),
+                )
                 .padding(vertical = AppSpacing.miniGap),
         )
     }

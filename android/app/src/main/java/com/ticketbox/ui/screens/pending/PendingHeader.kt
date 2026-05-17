@@ -11,11 +11,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppTextHierarchy
 
 internal enum class PendingDisplayMode {
     Compact,
@@ -71,7 +71,7 @@ internal fun PendingToolsSheet(
             Text(
                 text = "待处理设置",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black,
+                fontWeight = AppTextHierarchy.heading.weight,
             )
             Text(
                 text = "调整列表密度，或重新整理待确认截图。",

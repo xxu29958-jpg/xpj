@@ -17,13 +17,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatMinorAmountInput
 import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
  * MissingAmount BottomSheet — slice 3 M4。
@@ -52,7 +52,7 @@ internal fun MissingAmountSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("补一下金额", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text("补一下金额", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
             text = "金额按原始币种输入，例如 12.34。保存后由后端按消费时间计算入账金额。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,

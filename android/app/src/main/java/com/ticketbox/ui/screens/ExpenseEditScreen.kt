@@ -25,6 +25,7 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.DuplicateNotice
+import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.nowUtcIso
 import com.ticketbox.ui.components.formatMinorAmountInput
@@ -104,6 +105,7 @@ fun ExpenseEditScreen(
     val rawTextDisplay = currentExpense.rawText?.takeIf { it.isNotBlank() } ?: "第一版为空"
     val previewImage = state.fullImage ?: state.thumbnail
     val readOnly = state.readOnly
+    val haptics = rememberAppHaptics()
 
     if (showDatePicker) {
         ExpenseEditDatePicker(
@@ -296,6 +298,7 @@ fun ExpenseEditScreen(
             onBack = onDone,
             onSave = {
                 val draft = draftOrMessage() ?: return@ExpenseEditPrimaryActions
+                haptics.tick()
                 onSave(draft)
             },
         )
@@ -310,6 +313,7 @@ fun ExpenseEditScreen(
                     message = "请先填写金额。"
                     return@ExpenseEditConfirmActions
                 }
+                haptics.confirm()
                 onConfirm(draft)
             },
             onRequestReject = { showRejectDialog = true },

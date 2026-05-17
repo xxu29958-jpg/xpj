@@ -4,6 +4,18 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.ticketbox.domain.model.AppSkin
 
+/**
+ * 票据缩略图（ReceiptStub illustration）的纸面调色板。
+ * 三套 skin 各自定义，避免在 [com.ticketbox.ui.components.AppSurfaces] 写死颜色。
+ */
+data class ReceiptStubPalette(
+    val paperTop: Color,
+    val paperBottom: Color,
+    val border: Color,
+    val line: Color,
+    val stripe: Color,
+)
+
 data class ThemeVisuals(
     val primary: Color,
     val primaryDark: Color,
@@ -25,6 +37,7 @@ data class ThemeVisuals(
     val coolMist: Color,
     val surfaceRaised: Color,
     val focusRing: Color,
+    val receiptStub: ReceiptStubPalette,
 )
 
 val LocalThemeVisuals = compositionLocalOf { themeVisualsForSkin(AppSkin.Default) }
@@ -56,6 +69,13 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             coolMist = Color(0xFFC8C2B3),
             surfaceRaised = Color(0xFFFFFFFF),
             focusRing = Color(0xFF8A5A2B),
+            receiptStub = ReceiptStubPalette(
+                paperTop = Color(0xFFFFFBF3),
+                paperBottom = Color(0xFFF1E9DB),
+                border = Color(0xFFE2D8C8),
+                line = Color(0xFFBDB7AB),
+                stripe = Color(0xFFE0D5C4),
+            ),
         )
         AppSkin.Mono -> ThemeVisuals(
             primary = Color(0xFF0E0E0C),
@@ -82,6 +102,13 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             coolMist = Color(0xFFB8B7B3),
             surfaceRaised = Color(0xFFFFFFFF),
             focusRing = Color(0xFF0E0E0C),
+            receiptStub = ReceiptStubPalette(
+                paperTop = Color(0xFFFCFCFA),
+                paperBottom = Color(0xFFEEEDE8),
+                border = Color(0xFFD6D5D0),
+                line = Color(0xFFB0AFAA),
+                stripe = Color(0xFFD0CFCB),
+            ),
         )
         AppSkin.Midnight -> ThemeVisuals(
             primary = Color(0xFFD6B487),
@@ -108,6 +135,14 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
             coolMist = Color(0xFF8A6A3E),
             surfaceRaised = Color(0xFF222530),
             focusRing = Color(0xFFD6B487),
+            receiptStub = ReceiptStubPalette(
+                // Midnight 上的小票仍保留纸面感（米黄）但收暗一档，避免亮起一块刺眼
+                paperTop = Color(0xFF3A3327),
+                paperBottom = Color(0xFF2A2418),
+                border = Color(0xFF55492E),
+                line = Color(0xFF8C7E5C),
+                stripe = Color(0xFF6B5E40),
+            ),
         )
     }
 }

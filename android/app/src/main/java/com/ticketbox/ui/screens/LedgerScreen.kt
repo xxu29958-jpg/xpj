@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -118,10 +119,11 @@ fun LedgerScreen(
         }
         groupedItems.forEach { group ->
             item(key = "ledger-day-${group.key}") {
-                LedgerDayHeader(group.label)
+                LedgerDayHeader(group.label, modifier = Modifier.animateItem())
             }
             items(group.items, key = { it.id }) { expense ->
                 LedgerExpenseCard(
+                    modifier = Modifier.animateItem(),
                     expense = expense,
                     onEdit = { onEdit(expense) },
                 )

@@ -1,5 +1,14 @@
 package com.ticketbox.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -13,9 +22,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -37,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalCurrencyDisplay
@@ -244,11 +257,42 @@ fun ExpenseCard(
                             ),
                             onClick = onConfirm,
                         ) {
-                            Text(
-                                text = "入账",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            // actionsEnabled=false ⇒ 后台正在 confirm，给一个 scale+check 的反馈：
+                            // - 文字 "入账" 淡出
+                            // - check 图标从中央 scale 0.6 → 1.0 spring-bounce 进入
+                            // 随后整个 row 会被 actionInProgressIds 移除（动画衔接 animateItem）
+                            AnimatedContent(
+                                targetState = actionsEnabled,
+                                transitionSpec = {
+                                    (fadeIn(tween(AppMotion.fastMillis)) +
+                                        scaleIn(
+                                            initialScale = 0.6f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                stiffness = Spring.StiffnessMedium,
+                                            ),
+                                        )
+                                    ) togetherWith (
+                                        fadeOut(tween(AppMotion.fastMillis)) +
+                                            scaleOut(targetScale = 0.85f, animationSpec = tween(AppMotion.fastMillis))
+                                    )
+                                },
+                                label = "confirmButtonState",
+                            ) { ready ->
+                                if (ready) {
+                                    Text(
+                                        text = "入账",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = "已入账",
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                     if (showRejectAction) {

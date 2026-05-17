@@ -174,6 +174,7 @@ fun StatsScreen(
                                 state.dailyTrend.sumOf { it.amountCents }
                             },
                             comparison = state.monthComparison,
+                            dailyTrend = state.dailyTrend,
                         )
                     }
                 }

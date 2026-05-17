@@ -20,24 +20,23 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /**
- * 把分单位金额格式化为带币种符号的字符串。
+ * 把传入金额格式化为带币种符号的字符串。
  *
- * - `amount_cents` 仍是后端契约存储单位（不变）
- * - 仅 UI 表达层应用 [currency] 的符号、locale、小数位
- * - 无小数币种（JPY/KRW）按整数显示
+ * 契约：[amountCents] 是 [currency] 自己的 minor-unit 数值。
+ * - CNY/USD/EUR... 等 2 位小数币种：除以 100 显示主单位
+ * - JPY/KRW 等无小数币种：minor unit == major unit，直接整数显示
  *
- * 注意：本函数只按给定币种格式化“该币种自己的 minor amount”，不做汇率折算。
- * 展示后端 home amount 时应优先使用 [formatDisplayAmount]。
+ * 本函数不做汇率折算。展示后端 home amount 时使用 [formatDisplayAmount]，
+ * 它会传入 backend home currency 让 minor-unit 语义一致。
  */
 fun formatAmount(amountCents: Long?, currency: CurrencyCode = CurrencyCode.Default): String {
     if (amountCents == null) return "待填写金额"
     val locale = Locale.forLanguageTag(currency.localeTag)
     val symbols = DecimalFormatSymbols.getInstance(locale)
     return if (currency.noFractionDigits) {
-        // JPY/KRW 等无小数币种：仍除以 100，只保留整数
-        val whole = BigDecimal(amountCents).divide(BigDecimal(100), 0, RoundingMode.HALF_UP).toLong()
+        // JPY/KRW 等无小数币种：minor 已等于 major，不再除以 100
         val pattern = DecimalFormat("#,##0", symbols)
-        "${currency.symbol}${pattern.format(whole)}"
+        "${currency.symbol}${pattern.format(amountCents)}"
     } else {
         val yuan = BigDecimal(amountCents).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
         val pattern = DecimalFormat("#,##0.00", symbols)
@@ -93,8 +92,9 @@ fun formatExpensePrimaryAmount(
     display: CurrencyDisplay = CurrencyDisplay.Base,
 ): String {
     val currency = expense.originalCurrencyCode
+    val homeCurrency = expense.homeCurrency
     val originalAmount = expense.originalAmountMinor
-    return if (currency == FxContract.HomeCurrency || originalAmount == null) {
+    return if (currency == homeCurrency || originalAmount == null) {
         formatDisplayAmount(expense.homeAmountCents ?: expense.amountCents, display)
     } else {
         formatMinorAmount(originalAmount, currency)
@@ -103,7 +103,7 @@ fun formatExpensePrimaryAmount(
 
 fun formatExpenseExchangeMeta(expense: Expense): String? {
     val currency = expense.originalCurrencyCode
-    if (currency == FxContract.HomeCurrency) return null
+    if (currency == expense.homeCurrency) return null
     val date = (expense.fxRateDate ?: expense.exchangeRateDate)?.takeIf { it.isNotBlank() }
     if (expense.fxStatus == FxContract.StatusPending || expense.fxRate.isNullOrBlank() || expense.homeAmountCents == null) {
         return buildString {

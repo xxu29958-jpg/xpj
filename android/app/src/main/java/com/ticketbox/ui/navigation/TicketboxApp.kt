@@ -1,6 +1,13 @@
 package com.ticketbox.ui.navigation
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -49,6 +56,7 @@ import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.components.AppBottomNav
 import com.ticketbox.ui.components.AppBottomNavItem
+import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.screens.BindServerScreen
 import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.ExpenseEditScreen
@@ -363,7 +371,27 @@ private fun MainShell(
                     return@Box
                 }
 
-                when (selectedTab) {
+                // Tab 切换：水平方向感知的 fade + slide。
+                // direction = 目标 ordinal vs 当前 ordinal，向右滑表示「向后翻页」。
+                // 持续时长走 AppMotion token —— normalMillis 进入、fastMillis 退出，
+                // 退出更快避免新页面跟着「等」上一页消失。
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        val direction = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                        val enterSlideOffset: (Int) -> Int = { width -> direction * width / 8 }
+                        val exitSlideOffset: (Int) -> Int = { width -> -direction * width / 8 }
+                        (
+                            fadeIn(tween(AppMotion.normalMillis)) +
+                                slideInHorizontally(tween(AppMotion.normalMillis), enterSlideOffset)
+                            ) togetherWith (
+                            fadeOut(tween(AppMotion.fastMillis)) +
+                                slideOutHorizontally(tween(AppMotion.fastMillis), exitSlideOffset)
+                            )
+                    },
+                    label = "bottomTabSwap",
+                ) { activeTab ->
+                when (activeTab) {
                 BottomTab.Pending -> {
                     val pendingViewModel: PendingViewModel = viewModel(factory = repositoryFactory)
                     val state by pendingViewModel.uiState.collectAsStateWithLifecycle()
@@ -530,6 +558,7 @@ private fun MainShell(
                         onLedgerSwitched = settingsViewModel::sync,
                         onDashboardCardsChanged = { dashboardCardsRevision += 1 },
                     )
+                }
                 }
             }
         }

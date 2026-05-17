@@ -11,10 +11,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.design.AppTextHierarchy
 
 /**
  * BulkConfirm BottomSheet — slice 3 M5。
@@ -42,7 +42,7 @@ internal fun BulkConfirmSheetContent(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("批量确认这一批账单", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+        Text("批量确认这一批账单", style = MaterialTheme.typography.titleLarge, fontWeight = AppTextHierarchy.heading.weight)
         Text(
             text = "下一步会按顺序调用 /confirm 接口。每条独立处理，单条失败不会影响其他。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -89,6 +89,6 @@ private fun StatLine(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-        Text(value, fontWeight = FontWeight.Black, style = MaterialTheme.typography.bodyMedium)
+        Text(value, fontWeight = AppTextHierarchy.body.weight, style = MaterialTheme.typography.bodyMedium)
     }
 }

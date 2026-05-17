@@ -32,13 +32,13 @@ import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
-internal fun LedgerDayHeader(label: String) {
+internal fun LedgerDayHeader(label: String, modifier: Modifier = Modifier) {
     Text(
         text = label,
         color = MaterialTheme.colorScheme.onBackground,
         style = MaterialTheme.typography.titleSmall,
         fontWeight = AppTextHierarchy.heading.weight,
-        modifier = Modifier.padding(top = AppSpacing.miniGap, bottom = AppSpacing.tinyGap),
+        modifier = modifier.padding(top = AppSpacing.miniGap, bottom = AppSpacing.tinyGap),
     )
 }
 
@@ -46,12 +46,13 @@ internal fun LedgerDayHeader(label: String) {
 internal fun LedgerExpenseCard(
     expense: Expense,
     onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
     val visuals = LocalThemeVisuals.current
     val exchangeMeta = formatExpenseExchangeMeta(expense)
     AppGlassCard(
-        modifier = Modifier.clickable(onClick = onEdit),
+        modifier = modifier.clickable(onClick = onEdit),
         containerAlpha = 0.995f,
     ) {
         Row(
