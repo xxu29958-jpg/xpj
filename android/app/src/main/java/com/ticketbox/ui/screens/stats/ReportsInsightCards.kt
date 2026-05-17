@@ -1,5 +1,8 @@
 package com.ticketbox.ui.screens.stats
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,17 +11,23 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -35,16 +44,26 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportTrendPoint
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.ui.design.AppMotion
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalChartTokens
+import com.ticketbox.ui.design.LocalStateTokens
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
+
+private object ReportsInsightLayout {
+    val GoalRingSize = 58.dp
+    val GoalRingStroke = 5.dp
+    const val GoalRingStartAngle = -90f
+}
 
 @Composable
 internal fun ReportsInsightCard(
@@ -242,7 +261,7 @@ private fun AmountBarRow(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -283,44 +302,104 @@ private fun AmountBarRow(
 
 @Composable
 private fun GoalProgressRow(goal: Goal) {
-    val chartTokens = LocalChartTokens.current
-    val color = if (goal.isOverLimit) chartTokens.overspend else chartTokens.series.first()
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    val stateTokens = LocalStateTokens.current
+    val tone = when (goal.progressState) {
+        GoalProgressState.OverLimit -> stateTokens.danger
+        GoalProgressState.NearLimit -> stateTokens.warn
+        GoalProgressState.OnTrack -> stateTokens.success
+        GoalProgressState.Archived -> stateTokens.neutral
+        GoalProgressState.Idle -> stateTokens.info
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GoalProgressRing(
+            progress = goal.progress,
+            progressPercent = goal.progressPercent,
+            color = tone.fg,
+            trackColor = tone.bg,
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = goal.name,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = formatAmount(goal.targetAmountCents),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             Text(
-                text = goal.name,
-                modifier = Modifier.weight(1f),
+                text = "${goal.category ?: "总支出"} · 已花 ${formatAmount(goal.spentAmountCents)} · 剩 ${formatAmount(goal.remainingAmountCents)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "${goal.progressPercent.coerceAtLeast(0)}%",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
             )
         }
-        LinearProgressIndicator(
-            progress = { goal.progress.coerceIn(0f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(999.dp)),
-            color = color,
-            trackColor = chartTokens.grid,
-        )
+    }
+}
+
+@Composable
+private fun GoalProgressRing(
+    progress: Float,
+    progressPercent: Int,
+    color: Color,
+    trackColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = AppMotion.normalMillis),
+        label = "goal-progress-ring",
+    )
+
+    Box(
+        modifier = modifier.size(ReportsInsightLayout.GoalRingSize),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(ReportsInsightLayout.GoalRingSize)) {
+            val strokeWidth = ReportsInsightLayout.GoalRingStroke.toPx()
+            val arcOffset = strokeWidth / 2f
+            val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+            drawCircle(
+                color = trackColor,
+                radius = (size.minDimension - strokeWidth) / 2f,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = color,
+                startAngle = ReportsInsightLayout.GoalRingStartAngle,
+                sweepAngle = animatedProgress * 360f,
+                useCenter = false,
+                topLeft = Offset(arcOffset, arcOffset),
+                size = arcSize,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            )
+        }
         Text(
-            text = "${goal.category ?: "总支出"} · 已花 ${formatAmount(goal.spentAmountCents)} · 剩 ${formatAmount(goal.remainingAmountCents)}",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = "${progressPercent.coerceAtLeast(0)}%",
+            color = color,
             style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Black,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
