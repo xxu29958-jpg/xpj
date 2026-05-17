@@ -65,6 +65,10 @@ def test_web_pending_batch_reject_remote_returns_403(client: TestClient) -> None
     assert client.post("/web/pending/batch-reject").status_code == 403
 
 
+def test_web_search_remote_returns_403(client: TestClient) -> None:
+    assert client.get("/web/search").status_code == 403
+
+
 def test_web_image_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/expenses/1/image").status_code == 403
 
@@ -98,6 +102,12 @@ def test_web_stats_local_returns_200(web_client: TestClient) -> None:
 
 
 # ── Ledger selector contract ────────────────────────────────────────────────
+
+def test_web_search_local_returns_200(web_client: TestClient) -> None:
+    resp = web_client.get("/web/search?ledger_id=owner")
+    assert resp.status_code == 200
+    assert 'name="q"' in resp.text
+
 
 def test_web_ledger_selector_present(web_client: TestClient) -> None:
     resp = web_client.get("/web")
@@ -185,7 +195,7 @@ def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient) -> N
 
 def test_web_no_secret_leaks(web_client: TestClient) -> None:
     """No token_hash, upload_key, pairing_code or absolute path in HTML."""
-    pages = ["/web", "/web/pending", "/web/confirmed", "/web/stats"]
+    pages = ["/web", "/web/pending", "/web/confirmed", "/web/stats", "/web/search"]
     for path in pages:
         resp = web_client.get(path)
         assert resp.status_code == 200, path
@@ -327,6 +337,56 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
     )
     assert resp.status_code in {303, 307}, resp.text
     return expense_id
+
+
+def test_web_search_finds_current_ledger_entities(web_client: TestClient) -> None:
+    pending_id = _seed_pending_with_amount(web_client, "9.00", "SearchCafe Pending")
+    confirmed_id = _seed_pending_with_amount(web_client, "11.00", "SearchCafe Confirmed")
+    confirmed = web_client.post(
+        f"/web/expenses/{confirmed_id}/confirm",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert confirmed.status_code in {303, 307}
+    rule = web_client.post(
+        "/web/rules/create",
+        data={
+            "keyword": "SearchCafe",
+            "category": "餐饮",
+            "priority": "100",
+            "ledger_id": "owner",
+        },
+        follow_redirects=False,
+    )
+    assert rule.status_code in {303, 307}
+    goal = web_client.post(
+        "/web/goals/create",
+        data={
+            "ledger_id": "owner",
+            "month": "2026-05",
+            "name": "SearchGoal Groceries",
+            "target_amount_yuan": "1000",
+            "category": "餐饮",
+        },
+        follow_redirects=False,
+    )
+    assert goal.status_code in {303, 307}
+
+    page = web_client.get("/web/search?ledger_id=owner&q=SearchCafe")
+    assert page.status_code == 200
+    assert f"/web/expenses/{pending_id}/edit?ledger_id=owner" in page.text
+    assert f"/web/expenses/{confirmed_id}/edit?ledger_id=owner" in page.text
+    assert "/web/rules?ledger_id=owner" in page.text
+
+    goals = web_client.get("/web/search?ledger_id=owner&q=SearchGoal")
+    assert goals.status_code == 200
+    assert "SearchGoal Groceries" in goals.text
+    assert "/web/goals?ledger_id=owner&amp;month=2026-05" in goals.text
+
+    other_ledger = web_client.get("/web/search?ledger_id=tester_1&q=SearchCafe")
+    assert other_ledger.status_code == 200
+    assert "SearchCafe Pending" not in other_ledger.text
+    assert "SearchCafe Confirmed" not in other_ledger.text
 
 
 def test_web_pending_filter_missing_amount(web_client: TestClient) -> None:
