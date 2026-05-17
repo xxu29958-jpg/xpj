@@ -54,6 +54,8 @@ import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
+import com.ticketbox.data.remote.dto.UserUiPreferencesDto
+import com.ticketbox.data.remote.dto.UserUiPreferencesUpdateRequestDto
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -395,4 +397,11 @@ interface ApiService {
     suspend fun acceptInvitation(
         @Body request: InvitationAcceptRequestDto,
     ): InvitationAcceptResponseDto
+
+    // v0.10: cross-surface UI preferences (theme sync etc.). See docs/V0_9_DESIGN_TOKEN_REFERENCE.md.
+    @GET("api/me/ui-preferences")
+    suspend fun getUiPreferences(): Response<UserUiPreferencesDto>
+
+    @PUT("api/me/ui-preferences")
+    suspend fun putUiPreferences(@Body request: UserUiPreferencesUpdateRequestDto): Response<UserUiPreferencesDto>
 }

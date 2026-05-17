@@ -1,0 +1,22 @@
+{# v0.10 三栏 split layout 可复用 partial
+ #
+ # 用法:
+ #   {% extends "web/base.html" %}
+ #   {% block content %}{% include "web/_split_layout.html" %}{% endblock %}
+ #   {% block split_main %}<div>主内容</div>{% endblock %}
+ #   {% block split_drawer %}<div>抽屉内容(可省略, :empty 时自动隐藏)</div>{% endblock %}
+ #
+ # 视觉规则:
+ #   >1280 px      左右并排, drawer 常驻
+ #   881-1280 px   drawer 变 overlay (fixed right), body[data-drawer-open] 控制
+ #   <=880 px      drawer 全屏覆盖
+ # 三档断点由 desktop.css 的 .drawer-host 和 body[data-drawer-open] 处理.
+ #}
+<div class="split-layout">
+    <div class="split-layout__main">
+        {% block split_main %}{% endblock %}
+    </div>
+    <aside class="drawer-host split-layout__drawer">
+        {% block split_drawer %}{% endblock %}
+    </aside>
+</div>

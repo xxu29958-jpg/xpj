@@ -1,4 +1,4 @@
-﻿package com.ticketbox.ui.screens
+package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -10,15 +10,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,8 +35,11 @@ import com.ticketbox.ui.components.ExpenseCard
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.ExpensePreviewMode
 import com.ticketbox.ui.components.ListItemSkeleton
+import com.ticketbox.ui.components.SwipeActionConfig
+import com.ticketbox.ui.components.SwipeableActionRow
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalSwipeActionTokens
 import com.ticketbox.ui.screens.pending.BulkConfirmEntry
 import com.ticketbox.ui.screens.pending.EmptyPendingState
 import com.ticketbox.ui.screens.pending.NeedsReviewEmptyFilterCard
@@ -249,24 +250,35 @@ fun PendingScreen(
             } else {
                 items(filteredItems, key = { it.id }) { expense ->
                     val canSwipe = !readOnly && expense.id !in state.actionInProgressIds
-                    val dismissState = rememberSwipeToDismissBoxState(
-                        confirmValueChange = { value ->
-                            if (canSwipe && value == SwipeToDismissBoxValue.EndToStart) {
-                                haptics.reject()
-                                onReject(expense)
-                                true
-                            } else {
-                                false
+                    val swipeTokens = LocalSwipeActionTokens.current
+                    // v0.10: 左滑进入 confirm 流程 (含 missing-amount / duplicate / category / merchant 分支)；右滑触发 reject。
+                    val leftAction = if (canSwipe) SwipeActionConfig(
+                        icon = Icons.Filled.CheckCircle,
+                        label = "确认",
+                        bg = swipeTokens.confirm.bg,
+                        fg = swipeTokens.confirm.fg,
+                        onTriggered = {
+                            when {
+                                expense.amountCents == null -> onMissingAmount(expense)
+                                expense.duplicateStatus == "suspected" -> onOpenDuplicate(expense)
+                                expense.category.isBlank() -> onQuickCategory(expense)
+                                expense.merchant.isNullOrBlank() -> onQuickMerchant(expense)
+                                else -> onConfirm(expense)
                             }
                         },
-                        positionalThreshold = { totalDistance -> totalDistance * 0.5f },
-                    )
-                    SwipeToDismissBox(
+                    ) else null
+                    val rightAction = if (canSwipe) SwipeActionConfig(
+                        icon = Icons.Filled.DeleteOutline,
+                        label = "忽略",
+                        bg = swipeTokens.ignore.bg,
+                        fg = swipeTokens.ignore.fg,
+                        onTriggered = { onReject(expense) },
+                    ) else null
+                    SwipeableActionRow(
                         modifier = Modifier.animateItem(),
-                        state = dismissState,
-                        enableDismissFromStartToEnd = false,
-                        enableDismissFromEndToStart = canSwipe,
-                        backgroundContent = { SwipeRejectBackground() },
+                        leftAction = leftAction,
+                        rightAction = rightAction,
+                        enabled = canSwipe,
                     ) {
                         ExpenseCard(
                             expense = expense,
@@ -299,36 +311,6 @@ fun PendingScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SwipeRejectBackground() {
-    val visuals = MaterialTheme.colorScheme
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = AppSpacing.tinyGap)
-            .clip(RoundedCornerShape(AppRadius.medium))
-            .background(visuals.errorContainer)
-            .padding(horizontal = AppSpacing.cardPaddingSmall),
-        contentAlignment = Alignment.CenterEnd,
-    ) {
-        androidx.compose.foundation.layout.Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "忽略",
-                color = visuals.onErrorContainer,
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Icon(
-                imageVector = Icons.Filled.DeleteOutline,
-                contentDescription = null,
-                tint = visuals.onErrorContainer,
-            )
         }
     }
 }

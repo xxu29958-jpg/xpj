@@ -1070,3 +1070,11 @@ class ServerSettingsResponse(BaseModel):
     suspected_duplicate_count: int
     upload_storage_bytes: int
     latest_upload_at: str | None
+
+# v0.10: User UI preferences (cross-surface theme sync, etc.)
+class UserUiPreferencesResponse(BaseModel):
+    theme: str | None = None
+    updated_at: datetime | None = None
+
+class UserUiPreferencesUpdateRequest(BaseModel):
+    theme: str | None = None

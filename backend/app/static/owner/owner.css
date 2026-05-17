@@ -403,3 +403,92 @@ form.inline { display: inline; }
 @media (prefers-reduced-motion: reduce) {
     .skeleton { animation: none; }
 }
+
+/* ───── v0.10 Owner sidebar layout ──────────────────────────────
+ * 替代旧的扁平 .nav 横向导航; sidebar 分两组 (运维 / 治理).
+ * Owner 比 web 更紧凑: sidebar 宽 200px 而非 web 的 240px.
+ */
+:root[data-owner] {
+    --owner-sidebar-w: 200px;
+}
+.owner-shell { min-height: 100vh; }
+.owner-app {
+    display: grid;
+    grid-template-columns: var(--owner-sidebar-w) minmax(0, 1fr);
+    min-height: 100vh;
+}
+.owner-sidebar {
+    background: var(--surface-nav);
+    color: var(--text-on-primary);
+    padding: 16px 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+.owner-sidebar__brand {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-on-primary);
+    text-decoration: none;
+    padding: 4px 8px;
+}
+.owner-sidebar__nav {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex: 1;
+}
+.owner-sidebar__group { display: flex; flex-direction: column; gap: 2px; }
+.owner-sidebar__group-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    padding: 6px 8px 2px;
+}
+.owner-sidebar__nav a {
+    display: block;
+    padding: 7px 10px;
+    border-radius: var(--radius-input, 6px);
+    color: rgba(255, 255, 255, 0.72);
+    text-decoration: none;
+    font-size: 13px;
+    transition: background 120ms ease, color 120ms ease;
+}
+.owner-sidebar__nav a:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-on-primary);
+}
+.owner-sidebar__nav a.is-active {
+    background: rgba(255, 255, 255, 0.10);
+    color: var(--text-on-primary);
+    font-weight: 500;
+}
+.owner-sidebar__foot {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.40);
+    padding: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.owner-main {
+    padding: 24px;
+    min-width: 0;
+}
+@media (max-width: 880px) {
+    .owner-app { grid-template-columns: 1fr; }
+    .owner-sidebar {
+        position: static;
+        height: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+    }
+    .owner-sidebar__group { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+    .owner-sidebar__group-label { display: none; }
+    .owner-sidebar__foot { display: none; }
+}

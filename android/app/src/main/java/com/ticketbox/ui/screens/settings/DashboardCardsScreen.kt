@@ -38,6 +38,7 @@ import com.ticketbox.domain.model.DashboardSurface
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.components.DraggableReorderColumn
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppSpacing
@@ -166,7 +167,20 @@ fun DashboardCardsScreen(
                         modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     ) {
-                        cards.forEachIndexed { index, card ->
+                        // v0.10: 长按拾起 + 拖动排序; 上下箭头作为可达性回退保留在 DashboardCardRow 内部.
+                        DraggableReorderColumn(
+                            items = cards,
+                            key = { it.key },
+                            spacing = AppSpacing.compactGap,
+                            estimatedItemHeight = 56.dp,
+                            enabled = !readOnly && !saving,
+                            onMove = { from, to ->
+                                val mutable = cards.toMutableList()
+                                val item = mutable.removeAt(from)
+                                mutable.add(to, item)
+                                updateCards(mutable)
+                            },
+                        ) { index, card, _ ->
                             DashboardCardRow(
                                 card = card,
                                 canMoveUp = index > 0,

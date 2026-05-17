@@ -22,6 +22,15 @@
     try { localStorage.setItem("ui-theme", theme); } catch (_) {}
     // SSR 用 cookie 读取主题以避免下次刷新闪烁
     document.cookie = "ui_theme=" + theme + ";path=/;max-age=31536000;samesite=lax";
+    // v0.10: 跨端同步——fire-and-forget PUT /api/me/ui-preferences. Loopback web 暂无 auth 会 401, V0.11 加 web account binding 后自然生效.
+    if (typeof fetch === "function") {
+      fetch("/api/me/ui-preferences", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: theme }),
+      }).catch(function () { /* silent, 服务端无 auth 时 401 是预期 */ });
+    }
   }
   function initThemeToggle() {
     const btn = document.getElementById("theme-toggle");
@@ -626,6 +635,120 @@
     document.querySelectorAll(".chart-legend-5").forEach(function (n) { n.style.background = readVar("--chart-series-6"); });
   }
 
+  // ─── v0.10 Drag reorder ────────────────────────────────────────
+  // 容器 [data-drag-reorder] 内的 [draggable="true"][data-reorder-key] 子项；
+  // 拖完 emit CustomEvent("drag-reorder-change", { detail: { order: string[] } }) on the container.
+  function initDragReorder() {
+    document.querySelectorAll("[data-drag-reorder]").forEach(function (container) {
+      if (container.getAttribute("data-drag-reorder-bound") === "1") return;
+      container.setAttribute("data-drag-reorder-bound", "1");
+      function rowsArr() {
+        return Array.from(container.querySelectorAll('[draggable="true"][data-reorder-key]'));
+      }
+      function emit() {
+        var order = rowsArr().map(function (el) { return el.getAttribute("data-reorder-key"); });
+        container.dispatchEvent(new CustomEvent("drag-reorder-change", { detail: { order: order } }));
+      }
+      var dragged = null;
+      container.addEventListener("dragstart", function (e) {
+        var t = e.target.closest('[draggable="true"][data-reorder-key]');
+        if (!t || !container.contains(t)) return;
+        dragged = t; t.classList.add("dragging");
+        try { e.dataTransfer.effectAllowed = "move"; } catch (_) {}
+        try { e.dataTransfer.setData("text/plain", t.getAttribute("data-reorder-key")); } catch (_) {}
+      });
+      container.addEventListener("dragend", function () {
+        if (dragged) dragged.classList.remove("dragging");
+        dragged = null;
+      });
+      container.addEventListener("dragover", function (e) {
+        if (!dragged) return;
+        e.preventDefault();
+        var after = afterElement(container, e.clientY);
+        if (after == null) container.appendChild(dragged);
+        else if (after !== dragged) container.insertBefore(dragged, after);
+      });
+      container.addEventListener("drop", function (e) {
+        if (!dragged) return;
+        e.preventDefault();
+        emit();
+      });
+    });
+    function afterElement(container, y) {
+      var els = Array.from(container.querySelectorAll('[draggable="true"][data-reorder-key]:not(.dragging)'));
+      var closest = { offset: Number.NEGATIVE_INFINITY, el: null };
+      for (var i = 0; i < els.length; i++) {
+        var rect = els[i].getBoundingClientRect();
+        var offset = y - rect.top - rect.height / 2;
+        if (offset < 0 && offset > closest.offset) closest = { offset: offset, el: els[i] };
+      }
+      return closest.el;
+    }
+  }
+
+  // ─── v0.10 Swipe row ───────────────────────────────────────────
+  // [data-swipe-row] 元素绑左右滑（touch + mouse），过阈值 emit swipe-action event.
+  function initSwipeRow() {
+    var THRESHOLD = 0.30;
+    document.querySelectorAll("[data-swipe-row]").forEach(function (row) {
+      if (row.getAttribute("data-swipe-bound") === "1") return;
+      row.setAttribute("data-swipe-bound", "1");
+      var startX = 0, currentX = 0, dragging = false;
+      var fg = row.querySelector("[data-swipe-fg]") || row;
+      function start(x) { startX = x; currentX = 0; dragging = true; fg.style.transition = "none"; }
+      function move(x) {
+        if (!dragging) return;
+        currentX = x - startX;
+        var max = row.clientWidth;
+        var clamped = Math.max(-max, Math.min(max, currentX));
+        fg.style.transform = "translateX(" + clamped + "px)";
+        row.setAttribute("data-swipe-dir", clamped > 0 ? "right" : clamped < 0 ? "left" : "");
+      }
+      function end() {
+        if (!dragging) return;
+        dragging = false;
+        var max = row.clientWidth;
+        var trigger = max * THRESHOLD;
+        fg.style.transition = "transform var(--motion-swipe-reveal, 180ms) var(--ease-standard, ease)";
+        fg.style.transform = "translateX(0)";
+        row.removeAttribute("data-swipe-dir");
+        if (currentX > trigger) row.dispatchEvent(new CustomEvent("swipe-action", { detail: { direction: "right" }, bubbles: true }));
+        else if (currentX < -trigger) row.dispatchEvent(new CustomEvent("swipe-action", { detail: { direction: "left" }, bubbles: true }));
+      }
+      row.addEventListener("touchstart", function (e) { start(e.touches[0].clientX); }, { passive: true });
+      row.addEventListener("touchmove",  function (e) { move(e.touches[0].clientX); }, { passive: true });
+      row.addEventListener("touchend",   end);
+      row.addEventListener("touchcancel", end);
+      var mouseDown = false;
+      row.addEventListener("mousedown", function (e) {
+        var tag = (e.target.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "button" || tag === "a" || tag === "select" || tag === "textarea") return;
+        mouseDown = true; start(e.clientX);
+      });
+      row.addEventListener("mousemove", function (e) { if (mouseDown) move(e.clientX); });
+      window.addEventListener("mouseup", function () { if (mouseDown) { mouseDown = false; end(); } });
+    });
+  }
+
+  // ─── v0.10 Skeleton ────────────────────────────────────────────
+  function initSkeleton() {
+    document.querySelectorAll("[data-skeleton]:not(.skeleton)").forEach(function (el) {
+      el.classList.add("skeleton");
+    });
+  }
+
+  // ─── v0.10 Split layout (drawer ↔ body sync) ───────────────────
+  function initSplitLayout() {
+    var drawer = document.getElementById("drawer");
+    if (!drawer) return;
+    var sync = function () {
+      if (drawer.classList.contains("on")) document.body.setAttribute("data-drawer-open", "true");
+      else document.body.removeAttribute("data-drawer-open");
+    };
+    var mo = new MutationObserver(sync);
+    mo.observe(drawer, { attributes: true, attributeFilter: ["class"] });
+    sync();
+  }
   // ─── Bootstrap ─────────────────────────────────────────────────
   function boot() {
     // 启动时先把 cookie / localStorage 与 <html data-theme> 对齐（防止刷新闪烁）
@@ -644,6 +767,10 @@
     initDashboard();
     initTrendChart();
     initCategoryDonut();
+    initDragReorder();
+    initSwipeRow();
+    initSkeleton();
+    initSplitLayout();
   }
 
   if (document.readyState === "loading") {
