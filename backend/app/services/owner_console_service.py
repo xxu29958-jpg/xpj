@@ -43,6 +43,7 @@ from app.services.ledger_service import (
     LedgerSummary,
     create_ledger as ledger_service_create_ledger,
     ledger_member_counts,
+    list_ledgers_for_account,
     list_managed_ledgers_for_account,
 )
 from app.tenants import DEFAULT_TENANT_ID
@@ -299,14 +300,14 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
     account = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
     ledger_choices = list_console_ledger_choices(db)
     primary_ledger = ledger_choices[0] if ledger_choices else None
-    visible_ledger_ids = _visible_console_ledger_ids(db)
+    managed_ledger_ids = _managed_console_ledger_ids(db)
 
-    pending_count = _expense_status_count(db, tenant_ids=visible_ledger_ids, status="pending")
-    confirmed_count = _expense_status_count(db, tenant_ids=visible_ledger_ids, status="confirmed")
+    pending_count = _expense_status_count(db, tenant_ids=managed_ledger_ids, status="pending")
+    confirmed_count = _expense_status_count(db, tenant_ids=managed_ledger_ids, status="confirmed")
 
-    visible_devices = list_devices(db, ledger_ids=visible_ledger_ids)
+    visible_devices = list_devices(db, ledger_ids=managed_ledger_ids)
     active_devices = sum(1 for device in visible_devices if device.revoked_at is None)
-    active_links = _active_upload_link_count(db, ledger_ids=visible_ledger_ids)
+    active_links = _active_upload_link_count(db, ledger_ids=managed_ledger_ids)
 
     primary_tenant_id = primary_ledger.ledger_id if primary_ledger else DEFAULT_TENANT_ID
     try:
@@ -385,7 +386,7 @@ def _budget_status_for_primary_ledger(
 
 
 def get_devices(db: Session) -> list[DeviceSummary]:
-    return list_devices(db, ledger_ids=_visible_console_ledger_ids(db))
+    return list_devices(db, ledger_ids=_managed_console_ledger_ids(db))
 
 
 def do_revoke_device(db: Session, public_id: str, current_device_public_id: str) -> DeviceSummary:
@@ -393,7 +394,7 @@ def do_revoke_device(db: Session, public_id: str, current_device_public_id: str)
         db,
         public_id=public_id,
         current_device_public_id=current_device_public_id,
-        ledger_ids=_visible_console_ledger_ids(db),
+        ledger_ids=_managed_console_ledger_ids(db),
     )
 
 
@@ -402,7 +403,7 @@ def do_delete_device(db: Session, public_id: str, current_device_public_id: str)
         db,
         public_id=public_id,
         current_device_public_id=current_device_public_id,
-        ledger_ids=_visible_console_ledger_ids(db),
+        ledger_ids=_managed_console_ledger_ids(db),
     )
 
 
@@ -411,15 +412,15 @@ def do_rename_device(db: Session, public_id: str, new_name: str) -> DeviceSummar
         db,
         public_id=public_id,
         new_name=new_name,
-        ledger_ids=_visible_console_ledger_ids(db),
+        ledger_ids=_managed_console_ledger_ids(db),
     )
 
 
 def get_upload_links(db: Session) -> list[UploadLinkSummary]:
-    visible_ids = _visible_console_ledger_ids(db)
-    if not visible_ids:
+    managed_ids = _managed_console_ledger_ids(db)
+    if not managed_ids:
         return []
-    return list_upload_links(db, ledger_ids=visible_ids)
+    return list_upload_links(db, ledger_ids=managed_ids)
 
 
 def do_create_upload_link(
@@ -430,7 +431,7 @@ def do_create_upload_link(
         ledger_id=ledger_id,
         admin_account_id=admin_account_id,
         default_timezone=default_timezone,
-        ledger_ids=_visible_console_ledger_ids(db),
+        ledger_ids=_managed_console_ledger_ids(db),
     )
 
 
@@ -438,7 +439,7 @@ def do_rotate_upload_link(db: Session, public_id: str) -> tuple[UploadLinkSummar
     return rotate_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=_visible_console_ledger_ids(db),
+        ledger_ids=_managed_console_ledger_ids(db),
     )
 
 
@@ -446,7 +447,7 @@ def do_revoke_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
     return revoke_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=_visible_console_ledger_ids(db),
+        ledger_ids=_managed_console_ledger_ids(db),
     )
 
 
@@ -454,7 +455,7 @@ def do_delete_upload_link(db: Session, public_id: str) -> None:
     delete_upload_link(
         db,
         public_id=public_id,
-        ledger_ids=_visible_console_ledger_ids(db),
+        ledger_ids=_managed_console_ledger_ids(db),
     )
 
 
@@ -490,7 +491,7 @@ def get_default_ledger_id(db: Session) -> str | None:
     return (default or choices[0]).ledger_id
 
 
-def _visible_console_ledger_ids(db: Session) -> set[str]:
+def _managed_console_ledger_ids(db: Session) -> set[str]:
     return {ledger.ledger_id for ledger in list_console_ledger_choices(db)}
 
 
@@ -598,18 +599,7 @@ class LedgerConsoleVM:
     active_device_count: int
 
 
-def list_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
-    """Return ledger rows the local owner can manage from the console.
-
-    Uses the same owner-management rule as API admin scope: visible
-    member/viewer ledgers are not manageable from the local console. The
-    "owner account" is the first account row created at bootstrap; multi-
-    account login is not part of v0.4-alpha1.
-    """
-    owner_id = get_owner_account_id(db)
-    if owner_id is None:
-        return []
-    summaries: list[LedgerSummary] = list_managed_ledgers_for_account(db, account_id=owner_id)
+def _ledger_console_rows(db: Session, summaries: list[LedgerSummary]) -> list[LedgerConsoleVM]:
     rows: list[LedgerConsoleVM] = []
     for summary in summaries:
         pending = int(
@@ -643,6 +633,30 @@ def list_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
             )
         )
     return rows
+
+
+def list_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
+    """Return ledger rows visible to the local account.
+
+    The /web progressive UI uses this read surface so member/viewer ledgers
+    remain browsable. Management actions must use
+    :func:`list_manageable_console_ledgers` or :func:`list_console_ledger_choices`.
+    """
+    owner_id = get_owner_account_id(db)
+    if owner_id is None:
+        return []
+    return _ledger_console_rows(db, list_ledgers_for_account(db, account_id=owner_id))
+
+
+def list_manageable_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
+    """Return ledger rows the local account can manage as owner."""
+    owner_id = get_owner_account_id(db)
+    if owner_id is None:
+        return []
+    return _ledger_console_rows(
+        db,
+        list_managed_ledgers_for_account(db, account_id=owner_id),
+    )
 
 
 def list_console_ledger_choices(db: Session) -> list[LedgerSummary]:

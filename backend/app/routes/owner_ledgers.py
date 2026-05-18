@@ -63,7 +63,7 @@ def owner_ledgers_get(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    rows = svc.list_console_ledgers(db)
+    rows = svc.list_manageable_console_ledgers(db)
     ctx = _base(request, db)
     ctx["ledger_rows"] = rows
     ctx["error"] = None
@@ -91,7 +91,7 @@ def owner_ledgers_post(
         svc.do_create_ledger(db, name=name)
     except AppError as exc:
         ctx = _base(request, db)
-        ctx["ledger_rows"] = svc.list_console_ledgers(db)
+        ctx["ledger_rows"] = svc.list_manageable_console_ledgers(db)
         ctx["error"] = exc.message
         ctx["created_ledger"] = None
         ctx["submitted_name"] = name
