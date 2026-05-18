@@ -17,8 +17,11 @@ from app.schemas import (
     BudgetMonthlyUpdateRequest,
 )
 from app.services.category_service import normalize_category
-from app.services.stats_service import _confirmed_amount_query
-from app.services.time_service import normalize_month_label, now_utc
+from app.services.spending_contract_service import (
+    clean_month,
+    confirmed_amount_query,
+)
+from app.services.time_service import now_utc
 
 
 @dataclass(frozen=True)
@@ -28,10 +31,7 @@ class CategorySpend:
 
 
 def _clean_month(month: str) -> str:
-    cleaned = normalize_month_label(month)
-    if cleaned is None:
-        raise AppError("invalid_request", status_code=422)
-    return cleaned
+    return clean_month(month)
 
 
 def _clean_category(value: str) -> str:
@@ -128,7 +128,7 @@ def _month_spend_by_category(
     month: str,
     timezone_name: str | None,
 ) -> dict[str, CategorySpend]:
-    filtered = _confirmed_amount_query(
+    filtered = confirmed_amount_query(
         tenant_id=tenant_id,
         month=month,
         timezone_name=timezone_name,

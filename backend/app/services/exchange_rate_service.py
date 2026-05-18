@@ -19,7 +19,8 @@ from app.fx_constants import (
 )
 from app.ledger_scope import ledger_scoped_select
 from app.models import ExchangeRate, Expense
-from app.services.time_service import ensure_utc, now_utc
+from app.services.spending_contract_service import fx_rate_date_for_expense_time
+from app.services.time_service import now_utc
 
 
 BASE_CURRENCY_CODE = DEFAULT_HOME_CURRENCY_CODE
@@ -133,10 +134,7 @@ def calculate_cny_cents(
 
 
 def default_rate_date(expense_time: datetime | None = None) -> date:
-    if expense_time is not None and expense_time.tzinfo is not None and expense_time.utcoffset() is not None:
-        return expense_time.date()
-    when = ensure_utc(expense_time) or now_utc()
-    return when.date()
+    return fx_rate_date_for_expense_time(expense_time)
 
 
 def _payload_rate_date(payload: CurrencyPayload, expense_time: datetime | None) -> date:

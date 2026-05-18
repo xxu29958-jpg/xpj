@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,11 +9,10 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Goal
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services.category_service import normalize_category
-from app.services.stats_service import _confirmed_amount_query
-from app.services.time_service import local_month_bounds_utc, now_utc
+from app.services.spending_contract_service import clean_month, confirmed_amount_query
+from app.services.time_service import now_utc
 
 
-MONTH_PATTERN = re.compile(r"^\d{4}-\d{2}$")
 VALID_GOAL_TYPES = {"spending_limit"}
 VALID_PERIODS = {"monthly"}
 
@@ -27,10 +24,7 @@ class GoalSpendTotals:
 
 
 def _clean_month(month: str) -> str:
-    cleaned = (month or "").strip()
-    if not MONTH_PATTERN.fullmatch(cleaned) or local_month_bounds_utc(cleaned, "UTC") is None:
-        raise AppError("invalid_request", status_code=422)
-    return cleaned
+    return clean_month(month)
 
 
 def _clean_name(name: str) -> str:
@@ -79,7 +73,7 @@ def _month_spend_totals(
     month: str,
     timezone_name: str | None = None,
 ) -> GoalSpendTotals:
-    filtered = _confirmed_amount_query(
+    filtered = confirmed_amount_query(
         tenant_id=tenant_id,
         month=month,
         timezone_name=timezone_name,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -9,9 +9,13 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import LedgerMember
-from app.services.exchange_rate_service import calculate_cny_cents
+from app.services.exchange_rate_service import calculate_cny_cents, default_rate_date
 from app.services.fx_rate_provider import cross_rate_to_home, parse_ecb_daily_rates, upsert_fx_rate
 from conftest import app_headers, gray_app_headers
+
+
+def test_default_rate_date_uses_accounting_local_day_for_stored_utc_time() -> None:
+    assert default_rate_date(datetime(2026, 4, 30, 16, 30, tzinfo=UTC)) == date(2026, 5, 1)
 
 
 def _demote_owner_ledger_to_viewer() -> None:

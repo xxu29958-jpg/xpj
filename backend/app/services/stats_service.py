@@ -2,59 +2,59 @@ from __future__ import annotations
 
 from collections import defaultdict
 import csv
-from datetime import datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense, ExpenseTag, Tag
-from app.services.category_service import category_filter_values, merge_categories, normalize_category
+from app.services.category_service import merge_categories, normalize_category
 from app.services.csv_security import safe_csv_cell
-from app.services.tag_service import tag_key
+from app.services.spending_contract_service import (
+    clean_month as _contract_clean_month,
+    confirmed_amount_query as _contract_confirmed_amount_query,
+    confirmed_ordered as _contract_confirmed_ordered,
+    confirmed_query as _contract_confirmed_query,
+    default_accounting_timezone_name,
+    filtered_confirmed as _contract_filtered_confirmed,
+    month_bounds_utc,
+    stat_month_label,
+    stat_time as _contract_stat_time,
+    stat_time_expr as _contract_stat_time_expr,
+)
 from app.services.time_service import (
     ensure_utc,
-    local_month_bounds_utc,
-    local_month_label,
-    normalize_month_label,
     now_utc,
 )
 
 
 def _base_confirmed_query(tenant_id: str) -> Select[tuple[Expense]]:
-    return (
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.status == "confirmed")
-    )
+    return _contract_confirmed_query(tenant_id=tenant_id)
 
 
 def _stat_time_expr():
-    return func.coalesce(Expense.expense_time, Expense.confirmed_at)
+    return _contract_stat_time_expr()
 
 
-def _stat_time(expense: Expense) -> datetime | None:
-    return ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+def _stat_time(expense: Expense):
+    return _contract_stat_time(expense)
 
 
 def _stat_timezone(timezone_name: str | None = None) -> str:
-    return (timezone_name or "").strip() or get_settings().ocr_default_timezone
+    return default_accounting_timezone_name(timezone_name)
 
 
 def _stat_month_bounds(
     month: str, timezone_name: str | None = None
-) -> tuple[datetime, datetime] | None:
-    return local_month_bounds_utc(month, _stat_timezone(timezone_name))
+):
+    return month_bounds_utc(month, timezone_name)
 
 
 def _clean_month_filter(month: str) -> str:
-    cleaned = normalize_month_label(month)
-    if cleaned is None:
-        raise AppError("invalid_request", status_code=422)
-    return cleaned
+    return _contract_clean_month(month)
 
 
 def _confirmed_query(
@@ -65,29 +65,13 @@ def _confirmed_query(
     tag: str | None = None,
     timezone_name: str | None = None,
 ) -> Select[tuple[Expense]]:
-    query = _base_confirmed_query(tenant_id)
-    if category:
-        query = query.where(Expense.category.in_(category_filter_values(category)))
-    tag_filter = tag_key(tag)
-    if tag_filter:
-        tagged_expense_ids = (
-            select(ExpenseTag.expense_id)
-            .join(Tag, Tag.id == ExpenseTag.tag_id)
-            .where(ExpenseTag.tenant_id == tenant_id)
-            .where(Tag.tenant_id == tenant_id)
-            .where(Tag.key == tag_filter)
-        )
-        query = query.where(Expense.id.in_(tagged_expense_ids))
-    if month:
-        month = _clean_month_filter(month)
-        bounds = _stat_month_bounds(month, timezone_name)
-        if bounds is None:
-            raise AppError("invalid_request", status_code=422)
-        start_utc, end_utc = bounds
-        query = query.where(_stat_time_expr() >= start_utc).where(
-            _stat_time_expr() < end_utc
-        )
-    return query
+    return _contract_confirmed_query(
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_name=timezone_name,
+    )
 
 
 def _confirmed_amount_query(
@@ -98,17 +82,17 @@ def _confirmed_amount_query(
     tag: str | None = None,
     timezone_name: str | None = None,
 ) -> Select[tuple[Expense]]:
-    return _confirmed_query(
+    return _contract_confirmed_amount_query(
         tenant_id=tenant_id,
         month=month,
         category=category,
         tag=tag,
         timezone_name=timezone_name,
-    ).where(Expense.amount_cents.is_not(None))
+    )
 
 
 def _confirmed_ordered(query: Select[tuple[Expense]]) -> Select[tuple[Expense]]:
-    return query.order_by(_stat_time_expr().desc(), Expense.id.desc())
+    return _contract_confirmed_ordered(query)
 
 
 def _filtered_confirmed(
@@ -120,18 +104,13 @@ def _filtered_confirmed(
     tag: str | None = None,
     timezone_name: str | None = None,
 ) -> list[Expense]:
-    return list(
-        db.scalars(
-            _confirmed_ordered(
-                _confirmed_query(
-                    tenant_id=tenant_id,
-                    month=month,
-                    category=category,
-                    tag=tag,
-                    timezone_name=timezone_name,
-                )
-            )
-        )
+    return _contract_filtered_confirmed(
+        db,
+        tenant_id=tenant_id,
+        month=month,
+        category=category,
+        tag=tag,
+        timezone_name=timezone_name,
     )
 
 
@@ -160,7 +139,7 @@ def list_months(
     months = {
         label
         for expense in expenses
-        if (label := local_month_label(_stat_time(expense), resolved_timezone))
+        if (label := stat_month_label(expense, resolved_timezone))
         is not None
     }
     return sorted(months, reverse=True)

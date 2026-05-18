@@ -11,15 +11,21 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
-from app.errors import AppError
 from app.ledger_scope import add_ledger_scope
 from app.models import Expense
-from app.services.category_service import LEGACY_CATEGORY_ALIASES, normalize_category
+from app.services.category_service import category_filter_values, normalize_category
 from app.services.csv_security import safe_csv_cell
-from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
+from app.services.merchant_alias_service import canonical_merchant_for
 from app.services.merchant_service import display_merchant, normalize_merchant
-from app.services.time_service import local_month_bounds_utc, parse_month_label, safe_zone
+from app.services.spending_contract_service import (
+    enabled_merchant_display_map,
+    month_bounds_utc,
+    month_labels_ending_at,
+    parse_month,
+    resolve_accounting_timezone,
+    shift_month,
+    stat_time_expr,
+)
 
 ReportGranularity = Literal["day", "week", "month"]
 ReportRankingMetric = Literal["amount", "count"]
@@ -34,39 +40,27 @@ class _TrendBucket:
 
 
 def _stat_time_expr():
-    return func.coalesce(Expense.expense_time, Expense.confirmed_at)
+    return stat_time_expr()
 
 
 def _resolve_timezone(timezone_name: str | None) -> tuple[str, ZoneInfo]:
-    requested = (timezone_name or "").strip() or get_settings().ocr_default_timezone
-    zone = safe_zone(requested)
-    return zone.key, zone
+    return resolve_accounting_timezone(timezone_name)
 
 
 def _parse_month(month: str) -> tuple[int, int]:
-    parsed = parse_month_label(month)
-    if parsed is None:
-        raise AppError("invalid_request", status_code=422)
-    return parsed
+    return parse_month(month)
 
 
 def _shift_month(month: str, offset: int) -> str:
-    year, month_number = _parse_month(month)
-    zero_based = (year * 12 + month_number - 1) + offset
-    target_year = zero_based // 12
-    target_month = zero_based % 12 + 1
-    return f"{target_year:04d}-{target_month:02d}"
+    return shift_month(month, offset)
 
 
 def _month_labels_ending_at(month: str, count: int) -> list[str]:
-    return [_shift_month(month, offset) for offset in range(-(count - 1), 1)]
+    return month_labels_ending_at(month, count)
 
 
 def _days_in_month(month: str, zone: ZoneInfo) -> list[date]:
-    bounds = local_month_bounds_utc(month, zone.key)
-    if bounds is None:
-        raise AppError("invalid_request", status_code=422)
-    start_utc, end_utc = bounds
+    start_utc, end_utc = month_bounds_utc(month, zone.key)
     cursor = start_utc.astimezone(zone).date()
     end_date = end_utc.astimezone(zone).date()
     days: list[date] = []
@@ -124,10 +118,7 @@ def _range_amount_count(
 
 
 def _month_bounds(month: str, timezone_name: str) -> tuple[datetime, datetime]:
-    bounds = local_month_bounds_utc(month, timezone_name)
-    if bounds is None:
-        raise AppError("invalid_request", status_code=422)
-    return bounds
+    return month_bounds_utc(month, timezone_name)
 
 
 def _trend_buckets(
@@ -261,14 +252,7 @@ def _canonical_display(merchant: str, alias_map: dict[str, str]) -> str:
 
 
 def _category_filter_values(category: str | None) -> set[str]:
-    normalized = normalize_category(category)
-    values = {normalized}
-    values.update(
-        legacy
-        for legacy, canonical in LEGACY_CATEGORY_ALIASES.items()
-        if canonical == normalized
-    )
-    return values
+    return category_filter_values(category)
 
 
 def _merchant_ranking(
@@ -302,7 +286,7 @@ def _merchant_ranking(
             Expense.category.in_(_category_filter_values(category))
         )
     rows = db.execute(statement)
-    alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
+    alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
     buckets: dict[str, dict[str, int | str]] = defaultdict(
         lambda: {"merchant": "", "amount_cents": 0, "count": 0}
     )

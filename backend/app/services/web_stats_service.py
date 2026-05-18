@@ -17,10 +17,15 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
-from app.errors import AppError
 from app.models import AuthToken, Device, Expense
-from app.services.time_service import ensure_utc, local_month_bounds_utc, normalize_month_label, now_utc, safe_zone
+from app.services.spending_contract_service import (
+    accounting_zone,
+    clean_month,
+    month_bounds_utc,
+    stat_time,
+    stat_time_expr,
+)
+from app.services.time_service import now_utc
 
 
 SOURCE_LABELS: dict[str, str] = {
@@ -64,7 +69,7 @@ def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
     start_utc = datetime(start.year, start.month, start.day, tzinfo=zone).astimezone(UTC)
     end_day = today + timedelta(days=1)
     end_utc = datetime(end_day.year, end_day.month, end_day.day, tzinfo=zone).astimezone(UTC)
-    expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
+    expense_time = stat_time_expr()
     expenses = db.scalars(
         select(Expense)
         .where(Expense.tenant_id == ledger_id)
@@ -75,7 +80,7 @@ def trend14_amounts(db: Session, ledger_id: str) -> list[dict]:
     )
     by_day: dict[str, int] = defaultdict(int)
     for expense in expenses:
-        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        when = stat_time(expense)
         if when is None or expense.amount_cents is None:
             continue
         by_day[when.astimezone(zone).strftime("%m-%d")] += int(expense.amount_cents)
@@ -96,7 +101,7 @@ def confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
     month = _clean_month_filter(month)
     zone = _web_stats_zone()
     start_utc, end_utc = _month_bounds(month, zone)
-    expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
+    expense_time = stat_time_expr()
     expenses = db.scalars(
         select(Expense)
         .where(Expense.tenant_id == ledger_id)
@@ -107,7 +112,7 @@ def confirmed_by_day(db: Session, ledger_id: str, month: str) -> list[dict]:
     )
     by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"amount_cents": 0, "count": 0})
     for expense in expenses:
-        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        when = stat_time(expense)
         if when is None or expense.amount_cents is None:
             continue
         key = when.astimezone(zone).date().isoformat()
@@ -135,7 +140,7 @@ def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dic
         month = _clean_month_filter(month)
         zone = _web_stats_zone()
         start_utc, end_utc = _month_bounds(month, zone)
-        expense_time = func.coalesce(Expense.expense_time, Expense.confirmed_at)
+        expense_time = stat_time_expr()
         q = q.where(expense_time >= start_utc).where(expense_time < end_utc)
     q = q.group_by(Expense.source)
     rows = list(db.execute(q))
@@ -151,21 +156,15 @@ def source_breakdown(db: Session, ledger_id: str, month: str | None) -> list[dic
 
 
 def _clean_month_filter(month: str) -> str:
-    cleaned = normalize_month_label(month)
-    if cleaned is None:
-        raise AppError("invalid_request", status_code=422)
-    return cleaned
+    return clean_month(month)
 
 
 def _web_stats_zone() -> ZoneInfo:
-    return safe_zone(get_settings().ocr_default_timezone)
+    return accounting_zone()
 
 
 def _month_bounds(month: str, zone: ZoneInfo) -> tuple[datetime, datetime]:
-    bounds = local_month_bounds_utc(month, zone.key)
-    if bounds is None:
-        raise AppError("invalid_request", status_code=422)
-    return bounds
+    return month_bounds_utc(month, zone.key)
 
 
 def recent_expense_count(db: Session, ledger_id: str, since: datetime) -> int:

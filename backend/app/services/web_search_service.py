@@ -9,8 +9,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryRule, Expense, Goal
-from app.services.merchant_alias_service import list_merchant_aliases
-from app.services.merchant_service import normalize_merchant
+from app.services.spending_contract_service import merchant_search_terms, stat_time
 
 
 MAX_QUERY_LENGTH = 80
@@ -90,26 +89,7 @@ def _matches_any_text(terms: list[str], *columns) -> object:
 
 
 def _merchant_search_terms(db: Session, tenant_id: str, term: str) -> list[str]:
-    terms = {term}
-    needle = term.casefold()
-    normalized = normalize_merchant(term)
-    for alias in list_merchant_aliases(db, tenant_id):
-        if not alias.enabled:
-            continue
-        alias_values = {
-            alias.alias,
-            alias.alias_key,
-            alias.canonical_merchant,
-            alias.canonical_key,
-        }
-        alias_values_folded = {value.casefold() for value in alias_values if value}
-        if (
-            any(needle in value for value in alias_values_folded)
-            or normalized in {alias.alias_key, alias.canonical_key}
-        ):
-            terms.add(alias.alias)
-            terms.add(alias.canonical_merchant)
-    return sorted(term for term in terms if term)
+    return merchant_search_terms(db, tenant_id=tenant_id, term=term)
 
 
 def _matches_expense_search(db: Session, tenant_id: str, term: str) -> object:
@@ -165,8 +145,9 @@ def _expense_subtitle(expense: Expense) -> str:
         expense.category or "未分类",
         expense.source or "未知来源",
     ]
-    if expense.expense_time:
-        parts.append(expense.expense_time.strftime("%Y-%m-%d %H:%M"))
+    when = stat_time(expense)
+    if when:
+        parts.append(when.strftime("%Y-%m-%d %H:%M"))
     elif expense.created_at:
         parts.append(expense.created_at.strftime("%Y-%m-%d %H:%M"))
     return " · ".join(parts)

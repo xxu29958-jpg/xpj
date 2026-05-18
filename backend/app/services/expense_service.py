@@ -41,8 +41,8 @@ from app.services.ocr_service import (
     run_auto_ocr,
 )
 from app.services.receipt_parse_service import parse_receipt_text
+from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
-from app.services.stats_service import _confirmed_ordered, _confirmed_query
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 
@@ -424,7 +424,7 @@ def list_confirmed(
     page = max(page, 1)
     page_size = min(max(page_size, 1), 200)
 
-    query = _confirmed_query(
+    query = confirmed_query(
         tenant_id=tenant_id,
         month=month,
         category=category,
@@ -434,7 +434,7 @@ def list_confirmed(
     total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
     expenses = list(
         db.scalars(
-            _confirmed_ordered(query).offset((page - 1) * page_size).limit(page_size)
+            confirmed_ordered(query).offset((page - 1) * page_size).limit(page_size)
         )
     )
     return expenses, total
