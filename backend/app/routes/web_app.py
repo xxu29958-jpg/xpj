@@ -42,11 +42,10 @@ from app.schemas import ConfirmedExpenseBatchUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
+    ensure_image_file,
     ensure_thumbnail_file,
-    get_expense,
     list_confirmed,
 )
-from app.services.file_service import resolve_protected_image
 
 __all__ = ["router", "_require_local", "templates"]
 
@@ -364,8 +363,7 @@ def web_image(
     db: Session = Depends(get_db),
 ) -> FileResponse:
     selected_id = _resolve_selected_ledger_id(db, ledger_id)
-    expense = get_expense(db, expense_id, selected_id)
-    path, media_type = resolve_protected_image(expense.image_path, selected_id)
+    path, media_type = ensure_image_file(db, expense_id, selected_id)
     return FileResponse(path=path, media_type=media_type)
 
 

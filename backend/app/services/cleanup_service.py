@@ -126,6 +126,8 @@ def cleanup_after_confirm(expense: Expense) -> Expense:
     now = now_utc()
     if _relative_file_exists(expense.image_path, expense.tenant_id):
         expense.image_deleted_at = now
+    if _relative_file_exists(expense.thumbnail_path, expense.tenant_id):
+        expense.thumbnail_deleted_at = now
     return expense
 
 
@@ -134,6 +136,7 @@ def delete_after_confirm_files(expense: Expense) -> None:
     if not settings.delete_image_after_confirm:
         return
     _delete_relative_file(expense.image_path, expense.tenant_id)
+    _delete_relative_file(expense.thumbnail_path, expense.tenant_id)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:

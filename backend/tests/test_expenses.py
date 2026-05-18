@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 from uuid import UUID
 
@@ -155,6 +156,66 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
     assert stats.status_code == 200
     assert stats.json()["total_amount_cents"] == 1851
+
+
+def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import cleanup_service
+
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(
+        cleanup_service,
+        "get_settings",
+        lambda: replace(settings, delete_image_after_confirm=True),
+    )
+
+    expense_id = upload_png(client)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.image_path is not None
+        assert expense.thumbnail_path is not None
+        image_path = BACKEND_ROOT / expense.image_path
+        thumbnail_path = BACKEND_ROOT / expense.thumbnail_path
+    assert image_path.is_file()
+    assert thumbnail_path.is_file()
+
+    response = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1851,
+            "merchant": "A",
+            "category": "餐饮",
+            "expense_time": "2026-05-04T08:23:25Z",
+        },
+    )
+    assert response.status_code == 200
+
+    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "confirmed"
+    assert payload["image_deleted_at"] is not None
+    assert payload["thumbnail_deleted_at"] is not None
+    assert not image_path.exists()
+    assert not thumbnail_path.exists()
+
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    assert image.status_code == 404
+    thumbnail = client.get(
+        f"/api/expenses/{expense_id}/thumbnail",
+        headers=app_headers(),
+    )
+    assert thumbnail.status_code == 404
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.image_deleted_at is not None
+        assert expense.thumbnail_deleted_at is not None
 
 
 def test_reject_removes_expense_from_pending_without_confirming(

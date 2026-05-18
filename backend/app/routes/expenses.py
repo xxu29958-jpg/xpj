@@ -28,6 +28,7 @@ from app.services.expense_service import (
     confirm_expense,
     create_manual_expense,
     create_notification_draft,
+    ensure_image_file,
     ensure_thumbnail_file,
     get_expense,
     list_confirmed,
@@ -38,7 +39,6 @@ from app.services.expense_service import (
     retry_expense_ocr,
     update_expense,
 )
-from app.services.file_service import resolve_protected_image
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.receipt_item_service import list_expense_items, replace_expense_items
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
@@ -222,8 +222,7 @@ def get_expense_image(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> FileResponse:
-    expense = get_expense(db, expense_id, auth.tenant_id)
-    path, media_type = resolve_protected_image(expense.image_path, auth.tenant_id)
+    path, media_type = ensure_image_file(db, expense_id, auth.tenant_id)
     return FileResponse(path=path, media_type=media_type)
 
 

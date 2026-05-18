@@ -31,7 +31,7 @@ from app.services.duplicate_service import (
     revalidate_duplicate_references_to,
 )
 from app.services.exchange_rate_service import apply_currency_payload, refresh_currency_snapshot
-from app.services.file_service import SavedUpload, delete_relative_upload
+from app.services.file_service import SavedUpload, delete_relative_upload, resolve_protected_image
 from app.services.ocr_service import (
     OcrResult,
     apply_ocr_result,
@@ -634,6 +634,8 @@ def ensure_thumbnail_file(
     db: Session, expense_id: int, tenant_id: str
 ) -> tuple[Path, str]:
     expense = get_expense(db, expense_id, tenant_id)
+    if expense.thumbnail_deleted_at is not None:
+        raise AppError("image_not_found", status_code=404)
     resolved = resolve_protected_thumbnail(expense.thumbnail_path, tenant_id)
     if resolved is not None:
         return resolved
@@ -650,6 +652,15 @@ def ensure_thumbnail_file(
     if resolved is None:
         raise AppError("image_not_found", status_code=404)
     return resolved
+
+
+def ensure_image_file(
+    db: Session, expense_id: int, tenant_id: str
+) -> tuple[Path, str]:
+    expense = get_expense(db, expense_id, tenant_id)
+    if expense.image_deleted_at is not None:
+        raise AppError("image_not_found", status_code=404)
+    return resolve_protected_image(expense.image_path, tenant_id)
 
 
 def _replace_ocr_draft_items_from_text(
