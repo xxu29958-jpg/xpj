@@ -9,10 +9,10 @@
 * ``POST /api/ledgers/{ledger_id}/members/{member_id}/role`` — owner changes member/viewer
 * ``POST /api/ledgers/{ledger_id}/members/{member_id}/disable`` — owner
 
-All authenticated routes use ``get_current_app_context`` and enforce role
-via :mod:`app.services.permission_service`. Ledger-id from the URL is
-cross-checked against ``AuthContext.ledger_id`` so an app token bound to
-ledger A cannot administer ledger B.
+Authenticated ledger routes use auth dependencies that bind the path
+``ledger_id`` to ``AuthContext.ledger_id`` before service code runs. Owner-only
+member-management routes use ``get_current_member_manager_context``; read-only
+membership routes use ``get_current_ledger_app_context``.
 """
 
 from __future__ import annotations
@@ -20,9 +20,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_app_context
+from app.auth import get_current_ledger_app_context, get_current_member_manager_context
 from app.database import get_db
-from app.errors import AppError
 from app.schemas import (
     InvitationAcceptRequest,
     InvitationAcceptResponse,
@@ -39,7 +38,6 @@ from app.schemas import (
     LedgerMemberRoleUpdateRequest,
     OwnerTransferResponse,
 )
-from app.services import permission_service
 from app.services.invitation_service import (
     InvitationSummary,
     LedgerAuditSummary,
@@ -106,12 +104,6 @@ def _to_audit_response(summary: LedgerAuditSummary) -> LedgerAuditResponse:
     )
 
 
-def _require_same_ledger(auth: AuthContext, ledger_id: str) -> None:
-    if auth.ledger_id != ledger_id:
-        # Same response shape as ledger_not_found to avoid leaking existence.
-        raise AppError("ledger_not_found", status_code=404)
-
-
 @router.post(
     "/api/ledgers/{ledger_id}/invitations",
     response_model=InvitationCreateResponse,
@@ -120,11 +112,9 @@ def _require_same_ledger(auth: AuthContext, ledger_id: str) -> None:
 def create_invitation_endpoint(
     ledger_id: str,
     payload: InvitationCreateRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_member_manager_context),
     db: Session = Depends(get_db),
 ) -> InvitationCreateResponse:
-    _require_same_ledger(auth, ledger_id)
-    permission_service.require_manage_members(auth)
     result = create_invitation(
         db,
         ledger_id=ledger_id,
@@ -145,11 +135,9 @@ def create_invitation_endpoint(
 )
 def list_invitations_endpoint(
     ledger_id: str,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_member_manager_context),
     db: Session = Depends(get_db),
 ) -> InvitationListResponse:
-    _require_same_ledger(auth, ledger_id)
-    permission_service.require_manage_members(auth)
     summaries = list_invitations(db, ledger_id=ledger_id)
     return InvitationListResponse(
         invitations=[_to_invitation_response(s) for s in summaries]
@@ -163,11 +151,9 @@ def list_invitations_endpoint(
 def revoke_invitation_endpoint(
     ledger_id: str,
     public_id: str,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_member_manager_context),
     db: Session = Depends(get_db),
 ) -> InvitationSummaryResponse:
-    _require_same_ledger(auth, ledger_id)
-    permission_service.require_manage_members(auth)
     summary = revoke_invitation(
         db,
         ledger_id=ledger_id,
@@ -225,10 +211,9 @@ def accept_invitation_endpoint(
 )
 def list_members_endpoint(
     ledger_id: str,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_ledger_app_context),
     db: Session = Depends(get_db),
 ) -> LedgerMemberListResponse:
-    _require_same_ledger(auth, ledger_id)
     # Read access for any active member (owner/member/viewer).
     summaries = list_members(db, ledger_id=ledger_id, requester_account_id=auth.account_id)
     return LedgerMemberListResponse(
@@ -244,11 +229,9 @@ def update_member_role_endpoint(
     ledger_id: str,
     member_id: int,
     payload: LedgerMemberRoleUpdateRequest,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_member_manager_context),
     db: Session = Depends(get_db),
 ) -> LedgerMemberResponse:
-    _require_same_ledger(auth, ledger_id)
-    permission_service.require_manage_members(auth)
     summary = update_member_role(
         db,
         ledger_id=ledger_id,
@@ -266,11 +249,9 @@ def update_member_role_endpoint(
 def transfer_owner_endpoint(
     ledger_id: str,
     member_id: int,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_member_manager_context),
     db: Session = Depends(get_db),
 ) -> OwnerTransferResponse:
-    _require_same_ledger(auth, ledger_id)
-    permission_service.require_manage_members(auth)
     result = transfer_ledger_owner(
         db,
         ledger_id=ledger_id,
@@ -291,11 +272,9 @@ def transfer_owner_endpoint(
 def disable_member_endpoint(
     ledger_id: str,
     member_id: int,
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_member_manager_context),
     db: Session = Depends(get_db),
 ) -> LedgerMemberResponse:
-    _require_same_ledger(auth, ledger_id)
-    permission_service.require_manage_members(auth)
     summary = disable_member(
         db,
         ledger_id=ledger_id,
@@ -312,10 +291,8 @@ def disable_member_endpoint(
 def list_audit_endpoint(
     ledger_id: str,
     limit: int = Query(default=100, ge=1, le=200),
-    auth: AuthContext = Depends(get_current_app_context),
+    auth: AuthContext = Depends(get_current_member_manager_context),
     db: Session = Depends(get_db),
 ) -> LedgerAuditListResponse:
-    _require_same_ledger(auth, ledger_id)
-    permission_service.require_manage_members(auth)
     summaries = list_audit_logs(db, ledger_id=ledger_id, limit=limit)
     return LedgerAuditListResponse(items=[_to_audit_response(s) for s in summaries])

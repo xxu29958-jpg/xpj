@@ -63,6 +63,30 @@ def get_current_owner_or_admin_context(
     return auth
 
 
+def get_current_ledger_app_context(
+    ledger_id: str,
+    auth: AuthContext = Depends(get_current_app_context),
+) -> AuthContext:
+    """App token for the ledger named in the route path.
+
+    Use this for ``/api/ledgers/{ledger_id}/...`` routes so the path ledger
+    check is a reusable auth guard instead of repeated route-body logic.
+    """
+    if auth.ledger_id != ledger_id:
+        raise AppError("ledger_not_found", status_code=404)
+    return auth
+
+
+def get_current_member_manager_context(
+    auth: AuthContext = Depends(get_current_ledger_app_context),
+) -> AuthContext:
+    """App token for the path ledger with member-management permission."""
+    from app.services import permission_service
+
+    permission_service.require_manage_members(auth)
+    return auth
+
+
 def get_current_writer_context(
     auth: AuthContext = Depends(get_current_app_context),
 ) -> AuthContext:
