@@ -24,7 +24,13 @@ class CategoryRule(Base):
     __tablename__ = "category_rules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_category_rules_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     keyword: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -47,7 +53,13 @@ class RuleApplicationBatch(Base):
     public_id: Mapped[str] = mapped_column(
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_rule_application_batches_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(String(32), default="applied", nullable=False, index=True)
     pending_scanned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     changed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

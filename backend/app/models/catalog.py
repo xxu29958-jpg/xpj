@@ -30,7 +30,13 @@ class MerchantAlias(Base):
     public_id: Mapped[str] = mapped_column(
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_merchant_aliases_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     canonical_merchant: Mapped[str] = mapped_column(String(255), nullable=False)
     canonical_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     alias: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -48,7 +54,13 @@ class Tag(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_tags_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

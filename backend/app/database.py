@@ -347,6 +347,7 @@ def validate_sqlite_data_integrity() -> None:
     table_names = set(inspect(engine).get_table_names())
     with engine.begin() as connection:
         _validate_expense_core_data(connection, table_names)
+        _validate_root_tenant_integrity(connection, table_names)
         _validate_expense_split_integrity(connection, table_names)
         _validate_tenant_child_integrity(connection, table_names)
 
@@ -399,6 +400,45 @@ def _clear_invalid_duplicate_scope_data(connection, table_names: set[str]) -> No
                     "AND target.tenant_id = duplicate_ignores.tenant_id"
                     ")"
                 )
+            )
+
+
+ROOT_TENANT_TABLES = (
+    "expenses",
+    "budgets",
+    "goals",
+    "dashboard_card_preferences",
+    "csv_import_batches",
+    "category_rules",
+    "rule_application_batches",
+    "merchant_aliases",
+    "tags",
+    "recurring_items",
+    "exchange_rates",
+)
+
+
+def _validate_root_tenant_integrity(connection, table_names: set[str]) -> None:
+    if "ledgers" not in table_names:
+        return
+    for table_name in ROOT_TENANT_TABLES:
+        if table_name not in table_names:
+            continue
+        if "tenant_id" not in _sqlite_column_names(connection, table_name):
+            continue
+        invalid = int(
+            connection.execute(
+                text(
+                    f"SELECT COUNT(*) FROM {table_name} AS root "
+                    "LEFT JOIN ledgers AS ledger "
+                    "ON ledger.ledger_id = root.tenant_id "
+                    "WHERE ledger.ledger_id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid:
+            raise RuntimeError(
+                f"Invalid legacy data: {table_name}.tenant_id references a missing ledger"
             )
 
 

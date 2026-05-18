@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Index, Numeric, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -22,7 +22,13 @@ class ExchangeRate(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True)
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_exchange_rates_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False, index=True)
     rate_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     rate_to_cny: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)

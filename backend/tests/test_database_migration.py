@@ -298,6 +298,15 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     recurring_sql = _table_create_sql("recurring_items")
     assert "ck_recurring_items_frequency_valid" in recurring_sql
     assert "ck_recurring_items_status_valid" in recurring_sql
+    assert "fk_recurring_items_tenant_ledger" in recurring_sql
+    category_rules_sql = _table_create_sql("category_rules")
+    assert "fk_category_rules_tenant_ledger" in category_rules_sql
+    rule_application_batches_sql = _table_create_sql("rule_application_batches")
+    assert "fk_rule_application_batches_tenant_ledger" in rule_application_batches_sql
+    merchant_aliases_sql = _table_create_sql("merchant_aliases")
+    assert "fk_merchant_aliases_tenant_ledger" in merchant_aliases_sql
+    tags_sql = _table_create_sql("tags")
+    assert "fk_tags_tenant_ledger" in tags_sql
     budget_sql = _table_create_sql("budgets")
     assert "ck_budgets_total_non_negative" in budget_sql
     assert "uq_budgets_tenant_month" in budget_sql
@@ -317,6 +326,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     exchange_rates_sql = _table_create_sql("exchange_rates")
     assert "uq_exchange_rates_tenant_currency_date" in exchange_rates_sql
     assert "ck_exchange_rates_rate_positive" in exchange_rates_sql
+    assert "fk_exchange_rates_tenant_ledger" in exchange_rates_sql
     fx_rates_sql = _table_create_sql("fx_rates")
     assert "uq_fx_rates_source_home_currency_date" in fx_rates_sql
     assert "ck_fx_rates_rate_positive" in fx_rates_sql
@@ -349,7 +359,8 @@ def test_exchange_rates_seed_identity_ledger_ids() -> None:
     _reset_empty_database()
     init_db()
 
-    with engine.begin() as connection:
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
         connection.execute(
             text(
                 "INSERT INTO exchange_rates "
@@ -358,6 +369,8 @@ def test_exchange_rates_seed_identity_ledger_ids() -> None:
                 "'manual', '2026-05-01 00:00:00', '2026-05-01 00:00:00')"
             )
         )
+        connection.commit()
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
     database.seed_identity_data()
 
@@ -484,6 +497,35 @@ def test_sqlite_integrity_rejects_cross_ledger_duplicate_metadata() -> None:
         _reset_empty_database()
 
 
+def test_sqlite_integrity_rejects_orphan_root_tenant_rows() -> None:
+    _reset_empty_database()
+    init_db()
+
+    try:
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO category_rules (
+                        tenant_id, keyword, category, enabled, priority, created_at, updated_at
+                    )
+                    VALUES (
+                        'missing_ledger', 'orphan', 'Other', 1, 1,
+                        '2026-05-04 08:00:00', '2026-05-04 08:00:00'
+                    )
+                    """
+                )
+            )
+            connection.commit()
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+        with pytest.raises(RuntimeError, match="category_rules"):
+            database.validate_sqlite_data_integrity()
+    finally:
+        _reset_empty_database()
+
+
 def test_legacy_database_with_invalid_family_roles_fails_startup() -> None:
     _reset_empty_database()
     with engine.begin() as connection:
@@ -583,13 +625,16 @@ def test_legacy_database_with_invalid_expense_core_data_fails_startup(
 def test_legacy_database_with_invalid_tenant_id_fails_identity_seed() -> None:
     _reset_empty_database()
     init_db()
-    with engine.begin() as connection:
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
         connection.execute(
             text(
                 "UPDATE category_rules SET tenant_id = '../outside' "
                 "WHERE id = (SELECT id FROM category_rules LIMIT 1)"
             )
         )
+        connection.commit()
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
     try:
         with pytest.raises(RuntimeError, match="tenant_id"):

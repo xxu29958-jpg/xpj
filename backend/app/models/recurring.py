@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -31,7 +32,13 @@ class RecurringItem(Base):
     public_id: Mapped[str] = mapped_column(
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_recurring_items_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     merchant_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     merchant_name: Mapped[str] = mapped_column(String(255), nullable=False)
     frequency: Mapped[str] = mapped_column(String(32), default="monthly", nullable=False, index=True)
