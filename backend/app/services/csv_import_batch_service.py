@@ -8,6 +8,7 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
