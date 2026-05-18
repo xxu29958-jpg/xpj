@@ -276,6 +276,7 @@ def test_owner_rule_application_audit_is_read_only_and_ledger_scoped(
                 created_at=now_utc(),
             )
         )
+        db.flush()
         db.add(
             RuleApplicationBatch(
                 public_id="00000000-0000-0000-0000-000000000000",

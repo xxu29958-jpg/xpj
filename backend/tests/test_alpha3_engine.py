@@ -842,10 +842,17 @@ def test_recurring_candidates_ignores_amount_drift(client: TestClient) -> None:
 
 def test_alpha3_endpoints_no_secret_leak(client: TestClient) -> None:
     upload_png(client)
+    preview_for_apply = client.post("/api/rules/apply-pending/preview", headers=app_headers())
+    assert preview_for_apply.status_code == 200
+    preview_token = preview_for_apply.json()["preview_token"]
     for path, method, body in [
         ("/api/rules/preview", "POST", {"keyword": "x", "target_category": "餐饮"}),
         ("/api/rules/apply-pending/preview", "POST", None),
-        ("/api/rules/apply-pending", "POST", None),
+        (
+            "/api/rules/apply-pending",
+            "POST",
+            {"confirm": True, "preview_token": preview_token},
+        ),
         ("/api/insights/recurring-candidates", "GET", None),
     ]:
         if method == "GET":
