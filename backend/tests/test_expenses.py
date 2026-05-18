@@ -14,7 +14,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense
 from app.services.expense_service import confirm_expense, reject_expense
-from app.services.ocr_service import MockOcrProvider, retry_ocr
+from app.services.ocr_service import MockOcrProvider, OcrResult, apply_ocr_result, retry_ocr
 from conftest import (
     BACKEND_ROOT,
     PNG_BYTES,
@@ -301,6 +301,100 @@ def test_ocr_retry_and_recognize_text_only_update_pending_draft(
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 0
+
+
+def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient) -> None:
+    created = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1234,
+            "merchant": "Stable Cafe",
+            "category": "餐饮",
+            "spent_at": "2026-05-04T02:00:00Z",
+        },
+    )
+    assert created.status_code == 200, created.json()
+    expense_id = created.json()["id"]
+
+    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    assert retry.status_code == 404
+    recognized = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "Changed Cafe\n99.99"},
+    )
+    assert recognized.status_code == 404
+
+    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["status"] == "confirmed"
+    assert payload["amount_cents"] == 1234
+    assert payload["merchant"] == "Stable Cafe"
+    assert payload["raw_text"] == ""
+
+
+def test_ocr_routes_do_not_modify_rejected_expense(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    assert rejected.status_code == 200
+
+    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    assert retry.status_code == 404
+    recognized = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "Changed Cafe\n99.99"},
+    )
+    assert recognized.status_code == 404
+
+    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["status"] == "rejected"
+    assert payload["raw_text"] == ""
+
+
+def test_reject_is_idempotent_for_already_rejected_expense(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    first = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    assert first.status_code == 200
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        rejected_at = expense.rejected_at
+        updated_at = expense.updated_at
+
+    second = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    assert second.status_code == 200
+    assert second.json()["status"] == "rejected"
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.rejected_at == rejected_at
+        assert expense.updated_at == updated_at
+
+
+def test_apply_ocr_result_is_noop_for_terminal_expenses() -> None:
+    expense = Expense(
+        status="confirmed",
+        amount_cents=1234,
+        merchant="Stable Cafe",
+        category="餐饮",
+        raw_text="",
+    )
+
+    apply_ocr_result(
+        expense,
+        OcrResult(raw_text="Changed Cafe\n99.99", amount_cents=9999, merchant="Changed Cafe", confidence=None),
+    )
+
+    assert expense.amount_cents == 1234
+    assert expense.merchant == "Stable Cafe"
+    assert expense.raw_text == ""
 
 
 def test_recognize_text_then_confirm_enters_stats_and_export(
@@ -902,7 +996,7 @@ def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
 
 
 def test_mock_ocr_provider_populates_pending_draft() -> None:
-    expense = Expense(category="其他", raw_text="")
+    expense = Expense(status="pending", category="其他", raw_text="")
     retry_ocr(expense, MockOcrProvider())
     assert expense.amount_cents == 1851
     assert expense.merchant == "中国建设银行"

@@ -140,10 +140,24 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
-    override fun lastUploadAt(): String? = prefs.getString(KEY_LAST_UPLOAD_AT, null)
+    override fun lastUploadAt(): String? {
+        val key = lastUploadAtKey()
+        prefs.getString(key, null)?.let { return it }
+
+        val legacyValue = prefs.getString(KEY_LAST_UPLOAD_AT, null) ?: return null
+        if (prefs.getBoolean(KEY_LAST_UPLOAD_AT_MIGRATED, false)) {
+            return null
+        }
+        prefs.edit {
+            putString(key, legacyValue)
+            putBoolean(KEY_LAST_UPLOAD_AT_MIGRATED, true)
+        }
+        return legacyValue
+    }
 
     override fun saveLastUploadAt(value: String) {
         prefs.edit {
+            putString(lastUploadAtKey(), value)
             putString(KEY_LAST_UPLOAD_AT, value)
         }
     }
@@ -231,6 +245,11 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         backgroundStore.setReduceMotion(enabled)
     }
 
+    private fun lastUploadAtKey(): String {
+        val ledgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
+        return "$KEY_LAST_UPLOAD_AT_BY_LEDGER_PREFIX$ledgerId"
+    }
+
     private companion object {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_APP_SKIN = "app_skin"
@@ -246,6 +265,8 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_BOUND_AT = "bound_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
         const val KEY_LAST_UPLOAD_AT = "last_upload_at"
+        const val KEY_LAST_UPLOAD_AT_BY_LEDGER_PREFIX = "last_upload_at_by_ledger:"
+        const val KEY_LAST_UPLOAD_AT_MIGRATED = "last_upload_at_migrated"
         const val KEY_NOTIFY_AUTO_CAPTURE = "notify_auto_capture"
         const val KEY_NOTIFY_PENDING_DRAFTS = "notify_pending_drafts"
         const val KEY_NOTIFY_LARGE_AMOUNT = "notify_large_amount"
@@ -253,6 +274,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_LAST_UNLOCKED_AT = "last_unlocked_at"
         const val KEY_LAST_BACKGROUNDED_AT = "last_backgrounded_at"
         const val NO_BUDGET = -1L
+        const val LEGACY_LEDGER_ID = "legacy"
         const val LOCK_AFTER_MS = 5 * 60 * 1000L
     }
 }

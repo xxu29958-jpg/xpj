@@ -72,7 +72,7 @@ def test_parse_csv_preview_accepts_foreign_currency_columns() -> None:
     assert row.amount_cents == 0
     assert row.original_currency_code == "USD"
     assert row.original_amount_minor == 12345
-    assert str(row.exchange_rate_to_cny) == "7.12340000"
+    assert row.exchange_rate_to_cny is None
     assert row.exchange_rate_date and row.exchange_rate_date.isoformat() == "2026-05-04"
 
 
@@ -95,6 +95,18 @@ def test_parse_csv_preview_derives_fx_date_from_local_spending_day() -> None:
     assert preview.rows[0].expense_time == datetime(2026, 5, 4, 16, 30, tzinfo=UTC)
     assert preview.rows[0].exchange_rate_date
     assert preview.rows[0].exchange_rate_date.isoformat() == "2026-05-05"
+
+
+def test_parse_csv_preview_expense_time_overrides_legacy_fx_date() -> None:
+    csv = (
+        "amount_cents,original_currency_code,exchange_rate_to_cny,exchange_rate_date,merchant,expense_time\n"
+        "12345,USD,7.0000,2026-04-30,Overseas Cafe,2026-04-30T16:30:00Z\n"
+    )
+    preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
+
+    assert preview.valid_count == 1
+    assert preview.rows[0].exchange_rate_date
+    assert preview.rows[0].exchange_rate_date.isoformat() == "2026-05-01"
 
 
 def test_parse_csv_preview_flags_invalid_rows() -> None:

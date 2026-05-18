@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import BACKEND_ROOT, get_settings
+from app.services.file_service import resolve_upload_path_for_tenant
 
 
 def _tenant_upload_dir(tenant_id: str) -> Path:
@@ -27,10 +28,12 @@ def generate_thumbnail(
     if not settings.generate_thumbnail or not relative_path:
         return None
 
-    source = (BACKEND_ROOT / relative_path).resolve()
-    if not _is_under_path(source, settings.upload_dir):
-        return None
-    if tenant_id is not None and not _is_under_path(source, _tenant_upload_dir(tenant_id)):
+    source = (
+        resolve_upload_path_for_tenant(relative_path, tenant_id)
+        if tenant_id is not None
+        else (BACKEND_ROOT / relative_path).resolve()
+    )
+    if source is None or not _is_under_path(source, settings.upload_dir):
         return None
     if not source.is_file():
         return None
@@ -63,11 +66,8 @@ def generate_thumbnail(
 def resolve_protected_thumbnail(relative_path: str | None, tenant_id: str) -> tuple[Path, str] | None:
     if not relative_path:
         return None
-    candidate = (BACKEND_ROOT / relative_path).resolve()
-    settings = get_settings()
-    if not _is_under_path(candidate, settings.upload_dir):
-        return None
-    if not _is_under_path(candidate, _tenant_upload_dir(tenant_id)):
+    candidate = resolve_upload_path_for_tenant(relative_path, tenant_id)
+    if candidate is None:
         return None
     if not candidate.is_file():
         return None

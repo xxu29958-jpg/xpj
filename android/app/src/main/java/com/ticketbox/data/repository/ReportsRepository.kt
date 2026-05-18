@@ -40,6 +40,7 @@ class ReportsRepository(
     private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) : ReportsActions {
+    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Reports",
@@ -52,14 +53,16 @@ class ReportsRepository(
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().reportsOverview(
-                month = cleanQuery.month,
-                granularity = cleanQuery.granularity.apiValue,
-                topN = cleanQuery.topN,
-                merchantCategory = cleanQuery.merchantCategory,
-                rankingMetric = cleanQuery.rankingMetric.apiValue,
-                timezone = currentTimezoneId(),
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.reportsOverview(
+                    month = cleanQuery.month,
+                    granularity = cleanQuery.granularity.apiValue,
+                    topN = cleanQuery.topN,
+                    merchantCategory = cleanQuery.merchantCategory,
+                    rankingMetric = cleanQuery.rankingMetric.apiValue,
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
         }
     }
 
@@ -67,19 +70,21 @@ class ReportsRepository(
         val cleanQuery = query.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            val response = api().reportsOverviewCsv(
-                month = cleanQuery.month,
-                granularity = cleanQuery.granularity.apiValue,
-                topN = cleanQuery.topN,
-                merchantCategory = cleanQuery.merchantCategory,
-                rankingMetric = cleanQuery.rankingMetric.apiValue,
-                timezone = currentTimezoneId(),
-            )
-            val bytes = readExportBody(response)
-            CsvExport(
-                fileName = "ticketbox-reports-overview-${cleanQuery.month ?: "current"}-${cleanQuery.granularity.apiValue}.csv",
-                bytes = bytes,
-            )
+            ledgerRequestGuard.guardedCall { api ->
+                val response = api.reportsOverviewCsv(
+                    month = cleanQuery.month,
+                    granularity = cleanQuery.granularity.apiValue,
+                    topN = cleanQuery.topN,
+                    merchantCategory = cleanQuery.merchantCategory,
+                    rankingMetric = cleanQuery.rankingMetric.apiValue,
+                    timezone = currentTimezoneId(),
+                )
+                val bytes = readExportBody(response)
+                CsvExport(
+                    fileName = "ticketbox-reports-overview-${cleanQuery.month ?: "current"}-${cleanQuery.granularity.apiValue}.csv",
+                    bytes = bytes,
+                )
+            }
         }
     }
 
@@ -87,11 +92,13 @@ class ReportsRepository(
         val cleanMonth = month.cleanMonthOrNull()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().goals(
-                month = cleanMonth,
-                includeArchived = includeArchived,
-                timezone = currentTimezoneId(),
-            ).items.map { it.toDomain() }
+            ledgerRequestGuard.guardedCall { api ->
+                api.goals(
+                    month = cleanMonth,
+                    includeArchived = includeArchived,
+                    timezone = currentTimezoneId(),
+                ).items.map { it.toDomain() }
+            }
         }
     }
 
@@ -102,10 +109,12 @@ class ReportsRepository(
         val cleanDraft = draft.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().createGoal(
-                request = cleanDraft.toRequest(),
-                timezone = currentTimezoneId(),
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.createGoal(
+                    request = cleanDraft.toRequest(),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
         }
     }
 
@@ -113,10 +122,12 @@ class ReportsRepository(
         val cleanPublicId = publicId.cleanPublicId()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().goal(
-                publicId = cleanPublicId,
-                timezone = currentTimezoneId(),
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.goal(
+                    publicId = cleanPublicId,
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
         }
     }
 
@@ -129,11 +140,13 @@ class ReportsRepository(
         val cleanUpdate = update.validated()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().updateGoal(
-                publicId = cleanPublicId,
-                request = cleanUpdate.toRequest(),
-                timezone = currentTimezoneId(),
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.updateGoal(
+                    publicId = cleanPublicId,
+                    request = cleanUpdate.toRequest(),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
         }
     }
 
@@ -144,16 +157,21 @@ class ReportsRepository(
         val cleanPublicId = publicId.cleanPublicId()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().archiveGoal(
-                publicId = cleanPublicId,
-                timezone = currentTimezoneId(),
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.archiveGoal(
+                    publicId = cleanPublicId,
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
         }
     }
 
-    override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> = errorHandler.safeCall {
-        api().dashboardCards(surface = surface.apiValue).toDomain()
-    }
+    override suspend fun dashboardCards(surface: DashboardSurface): Result<DashboardCards> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.dashboardCards(surface = surface.apiValue).toDomain()
+            }
+        }
 
     override suspend fun updateDashboardCards(
         updates: List<DashboardCardUpdate>,
@@ -165,16 +183,16 @@ class ReportsRepository(
         val cleanUpdates = updates.validatedDashboardUpdates()
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().updateDashboardCards(
-                request = cleanUpdates.toRequest(),
-                surface = surface.apiValue,
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.updateDashboardCards(
+                    request = cleanUpdates.toRequest(),
+                    surface = surface.apiValue,
+                ).toDomain()
+            }
         }
     }
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
-
-    private fun api() = apiProvider.current()
 
     private fun readExportBody(response: Response<okhttp3.ResponseBody>): ByteArray {
         if (!response.isSuccessful) {

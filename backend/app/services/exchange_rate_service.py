@@ -322,13 +322,8 @@ def apply_currency_payload(
         or expense.exchange_rate_date
         or _payload_rate_date(payload, expense.expense_time)
     )
-    explicit_rate = format_decimal_rate(_payload_attr(payload, "exchange_rate_to_cny"))
     if code == home:
         rate, source, fx_status = Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY
-    elif explicit_rate is not None:
-        rate = explicit_rate
-        source = (_payload_attr(payload, "exchange_rate_source") or FX_SOURCE_MANUAL).strip()[:32] or FX_SOURCE_MANUAL
-        fx_status = FX_STATUS_READY
     else:
         rate, source, fx_status = resolve_payload_rate(
             db,

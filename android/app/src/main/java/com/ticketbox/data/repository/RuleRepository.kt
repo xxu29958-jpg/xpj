@@ -26,6 +26,7 @@ class RuleRepository(
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
     private val onConfirmedChanged: suspend () -> Unit = { },
 ) {
+    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Rule",
@@ -34,30 +35,34 @@ class RuleRepository(
 
     fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
-    private fun api() = apiProvider.current()
-
-    suspend fun categoryRules(): Result<List<CategoryRule>> = errorHandler.safeCall {
-        api().categoryRules().map { it.toDomain() }
-    }
+    suspend fun categoryRules(): Result<List<CategoryRule>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.categoryRules().map { it.toDomain() }
+            }
+        }
 
     suspend fun createCategoryRule(
         keyword: String,
         category: String,
         priority: Int,
-    ): Result<CategoryRule> = errorHandler.safeCall {
-        val cleanKeyword = keyword.trim()
-        val cleanCategory = category.trim()
-        require(cleanKeyword.isNotBlank()) { "请输入关键词。" }
-        require(cleanCategory.isNotBlank()) { "请输入分类。" }
-        api().createCategoryRule(
-            CategoryRuleRequest(
-                keyword = cleanKeyword,
-                category = cleanCategory,
-                enabled = true,
-                priority = priority,
-            ),
-        ).toDomain()
-    }
+    ): Result<CategoryRule> =
+        errorHandler.safeCall {
+            val cleanKeyword = keyword.trim()
+            val cleanCategory = category.trim()
+            require(cleanKeyword.isNotBlank()) { "请输入关键词。" }
+            require(cleanCategory.isNotBlank()) { "请输入分类。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.createCategoryRule(
+                    CategoryRuleRequest(
+                        keyword = cleanKeyword,
+                        category = cleanCategory,
+                        enabled = true,
+                        priority = priority,
+                    ),
+                ).toDomain()
+            }
+        }
 
     suspend fun updateCategoryRule(
         id: Long,
@@ -65,52 +70,72 @@ class RuleRepository(
         category: String? = null,
         enabled: Boolean? = null,
         priority: Int? = null,
-    ): Result<CategoryRule> = errorHandler.safeCall {
-        api().updateCategoryRule(
-            id,
-            CategoryRuleRequest(
-                keyword = keyword,
-                category = category,
-                enabled = enabled,
-                priority = priority,
-            ),
-        ).toDomain()
-    }
-
-    suspend fun deleteCategoryRule(id: Long): Result<Unit> = errorHandler.safeCall {
-        api().deleteCategoryRule(id)
-        Unit
-    }
-
-    suspend fun ruleApplications(limit: Int = 8): Result<List<RuleApplicationBatch>> = errorHandler.safeCall {
-        api().ruleApplications(limit = limit.coerceIn(1, 20)).items.map { it.toDomain() }
-    }
-
-    suspend fun previewApplyConfirmedRules(): Result<RuleApplyConfirmedResult> = errorHandler.safeCall {
-        api().applyConfirmedRules(
-            request = RuleApplyConfirmedRequestDto(confirm = false),
-        ).toDomain()
-    }
-
-    suspend fun confirmApplyConfirmedRules(previewToken: String): Result<RuleApplyConfirmedResult> = errorHandler.safeCall {
-        val cleanPreviewToken = previewToken.trim()
-        require(cleanPreviewToken.isNotBlank()) { "请先预览影响范围。" }
-        val result = api().applyConfirmedRules(
-            request = RuleApplyConfirmedRequestDto(confirm = true, previewToken = cleanPreviewToken),
-        ).toDomain()
-        if (result.changedCount > 0) {
-            onConfirmedChanged()
+    ): Result<CategoryRule> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.updateCategoryRule(
+                    id,
+                    CategoryRuleRequest(
+                        keyword = keyword,
+                        category = category,
+                        enabled = enabled,
+                        priority = priority,
+                    ),
+                ).toDomain()
+            }
         }
-        result
-    }
 
-    suspend fun rollbackRuleApplication(publicId: String): Result<RuleApplicationRollback> = errorHandler.safeCall {
-        val cleanPublicId = publicId.trim()
-        require(cleanPublicId.isNotBlank()) { "请选择一条应用记录。" }
-        val result = api().rollbackRuleApplication(cleanPublicId).toDomain()
-        if (result.changed > 0) {
-            onConfirmedChanged()
+    suspend fun deleteCategoryRule(id: Long): Result<Unit> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.deleteCategoryRule(id)
+            }
+            Unit
         }
-        result
-    }
+
+    suspend fun ruleApplications(limit: Int = 8): Result<List<RuleApplicationBatch>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.ruleApplications(limit = limit.coerceIn(1, 20)).items.map { it.toDomain() }
+            }
+        }
+
+    suspend fun previewApplyConfirmedRules(): Result<RuleApplyConfirmedResult> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.applyConfirmedRules(
+                    request = RuleApplyConfirmedRequestDto(confirm = false),
+                ).toDomain()
+            }
+        }
+
+    suspend fun confirmApplyConfirmedRules(previewToken: String): Result<RuleApplyConfirmedResult> =
+        errorHandler.safeCall {
+            val cleanPreviewToken = previewToken.trim()
+            require(cleanPreviewToken.isNotBlank()) { "请先预览影响范围。" }
+            ledgerRequestGuard.guardedCall { api ->
+                val result = api.applyConfirmedRules(
+                    request = RuleApplyConfirmedRequestDto(confirm = true, previewToken = cleanPreviewToken),
+                ).toDomain()
+                requireStillActive()
+                if (result.changedCount > 0) {
+                    onConfirmedChanged()
+                }
+                result
+            }
+        }
+
+    suspend fun rollbackRuleApplication(publicId: String): Result<RuleApplicationRollback> =
+        errorHandler.safeCall {
+            val cleanPublicId = publicId.trim()
+            require(cleanPublicId.isNotBlank()) { "请选择一条应用记录。" }
+            ledgerRequestGuard.guardedCall { api ->
+                val result = api.rollbackRuleApplication(cleanPublicId).toDomain()
+                requireStillActive()
+                if (result.changed > 0) {
+                    onConfirmedChanged()
+                }
+                result
+            }
+        }
 }

@@ -347,6 +347,7 @@ def validate_sqlite_data_integrity() -> None:
     table_names = set(inspect(engine).get_table_names())
     with engine.begin() as connection:
         _validate_expense_core_data(connection, table_names)
+        _validate_legacy_unique_scopes(connection, table_names)
         _validate_root_tenant_integrity(connection, table_names)
         _validate_expense_split_integrity(connection, table_names)
         _validate_tenant_child_integrity(connection, table_names)
@@ -470,19 +471,54 @@ def _validate_expense_core_data(connection, table_names: set[str]) -> None:
     if invalid_statuses:
         raise RuntimeError("Invalid legacy data: expenses.status contains unsupported values")
 
-    columns = {column["name"] for column in inspect(engine).get_columns("expenses")}
-    if "duplicate_status" not in columns:
-        return
-    invalid_duplicate_statuses = int(
-        connection.execute(
-            text(
-                "SELECT COUNT(*) FROM expenses "
-                "WHERE duplicate_status IS NULL OR duplicate_status NOT IN ('none', 'suspected')"
-            )
-        ).scalar_one()
-    )
-    if invalid_duplicate_statuses:
-        raise RuntimeError("Invalid legacy data: expenses.duplicate_status contains unsupported values")
+    columns = _sqlite_column_names(connection, "expenses")
+    if "duplicate_status" in columns:
+        invalid_duplicate_statuses = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM expenses "
+                    "WHERE duplicate_status IS NULL OR duplicate_status NOT IN ('none', 'suspected')"
+                )
+            ).scalar_one()
+        )
+        if invalid_duplicate_statuses:
+            raise RuntimeError("Invalid legacy data: expenses.duplicate_status contains unsupported values")
+
+    if "original_amount_minor" in columns:
+        invalid_original_amounts = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM expenses "
+                    "WHERE original_amount_minor IS NOT NULL AND original_amount_minor < 0"
+                )
+            ).scalar_one()
+        )
+        if invalid_original_amounts:
+            raise RuntimeError("Invalid legacy data: expenses.original_amount_minor contains negative values")
+
+    if "exchange_rate_to_cny" in columns:
+        invalid_exchange_rates = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM expenses "
+                    "WHERE exchange_rate_to_cny IS NOT NULL AND exchange_rate_to_cny <= 0"
+                )
+            ).scalar_one()
+        )
+        if invalid_exchange_rates:
+            raise RuntimeError("Invalid legacy data: expenses.exchange_rate_to_cny contains non-positive values")
+
+    if "fx_status" in columns:
+        invalid_fx_statuses = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM expenses "
+                    "WHERE fx_status IS NULL OR fx_status NOT IN ('ready', 'pending')"
+                )
+            ).scalar_one()
+        )
+        if invalid_fx_statuses:
+            raise RuntimeError("Invalid legacy data: expenses.fx_status contains unsupported values")
 
 
 def _validate_family_role_data(connection, table_names: set[str]) -> None:
@@ -498,7 +534,7 @@ def _validate_family_role_data(connection, table_names: set[str]) -> None:
             connection.execute(
                 text(
                     "SELECT COUNT(*) FROM ledger_members "
-                    "WHERE role NOT IN ('owner', 'member', 'viewer')"
+                    "WHERE role IS NULL OR role NOT IN ('owner', 'member', 'viewer')"
                 )
             ).scalar_one()
         )
@@ -509,7 +545,7 @@ def _validate_family_role_data(connection, table_names: set[str]) -> None:
             connection.execute(
                 text(
                     "SELECT COUNT(*) FROM invitations "
-                    "WHERE role NOT IN ('member', 'viewer')"
+                    "WHERE role IS NULL OR role NOT IN ('member', 'viewer')"
                 )
             ).scalar_one()
         )
@@ -771,6 +807,44 @@ def _validate_goal_unique_scopes(connection, table_names: set[str]) -> None:
         )
 
 
+def _validate_legacy_unique_scopes(connection, table_names: set[str]) -> None:
+    if "budgets" in table_names:
+        columns = _sqlite_column_names(connection, "budgets")
+        if {"tenant_id", "month"}.issubset(columns):
+            duplicate_budget = connection.execute(
+                text(
+                    "SELECT tenant_id, month, COUNT(*) AS count "
+                    "FROM budgets "
+                    "GROUP BY tenant_id, month "
+                    "HAVING COUNT(*) > 1 "
+                    "LIMIT 1"
+                )
+            ).mappings().first()
+            if duplicate_budget is not None:
+                raise RuntimeError(
+                    "Invalid legacy data: budgets contains duplicate tenant/month rows "
+                    f"for tenant={duplicate_budget['tenant_id']} month={duplicate_budget['month']}"
+                )
+
+    if "merchant_aliases" in table_names:
+        columns = _sqlite_column_names(connection, "merchant_aliases")
+        if {"tenant_id", "alias_key"}.issubset(columns):
+            duplicate_alias = connection.execute(
+                text(
+                    "SELECT tenant_id, alias_key, COUNT(*) AS count "
+                    "FROM merchant_aliases "
+                    "GROUP BY tenant_id, alias_key "
+                    "HAVING COUNT(*) > 1 "
+                    "LIMIT 1"
+                )
+            ).mappings().first()
+            if duplicate_alias is not None:
+                raise RuntimeError(
+                    "Invalid legacy data: merchant_aliases contains duplicate tenant/alias_key rows "
+                    f"for tenant={duplicate_alias['tenant_id']} alias_key={duplicate_alias['alias_key']}"
+                )
+
+
 def migrate_sqlite_schema() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
@@ -779,6 +853,7 @@ def migrate_sqlite_schema() -> None:
     table_names = set(inspector.get_table_names())
     with engine.begin() as connection:
         _validate_family_role_data(connection, table_names)
+        _validate_legacy_unique_scopes(connection, table_names)
 
     if "expenses" not in table_names:
         return
@@ -1070,6 +1145,12 @@ def migrate_sqlite_schema() -> None:
         if "merchant_aliases" in table_names:
             connection.execute(
                 text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_aliases_tenant_alias_key "
+                    "ON merchant_aliases (tenant_id, alias_key)"
+                )
+            )
+            connection.execute(
+                text(
                     "CREATE INDEX IF NOT EXISTS ix_merchant_aliases_tenant_canonical "
                     "ON merchant_aliases (tenant_id, canonical_key)"
                 )
@@ -1079,6 +1160,17 @@ def migrate_sqlite_schema() -> None:
                     "CREATE INDEX IF NOT EXISTS ix_merchant_aliases_tenant_alias_key "
                     "ON merchant_aliases (tenant_id, alias_key)"
                 )
+            )
+
+        if "budgets" in table_names:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_budgets_tenant_month "
+                    "ON budgets (tenant_id, month)"
+                )
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_budgets_tenant_month ON budgets (tenant_id, month)")
             )
 
         if "tags" in table_names:

@@ -619,7 +619,9 @@ def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     )
     if result.rowcount != 1:
         db.expire_all()
-        get_expense(db, expense_id, tenant_id)
+        existing = get_expense(db, expense_id, tenant_id)
+        if existing.status == "rejected":
+            return existing
         raise AppError("expense_not_found", status_code=404)
 
     db.expire_all()
@@ -681,7 +683,7 @@ def _replace_ocr_draft_items_from_text(
 
 def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
     expense = get_expense(db, expense_id, tenant_id)
-    if expense.status == "rejected":
+    if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
 
     retry_ocr(expense)
@@ -704,7 +706,7 @@ def recognize_expense_text(
     db: Session, expense_id: int, tenant_id: str, payload: ExpenseRecognizeTextRequest
 ) -> Expense:
     expense = get_expense(db, expense_id, tenant_id)
-    if expense.status == "rejected":
+    if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
 
     raw_text = payload.raw_text.strip()

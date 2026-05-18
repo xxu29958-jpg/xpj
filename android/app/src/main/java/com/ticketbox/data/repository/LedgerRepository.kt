@@ -61,7 +61,14 @@ class LedgerRepository(
     private val ledgerListAdapter = moshi.adapter<List<LedgerDto>>(ledgerListType)
     private val switchLedgerMutex = Mutex()
 
-    private fun api() = apiProvider.current()
+    private fun api() = apiProvider.temporary(
+        requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
+            "Ledger server is not bound."
+        },
+        requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) {
+            "Ledger token is not bound."
+        },
+    )
 
     private fun unauthenticatedApi() = apiProvider.unauthenticated(
         requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {

@@ -158,16 +158,8 @@ class ExpenseRepository(
 
     override fun currentActiveLedgerId(): String? = settingsStore.activeLedgerId()
 
-    private fun api(serverUrlOverride: String? = null, tokenOverride: String? = null): ApiService {
-        if (serverUrlOverride != null || tokenOverride != null) {
-            return apiProvider.temporary(
-                requireNotNull(serverUrlOverride ?: settingsStore.serverUrl()) { "账本地址未绑定" },
-                tokenOverride,
-            )
-        }
-
-        return apiProvider.current()
-    }
+    private fun api(serverUrl: String, token: String): ApiService =
+        apiProvider.temporary(serverUrl, token)
 
     private fun readProtectedImage(response: Response<ResponseBody>): ProtectedImage {
         if (!response.isSuccessful) {
@@ -278,15 +270,17 @@ class ExpenseRepository(
     suspend fun testConnection(): Result<Unit> = errorHandler.safeCall {
         val expectedLedgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
         val expectedToken = tokenStore.getToken()
+        val bound = ledgerRequestGuard.bind(expectedLedgerId = expectedLedgerId)
         persistAuthCheck(
-            check = api().checkAuth(),
+            check = bound.service.checkAuth(),
             expectedLedgerId = expectedLedgerId,
             expectedToken = expectedToken,
         )
     }
 
     suspend fun runConnectionDiagnostics(): Result<ConnectionDiagnostics> = errorHandler.safeCall {
-        val service = api()
+        val bound = ledgerRequestGuard.bind()
+        val service = bound.service
         val checks = mutableListOf<DiagnosticCheck>()
 
         suspend fun record(
@@ -363,7 +357,9 @@ class ExpenseRepository(
     }
 
     override suspend fun fetchPending(): Result<List<Expense>> = errorHandler.safeCall {
-        api().pendingExpenses().map { it.toDomain() }
+        ledgerRequestGuard.guardedCall { api ->
+            api.pendingExpenses().map { it.toDomain() }
+        }
     }
 
     suspend fun fetchExpense(id: Long): Result<Expense> = errorHandler.safeCall {
@@ -514,7 +510,9 @@ class ExpenseRepository(
     }
 
     suspend fun fetchDuplicates(): Result<List<Expense>> = errorHandler.safeCall {
-        api().duplicates().map { it.toDomain() }
+        ledgerRequestGuard.guardedCall { api ->
+            api.duplicates().map { it.toDomain() }
+        }
     }
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = errorHandler.safeCall {
@@ -594,15 +592,21 @@ class ExpenseRepository(
     }
 
     override suspend fun categories(): Result<List<String>> = errorHandler.safeCall {
-        mergeExpenseCategories(api().categories().items)
+        ledgerRequestGuard.guardedCall { api ->
+            mergeExpenseCategories(api.categories().items)
+        }
     }
 
     override suspend fun tags(): Result<List<String>> = errorHandler.safeCall {
-        api().tags().items
+        ledgerRequestGuard.guardedCall { api ->
+            api.tags().items
+        }
     }
 
     override suspend fun months(): Result<List<String>> = errorHandler.safeCall {
-        api().months(timezone = currentTimezoneId()).items
+        ledgerRequestGuard.guardedCall { api ->
+            api.months(timezone = currentTimezoneId()).items
+        }
     }
 
     override suspend fun exportConfirmedCsv(
@@ -613,23 +617,25 @@ class ExpenseRepository(
         val cleanMonth = month?.trim()?.ifBlank { null }
         val cleanCategory = category?.trim()?.ifBlank { null }
         val cleanTag = tag?.trim()?.ifBlank { null }
-        val response = api().exportCsv(
-            month = cleanMonth,
-            category = cleanCategory,
-            tag = cleanTag,
-            timezone = currentTimezoneId(),
-        )
-        if (!response.isSuccessful) {
-            throw RepositoryException(errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string()))
+        ledgerRequestGuard.guardedCall { api ->
+            val response = api.exportCsv(
+                month = cleanMonth,
+                category = cleanCategory,
+                tag = cleanTag,
+                timezone = currentTimezoneId(),
+            )
+            if (!response.isSuccessful) {
+                throw RepositoryException(errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string()))
+            }
+            val body = response.body() ?: throw RepositoryException("导出内容为空。")
+            val fileName = buildString {
+                append("ticketbox-expenses")
+                if (cleanMonth != null) append("-").append(cleanMonth)
+                if (cleanTag != null) append("-tag-").append(cleanTag.toFileNameSegment())
+                append(".csv")
+            }
+            CsvExport(fileName = fileName, bytes = body.use { it.bytes() })
         }
-        val body = response.body() ?: throw RepositoryException("导出内容为空。")
-        val fileName = buildString {
-            append("ticketbox-expenses")
-            if (cleanMonth != null) append("-").append(cleanMonth)
-            if (cleanTag != null) append("-tag-").append(cleanTag.toFileNameSegment())
-            append(".csv")
-        }
-        CsvExport(fileName = fileName, bytes = body.use { it.bytes() })
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -642,26 +648,35 @@ class ExpenseRepository(
             .flatMapLatest { id -> expenseDao.observeConfirmed(id).map { rows -> rows.map { it.toDomain() } } }
 
     override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> = errorHandler.safeCall {
-        api().monthlyStats(month = month, tag = tag?.trim()?.ifBlank { null }, timezone = currentTimezoneId()).toDomain()
+        ledgerRequestGuard.guardedCall { api ->
+            api.monthlyStats(month = month, tag = tag?.trim()?.ifBlank { null }, timezone = currentTimezoneId()).toDomain()
+        }
     }
 
     override suspend fun lifestyleStats(month: String?): Result<LifestyleStats> = errorHandler.safeCall {
-        api().lifestyleStats(month = month, timezone = currentTimezoneId()).toDomain()
+        ledgerRequestGuard.guardedCall { api ->
+            api.lifestyleStats(month = month, timezone = currentTimezoneId()).toDomain()
+        }
     }
 
     suspend fun recurringCandidates(): Result<List<RecurringCandidate>> = errorHandler.safeCall {
-        api().recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
+        ledgerRequestGuard.guardedCall { api ->
+            api.recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
+        }
     }
 
     override suspend fun dataQualitySummary(): Result<DataQualitySummary> = errorHandler.safeCall {
-        api().dataQualitySummary().toDomain()
+        ledgerRequestGuard.guardedCall { api ->
+            api.dataQualitySummary().toDomain()
+        }
     }
 
     suspend fun serverSettings(): Result<ServerSettings> = errorHandler.safeCall {
-        val ledgerIdAtRequest = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
-        val settings = api().serverSettings()
-        persistServerSettings(settings, expectedLedgerId = ledgerIdAtRequest)
-        settings.toDomain()
+        ledgerRequestGuard.guardedCall { api ->
+            val settings = api.serverSettings()
+            persistServerSettings(settings, expectedLedgerId = ledgerId)
+            settings.toDomain()
+        }
     }
 
     override fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()

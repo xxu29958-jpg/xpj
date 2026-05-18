@@ -99,6 +99,41 @@ def test_protected_image_route_serves_legacy_path_without_migration(
     assert legacy_image.is_file()
 
 
+def test_protected_thumbnail_route_generates_for_legacy_path_without_migration(
+    client: TestClient,
+) -> None:
+    legacy_dir = TEST_UPLOAD_DIR / "2025" / "12"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    legacy_image = legacy_dir / "owner-legacy-thumb.png"
+    legacy_image.write_bytes(PNG_BYTES)
+    legacy_relative = legacy_image.relative_to(BACKEND_ROOT).as_posix()
+
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            image_path=legacy_relative,
+            thumbnail_path=None,
+            image_hash="legacy-thumb-hash",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        expense_id = expense.id
+
+    response = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=app_headers())
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/jpeg")
+    assert legacy_image.is_file()
+
+    with SessionLocal() as db:
+        refreshed = db.get(Expense, expense_id)
+        assert refreshed is not None
+        assert refreshed.thumbnail_path is not None
+        assert "/2025/12/thumbs/" in refreshed.thumbnail_path.replace("\\", "/")
+        assert (BACKEND_ROOT / refreshed.thumbnail_path).is_file()
+
+
 def test_protected_image_route_rejects_legacy_path_for_non_default_ledger(
     client: TestClient,
 ) -> None:

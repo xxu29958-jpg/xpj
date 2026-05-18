@@ -209,6 +209,30 @@ def _is_legacy_unscoped_upload(candidate: Path, upload_dir: Path, tenant_id: str
     )
 
 
+def resolve_upload_path_for_tenant(relative_path: str | None, tenant_id: str) -> Path | None:
+    if not relative_path:
+        return None
+
+    raw = str(relative_path)
+    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
+        return None
+    normalized_parts = Path(raw.replace("\\", "/")).parts
+    if any(part == ".." for part in normalized_parts):
+        return None
+
+    settings = get_settings()
+    candidate = (BACKEND_ROOT / raw).resolve()
+    if not _is_under_path(candidate, settings.upload_dir):
+        return None
+
+    tenant_dir = _tenant_upload_dir(tenant_id)
+    if not _is_under_path(candidate, tenant_dir) and not _is_legacy_unscoped_upload(
+        candidate, settings.upload_dir, tenant_id
+    ):
+        return None
+    return candidate
+
+
 def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[Path, str]:
     """Resolve a relative image path that the caller has already authorized.
 
@@ -229,24 +253,8 @@ def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[
     if not relative_path:
         raise AppError("image_not_found", status_code=404)
 
-    raw = str(relative_path)
-    # Reject absolute paths, Windows drive specs, and explicit traversal tokens
-    # before touching the filesystem so the error surface is uniform.
-    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
-        raise AppError("image_not_found", status_code=404)
-    normalized_parts = Path(raw.replace("\\", "/")).parts
-    if any(part == ".." for part in normalized_parts):
-        raise AppError("image_not_found", status_code=404)
-
-    settings = get_settings()
-    candidate = (BACKEND_ROOT / raw).resolve()
-    if not _is_under_path(candidate, settings.upload_dir):
-        raise AppError("image_not_found", status_code=404)
-
-    tenant_dir = _tenant_upload_dir(tenant_id)
-    if not _is_under_path(candidate, tenant_dir) and not _is_legacy_unscoped_upload(
-        candidate, settings.upload_dir, tenant_id
-    ):
+    candidate = resolve_upload_path_for_tenant(relative_path, tenant_id)
+    if candidate is None:
         raise AppError("image_not_found", status_code=404)
 
     if not candidate.is_file():

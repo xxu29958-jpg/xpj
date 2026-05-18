@@ -24,6 +24,7 @@ class BudgetRepository(
     private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) : BudgetActions {
+    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Budget",
@@ -38,10 +39,12 @@ class BudgetRepository(
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().monthlyBudget(
-                month = cleanMonth,
-                timezone = currentTimezoneId(),
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.monthlyBudget(
+                    month = cleanMonth,
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
         }
     }
 
@@ -55,17 +58,17 @@ class BudgetRepository(
         val cleanMonth = validatedMonth(month)
             .getOrElse { return Result.failure(it) }
         return errorHandler.safeCall {
-            api().updateMonthlyBudget(
-                month = cleanMonth,
-                request = update.toRequest(),
-                timezone = currentTimezoneId(),
-            ).toDomain()
+            ledgerRequestGuard.guardedCall { api ->
+                api.updateMonthlyBudget(
+                    month = cleanMonth,
+                    request = update.toRequest(),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
         }
     }
 
     private fun currentTimezoneId(): String = TimeZone.getDefault().id
-
-    private fun api() = apiProvider.current()
 }
 
 private val MONTH_PATTERN = Regex("^\\d{4}-\\d{2}$")

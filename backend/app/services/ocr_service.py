@@ -219,6 +219,7 @@ def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None)
             confidence=expense.confidence,
             expense_time=expense.expense_time,
             ocr_draft_fields=expense.ocr_draft_fields,
+            status="pending",
         )
         apply_ocr_result(draft, primary_result, timezone_name=timezone_name)
         if _needs_fallback(draft) and settings.ocr_fallback_provider not in {"", "empty", settings.ocr_provider}:
@@ -235,6 +236,9 @@ def run_auto_ocr(expense: Expense, timezone_name: str | None = None) -> None:
 
 
 def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | None = None) -> None:
+    if expense.status != "pending":
+        return
+
     parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
     merged = _merge_result_with_text_parse(result, parsed_confidence=parsed.confidence, timezone_name=timezone_name)
     draft_fields = ocr_draft_fields(expense)

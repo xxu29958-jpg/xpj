@@ -29,6 +29,20 @@ internal class LedgerRequestGuard(
         )
     }
 
+    suspend fun <T> guardedCall(
+        expectedLedgerId: String? = null,
+        ledgerChangedMessage: String = LEDGER_CHANGED_MESSAGE,
+        block: suspend BoundLedgerRequest.(ApiService) -> T,
+    ): T {
+        val bound = bind(
+            expectedLedgerId = expectedLedgerId,
+            ledgerChangedMessage = ledgerChangedMessage,
+        )
+        return bound.call(ledgerChangedMessage) { service ->
+            bound.block(service)
+        }
+    }
+
     companion object {
         const val LEGACY_LEDGER_ID = "legacy"
         const val LEDGER_CHANGED_MESSAGE = "账本已切换，请重新操作。"

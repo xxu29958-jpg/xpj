@@ -265,7 +265,7 @@ def test_csv_import_accepts_old_home_rows_and_resolves_new_foreign_rows_with_bac
     assert rows.status_code == 200, rows.json()
     assert rows.json()["items"][0]["original_currency_code"] == "USD"
     assert rows.json()["items"][0]["original_amount_minor"] == 12345
-    assert Decimal(rows.json()["items"][0]["exchange_rate_to_cny"]) == Decimal("99.99990000")
+    assert rows.json()["items"][0]["exchange_rate_to_cny"] is None
 
     new_apply = client.post(
         f"/api/imports/csv/{public_id}/apply",
@@ -277,10 +277,10 @@ def test_csv_import_accepts_old_home_rows_and_resolves_new_foreign_rows_with_bac
     pending = client.get("/api/expenses/pending", headers=app_headers())
     assert pending.status_code == 200, pending.json()
     new_expense = next(item for item in pending.json() if item["merchant"] == "Imported USD Cafe")
-    assert new_expense["amount_cents"] == 1234499
-    assert new_expense["home_amount_cents"] == 1234499
+    assert new_expense["amount_cents"] == 86415
+    assert new_expense["home_amount_cents"] == 86415
     assert new_expense["original_currency_code"] == "USD"
     assert new_expense["original_amount_minor"] == 12345
-    assert Decimal(new_expense["exchange_rate_to_cny"]) == Decimal("99.99990000")
-    assert new_expense["exchange_rate_source"] == "import"
+    assert Decimal(new_expense["exchange_rate_to_cny"]) == Decimal("7.00000000")
+    assert new_expense["exchange_rate_source"] == "manual"
     assert new_expense["fx_status"] == "ready"

@@ -529,6 +529,17 @@ def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient
 
 
 def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(client: TestClient) -> None:
+    rate = client.put(
+        "/api/exchange-rates/USD/2026-05-04",
+        headers=app_headers(),
+        json={
+            "currency_code": "USD",
+            "rate_date": "2026-05-04",
+            "rate_to_cny": "7.0000",
+            "source": "manual",
+        },
+    )
+    assert rate.status_code == 200, rate.json()
     csv = "\n".join(
         [
             "amount_cents,original_currency_code,exchange_rate_to_cny,exchange_rate_date,merchant,category",

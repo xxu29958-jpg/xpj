@@ -161,3 +161,42 @@ def test_cleanup_orphans_treats_windows_style_upload_paths_as_referenced(
     assert payload["orphan_files"] == 0
     assert payload["deleted_files"] == 0
     assert os.path.isfile(image_path)
+
+
+def test_cleanup_orphans_scans_default_ledger_legacy_upload_paths(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from app.services import cleanup_service
+
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, orphan_upload_grace_hours=1))
+
+    legacy_dir = TEST_UPLOAD_DIR / "2024" / "11"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    referenced = legacy_dir / "referenced.png"
+    referenced.write_bytes(PNG_BYTES)
+    orphan = legacy_dir / "orphan-legacy.png"
+    orphan.write_bytes(PNG_BYTES)
+    old = (now_utc() - timedelta(hours=3)).timestamp()
+    os.utime(referenced, (old, old))
+    os.utime(orphan, (old, old))
+
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id="owner",
+                image_path=referenced.relative_to(BACKEND_ROOT).as_posix(),
+                image_hash="legacy-cleanup-hash",
+                status="pending",
+            )
+        )
+        db.commit()
+
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["orphan_files"] == 1
+    assert payload["deleted_files"] == 1
+    assert referenced.is_file()
+    assert not orphan.exists()

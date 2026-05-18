@@ -247,7 +247,7 @@ def parse_csv_row(
         cells.get("original_amount_minor", ""),
         "original_amount_minor",
     )
-    exchange_rate_to_cny, exchange_rate_error = _parse_optional_decimal(
+    _, exchange_rate_error = _parse_optional_decimal(
         cells.get("exchange_rate_to_cny", ""),
         "exchange_rate_to_cny",
     )
@@ -256,7 +256,7 @@ def parse_csv_row(
         cells.get("expense_time", ""),
         timezone_name=timezone_name,
     )
-    if exchange_rate_date is None and expense_time is not None:
+    if expense_rate_date is not None:
         exchange_rate_date = expense_rate_date
     has_original_currency_fields = any(
         cells.get(column, "").strip()
@@ -297,15 +297,21 @@ def parse_csv_row(
         or amount_error
         or etime_error
     )
+    if original_currency_code == home_currency_code():
+        authoritative_rate = Decimal("1")
+        authoritative_rate_source = "base"
+    else:
+        authoritative_rate = None
+        authoritative_rate_source = None
     return ParsedRow(
         line_number=line_number,
         amount_cents=amount_cents,
         amount_display=amount_display,
         original_currency_code=original_currency_code,
         original_amount_minor=original_amount_minor if has_original_currency_fields else amount_cents,
-        exchange_rate_to_cny=exchange_rate_to_cny if has_original_currency_fields else Decimal("1"),
+        exchange_rate_to_cny=authoritative_rate,
         exchange_rate_date=exchange_rate_date,
-        exchange_rate_source=cells.get("exchange_rate_source", "").strip() or ("import" if has_original_currency_fields else "base"),
+        exchange_rate_source=cells.get("exchange_rate_source", "").strip() or authoritative_rate_source,
         merchant=merchant,
         category=category,
         note=note,

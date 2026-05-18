@@ -16,6 +16,7 @@ class MerchantRepository(
     private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) {
+    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Merchant",
@@ -24,51 +25,61 @@ class MerchantRepository(
 
     fun canModifyLedger(): Boolean = ledgerRoleCanModify(settingsStore.role())
 
-    private fun api() = apiProvider.current()
-
-    suspend fun merchantAliases(): Result<List<MerchantAlias>> = errorHandler.safeCall {
-        api().merchantAliases().items.map { it.toDomain() }
-    }
+    suspend fun merchantAliases(): Result<List<MerchantAlias>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.merchantAliases().items.map { it.toDomain() }
+            }
+        }
 
     suspend fun createMerchantAlias(
         canonicalMerchant: String,
         alias: String,
-    ): Result<MerchantAlias> = errorHandler.safeCall {
-        val cleanCanonical = canonicalMerchant.trim()
-        val cleanAlias = alias.trim()
-        require(cleanCanonical.isNotBlank()) { "请输入标准商家名。" }
-        require(cleanAlias.isNotBlank()) { "请输入别名。" }
-        api().createMerchantAlias(
-            MerchantAliasRequest(
-                canonicalMerchant = cleanCanonical,
-                alias = cleanAlias,
-                enabled = true,
-            ),
-        ).toDomain()
-    }
+    ): Result<MerchantAlias> =
+        errorHandler.safeCall {
+            val cleanCanonical = canonicalMerchant.trim()
+            val cleanAlias = alias.trim()
+            require(cleanCanonical.isNotBlank()) { "请输入标准商家名。" }
+            require(cleanAlias.isNotBlank()) { "请输入别名。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.createMerchantAlias(
+                    MerchantAliasRequest(
+                        canonicalMerchant = cleanCanonical,
+                        alias = cleanAlias,
+                        enabled = true,
+                    ),
+                ).toDomain()
+            }
+        }
 
     suspend fun updateMerchantAlias(
         publicId: String,
         canonicalMerchant: String? = null,
         alias: String? = null,
         enabled: Boolean? = null,
-    ): Result<MerchantAlias> = errorHandler.safeCall {
-        val cleanPublicId = publicId.trim()
-        require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
-        api().updateMerchantAlias(
-            cleanPublicId,
-            MerchantAliasRequest(
-                canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() },
-                alias = alias?.trim()?.takeIf { it.isNotBlank() },
-                enabled = enabled,
-            ),
-        ).toDomain()
-    }
+    ): Result<MerchantAlias> =
+        errorHandler.safeCall {
+            val cleanPublicId = publicId.trim()
+            require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.updateMerchantAlias(
+                    cleanPublicId,
+                    MerchantAliasRequest(
+                        canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() },
+                        alias = alias?.trim()?.takeIf { it.isNotBlank() },
+                        enabled = enabled,
+                    ),
+                ).toDomain()
+            }
+        }
 
-    suspend fun deleteMerchantAlias(publicId: String): Result<Unit> = errorHandler.safeCall {
-        val cleanPublicId = publicId.trim()
-        require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
-        api().deleteMerchantAlias(cleanPublicId)
-        Unit
-    }
+    suspend fun deleteMerchantAlias(publicId: String): Result<Unit> =
+        errorHandler.safeCall {
+            val cleanPublicId = publicId.trim()
+            require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.deleteMerchantAlias(cleanPublicId)
+            }
+            Unit
+        }
 }

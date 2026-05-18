@@ -556,6 +556,54 @@ def test_legacy_database_with_invalid_family_roles_fails_startup() -> None:
         database._sqlite_backup_done = False
 
 
+@pytest.mark.parametrize(
+    ("table_sql", "insert_sql", "message"),
+    [
+        (
+            """
+            CREATE TABLE ledger_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ledger_id VARCHAR(64) NOT NULL,
+                account_id INTEGER NOT NULL,
+                role VARCHAR(32)
+            )
+            """,
+            "INSERT INTO ledger_members (ledger_id, account_id, role) VALUES ('owner', 1, NULL)",
+            "ledger_members.role",
+        ),
+        (
+            """
+            CREATE TABLE invitations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ledger_id VARCHAR(64) NOT NULL,
+                token_hash VARCHAR(64) NOT NULL,
+                role VARCHAR(32)
+            )
+            """,
+            "INSERT INTO invitations (ledger_id, token_hash, role) VALUES ('owner', 'hash', NULL)",
+            "invitations.role",
+        ),
+    ],
+)
+def test_legacy_database_with_null_roles_fails_startup(
+    table_sql: str,
+    insert_sql: str,
+    message: str,
+) -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(text(table_sql))
+        connection.execute(text(insert_sql))
+
+    database._sqlite_backup_done = True
+    try:
+        with pytest.raises(RuntimeError, match=message):
+            init_db()
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
+
+
 def test_legacy_database_with_invalid_invitation_role_fails_startup() -> None:
     _reset_empty_database()
     with engine.begin() as connection:
@@ -601,6 +649,18 @@ def test_legacy_database_with_invalid_invitation_role_fails_startup() -> None:
             "ALTER TABLE expenses ADD COLUMN duplicate_status VARCHAR(32) NOT NULL DEFAULT 'duplicate'",
             "expenses.duplicate_status",
         ),
+        (
+            "ALTER TABLE expenses ADD COLUMN original_amount_minor INTEGER DEFAULT -1",
+            "expenses.original_amount_minor",
+        ),
+        (
+            "ALTER TABLE expenses ADD COLUMN exchange_rate_to_cny NUMERIC(18, 8) DEFAULT 0",
+            "expenses.exchange_rate_to_cny",
+        ),
+        (
+            "ALTER TABLE expenses ADD COLUMN fx_status VARCHAR(32) DEFAULT 'stale'",
+            "expenses.fx_status",
+        ),
     ],
 )
 def test_legacy_database_with_invalid_expense_core_data_fails_startup(
@@ -612,6 +672,65 @@ def test_legacy_database_with_invalid_expense_core_data_fails_startup(
     _insert_legacy_expense(amount_cents=3680, status="confirmed")
     with engine.begin() as connection:
         connection.execute(text(setup_sql))
+
+    database._sqlite_backup_done = True
+    try:
+        with pytest.raises(RuntimeError, match=message):
+            init_db()
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
+
+
+@pytest.mark.parametrize(
+    ("table_sql", "insert_sql", "message"),
+    [
+        (
+            """
+            CREATE TABLE budgets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id VARCHAR(64) NOT NULL,
+                month VARCHAR(7) NOT NULL,
+                total_amount_cents INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            INSERT INTO budgets (tenant_id, month, total_amount_cents)
+            VALUES ('owner', '2026-05', 100), ('owner', '2026-05', 200)
+            """,
+            "budgets",
+        ),
+        (
+            """
+            CREATE TABLE merchant_aliases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id VARCHAR(64) NOT NULL,
+                alias_key VARCHAR(255) NOT NULL,
+                alias VARCHAR(255) NOT NULL,
+                canonical_key VARCHAR(255) NOT NULL,
+                canonical_merchant VARCHAR(255) NOT NULL
+            )
+            """,
+            """
+            INSERT INTO merchant_aliases
+                (tenant_id, alias_key, alias, canonical_key, canonical_merchant)
+            VALUES
+                ('owner', 'starbucks', 'Starbucks', 'starbucks', 'Starbucks'),
+                ('owner', 'starbucks', '星巴克', 'starbucks', 'Starbucks')
+            """,
+            "merchant_aliases",
+        ),
+    ],
+)
+def test_legacy_database_with_duplicate_unique_scope_rows_fails_startup(
+    table_sql: str,
+    insert_sql: str,
+    message: str,
+) -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(text(table_sql))
+        connection.execute(text(insert_sql))
 
     database._sqlite_backup_done = True
     try:

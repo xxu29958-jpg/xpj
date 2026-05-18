@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.config import BACKEND_ROOT, get_settings
 from app.models import Expense
-from app.services.file_service import ALLOWED_EXTENSIONS
+from app.services.file_service import ALLOWED_EXTENSIONS, resolve_upload_path_for_tenant
+from app.tenants import DEFAULT_TENANT_ID
 from app.services.time_service import now_utc
 
 
@@ -47,17 +48,7 @@ def _delete_relative_file(relative_path: str | None, tenant_id: str) -> bool:
 
 
 def _resolve_relative_file(relative_path: str | None, tenant_id: str) -> Path | None:
-    if not relative_path:
-        return None
-    settings = get_settings()
-    tenant_upload_dir = (settings.upload_dir / tenant_id).resolve()
-    candidate = (BACKEND_ROOT / relative_path).resolve()
-    try:
-        candidate.relative_to(settings.upload_dir)
-        candidate.relative_to(tenant_upload_dir)
-    except ValueError:
-        return None
-    return candidate
+    return resolve_upload_path_for_tenant(relative_path, tenant_id)
 
 
 def _relative_file_exists(relative_path: str | None, tenant_id: str) -> bool:
@@ -263,7 +254,11 @@ def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True)
     orphan_bytes = 0
     deleted_bytes = 0
 
-    if not tenant_upload_dir.exists():
+    scan_roots = [tenant_upload_dir] if tenant_upload_dir.exists() else []
+    if tenant_id == DEFAULT_TENANT_ID and settings.upload_dir.exists():
+        scan_roots.append(settings.upload_dir.resolve())
+
+    if not scan_roots:
         return OrphanCleanupResult(
             dry_run=dry_run,
             grace_hours=settings.orphan_upload_grace_hours,
@@ -274,27 +269,32 @@ def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True)
             deleted_bytes=0,
         )
 
-    for path in tenant_upload_dir.rglob("*"):
-        if not path.is_file() or not _is_supported_upload_file(path):
-            continue
-        relative_path = _relative_upload_path(path)
-        if relative_path is None:
-            continue
-        scanned_files += 1
-        if relative_path in referenced:
-            continue
+    seen: set[str] = set()
+    for root in scan_roots:
+        for path in root.rglob("*"):
+            if not path.is_file() or not _is_supported_upload_file(path):
+                continue
+            relative_path = _relative_upload_path(path)
+            if relative_path is None or relative_path in seen:
+                continue
+            if _resolve_relative_file(relative_path, tenant_id) is None:
+                continue
+            seen.add(relative_path)
+            scanned_files += 1
+            if relative_path in referenced:
+                continue
 
-        modified_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
-        if modified_at > cutoff:
-            continue
+            modified_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+            if modified_at > cutoff:
+                continue
 
-        size = path.stat().st_size
-        orphan_files += 1
-        orphan_bytes += size
-        if not dry_run:
-            path.unlink(missing_ok=True)
-            deleted_files += 1
-            deleted_bytes += size
+            size = path.stat().st_size
+            orphan_files += 1
+            orphan_bytes += size
+            if not dry_run:
+                path.unlink(missing_ok=True)
+                deleted_files += 1
+                deleted_bytes += size
 
     return OrphanCleanupResult(
         dry_run=dry_run,

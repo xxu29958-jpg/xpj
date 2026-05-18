@@ -35,6 +35,7 @@ class RecurringRepository(
     private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
 ) : RecurringActions {
+    private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
         context = "Recurring",
@@ -47,57 +48,75 @@ class RecurringRepository(
 
     override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
 
-    private fun api() = apiProvider.current()
-
     override suspend fun items(
         status: String?,
         includeArchived: Boolean,
         month: String?,
     ): Result<List<RecurringItem>> =
         errorHandler.safeCall {
-            api().recurringItems(
-                status = status?.trim()?.ifBlank { null },
-                includeArchived = includeArchived,
-                month = month?.trim()?.ifBlank { null },
-                timezone = currentTimezoneId(),
-            ).items.map { it.toDomain() }
+            ledgerRequestGuard.guardedCall { api ->
+                api.recurringItems(
+                    status = status?.trim()?.ifBlank { null },
+                    includeArchived = includeArchived,
+                    month = month?.trim()?.ifBlank { null },
+                    timezone = currentTimezoneId(),
+                ).items.map { it.toDomain() }
+            }
         }
 
-    override suspend fun candidates(): Result<List<RecurringCandidate>> = errorHandler.safeCall {
-        api().recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
-    }
+    override suspend fun candidates(): Result<List<RecurringCandidate>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
+            }
+        }
 
-    override suspend fun detail(publicId: String, month: String?): Result<RecurringItem> = errorHandler.safeCall {
-        require(publicId.isNotBlank()) { "固定支出不存在。" }
-        api().recurringItem(
-            publicId = publicId.trim(),
-            month = month?.trim()?.ifBlank { null },
-            timezone = currentTimezoneId(),
-        ).toDomain()
-    }
+    override suspend fun detail(publicId: String, month: String?): Result<RecurringItem> =
+        errorHandler.safeCall {
+            require(publicId.isNotBlank()) { "固定支出不存在。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.recurringItem(
+                    publicId = publicId.trim(),
+                    month = month?.trim()?.ifBlank { null },
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
+        }
 
     override suspend fun confirmCandidate(
         candidate: RecurringCandidate,
         nextExpectedDate: String?,
-    ): Result<RecurringItem> = errorHandler.safeCall {
-        api().confirmRecurringCandidate(
-            request = candidate.toConfirmRequest(nextExpectedDate = nextExpectedDate?.trim()?.ifBlank { null }),
-            timezone = currentTimezoneId(),
-        ).toDomain()
-    }
+    ): Result<RecurringItem> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.confirmRecurringCandidate(
+                    request = candidate.toConfirmRequest(nextExpectedDate = nextExpectedDate?.trim()?.ifBlank { null }),
+                    timezone = currentTimezoneId(),
+                ).toDomain()
+            }
+        }
 
-    override suspend fun pause(publicId: String): Result<RecurringItem> = errorHandler.safeCall {
-        require(publicId.isNotBlank()) { "固定支出不存在。" }
-        api().pauseRecurringItem(publicId.trim()).toDomain()
-    }
+    override suspend fun pause(publicId: String): Result<RecurringItem> =
+        errorHandler.safeCall {
+            require(publicId.isNotBlank()) { "固定支出不存在。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.pauseRecurringItem(publicId.trim()).toDomain()
+            }
+        }
 
-    override suspend fun resume(publicId: String): Result<RecurringItem> = errorHandler.safeCall {
-        require(publicId.isNotBlank()) { "固定支出不存在。" }
-        api().resumeRecurringItem(publicId.trim()).toDomain()
-    }
+    override suspend fun resume(publicId: String): Result<RecurringItem> =
+        errorHandler.safeCall {
+            require(publicId.isNotBlank()) { "固定支出不存在。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.resumeRecurringItem(publicId.trim()).toDomain()
+            }
+        }
 
-    override suspend fun archive(publicId: String): Result<RecurringItem> = errorHandler.safeCall {
-        require(publicId.isNotBlank()) { "固定支出不存在。" }
-        api().archiveRecurringItem(publicId.trim()).toDomain()
-    }
+    override suspend fun archive(publicId: String): Result<RecurringItem> =
+        errorHandler.safeCall {
+            require(publicId.isNotBlank()) { "固定支出不存在。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.archiveRecurringItem(publicId.trim()).toDomain()
+            }
+        }
 }
