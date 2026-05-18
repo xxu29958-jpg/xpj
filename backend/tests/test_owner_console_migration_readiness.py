@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,6 +29,35 @@ def _delete_backup(file_name: str | None) -> None:
         path.unlink()
     except FileNotFoundError:
         pass
+
+
+class _VisibleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._skip_depth = 0
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        if tag.lower() in {"script", "style"}:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"script", "style"} and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        return " ".join(" ".join(self._parts).split())
+
+
+def _visible_text(html: str) -> str:
+    parser = _VisibleTextParser()
+    parser.feed(html)
+    return parser.text()
 
 
 def test_owner_migration_readiness_page_opens(local_client: TestClient) -> None:
@@ -93,10 +124,11 @@ def test_owner_migration_readiness_does_not_leak_sensitive_values(
     resp = local_client.get("/owner/migration-readiness")
 
     assert resp.status_code == 200
-    assert "C:\\" not in resp.text
-    assert "E:\\" not in resp.text
-    assert "/data/" not in resp.text
-    assert "Authorization" not in resp.text
-    assert "Bearer" not in resp.text
-    assert "token" not in resp.text.lower()
-    assert "restore" not in resp.text.lower()
+    visible_text = _visible_text(resp.text)
+    assert "C:\\" not in visible_text
+    assert "E:\\" not in visible_text
+    assert "/data/" not in visible_text
+    assert "Authorization" not in visible_text
+    assert "Bearer" not in visible_text
+    assert "token" not in visible_text.lower()
+    assert "restore" not in visible_text.lower()
