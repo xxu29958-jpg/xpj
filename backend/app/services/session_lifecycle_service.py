@@ -149,6 +149,27 @@ def revoke_active_tokens(
     return int(result.rowcount or 0)
 
 
+def revoke_token_value(
+    db: Session,
+    *,
+    token_value: str,
+    revoked_at: datetime | None = None,
+    scope: str | None = None,
+) -> int:
+    revoked_at = revoked_at or now_utc()
+    statement = (
+        update(AuthToken)
+        .where(AuthToken.token_hash == hash_secret(token_value))
+        .where(AuthToken.revoked_at.is_(None))
+    )
+    if scope is not None:
+        statement = statement.where(AuthToken.scope == scope)
+    result = db.execute(
+        statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0)
+
+
 def rotate_app_token_for_ledger(
     db: Session,
     *,

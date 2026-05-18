@@ -80,6 +80,43 @@ def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient) -> N
     assert item["image_hash"]
 
 
+def test_upload_supports_absolute_upload_dir_outside_backend(
+    client: TestClient,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from app.services import file_service, thumb_service
+
+    external_upload_dir = (tmp_path / "external-uploads").resolve()
+    settings = file_service.get_settings()
+    external_settings = replace(settings, upload_dir=external_upload_dir)
+    monkeypatch.setattr(file_service, "get_settings", lambda: external_settings)
+    monkeypatch.setattr(thumb_service, "get_settings", lambda: external_settings)
+
+    response = client.post(
+        upload_url_path(),
+        headers=upload_headers(),
+        files={"image": ("ticket.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200, response.json()
+    expense_id = int(response.json()["id"])
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == expense_id)
+    assert item["image_path"].startswith("uploads/owner/")
+    assert (external_upload_dir / item["image_path"].removeprefix("uploads/")).is_file()
+
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    assert image.status_code == 200
+    assert image.content == PNG_BYTES
+    if item["thumbnail_path"] is not None:
+        assert item["thumbnail_path"].startswith("uploads/owner/")
+        assert (external_upload_dir / item["thumbnail_path"].removeprefix("uploads/")).is_file()
+        thumbnail = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=app_headers())
+        assert thumbnail.status_code == 200
+
+
 def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> None:
     response = client.post(
         "/u/bad-upload-key",

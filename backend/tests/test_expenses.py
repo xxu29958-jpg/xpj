@@ -17,6 +17,7 @@ from app.models import DuplicateIgnore, Expense
 from app.services.duplicate_service import _remember_duplicate_ignore
 from app.services.expense_service import confirm_expense, reject_expense, retry_expense_ocr
 from app.services.ocr_service import MockOcrProvider, OcrResult, apply_ocr_result, retry_ocr
+from app.services.time_service import now_utc
 from conftest import (
     BACKEND_ROOT,
     PNG_BYTES,
@@ -106,6 +107,28 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
     assert stats.status_code == 200
     assert stats.json()["total_amount_cents"] == 3680
+
+
+def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestClient) -> None:
+    expense_id = upload_png(client)
+
+    thumbnail = client.get(
+        f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()
+    )
+    assert thumbnail.status_code == 200
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.image_deleted_at = now_utc()
+        db.commit()
+
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    assert image.status_code == 404
+    thumbnail = client.get(
+        f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()
+    )
+    assert thumbnail.status_code == 404
 
 
 @pytest.mark.parametrize(

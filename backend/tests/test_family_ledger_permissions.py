@@ -244,6 +244,33 @@ def test_accept_invitation_issues_app_token_and_membership(client: TestClient) -
     assert check.json()["ledger_id"] == family_id
 
 
+def test_accept_invitation_with_existing_session_revokes_replaced_token(client: TestClient) -> None:
+    family_id = _create_family_ledger(client)
+    family_app = _switch_to(client, family_id, app_headers())
+    invite = _mint(client, family_id, family_app, role="member")
+
+    resp = client.post(
+        "/api/invitations/accept",
+        headers=_bearer(family_app),
+        json={
+            "invite_token": invite,
+            "account_name": "New Member",
+            "device_name": "Existing-Pixel",
+            "platform": "android",
+        },
+    )
+    assert resp.status_code == 200, resp.json()
+
+    old_check = client.get("/api/auth/check", headers=_bearer(family_app))
+    assert old_check.status_code == 401
+    assert old_check.json()["error"] == "invalid_token"
+
+    new_token = resp.json()["session_token"]
+    new_check = client.get("/api/auth/check", headers=_bearer(new_token))
+    assert new_check.status_code == 200
+    assert new_check.json()["ledger_id"] == family_id
+
+
 def test_accept_already_used_invitation(client: TestClient) -> None:
     family_id = _create_family_ledger(client)
     family_app = _switch_to(client, family_id, app_headers())

@@ -676,6 +676,8 @@ def ensure_thumbnail_file(
     db: Session, expense_id: int, tenant_id: str
 ) -> tuple[Path, str]:
     expense = get_expense(db, expense_id, tenant_id)
+    if expense.image_deleted_at is not None:
+        raise AppError("image_not_found", status_code=404)
     if expense.thumbnail_deleted_at is not None:
         raise AppError("image_not_found", status_code=404)
     resolved = resolve_protected_thumbnail(expense.thumbnail_path, tenant_id)

@@ -7,9 +7,13 @@ from pathlib import Path
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.config import BACKEND_ROOT, get_settings
+from app.config import get_settings
 from app.models import Expense
-from app.services.file_service import ALLOWED_EXTENSIONS, resolve_upload_path_for_tenant
+from app.services.file_service import (
+    ALLOWED_EXTENSIONS,
+    resolve_upload_path_for_tenant,
+    upload_reference_for_path,
+)
 from app.tenants import DEFAULT_TENANT_ID
 from app.services.time_service import now_utc
 
@@ -74,29 +78,19 @@ def _relative_file_exists(relative_path: str | None, tenant_id: str) -> bool:
 
 
 def _relative_upload_path(path: Path) -> str | None:
-    settings = get_settings()
-    candidate = path.resolve()
     try:
-        candidate.relative_to(settings.upload_dir)
-    except ValueError:
-        return None
-    try:
-        return candidate.relative_to(BACKEND_ROOT).as_posix()
-    except ValueError:
+        return upload_reference_for_path(path)
+    except RuntimeError:
         return None
 
 
-def _normalize_upload_reference(relative_path: str | None) -> str | None:
+def _normalize_upload_reference(relative_path: str | None, tenant_id: str) -> str | None:
     if not relative_path:
         return None
-    raw = str(relative_path)
-    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
+    candidate = resolve_upload_path_for_tenant(relative_path, tenant_id)
+    if candidate is None:
         return None
-    normalized = raw.replace("\\", "/")
-    normalized_parts = Path(normalized).parts
-    if any(part == ".." for part in normalized_parts):
-        return None
-    return _relative_upload_path((BACKEND_ROOT / normalized).resolve())
+    return _relative_upload_path(candidate)
 
 
 def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
@@ -112,10 +106,10 @@ def _referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
     )
     referenced: set[str] = set()
     for image_path, thumbnail_path in rows:
-        normalized_image = _normalize_upload_reference(image_path)
+        normalized_image = _normalize_upload_reference(image_path, tenant_id)
         if normalized_image:
             referenced.add(normalized_image)
-        normalized_thumbnail = _normalize_upload_reference(thumbnail_path)
+        normalized_thumbnail = _normalize_upload_reference(thumbnail_path, tenant_id)
         if normalized_thumbnail:
             referenced.add(normalized_thumbnail)
     return referenced
@@ -308,27 +302,35 @@ def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True)
     seen: set[str] = set()
     for root in scan_roots:
         for path in root.rglob("*"):
-            if not path.is_file() or not _is_supported_upload_file(path):
+            try:
+                if not path.is_file() or not _is_supported_upload_file(path):
+                    continue
+                relative_path = _relative_upload_path(path)
+                if relative_path is None or relative_path in seen:
+                    continue
+                if _resolve_relative_file(relative_path, tenant_id) is None:
+                    continue
+                stat = path.stat()
+            except OSError:
                 continue
-            relative_path = _relative_upload_path(path)
-            if relative_path is None or relative_path in seen:
-                continue
-            if _resolve_relative_file(relative_path, tenant_id) is None:
-                continue
+
             seen.add(relative_path)
             scanned_files += 1
             if relative_path in referenced:
                 continue
 
-            modified_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+            modified_at = datetime.fromtimestamp(stat.st_mtime, UTC)
             if modified_at > cutoff:
                 continue
 
-            size = path.stat().st_size
+            size = stat.st_size
             orphan_files += 1
             orphan_bytes += size
             if not dry_run:
-                path.unlink(missing_ok=True)
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    continue
                 deleted_files += 1
                 deleted_bytes += size
 

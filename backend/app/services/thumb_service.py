@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import BACKEND_ROOT, get_settings
-from app.services.file_service import resolve_upload_path_for_tenant
+from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
 
 
 def _tenant_upload_dir(tenant_id: str) -> Path:
@@ -60,7 +60,10 @@ def generate_thumbnail(
     except Exception:
         return None
 
-    return thumbnail_path.relative_to(BACKEND_ROOT).as_posix()
+    try:
+        return upload_reference_for_path(thumbnail_path)
+    except RuntimeError:
+        return None
 
 
 def resolve_protected_thumbnail(relative_path: str | None, tenant_id: str) -> tuple[Path, str] | None:

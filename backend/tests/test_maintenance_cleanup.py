@@ -132,6 +132,35 @@ def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monke
     assert orphan.exists()
 
 
+def test_cleanup_orphans_continues_when_single_file_unlink_fails(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from app.services import cleanup_service
+
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, orphan_upload_grace_hours=1))
+
+    orphan_dir = TEST_UPLOAD_DIR / "owner" / "2026" / "05"
+    orphan_dir.mkdir(parents=True, exist_ok=True)
+    orphan = orphan_dir / "locked-orphan.png"
+    orphan.write_bytes(PNG_BYTES)
+    old = (now_utc() - timedelta(hours=3)).timestamp()
+    os.utime(orphan, (old, old))
+
+    def fail_unlink(self, *args, **kwargs):
+        raise PermissionError("file is locked")
+
+    monkeypatch.setattr(cleanup_service.Path, "unlink", fail_unlink)
+
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["orphan_files"] == 1
+    assert payload["deleted_files"] == 0
+    assert orphan.exists()
+
+
 def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient, monkeypatch) -> None:
     from app.services import cleanup_service
 

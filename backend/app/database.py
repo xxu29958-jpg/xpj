@@ -346,11 +346,27 @@ def validate_sqlite_data_integrity() -> None:
         return
     table_names = set(inspect(engine).get_table_names())
     with engine.begin() as connection:
+        _validate_sqlite_foreign_keys(connection)
         _validate_expense_core_data(connection, table_names)
+        _validate_recurring_item_data(connection, table_names)
         _validate_legacy_unique_scopes(connection, table_names)
         _validate_root_tenant_integrity(connection, table_names)
         _validate_expense_split_integrity(connection, table_names)
         _validate_tenant_child_integrity(connection, table_names)
+
+
+def _validate_sqlite_foreign_keys(connection) -> None:
+    try:
+        violations = list(connection.execute(text("PRAGMA foreign_key_check")).mappings())
+    except Exception as exc:
+        raise RuntimeError("Invalid legacy data: SQLite foreign_key_check could not run") from exc
+    if not violations:
+        return
+    samples = ", ".join(
+        f"{row['table']} rowid={row['rowid']} parent={row['parent']}"
+        for row in violations[:3]
+    )
+    raise RuntimeError(f"Invalid legacy data: SQLite foreign_key_check failed: {samples}")
 
 
 def _sqlite_column_names(connection, table_name: str) -> set[str]:
@@ -807,6 +823,49 @@ def _validate_goal_unique_scopes(connection, table_names: set[str]) -> None:
         )
 
 
+def _validate_recurring_item_data(connection, table_names: set[str]) -> None:
+    if "recurring_items" not in table_names:
+        return
+    columns = _sqlite_column_names(connection, "recurring_items")
+    if "frequency" in columns:
+        invalid_frequency = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM recurring_items "
+                    "WHERE frequency IS NULL OR frequency NOT IN ('monthly')"
+                )
+            ).scalar_one()
+        )
+        if invalid_frequency:
+            raise RuntimeError("Invalid legacy data: recurring_items.frequency contains unsupported values")
+    if "status" in columns:
+        invalid_status = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM recurring_items "
+                    "WHERE status IS NULL OR status NOT IN ('active', 'paused', 'archived')"
+                )
+            ).scalar_one()
+        )
+        if invalid_status:
+            raise RuntimeError("Invalid legacy data: recurring_items.status contains unsupported values")
+    if {"tenant_id", "merchant_key", "frequency"}.issubset(columns):
+        duplicate_recurring = connection.execute(
+            text(
+                "SELECT tenant_id, merchant_key, frequency, COUNT(*) AS count "
+                "FROM recurring_items "
+                "GROUP BY tenant_id, merchant_key, frequency "
+                "HAVING COUNT(*) > 1 "
+                "LIMIT 1"
+            )
+        ).mappings().first()
+        if duplicate_recurring is not None:
+            raise RuntimeError(
+                "Invalid legacy data: recurring_items contains duplicate tenant/merchant/frequency rows "
+                f"for tenant={duplicate_recurring['tenant_id']} merchant_key={duplicate_recurring['merchant_key']}"
+            )
+
+
 def _validate_legacy_unique_scopes(connection, table_names: set[str]) -> None:
     if "budgets" in table_names:
         columns = _sqlite_column_names(connection, "budgets")
@@ -843,6 +902,8 @@ def _validate_legacy_unique_scopes(connection, table_names: set[str]) -> None:
                     "Invalid legacy data: merchant_aliases contains duplicate tenant/alias_key rows "
                     f"for tenant={duplicate_alias['tenant_id']} alias_key={duplicate_alias['alias_key']}"
                 )
+
+    _validate_recurring_item_data(connection, table_names)
 
 
 def migrate_sqlite_schema() -> None:
@@ -1194,12 +1255,39 @@ def migrate_sqlite_schema() -> None:
             )
 
         if "csv_import_batches" in table_names:
+            csv_batch_columns = _sqlite_column_names(connection, "csv_import_batches")
+            if "tenant_id" not in csv_batch_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE csv_import_batches "
+                        f"ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'"
+                    )
+                )
+            connection.execute(
+                text("UPDATE csv_import_batches SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
+                {"tenant_id": DEFAULT_TENANT_ID},
+            )
             connection.execute(
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS uq_csv_import_batches_id_tenant_id "
                     "ON csv_import_batches (id, tenant_id)"
                 )
             )
+            csv_batch_columns = _sqlite_column_names(connection, "csv_import_batches")
+            if "public_id" in csv_batch_columns:
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_csv_import_batches_tenant_public_id "
+                        "ON csv_import_batches (tenant_id, public_id)"
+                    )
+                )
+            if {"status", "created_at"}.issubset(csv_batch_columns):
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_csv_import_batches_tenant_status_created_at "
+                        "ON csv_import_batches (tenant_id, status, created_at)"
+                    )
+                )
 
         if "expense_tags" in table_names:
             connection.execute(
@@ -1222,9 +1310,29 @@ def migrate_sqlite_schema() -> None:
             )
 
         if "csv_import_rows" in table_names:
-            csv_row_columns = {column["name"] for column in inspector.get_columns("csv_import_rows")}
+            csv_row_columns = _sqlite_column_names(connection, "csv_import_rows")
+            if "tenant_id" not in csv_row_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE csv_import_rows "
+                        f"ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'"
+                    )
+                )
+                csv_row_columns.add("tenant_id")
+            connection.execute(
+                text(
+                    "UPDATE csv_import_rows "
+                    "SET tenant_id = COALESCE(("
+                    "SELECT batch.tenant_id FROM csv_import_batches AS batch "
+                    "WHERE batch.id = csv_import_rows.batch_id"
+                    "), :tenant_id) "
+                    "WHERE tenant_id IS NULL OR tenant_id = ''"
+                ),
+                {"tenant_id": DEFAULT_TENANT_ID},
+            )
             csv_row_additions = {
                 "apply_token": "VARCHAR(36)",
+                "expense_id": "INTEGER",
                 "original_currency_code": f"VARCHAR(3) NOT NULL DEFAULT '{default_home}'",
                 "original_amount_minor": "INTEGER",
                 "exchange_rate_to_cny": "NUMERIC(18, 8)",
@@ -1268,11 +1376,97 @@ def migrate_sqlite_schema() -> None:
                 ),
                 {"source_base": source_base, "home": default_home},
             )
+            csv_row_columns = _sqlite_column_names(connection, "csv_import_rows")
+            if {"tenant_id", "batch_id", "line_number"}.issubset(csv_row_columns):
+                connection.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_csv_import_rows_tenant_batch_line "
+                        "ON csv_import_rows (tenant_id, batch_id, line_number)"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_csv_import_rows_tenant_batch_line "
+                        "ON csv_import_rows (tenant_id, batch_id, line_number)"
+                    )
+                )
+            if {"tenant_id", "batch_id", "status"}.issubset(csv_row_columns):
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_csv_import_rows_tenant_batch_status "
+                        "ON csv_import_rows (tenant_id, batch_id, status)"
+                    )
+                )
 
         if "csv_import_batches" in table_names:
-            csv_batch_columns = {column["name"] for column in inspector.get_columns("csv_import_batches")}
+            csv_batch_columns = _sqlite_column_names(connection, "csv_import_batches")
             if "apply_token" not in csv_batch_columns:
                 connection.execute(text("ALTER TABLE csv_import_batches ADD COLUMN apply_token VARCHAR(36)"))
+
+        if "recurring_items" in table_names:
+            recurring_columns = _sqlite_column_names(connection, "recurring_items")
+            recurring_additions = {
+                "public_id": "VARCHAR(36)",
+                "tenant_id": f"VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'",
+                "frequency": "VARCHAR(32) NOT NULL DEFAULT 'monthly'",
+                "status": "VARCHAR(32) NOT NULL DEFAULT 'active'",
+                "occurrence_count": "INTEGER NOT NULL DEFAULT 0",
+                "source": "VARCHAR(32) NOT NULL DEFAULT 'candidate'",
+                "paused_at": "DATETIME",
+                "archived_at": "DATETIME",
+            }
+            for column_name, column_type in recurring_additions.items():
+                if column_name not in recurring_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE recurring_items ADD COLUMN {column_name} {column_type}")
+                    )
+            connection.execute(
+                text("UPDATE recurring_items SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
+                {"tenant_id": DEFAULT_TENANT_ID},
+            )
+            connection.execute(
+                text("UPDATE recurring_items SET frequency = 'monthly' WHERE frequency IS NULL OR frequency = ''")
+            )
+            connection.execute(
+                text("UPDATE recurring_items SET status = 'active' WHERE status IS NULL OR status = ''")
+            )
+            public_id_rows = connection.execute(
+                text("SELECT id FROM recurring_items WHERE public_id IS NULL OR public_id = ''")
+            ).mappings()
+            for row in public_id_rows:
+                connection.execute(
+                    text("UPDATE recurring_items SET public_id = :public_id WHERE id = :id"),
+                    {"public_id": str(uuid4()), "id": row["id"]},
+                )
+            _validate_recurring_item_data(connection, table_names)
+            recurring_columns = _sqlite_column_names(connection, "recurring_items")
+            if "public_id" in recurring_columns:
+                connection.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_recurring_items_public_id "
+                        "ON recurring_items (public_id)"
+                    )
+                )
+            if {"tenant_id", "merchant_key", "frequency"}.issubset(recurring_columns):
+                connection.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_recurring_items_tenant_merchant_frequency "
+                        "ON recurring_items (tenant_id, merchant_key, frequency)"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_recurring_items_tenant_merchant "
+                        "ON recurring_items (tenant_id, merchant_key)"
+                    )
+                )
+            if {"tenant_id", "status", "next_expected_date"}.issubset(recurring_columns):
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_recurring_items_tenant_status_next "
+                        "ON recurring_items (tenant_id, status, next_expected_date)"
+                    )
+                )
 
         if "duplicate_ignores" in table_names:
             duplicate_ignore_columns = {column["name"] for column in inspector.get_columns("duplicate_ignores")}

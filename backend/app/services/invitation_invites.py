@@ -23,6 +23,7 @@ from app.services.identity_service import (
     _ledger_by_id,
     hash_secret,
 )
+from app.services.session_lifecycle_service import revoke_token_value
 from app.services.invitation_audit import add_audit_log
 from app.services.invitation_common import (
     AUDIT_INVITATION_ACCEPTED,
@@ -236,6 +237,7 @@ def accept_invitation(
     account_name: str,
     device_name: str,
     platform: str,
+    previous_session_token: str | None = None,
 ) -> AcceptInvitationResult:
     """Consume an invitation and issue a ledger-scoped app token."""
 
@@ -278,6 +280,13 @@ def accept_invitation(
         ledger_id=ledger.ledger_id,
         scope="app",
     )
+    if previous_session_token:
+        revoke_token_value(
+            db,
+            token_value=previous_session_token,
+            revoked_at=used_at,
+            scope="app",
+        )
     add_audit_log(
         db,
         ledger_id=ledger.ledger_id,

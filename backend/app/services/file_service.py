@@ -30,6 +30,7 @@ MEDIA_TYPES = {
     ".heic": "image/heic",
 }
 HEIC_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1"}
+UPLOAD_REFERENCE_PREFIX = "uploads"
 
 
 @dataclass(frozen=True)
@@ -145,7 +146,7 @@ def save_upload_bytes(
         target_path.unlink(missing_ok=True)
         raise
 
-    relative_path = target_path.relative_to(BACKEND_ROOT).as_posix()
+    relative_path = upload_reference_for_path(target_path)
     return SavedUpload(
         relative_path=relative_path,
         image_hash=hasher.hexdigest(),
@@ -154,15 +155,60 @@ def save_upload_bytes(
     )
 
 
+def upload_reference_for_path(path: Path) -> str:
+    """Return the stable DB reference for a file under configured UPLOAD_DIR."""
+
+    settings = get_settings()
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(BACKEND_ROOT).as_posix()
+    except ValueError:
+        pass
+    try:
+        relative_to_upload_root = resolved.relative_to(settings.upload_dir.resolve())
+    except ValueError as exc:
+        raise RuntimeError("Upload file escaped configured upload directory") from exc
+    return f"{UPLOAD_REFERENCE_PREFIX}/{relative_to_upload_root.as_posix()}"
+
+
+def _normalized_upload_parts(relative_path: str | None) -> tuple[str, ...] | None:
+    if not relative_path:
+        return None
+    raw = str(relative_path)
+    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
+        return None
+    normalized_parts = Path(raw.replace("\\", "/")).parts
+    if any(part == ".." for part in normalized_parts):
+        return None
+    return tuple(str(part) for part in normalized_parts)
+
+
+def _resolve_upload_reference(relative_path: str | None) -> Path | None:
+    parts = _normalized_upload_parts(relative_path)
+    if not parts:
+        return None
+
+    settings = get_settings()
+    upload_dir = settings.upload_dir.resolve()
+    legacy_candidate = (BACKEND_ROOT / Path(*parts)).resolve()
+    if _is_under_path(legacy_candidate, upload_dir):
+        return legacy_candidate
+    if parts[0] == UPLOAD_REFERENCE_PREFIX:
+        candidate = (upload_dir / Path(*parts[1:])).resolve()
+    else:
+        # Legacy v0.2 rows stored paths relative to BACKEND_ROOT.
+        candidate = legacy_candidate
+    if not _is_under_path(candidate, upload_dir):
+        return None
+    return candidate
+
+
 def delete_relative_upload(relative_path: str | None) -> None:
     if not relative_path:
         return
 
-    settings = get_settings()
-    candidate = (BACKEND_ROOT / relative_path).resolve()
-    try:
-        candidate.relative_to(settings.upload_dir)
-    except ValueError:
+    candidate = _resolve_upload_reference(relative_path)
+    if candidate is None:
         return
     candidate.unlink(missing_ok=True)
 
@@ -210,24 +256,14 @@ def _is_legacy_unscoped_upload(candidate: Path, upload_dir: Path, tenant_id: str
 
 
 def resolve_upload_path_for_tenant(relative_path: str | None, tenant_id: str) -> Path | None:
-    if not relative_path:
-        return None
-
-    raw = str(relative_path)
-    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
-        return None
-    normalized_parts = Path(raw.replace("\\", "/")).parts
-    if any(part == ".." for part in normalized_parts):
-        return None
-
     settings = get_settings()
-    candidate = (BACKEND_ROOT / raw).resolve()
-    if not _is_under_path(candidate, settings.upload_dir):
+    candidate = _resolve_upload_reference(relative_path)
+    if candidate is None:
         return None
 
     tenant_dir = _tenant_upload_dir(tenant_id)
     if not _is_under_path(candidate, tenant_dir) and not _is_legacy_unscoped_upload(
-        candidate, settings.upload_dir, tenant_id
+        candidate, settings.upload_dir.resolve(), tenant_id
     ):
         return None
     return candidate

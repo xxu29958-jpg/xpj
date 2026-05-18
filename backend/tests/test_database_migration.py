@@ -526,6 +526,35 @@ def test_sqlite_integrity_rejects_orphan_root_tenant_rows() -> None:
         _reset_empty_database()
 
 
+def test_sqlite_integrity_runs_foreign_key_check_for_identity_tables() -> None:
+    _reset_empty_database()
+    init_db()
+
+    try:
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO auth_tokens (
+                        token_hash, account_id, device_id, ledger_id, scope, created_at
+                    )
+                    VALUES (
+                        'bad-token-hash', 999999, 999999, 'owner', 'app',
+                        '2026-05-04 08:00:00'
+                    )
+                    """
+                )
+            )
+            connection.commit()
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+        with pytest.raises(RuntimeError, match="foreign_key_check"):
+            database.validate_sqlite_data_integrity()
+    finally:
+        _reset_empty_database()
+
+
 def test_legacy_database_with_invalid_family_roles_fails_startup() -> None:
     _reset_empty_database()
     with engine.begin() as connection:
@@ -735,6 +764,190 @@ def test_legacy_database_with_duplicate_unique_scope_rows_fails_startup(
     database._sqlite_backup_done = True
     try:
         with pytest.raises(RuntimeError, match=message):
+            init_db()
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
+
+
+def test_legacy_csv_import_tables_without_tenant_id_migrate_before_indexes() -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE csv_import_batches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_name VARCHAR(255) NOT NULL,
+                    status VARCHAR(32) NOT NULL,
+                    total_rows INTEGER NOT NULL DEFAULT 1,
+                    valid_rows INTEGER NOT NULL DEFAULT 1,
+                    error_rows INTEGER NOT NULL DEFAULT 0,
+                    applied_rows INTEGER NOT NULL DEFAULT 0,
+                    inserted_count INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE csv_import_rows (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    batch_id INTEGER NOT NULL,
+                    line_number INTEGER NOT NULL,
+                    status VARCHAR(32) NOT NULL,
+                    amount_cents INTEGER,
+                    merchant VARCHAR(255),
+                    category VARCHAR(64) NOT NULL,
+                    note TEXT,
+                    source VARCHAR(64) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO csv_import_batches
+                    (file_name, status, total_rows, valid_rows, error_rows, applied_rows,
+                     inserted_count, created_at, updated_at)
+                VALUES
+                    ('legacy.csv', 'parsed', 1, 1, 0, 0, 0,
+                     '2026-05-04 08:00:00', '2026-05-04 08:00:00')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO csv_import_rows
+                    (batch_id, line_number, status, amount_cents, merchant, category,
+                     source, created_at, updated_at)
+                VALUES
+                    (1, 2, 'valid', 1200, 'Legacy Cafe', 'Other', 'CSV',
+                     '2026-05-04 08:00:00', '2026-05-04 08:00:00')
+                """
+            )
+        )
+
+    database._sqlite_backup_done = True
+    try:
+        init_db()
+
+        assert "tenant_id" in _table_columns("csv_import_batches")
+        assert "tenant_id" in _table_columns("csv_import_rows")
+        assert "uq_csv_import_batches_id_tenant_id" in _indexes("csv_import_batches")
+        assert "uq_csv_import_rows_tenant_batch_line" in _indexes("csv_import_rows")
+        with engine.begin() as connection:
+            batch_tenant = connection.execute(
+                text("SELECT tenant_id FROM csv_import_batches WHERE id = 1")
+            ).scalar_one()
+            row_tenant = connection.execute(
+                text("SELECT tenant_id FROM csv_import_rows WHERE id = 1")
+            ).scalar_one()
+        assert batch_tenant == "owner"
+        assert row_tenant == "owner"
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
+
+
+def test_legacy_recurring_items_migrate_to_tenant_indexes_and_constraints() -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE recurring_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    merchant_key VARCHAR(255) NOT NULL,
+                    merchant_name VARCHAR(255) NOT NULL,
+                    baseline_amount_cents INTEGER NOT NULL,
+                    last_amount_cents INTEGER NOT NULL,
+                    last_seen_at DATETIME,
+                    next_expected_date DATE,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO recurring_items (
+                    merchant_key, merchant_name, baseline_amount_cents,
+                    last_amount_cents, last_seen_at, next_expected_date,
+                    created_at, updated_at
+                )
+                VALUES (
+                    'netflix', 'Netflix', 6800, 6800,
+                    '2026-05-01 00:00:00', '2026-06-01',
+                    '2026-05-01 00:00:00', '2026-05-01 00:00:00'
+                )
+                """
+            )
+        )
+
+    database._sqlite_backup_done = True
+    try:
+        init_db()
+
+        assert {"public_id", "tenant_id", "frequency", "status", "source"}.issubset(
+            _table_columns("recurring_items")
+        )
+        assert "uq_recurring_items_tenant_merchant_frequency" in _indexes("recurring_items")
+        assert "ix_recurring_items_tenant_status_next" in _indexes("recurring_items")
+        with engine.begin() as connection:
+            row = connection.execute(
+                text("SELECT tenant_id, frequency, status, public_id FROM recurring_items WHERE id = 1")
+            ).mappings().one()
+        assert row["tenant_id"] == "owner"
+        assert row["frequency"] == "monthly"
+        assert row["status"] == "active"
+        UUID(str(row["public_id"]))
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
+
+
+def test_legacy_recurring_duplicate_scope_fails_before_unique_index() -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE recurring_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tenant_id VARCHAR(64) NOT NULL,
+                    merchant_key VARCHAR(255) NOT NULL,
+                    merchant_name VARCHAR(255) NOT NULL,
+                    frequency VARCHAR(32) NOT NULL,
+                    status VARCHAR(32) NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO recurring_items
+                    (tenant_id, merchant_key, merchant_name, frequency, status)
+                VALUES
+                    ('owner', 'netflix', 'Netflix', 'monthly', 'active'),
+                    ('owner', 'netflix', 'Netflix', 'monthly', 'archived')
+                """
+            )
+        )
+
+    database._sqlite_backup_done = True
+    try:
+        with pytest.raises(RuntimeError, match="recurring_items"):
             init_db()
     finally:
         database._sqlite_backup_done = False

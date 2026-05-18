@@ -143,7 +143,9 @@ class ExpenseRepositoryBindingTest {
                 updatedAt = "2026-05-01T00:00:00Z",
             ),
         )
-        val settingsStore = FakeTicketboxSettingsStore(events)
+        val settingsStore = FakeTicketboxSettingsStore(events).apply {
+            saveAvailableLedgersJson("""[{"ledger_id":"old","name":"Old","role":"owner"}]""")
+        }
         val tokenStore = FakeSessionTokenStore(events).apply { saveToken("old-session-token") }
         val apiService = FakeApiService(events, confirmedFailuresRemaining = 1)
         val apiFactory = FakeApiServiceFactory(apiService)
@@ -161,6 +163,7 @@ class ExpenseRepositoryBindingTest {
         assertNull(apiFactory.tokenValues.first())
         assertEquals("session-token", apiFactory.tokenValues.last())
         assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertNull(settingsStore.availableLedgersJson())
     }
 
     @Test

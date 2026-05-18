@@ -317,8 +317,8 @@ class LedgerRepositoryTest {
         // The plain token is trimmed before being sent to the server.
         assertEquals("inv_PLAINTOKEN", api.acceptRequests.single().inviteToken)
         assertEquals("android", api.acceptRequests.single().platform)
-        // Invitation accept is a public endpoint; do not leak the previous session token.
-        assertNull(apiFactory.tokenProviders.first().invoke())
+        // Bound-device invitation accept carries the replaced token so the server can revoke it.
+        assertEquals("old-token", apiFactory.tokenProviders.first().invoke())
         // Token rotated; identity captured; active ledger switched.
         assertEquals(newToken, tokenStore.getToken())
         assertEquals("L_family", store.activeLedgerId())

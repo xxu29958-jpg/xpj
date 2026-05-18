@@ -209,8 +209,9 @@ class LedgerRepository(
     /**
      * v0.4-beta1: accept a family-ledger invitation.
      *
-     * Posts the plain ``invite_token`` to the public
-     * ``/api/invitations/accept`` endpoint; on success the server creates a
+     * Posts the plain ``invite_token`` to ``/api/invitations/accept``. When this
+     * device is already bound, the current app token lets the server revoke the
+     * replaced session; on success the server creates a
      * brand-new Account + Device + LedgerMember row and issues a session
      * token. The caller MUST already be unbound or willing to overwrite the
      * current binding — accept replaces the active session token, identity,
@@ -230,7 +231,14 @@ class LedgerRepository(
         val cleanDevice = deviceName.trim()
         require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
         require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
-        val response = unauthenticatedApi().acceptInvitation(
+        val serverUrl = requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
+            "Ledger server is not bound."
+        }
+        val previousToken = tokenStore.getToken()?.takeIf { it.isNotBlank() }
+        val acceptApi = previousToken
+            ?.let { apiProvider.temporary(serverUrl, tokenOverride = it) }
+            ?: unauthenticatedApi()
+        val response = acceptApi.acceptInvitation(
             InvitationAcceptRequestDto(
                 inviteToken = cleanToken,
                 accountName = cleanAccount,
@@ -239,6 +247,7 @@ class LedgerRepository(
         )
         // Persist the new token *first*; any prior token is now stale.
         tokenStore.saveToken(response.sessionToken)
+        settingsStore.saveAvailableLedgersJson(null)
         settingsStore.saveIdentity(
             accountName = response.accountName,
             ledgerId = response.ledgerId,

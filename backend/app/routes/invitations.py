@@ -17,7 +17,7 @@ membership routes use ``get_current_ledger_app_context``.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_ledger_app_context, get_current_member_manager_context
@@ -57,6 +57,13 @@ from app.tenants import AuthContext
 
 
 router = APIRouter(tags=["family-ledger"])
+
+
+def _optional_bearer_token(authorization: str | None) -> str | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.removeprefix("Bearer ").strip()
+    return token or None
 
 
 def _to_invitation_response(summary: InvitationSummary) -> InvitationSummaryResponse:
@@ -186,6 +193,7 @@ def preview_invitation_endpoint(
 )
 def accept_invitation_endpoint(
     payload: InvitationAcceptRequest,
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> InvitationAcceptResponse:
     result = accept_invitation(
@@ -194,6 +202,7 @@ def accept_invitation_endpoint(
         account_name=payload.account_name,
         device_name=payload.device_name,
         platform=payload.platform,
+        previous_session_token=_optional_bearer_token(authorization),
     )
     return InvitationAcceptResponse(
         session_token=result.session_token,

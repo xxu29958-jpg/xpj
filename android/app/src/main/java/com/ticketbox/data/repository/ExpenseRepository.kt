@@ -239,6 +239,7 @@ class ExpenseRepository(
             )
             settingsStore.saveServerUrl(normalized)
             tokenStore.saveToken(pairResponse.sessionToken)
+            settingsStore.saveAvailableLedgersJson(null)
             settingsStore.saveIdentity(
                 accountName = pairResponse.accountName,
                 ledgerId = pairResponse.ledgerId,
