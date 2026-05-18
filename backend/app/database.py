@@ -634,6 +634,68 @@ def _validate_family_role_data(connection, table_names: set[str]) -> None:
             raise RuntimeError("Invalid legacy data: invitations.role contains unsupported values")
 
 
+def _validate_identity_unique_scopes(connection, table_names: set[str]) -> None:
+    """Reject legacy identity rows that cannot satisfy current parent keys."""
+
+    if "ledgers" in table_names:
+        duplicate_ledger = connection.execute(
+            text(
+                "SELECT ledger_id, COUNT(*) AS count "
+                "FROM ledgers "
+                "GROUP BY ledger_id "
+                "HAVING COUNT(*) > 1 "
+                "LIMIT 1"
+            )
+        ).mappings().first()
+        if duplicate_ledger is not None:
+            raise RuntimeError(
+                "Invalid legacy data: ledgers contains duplicate ledger_id rows "
+                f"for ledger_id={duplicate_ledger['ledger_id']}"
+            )
+
+    if "ledger_members" in table_names:
+        duplicate_member = connection.execute(
+            text(
+                "SELECT ledger_id, account_id, COUNT(*) AS count "
+                "FROM ledger_members "
+                "GROUP BY ledger_id, account_id "
+                "HAVING COUNT(*) > 1 "
+                "LIMIT 1"
+            )
+        ).mappings().first()
+        if duplicate_member is not None:
+            raise RuntimeError(
+                "Invalid legacy data: ledger_members contains duplicate ledger/account rows "
+                f"for ledger_id={duplicate_member['ledger_id']} account_id={duplicate_member['account_id']}"
+            )
+
+
+def _migrate_identity_runtime_schema(connection, table_names: set[str]) -> None:
+    """Make legacy identity tables valid parents for current composite FKs."""
+
+    if "ledgers" in table_names:
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_ledgers_ledger_id "
+                "ON ledgers (ledger_id)"
+            )
+        )
+
+    if "ledger_members" in table_names:
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_members_id_ledger_id "
+                "ON ledger_members (id, ledger_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_member_ledger_account "
+                "ON ledger_members (ledger_id, account_id)"
+            )
+        )
+
+
 def _validate_expense_split_integrity(connection, table_names: set[str]) -> None:
     """Reject split rows whose expense/member belongs to another ledger."""
 
@@ -979,6 +1041,8 @@ def migrate_sqlite_schema() -> None:
     table_names = set(inspector.get_table_names())
     with engine.begin() as connection:
         _validate_family_role_data(connection, table_names)
+        _validate_identity_unique_scopes(connection, table_names)
+        _migrate_identity_runtime_schema(connection, table_names)
         _validate_legacy_unique_scopes(connection, table_names)
         _migrate_user_ui_preferences(connection, table_names)
 

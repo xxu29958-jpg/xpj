@@ -555,6 +555,73 @@ def test_sqlite_integrity_runs_foreign_key_check_for_identity_tables() -> None:
         _reset_empty_database()
 
 
+def test_legacy_ledger_member_parent_key_migrates_before_foreign_key_check() -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ledger_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ledger_id VARCHAR(64) NOT NULL,
+                    account_id INTEGER NOT NULL,
+                    role VARCHAR(32) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    disabled_at DATETIME
+                )
+                """
+            )
+        )
+
+    database._sqlite_backup_done = True
+    try:
+        init_db()
+
+        assert "uq_ledger_members_id_ledger_id" in _indexes("ledger_members")
+        assert "uq_ledger_member_ledger_account" in _indexes("ledger_members")
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
+
+
+def test_legacy_duplicate_ledger_members_fail_before_unique_index() -> None:
+    _reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE ledger_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ledger_id VARCHAR(64) NOT NULL,
+                    account_id INTEGER NOT NULL,
+                    role VARCHAR(32) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    disabled_at DATETIME
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO ledger_members
+                    (ledger_id, account_id, role, created_at)
+                VALUES
+                    ('owner', 1, 'member', '2026-05-04 08:00:00'),
+                    ('owner', 1, 'viewer', '2026-05-04 08:00:00')
+                """
+            )
+        )
+
+    database._sqlite_backup_done = True
+    try:
+        with pytest.raises(RuntimeError, match="ledger_members"):
+            init_db()
+    finally:
+        database._sqlite_backup_done = False
+        _reset_empty_database()
+
+
 def test_legacy_database_with_invalid_family_roles_fails_startup() -> None:
     _reset_empty_database()
     with engine.begin() as connection:
