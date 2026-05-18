@@ -267,6 +267,45 @@ def preview_apply_rules_to_confirmed(
     )
 
 
+def validate_rule_application_preview(
+    db: Session,
+    *,
+    tenant_id: str,
+    status: str,
+    preview_token: str | None,
+    max_scan: int | None = None,
+) -> dict:
+    if not preview_token:
+        raise AppError(
+            "preview_required",
+            "请先预览影响范围，再确认应用规则。",
+            status_code=409,
+        )
+    if status == "pending":
+        current_preview = preview_apply_rules_to_pending(
+            db,
+            tenant_id=tenant_id,
+            limit=1,
+            max_scan=max_scan,
+        )
+    elif status == "confirmed":
+        current_preview = preview_apply_rules_to_confirmed(
+            db,
+            tenant_id=tenant_id,
+            limit=1,
+            max_scan=max_scan,
+        )
+    else:
+        raise AppError("invalid_request", status_code=422)
+    if current_preview["preview_token"] != preview_token:
+        raise AppError(
+            "preview_stale",
+            "预览已过期，请重新预览后再确认。",
+            status_code=409,
+        )
+    return current_preview
+
+
 def _preview_apply_rules_to_status(
     db: Session,
     *,

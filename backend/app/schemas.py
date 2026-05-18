@@ -841,6 +841,11 @@ class RuleApplyPendingResponse(BaseModel):
     scan_limit: int = 0
 
 
+class RuleApplyPendingRequest(BaseModel):
+    confirm: bool = False
+    preview_token: str | None = None
+
+
 class RuleApplyConfirmedRequest(BaseModel):
     confirm: bool = False
     preview_token: str | None = None
@@ -896,6 +901,7 @@ class RuleApplyPendingPreviewResponse(BaseModel):
     conflict_count: int = 0
     scan_limit_reached: bool = False
     scan_limit: int = 0
+    preview_token: str | None = None
 
 
 class RuleApplyConfirmedResponse(BaseModel):

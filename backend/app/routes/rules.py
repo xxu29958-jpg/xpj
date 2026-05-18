@@ -14,6 +14,7 @@ from app.schemas import (
     CategoryRuleUpdateRequest,
     RuleApplyConfirmedRequest,
     RuleApplyConfirmedResponse,
+    RuleApplyPendingRequest,
     RuleApplyPendingResponse,
     RuleApplicationListResponse,
     RuleApplicationRollbackResponse,
@@ -37,6 +38,7 @@ from app.services.classify_service import (
     preview_rule_for_pending,
     rollback_rule_application,
     update_rule,
+    validate_rule_application_preview,
 )
 from app.services.permission_service import require_write_expense
 from app.tenants import AuthContext
@@ -135,10 +137,25 @@ def post_rule_preview(
 
 @router.post("/apply-pending", response_model=RuleApplyPendingResponse)
 def post_rule_apply_pending(
+    payload: RuleApplyPendingRequest | None = None,
     auth: AuthContext = Depends(get_current_writer_context),
     max_scan: int = Query(default=500, ge=1, le=1000),
     db: Session = Depends(get_db),
 ) -> RuleApplyPendingResponse:
+    confirmed = bool(payload and payload.confirm)
+    if not confirmed:
+        raise AppError(
+            "preview_required",
+            "请先预览待确认账单影响范围，再确认应用。",
+            status_code=409,
+        )
+    validate_rule_application_preview(
+        db,
+        tenant_id=auth.tenant_id,
+        status="pending",
+        preview_token=payload.preview_token if payload else None,
+        max_scan=max_scan,
+    )
     pending_scanned, changed_count, scan_limit_reached = apply_rules_to_pending(
         db,
         tenant_id=auth.tenant_id,
@@ -212,6 +229,7 @@ def post_rule_apply_pending_preview(
         conflict_count=result["conflict_count"],
         scan_limit_reached=result["scan_limit_reached"],
         scan_limit=result["scan_limit"],
+        preview_token=result["preview_token"],
     )
 
 
@@ -248,10 +266,11 @@ def post_rule_apply_confirmed(
     require_write_expense(auth)
     if not payload.preview_token:
         raise AppError("preview_required", "请先预览历史账单影响范围，再确认应用。", status_code=409)
-    current_preview = preview_apply_rules_to_confirmed(
+    current_preview = validate_rule_application_preview(
         db,
         tenant_id=auth.tenant_id,
-        limit=limit,
+        status="confirmed",
+        preview_token=payload.preview_token,
         max_scan=max_scan,
     )
     if current_preview["preview_token"] != payload.preview_token:

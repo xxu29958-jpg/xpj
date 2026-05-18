@@ -233,7 +233,13 @@ def test_rules_preview_and_apply_use_enabled_merchant_alias(client: TestClient) 
     assert payload["items"][0]["id"] == expense_id
     assert payload["items"][0]["current_category"] == "其他"
 
-    apply = client.post("/api/rules/apply-pending", headers=app_headers())
+    bulk_preview = client.post("/api/rules/apply-pending/preview", headers=app_headers())
+    assert bulk_preview.status_code == 200, bulk_preview.text
+    apply = client.post(
+        "/api/rules/apply-pending",
+        headers=app_headers(),
+        json={"confirm": True, "preview_token": bulk_preview.json()["preview_token"]},
+    )
     assert apply.status_code == 200, apply.text
     assert apply.json()["changed_count"] == 1
 

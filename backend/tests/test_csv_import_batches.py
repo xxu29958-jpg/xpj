@@ -379,6 +379,80 @@ def test_csv_import_stale_worker_token_cannot_apply_after_reclaim(client: TestCl
         assert inserted == 1
 
 
+def test_csv_import_row_idempotency_prevents_duplicate_expense_after_stale_reclaim(
+    client: TestClient,
+) -> None:
+    del client
+    with SessionLocal() as setup_db:
+        batch = create_csv_import_batch(
+            setup_db,
+            tenant_id="owner",
+            file_name="idempotent-row.csv",
+            file_obj=_csv_bytes(1),
+        )
+        public_id = batch.public_id
+        batch_id = batch.id
+        row_id = setup_db.scalar(
+            select(CsvImportRow.id)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.batch_id == batch_id)
+            .limit(1)
+        )
+        assert row_id is not None
+        setup_db.execute(
+            update(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.id == row_id)
+            .values(
+                status="applying",
+                apply_token="worker-a",
+                updated_at=now_utc() - timedelta(minutes=10),
+            )
+        )
+        setup_db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=100,
+                merchant="Merchant 1",
+                category="餐饮",
+                source="CSV导入",
+                status="pending",
+                draft_idempotency_key=f"csv-import:{public_id}:2",
+                created_at=now_utc(),
+                updated_at=now_utc(),
+            )
+        )
+        setup_db.commit()
+
+    with SessionLocal() as db:
+        applied = apply_csv_import_batch(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            batch_size=10,
+        )
+        assert applied.inserted_count == 0
+        assert applied.remaining_valid_rows == 0
+
+        expenses = list(
+            db.scalars(
+                select(Expense)
+                .where(Expense.tenant_id == "owner")
+                .where(Expense.draft_idempotency_key == f"csv-import:{public_id}:2")
+            )
+        )
+        assert len(expenses) == 1
+        row = db.scalar(
+            select(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.id == row_id)
+        )
+        assert row is not None
+        assert row.status == "applied"
+        assert row.expense_id == expenses[0].id
+        assert row.apply_token is None
+
+
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient) -> None:
     csv = "amount_yuan,merchant,category\nabc,Bad,餐饮\n4.50,Good,交通\n"
     created = client.post(

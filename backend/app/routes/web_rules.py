@@ -36,6 +36,7 @@ from app.services.classify_service import (
     preview_rule_for_pending,
     rollback_rule_application,
     update_rule,
+    validate_rule_application_preview,
 )
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -252,8 +253,16 @@ def web_rules_apply_pending(
             url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
             status_code=303,
         )
-    current_preview = preview_apply_rules_to_pending(db, tenant_id=selected_id)
-    if not preview_token or current_preview["preview_token"] != preview_token:
+    try:
+        current_preview = validate_rule_application_preview(
+            db,
+            tenant_id=selected_id,
+            status="pending",
+            preview_token=preview_token,
+        )
+    except AppError:
+        current_preview = None
+    if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "待确认账单预览已过期，请重新预览后再确认应用。"
         return RedirectResponse(
             url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
@@ -285,8 +294,16 @@ def web_rules_apply_confirmed(
             url=_with_ledger("/web/rules", selected_id, confirmed_preview="1", msg=msg),
             status_code=303,
         )
-    current_preview = preview_apply_rules_to_confirmed(db, tenant_id=selected_id)
-    if not preview_token or current_preview["preview_token"] != preview_token:
+    try:
+        current_preview = validate_rule_application_preview(
+            db,
+            tenant_id=selected_id,
+            status="confirmed",
+            preview_token=preview_token,
+        )
+    except AppError:
+        current_preview = None
+    if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "历史账单预览已过期，请重新预览后再确认应用。"
         return RedirectResponse(
             url=_with_ledger("/web/rules", selected_id, confirmed_preview="1", msg=msg),

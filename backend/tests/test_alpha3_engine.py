@@ -137,6 +137,20 @@ def test_rule_patch_can_clear_optional_filters(client: TestClient) -> None:
 # --- T18 Rules Apply Pending ---------------------------------------------
 
 
+def _apply_pending_rules(client: TestClient, *, max_scan: int = 500):
+    preview = client.post(
+        f"/api/rules/apply-pending/preview?max_scan={max_scan}",
+        headers=app_headers(),
+    )
+    assert preview.status_code == 200, preview.json()
+    token = preview.json()["preview_token"]
+    return client.post(
+        f"/api/rules/apply-pending?max_scan={max_scan}",
+        headers=app_headers(),
+        json={"confirm": True, "preview_token": token},
+    )
+
+
 def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
     client: TestClient,
 ) -> None:
@@ -167,6 +181,7 @@ def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
     assert body["changed_count"] == 1
     assert body["skipped_non_default_category"] == 1
     assert body["conflict_count"] == 0
+    assert body["preview_token"]
     assert body["items"] == [
         {
             "id": default_id,
@@ -199,7 +214,7 @@ def test_rule_apply_pending_updates_category(client: TestClient) -> None:
     )
     assert response.status_code == 200
 
-    response = client.post("/api/rules/apply-pending", headers=app_headers())
+    response = _apply_pending_rules(client)
     assert response.status_code == 200
     body = response.json()
     assert body["pending_scanned"] >= 1
@@ -214,10 +229,52 @@ def test_rule_apply_pending_updates_category(client: TestClient) -> None:
     assert target["status"] == "pending"  # NOT auto-confirmed
 
 
+def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "PendingPreviewCafe")
+    created = client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "PendingPreviewCafe", "category": "椁愰ギ", "enabled": True, "priority": 1},
+    )
+    assert created.status_code == 200
+    rule_id = created.json()["id"]
+
+    missing = client.post(
+        "/api/rules/apply-pending",
+        headers=app_headers(),
+        json={"confirm": True},
+    )
+    assert missing.status_code == 409
+    assert missing.json()["error"] == "preview_required"
+
+    preview = client.post("/api/rules/apply-pending/preview", headers=app_headers())
+    assert preview.status_code == 200
+    token = preview.json()["preview_token"]
+
+    changed_rule = client.patch(
+        f"/api/rules/categories/{rule_id}",
+        headers=app_headers(),
+        json={"category": "Transport"},
+    )
+    assert changed_rule.status_code == 200
+    stale = client.post(
+        "/api/rules/apply-pending",
+        headers=app_headers(),
+        json={"confirm": True, "preview_token": token},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["error"] == "preview_stale"
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        assert expense.category != "Transport"
+
+
 def test_rule_application_audit_and_rollback_integration(client: TestClient) -> None:
     """Owner API flow: no-op creates no audit, real apply audits, rollback is idempotent."""
     upload_png(client)
-    noop = client.post("/api/rules/apply-pending", headers=app_headers())
+    noop = _apply_pending_rules(client)
     assert noop.status_code == 200
     assert noop.json()["changed_count"] == 0
     assert client.get("/api/rules/applications", headers=app_headers()).json()["items"] == []
@@ -232,7 +289,7 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient) -> 
     assert created.status_code == 200
     rule_id = created.json()["id"]
 
-    applied = client.post("/api/rules/apply-pending", headers=app_headers())
+    applied = _apply_pending_rules(client)
     assert applied.status_code == 200
     assert applied.json()["changed_count"] == 1
 
@@ -280,7 +337,7 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
         headers=app_headers(),
         json={"keyword": "BoundaryCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
-    client.post("/api/rules/apply-pending", headers=app_headers())
+    _apply_pending_rules(client)
     batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
 
     gray_list = client.get("/api/rules/applications", headers=gray_app_headers())
@@ -325,7 +382,7 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
         headers=app_headers(),
         json={"keyword": "ManualEditCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
-    applied = client.post("/api/rules/apply-pending", headers=app_headers())
+    applied = _apply_pending_rules(client)
     assert applied.status_code == 200
     batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
 
@@ -411,7 +468,7 @@ def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient) -> None
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 
-    response = client.post("/api/rules/apply-pending", headers=app_headers())
+    response = _apply_pending_rules(client)
     assert response.status_code == 200
 
     with SessionLocal() as db:
@@ -431,7 +488,7 @@ def test_rule_apply_pending_does_not_auto_confirm(client: TestClient) -> None:
         json={"keyword": "Kimi", "category": "AI订阅", "enabled": True, "priority": 1},
     )
 
-    response = client.post("/api/rules/apply-pending", headers=app_headers())
+    response = _apply_pending_rules(client)
     assert response.status_code == 200
 
     with SessionLocal() as db:
@@ -455,7 +512,7 @@ def test_rule_apply_pending_skips_non_default_category(client: TestClient) -> No
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 
-    response = client.post("/api/rules/apply-pending", headers=app_headers())
+    response = _apply_pending_rules(client)
     assert response.status_code == 200
 
     with SessionLocal() as db:

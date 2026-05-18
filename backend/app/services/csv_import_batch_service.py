@@ -215,9 +215,22 @@ def apply_csv_import_batch(
                 row.error_message = "缺少有效金额。"
                 row.updated_at = now
                 continue
+            idempotency_key = _csv_import_row_idempotency_key(batch, row)
+            existing_expense_id = _existing_csv_import_expense_id(
+                db,
+                tenant_id=tenant_id,
+                idempotency_key=idempotency_key,
+            )
+            if existing_expense_id is not None:
+                row.status = "applied"
+                row.apply_token = None
+                row.expense_id = existing_expense_id
+                row.updated_at = now
+                continue
             expense = Expense(
                 tenant_id=tenant_id,
                 amount_cents=None,
+                draft_idempotency_key=idempotency_key,
                 merchant=row.merchant or None,
                 category=row.category or "其他",
                 note=row.note or "",
@@ -512,6 +525,25 @@ def _batch_apply_token_matches(
             .where(CsvImportBatch.apply_token == apply_token)
         )
     )
+
+
+def _csv_import_row_idempotency_key(batch: CsvImportBatch, row: CsvImportRow) -> str:
+    return f"csv-import:{batch.public_id}:{row.line_number}"
+
+
+def _existing_csv_import_expense_id(
+    db: Session,
+    *,
+    tenant_id: str,
+    idempotency_key: str,
+) -> int | None:
+    value = db.scalar(
+        select(Expense.id)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.draft_idempotency_key == idempotency_key)
+        .limit(1)
+    )
+    return int(value) if value is not None else None
 
 
 def build_csv_import_errors_csv(

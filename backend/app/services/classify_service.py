@@ -21,6 +21,7 @@ from app.services.rule_application_service import (  # noqa: F401
     preview_apply_rules_to_pending,
     preview_rule_for_pending,
     rollback_rule_application,
+    validate_rule_application_preview,
 )
 from app.services.rule_service import (  # noqa: F401
     DEFAULT_RULES,
