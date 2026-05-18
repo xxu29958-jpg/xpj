@@ -1,0 +1,131 @@
+/* /web 桌面账本 · 工具类 (v0.10.1 从 desktop.css 拆出)
+ *
+ * 取代模板里的大量内联 style,统一文字/对齐/间距/状态色调用法。
+ */
+
+/* ───── 工具类 utilities (v0.10.1, 取代模板里大量内联 style) ─────
+ * 这些工具类 **不可以** 被 dt-* 组件内部依赖（保持组件自洽）;
+ * 只供模板使用,替代 style="text-align:right" / style="color:..." 之类的内联硬编码。
+ */
+.text-end    { text-align: right; }
+.text-center { text-align: center; }
+.text-faint  { color: var(--text-faint); }
+.text-meta   { color: var(--text-meta); }
+.text-muted  { color: var(--text-muted); }
+.text-default{ color: var(--text-default); }
+.text-danger { color: var(--state-danger-fg); }
+.text-success{ color: var(--state-success-fg); }
+.text-brand  { color: var(--brand-primary); }
+.font-num    { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.spacer      { flex: 1; }
+
+.pill-row {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.empty-cell {
+    padding: var(--space-10) var(--space-7);
+    text-align: center;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+}
+
+.pager-row {
+    text-align: center;
+    padding: var(--space-5) 0 var(--space-2);
+    border-top: 1px solid var(--border-card);
+    margin-top: var(--space-3);
+}
+.pager-info {
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+    margin: 0 var(--space-4);
+}
+
+/* pending/confirmed 行内细粒度文字样式 */
+.exp-time      { font-size: 12.5px; color: var(--text-muted); }
+.exp-time-meta { font-size: 11px;   color: var(--text-faint); font-family: var(--font-num); }
+.timeline-sep  { color: var(--text-faint); }
+
+/* 标题尾计数(duplicates.html 头部 "· N 组") */
+.page-title-count {
+    color: var(--text-meta);
+    font-weight: 500;
+    margin-left: var(--space-3);
+}
+
+/* toolbar 内右侧 hint 文字 */
+.toolbar-hint {
+    font-size: 11.5px;
+    color: var(--text-meta);
+}
+
+/* 通用垂直堆叠容器(替代 inline flex column gap:16px) */
+.stack-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+/* form 行内,多个按钮并排 */
+.inline-form { display: inline-block; }
+
+/* duplicates.html 表内 id 标记 */
+.dup-id {
+    margin-left: var(--space-3);
+    color: var(--text-meta);
+    font-size: 11.5px;
+}
+
+/* _edit_drawer 内部细节 (替代抽屉里散落的 inline style) */
+.card-title--flat { margin-bottom: 0; }
+.drawer-noimage-hint { font-size: 11.5px; color: var(--text-meta); }
+.drawer-draft-card {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3-5) var(--space-4);
+    font-size: 11.5px;
+    color: var(--text-meta);
+    line-height: 1.7;
+}
+.drawer-draft-card__title { color: var(--text-muted); margin-bottom: var(--space-2); }
+.drawer-draft-card__pill  { margin-top: var(--space-2); }
+.drawer-head__title { flex: 1; }
+.drawer-head__flags {
+    font-size: 11.5px;
+    color: var(--text-meta);
+    margin-top: var(--space-2);
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.page-eyebrow--flat { margin: 0; }
+.callout-info--flat { margin: 0; }
+.field--amount { flex: 2; }
+.field--currency { flex: 1; max-width: 130px; }
+
+/* readonly callout —— 用 state token 而非 inline style */
+.callout-info {
+    background: var(--state-info-bg);
+    color: var(--state-info-fg);
+    border: 1px solid var(--state-info-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3-5) var(--space-5);
+    margin-bottom: var(--space-5);
+    font-size: var(--type-caption-size);
+}
+.callout-info--danger {
+    background: var(--state-danger-bg);
+    color: var(--state-danger-fg);
+    border-color: var(--state-danger-border);
+}
+.callout-info--success {
+    background: var(--state-success-bg);
+    color: var(--state-success-fg);
+    border-color: var(--state-success-border);
+}
+

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}成员管理 — {{ ledger_name or '账本' }} — 小票夹{% endblock %}
 {% block content %}
-<h1>成员管理 <span class="ledger-title text-break" style="font-size:13px;color:#64748b;font-weight:normal">/ {{ ledger_name or ledger_id }}</span></h1>
+<h1>成员管理 <span class="ledger-title text-break" class="text-meta" style="font-weight:normal">/ {{ ledger_name or ledger_id }}</span></h1>
 
-<p style="margin-top:-8px;margin-bottom:18px;font-size:13px;color:#64748b">
-  <a href="/owner/ledgers" style="color:#2563eb;text-decoration:none">← 返回账本列表</a>
+<p class="text-meta" style="margin-top:-8px;margin-bottom:var(--space-6)">
+  <a class="text-link" href="/owner/ledgers">← 返回账本列表</a>
 </p>
 
-<div class="alert" style="background:#dbeafe;border-left:4px solid #2563eb;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#1e3a8a">
+<div class="alert alert-info">
   v0.5：家庭账本邀请仅在<strong>本机管理后台</strong>生成，公网无法签发或读取邀请明文。
   邀请明文只显示<strong>一次</strong>，请立即复制后通过私下渠道（微信/口头）转给家庭成员。
   成员通过 Android 「设置 → 加入家庭账本」粘贴邀请明文即可加入。拥有者转让保持单拥有者，旧拥有者会降为成员。
@@ -18,9 +18,9 @@
 {% endif %}
 
 {% if new_invitation_token %}
-<div class="card" style="background:#ecfdf5;border-left:4px solid #16a34a">
-  <h2 style="margin-top:0;color:#14532d">邀请已生成（仅显示一次）</h2>
-  <p style="font-size:13px;color:#166534;margin-bottom:6px">把下面这串邀请明文发给家庭成员。关闭页面或刷新后无法再次查看。</p>
+<div class="card alert-success">
+  <h2 style="margin-top:0;color:var(--state-success-fg)">邀请已生成（仅显示一次）</h2>
+  <p style="color:var(--state-success-fg);margin-bottom:var(--space-2)">把下面这串邀请明文发给家庭成员。关闭页面或刷新后无法再次查看。</p>
   <pre class="one-time-secret">{{ new_invitation_token }}</pre>
 </div>
 {% endif %}
@@ -28,48 +28,48 @@
 <div class="card">
   <h2>当前成员</h2>
   {% if not members %}
-  <p style="color:#64748b;font-size:13px">没有成员。</p>
+  <p class="text-meta">没有成员。</p>
   {% else %}
   <div class="table-scroll">
-  <table style="width:100%;border-collapse:collapse;font-size:13px">
+  <table>
     <thead>
-      <tr style="background:#f1f5f9;text-align:left">
-        <th style="padding:8px 10px">显示名</th>
-        <th style="padding:8px 10px">角色</th>
-        <th style="padding:8px 10px">加入时间</th>
-        <th style="padding:8px 10px">状态</th>
-        <th style="padding:8px 10px">操作</th>
+      <tr class="bg-sunken">
+        <th>显示名</th>
+        <th>角色</th>
+        <th>加入时间</th>
+        <th>状态</th>
+        <th>操作</th>
       </tr>
     </thead>
     <tbody>
       {% for m in members %}
-      <tr style="border-top:1px solid #e2e8f0">
-        <td class="text-break" style="padding:8px 10px">{{ m.account_name }}{% if m.is_self %} <span style="font-size:11px;color:#2563eb">（本人）</span>{% endif %}</td>
-        <td style="padding:8px 10px">
+      <tr>
+        <td class="text-break">{{ m.account_name }}{% if m.is_self %} <span class="text-link" style="font-size:var(--type-meta-size)">（本人）</span>{% endif %}</td>
+        <td>
           <span class="role-chip {% if m.role == 'owner' %}role-owner{% elif m.role == 'member' %}role-member{% elif m.role == 'viewer' %}role-viewer{% else %}role-unknown{% endif %}">{% if m.role == 'owner' %}拥有者{% elif m.role == 'member' %}成员{% elif m.role == 'viewer' %}只读{% else %}{{ m.role }}{% endif %}</span>
           {% if can_manage_members and not m.disabled_at and m.role != 'owner' and not m.is_self %}
           <form class="member-role-form" method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/role" data-confirm="确定调整 {{ m.account_name }} 的角色吗？">
-            <select name="role" style="padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px">
+            <select name="role" class="inline-input inline-input--narrow" style="margin-left:0">
               <option value="member" {% if m.role == 'member' %}selected{% endif %}>成员</option>
               <option value="viewer" {% if m.role == 'viewer' %}selected{% endif %}>只读</option>
             </select>
-            <button type="submit" class="btn btn-secondary" style="padding:3px 8px;font-size:12px">调整</button>
+            <button type="submit" class="btn btn-secondary" style="padding:var(--space-1) var(--space-3);font-size:var(--type-meta-size)">调整</button>
           </form>
           {% endif %}
         </td>
-        <td style="padding:8px 10px">{{ m.created_at | owner_datetime }}</td>
-        <td style="padding:8px 10px">{% if m.disabled_at %}<span class="status-chip status-disabled">已停用 {{ m.disabled_at | owner_datetime }}</span>{% else %}<span class="status-chip status-active">活跃</span>{% endif %}</td>
-        <td style="padding:8px 10px">
+        <td>{{ m.created_at | owner_datetime }}</td>
+        <td>{% if m.disabled_at %}<span class="status-chip status-disabled">已停用 {{ m.disabled_at | owner_datetime }}</span>{% else %}<span class="status-chip status-active">活跃</span>{% endif %}</td>
+        <td>
           {% if can_manage_members and not m.disabled_at and m.role != 'owner' %}
           <div class="member-actions">
           <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/transfer-owner" style="display:inline" data-confirm="确定把 {{ ledger_name or ledger_id }} 的拥有者转让给 {{ m.account_name }} 吗？当前拥有者会降为成员。">
-            <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">转让拥有者</button>
+            <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">转让拥有者</button>
           </form>
           <form method="post" action="/owner/ledgers/{{ ledger_id }}/members/{{ m.member_id }}/disable" style="display:inline" data-confirm="确定停用 {{ m.account_name }} 吗？该成员的所有登录将立即失效。">
-            <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">停用</button>
+            <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">停用</button>
           </form>
           </div>
-          {% else %}<span style="color:#94a3b8;font-size:12px">—</span>{% endif %}
+          {% else %}<span class="text-faint">—</span>{% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -81,69 +81,69 @@
 
 <div class="card">
   <h2>发起邀请</h2>
-  <p style="color:#64748b;font-size:13px;margin-bottom:12px">
+  <p class="text-meta">
     成员能编辑账单；只读不能修改任何内容。拥有者角色不能通过邀请或角色调整下发，只能通过显式拥有者转让。
   </p>
   {% if can_manage_members %}
   <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations">
     <div class="invite-form-row">
-      <label style="font-size:13px">角色：
-        <select name="role" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px">
+      <label>角色：
+        <select name="role" class="inline-input">
           <option value="member">成员</option>
           <option value="viewer">只读</option>
         </select>
       </label>
-      <label style="font-size:13px">备注：
+      <label>备注：
         <input type="text" name="note" maxlength="80" placeholder="例：妈妈"
-               style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px;width:200px">
+               class="inline-input" style="width:200px">
       </label>
-      <label style="font-size:13px">有效期（天）：
+      <label>有效期（天）：
         <input type="number" name="ttl_days" min="1" max="30" value="7"
-               style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px;width:80px">
+               class="inline-input" style="width:80px">
       </label>
       <button type="submit" class="btn btn-primary">生成邀请明文</button>
     </div>
   </form>
   {% else %}
-  <p style="color:#64748b;font-size:13px">当前本机账号不是这个账本的拥有者，不能生成新邀请。</p>
+  <p class="text-meta">当前本机账号不是这个账本的拥有者，不能生成新邀请。</p>
   {% endif %}
 </div>
 
 <div class="card">
   <h2>已发出的邀请</h2>
   {% if not invitations %}
-  <p style="color:#64748b;font-size:13px">还没有邀请记录。</p>
+  <p class="text-meta">还没有邀请记录。</p>
   {% else %}
   <div class="table-scroll">
-  <table style="width:100%;border-collapse:collapse;font-size:13px">
+  <table>
     <thead>
-      <tr style="background:#f1f5f9;text-align:left">
-        <th style="padding:8px 10px">角色</th>
-        <th style="padding:8px 10px">备注</th>
-        <th style="padding:8px 10px">发出</th>
-        <th style="padding:8px 10px">有效期截止</th>
-        <th style="padding:8px 10px">状态</th>
-        <th style="padding:8px 10px">操作</th>
+      <tr class="bg-sunken">
+        <th>角色</th>
+        <th>备注</th>
+        <th>发出</th>
+        <th>有效期截止</th>
+        <th>状态</th>
+        <th>操作</th>
       </tr>
     </thead>
     <tbody>
       {% for inv in invitations %}
-      <tr style="border-top:1px solid #e2e8f0">
-        <td style="padding:8px 10px"><span class="role-chip {% if inv.role == 'member' %}role-member{% elif inv.role == 'viewer' %}role-viewer{% else %}role-unknown{% endif %}">{% if inv.role == 'member' %}成员{% elif inv.role == 'viewer' %}只读{% else %}{{ inv.role }}{% endif %}</span></td>
-        <td class="text-break" style="padding:8px 10px">{{ inv.note or '—' }}</td>
-        <td style="padding:8px 10px">{{ inv.created_at | owner_datetime }}</td>
-        <td style="padding:8px 10px">{{ inv.expires_at | owner_datetime }}</td>
-        <td style="padding:8px 10px">
+      <tr>
+        <td><span class="role-chip {% if inv.role == 'member' %}role-member{% elif inv.role == 'viewer' %}role-viewer{% else %}role-unknown{% endif %}">{% if inv.role == 'member' %}成员{% elif inv.role == 'viewer' %}只读{% else %}{{ inv.role }}{% endif %}</span></td>
+        <td class="text-break">{{ inv.note or '—' }}</td>
+        <td>{{ inv.created_at | owner_datetime }}</td>
+        <td>{{ inv.expires_at | owner_datetime }}</td>
+        <td>
           {% if inv.used_at %}<span class="status-chip status-used">已接受 by {{ inv.used_by_account_name or '?' }} {{ inv.used_at | owner_datetime }}</span>
           {% elif inv.revoked_at %}<span class="status-chip status-revoked">已撤销 {{ inv.revoked_at | owner_datetime }}</span>
           {% else %}<span class="status-chip status-pending">待接受</span>{% endif %}
         </td>
-        <td style="padding:8px 10px">
+        <td>
           {% if not inv.used_at and not inv.revoked_at %}
           <form method="post" action="/owner/ledgers/{{ ledger_id }}/invitations/{{ inv.public_id }}/revoke" style="display:inline" data-confirm="确定撤销这条邀请？撤销后被邀请人无法再使用此邀请明文。">
-            <button type="submit" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">撤销</button>
+            <button type="submit" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">撤销</button>
           </form>
-          {% else %}<span style="color:#94a3b8;font-size:12px">—</span>{% endif %}
+          {% else %}<span class="text-faint">—</span>{% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -156,25 +156,25 @@
 <div class="card">
   <h2>成员审计</h2>
   {% if not audit_logs %}
-  <p style="color:#64748b;font-size:13px">还没有成员操作记录。</p>
+  <p class="text-meta">还没有成员操作记录。</p>
   {% else %}
   <div class="table-scroll">
-  <table style="width:100%;border-collapse:collapse;font-size:13px">
+  <table>
     <thead>
-      <tr style="background:#f1f5f9;text-align:left">
-        <th style="padding:8px 10px">时间</th>
-        <th style="padding:8px 10px">动作</th>
-        <th style="padding:8px 10px">操作者</th>
-        <th style="padding:8px 10px">目标</th>
-        <th style="padding:8px 10px">角色变化</th>
-        <th style="padding:8px 10px">结果</th>
+      <tr class="bg-sunken">
+        <th>时间</th>
+        <th>动作</th>
+        <th>操作者</th>
+        <th>目标</th>
+        <th>角色变化</th>
+        <th>结果</th>
       </tr>
     </thead>
     <tbody>
       {% for item in audit_logs %}
-      <tr style="border-top:1px solid #e2e8f0">
-        <td style="padding:8px 10px;white-space:nowrap">{{ item.created_at | owner_datetime }}</td>
-        <td style="padding:8px 10px">
+      <tr>
+        <td style="white-space:nowrap">{{ item.created_at | owner_datetime }}</td>
+        <td>
           {% if item.action == 'invitation_created' %}创建邀请
           {% elif item.action == 'invitation_accepted' %}接受邀请
           {% elif item.action == 'invitation_revoked' %}撤销邀请
@@ -183,16 +183,16 @@
           {% elif item.action == 'owner_transferred' %}转让拥有者
           {% else %}{{ item.action }}{% endif %}
         </td>
-        <td class="text-break" style="padding:8px 10px">{{ item.actor_account_name or '—' }}</td>
-        <td class="text-break" style="padding:8px 10px">{{ item.target_account_name or ('邀请' if item.invitation_public_id else '—') }}</td>
-        <td style="padding:8px 10px">
+        <td class="text-break">{{ item.actor_account_name or '—' }}</td>
+        <td class="text-break">{{ item.target_account_name or ('邀请' if item.invitation_public_id else '—') }}</td>
+        <td>
           {% if item.previous_role or item.new_role %}
             {% if item.previous_role == 'owner' %}拥有者{% elif item.previous_role == 'member' %}成员{% elif item.previous_role == 'viewer' %}只读{% else %}{{ item.previous_role or '—' }}{% endif %}
             →
             {% if item.new_role == 'owner' %}拥有者{% elif item.new_role == 'member' %}成员{% elif item.new_role == 'viewer' %}只读{% else %}{{ item.new_role or '—' }}{% endif %}
           {% else %}—{% endif %}
         </td>
-        <td style="padding:8px 10px"><span class="status-chip {% if item.result == 'success' %}status-success{% else %}status-muted{% endif %}">{% if item.result == 'success' %}成功{% else %}{{ item.result }}{% endif %}</span></td>
+        <td><span class="status-chip {% if item.result == 'success' %}status-success{% else %}status-muted{% endif %}">{% if item.result == 'success' %}成功{% else %}{{ item.result }}{% endif %}</span></td>
       </tr>
       {% endfor %}
     </tbody>

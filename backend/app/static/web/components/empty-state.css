@@ -1,0 +1,39 @@
+/* /web 桌面账本 · 空态组件 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .empty-state 提供统一的卡片内空态(标题 + 说明 + CTA),
+ * 视觉与 Android EmptyStatsCard 对齐。
+ */
+
+/* ───── 统一空态 (empty-state) ─────
+ * 用于卡片内的空态：弱化的标题 + 一行说明 + 主操作链接，
+ * 视觉与 Android EmptyStatsCard 对齐：留白比纯文本提示更明显，
+ * CTA 用主色，引导用户跳到对应配置页。
+ */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 0 10px;
+}
+.empty-state__title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-default);
+}
+.empty-state__body {
+    font-size: 12.5px;
+    color: var(--text-meta);
+    line-height: 1.55;
+}
+.empty-state__cta {
+    align-self: flex-start;
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: var(--brand-primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+.empty-state__cta:hover {
+    text-decoration: underline;
+}
+

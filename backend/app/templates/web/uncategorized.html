@@ -12,14 +12,14 @@
 </p>
 
 {% if flash_message %}
-<div class="card flash">{{ flash_message }}</div>
+<div class="dt-alert success">{{ flash_message }}</div>
 {% endif %}
 
 {% if uncategorized_items %}
-<section class="card">
-  <form method="post" action="/web/categories/uncategorized/bulk-set" class="form-stack">
+<section class="dt-card">
+  <form method="post" action="/web/categories/uncategorized/bulk-set" class="dt-form-grid">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <table class="transaction-table">
+    <table class="dt-table">
       <thead>
         <tr>
           <th><input type="checkbox" id="select-all" {% if not can_write %}disabled{% endif %}></th>
@@ -53,9 +53,9 @@
           {% endfor %}
         </select>
       </label>
-      <button type="submit" class="btn btn-primary">应用到所选</button>
+      <button type="submit" class="dt-btn primary">应用到所选</button>
       {% else %}<span class="readonly-inline">只读角色无法批量改写分类。</span>{% endif %}
-      <a href="/web/categories{{ q }}" class="btn btn-secondary">返回分类账本</a>
+      <a href="/web/categories{{ q }}" class="dt-btn">返回分类账本</a>
     </div>
   </form>
 </section>
@@ -70,7 +70,7 @@
   })();
 </script>
 {% else %}
-<div class="card">
+<div class="dt-card">
   <p>当前账本没有未分类的待确认账单。可以回到<a href="/web/categories{{ q }}">分类账本</a>。</p>
 </div>
 {% endif %}

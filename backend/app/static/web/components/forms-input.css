@@ -1,0 +1,53 @@
+/* /web 桌面账本 · 文本输入控件 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .dt-input —— 文本输入框/textarea 基类
+ *   .dt-input.large       —— 大号(金额输入等场景)
+ *   .dt-input.with-prefix —— 左侧留出 prefix 位
+ */
+
+.dt-input {
+    background: var(--surface-card);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font-family: var(--font-zh);
+    font-size: 14px;
+    color: var(--text-default);
+    outline: none;
+    transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.dt-input:hover { border-color: var(--text-meta); }
+.dt-input:focus { border-color: var(--text-default); }
+.dt-input.large {
+    font-family: var(--font-serif);
+    font-size: 28px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    padding: 10px 14px;
+}
+.dt-input.with-prefix { padding-left: 28px; }
+.input-wrap { position: relative; }
+.input-prefix {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-meta);
+    font-family: var(--font-num);
+    font-size: 14px;
+    pointer-events: none;
+}
+
+.ocr-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-meta);
+    padding: 4px 8px;
+    background: var(--brand-primary-bg);
+    border-radius: 3px;
+    font-family: var(--font-num);
+    white-space: nowrap;
+}
+

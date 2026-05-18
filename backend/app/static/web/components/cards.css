@@ -1,0 +1,164 @@
+/* /web 桌面账本 · 卡片基础组件 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .dt-card —— 通用卡片基类
+ *   .dt-card-tight        紧凑 padding
+ *   .dt-card--timeline    时间线变体
+ *   .dt-card--empty       空态卡
+ */
+
+/* ───── Cards ───── */
+.dt-card {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    padding: 20px 22px;
+    position: relative;
+    transition:
+        transform var(--motion-normal) var(--ease-standard),
+        box-shadow var(--motion-normal) var(--ease-standard),
+        border-color var(--motion-normal) var(--ease-standard);
+}
+.dt-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-raised);
+    border-color: var(--border-input);
+}
+.dt-card-tight { padding: 16px 18px; }
+/* 时间线大列表内 padding 收紧（confirmed.html 用） */
+.dt-card--timeline { padding: 8px 24px 16px; }
+/* 空态大卡片(duplicates / data_quality 无数据等) */
+.dt-card--empty {
+    padding: var(--space-10) var(--space-7);
+    text-align: center;
+}
+.dt-card--empty .empty-headline {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: var(--type-headline-size);
+    color: var(--text-muted);
+    margin: 0 0 var(--space-3);
+}
+.dt-card--empty .empty-body {
+    font-size: 13px;
+    color: var(--text-meta);
+}
+.card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+.card-title {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-meta);
+    font-family: var(--font-num);
+}
+.card-sub { font-size: 11.5px; color: var(--text-faint); }
+/* a.card-sub —— 卡片右上"去处理 →" 之类的次操作链接 */
+a.card-sub { text-decoration: none; }
+a.card-sub:hover { color: var(--text-muted); }
+
+/* dashboard.html 卡片内细粒度 hint 文本 */
+.card-hint-sm   { font-size: 12px;   color: var(--text-meta); margin-top: var(--space-2); }
+.card-hint-tiny { font-size: 11.5px; color: var(--text-meta); margin-top: var(--space-3); line-height: 1.6; }
+.card-sub--gap  { margin-top: var(--space-2); }
+
+/* dashboard pending 卡内左右分栏 */
+.pending-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4-5);
+}
+.pending-split__right {
+    border-left: 1px solid var(--border-card);
+    padding-left: var(--space-4-5);
+}
+.pending-split__pills {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    flex-wrap: wrap;
+}
+
+/* dashboard 大文字 spark svg 显示与 margin */
+.spark {
+    display: block;
+    margin-top: var(--space-4-5);
+    color: var(--text-default);
+}
+
+/* delta-pill-row 间距(替代 inline margin-top:8) */
+.delta-pill-row--gap { margin-top: var(--space-3); }
+
+/* dashboard goals 卡片内 "共 N 条" 文本 */
+.goals-summary { font-size: 13px; color: var(--text-muted); }
+
+.kpi-amount {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 38px;
+    letter-spacing: -0.02em;
+    color: var(--text-default);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+}
+.kpi-amount .yuan { font-size: 18px; color: var(--text-meta); margin-right: 4px; font-family: var(--font-num); }
+.kpi-amount .decimals { font-size: 22px; color: var(--text-meta); font-family: var(--font-num); }
+
+.delta-pill-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.delta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-family: var(--font-num);
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+.delta-pill.delta-up {
+    color: var(--state-warn-fg);
+    background: color-mix(in srgb, var(--state-warn-fg) 14%, transparent);
+}
+.delta-pill.delta-down {
+    color: var(--brand-primary);
+    background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
+}
+.delta-pill.delta-flat {
+    color: var(--text-meta);
+    background: var(--state-neutral-bg, color-mix(in srgb, var(--text-meta) 14%, transparent));
+}
+.delta-pill-prev {
+    color: var(--text-meta);
+    font-size: 11.5px;
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+}
+
+.delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-num);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.delta.up { color: var(--state-danger-fg); background: var(--state-danger-bg); }
+.delta.down { color: var(--state-success-fg); background: var(--state-success-bg); }
+.delta.flat { color: var(--text-meta); background: var(--surface-sunken); }
+

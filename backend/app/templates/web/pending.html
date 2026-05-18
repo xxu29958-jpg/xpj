@@ -17,9 +17,7 @@
 </div>
 
 {% if flash_message %}
-<div class="readonly-callout" style="background:var(--state-info-bg);color:var(--state-info-fg);border-color:var(--state-info-border)">
-  {{ flash_message }}
-</div>
+<div class="callout-info">{{ flash_message }}</div>
 {% endif %}
 
 {% set _q = '?ledger_id=' ~ selected_ledger_id %}
@@ -32,7 +30,7 @@
     <a class="filter-tab{% if filter == 'duplicate' %} is-active{% endif %}" href="/web/pending{{ _q }}&filter=duplicate">疑似重复 <span class="count">{{ suspected_duplicate_count }}</span></a>
     <a class="filter-tab{% if filter == 'ready' %} is-active{% endif %}" href="/web/pending{{ _q }}&filter=ready">可确认 <span class="count">{{ ready_count }}</span></a>
   </div>
-  <div style="flex:1"></div>
+  <div class="spacer"></div>
   <a class="dt-btn" href="/web/import{{ _q }}">导入 / 导出</a>
 </div>
 
@@ -48,7 +46,7 @@
     <div>分类</div>
     <div>时间</div>
     <div>状态</div>
-    <div style="text-align:right">金额</div>
+    <div class="text-end">金额</div>
   </div>
   {% for e in expenses %}
   <a class="exp-row" data-expense-id="{{ e.id }}"
@@ -83,10 +81,8 @@
       {% endif %}
     </div>
     <div>
-      <div style="font-size:12.5px;color:var(--text-muted)">{{ e.expense_time or '—' }}</div>
-      <div style="font-size:11px;color:var(--text-faint);font-family:var(--font-num)">
-        上传 {{ e.created_at }}
-      </div>
+      <div class="exp-time">{{ e.expense_time or '—' }}</div>
+      <div class="exp-time-meta">上传 {{ e.created_at }}</div>
     </div>
     <div>
       {% set _flags = [] %}
@@ -94,14 +90,14 @@
       {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
       {% if e.is_duplicate %}{% set _ = _flags.append(('danger', '疑似重复')) %}{% endif %}
       {% if _flags %}
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <div class="pill-row">
           {% for cls, label in _flags %}<span class="dt-pill {{ cls }}">{{ label }}</span>{% endfor %}
         </div>
       {% else %}
         <span class="dt-pill ok">可确认</span>
       {% endif %}
     </div>
-    <div style="text-align:right">
+    <div class="text-end">
       {% if e.amount_label %}
         <span class="exp-amt">{{ e.amount_label }}</span>
         {% if e.fx_meta %}<div class="exp-meta">{{ e.fx_meta }}</div>{% endif %}
@@ -111,7 +107,7 @@
     </div>
   </a>
   {% else %}
-  <div style="padding:48px 24px;text-align:center;color:var(--text-meta);font-size:13px">
+  <div class="empty-cell">
     {% if filter == 'all' %}
       今天还没有截图待确认。从 iPhone 快捷指令或 Android 上传截图后会出现在这里。
     {% else %}

@@ -10,40 +10,15 @@
 
 body {
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    font-size: 14px;
+    font-size: var(--type-body-size);
     background: var(--surface-app);
     color: var(--text-default);
-    line-height: 1.6;
+    line-height: var(--type-body-line);
 }
 
-.nav {
-    background: var(--surface-nav);
-    color: #e2e8f0;
-    padding: 8px 20px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    min-height: 52px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    flex-wrap: wrap;
-}
-.nav .brand { font-weight: 700; font-size: 15px; color: #fff; text-decoration: none; }
-.nav a { color: #94a3b8; text-decoration: none; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
-.nav a:hover, .nav a.active { color: #fff; background: rgba(255,255,255,0.06); }
-.nav .version { font-size: 11px; color: #64748b; }
-.nav .owner-link { font-size: 12px; color: #cbd5e1; border: 1px solid #334155; }
-.nav .ledger-selector label { color: #cbd5e1; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
-.nav .ledger-selector select {
-    background: #0f172a;
-    color: #e2e8f0;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    padding: 5px 8px;
-    font-size: 13px;
-    max-width: 240px;
-}
+/* 旧顶栏 .nav (v0.4) 已退役 —— /web 全部页面 extends base.html 进入 desktop shell,
+ * sidebar / topbar 由 _shell.css 接管。owner 端的 .nav 是 owner.css 独立定义,
+ * 不依赖此处。 */
 
 .ledger-context-bar {
     display: flex;
@@ -77,21 +52,13 @@ body {
 .ledger-role-chip.ledger-role-member { background: #bfdbfe; color: #1e3a8a; }
 .ledger-role-chip.ledger-role-viewer { background: #e2e8f0; color: #475569; }
 
-.page { max-width: 1180px; margin: 24px auto; padding: 0 16px 40px; }
+/* .page 容器已由 _shell.css 的 .content 接管(shell 内自动管理宽度) */
 
-h1 { font-size: 22px; margin-bottom: 16px; color: var(--text-default); }
-h1 .page-title-sub { font-size: 13px; color: var(--text-muted); font-weight: normal; margin-left: 8px; }
-h2 { font-size: 15px; margin: 16px 0 12px; color: #334155; border-bottom: 1px solid var(--border-card); padding-bottom: 6px; }
+h1 { font-size: var(--type-headline-size); margin-bottom: var(--space-5); color: var(--text-default); }
+h1 .page-title-sub { font-size: 13px; color: var(--text-muted); font-weight: normal; margin-left: var(--space-3); }
+h2 { font-size: var(--type-subtitle-size); margin: var(--space-5) 0 var(--space-4); color: var(--text-muted); border-bottom: 1px solid var(--border-card); padding-bottom: var(--space-2); }
 
-.card {
-    background: var(--surface-card);
-    border-radius: var(--radius-card);
-    box-shadow: var(--shadow-card);
-    padding: 16px 20px;
-    margin-bottom: 16px;
-}
-.card.placeholder-card { background: #f8fafc; border: 1px dashed var(--border-card); box-shadow: none; }
-.card.placeholder-card p { color: var(--text-muted); font-size: 13px; }
+/* .card 基础定义已退役 —— 所有 /web 模板已迁到 .dt-card (components/cards.css)。 */
 
 /* Summary grid (Dashboard / Reports) */
 .summary-grid {
@@ -153,58 +120,7 @@ td.amount { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: 
 .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-card); display: block; }
 .receipt-img { max-width: 240px; max-height: 320px; border-radius: 6px; border: 1px solid var(--border-card); display: block; }
 
-.btn {
-    display: inline-block;
-    padding: 6px 14px;
-    border-radius: 6px;
-    border: 1px solid transparent;
-    font-size: 13px;
-    cursor: pointer;
-    text-decoration: none;
-    font-family: inherit;
-    outline: none;
-    transition:
-        background-color var(--motion-fast, 120ms) var(--ease-standard, ease),
-        border-color var(--motion-fast, 120ms) var(--ease-standard, ease),
-        color var(--motion-fast, 120ms) var(--ease-standard, ease),
-        transform var(--motion-fast, 120ms) var(--ease-standard, ease),
-        box-shadow var(--motion-fast, 120ms) var(--ease-standard, ease);
-    -webkit-tap-highlight-color: transparent;
-}
-.btn-primary  { background: var(--brand-primary); color: #fff; }
-.btn-primary:hover { background: var(--brand-primary-strong); }
-.btn-success  { background: var(--state-success-fg); color: #fff; }
-.btn-success:hover { background: #15803d; }
-.btn-secondary { background: var(--surface-card); color: var(--text-muted); border-color: var(--control-border); }
-.btn-secondary:hover { background: var(--surface-sunken); }
-.btn:focus:not(:focus-visible) { outline: none; box-shadow: none; }
-.btn:active {
-    border-color: var(--control-border-active);
-    background: var(--control-press-bg);
-    transform: translateY(1px);
-}
-.btn-primary:active,
-.btn-success:active {
-    border-color: transparent;
-    filter: brightness(0.96);
-}
-.btn:focus-visible {
-    outline: none;
-    border-color: var(--control-border-active);
-    box-shadow: 0 0 0 3px var(--brand-focus-ring);
-}
-.btn:disabled,
-.btn[aria-disabled="true"] {
-    cursor: not-allowed;
-    opacity: 0.56;
-    filter: grayscale(0.2);
-}
-.btn:disabled:hover,
-.btn[aria-disabled="true"]:hover { background: #fff; }
-.btn-danger   { background: #fee2e2; color: var(--state-danger-fg); border-color: #fecaca; }
-.btn-danger:hover { background: #fecaca; }
-.btn-link     { background: transparent; color: var(--brand-primary); padding: 6px 8px; }
-.btn-link:hover { text-decoration: underline; }
+/* .btn 全套已退役 —— 改用 .dt-btn (components/buttons.css)。所有模板已迁移。 */
 
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .quick-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -275,12 +191,12 @@ form.inline { margin: 0; }
 /* v0.4-alpha3 - Review Center bulk + filter tabs */
 .filter-bar { display: flex; gap: 8px; margin: 12px 0 16px; flex-wrap: wrap; }
 .filter-tab { padding: 6px 12px; border-radius: 999px; background: var(--surface-card, #f1f5f9); color: var(--text-default); text-decoration: none; font-size: 13px; border: 1px solid transparent; }
-.filter-tab:hover { border-color: var(--border-subtle, #cbd5e1); }
+.filter-tab:hover { border-color: var(--border-input); }
 .filter-tab.is-active { background: var(--brand-primary, #2563eb); color: white; }
-.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface-card, #f8fafc); border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border-subtle, #e2e8f0); }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface-card, #f8fafc); border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border-card); }
 .bulk-check { font-size: 13px; }
 .bulk-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.bulk-input { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-subtle, #cbd5e1); font-size: 13px; min-width: 140px; }
+.bulk-input { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-input); font-size: 13px; min-width: 140px; }
 .flash { padding: 10px 14px; background: #ecfdf5; color: #047857; border-left: 4px solid #10b981; font-size: 13px; }
 .summary-card.ok { background: #ecfdf5; }
 .summary-card.ok .summary-card-num { color: #047857; }
@@ -309,7 +225,7 @@ form.inline { margin: 0; }
 @media (max-width: 720px) { .grid.two-col { grid-template-columns: 1fr; } }
 .form-stack { display: flex; flex-direction: column; gap: 10px; }
 .form-stack label { display: flex; flex-direction: column; font-size: 13px; gap: 4px; color: var(--text-muted, #475569); }
-.form-stack input { padding: 6px 10px; border: 1px solid var(--border-subtle, #cbd5e1); border-radius: 6px; }
+.form-stack input { padding: 6px 10px; border: 1px solid var(--border-input); border-radius: 6px; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .card-header h2 { margin: 0; }
 .btn-danger { background: var(--state-danger-bg); color: var(--state-danger-fg); border: 1px solid var(--state-danger-border); padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
@@ -572,125 +488,33 @@ form.inline { margin: 0; }
     justify-content: flex-end;
     margin-top: 12px;
 }
-.trend-chart {
-    height: 220px;
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(18px, 1fr);
-    gap: 6px;
-    align-items: end;
-    padding-top: 12px;
-    overflow-x: auto;
-}
-.trend-column {
-    height: 190px;
-    min-width: 18px;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    align-items: stretch;
-    gap: 6px;
-}
-.trend-bar {
-    min-height: 4px;
-    border-radius: 6px 6px 2px 2px;
-    background: linear-gradient(180deg, var(--brand-primary), var(--brand-primary-strong));
-}
-.trend-label {
-    height: 18px;
-    color: var(--text-meta);
-    font-size: 10px;
-    text-align: center;
-    white-space: nowrap;
-}
-.rank-list,
-.category-compare-list,
+/* trend-chart / rank-list / category-compare / compare-bar 等 legacy 块已删除——
+ * 0 个模板引用,reports/stats 页改用 ECharts (reports.js) 和 dt-card 系统。 */
+
 .goal-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-4);
 }
-.rank-row,
-.category-compare-row,
 .goal-row {
-    padding: 10px 0;
-    border-bottom: 1px solid #f1f5f9;
+    padding: var(--space-3-5) 0;
+    border-bottom: 1px solid var(--border-card);
 }
-.rank-row:last-child,
-.category-compare-row:last-child,
 .goal-row:last-child { border-bottom: none; }
-.rank-row-head,
 .goal-row-head {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-4);
     align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: var(--space-2);
 }
-.rank-track {
-    height: 8px;
-    background: #e2e8f0;
-    border-radius: 999px;
-    overflow: hidden;
-}
-.rank-fill {
-    height: 100%;
-    background: var(--brand-primary);
-    border-radius: inherit;
-}
-.compare-bars {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 8px 0;
-}
-.compare-bar {
-    min-width: 42px;
-    max-width: 100%;
-    border-radius: 4px;
-    padding: 2px 6px;
-    color: #fff;
-    font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-}
-.compare-bar.current { background: var(--brand-primary); }
-.compare-bar.previous { background: #94a3b8; }
 .goal-row.is-archived { opacity: 0.72; }
 
 @media (max-width: 720px) {
-    .nav {
-        height: auto;
-        min-height: 52px;
-        padding: 8px 12px;
-        align-items: center;
-        gap: 8px;
-        position: relative;
-    }
-    .nav .brand { flex: 1 0 100%; }
-    .nav > span[style*="flex"] { display: none; }
-    .nav a {
-        padding: 5px 8px;
-        font-size: 12px;
-    }
-    .nav .ledger-selector {
-        order: 50;
-        flex: 1 0 100%;
-    }
-    .nav .ledger-selector label { width: 100%; }
-    .nav .ledger-selector select {
-        flex: 1;
-        max-width: none;
-        min-width: 0;
-    }
-    .nav .owner-link,
-    .nav .version { order: 60; }
-    .page { margin-top: 16px; }
     .ledger-context-bar {
         align-items: flex-start;
-        gap: 8px;
+        gap: var(--space-3);
     }
-    .rank-row-head,
     .goal-row-head { align-items: flex-start; flex-direction: column; }
     .reports-chart-canvas,
     .reports-chart-canvas-large {
@@ -698,12 +522,11 @@ form.inline { margin: 0; }
         height: 300px;
         max-height: none;
     }
-    .trend-chart { grid-auto-columns: minmax(24px, 1fr); }
     .dashboard-card-grid { grid-template-columns: 1fr; }
     .dashboard-card-settings-head { display: none; }
     .dashboard-card-setting-row {
         grid-template-columns: 1fr;
-        gap: 8px;
+        gap: var(--space-3);
     }
     .dashboard-card-position span { display: inline; }
 }

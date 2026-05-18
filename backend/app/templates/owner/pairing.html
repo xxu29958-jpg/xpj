@@ -15,7 +15,7 @@
     账本：{{ pairing_result.ledger_name }} &nbsp;·&nbsp;
     有效期至：{{ pairing_result.expires_at|owner_datetime }}
   </div>
-  <p style="color:#64748b;font-size:12px;margin-top:16px;text-align:center">
+  <p class="text-meta" style="text-align:center;margin-top:var(--space-5)">
     在 Android 小票夹 App 中点击"绑定账本"，输入上方 6 位码完成绑定。<br>
     绑定码为一次性使用，过期后自动失效。
   </p>
@@ -24,7 +24,7 @@
 
 <div class="card">
   <h2>生成新绑定码</h2>
-  <p style="color:#64748b;font-size:13px;margin-bottom:16px">
+  <p class="text-meta" style="margin-bottom:var(--space-5)">
     绑定码用于 Android 设备绑定本地私人账本。每次生成仅有一个有效码，过期自动失效。
   </p>
   {% if not ledger_choices %}
@@ -34,9 +34,9 @@
   {% else %}
   <form method="post" action="/owner/pairing">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <label style="font-size:13px">绑定到账本：
+      <label>绑定到账本：
         <select name="ledger_id"
-                style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px">
+                class="inline-input">
           {% for choice in ledger_choices %}
           <option value="{{ choice.ledger_id }}"
                   {% if choice.ledger_id == selected_ledger_id %}selected{% endif %}>
@@ -45,9 +45,9 @@
           {% endfor %}
         </select>
       </label>
-      <label style="font-size:13px">有效时长（分钟）：
+      <label>有效时长（分钟）：
         <input type="number" name="ttl_minutes" value="15" min="1" max="60"
-               style="width:70px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px">
+               class="inline-input inline-input--narrow">
       </label>
       <button type="submit" class="btn btn-primary">生成绑定码</button>
     </div>

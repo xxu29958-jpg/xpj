@@ -1,0 +1,53 @@
+/* /web 桌面账本 · 顶部工具条 segmented control (v0.10.1 从 desktop.css 拆出)
+ *
+ * .seg —— 分段筛选条容器(button + a 都支持)
+ *   .seg button.on / .is-active —— 当前选中
+ *   .seg .count —— 角标数字(tabular-nums)
+ */
+
+/* ───── Toolbar (segmented filter + buttons) ───── */
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.seg {
+    display: inline-flex;
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--surface-card);
+}
+.seg button, .seg a {
+    padding: 6px 11px;
+    background: transparent;
+    border: 0;
+    font-family: var(--font-zh);
+    font-size: 12.5px;
+    color: var(--text-meta);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-right: 1px solid var(--border-card);
+    text-decoration: none;
+}
+.seg button:last-child, .seg a:last-child { border-right: 0; }
+.seg button:hover, .seg a:hover { color: var(--text-default); }
+.seg button.on, .seg a.on,
+.seg button.is-active, .seg a.is-active { background: var(--text-default); color: var(--surface-card); }
+.seg button.on:hover, .seg a.on:hover,
+.seg button.is-active:hover, .seg a.is-active:hover { color: var(--surface-card); }
+.seg .count {
+    font-family: var(--font-num);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-faint);
+}
+.seg button.on .count, .seg a.on .count,
+.seg button.is-active .count, .seg a.is-active .count { color: var(--surface-card); opacity: 0.7; }
+
+/* .dt-btn 全套已迁出到 components/buttons.css (v0.10.1 拆分). */
+

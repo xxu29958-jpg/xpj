@@ -1,0 +1,56 @@
+/* /web 桌面账本 · 浮动批量操作条 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .bulk-bar —— 选中行后浮在底部的深色条,集成批量改分类/标签/删除等动作
+ * 配色用 surface-nav 深底反白,与顶部 sidebar 形成首尾呼应
+ */
+
+/* ───── Bulk action bar ───── */
+.bulk-bar {
+    position: sticky;
+    bottom: 24px;
+    margin-top: 16px;
+    background: var(--text-default);
+    color: var(--surface-card);
+    border-radius: var(--radius-md);
+    padding: 10px 14px 10px 18px;
+    display: none;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+    box-shadow: 0 12px 28px -16px rgba(0,0,0,0.4);
+    z-index: 6;
+}
+.bulk-bar.on { display: flex; }
+.bulk-bar .count { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 500; }
+.bulk-bar .label { color: rgba(255,255,255,0.7); font-size: 12px; }
+.bulk-bar .spacer { flex: 1; }
+.bulk-bar .bulk-field {
+    min-width: 132px;
+    width: min(24vw, 220px);
+    height: 34px;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.08);
+    color: var(--surface-card);
+    padding: 0 10px;
+    font-size: 12.5px;
+    outline: none;
+}
+.bulk-bar .bulk-field::placeholder { color: rgba(255,255,255,0.48); }
+.bulk-bar .bulk-field:focus {
+    border-color: rgba(255,255,255,0.42);
+    background: rgba(255,255,255,0.13);
+}
+.bulk-bar .dt-btn {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.16);
+    color: var(--surface-card);
+}
+.bulk-bar .dt-btn:hover { background: rgba(255,255,255,0.16); color: var(--surface-card); border-color: rgba(255,255,255,0.32); }
+.bulk-bar .dt-btn:active {
+    background: rgba(255,255,255,0.20);
+    border-color: var(--brand-primary);
+}
+.bulk-bar .dt-btn.primary { background: var(--brand-primary); color: var(--text-on-primary); border-color: var(--brand-primary); }
+.bulk-bar .dt-btn.primary:hover { background: var(--brand-primary); border-color: var(--brand-primary); filter: brightness(1.1); }
+

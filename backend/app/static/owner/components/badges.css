@@ -1,0 +1,43 @@
+/* /owner Console · 徽章/状态芯片 (v0.10.1 从 owner.css 拆出)
+ *
+ * .badge / .badge-ok/.warn/.err/.off —— 状态徽章
+ * .role-chip / .status-chip + 变体 —— 角色/状态芯片
+ */
+
+
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.badge-ok { background: var(--state-success-bg); color: var(--state-success-fg); }
+.badge-warn { background: var(--state-warn-bg); color: var(--state-warn-fg); }
+.badge-err { background: var(--state-danger-bg); color: var(--state-danger-fg); }
+.badge-off { background: var(--state-neutral-bg); color: var(--state-neutral-fg); }
+
+.role-chip,
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.role-owner { background: var(--state-warn-bg); color: var(--state-warn-fg); }
+.role-member { background: var(--state-info-bg); color: var(--state-info-fg); }
+.role-viewer { background: var(--state-neutral-bg); color: var(--state-neutral-fg); }
+.role-unknown { background: var(--state-neutral-bg); color: var(--state-neutral-fg); }
+
+.status-active,
+.status-used,
+.status-success { background: var(--state-success-bg); color: var(--state-success-fg); }
+.status-pending { background: var(--state-info-bg); color: var(--state-info-fg); }
+.status-disabled,
+.status-revoked { background: var(--state-danger-bg); color: var(--state-danger-fg); }
+.status-muted { background: var(--state-neutral-bg); color: var(--state-neutral-fg); }

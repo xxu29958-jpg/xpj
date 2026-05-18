@@ -6,8 +6,14 @@
   <title>{% block title %}小票夹 Owner Console{% endblock %}</title>
   <link rel="stylesheet" href="/static/shared/tokens.css">
   <link rel="stylesheet" href="/static/owner/owner.css">
+  <link rel="stylesheet" href="/static/owner/components/nav.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/buttons.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/badges.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/feedback.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/utilities.css?v={{ backend_version }}">
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ backend_version }}">
   <script defer src="/static/shared/confirm-modal.js?v={{ backend_version }}"></script>
+  <script defer src="/static/owner/owner-feedback.js?v={{ backend_version }}"></script>
 </head>
 <body class="owner-shell">
 <div class="owner-app">

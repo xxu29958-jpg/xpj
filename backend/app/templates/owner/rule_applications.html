@@ -13,8 +13,8 @@
   <p class="meta">服务未初始化，请先运行 <code>bootstrap_dev_owner.ps1</code>。</p>
   {% else %}
   <form method="get" action="/owner/rule-applications">
-    <label style="font-size:13px">账本：
-      <select name="ledger_id" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px">
+    <label>账本：
+      <select name="ledger_id" class="inline-input">
         {% for ledger in rule_audit.ledger_choices %}
         <option value="{{ ledger.ledger_id }}" {% if ledger.ledger_id == rule_audit.selected_ledger_id %}selected{% endif %}>
           {{ ledger.name }}{% if ledger.is_default %}（默认）{% endif %}

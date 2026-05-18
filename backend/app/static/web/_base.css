@@ -1,0 +1,97 @@
+/* /web 桌面账本 · 基础层 (v0.10.1 从 desktop.css 拆出)
+ *
+ * 包含:
+ *   - @font-face 三族(Noto Sans SC / Newsreader / Inter)自托管 webfont
+ *   - 本地字体族 token (--font-zh / --font-num / --font-serif)
+ *   - .desktop-shell-active 基础排版 + 噪点纸本质感背景
+ *
+ * 所有 /web 页面 extends base.html 都自动进入此层。
+ */
+
+/* ───── Webfonts (本地自托管) ─────
+ * 子集化文件位于 /static/web/fonts/，由 scripts/download-fonts.ps1 一次性下载。
+ * 多个分片是 Noto Sans SC 按 unicode-range 切的 zh-CN 子集。
+ * Android 与 /owner 走系统字体栈,仅 /web 桌面 shell 消费自托管字体。
+ * v0.10 设计决策: Noto Sans SC 保证中文权重 500/700/900 跨平台一致渲染,
+ * Newsreader 提供期刊衬线大标题,Inter 提供 tabular 数字。系统字体栈无法替代。
+ * 符合工程规范第 15 章「依赖必须可靠/活跃/官方推荐或事实标准生态」。
+ */
+@font-face {
+    font-family: "Noto Sans SC"; font-weight: 400; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/NotoSansSC-Regular.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Noto Sans SC"; font-weight: 500; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/NotoSansSC-Medium.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Noto Sans SC"; font-weight: 700; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/NotoSansSC-Bold.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Noto Sans SC"; font-weight: 900; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/NotoSansSC-Black.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Newsreader"; font-weight: 400; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/Newsreader-Regular.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Newsreader"; font-weight: 500; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/Newsreader-Medium.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Newsreader"; font-weight: 400; font-style: italic; font-display: swap;
+    src: url("/static/web/fonts/Newsreader-Italic.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Inter"; font-weight: 400; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/Inter-Regular.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Inter"; font-weight: 500; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/Inter-Medium.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Inter"; font-weight: 600; font-style: normal; font-display: swap;
+    src: url("/static/web/fonts/Inter-SemiBold.woff2") format("woff2");
+}
+
+/* ───── /web Desktop shell 局部字体族 ─────
+ * 只保留三族 font-family,radius / spacing / motion / layout / easing 全部走
+ * shared/tokens.css 的 --radius-* / --space-* / --motion-* / --layout-* / --ease-*。
+ * 严禁在这里再定义短名 alias —— 三端同步硬约束要求消费点直接消费共享 token。
+ */
+:root {
+    --font-zh: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --font-num: "Inter", "Noto Sans SC", system-ui, sans-serif;
+    --font-serif: "Newsreader", "Source Han Serif SC", "Songti SC", serif;
+}
+
+/* ───── Body 噪点纸本质感（midnight 弱化） ───── */
+.desktop-shell-active {
+    background: var(--surface-app);
+    color: var(--text-default);
+    font-family: var(--font-zh);
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "ss02";
+    letter-spacing: 0.005em;
+}
+.desktop-shell-active::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(1200px 600px at 80% -10%, var(--surface-sunken) 0%, transparent 60%),
+        radial-gradient(900px 500px at -10% 110%, var(--surface-sunken) 0%, transparent 60%);
+    opacity: 0.7;
+}
+[data-theme="midnight"] .desktop-shell-active::before { opacity: 0.5; }
+
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.serif { font-family: var(--font-serif); font-weight: 400; }
+

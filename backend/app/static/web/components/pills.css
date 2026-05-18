@@ -1,0 +1,73 @@
+/* /web 桌面账本 · 状态徽章组件 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .dt-pill —— 通用圆角徽章基类,变体:
+ *   .dt-pill          中性(默认)
+ *   .dt-pill.warn     警告
+ *   .dt-pill.danger   危险
+ *   .dt-pill.ok       成功
+ *   .dt-pill.muted    弱化
+ *
+ * .dt-pill .dot —— 内部 4px 圆点装饰
+ * .category-list —— 分类徽章列表容器
+ */
+
+/* ───── Status pill ───── */
+.dt-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid var(--border-input);
+    color: var(--text-muted);
+    font-family: var(--font-zh);
+    background: var(--surface-card);
+    white-space: nowrap;
+}
+.dt-pill.warn { color: var(--brand-primary); border-color: var(--brand-accent); background: var(--brand-primary-bg); }
+.dt-pill.danger { color: var(--state-danger-fg); border-color: var(--state-danger-border); background: var(--state-danger-bg); }
+.dt-pill.ok { color: var(--state-success-fg); border-color: var(--state-success-border); background: var(--state-success-bg); }
+.dt-pill.muted { color: var(--text-meta); }
+.dt-pill .dot { background: currentColor; width: 4px; height: 4px; border-radius: 50%; }
+
+/* ───── Trend ───── */
+.trend-strip {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 24px;
+}
+.trend-num {
+    font-family: var(--font-serif);
+    font-size: 30px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+.trend-foot {
+    display: flex;
+    gap: 18px;
+    margin-top: 14px;
+    border-top: 1px solid var(--border-card);
+    padding-top: 12px;
+}
+.trend-foot > div { font-size: 11.5px; color: var(--text-meta); }
+.trend-foot .num { color: var(--text-default); font-size: 14px; display: block; margin-top: 2px; }
+.trend-foot--gap { margin-top: var(--space-4-5); }
+
+/* confirmed.html「来源占比」无数据空态 */
+.source-empty {
+    font-size: 12.5px;
+    color: var(--text-meta);
+    padding: var(--space-4-5) 0;
+}
+
+/* ───── Category list ───── */
+.cat-list { display: flex; flex-direction: column; gap: 10px; }
+.cat-row { display: grid; grid-template-columns: 70px 1fr 64px; gap: 10px; align-items: center; }
+.cat-name { font-size: 12.5px; color: var(--text-muted); }
+.cat-bar { height: 4px; background: var(--surface-sunken); border-radius: 999px; overflow: hidden; position: relative; }
+.cat-bar-fill { height: 100%; background: var(--text-default); border-radius: inherit; }
+.cat-amt { text-align: right; font-family: var(--font-num); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+

@@ -1,0 +1,61 @@
+/* /web 桌面账本 · 预算页样式 (v0.10.1 从 desktop.css 拆出)
+ *
+ * 包含 budget-bars + dt-progress 等预算页专属 UI 元件
+ */
+
+/* ───── Budget bars ───── */
+.budget-row { display: flex; justify-content: space-between; align-items: baseline; margin: 4px 0 8px; }
+.budget-label { font-size: 13px; color: var(--text-muted); }
+.budget-val { font-family: var(--font-num); font-size: 12.5px; color: var(--text-meta); white-space: nowrap; }
+.bar {
+    height: 6px;
+    background: var(--surface-sunken);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+}
+.bar-fill {
+    height: 100%;
+    background: var(--text-default);
+    border-radius: inherit;
+    transition: width var(--motion-slow) var(--ease-standard);
+}
+.bar-fill.over { background: var(--state-danger-fg); }
+.bar-fill.warn { background: var(--brand-primary); }
+.bar-tick { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--border-input); }
+
+.budget-list > * + * {
+    border-top: 1px solid var(--border-card);
+    padding-top: 14px;
+    margin-top: 14px;
+}
+
+
+/* ── 续段(原 desktop.css 第 1299 行起) ── */
+
+/* ───── dt-progress (替代 legacy .budget-progress) ─────
+ * 用于预算 / Goals 进度条。fill 默认主品牌色,is-over 切换到 state-danger。 */
+.dt-progress {
+    background: var(--surface-sunken);
+    height: 6px;
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+    margin: var(--space-3) 0 var(--space-2);
+}
+.dt-progress__fill {
+    background: var(--brand-primary);
+    height: 100%;
+    border-radius: inherit;
+    transition: width var(--motion-slow) var(--ease-standard);
+}
+.dt-progress__fill.is-over { background: var(--state-danger-fg); }
+.dt-progress-meta {
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    font-family: var(--font-num);
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+/* 已迁出到 components/forms-row.css (v0.10.1 拆分). */

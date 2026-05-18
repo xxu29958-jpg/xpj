@@ -6,14 +6,14 @@
     <h1>仪表盘卡片</h1>
     <p class="page-hint">调整当前账本在 /web 首页的卡片顺序和可见状态。拖动卡片可以排序，保存后生效。</p>
   </div>
-  <a class="btn btn-secondary" href="/web{{ q }}">返回仪表盘</a>
+  <a class="dt-btn" href="/web{{ q }}">返回仪表盘</a>
 </div>
 
 {% if message %}
-<div class="alert alert-success">{{ message }}</div>
+<div class="dt-alert success">{{ message }}</div>
 {% endif %}
 
-<div class="card dashboard-card-settings-card">
+<div class="dt-card dashboard-card-settings-card">
   <form method="post" action="/web/dashboard/cards/save" class="dashboard-card-settings" id="dashboard-cards-form">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <div class="dashboard-card-settings-head">
@@ -63,7 +63,7 @@
 
     {% if can_write %}
     <div class="actions dashboard-card-actions">
-      <button type="submit" class="btn btn-primary">保存卡片</button>
+      <button type="submit" class="dt-btn primary">保存卡片</button>
     </div>
     {% else %}
     <p class="meta">只读角色可以查看当前布局，但不能保存修改。</p>
@@ -73,7 +73,7 @@
   {% if can_write %}
   <form method="post" action="/web/dashboard/cards/reset" class="dashboard-card-reset">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <button type="submit" class="btn btn-secondary">恢复默认卡片</button>
+    <button type="submit" class="dt-btn">恢复默认卡片</button>
   </form>
   {% endif %}
 </div>

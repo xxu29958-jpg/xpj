@@ -1,0 +1,114 @@
+/* /web 桌面账本 · 按钮组件 (v0.10.1 从 desktop.css 拆出)
+ *
+ * 命名 .dt-btn —— 桌面账本(desktop) 通用按钮基类,变体通过附加 class 表达:
+ *   .dt-btn            次要(默认),浅色描边,中性色
+ *   .dt-btn.primary    主操作,深底反白
+ *   .dt-btn.ghost      纯文字,无背景
+ *   .dt-btn.danger     危险动作,红底红字
+ *   .dt-btn.success    成功反馈,绿底绿字
+ *   .dt-btn.link       内联链接式,无边框,主品牌色
+ *   .dt-btn--sm        小号变体(可与上方任一组合)
+ *
+ * 颜色全部走 shared/tokens.css 的语义 token,字号走 --type-caption-size。
+ * 不允许在调用处自己写 padding/font-size hardcode。
+ */
+
+.dt-btn {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--control-border);
+    background: var(--surface-card);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--type-caption-size);
+    font-family: var(--font-zh);
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    text-decoration: none;
+    outline: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+        background-color var(--motion-fast) var(--ease-standard),
+        border-color var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard),
+        transform var(--motion-fast) var(--ease-standard),
+        box-shadow var(--motion-fast) var(--ease-standard);
+}
+.dt-btn:hover {
+    border-color: var(--control-border-hover);
+    color: var(--text-default);
+}
+.dt-btn:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+}
+.dt-btn:active {
+    border-color: var(--control-border-active);
+    background: var(--control-press-bg);
+    transform: translateY(1px);
+}
+.dt-btn:focus-visible {
+    outline: none;
+    border-color: var(--control-border-active);
+    box-shadow: 0 0 0 3px var(--brand-focus-ring);
+}
+
+.dt-btn.primary {
+    background: var(--text-default);
+    color: var(--surface-card);
+    border-color: var(--text-default);
+}
+.dt-btn.primary:hover {
+    background: var(--text-muted);
+    color: var(--surface-card);
+}
+.dt-btn.primary:active {
+    border-color: var(--text-default);
+    filter: brightness(0.96);
+}
+
+.dt-btn.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-meta);
+}
+.dt-btn.ghost:hover { color: var(--text-default); }
+.dt-btn.ghost:active {
+    border-color: transparent;
+    background: var(--control-press-bg);
+}
+
+.dt-btn.danger {
+    color: var(--state-danger-fg);
+    background: var(--state-danger-bg);
+    border-color: var(--state-danger-border);
+}
+.dt-btn.danger:hover  { filter: brightness(0.96); border-color: var(--state-danger-border); }
+.dt-btn.danger:active { filter: brightness(0.90); border-color: var(--state-danger-border); }
+
+.dt-btn.success {
+    color: var(--state-success-fg);
+    background: var(--state-success-bg);
+    border-color: var(--state-success-border);
+}
+.dt-btn.success:hover  { filter: brightness(0.96); border-color: var(--state-success-border); }
+.dt-btn.success:active { filter: brightness(0.90); border-color: var(--state-success-border); }
+
+.dt-btn.link {
+    background: transparent;
+    border-color: transparent;
+    color: var(--brand-primary);
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+}
+.dt-btn.link:hover {
+    text-decoration: underline;
+    color: var(--brand-primary-strong);
+}
+
+.dt-btn--sm {
+    padding: var(--space-2) var(--space-3-5);
+    font-size: var(--type-caption-size);
+}

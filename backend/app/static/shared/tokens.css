@@ -11,6 +11,10 @@
  *    Android 端 AppSkin.fromStorageKey() 会把旧 storageKey 自动映射到新值：
  *    pine/pomelo/harbor → paper，berry → mono，night → midnight。
  * 7. 新增两个 token：--text-faint（第四级文本）、--brand-primary-bg（强调底）。
+ * 8. v0.10.1 (2026-05) 新增主题无关 scale —— typography / spacing / motion / radius,
+ *    见文件末尾「全局 design scale」段。与 Android `AppSpacing` / `AppTextHierarchy` /
+ *    `AppMotion` / `AppRadius` 一一对应,新增 web/owner 组件应优先消费这些 token,
+ *    禁止再硬编码 px / ms。
  */
 
 :root,
@@ -113,7 +117,7 @@
     --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
 
     /* v0.10 Layout（drawer 宽度等，三主题共享）
-     * 注：--sidebar-w 由 web/desktop.css 与 owner/owner.css 各自定义，
+     * 注：--sidebar-w 由 web/_shell.css 与 owner/owner.css 各自定义，
      * 因为两端密度不同；shared 层只管 drawer 宽度。 */
     --drawer-w: 380px;
 
@@ -321,4 +325,114 @@
     --swipe-ignore-bg:  #2a2d35; --swipe-ignore-fg:  #b8b4a8;
     --swipe-delete-bg:  #3d2823; --swipe-delete-fg:  #d97757;
     --drawer-overlay-bg: rgba(0, 0, 0, 0.48);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * 全局 design scale (v0.10.1, 2026-05) — 主题无关
+ *
+ * 这一段定义所有 paper/mono/midnight 主题共享、与「颜色」无关的尺度 token：
+ *   typography / spacing / radius scale / motion / easing
+ *
+ * 与 Android 端镜像关系：
+ *   --type-*       ↔  AppTextHierarchy (hero/heading/body/caption) + AppTypography
+ *   --space-*      ↔  AppSpacing
+ *   --radius-*     ↔  AppRadius
+ *   --motion-*     ↔  AppMotion.fastMillis / normalMillis / slowMillis / backgroundMillis
+ *   --ease-*       ↔  AppMotion.easeStandard / Emphasized / Accelerate / Linear
+ *
+ * 维护原则：
+ *   - 新增 web/owner 组件,禁止再硬编码 px / ms,必须消费这里的 token。
+ *   - 这里改动必须同步 Android 对应 design 对象（同 PR 内）,否则破坏三端同步硬约束。
+ *   - 各主题需要差异化时,可在 `[data-theme=...]` 块覆写本段任意字段。
+ * ─────────────────────────────────────────────────────────────────────────── */
+:root {
+    /* ── Typography scale ─────────────────────────────────────────────────
+     * 字体族保留在各端局部定义（web/_base.css 的 --font-zh/--font-num/--font-serif、
+     * owner.css 的 system stack、Android Material3 FontFamily）,shared 层只统一
+     * 字号/行高/字重的语义阶梯。
+     *
+     *  display  38/1.05/900  —— 大金额(每屏 ≤1 处),对齐 Android AppTextHierarchy.hero+
+     *  hero     28/1.15/900  —— 页面主标题,每屏 1 处
+     *  headline 22/1.25/700  —— 区块大标题、h1
+     *  title    18/1.30/600  —— 卡片/section 标题,对齐 AppTextHierarchy.heading
+     *  subtitle 15/1.40/500  —— 列表项首行、强调正文,对齐 AppTextHierarchy.body
+     *  body     14/1.55/400  —— 默认正文(@import 后 body { font-size } 应消费此值)
+     *  caption  12/1.40/400  —— 辅助文字(meta/时间/标签),对齐 AppTextHierarchy.caption
+     *  meta     10/1.30/500  —— uppercase eyebrow 文字,letter-spacing 0.18em
+     */
+    --type-display-size: 38px;   --type-display-line: 1.05; --type-display-weight: 900;
+    --type-hero-size: 28px;      --type-hero-line: 1.15;    --type-hero-weight: 900;
+    --type-headline-size: 22px;  --type-headline-line: 1.25; --type-headline-weight: 700;
+    --type-title-size: 18px;     --type-title-line: 1.30;   --type-title-weight: 600;
+    --type-subtitle-size: 15px;  --type-subtitle-line: 1.40; --type-subtitle-weight: 500;
+    --type-body-size: 14px;      --type-body-line: 1.55;    --type-body-weight: 400;
+    --type-caption-size: 12px;   --type-caption-line: 1.40; --type-caption-weight: 400;
+    --type-meta-size: 10px;      --type-meta-line: 1.30;    --type-meta-weight: 500;
+    --type-meta-tracking: 0.18em;
+    --type-tabular-features: "tnum", "ss01";
+
+    /* ── Spacing scale (4px 基准) ──────────────────────────────────────────
+     * 命名 = px 值。覆盖紧凑→宽松全程,10/14 这两个"非 4 倍数"在 Android
+     * AppSpacing 已实际使用 (contentGap=10, cardPaddingTight=14),保留以避免
+     * 三端值漂移。
+     */
+    --space-1:   2px;
+    --space-2:   4px;
+    --space-3:   8px;
+    --space-3-5: 10px;   /* Android AppSpacing.contentGap */
+    --space-4:   12px;
+    --space-4-5: 14px;   /* Android AppSpacing.cardPaddingTight */
+    --space-5:   16px;
+    --space-6:   20px;
+    --space-7:   24px;
+    --space-8:   32px;
+    --space-9:   40px;
+    --space-10:  48px;
+    --space-12:  64px;
+
+    /* ── Radius scale ──────────────────────────────────────────────────────
+     * 现有 --radius-card/input/pill 不动（向后兼容）,新增 xs/sm/md/lg/xl 阶梯。
+     * Android AppRadius 偏大（M3 风格）,web/owner 偏小(journal/admin 风格),
+     * 这里给的是 web/owner 推荐值,Android 端按 AppRadius 自行选择。
+     */
+    --radius-xs:  4px;
+    --radius-sm:  6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+
+    /* ── Motion duration ───────────────────────────────────────────────────
+     * 镜像 Android AppMotion。fast 用于微反馈,normal 是 80% 状态切换,
+     * slow 用于弹窗/页面级,background 给环境动画(不抢焦点)。
+     */
+    --motion-fast:       120ms;
+    --motion-normal:     220ms;
+    --motion-slow:       320ms;
+    --motion-background: 420ms;
+
+    /* ── Easing ────────────────────────────────────────────────────────────
+     * 镜像 Android AppMotion easing。standard 覆盖 90% 用例,emphasized 用于进入,
+     * accelerate 用于退场,linear 用于 loading/shimmer。
+     */
+    --ease-standard:   cubic-bezier(0.20, 0.00, 0.00, 1.00);
+    --ease-emphasized: cubic-bezier(0.05, 0.70, 0.10, 1.00);
+    --ease-accelerate: cubic-bezier(0.30, 0.00, 1.00, 1.00);
+    --ease-linear:     linear;
+
+    /* ── Layout fixed ──────────────────────────────────────────────────────
+     * /web 桌面 shell 关键固定值,提到 shared 让 /owner 等也能复用 z-index 计算。
+     */
+    --layout-sidebar-w: 224px;
+    --layout-topbar-h:  60px;
+    --layout-page-max:  1180px;
+    --layout-page-narrow-max: 960px;
+
+    /* ── Z-index ladder ────────────────────────────────────────────────────
+     * 五档堆叠层级,避免 magic number。
+     */
+    --z-base:    0;
+    --z-sticky:  10;
+    --z-drawer:  100;
+    --z-modal:   1000;
+    --z-toast:   2000;
 }

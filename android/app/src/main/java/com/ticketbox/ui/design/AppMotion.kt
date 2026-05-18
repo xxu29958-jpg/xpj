@@ -11,7 +11,7 @@ import androidx.compose.animation.core.tween
  * 运动 token —— 时长 + 缓动曲线，所有动画都必须从这里挑组合，
  * 不允许在调用处自己拼 `tween(123, MyCustomEasing)`。
  *
- * 四档时长（与 desktop.css 的 --motion-fast/normal/slow 对齐）：
+ * 四档时长（与 shared/tokens.css 的 --motion-fast/normal/slow/background 对齐）：
  *  - [fastMillis] 120ms：按钮按下、chip 选中、tab 切换图标颜色
  *  - [normalMillis] 220ms：卡片高度变化、bottom-bar weight 调整、AnimatedContent 进/出
  *  - [slowMillis] 320ms：modal 出入、page 切换、跨场景的 morph

@@ -1,0 +1,102 @@
+/* /owner Console · 工具类 (v0.10.1 从 owner.css 拆出)
+ *
+ * 文本层级 (.text-default / -muted / -meta / -faint / -link)
+ * 密度类 (.table-compact / .form-row / .form-row.inline)
+ * 其他工具类(背景/空态) 在文件后续段中
+ */
+
+/* 文本层级工具类(v0.10.1, 消灭模板内联 color:#xxx) */
+.text-default { color: var(--text-default); }
+.text-muted   { color: var(--text-muted); }
+.text-meta    { color: var(--text-meta); }
+.text-faint   { color: var(--text-faint); }
+.text-link    { color: var(--brand-primary); text-decoration: none; }
+.text-link:hover { text-decoration: underline; color: var(--brand-primary-strong); }
+
+/* 表格表单密度工具类(v0.10.1) ───────────────────────────────────────── */
+.table-compact th,
+.table-compact td {
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--type-caption-size);
+}
+.table-compact th {
+    color: var(--text-meta);
+    text-transform: uppercase;
+    letter-spacing: var(--type-meta-tracking);
+    font-size: var(--type-meta-size);
+    font-weight: 500;
+}
+.form-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
+}
+.form-row label {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.form-row.inline {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+
+/* ── 续段(原 owner.css 第 342 行起) ── */
+
+/* 表格表头浅底工具类(取代内联 background:#f1f5f9) */
+.bg-sunken    { background: var(--surface-sunken); }
+
+/* 空态/居中说明(取代内联 text-align:center;padding:24px;color:#64748b 三连击) */
+.empty-note {
+    color: var(--text-meta);
+    text-align: center;
+    padding: var(--space-7);
+    font-size: var(--type-caption-size);
+}
+
+/* 说明段 (v0.10.1, 取代 font-size:13px;color:#475569;line-height:1.7) */
+.help-text {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+
+/* 内联输入控件 (v0.10.1, 取代散落在 settings/ledger_members/pairing 的内联 padding+border) */
+.inline-input,
+.inline-select {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    font-size: var(--type-caption-size);
+    font-family: inherit;
+    color: var(--text-default);
+    background: var(--surface-card);
+    margin-left: var(--space-3);
+    transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.inline-input:focus,
+.inline-select:focus {
+    outline: none;
+    border-color: var(--text-default);
+    box-shadow: 0 0 0 2px var(--brand-focus-ring);
+}
+.inline-input--narrow { width: 70px; }
+.inline-input--wide   { width: 240px; }
+.inline-input--mono   { font-family: ui-monospace, Consolas, monospace; }
+
+/* 代码 / 路径 等宽显示 (取代 font-family:monospace;color:#475569) */
+.path-mono {
+    font-family: ui-monospace, Consolas, monospace;
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* 紧凑 meta 信息(链接旁边的辅助说明) */
+.meta-inline {
+    margin-left: var(--space-3);
+    font-size: var(--type-caption-size);
+    color: var(--text-meta);
+}

@@ -1,0 +1,228 @@
+/* /web 桌面账本 · 仪表盘页样式 (v0.10.1 从 desktop.css 拆出)
+ *
+ * 包含 Dashboard grid + Goals + Recent uploads 全部 dashboard 专属规则
+ */
+
+/* ───── Dashboard grid ───── */
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+.dashboard-skeleton-grid {
+    margin-bottom: 16px;
+}
+.dashboard-skeleton-card {
+    min-height: 180px;
+}
+#dashboard-app[data-dashboard-state="pending"] [data-dashboard-fallback],
+#dashboard-app[data-dashboard-state="pending"] [data-dashboard-rendered],
+#dashboard-app[data-dashboard-state="ready"] [data-dashboard-skeleton],
+#dashboard-app[data-dashboard-state="ready"] [data-dashboard-fallback],
+#dashboard-app[data-dashboard-state="fallback"] [data-dashboard-skeleton],
+#dashboard-app[data-dashboard-state="fallback"] [data-dashboard-rendered] {
+    display: none;
+}
+.col-4,
+.col-5,
+.col-6 {
+    grid-column: span 1;
+}
+.col-7,
+.col-8,
+.col-12 {
+    grid-column: span 2;
+}
+
+/* 900–1200px 中段断点：强制 2 列布局，避免 span-2 卡片在 3 列网格里留下空洞。 */
+@media (min-width: 901px) and (max-width: 1200px) {
+    .dash-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .col-4,
+    .col-5,
+    .col-6 {
+        grid-column: span 1;
+    }
+    .col-7,
+    .col-8,
+    .col-12 {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 900px) {
+    .app {
+        grid-template-columns: 1fr;
+        min-height: auto;
+    }
+    .sidebar {
+        position: static;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--border-card);
+        padding: 14px 20px 12px;
+        gap: 10px;
+        overflow: hidden;
+    }
+    .brand {
+        padding: 0;
+        margin-bottom: 4px;
+    }
+    .sidebar .nav-group {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 0 0 4px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .sidebar .nav-group::-webkit-scrollbar { display: none; }
+    .sidebar .nav-group:not(.nav-group-collapsible) .nav-group-title {
+        display: none;
+    }
+    .nav-group-collapsible > summary {
+        flex: 0 0 auto;
+        min-height: 34px;
+        padding: 7px 10px;
+        border: 1px solid var(--border-card);
+        border-radius: var(--radius-sm);
+        background: var(--surface-sunken);
+        color: var(--text-muted);
+    }
+    .nav-group-collapsible[open] {
+        align-items: center;
+    }
+    .sidebar .nav-item {
+        flex: 0 0 auto;
+        min-height: 34px;
+        padding: 7px 10px;
+        white-space: nowrap;
+    }
+    .nav-item.active::before {
+        display: none;
+    }
+    .sidebar-foot {
+        display: none;
+    }
+    .topbar {
+        position: static;
+        height: auto;
+        min-height: var(--layout-topbar-h);
+        padding: 12px 20px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+    .topbar .grow {
+        flex-basis: 100%;
+        height: 0;
+        order: 1;
+    }
+    .month-picker,
+    .icon-btn,
+    .ledger-switcher {
+        order: 2;
+    }
+    .content {
+        padding: 24px 20px 56px;
+        max-width: none;
+    }
+    .dash-grid {
+        grid-template-columns: 1fr;
+    }
+    .col-4,
+    .col-5,
+    .col-6,
+    .col-7,
+    .col-8,
+    .col-12 {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 560px) {
+    .topbar {
+        gap: 10px;
+    }
+    .crumb {
+        flex-wrap: wrap;
+    }
+    .ledger-switcher {
+        width: 100%;
+    }
+    .ledger-popover {
+        left: 0;
+        right: auto;
+        min-width: min(100%, 280px);
+    }
+    .metric-grid,
+    .kpi-strip {
+        grid-template-columns: 1fr;
+    }
+    .dt-card {
+        padding: 18px;
+    }
+}
+
+
+/* ── 续段(原 desktop.css 第 814 行起) ── */
+
+/* ───── Goals (scoped to .dt-card 防止撞 legacy /web/goals 的 .goal-row) ───── */
+.dt-card .goal-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+}
+.dt-card .goal-row + .goal-row { border-top: 1px solid var(--border-card); }
+.dt-card .goal-ring { width: 44px; height: 44px; position: relative; flex-shrink: 0; }
+.dt-card .goal-pct {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-num);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+.dt-card .goal-meta { flex: 1; min-width: 0; }
+.dt-card .goal-title { font-size: 13.5px; color: var(--text-default); margin-bottom: 2px; }
+.dt-card .goal-foot { font-size: 11.5px; color: var(--text-meta); display: flex; gap: 6px; align-items: baseline; }
+.dt-card .goal-foot .num { font-size: 12.5px; color: var(--text-muted); }
+
+/* ───── Recent uploads (dashboard 的 RecentUploadsCard，scoped 避免 future 冲突) ───── */
+.dt-card .upload-row {
+    display: grid;
+    grid-template-columns: 36px 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 0;
+}
+.dt-card .upload-row + .upload-row { border-top: 1px solid var(--border-card); }
+.dt-card .upload-thumb {
+    width: 36px; height: 44px;
+    background:
+        repeating-linear-gradient(135deg,
+            var(--surface-sunken) 0 2px, transparent 2px 6px),
+        var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.dt-card .upload-thumb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.04));
+}
+.dt-card .upload-merch { font-size: 13px; color: var(--text-default); }
+.dt-card .upload-meta { font-size: 11.5px; color: var(--text-meta); font-family: var(--font-num); }
+.dt-card .upload-amt { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 13.5px; }
+
+/* 已迁出到 components/pills.css (v0.10.1 拆分). */
+/* 已迁出到 components/toolbar.css (v0.10.1 拆分). */

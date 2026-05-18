@@ -38,7 +38,7 @@
       {% endif %}
     </span>
   </div>
-  <form method="post" action="/owner/migration-readiness/pre-v1-backup" style="margin-top:14px">
+  <form method="post" action="/owner/migration-readiness/pre-v1-backup" class="form-row" data-show-loading="正在生成 v1 迁移前备份…">
     <button type="submit" class="btn btn-primary">创建 pre-v1.0 备份并重新检查</button>
   </form>
   <p class="secret-note" style="margin-top:8px">
@@ -60,7 +60,7 @@
     {% for check in migration.checks %}
       <tr>
         <td><span class="badge {{ check.badge_class }}">{{ check.status }}</span></td>
-        <td style="font-family:monospace;color:#475569;white-space:nowrap">{{ check.code }}</td>
+        <td class="path-mono" style="white-space:nowrap">{{ check.code }}</td>
         <td>{{ check.message }}</td>
       </tr>
     {% endfor %}

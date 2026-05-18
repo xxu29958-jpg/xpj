@@ -1,0 +1,98 @@
+/* /web 桌面账本 · 报表页样式 (v0.10.1 从 desktop.css 拆出)
+ *
+ * Reports KPI / Merchant ranking 等 reports.html 专属
+ */
+
+/* ───── Reports ───── */
+.chart-block { position: relative; }
+.chart-canvas { width: 100%; height: 280px; }
+.chart-canvas.tall { height: 320px; }
+
+.legend {
+    display: flex;
+    gap: 14px;
+    font-size: 11.5px;
+    color: var(--text-meta);
+    flex-wrap: wrap;
+}
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+
+.kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);  /* reports.html 默认 4 列 KPI */
+    gap: 16px;
+    margin-bottom: 18px;
+}
+/* 弹性变体: 取代 legacy .summary-grid (auto-fill, minmax(180px, 1fr)) */
+.kpi-strip--fluid   { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+/* 紧凑变体: 取代 legacy .summary-grid.compact */
+.kpi-strip--compact { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+.kpi-cell {
+    padding: 14px 18px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+}
+.kpi-cell .label {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-meta);
+    font-family: var(--font-num);
+    margin-bottom: 8px;
+}
+.kpi-cell .val {
+    font-family: var(--font-serif);
+    font-size: 24px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-default);
+}
+.kpi-cell .val .yuan { font-size: 13px; color: var(--text-meta); margin-right: 2px; font-family: var(--font-num); }
+.kpi-cell .foot { font-size: 11px; color: var(--text-meta); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+
+/* KPI 状态变体(取代 legacy .summary-card.is-warning / .is-positive / .is-danger / .primary) */
+.kpi-cell.primary .val      { color: var(--brand-primary); }
+.kpi-cell.is-warning,
+.kpi-cell.warn {
+    background: var(--state-warn-bg);
+    border-color: var(--state-warn-border);
+}
+.kpi-cell.is-warning .val,
+.kpi-cell.warn .val          { color: var(--state-warn-fg); }
+.kpi-cell.is-positive,
+.kpi-cell.ok {
+    background: var(--state-success-bg);
+    border-color: var(--state-success-border);
+}
+.kpi-cell.is-positive .val,
+.kpi-cell.ok .val            { color: var(--state-success-fg); }
+.kpi-cell.is-danger {
+    background: var(--state-danger-bg);
+    border-color: var(--state-danger-border);
+}
+.kpi-cell.is-danger .val     { color: var(--state-danger-fg); }
+
+/* ───── Merchant ranking ───── */
+.merch-rank { display: flex; flex-direction: column; gap: 0; }
+.merch-row {
+    display: grid;
+    grid-template-columns: 22px 1fr 96px;
+    gap: 12px;
+    align-items: center;
+    padding: 11px 0;
+}
+.merch-row + .merch-row { border-top: 1px solid var(--border-card); }
+.merch-rank-num {
+    font-family: var(--font-num);
+    font-size: 11px;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+}
+.merch-name { font-size: 13px; color: var(--text-default); }
+.merch-sub { font-size: 11px; color: var(--text-meta); font-family: var(--font-num); white-space: nowrap; }
+.merch-amt { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--text-default); text-align: right; }
+.merch-amt .delta { display: block; font-size: 10.5px; padding: 0; background: transparent; margin: 0; }
+.merch-row:hover .merch-name { color: var(--brand-primary); }
+

@@ -1,0 +1,89 @@
+/* /owner Console · 反馈(alert + loading + toast) (v0.10.1 从 owner.css 拆出)
+ *
+ * .alert / .alert-info / -warn / -danger / -success —— 块级提示
+ * .loading-overlay + .loading-card + .spinner —— 长任务遮罩
+ * .toast-tray + .toast + .is-* —— Toast 队列
+ *
+ * 配套 JS: /static/owner/owner-feedback.js
+ */
+
+.alert {
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--space-5);
+    font-size: var(--type-caption-size);
+}
+.alert-info    { background: var(--state-info-bg);    border: 1px solid var(--state-info-border);    color: var(--state-info-fg); }
+.alert-warn    { background: var(--state-warn-bg);    border: 1px solid var(--state-warn-border);    color: var(--state-warn-fg); }
+.alert-danger  { background: var(--state-danger-bg);  border: 1px solid var(--state-danger-border);  color: var(--state-danger-fg); }
+.alert-success { background: var(--state-success-bg); border: 1px solid var(--state-success-border); color: var(--state-success-fg); }
+
+/* ── 续段(原 owner.css 第 275 行起) ── */
+
+/* 长任务 loading 遮罩(v0.10.1) ──────────────────────────────────────── */
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(28, 26, 24, 0.30);
+    backdrop-filter: blur(2px);
+    z-index: var(--z-modal);
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.loading-overlay.is-active { display: flex; }
+.loading-card {
+    background: var(--surface-card);
+    border-radius: var(--radius-lg);
+    padding: var(--space-7) var(--space-8);
+    box-shadow: var(--shadow-raised);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 220px;
+}
+.loading-card .spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border-card);
+    border-top-color: var(--brand-primary);
+    border-radius: 50%;
+    animation: owner-spin var(--motion-background) var(--ease-linear) infinite;
+}
+@keyframes owner-spin { to { transform: rotate(360deg); } }
+.loading-card .label {
+    color: var(--text-muted);
+    font-size: var(--type-caption-size);
+}
+
+/* Toast 容器(v0.10.1) ────────────────────────────────────────────── */
+.toast-tray {
+    position: fixed;
+    top: var(--space-6);
+    right: var(--space-6);
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    pointer-events: none;
+}
+.toast {
+    pointer-events: auto;
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-raised);
+    border-left: 4px solid var(--brand-primary);
+    font-size: var(--type-caption-size);
+    color: var(--text-default);
+    animation: toast-in var(--motion-normal) var(--ease-emphasized);
+}
+.toast.is-success { border-left-color: var(--state-success-fg); }
+.toast.is-warn    { border-left-color: var(--state-warn-fg); }
+.toast.is-danger  { border-left-color: var(--state-danger-fg); }
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
