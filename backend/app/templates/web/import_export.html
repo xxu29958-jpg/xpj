@@ -4,10 +4,10 @@
 <h1>导入 / 导出</h1>
 
 {% if flash_message %}
-<div class="card flash">{{ flash_message }}</div>
+<div class="dt-alert success">{{ flash_message }}</div>
 {% endif %}
 
-<section class="card">
+<section class="dt-card">
   <h2>导出 CSV</h2>
   <p class="meta">
     下载当前账本的<b>已确认</b>账单（UTF-8 含 BOM，可直接用 Excel 打开）。
@@ -20,11 +20,11 @@
     <label>分类（可选）
       <input type="text" name="category" placeholder="如：餐饮">
     </label>
-    <button type="submit" class="btn btn-primary">下载 CSV</button>
+    <button type="submit" class="dt-btn primary">下载 CSV</button>
   </form>
 </section>
 
-<section class="card">
+<section class="dt-card">
   <h2>导入 CSV</h2>
   {% if can_write %}
   <p class="meta">
@@ -33,12 +33,12 @@
     <code>expense_time</code>（ISO，可选）、<code>tags</code>。
     单批最多 {{ max_rows }} 行；上传后先生成批次预览，再分批导入到<a href="/web/pending{{ q }}">「待确认」</a>队列复核。
   </p>
-  <form method="post" action="/web/import/preview" enctype="multipart/form-data" class="form-stack">
+  <form method="post" action="/web/import/preview" enctype="multipart/form-data" class="dt-form-grid">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <label>选择 CSV 文件
       <input type="file" name="csv_file" accept=".csv,text/csv" required>
     </label>
-    <button type="submit" class="btn btn-secondary">上传并预览</button>
+    <button type="submit" class="dt-btn">上传并预览</button>
   </form>
   {% else %}
   <p class="readonly-inline">只读角色无法导入。</p>

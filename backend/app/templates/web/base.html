@@ -4,9 +4,41 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}小票夹 网页版{% endblock %}</title>
+  {# Token + 全局 reset (legacy 收尾) #}
   <link rel="stylesheet" href="/static/shared/tokens.css">
   <link rel="stylesheet" href="/static/web/web.css">
-  <link rel="stylesheet" href="/static/web/desktop.css?v={{ backend_version }}">
+
+  {# Base & Shell #}
+  <link rel="stylesheet" href="/static/web/_base.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/_shell.css?v={{ backend_version }}">
+
+  {# Components #}
+  <link rel="stylesheet" href="/static/web/components/buttons.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/pills.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/toolbar.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/bulk-bar.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/alert.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/cards.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/tables.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/drawer.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/forms-input.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/forms-row.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/skeleton.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/empty-state.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/utilities.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/components/a11y.css?v={{ backend_version }}">
+
+  {# Page-scoped (TODO: 按 endpoint 条件加载,目前全量) #}
+  <link rel="stylesheet" href="/static/web/pages/dashboard.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/pages/pending.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/pages/confirmed.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/pages/budgets.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/pages/reports.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/web/pages/duplicates.css?v={{ backend_version }}">
+
+  {# 杂项(_misc.css 后续继续拆细) #}
+  <link rel="stylesheet" href="/static/web/_misc.css?v={{ backend_version }}">
+
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ backend_version }}">
   <script defer src="/static/web/vendor/echarts.min.js"></script>
   <script defer src="/static/web/desktop.js?v={{ backend_version }}"></script>

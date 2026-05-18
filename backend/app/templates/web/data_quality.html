@@ -7,52 +7,52 @@
 <div class="readonly-callout">只读角色可以查看体检结果；需要修改账单、处理重复项或新增规则时，请联系拥有者或成员。</div>
 {% endif %}
 
-<div class="summary-grid">
-  <div class="summary-card primary">
-    <div class="summary-card-label">待确认总数</div>
-    <div class="summary-card-num">{{ summary.pending_total }}</div>
-    <div class="summary-card-hint">含缺金额 / 缺商家 / 疑似重复</div>
+<div class="kpi-strip kpi-strip--fluid">
+  <div class="kpi-cell primary">
+    <div class="label">待确认总数</div>
+    <div class="val">{{ summary.pending_total }}</div>
+    <div class="foot">含缺金额 / 缺商家 / 疑似重复</div>
   </div>
-  <div class="summary-card {{ 'is-warning' if summary.missing_amount > 0 else '' }}">
-    <div class="summary-card-label">缺金额</div>
-    <div class="summary-card-num">{{ summary.missing_amount }}</div>
-    <div class="summary-card-hint">需要补金额才能确认</div>
+  <div class="kpi-cell {{ 'is-warning' if summary.missing_amount > 0 else '' }}">
+    <div class="label">缺金额</div>
+    <div class="val">{{ summary.missing_amount }}</div>
+    <div class="foot">需要补金额才能确认</div>
   </div>
-  <div class="summary-card {{ 'is-warning' if summary.missing_merchant > 0 else '' }}">
-    <div class="summary-card-label">缺商家</div>
-    <div class="summary-card-num">{{ summary.missing_merchant }}</div>
-    <div class="summary-card-hint">分类规则匹配失效来源</div>
+  <div class="kpi-cell {{ 'is-warning' if summary.missing_merchant > 0 else '' }}">
+    <div class="label">缺商家</div>
+    <div class="val">{{ summary.missing_merchant }}</div>
+    <div class="foot">分类规则匹配失效来源</div>
   </div>
-  <div class="summary-card {{ 'is-warning' if summary.missing_category > 0 else '' }}">
-    <div class="summary-card-label">未分类</div>
-    <div class="summary-card-num">{{ summary.missing_category }}</div>
-    <div class="summary-card-hint">含已确认 + 待确认</div>
+  <div class="kpi-cell {{ 'is-warning' if summary.missing_category > 0 else '' }}">
+    <div class="label">未分类</div>
+    <div class="val">{{ summary.missing_category }}</div>
+    <div class="foot">含已确认 + 待确认</div>
   </div>
-  <div class="summary-card {{ 'is-danger' if summary.suspected_duplicates > 0 else '' }}">
-    <div class="summary-card-label">疑似重复</div>
-    <div class="summary-card-num">{{ summary.suspected_duplicates }}</div>
-    <div class="summary-card-hint">不会自动入账，等待人工裁决</div>
+  <div class="kpi-cell {{ 'is-danger' if summary.suspected_duplicates > 0 else '' }}">
+    <div class="label">疑似重复</div>
+    <div class="val">{{ summary.suspected_duplicates }}</div>
+    <div class="foot">不会自动入账，等待人工裁决</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">已确认无图</div>
-    <div class="summary-card-num">{{ summary.confirmed_without_image }}</div>
-    <div class="summary-card-hint">原图被清理或从未上传</div>
+  <div class="kpi-cell">
+    <div class="label">已确认无图</div>
+    <div class="val">{{ summary.confirmed_without_image }}</div>
+    <div class="foot">原图被清理或从未上传</div>
   </div>
-  <div class="summary-card is-positive">
-    <div class="summary-card-label">可一键确认</div>
-    <div class="summary-card-num">{{ summary.ready_to_confirm }}</div>
-    <div class="summary-card-hint">金额 + 商家齐 + 非重复</div>
+  <div class="kpi-cell is-positive">
+    <div class="label">可一键确认</div>
+    <div class="val">{{ summary.ready_to_confirm }}</div>
+    <div class="foot">金额 + 商家齐 + 非重复</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">最久待确认</div>
-    <div class="summary-card-num">
+  <div class="kpi-cell">
+    <div class="label">最久待确认</div>
+    <div class="val">
       {% if summary.oldest_pending_age_days is none %}—{% else %}{{ summary.oldest_pending_age_days }} 天{% endif %}
     </div>
-    <div class="summary-card-hint">距今 ingest 时间</div>
+    <div class="foot">距今 ingest 时间</div>
   </div>
 </div>
 
-<div class="card">
+<div class="dt-card">
   <h2>建议操作</h2>
   <ul class="dq-action-list">
     {% if summary.missing_amount > 0 %}

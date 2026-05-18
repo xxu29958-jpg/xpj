@@ -5,8 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}小票夹 Owner Console{% endblock %}</title>
   <link rel="stylesheet" href="/static/owner/owner.css">
+  <link rel="stylesheet" href="/static/owner/components/nav.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/buttons.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/badges.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/feedback.css?v={{ backend_version }}">
+  <link rel="stylesheet" href="/static/owner/components/utilities.css?v={{ backend_version }}">
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ backend_version }}">
   <script defer src="/static/shared/confirm-modal.js?v={{ backend_version }}"></script>
+  <script defer src="/static/owner/owner-feedback.js?v={{ backend_version }}"></script>
 </head>
 <body>
 <nav class="nav">
@@ -21,8 +27,8 @@
   <a href="/owner/migration-readiness" {% if '/migration-readiness' in request.url.path %}class="active"{% endif %}>迁移预检</a>
   <a href="/owner/diagnostics" {% if '/diagnostics' in request.url.path %}class="active"{% endif %}>诊断</a>
   <a href="/owner/settings" {% if '/settings' in request.url.path %}class="active"{% endif %}>设置</a>
-  <span style="flex:1"></span>
-  <span style="font-size:11px;color:#475569">v{{ backend_version }} · 本机管理后台</span>
+  <span class="grow"></span>
+  <span class="version-tag">v{{ backend_version }} · 本机管理后台</span>
 </nav>
 <div class="page">
 {% block content %}{% endblock %}

@@ -8,14 +8,14 @@
 {% endif %}
 
 {% if flash_message %}
-<div class="card flash">{{ flash_message }}</div>
+<div class="dt-alert success">{{ flash_message }}</div>
 {% endif %}
 
 <div class="grid two-col">
   {% if can_write %}
-  <section class="card">
+  <section class="dt-card">
     <h2>新增商家别名</h2>
-    <form method="post" action="/web/merchants/aliases/create" class="form-stack">
+    <form method="post" action="/web/merchants/aliases/create" class="dt-form-grid">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <label>标准商家
         <input type="text" name="canonical_merchant" required placeholder="如：星巴克">
@@ -23,17 +23,17 @@
       <label>别名
         <input type="text" name="alias" required placeholder="如：STARBUCKS 国贸店">
       </label>
-      <button type="submit" class="btn btn-primary">添加别名</button>
+      <button type="submit" class="dt-btn primary">添加别名</button>
     </form>
   </section>
   {% else %}
-  <section class="card">
+  <section class="dt-card">
     <h2>新增商家别名</h2>
     <p class="meta">只读角色无法新增商家别名。</p>
   </section>
   {% endif %}
 
-  <section class="card">
+  <section class="dt-card">
     <h2>使用边界</h2>
     <ul class="meta">
       <li>同一账本内，一个别名只能指向一个标准商家。</li>
@@ -43,13 +43,13 @@
   </section>
 </div>
 
-<section class="card">
+<section class="dt-card">
   <div class="card-header">
     <h2>当前别名（{{ aliases|length }} 条）</h2>
-    <a class="btn btn-secondary" href="/web/rules{{ q }}">查看分类规则</a>
+    <a class="dt-btn" href="/web/rules{{ q }}">查看分类规则</a>
   </div>
   {% if aliases %}
-  <table class="transaction-table">
+  <table class="dt-table">
     <thead>
       <tr>
         <th>标准商家</th>
@@ -68,21 +68,21 @@
         <td><code>{{ item.canonical_key }}</code></td>
         <td><code>{{ item.alias_key }}</code></td>
         <td>
-          {% if item.enabled %}<span class="status-chip ok">启用</span>
-          {% else %}<span class="status-chip muted">停用</span>{% endif %}
+          {% if item.enabled %}<span class="dt-pill ok">启用</span>
+          {% else %}<span class="dt-pill muted">停用</span>{% endif %}
         </td>
         <td>
           {% if can_write %}
           <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle" style="display:inline">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <button type="submit" class="btn btn-secondary">
+            <button type="submit" class="dt-btn">
               {% if item.enabled %}停用{% else %}启用{% endif %}
             </button>
           </form>
           <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete" style="display:inline"
                 data-confirm="删除商家别名 [{{ item.alias }}]？">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-            <button type="submit" class="btn btn-danger">删除</button>
+            <button type="submit" class="dt-btn danger">删除</button>
           </form>
           {% else %}
           <span class="readonly-inline">只读</span>

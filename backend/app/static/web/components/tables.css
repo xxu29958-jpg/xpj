@@ -1,0 +1,81 @@
+/* /web 桌面账本 · 表格组件 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .dt-table —— 通用表格,替代 legacy .transaction-table
+ * .dt-tag   —— 分类徽章,替代 legacy .category-badge
+ */
+
+/* ───── dt-table (替代 legacy .transaction-table) ───── */
+.dt-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: var(--type-body-size);
+}
+.dt-table thead th {
+    background: var(--surface-sunken);
+    color: var(--text-meta);
+    font-family: var(--font-num);
+    font-size: var(--type-meta-size);
+    letter-spacing: var(--type-meta-tracking);
+    text-transform: uppercase;
+    font-weight: 500;
+    text-align: left;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-card);
+}
+.dt-table thead th.amount,
+.dt-table tbody td.amount {
+    text-align: right;
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+}
+.dt-table tbody td {
+    padding: var(--space-3-5) var(--space-4);
+    border-bottom: 1px solid var(--border-card);
+    color: var(--text-default);
+}
+.dt-table tbody tr:last-child td { border-bottom: 0; }
+.dt-table tbody tr:hover td { background: var(--brand-primary-bg); }
+.dt-table .text-over { color: var(--state-danger-fg); }
+
+/* .dt-table--compact —— 紧凑变体(管理类页面:rules/import_batch/edit-subtable) */
+.dt-table--compact thead th { padding: var(--space-2) var(--space-3-5); }
+.dt-table--compact tbody td { padding: var(--space-3) var(--space-3-5); font-size: var(--type-caption-size); }
+
+/* ───── dt-tag (替代 .category-badge) ───── */
+.dt-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px var(--space-3);
+    border-radius: var(--radius-xs);
+    background: var(--brand-primary-bg);
+    color: var(--brand-primary-strong);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+.ocr-hint .dot { background: var(--brand-primary); width: 4px; height: 4px; border-radius: 50%; }
+
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+    padding: 5px 10px;
+    border: 1px solid var(--border-input);
+    border-radius: 999px;
+    background: var(--surface-card);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.chip:hover { border-color: var(--text-meta); color: var(--text-default); }
+.chip.on { background: var(--text-default); color: var(--surface-card); border-color: var(--text-default); }
+
+.drawer-foot {
+    margin-top: auto;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-card);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.drawer-foot .spacer { flex: 1; }
+

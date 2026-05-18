@@ -3,9 +3,9 @@
 {% block content %}
 <h1>账本管理</h1>
 
-<div class="alert" style="background:#fef3c7;border-left:4px solid #f59e0b;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#78350f">
+<div class="alert alert-warn">
   v0.5：本页是<strong>本机管理流</strong>，用于查看/新建账本和进入家庭成员管理。所有账本的待确认 / 已确认 / 报表请在
-  <a href="/web" style="color:#92400e;text-decoration:underline">桌面账本流 /web</a> 中切换查看。<br>
+  <a class="text-link" href="/web">桌面账本流 /web</a> 中切换查看。<br>
   家庭成员邀请、角色调整和拥有者转让在“成员/邀请”中处理；当前不会自动入账或自动扣预算，疑似重复只提示不自动处理。
 </div>
 
@@ -16,35 +16,35 @@
 <div class="card">
   <h2>当前账本</h2>
   {% if not ledger_rows %}
-  <p style="color:#64748b;font-size:13px">服务未初始化，请先运行 <code>bootstrap_dev_owner.ps1</code>。</p>
+  <p class="text-meta">服务未初始化，请先运行 <code>bootstrap_dev_owner.ps1</code>。</p>
   {% else %}
   <div class="table-scroll">
-  <table style="width:100%;border-collapse:collapse;font-size:13px">
+  <table>
     <thead>
-      <tr style="background:#f1f5f9;text-align:left">
-        <th style="padding:8px 10px">账本名</th>
-        <th style="padding:8px 10px">角色</th>
-        <th style="padding:8px 10px">默认</th>
-        <th style="padding:8px 10px">待确认</th>
-        <th style="padding:8px 10px">已确认</th>
-        <th style="padding:8px 10px">绑定设备</th>
-        <th style="padding:8px 10px">操作</th>
+      <tr class="bg-sunken">
+        <th>账本名</th>
+        <th>角色</th>
+        <th>默认</th>
+        <th>待确认</th>
+        <th>已确认</th>
+        <th>绑定设备</th>
+        <th>操作</th>
       </tr>
     </thead>
     <tbody>
       {% for row in ledger_rows %}
-      <tr style="border-top:1px solid #e2e8f0">
-        <td class="text-break" style="padding:8px 10px">{{ row.name }}</td>
-        <td style="padding:8px 10px">
+      <tr>
+        <td class="text-break">{{ row.name }}</td>
+        <td>
           <span class="role-chip {% if row.role == 'owner' %}role-owner{% elif row.role == 'member' %}role-member{% elif row.role == 'viewer' %}role-viewer{% else %}role-unknown{% endif %}">{% if row.role == 'owner' %}拥有者{% elif row.role == 'member' %}成员{% elif row.role == 'viewer' %}只读{% else %}{{ row.role }}{% endif %}</span>
         </td>
-        <td style="padding:8px 10px">{% if row.is_default %}是{% else %}—{% endif %}</td>
-        <td style="padding:8px 10px">{{ row.pending_count }}</td>
-        <td style="padding:8px 10px">{{ row.confirmed_count }}</td>
-        <td style="padding:8px 10px">{{ row.active_device_count }}</td>
-        <td style="padding:8px 10px">
-          <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary" style="padding:4px 10px;font-size:12px">打开账本</a>
-          <a href="/owner/ledgers/{{ row.ledger_id }}/members" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;margin-left:4px">成员/邀请</a>
+        <td>{% if row.is_default %}是{% else %}—{% endif %}</td>
+        <td>{{ row.pending_count }}</td>
+        <td>{{ row.confirmed_count }}</td>
+        <td>{{ row.active_device_count }}</td>
+        <td>
+          <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size)">打开账本</a>
+          <a href="/owner/ledgers/{{ row.ledger_id }}/members" class="btn btn-secondary" style="padding:var(--space-2) var(--space-3-5);font-size:var(--type-meta-size);margin-left:var(--space-2)">成员/邀请</a>
         </td>
       </tr>
       {% endfor %}
@@ -56,16 +56,16 @@
 
 <div class="card">
   <h2>新建账本</h2>
-  <p style="color:#64748b;font-size:13px;margin-bottom:12px">
+  <p class="text-meta">
     新建后，使用绑定码页面把 Android 绑定到这个账本。每个账本的待确认/已确认/上传链接都互相隔离。
   </p>
   <form method="post" action="/owner/ledgers">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <label style="font-size:13px">账本名称：
+      <label>账本名称：
         <input type="text" name="name" maxlength="60" required
                value="{{ submitted_name|default('') }}"
                placeholder="例：家庭账本"
-               style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:4px;margin-left:6px;width:240px">
+               class="inline-input inline-input--wide">
       </label>
       <button type="submit" class="btn btn-primary">创建账本</button>
     </div>

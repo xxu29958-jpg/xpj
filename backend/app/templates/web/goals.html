@@ -1,93 +1,99 @@
 {% extends "base.html" %}
-{% block title %}目标 — 小票夹{% endblock %}
+{% block title %}目标 · 小票夹{% endblock %}
+
 {% block content %}
-<div class="page-header-row">
+<div class="page-header page-header--with-action">
   <div>
-    <h1>{{ month }} 月度目标</h1>
-    <p class="page-hint">目标只做提醒和报表展示，不阻断上传、确认或预算计算。</p>
+    <h1 class="page-title">{{ month }} 月度目标</h1>
+    <div class="page-sub">目标只做提醒和报表展示,不阻断上传、确认或预算计算。</div>
   </div>
-  <a class="btn btn-secondary" href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ month }}">查看动态报表</a>
+  <a class="dt-btn ghost" href="/web/reports?ledger_id={{ selected_ledger_id }}&month={{ month }}">查看动态报表 →</a>
 </div>
 
-{% if message %}<div class="alert alert-success">{{ message }}</div>{% endif %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% if message %}<div class="callout-info callout-info--success">{{ message }}</div>{% endif %}
+{% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
 
-<div class="card">
-  <form method="get" action="/web/goals" class="filter-row">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <label>月份
-      <input type="month" name="month" value="{{ month }}">
-    </label>
-    <label class="bulk-check">
-      <input type="checkbox" name="include_archived" value="true" {% if include_archived %}checked{% endif %}>
-      显示已归档
-    </label>
-    <button type="submit" class="btn btn-secondary">查看</button>
-  </form>
-</div>
+<form method="get" action="/web/goals" class="toolbar">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <label class="dt-form-row dt-form-row--inline">
+    <span class="dt-eyebrow">月份</span>
+    <input class="dt-input" type="month" name="month" value="{{ month }}">
+  </label>
+  <label class="dt-form-row dt-form-row--inline">
+    <input type="checkbox" name="include_archived" value="true" {% if include_archived %}checked{% endif %}>
+    <span class="text-muted">显示已归档</span>
+  </label>
+  <div class="spacer"></div>
+  <button class="dt-btn" type="submit">查看</button>
+</form>
 
 {% if can_write %}
-<div class="card">
-  <h2>新建目标</h2>
-  <form method="post" action="/web/goals/create" class="budget-form-grid">
+<div class="dt-card">
+  <div class="card-head">
+    <div class="card-title">新建目标</div>
+    <div class="card-sub">不影响预算,仅做提醒</div>
+  </div>
+  <form method="post" action="/web/goals/create">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="month" value="{{ month }}">
-    <div class="form-row">
-      <label>目标名称</label>
-      <input type="text" name="name" maxlength="80" placeholder="本月餐饮" required>
+    <div class="dt-form-grid">
+      <div class="dt-form-row">
+        <label>目标名称</label>
+        <input class="dt-input" type="text" name="name" maxlength="80" placeholder="本月餐饮" required>
+      </div>
+      <div class="dt-form-row">
+        <label>目标金额（元）</label>
+        <input class="dt-input" type="number" name="target_amount_yuan" step="0.01" min="0.01" placeholder="800.00" required>
+      </div>
+      <div class="dt-form-row">
+        <label>分类（留空为总支出）</label>
+        <input class="dt-input" type="text" name="category" maxlength="64" placeholder="餐饮">
+      </div>
     </div>
-    <div class="form-row">
-      <label>目标金额（元）</label>
-      <input type="number" name="target_amount_yuan" step="0.01" min="0.01" placeholder="800.00" required>
-    </div>
-    <div class="form-row">
-      <label>分类（留空为总支出）</label>
-      <input type="text" name="category" maxlength="64" placeholder="餐饮">
-    </div>
-    <div class="form-row" style="align-self:end">
-      <button type="submit" class="btn btn-primary">保存目标</button>
+    <div class="dt-actions">
+      <button class="dt-btn primary" type="submit">保存目标</button>
     </div>
   </form>
 </div>
 {% endif %}
 
-<div class="card">
-  <h2>目标进度</h2>
+<div class="dt-card">
+  <div class="card-head">
+    <div class="card-title">目标进度</div>
+    <div class="card-sub">{{ goals|length }} 个</div>
+  </div>
   {% if goals %}
   <div class="goal-list">
     {% for goal in goals %}
     <div class="goal-row {{ 'is-archived' if goal.is_archived else '' }}">
       <div class="goal-row-head">
-        <div>
+        <div class="goal-row-head__title">
           <strong>{{ goal.name }}</strong>
-          <span class="category-badge">{{ goal.category }}</span>
-          {% if goal.is_archived %}<span class="status-chip muted">已归档</span>{% endif %}
-          {% if goal.is_over_limit %}<span class="status-chip warn">已超出</span>{% endif %}
+          <span class="dt-tag">{{ goal.category }}</span>
+          {% if goal.is_archived %}<span class="dt-pill muted">已归档</span>{% endif %}
+          {% if goal.is_over_limit %}<span class="dt-pill danger">已超出</span>{% endif %}
         </div>
-        <div class="amount">{{ home_currency_symbol }}{{ goal.spent_yuan }} / {{ home_currency_symbol }}{{ goal.target_yuan }}</div>
+        <div class="goal-row-head__amt font-num">{{ home_currency_symbol }}{{ goal.spent_yuan }} / {{ home_currency_symbol }}{{ goal.target_yuan }}</div>
       </div>
-      <div class="budget-progress">
-        <div class="budget-progress-fill {{ 'is-over' if goal.is_over_limit else '' }}" style="width: {{ goal.bar_percent }}%"></div>
+      <div class="dt-progress">
+        <div class="dt-progress__fill {{ 'is-over' if goal.is_over_limit else '' }}" style="width: {{ goal.bar_percent }}%"></div>
       </div>
-      <div class="budget-progress-meta">
+      <div class="dt-progress-meta">
         <span>{{ goal.progress_percent }}%</span>
         <span>剩余 {{ home_currency_symbol }}{{ goal.remaining_yuan }}</span>
       </div>
       {% if can_write and not goal.is_archived %}
-      <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="inline">
+      <form method="post" action="/web/goals/{{ goal.public_id }}/archive" class="goal-archive-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="month" value="{{ month }}">
-        <button type="submit" class="btn btn-link">归档</button>
+        <button type="submit" class="dt-btn ghost dt-btn--sm">归档</button>
       </form>
       {% endif %}
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">这个月还没有目标</div>
-    <div class="empty-state-hint">可以先设总支出目标，再按分类补充餐饮、购物等目标。</div>
-  </div>
+  <div class="empty-cell">这个月还没有目标。可以先设总支出目标,再按分类补充餐饮、购物等目标。</div>
   {% endif %}
 </div>
 {% endblock %}

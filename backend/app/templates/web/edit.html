@@ -4,13 +4,13 @@
 <h1>编辑账单 #{{ expense.id }}</h1>
 
 {% if error %}
-<div class="alert alert-danger">⚠️ {{ error }}</div>
+<div class="dt-alert danger">⚠️ {{ error }}</div>
 {% endif %}
 {% if message %}
-<div class="card flash">{{ message }}</div>
+<div class="dt-alert success">{{ message }}</div>
 {% endif %}
 
-<div class="card">
+<div class="dt-card">
   <div class="edit-grid">
     {% if expense.has_image %}
     <div class="edit-image receipt-image-shell" data-image-skeleton>
@@ -27,53 +27,53 @@
     <form method="post" action="/web/expenses/{{ expense.id }}/save" class="edit-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">
-      <div class="form-row">
+      <div class="dt-form-row">
         <label>金额 ({{ expense.original_currency_code }})</label>
         <input type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
         {% if expense.fx_meta %}<div class="meta">{{ expense.fx_meta }}</div>{% endif %}
       </div>
-      <div class="form-row">
+      <div class="dt-form-row">
         <label>商家</label>
         <input type="text" name="merchant" value="{{ expense.merchant }}" maxlength="200" placeholder="未填写商家" {% if not can_write %}disabled{% endif %}>
       </div>
-      <div class="form-row">
+      <div class="dt-form-row">
         <label>分类</label>
         <input type="text" name="category" value="{{ expense.category }}" maxlength="32" placeholder="例如 餐饮" {% if not can_write %}disabled{% endif %}>
       </div>
-      <div class="form-row">
+      <div class="dt-form-row">
         <label>备注</label>
         <textarea name="note" rows="3" {% if not can_write %}disabled{% endif %}>{{ expense.note }}</textarea>
       </div>
-      <div class="form-row">
+      <div class="dt-form-row">
         <span class="meta">
           状态：
-          {% if expense.is_duplicate %}<span class="status-chip warn">疑似重复</span>
-          {% elif expense.status == 'confirmed' %}<span class="status-chip ok">已确认</span>
-          {% elif expense.status == 'rejected' %}<span class="status-chip muted">已忽略</span>
-          {% elif expense.needs_amount %}<span class="status-chip warn">缺金额</span>
-          {% elif expense.needs_merchant %}<span class="status-chip muted">缺商家</span>
-          {% else %}<span class="status-chip pending">待确认</span>{% endif %}
+          {% if expense.is_duplicate %}<span class="dt-pill warn">疑似重复</span>
+          {% elif expense.status == 'confirmed' %}<span class="dt-pill ok">已确认</span>
+          {% elif expense.status == 'rejected' %}<span class="dt-pill muted">已忽略</span>
+          {% elif expense.needs_amount %}<span class="dt-pill warn">缺金额</span>
+          {% elif expense.needs_merchant %}<span class="dt-pill muted">缺商家</span>
+          {% else %}<span class="dt-pill">待确认</span>{% endif %}
           ｜来源：{{ expense.source_label }}
           ｜上传时间：{{ expense.created_at }}
         </span>
       </div>
       <div class="actions">
         {% if can_write %}
-        <button type="submit" class="btn btn-primary">保存</button>
+        <button type="submit" class="dt-btn primary">保存</button>
         {% if expense.status == 'pending' %}
-        <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="btn btn-success">入账</button>
-        <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="btn btn-danger"
+        <button type="submit" formaction="/web/expenses/{{ expense.id }}/confirm" class="dt-btn success">入账</button>
+        <button type="submit" formaction="/web/expenses/{{ expense.id }}/reject" class="dt-btn danger"
                 data-confirm="忽略这笔账单？">忽略</button>
         {% endif %}
         {% endif %}
-        <a href="/web/pending{{ q }}" class="btn btn-link">返回</a>
+        <a href="/web/pending{{ q }}" class="dt-btn link">返回</a>
       </div>
     </form>
   </div>
 </div>
 
 <div class="grid two-col detail-sections">
-  <div class="card">
+  <div class="dt-card">
     <div class="card-header">
       <div>
         <h2>小票明细</h2>
@@ -81,11 +81,11 @@
       </div>
     </div>
     {% if items_error %}
-    <div class="alert alert-danger">⚠️ {{ items_error }}</div>
+    <div class="dt-alert danger">⚠️ {{ items_error }}</div>
     {% endif %}
     <form method="post" action="/web/expenses/{{ expense.id }}/items/save">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <table class="transaction-table compact edit-subtable">
+      <table class="dt-table dt-table--compact edit-subtable">
         <thead>
           <tr>
             <th>名称</th>
@@ -112,7 +112,7 @@
       </table>
       {% if can_write %}
       <div class="actions sub-actions">
-        <button type="submit" class="btn btn-secondary">保存明细</button>
+        <button type="submit" class="dt-btn">保存明细</button>
       </div>
       {% else %}
       <div class="readonly-inline">只读角色，无法修改小票明细。</div>
@@ -120,7 +120,7 @@
     </form>
   </div>
 
-  <div class="card">
+  <div class="dt-card">
     <div class="card-header">
       <div>
         <h2>家庭拆账</h2>
@@ -128,7 +128,7 @@
       </div>
     </div>
     {% if splits_error %}
-    <div class="alert alert-danger">⚠️ {{ splits_error }}</div>
+    <div class="dt-alert danger">⚠️ {{ splits_error }}</div>
     {% endif %}
     {% if split_rows.total_yuan %}
     <div class="reconcile-line">
@@ -140,7 +140,7 @@
     {% endif %}
     <form method="post" action="/web/expenses/{{ expense.id }}/splits/save">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <table class="transaction-table compact edit-subtable">
+      <table class="dt-table dt-table--compact edit-subtable">
         <thead>
           <tr>
             <th>成员</th>
@@ -172,7 +172,7 @@
       </table>
       {% if can_write %}
       <div class="actions sub-actions">
-        <button type="submit" class="btn btn-secondary">保存拆账</button>
+        <button type="submit" class="dt-btn">保存拆账</button>
       </div>
       {% else %}
       <div class="readonly-inline">只读角色，无法修改家庭拆账。</div>

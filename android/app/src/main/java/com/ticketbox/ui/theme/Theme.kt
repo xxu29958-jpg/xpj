@@ -35,6 +35,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.LocalChartTokens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalDashboardCardTokens
@@ -124,12 +125,19 @@ private val MidnightScheme = darkColorScheme(
     onError = Color(0xFF15171C),
 )
 
+// M3 Shapes 派生自 [AppRadius] —— 不再硬编码 dp,与三端 design scale 真同步。
+// 映射规则:
+//   extraSmall (M3 Snackbar/Tooltip)     → AppRadius.extraSmall  ( 8dp)
+//   small      (M3 Button/Chip-like)     → AppRadius.small       (12dp)
+//   medium     (M3 Card)                 → AppRadius.medium      (20dp)
+//   large      (M3 BottomSheet)          → AppRadius.large       (28dp)
+//   extraLarge (M3 Dialog/Hero)          → AppRadius.hero        (36dp)
 private val TicketboxShapes = Shapes(
-    extraSmall = RoundedCornerShape(12.dp),
-    small = RoundedCornerShape(16.dp),
-    medium = RoundedCornerShape(22.dp),
-    large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(34.dp),
+    extraSmall = RoundedCornerShape(AppRadius.extraSmall),
+    small      = RoundedCornerShape(AppRadius.small),
+    medium     = RoundedCornerShape(AppRadius.medium),
+    large      = RoundedCornerShape(AppRadius.large),
+    extraLarge = RoundedCornerShape(AppRadius.hero),
 )
 
 fun colorSchemeForSkin(skin: AppSkin): ColorScheme {
@@ -161,7 +169,7 @@ fun TicketboxTheme(
 
     MaterialTheme(
         colorScheme = colorSchemeForSkin(skin),
-        typography = MaterialTheme.typography,
+        typography = TicketboxTypography,
         shapes = TicketboxShapes,
     ) {
         TicketboxAtmosphereBackground(skin = skin) {

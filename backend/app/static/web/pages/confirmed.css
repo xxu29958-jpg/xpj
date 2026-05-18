@@ -1,0 +1,168 @@
+/* /web 桌面账本 · 已确认页样式 (v0.10.1 从 desktop.css 拆出)
+ *
+ * 日历热力图 + timeline 等 confirmed.html 专属
+ */
+
+/* ───── Confirmed page ───── */
+.month-overview {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.day-group {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 24px;
+    padding: 18px 0;
+    border-top: 1px solid var(--border-card);
+}
+.day-group:first-of-type { border-top: 0; padding-top: 0; }
+.day-label {
+    font-family: var(--font-num);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--text-meta);
+    font-variant-numeric: tabular-nums;
+}
+.day-label .big {
+    display: block;
+    font-family: var(--font-serif);
+    font-size: 28px;
+    color: var(--text-default);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.day-label .sum {
+    display: block;
+    font-family: var(--font-num);
+    font-size: 13px;
+    color: var(--text-default);
+    margin-top: 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+.timeline-row {
+    display: grid;
+    grid-template-columns: 64px 1fr 90px;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 0;
+    text-decoration: none;
+    color: inherit;
+}
+.confirmed-flash {
+    background: var(--state-success-bg);
+    color: var(--state-success-fg);
+    border-color: var(--state-success-border);
+}
+.confirmed-batch-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    border-bottom: 1px solid var(--border-card);
+    color: var(--text-muted);
+    font-size: 12.5px;
+}
+.confirmed-batch-head .hint {
+    color: var(--text-meta);
+    margin-left: 2px;
+}
+.timeline-row.has-check {
+    grid-template-columns: 22px 64px minmax(0, 1fr) 90px;
+}
+.timeline-row[aria-selected="true"],
+.timeline-row.selected {
+    background: var(--surface-sunken);
+    box-shadow: 0 0 0 1px var(--border-card) inset;
+}
+.timeline-row + .timeline-row { border-top: 1px solid var(--border-card); }
+.timeline-time { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-meta); }
+.timeline-merch { font-size: 14px; color: var(--text-default); }
+.timeline-meta { font-size: 11.5px; color: var(--text-meta); margin-top: 2px; display: flex; gap: 6px; align-items: baseline; }
+.timeline-amt { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 15px; text-align: right; color: var(--text-default); }
+
+@media (max-width: 900px) {
+    .bulk-bar {
+        bottom: 12px;
+        flex-wrap: wrap;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .bulk-bar .spacer {
+        display: none;
+    }
+    .bulk-bar .bulk-field {
+        flex: 1 1 150px;
+        width: auto;
+        min-width: 0;
+    }
+    .confirmed-batch-head {
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 8px 0;
+    }
+    .timeline-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4px 10px;
+        align-items: start;
+    }
+    .timeline-row:not(.has-check) {
+        grid-template-columns: 52px minmax(0, 1fr) auto;
+    }
+    .timeline-row.has-check {
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+    }
+    .timeline-row.has-check > :nth-child(1) {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        margin-top: 2px;
+    }
+    .timeline-row.has-check > :nth-child(3) {
+        grid-column: 2 / -1;
+        grid-row: 1;
+        min-width: 0;
+    }
+    .timeline-row.has-check .timeline-time {
+        grid-column: 2;
+        grid-row: 2;
+    }
+    .timeline-row.has-check .timeline-amt {
+        grid-column: 3;
+        grid-row: 2;
+    }
+    .timeline-meta {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 560px) {
+    .bulk-bar .bulk-field {
+        flex-basis: 100%;
+    }
+    .confirmed-bulk-bar .dt-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}
+
+.heatmap { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.heatmap .head { font-size: 10px; color: var(--text-faint); text-align: center; letter-spacing: 0.1em; }
+.heatmap .day {
+    aspect-ratio: 1 / 1;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: var(--font-num);
+    display: grid; place-items: center;
+    background: var(--surface-sunken);
+    color: var(--text-meta);
+}
+.heatmap .day.has { color: var(--text-default); }
+
+.source-row { margin-top: 10px; }
+.source-row .head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+.source-row .head .name { color: var(--text-muted); }
+.source-row .head .num { color: var(--text-meta); font-family: var(--font-num); }
+

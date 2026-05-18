@@ -1,0 +1,222 @@
+/* /web 桌面账本 · 待确认页样式 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .exp-table / .exp-row / .exp-head 等 pending 列表专属网格
+ */
+
+/* ───── Expense table ───── */
+.exp-table { border: 1px solid var(--border-card); border-radius: var(--radius-md); background: var(--surface-card); overflow: hidden; }
+.exp-head {
+    display: grid;
+    grid-template-columns: 32px 76px 1fr 110px 130px 100px 90px;
+    gap: 14px;
+    padding: 10px 18px;
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--border-card);
+    background: var(--surface-sunken);
+    font-family: var(--font-num);
+}
+.exp-row {
+    display: grid;
+    grid-template-columns: 32px 76px 1fr 110px 130px 100px 90px;
+    gap: 14px;
+    padding: 14px 18px;
+    align-items: center;
+    cursor: pointer;
+    transition: background var(--motion-fast) var(--ease-standard);
+    color: inherit;
+    text-decoration: none;
+}
+.exp-row:hover { background: var(--surface-sunken); }
+.exp-row + .exp-row { border-top: 1px solid var(--border-card); }
+.exp-row.selected { background: var(--brand-primary-bg); }
+.exp-row.selected:hover { background: var(--brand-primary-bg); }
+
+.exp-thumb {
+    width: 56px;
+    height: 76px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-card);
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+}
+.exp-thumb-receipt {
+    background-image:
+        repeating-linear-gradient(180deg, transparent 0 5px,
+            rgba(0,0,0,0.06) 5px, rgba(0,0,0,0.06) 6px),
+        linear-gradient(180deg, var(--surface-card) 0 8px, transparent 8px);
+}
+.exp-thumb-alipay {
+    background:
+        linear-gradient(180deg, #d6e3ee 0 14px, transparent 14px),
+        repeating-linear-gradient(180deg, transparent 0 5px,
+            rgba(0,0,0,0.06) 5px, rgba(0,0,0,0.06) 6px),
+        var(--surface-card);
+}
+.exp-thumb-wechat {
+    background:
+        linear-gradient(180deg, #d1e5d3 0 12px, transparent 12px),
+        repeating-linear-gradient(180deg, transparent 0 5px,
+            rgba(0,0,0,0.06) 5px, rgba(0,0,0,0.06) 6px),
+        var(--surface-card);
+}
+
+.exp-merch { font-size: 14px; color: var(--text-default); margin-bottom: 4px; font-weight: 500; }
+.exp-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-meta);
+    font-family: var(--font-num);
+}
+.exp-meta .sep { color: var(--text-faint); }
+.exp-amt {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: 16px;
+    color: var(--text-default);
+    text-align: right;
+    font-weight: 500;
+}
+.exp-amt-missing { color: var(--state-danger-fg); font-family: var(--font-zh); font-size: 12.5px; font-weight: normal; }
+.exp-cat {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.exp-cat-missing { color: var(--brand-primary); }
+
+@media (max-width: 900px) {
+    .toolbar {
+        align-items: stretch;
+    }
+    .toolbar > div[style*="flex:1"] {
+        display: none;
+    }
+    .seg {
+        max-width: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .seg::-webkit-scrollbar { display: none; }
+    .seg button,
+    .seg a {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+    .exp-table {
+        border: 0;
+        background: transparent;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .exp-head {
+        display: none;
+    }
+    .exp-row {
+        grid-template-columns: 24px 56px minmax(0, 1fr) auto;
+        grid-template-rows: auto auto auto;
+        gap: 10px 12px;
+        padding: 12px;
+        border: 1px solid var(--border-card);
+        border-radius: var(--radius-md);
+        background: var(--surface-card);
+    }
+    .exp-row + .exp-row {
+        border-top: 1px solid var(--border-card);
+    }
+    .exp-row > :nth-child(1) {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        align-self: start;
+        margin-top: 4px;
+    }
+    .exp-row > :nth-child(2) {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+    }
+    .exp-row > :nth-child(3) {
+        grid-column: 3;
+        grid-row: 1;
+        min-width: 0;
+    }
+    .exp-row > :nth-child(4) {
+        grid-column: 3;
+        grid-row: 2;
+        align-self: center;
+        justify-self: start;
+    }
+    .exp-row > :nth-child(n+5) {
+        min-width: 0;
+    }
+    .exp-row > :nth-child(5) {
+        grid-column: 3 / -1;
+        grid-row: 3;
+    }
+    .exp-row > :nth-child(6) {
+        grid-column: 4;
+        grid-row: 2;
+        justify-self: end;
+        align-self: center;
+    }
+    .exp-row > :nth-child(7) {
+        grid-column: 4;
+        grid-row: 1;
+        justify-self: end;
+        align-self: start;
+    }
+    .exp-thumb {
+        width: 48px;
+        height: 64px;
+    }
+    .exp-meta {
+        flex-wrap: wrap;
+    }
+    .exp-amt {
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 560px) {
+    .toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .toolbar > .dt-btn {
+        justify-self: start;
+    }
+}
+
+.checkbox {
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--border-input);
+    border-radius: 3px;
+    background: var(--surface-card);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.checkbox.checked {
+    background: var(--text-default);
+    border-color: var(--text-default);
+}
+.checkbox.checked::after {
+    content: "";
+    width: 8px;
+    height: 4px;
+    border-left: 1.5px solid var(--surface-card);
+    border-bottom: 1.5px solid var(--surface-card);
+    transform: rotate(-45deg) translateY(-1px);
+}
+
+/* 已迁出到 components/bulk-bar.css (v0.10.1 拆分). */

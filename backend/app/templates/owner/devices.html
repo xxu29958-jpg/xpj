@@ -25,7 +25,7 @@
         <td>{{ d.platform }}</td>
         <td>{{ d.account_name }}</td>
         <td>{{ d.ledger_name or d.ledger_id or '—' }}</td>
-        <td style="white-space:nowrap;color:#64748b;font-size:12px">{{ d.created_at|owner_datetime }}</td>
+        <td class="text-meta" style="white-space:nowrap;font-size:var(--type-meta-size)">{{ d.created_at|owner_datetime }}</td>
         <td>{{ d.last_seen_at|owner_datetime }}</td>
         <td>
           {% if d.revoked_at %}
@@ -61,7 +61,7 @@
     </tbody>
   </table>
   {% else %}
-    <p style="color:#64748b;text-align:center;padding:24px">暂无设备。使用绑定码绑定 Android 设备后显示在此处。</p>
+    <p class="empty-note">暂无设备。使用绑定码绑定 Android 设备后显示在此处。</p>
   {% endif %}
 </div>
 {% endblock %}

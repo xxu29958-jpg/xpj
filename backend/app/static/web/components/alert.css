@@ -1,0 +1,42 @@
+/* /web 桌面账本 · 提示条 (v0.10.1)
+ *
+ * .dt-alert ——  块级提示条,变体:
+ *   .dt-alert.danger   危险/错误(默认强调红)
+ *   .dt-alert.success  成功反馈
+ *   .dt-alert.warn     警告
+ *   .dt-alert.info     信息(默认中性)
+ *
+ * 取代 legacy .alert + .alert-danger / -success / -warn / -info / .flash。
+ * /owner Console 也有同名 .alert 系统(owner.css feedback.css),但定义独立、不互相影响。
+ */
+
+.dt-alert {
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--space-5);
+    font-size: var(--type-caption-size);
+    border: 1px solid var(--state-info-border);
+    background: var(--state-info-bg);
+    color: var(--state-info-fg);
+    line-height: 1.55;
+}
+.dt-alert.danger {
+    background: var(--state-danger-bg);
+    border-color: var(--state-danger-border);
+    color: var(--state-danger-fg);
+}
+.dt-alert.success {
+    background: var(--state-success-bg);
+    border-color: var(--state-success-border);
+    color: var(--state-success-fg);
+}
+.dt-alert.warn {
+    background: var(--state-warn-bg);
+    border-color: var(--state-warn-border);
+    color: var(--state-warn-fg);
+}
+.dt-alert.info {
+    background: var(--state-info-bg);
+    border-color: var(--state-info-border);
+    color: var(--state-info-fg);
+}

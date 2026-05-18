@@ -1,0 +1,30 @@
+/* /web 桌面账本 · 焦点环 / a11y (v0.10.1 从 desktop.css 拆出)
+ *
+ * 全局 :focus-visible 处理 + 输入控件的 boxshadow 焦点回馈。
+ */
+
+/* ───── A11y: 键盘焦点环 ─────
+ * 仅在键盘导航（Tab）触发的 :focus-visible 上显示，
+ * 鼠标点击不会出现描边；颜色来自 shared/tokens.css 的 --brand-focus-ring，
+ * paper / mono / midnight 三主题自动适配。
+ */
+:focus-visible {
+    outline: 2px solid var(--brand-focus-ring);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+.desktop-shell-active .dt-btn:focus-visible,
+.desktop-shell-active button:focus-visible {
+    outline: none;
+}
+/* 表单控件已用 border-color 反馈焦点，避免再叠一圈 outline */
+.dt-input:focus-visible,
+.desktop-shell-active .form-row input:focus-visible,
+.desktop-shell-active .form-row textarea:focus-visible,
+.desktop-shell-active .form-row select:focus-visible {
+    outline: none;
+    border-color: var(--text-default);
+    box-shadow: 0 0 0 2px var(--brand-focus-ring);
+}
+
+/* 已迁出到 components/skeleton.css (v0.10.1 拆分). */

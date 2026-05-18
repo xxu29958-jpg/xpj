@@ -5,7 +5,7 @@
 #}
 {% set e = expense %}
 <section class="drawer-receipt">
-  <div class="card-title" style="margin-bottom:0">小票原件</div>
+  <div class="card-title card-title--flat">小票原件</div>
   <div class="meta">
     #{{ e.id }} · {{ e.source_label }}<br>
     上传于 {{ e.created_at or '—' }}
@@ -21,32 +21,30 @@
     <a class="dt-btn" href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}" target="_blank">放大</a>
     <a class="dt-btn" href="/web/expenses/{{ e.id }}/image{{ '?ledger_id=' ~ selected_ledger_id }}" download>下载</a>
     {% else %}
-    <span style="font-size:11.5px;color:var(--text-meta)">没有小票图像（手动记录或图像已清理）。</span>
+    <span class="drawer-noimage-hint">没有小票图像（手动记录或图像已清理）。</span>
     {% endif %}
   </div>
-  <div style="background:var(--surface-card);border:1px solid var(--border-card);border-radius:6px;padding:10px 12px;font-size:11.5px;color:var(--text-meta);line-height:1.7">
-    <div style="color:var(--text-muted);font-family:var(--font-num);font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px">
-      草稿状态
-    </div>
-    <div>商家：{{ e.merchant or '未填' }}{% if e.needs_merchant %} · <span style="color:var(--state-danger-fg)">待补</span>{% endif %}</div>
-    <div>金额：{% if e.amount_label %}{{ e.amount_label }}{% else %}<span style="color:var(--state-danger-fg)">未识别</span>{% endif %}</div>
+  <div class="drawer-draft-card">
+    <div class="dt-eyebrow drawer-draft-card__title">草稿状态</div>
+    <div>商家：{{ e.merchant or '未填' }}{% if e.needs_merchant %} · <span class="text-danger">待补</span>{% endif %}</div>
+    <div>金额：{% if e.amount_label %}{{ e.amount_label }}{% else %}<span class="text-danger">未识别</span>{% endif %}</div>
     {% if e.fx_meta %}<div>{{ e.fx_meta }}</div>{% endif %}
     <div>时间：{{ e.expense_time or '未填' }}</div>
     <div>分类：{{ e.category }}</div>
     {% if e.is_duplicate %}
-    <div style="margin-top:6px"><span class="dt-pill danger">疑似重复</span></div>
+    <div class="drawer-draft-card__pill"><span class="dt-pill danger">疑似重复</span></div>
     {% endif %}
   </div>
 </section>
 
 <section class="drawer-form">
   <header class="drawer-head">
-    <div style="flex:1">
-      <div class="page-eyebrow" style="margin:0">
+    <div class="drawer-head__title">
+      <div class="page-eyebrow page-eyebrow--flat">
         #{{ e.id }} · {% if e.is_duplicate %}疑似重复{% else %}{{ '待确认草稿' if e.status == 'pending' else '已入账' }}{% endif %}
       </div>
       <h2>{{ e.merchant or '新建账单' }}</h2>
-      <div style="font-size:11.5px;color:var(--text-meta);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
+      <div class="drawer-head__flags">
         {% set _flags = [] %}
         {% if e.needs_amount %}{% set _ = _flags.append(('danger', '缺金额')) %}{% endif %}
         {% if e.needs_merchant %}{% set _ = _flags.append(('warn', '缺商家')) %}{% endif %}
@@ -62,7 +60,7 @@
   </header>
 
   {% if not can_write %}
-  <div class="readonly-callout" style="margin:0">
+  <div class="callout-info callout-info--flat">
     只读角色，仅能查看。编辑、确认、删除等操作已禁用。
   </div>
   {% endif %}
@@ -71,10 +69,10 @@
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
     <div class="field-row">
-      <div class="field" style="flex:2">
+      <div class="field field--amount">
         <div class="field-label">
           <span>金额</span>
-          {% if e.needs_amount %}<span class="hint" style="color:var(--state-danger-fg)">未识别，请填写</span>{% endif %}
+          {% if e.needs_amount %}<span class="hint text-danger">未识别，请填写</span>{% endif %}
         </div>
         <div class="input-wrap">
           <span class="input-prefix">{{ e.amount_symbol }}</span>
@@ -83,7 +81,7 @@
         </div>
         {% if e.fx_meta %}<div class="hint">{{ e.fx_meta }}</div>{% endif %}
       </div>
-      <div class="field" style="flex:1;max-width:130px">
+      <div class="field field--currency">
         <div class="field-label"><span>币种</span></div>
         <input class="dt-input" value="{{ e.original_currency_code }}" disabled>
       </div>

@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="page-header">
-  <h1 class="page-title">这几笔，看起来像同一件事。<span style="color:var(--text-meta);font-weight:500;margin-left:8px">· {{ duplicate_pairs | length }} 组</span></h1>
+  <h1 class="page-title">这几笔，看起来像同一件事。<span class="page-title-count">· {{ duplicate_pairs | length }} 组</span></h1>
   <div class="page-sub">
     每组并排呈现：左侧是已入账的原账单，右侧是新上传的待确认草稿。
     差异字段以茶铜色标出。决定保留哪一份，剩下的会被标记为忽略。
@@ -11,32 +11,26 @@
 </div>
 
 {% if flash_message %}
-<div class="readonly-callout" style="background:var(--state-info-bg);color:var(--state-info-fg);border-color:var(--state-info-border)">
-  {{ flash_message }}
-</div>
+<div class="callout-info">{{ flash_message }}</div>
 {% endif %}
 
 <div class="toolbar">
   <div class="seg">
     <button class="on" type="button">待处理 <span class="count">{{ duplicate_pairs | length }}</span></button>
   </div>
-  <div style="flex:1"></div>
-  <span style="font-size:11.5px;color:var(--text-meta)">
+  <div class="spacer"></div>
+  <span class="toolbar-hint">
     判定使用 image_hash + 金额/商家/时间近似。「不是重复」会被记到忽略列表，未来不再触发。
   </span>
 </div>
 
 {% if duplicate_pairs | length == 0 %}
-<div class="dt-card" style="padding:48px 24px;text-align:center">
-  <h3 style="font-family:var(--font-serif);font-weight:400;font-size:22px;color:var(--text-muted);margin:0 0 8px">
-    没有疑似重复
-  </h3>
-  <div style="font-size:13px;color:var(--text-meta)">
-    新草稿和已入账账单都不冲突，可以放心确认。
-  </div>
+<div class="dt-card dt-card--empty">
+  <h3 class="empty-headline">没有疑似重复</h3>
+  <div class="empty-body">新草稿和已入账账单都不冲突，可以放心确认。</div>
 </div>
 {% else %}
-<div style="display:flex;flex-direction:column;gap:16px">
+<div class="stack-col">
   {% for pair in duplicate_pairs %}
   {% set cur = pair.current %}
   {% set orig = pair.original %}
@@ -69,7 +63,7 @@
           <dt>状态</dt>
           <dd>
             <span class="dt-pill ok">{{ orig.status if orig else '—' }}</span>
-            <span class="num" style="margin-left:8px;color:var(--text-meta);font-size:11.5px">#{{ orig.id if orig else '—' }}</span>
+            <span class="num dup-id">#{{ orig.id if orig else '—' }}</span>
           </dd>
         </dl>
       </div>
@@ -92,7 +86,7 @@
           <dt>状态</dt>
           <dd>
             <span class="dt-pill warn">{{ cur.status }}</span>
-            <span class="num" style="margin-left:8px;color:var(--text-meta);font-size:11.5px">#{{ cur.id }}</span>
+            <span class="num dup-id">#{{ cur.id }}</span>
           </dd>
         </dl>
       </div>
@@ -105,15 +99,15 @@
       </span>
       <div class="spacer"></div>
       {% if can_write %}
-      <form method="post" action="/web/duplicates/{{ cur.id }}/keep" style="display:inline">
+      <form method="post" action="/web/duplicates/{{ cur.id }}/keep" class="inline-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <button class="dt-btn" type="submit">保留两条</button>
       </form>
-      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" style="display:inline">
+      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-original" class="inline-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <button class="dt-btn" type="submit">删除原账单</button>
       </form>
-      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" style="display:inline">
+      <form method="post" action="/web/duplicates/{{ cur.id }}/reject-current" class="inline-form">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <button class="dt-btn primary" type="submit">删除新草稿</button>
       </form>

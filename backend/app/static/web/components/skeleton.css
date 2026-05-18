@@ -1,0 +1,168 @@
+/* /web 桌面账本 · 骨架占位 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .skeleton + (.skeleton-line / .skeleton-block) —— 加载态骨架
+ * 配色从 shared/tokens.css 的 --skeleton-base-bg / --skeleton-shine 取值
+ * 走标准 1200ms shimmer 动画
+ */
+
+/* ───── Skeleton 占位骨架 ─────
+ * 用法：<div class="skeleton skeleton-line"></div>、<div class="skeleton skeleton-block"></div>
+ * 含义：异步加载（图片、图表、未来 HTMX 分片）的占位条/块，
+ * 浅色态用 surface-sunken / border-card 渐变；prefers-reduced-motion 自动停止动画。
+ */
+@keyframes skeleton-shimmer {
+    0%   { background-position: -160px 0; }
+    100% { background-position: 160px 0; }
+}
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--surface-sunken) 0%,
+        var(--border-card) 50%,
+        var(--surface-sunken) 100%
+    );
+    background-size: 320px 100%;
+    background-repeat: no-repeat;
+    border-radius: var(--radius-sm);
+    animation: skeleton-shimmer 1200ms ease-in-out infinite;
+    color: transparent;
+    user-select: none;
+}
+.skeleton-line {
+    display: block;
+    height: 12px;
+    width: 100%;
+    margin: 6px 0;
+}
+.skeleton-line.is-sm { height: 10px; width: 60%; }
+.skeleton-line.is-lg { height: 18px; width: 40%; }
+.skeleton-block {
+    display: block;
+    height: 96px;
+    width: 100%;
+}
+.skeleton-thumb {
+    display: block;
+    width: 56px;
+    height: 76px;
+    border-radius: 3px;
+}
+
+/* Search */
+.search-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 18px;
+}
+.search-input {
+    min-height: 42px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-card);
+    background: var(--surface-card);
+    color: var(--text-default);
+    padding: 0 13px;
+    font: inherit;
+}
+.search-input::placeholder {
+    color: var(--text-faint);
+}
+.search-groups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+.search-group {
+    padding: 18px;
+}
+.search-result-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.search-result {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    min-height: 58px;
+    border-radius: var(--radius-sm);
+    padding: 9px 10px;
+    color: inherit;
+    text-decoration: none;
+    background: var(--surface-sunken);
+    border: 1px solid transparent;
+    transition: border-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+}
+.search-result:hover {
+    border-color: var(--border-card);
+    transform: translateY(-1px);
+}
+.search-type {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: var(--state-info-bg);
+    color: var(--state-info-fg);
+    border: 1px solid var(--state-info-border);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.search-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.search-title {
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.search-subtitle,
+.search-none {
+    color: var(--text-meta);
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.search-amount {
+    font-family: var(--font-num);
+    font-weight: 650;
+    color: var(--brand-primary);
+    white-space: nowrap;
+}
+.search-empty {
+    padding: 22px;
+}
+
+@media (max-width: 900px) {
+    .search-box,
+    .search-groups,
+    .search-result {
+        grid-template-columns: 1fr;
+    }
+    .search-result {
+        align-items: start;
+    }
+    .search-amount {
+        justify-self: start;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+    }
+    .skeleton {
+        animation: none;
+    }
+}

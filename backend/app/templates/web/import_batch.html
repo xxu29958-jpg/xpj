@@ -7,45 +7,45 @@
     <p class="page-hint">创建时间 {{ batch.created_at }} · 最近更新 {{ batch.updated_at }}</p>
   </div>
   <div class="actions">
-    <a href="/web/import{{ q }}" class="btn btn-secondary">返回导入</a>
-    <a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}" class="btn btn-secondary">下载错误行</a>
+    <a href="/web/import{{ q }}" class="dt-btn">返回导入</a>
+    <a href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}" class="dt-btn">下载错误行</a>
   </div>
 </div>
 
 {% if flash_message %}
-<div class="card flash">{{ flash_message }}</div>
+<div class="dt-alert success">{{ flash_message }}</div>
 {% endif %}
 
-<section class="summary-grid compact">
-  <div class="summary-card primary">
-    <div class="summary-card-label">总行数</div>
-    <div class="summary-card-num">{{ batch.total_rows }}</div>
+<section class="kpi-strip kpi-strip--compact">
+  <div class="kpi-cell primary">
+    <div class="label">总行数</div>
+    <div class="val">{{ batch.total_rows }}</div>
   </div>
-  <div class="summary-card ok">
-    <div class="summary-card-label">可导入</div>
-    <div class="summary-card-num">{{ batch.valid_rows }}</div>
+  <div class="kpi-cell ok">
+    <div class="label">可导入</div>
+    <div class="val">{{ batch.valid_rows }}</div>
   </div>
-  <div class="summary-card warn">
-    <div class="summary-card-label">错误行</div>
-    <div class="summary-card-num">{{ batch.error_rows }}</div>
+  <div class="kpi-cell warn">
+    <div class="label">错误行</div>
+    <div class="val">{{ batch.error_rows }}</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">已导入</div>
-    <div class="summary-card-num">{{ batch.applied_rows }}</div>
+  <div class="kpi-cell">
+    <div class="label">已导入</div>
+    <div class="val">{{ batch.applied_rows }}</div>
   </div>
 </section>
 
-<section class="card">
+<section class="dt-card">
   <div class="card-header">
     <h2>批次状态</h2>
     {% if batch.status == 'applied' or batch.status == 'applied_with_errors' %}
-    <span class="status-chip ok">已完成</span>
+    <span class="dt-pill ok">已完成</span>
     {% elif batch.status == 'parsed_with_errors' %}
-    <span class="status-chip warn">有错误</span>
+    <span class="dt-pill warn">有错误</span>
     {% elif batch.status == 'applying' %}
-    <span class="status-chip warn">导入中</span>
+    <span class="dt-pill warn">导入中</span>
     {% else %}
-    <span class="status-chip pending">待导入</span>
+    <span class="dt-pill">待导入</span>
     {% endif %}
   </div>
   <div class="import-batch-actions">
@@ -55,23 +55,23 @@
       <label>每次导入
         <input type="number" name="batch_size" value="500" min="1" max="1000">
       </label>
-      <button type="submit" class="btn btn-primary">导入下一批</button>
+      <button type="submit" class="dt-btn primary">导入下一批</button>
     </form>
     {% elif not can_write %}
     <p class="readonly-inline">只读角色只能查看导入批次。</p>
     {% else %}
-    <a href="/web/pending{{ q }}" class="btn btn-primary">查看待确认</a>
+    <a href="/web/pending{{ q }}" class="dt-btn primary">查看待确认</a>
     {% endif %}
   </div>
   {% if batch.last_error %}
-  <p class="alert alert-danger">{{ batch.last_error }}</p>
+  <p class="dt-alert danger">{{ batch.last_error }}</p>
   {% endif %}
 </section>
 
-<section class="card">
+<section class="dt-card">
   <div class="card-header">
     <h2>行预览</h2>
-    <form method="get" action="/web/import/{{ batch.public_id }}" class="filter-row">
+    <form method="get" action="/web/import/{{ batch.public_id }}" class="seg">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <label>状态
         <select name="status">
@@ -82,11 +82,11 @@
           <option value="insert_failed" {% if status == 'insert_failed' %}selected{% endif %}>写入失败</option>
         </select>
       </label>
-      <button type="submit" class="btn btn-secondary">筛选</button>
+      <button type="submit" class="dt-btn">筛选</button>
     </form>
   </div>
 
-  <table class="transaction-table compact">
+  <table class="dt-table dt-table--compact">
     <thead>
       <tr>
         <th>行号</th>
@@ -103,10 +103,10 @@
       <tr>
         <td>{{ row.line_number }}</td>
         <td>
-          {% if row.status == 'valid' %}<span class="status-chip pending">可导入</span>
-          {% elif row.status == 'applied' %}<span class="status-chip ok">已导入</span>
-          {% elif row.status == 'insert_failed' %}<span class="status-chip err">写入失败</span>
-          {% else %}<span class="status-chip err">错误</span>{% endif %}
+          {% if row.status == 'valid' %}<span class="dt-pill">可导入</span>
+          {% elif row.status == 'applied' %}<span class="dt-pill ok">已导入</span>
+          {% elif row.status == 'insert_failed' %}<span class="dt-pill danger">写入失败</span>
+          {% else %}<span class="dt-pill danger">错误</span>{% endif %}
         </td>
         <td class="num">{% if row.amount_cents is not none %}{{ home_currency_symbol }}{{ "%.2f"|format(row.amount_cents / 100) }}{% else %}—{% endif %}</td>
         <td>{{ row.merchant or '—' }}</td>
@@ -125,11 +125,11 @@
     {% set prev_page = page - 1 %}
     {% set next_page = page + 1 %}
     {% if page > 1 %}
-    <a class="btn btn-secondary" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ prev_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">上一页</a>
+    <a class="dt-btn" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ prev_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">上一页</a>
     {% endif %}
     <span>第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 行</span>
     {% if page < total_pages %}
-    <a class="btn btn-secondary" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ next_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">下一页</a>
+    <a class="dt-btn" href="/web/import/{{ batch.public_id }}?ledger_id={{ selected_ledger_id }}&page={{ next_page }}&page_size={{ page_size }}{% if status %}&status={{ status }}{% endif %}">下一页</a>
     {% endif %}
   </div>
 </section>

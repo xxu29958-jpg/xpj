@@ -34,6 +34,18 @@ data class ThemeVisuals(
     val surfaceRaised: Color,
     val focusRing: Color,
     val receiptStub: ReceiptStubPalette,
+    // v0.10.1 镜像 shared/tokens.css 余下 surface / text / brand 语义,
+    // 让三端语义对照表完整。原本由 MaterialTheme.colorScheme 兜底的字段
+    // (onBackground/onSurfaceVariant 等) 现在通过显式字段表达,Android Screen
+    // 不再依赖 Material You 默认。
+    val surfaceNav: Color,
+    val surfaceSunken: Color,
+    val textDefault: Color,
+    val textMuted: Color,
+    val textMeta: Color,
+    val textFaint: Color,
+    val textOnPrimary: Color,
+    val brandPrimaryBg: Color,
 )
 
 val LocalThemeVisuals = compositionLocalOf { themeVisualsForSkin(AppSkin.Default) }
@@ -72,6 +84,14 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
                 line = Color(0xFFBDB7AB),
                 footer = Color(0xFFE0D5C4),
             ),
+            surfaceNav = Color(0xFF1C1A18),
+            surfaceSunken = Color(0xFFF5F0E3),
+            textDefault = Color(0xFF1C1A18),
+            textMuted = Color(0xFF4A463F),
+            textMeta = Color(0xFF807968),
+            textFaint = Color(0xFFB3AD9D),
+            textOnPrimary = Color(0xFFFBF8F1),
+            brandPrimaryBg = Color(0xFFEFE1CB),
         )
         AppSkin.Mono -> ThemeVisuals(
             primary = Color(0xFF0E0E0C),
@@ -105,6 +125,14 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
                 line = Color(0xFFACABA6),
                 footer = Color(0xFFE0DFDA),
             ),
+            surfaceNav = Color(0xFF0E0E0C),
+            surfaceSunken = Color(0xFFF1F0ED),
+            textDefault = Color(0xFF0E0E0C),
+            textMuted = Color(0xFF3A3A37),
+            textMeta = Color(0xFF6F6E6A),
+            textFaint = Color(0xFFADACA7),
+            textOnPrimary = Color(0xFFFAFAF8),
+            brandPrimaryBg = Color(0xFFE3E2DD),
         )
         AppSkin.Midnight -> ThemeVisuals(
             primary = Color(0xFFD6B487),
@@ -138,6 +166,15 @@ fun themeVisualsForSkin(skin: AppSkin): ThemeVisuals {
                 line = Color(0xFF8A806F),
                 footer = Color(0xFF343742),
             ),
+            surfaceNav = Color(0xFF08090C),
+            surfaceSunken = Color(0xFF1C1F25),
+            textDefault = Color(0xFFE9E7DF),
+            textMuted = Color(0xFFB8B4A8),
+            textMeta = Color(0xFF807C70),
+            textFaint = Color(0xFF4D4A44),
+            textOnPrimary = Color(0xFF15171C),
+            // tokens.css 用 rgba(214,180,135,0.14) = alpha 0x24,这里直接表示 argb。
+            brandPrimaryBg = Color(0x24D6B487),
         )
     }
 }

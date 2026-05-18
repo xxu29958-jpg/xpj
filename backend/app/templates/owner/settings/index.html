@@ -3,7 +3,7 @@
 {% block settings_body %}
 <div class="card">
   <h2>概览</h2>
-  <p style="font-size:13px;color:#475569;line-height:1.7">
+  <p class="help-text">
     Owner Console 只允许在线修改非常少量、面向操作者的运行时项；其他配置仍然必须在
     <code>{{ settings_view.env_path }}</code> 中手工调整。
   </p>
@@ -16,7 +16,7 @@
       {% else %}
         <span class="badge badge-off">未配置</span>
       {% endif %}
-      <a href="/owner/settings/public-base-url" style="margin-left:8px;font-size:12px">编辑</a>
+      <a href="/owner/settings/public-base-url" class="meta-inline">编辑</a>
     </dd>
     <dt>Admin API 公网放行</dt>
     <dd>
@@ -25,7 +25,7 @@
       {% else %}
         <span class="badge badge-ok">仅本机</span>
       {% endif %}
-      <a href="/owner/settings/security" style="margin-left:8px;font-size:12px">查看</a>
+      <a href="/owner/settings/security" class="meta-inline">查看</a>
     </dd>
     <dt>OpenAPI 文档</dt>
     <dd>

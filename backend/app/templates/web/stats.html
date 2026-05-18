@@ -3,8 +3,8 @@
 {% block content %}
 <h1>{{ month }} 月度统计</h1>
 
-<div class="card">
-  <form method="get" action="/web/stats" class="filter-row">
+<div class="dt-card">
+  <form method="get" action="/web/stats" class="seg">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <label>切换月份：
       <input type="text" name="month" value="{{ month }}" pattern="\d{4}-\d{2}">
@@ -12,34 +12,34 @@
     <label>标签：
       <input type="text" name="tag" value="{{ tag }}" placeholder="真香">
     </label>
-    <button type="submit" class="btn btn-secondary">查看</button>
-    {% if tag %}<a class="btn btn-link" href="/web/stats?ledger_id={{ selected_ledger_id }}&month={{ month }}">清除标签</a>{% endif %}
+    <button type="submit" class="dt-btn">查看</button>
+    {% if tag %}<a class="dt-btn link" href="/web/stats?ledger_id={{ selected_ledger_id }}&month={{ month }}">清除标签</a>{% endif %}
   </form>
   {% if tag %}<div class="meta">当前统计范围：标签「{{ tag }}」。</div>{% endif %}
 </div>
 
-<div class="summary-grid">
-  <div class="summary-card primary">
-    <div class="summary-card-label">本月总支出</div>
-    <div class="summary-card-num">{{ home_currency_symbol }}{{ total_amount_yuan or '0.00' }}</div>
-    <div class="summary-card-hint">共 {{ count }} 笔已确认</div>
+<div class="kpi-strip kpi-strip--fluid">
+  <div class="kpi-cell primary">
+    <div class="label">本月总支出</div>
+    <div class="val">{{ home_currency_symbol }}{{ total_amount_yuan or '0.00' }}</div>
+    <div class="foot">共 {{ count }} 笔已确认</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">分类数</div>
-    <div class="summary-card-num">{{ by_category|length }}</div>
-    <div class="summary-card-hint">含未分类</div>
+  <div class="kpi-cell">
+    <div class="label">分类数</div>
+    <div class="val">{{ by_category|length }}</div>
+    <div class="foot">含未分类</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">大额支出</div>
-    <div class="summary-card-num">{{ top_expenses|length }}</div>
-    <div class="summary-card-hint">本月金额排前 5 笔</div>
+  <div class="kpi-cell">
+    <div class="label">大额支出</div>
+    <div class="val">{{ top_expenses|length }}</div>
+    <div class="foot">本月金额排前 5 笔</div>
   </div>
 </div>
 
-<div class="card">
+<div class="dt-card">
   <h2>按分类</h2>
   {% if by_category %}
-  <table class="transaction-table">
+  <table class="dt-table">
     <thead>
       <tr>
         <th>分类</th>
@@ -50,7 +50,7 @@
     <tbody>
     {% for row in by_category %}
       <tr>
-        <td><span class="category-badge">{{ row.category }}</span></td>
+        <td><span class="dt-tag">{{ row.category }}</span></td>
         <td>{{ row.count }}</td>
         <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
       </tr>
@@ -65,10 +65,10 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="dt-card">
   <h2>大额支出</h2>
   {% if top_expenses %}
-  <table class="transaction-table">
+  <table class="dt-table">
     <thead>
       <tr>
         <th>商家</th>
@@ -81,7 +81,7 @@
     {% for row in top_expenses %}
       <tr>
         <td>{{ row.merchant }}</td>
-        <td><span class="category-badge">{{ row.category }}</span></td>
+        <td><span class="dt-tag">{{ row.category }}</span></td>
         <td class="meta">{{ row.expense_time }}</td>
         <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
       </tr>
@@ -93,11 +93,11 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="dt-card">
   <h2>正式固定支出</h2>
   {% if recurring_formal %}
   <p class="meta">这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。</p>
-  <table class="transaction-table">
+  <table class="dt-table">
     <thead>
       <tr>
         <th>商家</th>
@@ -114,13 +114,13 @@
         <td class="amount">{{ home_currency_symbol }}{{ r.amount_yuan }}</td>
         <td>{{ r.next_expected_date or '—' }}</td>
         <td>
-          {% if r.status == 'active' %}<span class="status-chip ok">活跃</span>
-          {% elif r.status == 'paused' %}<span class="status-chip warn">暂停</span>
-          {% else %}<span class="status-chip muted">{{ r.status }}</span>{% endif %}
+          {% if r.status == 'active' %}<span class="dt-pill ok">活跃</span>
+          {% elif r.status == 'paused' %}<span class="dt-pill warn">暂停</span>
+          {% else %}<span class="dt-pill muted">{{ r.status }}</span>{% endif %}
         </td>
         <td>
-          {% if r.anomaly_status == 'higher_than_average' %}<span class="status-chip warn">本月偏高</span>
-          {% else %}<span class="status-chip muted">正常</span>{% endif %}
+          {% if r.anomaly_status == 'higher_than_average' %}<span class="dt-pill warn">本月偏高</span>
+          {% else %}<span class="dt-pill muted">正常</span>{% endif %}
         </td>
       </tr>
     {% endfor %}
@@ -134,11 +134,11 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="dt-card">
   <h2>固定支出候选（未确认）</h2>
   {% if recurring_candidates %}
   <p class="meta">根据最近账单识别，仅供参考，不会自动入账；确认后才进入正式固定支出。</p>
-  <table class="transaction-table">
+  <table class="dt-table">
     <thead>
       <tr>
         <th>商家</th>
@@ -155,8 +155,8 @@
         <td class="amount">{{ home_currency_symbol }}{{ r.amount_yuan }}</td>
         <td>{{ r.occurrence_count }}</td>
         <td>
-          {% if r.confidence == 'high' %}<span class="status-chip ok">高</span>
-          {% else %}<span class="status-chip muted">中</span>{% endif %}
+          {% if r.confidence == 'high' %}<span class="dt-pill ok">高</span>
+          {% else %}<span class="dt-pill muted">中</span>{% endif %}
         </td>
         <td class="meta">{{ r.reason }}</td>
       </tr>
@@ -176,7 +176,7 @@
   {% endif %}
 </div>
 
-<div class="card placeholder-card">
+<div class="dt-card placeholder-card">
   <h2>预算（Placeholder）</h2>
   <p>预算功能会在后续版本开启。当前不会自动扣预算，也不会自动入账。</p>
 </div>

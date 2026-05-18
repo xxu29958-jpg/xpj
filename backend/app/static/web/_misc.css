@@ -1,0 +1,241 @@
+/* /web 桌面账本 · Legacy shell 覆盖层 (v0.10.1 从 desktop.css 拆出)
+ *
+ * 重新审视后发现: 这 534 行**全部**是 `.desktop-shell-active .legacy-class { ... }`
+ * 形式的 shell 内 legacy 覆盖,目的是当模板还在用 v0.4 老 class (.card / .summary-card /
+ * .status-chip / .alert / .form-row / .transaction-table / .filter-tab /
+ * .dashboard-card-* / .reports-export-dialog ...) 时,在 desktop shell 内重新定义这些
+ * class 的视觉,让它们对齐 v0.10 设计语言。
+ *
+ * 退役路径(每个 legacy class 系列在模板里迁完后,这里对应段直接整段删):
+ *   1. .btn 系列         → 已退役(模板全迁到 .dt-btn)
+ *   2. .status-chip      → 待迁到 .dt-pill,~40 行可删
+ *   3. .summary-card     → dashboard/budgets/rules/data_quality 仍在用,等迁到 .dt-card,~55 行
+ *   4. .transaction-table → 待迁到 .dt-table,~30 行
+ *   5. .form-row + inputs → 待迁到 .dt-form-row + .dt-input,~40 行
+ *   6. .filter-tab       → 待迁到 .seg,~30 行
+ *   7. .dashboard-card-tile → dashboard_cards.html(配置页低频)仍用,~25 行
+ *   8. 其他散件(reconcile-line / readonly-callout / bulk-bar legacy / reports-export-dialog
+ *      / data-quality-actions / edit-page direct entry / ledger-role-chip ...) ≈ 200 行
+ *
+ * 不按业务页面拆分(原 #25 计划),改成等模板迁移完后**整段删除**——这是更干净的退役路径。
+ */
+
+/* ───── Misc ───── */
+.divider {
+    height: 1px;
+    background: var(--border-card);
+    margin: 24px 0;
+}
+.tab-stub {
+    padding: 64px 24px;
+    text-align: center;
+    color: var(--text-meta);
+    font-size: 13px;
+    border: 1px dashed var(--border-input);
+    border-radius: var(--radius-md);
+}
+.tab-stub h3 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 22px;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+
+/* Readonly callout (carry-over from old base) */
+.readonly-callout {
+    background: var(--state-warn-bg);
+    color: var(--state-warn-fg);
+    border: 1px solid var(--state-warn-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    margin-bottom: 18px;
+    font-size: 12.5px;
+}
+
+/* --------------------------------------------------------------------------
+ * LEGACY COMPAT LAYER - v0.10
+ *
+ * Several older /web pages still use legacy classes from web.css, including
+ * .card, .summary-card, .btn-primary, .status-chip, .transaction-table,
+ * .form-row, and .filter-tab. This layer overrides those classes after
+ * web.css loads so budgets, goals, categories, rules, merchants, recurring,
+ * import, stats, data-quality, dashboard cards, uncategorized, and edit pages
+ * follow the paper / mono / midnight token system without template rewrites.
+ * -------------------------------------------------------------------------- */
+
+.desktop-shell-active h1 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 28px;
+    letter-spacing: -0.01em;
+    color: var(--text-default);
+    margin: 0 0 14px;
+}
+.desktop-shell-active h1 .page-title-sub {
+    font-family: var(--font-zh);
+    font-size: 13px;
+    color: var(--text-meta);
+    font-weight: normal;
+    margin-left: 10px;
+}
+.desktop-shell-active h2 {
+    font-family: var(--font-serif);
+    font-weight: 400;
+    font-size: 20px;
+    letter-spacing: -0.005em;
+    color: var(--text-default);
+    border-bottom: 1px solid var(--border-card);
+    padding-bottom: 8px;
+    margin: 18px 0 14px;
+}
+
+/* legacy .card / .card.placeholder-card shell 覆盖已删除 ——
+   19 个模板共 39 处 class="card" 引用全迁到 .dt-card (components/cards.css)。
+   .placeholder-card 修饰类已并入 components/cards.css。 */
+
+/* legacy .summary-grid / .summary-card / .summary-card-* shell 覆盖已删除
+   —— 5 个模板共 106 处引用已全迁到 .kpi-strip / .kpi-cell + .label / .val / .foot
+   (pages/reports.css 内提供;新增 .kpi-strip--fluid / --compact 弹性变体). */
+
+/* legacy .btn / .btn-primary / .btn-secondary / .btn-danger / .btn-success / .btn-link
+   shell 覆盖已删除 —— 所有 /web 模板已迁移到 .dt-btn (components/buttons.css)。 */
+.desktop-shell-active button,
+.desktop-shell-active a {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* legacy .status-chip shell 覆盖已删除 —— 7 个模板共 37 处引用已全迁到 .dt-pill
+   (components/pills.css). */
+
+/* legacy .category-badge 已退役 —— 5 处引用全迁到 .dt-tag (components/tables.css)。
+   .badge / .badge-ok 还在 search.html / _ledger_switcher.html / _sidebar_nav.html 用, 保留。 */
+.desktop-shell-active .badge {
+    background: var(--state-neutral-bg);
+    color: var(--state-neutral-fg);
+}
+.desktop-shell-active .badge-ok {
+    background: var(--state-success-bg);
+    color: var(--state-success-fg);
+}
+
+/* legacy .transaction-table shell 覆盖已删除 —— 8 个模板共 17 处引用已全迁到 .dt-table
+   (components/tables.css). .dt-table--compact 变体在 tables.css 内提供。
+   选中行(aria-selected) 覆盖保留给 .exp-row(pending 页): */
+.exp-row[aria-selected="true"] {
+    background: var(--brand-primary-bg);
+    box-shadow: inset 3px 0 0 0 var(--brand-primary);
+}
+.desktop-shell-active .transaction-row.is-duplicate {
+    background: var(--brand-primary-bg);
+}
+.desktop-shell-active td.amount {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    font-weight: 500;
+    color: var(--text-default);
+}
+
+/* legacy .form-row / .form-stack / .filter-bar / .filter-tab / .filter-row shell 覆盖已删除
+   —— 模板已全迁到 .dt-form-row / .dt-form-grid / .seg / .seg-item (components/forms-row.css + toolbar.css).
+   保留以下 input 覆盖,因为对应模板 class 还未迁: */
+.desktop-shell-active .bulk-input,
+.desktop-shell-active .edit-subtable input,
+.desktop-shell-active .edit-subtable select,
+.desktop-shell-active .budget-category-row input,
+.desktop-shell-active .dashboard-card-position input {
+    background: var(--surface-card);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font-family: var(--font-zh);
+    font-size: 13.5px;
+    color: var(--text-default);
+    outline: none;
+    transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+/* legacy .alert / .alert-danger / .alert-success / .flash shell 覆盖已删除 ——
+   5 处引用全迁到 .dt-alert (components/alert.css). */
+
+/* legacy bulk-bar (in pending / review pages) — 不动新 .bulk-bar 浮条，
+   只清掉 web.css 里同名 selector 的浅蓝外观（new .bulk-bar 用 position:sticky
+   不会冲突，但 web.css 的 .bulk-bar 在静态布局里会出现；显式抹平。） */
+.desktop-shell-active div.bulk-bar:not([data-bulk]) {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    color: var(--text-default);
+    padding: 10px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    box-shadow: none;
+}
+
+/* legacy .budget-progress / .budget-category-* shell 覆盖已删除 ——
+   budgets.html 已迁到 .dt-progress / .dt-card / .dt-form-row (pages/budgets.css). */
+.desktop-shell-active .budget-over { color: var(--state-danger-fg) !important; }
+
+/* legacy .dashboard-card-tile / -label / -num / -hint shell 覆盖已删除 ——
+   仪表盘显示已迁到 .dt-card (pages/dashboard.css)。下方 .dashboard-card-setting-*
+   保留, 因为 dashboard_cards.html 配置页仍用。 */
+.desktop-shell-active .dashboard-card-setting-row {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+}
+.desktop-shell-active .dashboard-card-setting-title strong { color: var(--text-default); }
+.desktop-shell-active .dashboard-card-setting-title span { color: var(--text-meta); }
+.desktop-shell-active .dashboard-card-switch,
+.desktop-shell-active .dashboard-card-position { color: var(--text-muted); }
+
+/* legacy data-quality action list */
+.desktop-shell-active .dq-action-list li {
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-left: 3px solid var(--brand-primary);
+}
+.desktop-shell-active .dq-action-list li.dq-empty {
+    border-left-color: var(--state-success-fg);
+    color: var(--state-success-fg);
+    background: var(--state-success-bg);
+}
+.desktop-shell-active .dq-action-list li .hint { color: var(--text-faint); }
+
+/* legacy edit-page (when entered via direct URL not drawer) */
+.desktop-shell-active .edit-image.meta {
+    background: var(--surface-sunken);
+    border-radius: var(--radius-sm);
+    color: var(--text-meta);
+}
+.desktop-shell-active .thumb,
+.desktop-shell-active .receipt-img {
+    border: 1px solid var(--border-card);
+}
+
+/* legacy .ledger-role-chip shell 覆盖已删除 —— _ledger_switcher.html 用了同名 class,
+   但其基础样式由 web.css 顶部的 .ledger-role-chip 定义,shell 内不需再覆盖。 */
+
+/* legacy .reports-export-dialog shell 覆盖已删除 —— element 由 reports.js 按 id
+   动态控制,reports.html 当前未渲染对应节点,样式为 dead code。 */
+
+/* legacy empty-state / pagination / meta — 字色 */
+.desktop-shell-active .empty-state-title { color: var(--text-default); }
+.desktop-shell-active .empty-state-hint,
+.desktop-shell-active .empty-table-cell { color: var(--text-meta); }
+.desktop-shell-active .error-text { color: var(--state-danger-fg); }
+.desktop-shell-active .meta,
+.desktop-shell-active .page-hint,
+.desktop-shell-active .page-footer-hint { color: var(--text-meta); }
+.desktop-shell-active .pagination { color: var(--text-meta); }
+
+/* legacy .reconcile-line / detail labels */
+.desktop-shell-active .reconcile-line { color: var(--text-meta); }
+.desktop-shell-active .readonly-inline { color: var(--text-meta); }
+
+/* goals.html .goal-row 在 shell 内的颜色覆盖 (web.css 基础样式由 goal-list 段提供) */
+.desktop-shell-active .goal-row { border-bottom: 1px solid var(--border-card); }
+

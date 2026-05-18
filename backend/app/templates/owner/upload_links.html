@@ -8,7 +8,7 @@
 {% endif %}
 
 {% if not public_base_url_configured %}
-<div class="alert alert-danger" style="border-left:4px solid #dc2626">
+<div class="alert alert-danger" style="border-left:4px solid var(--state-danger-fg)">
   ⚠️ 未配置公网域名（<code>PUBLIC_BASE_URL</code>）。新建/轮换上传链接将<u>不会</u>给出可直接粘贴到 iPhone 快捷指令的完整 URL。请先到 <a href="/owner/settings"><strong>设置</strong></a> 页面填入域名（例如 <code>https://api.example.com</code>）。
 </div>
 {% endif %}
@@ -34,7 +34,7 @@
 
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-    <h2 style="margin:0;border:none;padding:0">链接列表</h2>
+    <h2>链接列表</h2>
     <form method="post" action="/owner/upload-links">
       <button type="submit" class="btn btn-primary">+ 新建上传链接</button>
     </form>
@@ -57,8 +57,8 @@
     <tbody>
     {% for link in links %}
       <tr>
-        <td style="white-space:nowrap;color:#64748b;font-size:12px">{{ link.created_at|owner_datetime }}</td>
-        <td style="font-size:13px">{{ link.device_name or '—' }}</td>
+        <td class="text-meta" style="white-space:nowrap;font-size:var(--type-meta-size)">{{ link.created_at|owner_datetime }}</td>
+        <td>{{ link.device_name or '—' }}</td>
         <td>{{ link.ledger_name }}</td>
         <td>{{ link.default_timezone or 'Asia/Shanghai' }}</td>
         <td>{{ link.last_used_at|owner_datetime }}</td>
@@ -69,7 +69,7 @@
             <span class="badge badge-ok">正常</span>
           {% endif %}
         </td>
-        <td style="font-family:monospace;color:#475569">{{ link.masked_url_path }}</td>
+        <td class="path-mono">{{ link.masked_url_path }}</td>
         <td>
           <div class="actions">
             {% if not link.revoked_at %}
@@ -98,13 +98,13 @@
   </table>
   </div>
   {% else %}
-    <p style="color:#64748b;text-align:center;padding:24px">暂无上传链接，点击「新建」创建一个。</p>
+    <p class="empty-note">暂无上传链接，点击「新建」创建一个。</p>
   {% endif %}
 </div>
 
 <div class="card">
   <h2>iPhone 快捷指令使用说明</h2>
-  <ol style="font-size:13px;color:#334155;line-height:2;padding-left:20px">
+  <ol class="help-text" style="line-height:2;padding-left:20px">
     <li>在 iPhone「快捷指令」App 中创建新快捷指令，详情中开启「在共享表单中显示」，接收类型只勾选「图像」。</li>
     <li>动作 1：<strong>转换图像</strong>，格式选 JPEG。</li>
     <li>动作 2：<strong>URL</strong>，把 Owner Console 上方<u>完整公网 URL</u>整段粘贴进去（含 <code>https://</code>，含 <code>?tz=Asia/Shanghai</code>）。<u>不要</u>只复制 <code>/u/...</code> 相对路径，<u>不要</u>复制 <code>/u/***</code> 掩码，<u>不要</u>再手动拼接 <code>?tz=</code>。</li>
@@ -114,9 +114,9 @@
   <p class="secret-note">小票夹 v0.3 起不再使用 <code>Upload-Token</code> 请求头；UploadLink URL 自身就是凭证。</p>
 </div>
 
-<div class="card" style="border-left:4px solid #f59e0b">
+<div class="card" style="border-left:4px solid var(--state-warn-fg)">
   <h2>iPhone 上传失败排查</h2>
-  <ol style="font-size:13px;color:#334155;line-height:2;padding-left:20px">
+  <ol class="help-text" style="line-height:2;padding-left:20px">
     <li>iPhone 提示「无效的 URL」：URL 动作里粘贴的是 <code>/u/...</code> 相对路径或 <code>/u/***</code> 掩码，必须粘贴完整公网 URL（以 <code>https://</code> 开头）。</li>
     <li>URL 中 <code>?tz=</code> 出现两次：Owner Console 给出的完整 URL 已经带上时区参数，不要再手动拼一次。</li>
     <li>未配置 <code>PUBLIC_BASE_URL</code>：Owner Console 只能显示相对路径，需在 <code>backend/.env</code> 设置公网域名后重新创建链接。</li>

@@ -1,6 +1,6 @@
 # Web fonts
 
-`/web` 桌面账本（v0.10）破例使用本地自托管 webfont。Android 与 `/owner` 仍走系统中文字体栈，与本目录无关。
+`/web` 桌面账本（v0.10）使用本地自托管 webfont。Android 与 `/owner` 仍走系统中文字体栈，与本目录无关。
 
 ## 字体清单
 
@@ -18,12 +18,12 @@ pwsh scripts/download-fonts.ps1
 
 脚本调 Google Fonts CSS API 获取最新 woff2 子集，存到本目录。文件名规范化为 `Family-Weight[Italic].woff2`。Noto Sans SC 按 unicode-range 切片，脚本只保留桌面账本当前引用的中文主子集文件；缺失字形由系统中文字体栈兜底。
 
-## 为什么破例
+## 设计决策依据
 
 设计稿要求「期刊式衬线大标题」（Newsreader）+「Inter tabular 数字」，系统字体无法替代。`Noto Sans SC` 引入是为了在 Windows / Mac / Linux 上保持中文权重 500/700/900 的一致渲染（PingFang SC 只在 Mac/iOS 预装，YaHei 在 Windows 上没有 Black weight）。
 
-仅限 `/web` 加载，不影响 Android（系统栈）或 `/owner` 控制台（系统栈）。
+依据工程规范第 15 章「新增依赖必须可靠 / 活跃 / 官方推荐或事实标准生态」——Google Fonts 三族均满足，引入合规。仅限 `/web` 加载，不影响 Android（系统栈）或 `/owner` 控制台（系统栈）。
 
-## 离线兼容
+## 离线运行
 
-字体进 git，运行时不走外网。`/web` 仍可在断网状态下渲染。
+字体进 git，运行时不走外网。`/web` 在断网状态下仍可正常渲染。

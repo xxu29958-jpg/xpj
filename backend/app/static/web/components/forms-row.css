@@ -1,0 +1,69 @@
+/* /web 桌面账本 · 表单布局 (v0.10.1 从 desktop.css 拆出)
+ *
+ * .dt-form-grid —— 表单两列网格容器
+ * .dt-form-row  —— 单行 label + 控件 + 可选 hint
+ *   .dt-form-row--inline —— label 在控件左侧而不是上方
+ * .dt-actions   —— 表单底部按钮组(主操作右对齐)
+ * .dt-eyebrow   —— 小标签(letter-spacing + uppercase),用于段落顶部
+ */
+
+/* ───── dt-form-grid (表单字段两列网格) ───── */
+.dt-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-4-5) var(--space-5);
+    margin: var(--space-4) 0;
+}
+.dt-form-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.dt-form-row > label {
+    font-size: var(--type-caption-size);
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.dt-form-row > .hint {
+    font-size: 11px;
+    color: var(--text-faint);
+}
+.dt-form-row--inline {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* ───── dt-actions (表单底部按钮组) ───── */
+.dt-actions {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-top: var(--space-5);
+}
+.dt-actions--end { justify-content: flex-end; }
+
+/* ───── dt-eyebrow (小标签,带 letter-spacing,uppercase) ───── */
+.dt-eyebrow {
+    font-family: var(--font-num);
+    font-size: var(--type-meta-size);
+    letter-spacing: var(--type-meta-tracking);
+    text-transform: uppercase;
+    color: var(--text-meta);
+    font-weight: 500;
+}
+.dt-eyebrow--section {
+    margin: var(--space-7) 0 var(--space-3);
+}
+.dt-eyebrow--mt {
+    margin-top: var(--space-5);
+}
+
+/* 分类预算 / Goals 等场景的「已配置子区」 */
+.budget-excluded {
+    margin-top: var(--space-5);
+}
+.budget-excluded > .pill-row {
+    margin-top: var(--space-3);
+}
+

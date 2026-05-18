@@ -11,20 +11,20 @@
 </p>
 
 {% if flash_message %}
-<div class="card flash">{{ flash_message }}</div>
+<div class="dt-alert success">{{ flash_message }}</div>
 {% endif %}
 
-<section class="card">
+<section class="dt-card">
   <h2>当月分类汇总</h2>
   <form method="get" action="/web/categories" class="form-inline">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <label>月份
       <input type="month" name="month" value="{{ target_month }}">
     </label>
-    <button type="submit" class="btn btn-secondary">查询</button>
+    <button type="submit" class="dt-btn">查询</button>
   </form>
   {% if categories_rows %}
-  <table class="transaction-table">
+  <table class="dt-table">
     <thead>
       <tr>
         <th>分类</th>
@@ -39,7 +39,7 @@
       <tr>
         <td>
           {{ row.category }}
-          {% if row.is_uncategorized %}<span class="status-chip warn">未分类</span>{% endif %}
+          {% if row.is_uncategorized %}<span class="dt-pill warn">未分类</span>{% endif %}
         </td>
         <td class="num">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
         <td class="num">{{ row.confirmed_count }}</td>

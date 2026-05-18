@@ -1,145 +1,182 @@
 {% extends "base.html" %}
-{% block title %}预算 — 小票夹{% endblock %}
-{% block content %}
-<h1>预算 <span class="page-title-sub">月度可花、固定支出和分类预算基线。</span></h1>
+{% block title %}预算 · 小票夹{% endblock %}
 
-{% if message %}<div class="card flash">{{ message }}</div>{% endif %}
-{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">月度预算</h1>
+  <div class="page-sub">{{ month }} · 月度可花、固定支出和分类预算基线。</div>
+</div>
+
+{% if message %}<div class="callout-info">{{ message }}</div>{% endif %}
+{% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
 {% if not can_write %}
-<div class="readonly-callout">只读角色可以查看预算和月度可花，但不能保存预算设置。</div>
+<div class="callout-info">只读角色可以查看预算和月度可花,但不能保存预算设置。</div>
 {% endif %}
 
-<form method="get" action="/web/budgets" class="filter-row budget-month-filter">
+<form method="get" action="/web/budgets" class="toolbar">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-  <label>月份
-    <input type="month" name="month" value="{{ month }}">
+  <label class="dt-form-row dt-form-row--inline">
+    <span class="dt-eyebrow">月份</span>
+    <input class="dt-input" type="month" name="month" value="{{ month }}">
   </label>
-  <button class="btn btn-secondary" type="submit">查看</button>
+  <button class="dt-btn" type="submit">查看</button>
 </form>
 
-<div class="summary-grid compact">
-  <div class="summary-card primary">
-    <div class="summary-card-label">月度总预算</div>
-    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.total_yuan }}</div>
-    <div class="summary-card-hint">{{ '已配置' if budget.configured else '未配置' }}</div>
+<div class="dash-grid">
+  <div class="dt-card">
+    <div class="dt-eyebrow">月度总预算</div>
+    <div class="kpi-amount">
+      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.total_yuan }}
+    </div>
+    <div class="card-sub">{{ '已配置' if budget.configured else '未配置' }}</div>
   </div>
-  <div class="summary-card {{ 'warn' if budget.is_over_budget else 'ok' }}">
-    <div class="summary-card-label">剩余可花</div>
-    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.remaining_yuan }}</div>
-    <div class="summary-card-hint">不含排除分类</div>
+  <div class="dt-card">
+    <div class="dt-eyebrow">剩余可花</div>
+    <div class="kpi-amount">
+      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.remaining_yuan }}
+    </div>
+    <div class="card-sub">
+      {% if budget.is_over_budget %}
+        <span class="dt-pill danger">已超支</span>
+      {% else %}
+        <span class="dt-pill ok">正常</span>
+      {% endif %}
+      <span class="text-meta">不含排除分类</span>
+    </div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">已花</div>
-    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.spent_yuan }}</div>
-    <div class="summary-card-hint">{{ budget.spent_percent }}% of total</div>
+  <div class="dt-card">
+    <div class="dt-eyebrow">已花</div>
+    <div class="kpi-amount">
+      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.spent_yuan }}
+    </div>
+    <div class="card-sub">{{ budget.spent_percent }}% · 占总预算</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">固定支出</div>
-    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.fixed_yuan }}</div>
-    <div class="summary-card-hint">来自正式固定支出</div>
+  <div class="dt-card">
+    <div class="dt-eyebrow">固定支出</div>
+    <div class="kpi-amount">
+      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.fixed_yuan }}
+    </div>
+    <div class="card-sub">来自正式固定支出</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">Flex 可花</div>
-    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.flex_yuan }}</div>
-    <div class="summary-card-hint">总额 + 结转 - 固定 - 预留</div>
+  <div class="dt-card">
+    <div class="dt-eyebrow">Flex 可花</div>
+    <div class="kpi-amount">
+      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.flex_yuan }}
+    </div>
+    <div class="card-sub">总额 + 结转 − 固定 − 预留</div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">排除金额</div>
-    <div class="summary-card-num">{{ home_currency_symbol }}{{ budget.excluded_yuan }}</div>
-    <div class="summary-card-hint">报销、医疗等</div>
+  <div class="dt-card">
+    <div class="dt-eyebrow">排除金额</div>
+    <div class="kpi-amount">
+      <span class="yuan">{{ home_currency_symbol }}</span>{{ budget.excluded_yuan }}
+    </div>
+    <div class="card-sub">报销 / 医疗等</div>
   </div>
 </div>
 
-<section class="card">
-  <div class="card-header">
-    <h2>月度可花</h2>
+<div class="dt-card">
+  <div class="card-head">
+    <div class="card-title">月度可花进度</div>
     {% if budget.configured %}
-    <span class="status-chip ok">服务端预算</span>
+      <span class="dt-pill ok">服务端预算</span>
     {% else %}
-    <span class="status-chip muted">未配置</span>
+      <span class="dt-pill muted">未配置</span>
     {% endif %}
   </div>
-  <div class="budget-progress" aria-label="月度预算使用进度">
-    <div class="budget-progress-fill {{ 'is-over' if budget.is_over_budget else '' }}" style="width: {{ budget.spent_percent }}%"></div>
+  <div class="dt-progress" aria-label="月度预算使用进度">
+    <div class="dt-progress__fill {{ 'is-over' if budget.is_over_budget else '' }}" style="width: {{ budget.spent_percent }}%"></div>
   </div>
-  <div class="budget-progress-meta">
+  <div class="dt-progress-meta">
     <span>已花 {{ home_currency_symbol }}{{ budget.spent_yuan }}</span>
     <span>总预算 {{ home_currency_symbol }}{{ budget.total_yuan }}</span>
   </div>
   {% if budget.excluded_breakdown %}
   <div class="budget-excluded">
-    <div class="row-title">排除分类</div>
-    {% for item in budget.excluded_breakdown %}
-    <span class="category-badge">{{ item.category }} {{ home_currency_symbol }}{{ item.amount_yuan }} · {{ item.count }} 笔</span>
-    {% endfor %}
-  </div>
-  {% endif %}
-</section>
-
-<section class="card">
-  <h2>预算设置</h2>
-  {% if can_write %}
-  <form method="post" action="/web/budgets/save" class="budget-form">
-    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-    <div class="budget-form-grid">
-      <div class="form-row">
-        <label>月份</label>
-        <input type="month" name="month" value="{{ month }}" required>
-      </div>
-      <div class="form-row">
-        <label>月度总预算（元）</label>
-        <input type="text" name="total_amount_yuan" value="{{ budget.total_yuan if budget.configured else '' }}" inputmode="decimal" required>
-      </div>
-      <div class="form-row">
-        <label>结转金额（元）</label>
-        <input type="text" name="rollover_amount_yuan" value="{{ budget.rollover_yuan if budget.configured else '' }}" inputmode="decimal">
-      </div>
-      <div class="form-row">
-        <label>非月度预留（元）</label>
-        <input type="text" name="non_monthly_amount_yuan" value="{{ budget.non_monthly_yuan if budget.configured else '' }}" inputmode="decimal">
-      </div>
-    </div>
-    <div class="form-row">
-      <label>排除分类</label>
-      <textarea name="excluded_categories" rows="2" placeholder="医疗, 报销">{{ budget.excluded_categories_text }}</textarea>
-    </div>
-
-    <div class="budget-category-editor">
-      <div class="budget-category-head">
-        <span>分类</span>
-        <span>预算（元）</span>
-        <span>本月已花</span>
-        <span>剩余</span>
-      </div>
-      {% for row in budget.category_rows %}
-      <div class="budget-category-row">
-        <input type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮">
-        <input type="text" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" inputmode="decimal" placeholder="1000.00">
-        <span>{{ home_currency_symbol ~ row.spent_yuan if not row.is_blank else '—' }}</span>
-        <span class="{{ 'budget-over' if row.overspent_yuan != '0.00' and not row.is_blank else '' }}">
-          {{ home_currency_symbol ~ row.remaining_yuan if not row.is_blank else '—' }}
-        </span>
-      </div>
+    <div class="dt-eyebrow">排除分类</div>
+    <div class="pill-row">
+      {% for item in budget.excluded_breakdown %}
+      <span class="dt-tag">{{ item.category }} {{ home_currency_symbol }}{{ item.amount_yuan }} · {{ item.count }} 笔</span>
       {% endfor %}
     </div>
+  </div>
+  {% endif %}
+</div>
 
-    <div class="actions">
-      <button class="btn btn-primary" type="submit">保存预算</button>
+<div class="dt-card">
+  <div class="card-head">
+    <div class="card-title">预算设置</div>
+    <div class="card-sub">保存后立即生效</div>
+  </div>
+  {% if can_write %}
+  <form method="post" action="/web/budgets/save">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <div class="dt-form-grid">
+      <div class="dt-form-row">
+        <label>月份</label>
+        <input class="dt-input" type="month" name="month" value="{{ month }}" required>
+      </div>
+      <div class="dt-form-row">
+        <label>月度总预算（元）</label>
+        <input class="dt-input" type="text" name="total_amount_yuan" value="{{ budget.total_yuan if budget.configured else '' }}" inputmode="decimal" required>
+      </div>
+      <div class="dt-form-row">
+        <label>结转金额（元）</label>
+        <input class="dt-input" type="text" name="rollover_amount_yuan" value="{{ budget.rollover_yuan if budget.configured else '' }}" inputmode="decimal">
+      </div>
+      <div class="dt-form-row">
+        <label>非月度预留（元）</label>
+        <input class="dt-input" type="text" name="non_monthly_amount_yuan" value="{{ budget.non_monthly_yuan if budget.configured else '' }}" inputmode="decimal">
+      </div>
+    </div>
+    <div class="dt-form-row">
+      <label>排除分类</label>
+      <textarea class="dt-input" name="excluded_categories" rows="2" placeholder="医疗, 报销">{{ budget.excluded_categories_text }}</textarea>
+      <div class="hint">逗号分隔,这些分类的支出不计入"已花"。</div>
+    </div>
+
+    <div class="dt-eyebrow dt-eyebrow--section">分类预算</div>
+    <div class="dt-table-wrap">
+      <table class="dt-table">
+        <thead>
+          <tr>
+            <th>分类</th>
+            <th>预算（元）</th>
+            <th class="amount">本月已花</th>
+            <th class="amount">剩余</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in budget.category_rows %}
+          <tr>
+            <td><input class="dt-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮"></td>
+            <td><input class="dt-input" type="text" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" inputmode="decimal" placeholder="1000.00"></td>
+            <td class="amount">{{ home_currency_symbol ~ row.spent_yuan if not row.is_blank else '—' }}</td>
+            <td class="amount {{ 'text-over' if row.overspent_yuan != '0.00' and not row.is_blank else '' }}">
+              {{ home_currency_symbol ~ row.remaining_yuan if not row.is_blank else '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="dt-actions">
+      <button class="dt-btn primary" type="submit">保存预算</button>
     </div>
   </form>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">只读角色不可修改预算</div>
-    <div class="empty-state-hint">当前页面仅展示服务端预算和本月执行情况。</div>
-  </div>
+  <div class="empty-cell">只读角色不可修改预算。当前页面仅展示服务端预算和本月执行情况。</div>
   {% endif %}
-</section>
+</div>
 
-<section class="card">
-  <h2>分类预算执行</h2>
+<div class="dt-card">
+  <div class="card-head">
+    <div class="card-title">分类预算执行</div>
+    <div class="card-sub">仅展示已配置的分类</div>
+  </div>
   {% set configured_rows = budget.category_rows|rejectattr("is_blank")|list %}
   {% if configured_rows %}
-  <table class="transaction-table">
+  <table class="dt-table">
     <thead>
       <tr>
         <th>分类</th>
@@ -152,15 +189,15 @@
     <tbody>
     {% for row in configured_rows %}
       <tr>
-        <td><span class="category-badge">{{ row.category }}</span></td>
+        <td><span class="dt-tag">{{ row.category }}</span></td>
         <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan }}</td>
         <td class="amount">{{ home_currency_symbol }}{{ row.spent_yuan }}</td>
-        <td class="amount {{ 'budget-over' if row.overspent_yuan != '0.00' else '' }}">{{ home_currency_symbol }}{{ row.remaining_yuan }}</td>
+        <td class="amount {{ 'text-over' if row.overspent_yuan != '0.00' else '' }}">{{ home_currency_symbol }}{{ row.remaining_yuan }}</td>
         <td>
           {% if row.overspent_yuan != '0.00' %}
-          <span class="status-chip warn">超支 {{ home_currency_symbol }}{{ row.overspent_yuan }}</span>
+            <span class="dt-pill danger">超支 {{ home_currency_symbol }}{{ row.overspent_yuan }}</span>
           {% else %}
-          <span class="status-chip ok">正常</span>
+            <span class="dt-pill ok">正常</span>
           {% endif %}
         </td>
       </tr>
@@ -168,10 +205,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty-state">
-    <div class="empty-state-title">还没有分类预算</div>
-    <div class="empty-state-hint">保存分类预算后，可以在这里对比每类本月已花和剩余。</div>
-  </div>
+  <div class="empty-cell">还没有分类预算。保存分类预算后,可以在这里对比每类本月已花和剩余。</div>
   {% endif %}
-</section>
+</div>
 {% endblock %}
