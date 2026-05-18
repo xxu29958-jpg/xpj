@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense, ExpenseTag, Tag
-from app.services.category_service import merge_categories, normalize_category
+from app.services.category_service import category_filter_values, merge_categories, normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.tag_service import tag_key
 from app.services.time_service import (
@@ -67,7 +67,7 @@ def _confirmed_query(
 ) -> Select[tuple[Expense]]:
     query = _base_confirmed_query(tenant_id)
     if category:
-        query = query.where(Expense.category == normalize_category(category))
+        query = query.where(Expense.category.in_(category_filter_values(category)))
     tag_filter = tag_key(tag)
     if tag_filter:
         tagged_expense_ids = (

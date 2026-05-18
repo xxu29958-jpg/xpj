@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, AuthToken, Ledger, LedgerMember
+from app.models import Account, Ledger, LedgerMember
 from app.services import permission_service
 from app.services.invitation_audit import add_audit_log
 from app.services.invitation_common import (
@@ -18,6 +18,7 @@ from app.services.invitation_common import (
     active_member_by_id,
     require_active_owner,
 )
+from app.services.session_lifecycle_service import revoke_active_tokens
 from app.services.time_service import now_utc, to_iso
 
 
@@ -101,12 +102,11 @@ def disable_member(
     # Revoke active tokens for that account in this ledger so they can't keep using it.
     disabled_at = now_utc()
     member.disabled_at = disabled_at
-    db.execute(
-        update(AuthToken)
-        .where(AuthToken.account_id == member.account_id)
-        .where(AuthToken.ledger_id == ledger_id)
-        .where(AuthToken.revoked_at.is_(None))
-        .values(revoked_at=disabled_at)
+    revoke_active_tokens(
+        db,
+        account_id=member.account_id,
+        ledger_id=ledger_id,
+        revoked_at=disabled_at,
     )
     add_audit_log(
         db,
@@ -220,11 +220,22 @@ def transfer_ledger_owner(
             .where(LedgerMember.disabled_at.is_(None))
         )
     )
+    transferred_at = now_utc()
+    demoted_owner_account_ids: list[int] = []
     for owner_member in active_owners:
         if owner_member.id != target.id:
             owner_member.role = "member"
+            demoted_owner_account_ids.append(owner_member.account_id)
     target.role = "owner"
     ledger.owner_account_id = target.account_id
+    if demoted_owner_account_ids:
+        revoke_active_tokens(
+            db,
+            account_ids=demoted_owner_account_ids,
+            ledger_id=ledger_id,
+            scope="admin",
+            revoked_at=transferred_at,
+        )
     add_audit_log(
         db,
         ledger_id=ledger_id,

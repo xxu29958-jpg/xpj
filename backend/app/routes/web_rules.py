@@ -239,6 +239,7 @@ def web_rules_delete(
 def web_rules_apply_pending(
     ledger_id: str = Form(""),
     preview_confirmed: str = Form(""),
+    preview_token: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -247,6 +248,13 @@ def web_rules_apply_pending(
     _require_selected_ledger_write(options, selected_id)
     if preview_confirmed != "yes":
         msg = "请先预览影响范围，再确认应用规则。"
+        return RedirectResponse(
+            url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
+            status_code=303,
+        )
+    current_preview = preview_apply_rules_to_pending(db, tenant_id=selected_id)
+    if not preview_token or current_preview["preview_token"] != preview_token:
+        msg = "待确认账单预览已过期，请重新预览后再确认应用。"
         return RedirectResponse(
             url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
             status_code=303,

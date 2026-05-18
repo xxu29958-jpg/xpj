@@ -9,6 +9,8 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryRule, Expense, Goal
+from app.services.merchant_alias_service import list_merchant_aliases
+from app.services.merchant_service import normalize_merchant
 
 
 MAX_QUERY_LENGTH = 80
@@ -73,12 +75,55 @@ def _like_pattern(term: str) -> str:
 
 
 def _matches_text(term: str, *columns) -> object:
-    pattern = _like_pattern(term)
+    return _matches_any_text([term], *columns)
+
+
+def _matches_any_text(terms: list[str], *columns) -> object:
+    patterns = [_like_pattern(term) for term in terms if term]
+    if not patterns:
+        patterns = [_like_pattern("")]
+    predicates = []
+    for column in columns:
+        lowered = func.lower(func.coalesce(column, ""))
+        predicates.extend(lowered.like(pattern, escape="\\") for pattern in patterns)
+    return or_(*predicates)
+
+
+def _merchant_search_terms(db: Session, tenant_id: str, term: str) -> list[str]:
+    terms = {term}
+    needle = term.casefold()
+    normalized = normalize_merchant(term)
+    for alias in list_merchant_aliases(db, tenant_id):
+        if not alias.enabled:
+            continue
+        alias_values = {
+            alias.alias,
+            alias.alias_key,
+            alias.canonical_merchant,
+            alias.canonical_key,
+        }
+        alias_values_folded = {value.casefold() for value in alias_values if value}
+        if (
+            any(needle in value for value in alias_values_folded)
+            or normalized in {alias.alias_key, alias.canonical_key}
+        ):
+            terms.add(alias.alias)
+            terms.add(alias.canonical_merchant)
+    return sorted(term for term in terms if term)
+
+
+def _matches_expense_search(db: Session, tenant_id: str, term: str) -> object:
+    merchant_terms = _merchant_search_terms(db, tenant_id, term)
     return or_(
-        *[
-            func.lower(func.coalesce(column, "")).like(pattern, escape="\\")
-            for column in columns
-        ]
+        _matches_any_text(merchant_terms, Expense.merchant),
+        _matches_text(
+            term,
+            Expense.category,
+            Expense.note,
+            Expense.source,
+            Expense.tags,
+            Expense.raw_text,
+        ),
     )
 
 
@@ -97,17 +142,7 @@ def _search_expenses(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == status)
-        .where(
-            _matches_text(
-                term,
-                Expense.merchant,
-                Expense.category,
-                Expense.note,
-                Expense.source,
-                Expense.tags,
-                Expense.raw_text,
-            )
-        )
+        .where(_matches_expense_search(db, tenant_id, term))
         .order_by(Expense.created_at.desc(), Expense.id.desc())
     )
     rows = db.scalars(_limited(statement, limit)).all()

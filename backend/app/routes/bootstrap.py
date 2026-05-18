@@ -3,32 +3,31 @@ from __future__ import annotations
 import hmac
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_owner_or_admin_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
+from app.models import BootstrapSecretConsumption
 from app.schemas import (
     BootstrapOwnerRequest,
     BootstrapOwnerResponse,
     PairingCodeCreateRequest,
     PairingCodeResponse,
 )
-from app.services.identity_service import bootstrap_owner, create_pairing_code
+from app.services.identity_service import bootstrap_owner, create_pairing_code, hash_secret
 from app.tenants import AuthContext
 
 
 router = APIRouter(prefix="/api/bootstrap", tags=["bootstrap"])
 
 
-# Process-local set of bootstrap secrets that have already been consumed by a
-# successful owner initialization. Loopback / IP heuristics are intentionally
-# not used here: under Cloudflare Tunnel the apparent client host is the local
-# loopback address, so loopback cannot be trusted as a privilege check.
-_CONSUMED_BOOTSTRAP_SECRETS: set[str] = set()
-
-
+# Bootstrap secret consumption is persisted by secret hash. Loopback / IP
+# heuristics are intentionally not used here: under Cloudflare Tunnel the
+# apparent client host is local loopback, so loopback cannot be trusted as a
+# privilege check.
 def _bootstrap_disabled_error() -> AppError:
     return AppError(
         "bootstrap_disabled",
@@ -37,7 +36,10 @@ def _bootstrap_disabled_error() -> AppError:
     )
 
 
-def require_http_bootstrap_secret(request: Request) -> str:
+def require_http_bootstrap_secret(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> str:
     settings = get_settings()
     if not settings.enable_http_bootstrap:
         raise _bootstrap_disabled_error()
@@ -55,9 +57,13 @@ def require_http_bootstrap_secret(request: Request) -> str:
             status_code=401,
         )
 
-    if expected in _CONSUMED_BOOTSTRAP_SECRETS or not hmac.compare_digest(
-        provided, expected
-    ):
+    secret_hash = hash_secret(expected)
+    already_consumed = db.scalar(
+        select(BootstrapSecretConsumption.secret_hash)
+        .where(BootstrapSecretConsumption.secret_hash == secret_hash)
+        .limit(1)
+    )
+    if already_consumed is not None or not hmac.compare_digest(provided, expected):
         raise AppError(
             "invalid_bootstrap_secret",
             "Bootstrap secret 无效或已使用。",
@@ -67,9 +73,10 @@ def require_http_bootstrap_secret(request: Request) -> str:
     return expected
 
 
-def _mark_secret_consumed(secret: str) -> None:
+def _mark_secret_consumed(db: Session, secret: str) -> None:
     if secret:
-        _CONSUMED_BOOTSTRAP_SECRETS.add(secret)
+        db.merge(BootstrapSecretConsumption(secret_hash=hash_secret(secret)))
+        db.commit()
 
 
 @router.post("/owner", response_model=BootstrapOwnerResponse)
@@ -85,7 +92,7 @@ def post_bootstrap_owner(
         device_name=payload.device_name,
         default_timezone=payload.default_timezone,
     )
-    _mark_secret_consumed(secret)
+    _mark_secret_consumed(db, secret)
     return BootstrapOwnerResponse(**result.__dict__)
 
 

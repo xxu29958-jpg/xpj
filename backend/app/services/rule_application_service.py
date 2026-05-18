@@ -136,6 +136,12 @@ def _updated_at_matches(value):
     return Expense.updated_at == value
 
 
+def _changed_after_rule_application(expense: Expense, change: RuleApplicationChange) -> bool:
+    if expense.updated_at is None or change.created_at is None:
+        return False
+    return expense.updated_at > change.created_at
+
+
 def _try_apply_rule_category(
     db: Session,
     *,
@@ -520,7 +526,11 @@ def rollback_rule_application(
         expense = db.scalar(
             ledger_scoped_select(Expense, tenant_id).where(Expense.id == change.expense_id)
         )
-        if expense is None or normalize_category(expense.category) != change.after_category:
+        if (
+            expense is None
+            or normalize_category(expense.category) != change.after_category
+            or _changed_after_rule_application(expense, change)
+        ):
             change.status = "skipped"
             change.rolled_back_at = now
             skipped += 1

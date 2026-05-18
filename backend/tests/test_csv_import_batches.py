@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv as csv_module
 from datetime import timedelta
 from io import BytesIO
 
@@ -100,6 +101,24 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
             .where(Expense.source == "CSV导入")
         )
         assert inserted == 10_000
+
+
+def test_csv_import_batch_converts_csv_reader_errors_to_invalid_request(client: TestClient) -> None:
+    del client
+    old_limit = csv_module.field_size_limit()
+    csv_module.field_size_limit(8)
+    try:
+        with SessionLocal() as db:
+            with pytest.raises(AppError) as exc_info:
+                create_csv_import_batch(
+                    db,
+                    tenant_id="owner",
+                    file_name="bad.csv",
+                    file_obj=BytesIO(b"amount_yuan,merchant\n1.00,VeryLongMerchant\n"),
+                )
+    finally:
+        csv_module.field_size_limit(old_limit)
+    assert exc_info.value.error == "invalid_request"
 
 
 def test_csv_import_apply_lease_is_atomically_claimed(client: TestClient) -> None:

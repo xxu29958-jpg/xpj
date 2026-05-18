@@ -6,10 +6,11 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import CategoryRule, Expense
 from app.schemas import ExpenseUpdateRequest
-from app.services.time_service import parse_month_label
+from app.services.time_service import local_month_bounds_utc, normalize_month_label
 
 
 DEFAULT_CATEGORIES = [
@@ -49,6 +50,17 @@ def merge_categories(values: list[str]) -> list[str]:
     categories = {normalize_category(item) for item in values if item and item.strip()}
     categories.update(DEFAULT_CATEGORIES)
     return sorted(categories, key=category_sort_key)
+
+
+def category_filter_values(category: str | None) -> set[str]:
+    normalized = normalize_category(category)
+    values = {normalized}
+    values.update(
+        legacy
+        for legacy, canonical in LEGACY_CATEGORY_ALIASES.items()
+        if canonical == normalized
+    )
+    return values
 
 
 def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
@@ -101,16 +113,17 @@ class CategoryDashboard:
 
 
 def _category_month_window(month: str) -> tuple[datetime, datetime]:
-    parsed = parse_month_label(month)
-    if parsed is None:
+    normalized = normalize_month_label(month)
+    if normalized is None:
         raise AppError("invalid_request", status_code=422)
-    year, mon = parsed
-    start = datetime(year, mon, 1)
-    if mon == 12:
-        end = datetime(year + 1, 1, 1)
-    else:
-        end = datetime(year, mon + 1, 1)
-    return start, end
+    bounds = local_month_bounds_utc(normalized, get_settings().ocr_default_timezone)
+    if bounds is None:
+        raise AppError("invalid_request", status_code=422)
+    return bounds
+
+
+def _category_time_expr():
+    return func.coalesce(Expense.expense_time, Expense.confirmed_at)
 
 
 def list_category_summary(
@@ -119,10 +132,11 @@ def list_category_summary(
     """Return per-category counts/amounts for the dashboard.
 
     Confirmed amounts/counts are scoped to ``[start, end)`` of ``month``
-    based on ``confirmed_at``. Pending counts are global per category so
+    based on expense time first, then confirmed time. Pending counts are global per category so
     the user can see lingering uncategorized rows regardless of month.
     """
     start, end = _category_month_window(month)
+    stat_time = _category_time_expr()
 
     confirmed_rows = db.execute(
         select(
@@ -133,8 +147,8 @@ def list_category_summary(
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
         .where(Expense.amount_cents.is_not(None))
-        .where(Expense.confirmed_at >= start)
-        .where(Expense.confirmed_at < end)
+        .where(stat_time >= start)
+        .where(stat_time < end)
         .group_by(Expense.category)
     ).all()
 
@@ -144,18 +158,33 @@ def list_category_summary(
         .where(Expense.status == "pending")
         .group_by(Expense.category)
     ).all()
-    pending_by_category = {row[0] or "": int(row[1]) for row in pending_rows}
+    pending_by_category: dict[str, int] = {}
+    for category, count in pending_rows:
+        key = normalize_category(category)
+        pending_by_category[key] = pending_by_category.get(key, 0) + int(count)
 
     aggregated: dict[str, CategorySummary] = {}
     for category, count, amount in confirmed_rows:
-        key = category or ""
-        aggregated[key] = CategorySummary(
-            category=key or "未分类",
-            confirmed_count=int(count),
-            pending_count=int(pending_by_category.get(key, 0)),
-            confirmed_amount_cents=int(amount or 0),
-            is_uncategorized=key in UNCATEGORIZED_CATEGORIES,
-        )
+        key = normalize_category(category)
+        existing = aggregated.get(key)
+        confirmed_count = int(count)
+        confirmed_amount = int(amount or 0)
+        if existing is None:
+            aggregated[key] = CategorySummary(
+                category=key or "未分类",
+                confirmed_count=confirmed_count,
+                pending_count=int(pending_by_category.get(key, 0)),
+                confirmed_amount_cents=confirmed_amount,
+                is_uncategorized=key in UNCATEGORIZED_CATEGORIES,
+            )
+        else:
+            aggregated[key] = CategorySummary(
+                category=existing.category,
+                confirmed_count=existing.confirmed_count + confirmed_count,
+                pending_count=existing.pending_count,
+                confirmed_amount_cents=existing.confirmed_amount_cents + confirmed_amount,
+                is_uncategorized=existing.is_uncategorized,
+            )
     # Categories that exist only in pending also show up.
     for key, count in pending_by_category.items():
         if key in aggregated:

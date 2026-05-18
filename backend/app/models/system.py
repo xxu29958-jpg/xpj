@@ -32,6 +32,21 @@ class SchemaMigration(Base):
     backend_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+
+class BootstrapSecretConsumption(Base):
+    """Persistent record for one-time HTTP bootstrap secrets.
+
+    The configured secret itself is never stored; only its SHA-256 hash is
+    kept so process restarts cannot make an already-used bootstrap secret
+    usable again.
+    """
+
+    __tablename__ = "bootstrap_secret_consumptions"
+
+    secret_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    consumed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+
+
 class UserUiPreference(Base):
     """v0.10: account-scoped UI preferences (theme, dashboard-card order key, ...).
 

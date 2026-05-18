@@ -145,6 +145,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "rule_application_batches" in inspector.get_table_names()
     assert "rule_application_changes" in inspector.get_table_names()
     assert "schema_migrations" in inspector.get_table_names()
+    assert "bootstrap_secret_consumptions" in inspector.get_table_names()
     assert {
         "tenant_id",
         "public_id",

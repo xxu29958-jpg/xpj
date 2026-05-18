@@ -170,6 +170,7 @@ def test_recognize_text_creates_ocr_draft_items(client: TestClient) -> None:
     assert [item["name"] for item in payload["items"]] == ["拿铁", "三明治"]
     assert [item["quantity_text"] for item in payload["items"]] == ["1杯", "1份"]
     assert [item["amount_cents"] for item in payload["items"]] == [500, 750]
+    assert [item["unit_price_cents"] for item in payload["items"]] == [500, 750]
     assert all(item["is_ocr_draft"] is True for item in payload["items"])
 
 
@@ -199,6 +200,7 @@ def test_recognize_text_replaces_existing_ocr_draft_items(client: TestClient) ->
     payload = listed.json()
     assert [item["name"] for item in payload["items"]] == ["矿泉水", "饭团"]
     assert [item["amount_cents"] for item in payload["items"]] == [200, 600]
+    assert [item["unit_price_cents"] for item in payload["items"]] == [200, 600]
     assert all(item["is_ocr_draft"] is True for item in payload["items"])
 
 

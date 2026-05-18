@@ -144,6 +144,7 @@
   <form method="post" action="/web/rules/apply-pending" style="margin-top:12px">
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="preview_confirmed" value="yes">
+    <input type="hidden" name="preview_token" value="{{ bulk_preview.preview_token }}">
     <button type="submit" class="dt-btn primary"
             data-confirm="已预览影响范围，确认把规则应用到这些待确认账单？">
       确认应用到待确认

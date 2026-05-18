@@ -315,6 +315,41 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
     assert response.json()["error"] == "permission_denied"
 
 
+def test_rule_application_rollback_skips_after_manual_edit_even_when_category_matches(
+    client: TestClient,
+) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "ManualEditCafe")
+    client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "ManualEditCafe", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    applied = client.post("/api/rules/apply-pending", headers=app_headers())
+    assert applied.status_code == 200
+    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+
+    manual = client.patch(
+        f"/api/expenses/{pending_id}",
+        headers=app_headers(),
+        json={"note": "用户后续手工编辑过备注"},
+    )
+    assert manual.status_code == 200, manual.json()
+    assert manual.json()["category"] == "餐饮"
+
+    rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+    assert rollback.status_code == 200
+    assert rollback.json()["status"] == "rollback_skipped"
+    assert rollback.json()["changed"] == 0
+    assert rollback.json()["skipped"] == 1
+
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        assert expense.category == "餐饮"
+        assert expense.note == "用户后续手工编辑过备注"
+
+
 def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient) -> None:
     pending_id = upload_png(client)
     _set_pending_merchant(client, pending_id, "RaceCafe")

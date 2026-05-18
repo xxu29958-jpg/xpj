@@ -200,6 +200,41 @@ def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: Te
     assert transfer_rows[0]["new_role"] == "owner"
 
 
+def test_owner_transfer_revokes_demoted_owner_admin_tokens(client: TestClient) -> None:
+    ledger_id = "owner"
+    invite_token = _mint_invitation(client, ledger_id, app_headers()["Authorization"].removeprefix("Bearer "))
+    member_token = _accept_invitation(client, invite_token, account_name="新 owner")
+    member_id = _member_id_for_role(client, ledger_id, app_headers()["Authorization"].removeprefix("Bearer "), "member")
+
+    before = client.post(
+        "/api/bootstrap/pairing-codes",
+        headers=admin_headers(),
+        json={"ttl_minutes": 15},
+    )
+    assert before.status_code == 200, before.json()
+
+    transfer = client.post(
+        f"/api/ledgers/{ledger_id}/members/{member_id}/transfer-owner",
+        headers=app_headers(),
+    )
+    assert transfer.status_code == 200, transfer.json()
+
+    after = client.post(
+        "/api/bootstrap/pairing-codes",
+        headers=admin_headers(),
+        json={"ttl_minutes": 15},
+    )
+    assert after.status_code == 401
+    assert after.json()["error"] == "invalid_token"
+
+    new_owner_allowed = client.post(
+        f"/api/ledgers/{ledger_id}/invitations",
+        headers=_bearer(member_token),
+        json={"role": "viewer"},
+    )
+    assert new_owner_allowed.status_code == 201, new_owner_allowed.json()
+
+
 def test_member_and_viewer_cannot_call_owner_member_management(client: TestClient) -> None:
     ledger_id = _create_family_ledger(client)
     owner_token = _switch_to(client, ledger_id, app_headers())

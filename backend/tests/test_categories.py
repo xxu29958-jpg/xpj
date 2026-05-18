@@ -11,14 +11,18 @@ Covers:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import re
 
 import pytest
 from fastapi.testclient import TestClient
 
 import conftest as cf
+from app.database import SessionLocal
 from app.main import app
+from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
+from app.services.category_service import list_category_summary
 from app.services.merchant_service import display_merchant, normalize_merchant
 
 
@@ -109,6 +113,45 @@ def test_web_categories_counts_pending_uncategorized(web_client: TestClient) -> 
     assert "未分类" in resp.text
     # A direct entry to the cleanup workflow is rendered.
     assert "/web/categories/uncategorized?ledger_id=owner" in resp.text
+
+
+def test_category_summary_uses_stat_time_and_normalized_category_aliases(
+    web_client: TestClient,
+) -> None:
+    with SessionLocal() as db:
+        now = datetime(2026, 6, 1, 0, 0, tzinfo=UTC)
+        db.add_all(
+            [
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1200,
+                    merchant="补录五月",
+                    category="餐饮",
+                    status="confirmed",
+                    expense_time=datetime(2026, 5, 10, 12, 0, tzinfo=UTC),
+                    confirmed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=800,
+                    merchant="旧分类五月",
+                    category="吃饭",
+                    status="confirmed",
+                    expense_time=datetime(2026, 5, 11, 12, 0, tzinfo=UTC),
+                    confirmed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
+        db.commit()
+        dashboard = list_category_summary(db, tenant_id="owner", month="2026-05")
+
+    food = next(item for item in dashboard.summaries if item.category == "餐饮")
+    assert food.confirmed_count == 2
+    assert food.confirmed_amount_cents == 2000
 
 
 # ── T13: /web/categories/uncategorized ─────────────────────────────────────

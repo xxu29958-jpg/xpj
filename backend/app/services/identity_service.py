@@ -2,17 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import hashlib
 import secrets
 from hmac import compare_digest
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, PairingCode, UploadLink
 from app.services import permission_service
+from app.services.session_lifecycle_service import (
+    consume_pairing_code,
+    hash_secret,
+    issue_auth_token,
+    issue_upload_link,
+    new_session_token as new_session_token,
+    new_upload_key as new_upload_key,
+)
 from app.services.time_service import ensure_utc, now_utc, to_iso
 from app.tenants import AuthContext, DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, TENANT_ID_PATTERN, Tenant, configured_tenants
 
@@ -55,18 +62,6 @@ class PairingCodeResult:
     pairing_code: str
     ledger_name: str
     expires_at: str
-
-
-def hash_secret(secret: str) -> str:
-    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
-
-
-def new_session_token() -> str:
-    return f"tbx_{secrets.token_urlsafe(32)}"
-
-
-def new_upload_key() -> str:
-    return f"upl_{secrets.token_urlsafe(32)}"
 
 
 def new_pairing_code() -> str:
@@ -252,18 +247,13 @@ def _ensure_device(db: Session, account_id: int, device_name: str, platform: str
 
 
 def _create_auth_token(db: Session, *, account_id: int, device_id: int, ledger_id: str, scope: str) -> str:
-    token = new_session_token()
-    db.add(
-        AuthToken(
-            token_hash=hash_secret(token),
-            account_id=account_id,
-            device_id=device_id,
-            ledger_id=ledger_id,
-            scope=scope,
-        )
+    return issue_auth_token(
+        db,
+        account_id=account_id,
+        device_id=device_id,
+        ledger_id=ledger_id,
+        scope=scope,
     )
-    db.flush()
-    return token
 
 
 def _create_upload_link(
@@ -274,18 +264,13 @@ def _create_upload_link(
     ledger_id: str,
     default_timezone: str | None,
 ) -> str:
-    upload_key = new_upload_key()
-    db.add(
-        UploadLink(
-            token_hash=hash_secret(upload_key),
-            account_id=account_id,
-            device_id=device_id,
-            ledger_id=ledger_id,
-            default_timezone=default_timezone,
-        )
+    return issue_upload_link(
+        db,
+        account_id=account_id,
+        device_id=device_id,
+        ledger_id=ledger_id,
+        default_timezone=default_timezone,
     )
-    db.flush()
-    return upload_key
 
 
 def create_pairing_code(
@@ -499,15 +484,12 @@ def pair_device(
     role = _role_for(db, ledger.ledger_id, account.id)
 
     used_at = now_utc()
-    result = db.execute(
-        update(PairingCode)
-        .where(PairingCode.id == pairing.id)
-        .where(PairingCode.used_at.is_(None))
-        .values(used_at=used_at)
-    )
-    if result.rowcount != 1:
+    consume_result = consume_pairing_code(db, pairing_id=pairing.id, used_at=used_at)
+    if consume_result != "consumed":
         db.rollback()
-        _reject_pairing(remote_id, "pairing_code_used", 409)
+        if consume_result == "used":
+            _reject_pairing(remote_id, "pairing_code_used", 409)
+        _reject_pairing(remote_id, "pairing_code_expired", 410)
 
     device = _ensure_device(db, account.id, device_name, platform)
     token = _create_auth_token(

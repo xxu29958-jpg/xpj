@@ -101,6 +101,9 @@ def create_csv_import_batch(
     except UnicodeDecodeError as exc:
         db.rollback()
         raise AppError("invalid_request", "CSV 必须使用 UTF-8 编码。", status_code=400) from exc
+    except csv.Error as exc:
+        db.rollback()
+        raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
     except AppError:
         db.rollback()
         raise

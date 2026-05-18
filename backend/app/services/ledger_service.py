@@ -28,11 +28,10 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import AuthToken, Account, Device, Ledger, LedgerMember
 from app.services.identity_service import (
-    _create_auth_token,
     _ensure_membership,
-    hash_secret,
 )
-from app.services.time_service import now_utc, to_iso
+from app.services.session_lifecycle_service import rotate_app_token_for_ledger
+from app.services.time_service import to_iso
 from app.tenants import DEFAULT_TENANT_ID
 
 
@@ -192,26 +191,14 @@ def switch_ledger(
     if account is None or device is None:
         raise AppError("invalid_token", status_code=401)
 
-    current_hash = hash_secret(current_token_value)
-    current = db.scalar(
-        select(AuthToken)
-        .where(AuthToken.token_hash == current_hash)
-        .where(AuthToken.revoked_at.is_(None))
-        .limit(1)
-    )
-    if current is None or current.account_id != account_id or current.device_id != device_id:
-        raise AppError("invalid_token", status_code=401)
-
-    now = now_utc()
-    current.revoked_at = now
-    new_token = _create_auth_token(
+    new_token, switched_at = rotate_app_token_for_ledger(
         db,
+        current_token_value=current_token_value,
         account_id=account.id,
         device_id=device.id,
-        ledger_id=ledger.ledger_id,
-        scope="app",
+        target_ledger_id=ledger.ledger_id,
     )
-    device.last_seen_at = now
+    device.last_seen_at = switched_at
     db.commit()
 
     return SwitchLedgerResult(

@@ -196,6 +196,7 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             clear()
         }
         activeLedgerIdFlow.value = null
+        currencyCodeFlow.value = null
     }
 
     override suspend fun saveBackgroundSettings(settings: BackgroundSettings) {

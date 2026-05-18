@@ -71,6 +71,22 @@ class PaymentNotificationParserTest {
     }
 
     @Test
+    fun parsesExpenseNotificationWithPayeeLabel() {
+        val draft = PaymentNotificationParser.parse(
+            snapshot(
+                packageName = "com.tencent.mm",
+                title = "微信支付",
+                text = "支付成功 ¥19.90 收款方：瑞幸咖啡",
+            ),
+        )
+
+        assertNotNull(draft)
+        assertEquals(NotificationDraftSource.WeChat, draft.source)
+        assertEquals(1990L, draft.amountCents)
+        assertEquals("瑞幸咖啡", draft.merchant)
+    }
+
+    @Test
     fun rejectsGenericNotificationWithoutPaymentContext() {
         val draft = PaymentNotificationParser.parse(
             snapshot(

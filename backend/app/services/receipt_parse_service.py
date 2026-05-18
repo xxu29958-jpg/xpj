@@ -447,6 +447,7 @@ def _parse_receipt_item_line(line: str) -> ParsedReceiptItem | None:
         name=name,
         quantity_text=quantity_text,
         amount_cents=amount_cents,
+        unit_price_cents=_item_unit_price_cents(amount_cents, quantity_text),
         category=_category_for_item_name(name),
         raw_text=cleaned,
         confidence=0.72,
@@ -467,6 +468,28 @@ def _clean_item_quantity(value: str | None) -> str | None:
         return None
     cleaned = value.replace("×", "x").strip()
     return cleaned or None
+
+
+def _item_quantity_decimal(value: str | None) -> Decimal | None:
+    if not value:
+        return None
+    match = re.search(r"\d+(?:\.\d+)?", value.replace("×", "x"))
+    if not match:
+        return None
+    try:
+        quantity = Decimal(match.group(0))
+    except InvalidOperation:
+        return None
+    if quantity <= 0:
+        return None
+    return quantity
+
+
+def _item_unit_price_cents(amount_cents: int, quantity_text: str | None) -> int | None:
+    quantity = _item_quantity_decimal(quantity_text)
+    if quantity is None:
+        return None
+    return int((Decimal(amount_cents) / quantity).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def _category_for_item_name(name: str) -> str | None:

@@ -28,11 +28,12 @@ from app.models.identity import (
 )
 from app.models.import_csv import CsvImportBatch, CsvImportRow
 from app.models.recurring import RecurringItem
-from app.models.system import SchemaMigration
+from app.models.system import BootstrapSecretConsumption, SchemaMigration
 
 __all__ = [
     "Account",
     "AuthToken",
+    "BootstrapSecretConsumption",
     "Budget",
     "BudgetCategory",
     "CategoryRule",

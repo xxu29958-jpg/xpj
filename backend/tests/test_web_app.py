@@ -525,6 +525,24 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient) -> Non
     assert "SearchCafe Confirmed" not in other_ledger.text
 
 
+def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "19.00", "STARBUCKS 国贸店")
+    alias = web_client.post(
+        "/web/merchants/aliases/create",
+        data={
+            "ledger_id": "owner",
+            "canonical_merchant": "星巴克",
+            "alias": "STARBUCKS 国贸店",
+        },
+        follow_redirects=False,
+    )
+    assert alias.status_code in {303, 307}
+
+    page = web_client.get("/web/search?ledger_id=owner&q=星巴克")
+    assert page.status_code == 200
+    assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
+
+
 def test_web_confirmed_batch_markup_and_updates(web_client: TestClient) -> None:
     expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe")
     confirmed = web_client.post(
@@ -829,10 +847,26 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
     assert "将改写" in preview.text
     assert "Starbucks 上海" in preview.text
     assert "确认应用到待确认" in preview.text
+    token_match = re.search(r'name="preview_token" value="([0-9a-f]+)"', preview.text)
+    assert token_match, preview.text[:1000]
+
+    stale = web_client.post(
+        "/web/rules/apply-pending",
+        data={"ledger_id": "owner", "preview_confirmed": "yes"},
+        follow_redirects=False,
+    )
+    assert stale.status_code in {303, 307}
+    assert "apply_preview=1" in stale.headers["location"]
+    detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert "其他" in detail.text
 
     applied = web_client.post(
         "/web/rules/apply-pending",
-        data={"ledger_id": "owner", "preview_confirmed": "yes"},
+        data={
+            "ledger_id": "owner",
+            "preview_confirmed": "yes",
+            "preview_token": token_match.group(1),
+        },
         follow_redirects=False,
     )
     assert applied.status_code in {303, 307}

@@ -144,6 +144,25 @@ def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(
     assert months.json()["items"] == ["2026-05", "2026-04"]
 
 
+def test_confirmed_category_filter_includes_legacy_aliases(client: TestClient) -> None:
+    insert_confirmed_expense(
+        amount_cents=700,
+        merchant="旧分类餐饮",
+        category="吃饭",
+        expense_time=datetime(2026, 5, 4, 8, 0, tzinfo=UTC),
+        confirmed_at=datetime(2026, 5, 4, 8, 1, tzinfo=UTC),
+    )
+
+    response = client.get(
+        "/api/expenses/confirmed?month=2026-05&category=餐饮",
+        headers=app_headers(),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["merchant"] == "旧分类餐饮"
+
+
 def test_confirmed_month_filter_handles_cross_year_local_boundary(
     client: TestClient,
 ) -> None:

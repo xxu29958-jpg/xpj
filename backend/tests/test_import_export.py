@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv as csv_module
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -12,6 +13,7 @@ from sqlalchemy import select
 import conftest as cf
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
+from app.errors import AppError
 from app.services.import_service import (
     MAX_PREVIEW_ROWS,
     import_rows,
@@ -90,9 +92,30 @@ def test_parse_csv_preview_flags_invalid_rows() -> None:
     assert preview.rows[0].error and "amount_yuan" in preview.rows[0].error
 
 
-def test_parse_csv_preview_requires_amount_column() -> None:
-    from app.errors import AppError
+def test_parse_csv_preview_rejects_dirty_exchange_rate_date() -> None:
+    csv = (
+        "amount_cents,original_currency_code,original_amount_minor,"
+        "exchange_rate_to_cny,exchange_rate_date,merchant\n"
+        "0,USD,12345,7.1234,2026-05-04xxx,Dirty Date Cafe\n"
+    )
+    preview = parse_csv_preview(csv)
+    assert preview.valid_count == 0
+    assert preview.error_count == 1
+    assert "exchange_rate_date" in (preview.rows[0].error or "")
 
+
+def test_parse_csv_preview_converts_csv_reader_errors_to_invalid_request() -> None:
+    old_limit = csv_module.field_size_limit()
+    csv_module.field_size_limit(8)
+    try:
+        with pytest.raises(AppError) as exc_info:
+            parse_csv_preview("amount_yuan,merchant\n1.00,VeryLongMerchant\n")
+    finally:
+        csv_module.field_size_limit(old_limit)
+    assert exc_info.value.error == "invalid_request"
+
+
+def test_parse_csv_preview_requires_amount_column() -> None:
     with pytest.raises(AppError):
         parse_csv_preview("merchant,note\nA,B\n")
 

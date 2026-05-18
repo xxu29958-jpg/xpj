@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import StringIO
+import re
 
 from sqlalchemy.orm import Session
 
@@ -164,8 +165,10 @@ def _parse_optional_date(raw: str) -> tuple[date | None, str | None]:
     text = raw.strip()
     if not text:
         return None, None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return None, "exchange_rate_date 不是合法日期"
     try:
-        return date.fromisoformat(text[:10]), None
+        return date.fromisoformat(text), None
     except ValueError:
         return None, "exchange_rate_date 不是合法日期"
 
@@ -179,11 +182,13 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
     text = content.lstrip("\ufeff")
     if not text.strip():
         raise AppError("invalid_request", "CSV 内容为空。", status_code=400)
-    reader = csv.reader(StringIO(text))
     try:
+        reader = csv.reader(StringIO(text))
         header_row = next(reader)
     except StopIteration:
         raise AppError("invalid_request", "CSV 缺少表头。", status_code=400)
+    except csv.Error as exc:
+        raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
     headers = [h.strip().lstrip("\ufeff").lower() for h in header_row]
     if not any(h in {"amount_yuan", "amount_cents"} for h in headers):
         raise AppError(
@@ -192,20 +197,23 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
             status_code=400,
         )
     preview = CsvPreview(headers=headers)
-    for index, row in enumerate(reader, start=2):  # line 1 was the header
-        if len(preview.rows) >= MAX_PREVIEW_ROWS:
-            preview.truncated = True
-            break
-        if not any(cell.strip() for cell in row):
-            continue
-        preview.rows.append(
-            parse_csv_row(
-                headers,
-                row,
-                line_number=index,
-                timezone_name=timezone_name,
+    try:
+        for index, row in enumerate(reader, start=2):  # line 1 was the header
+            if len(preview.rows) >= MAX_PREVIEW_ROWS:
+                preview.truncated = True
+                break
+            if not any(cell.strip() for cell in row):
+                continue
+            preview.rows.append(
+                parse_csv_row(
+                    headers,
+                    row,
+                    line_number=index,
+                    timezone_name=timezone_name,
+                )
             )
-        )
+    except csv.Error as exc:
+        raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
     return preview
 
 

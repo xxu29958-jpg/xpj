@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuthToken, PairingCode, UploadLink
+from app.models import AuthToken, BootstrapSecretConsumption, PairingCode, UploadLink
 from app.routes import bootstrap as bootstrap_route
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
@@ -116,11 +116,12 @@ def http_bootstrap_enabled(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
     monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", secret)
     get_settings.cache_clear()
-    bootstrap_route._CONSUMED_BOOTSTRAP_SECRETS.clear()
     try:
         yield secret
     finally:
-        bootstrap_route._CONSUMED_BOOTSTRAP_SECRETS.clear()
+        with SessionLocal() as db:
+            db.query(BootstrapSecretConsumption).delete()
+            db.commit()
         get_settings.cache_clear()
 
 
@@ -151,7 +152,8 @@ def test_bootstrap_owner_secret_is_one_shot(
     # test session because conftest seeds an owner via the service layer. Mark
     # the secret as consumed directly so we can verify that, even without an
     # already-initialized owner, a previously consumed secret is rejected.
-    bootstrap_route._mark_secret_consumed(http_bootstrap_enabled)
+    with SessionLocal() as db:
+        bootstrap_route._mark_secret_consumed(db, http_bootstrap_enabled)
 
     response = client.post(
         "/api/bootstrap/owner",
@@ -175,7 +177,6 @@ def test_bootstrap_owner_accepts_valid_secret(
     monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
     monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", secret)
     get_settings.cache_clear()
-    bootstrap_route._CONSUMED_BOOTSTRAP_SECRETS.clear()
 
     Base.metadata.drop_all(bind=engine)
     init_db()
@@ -198,7 +199,6 @@ def test_bootstrap_owner_accepts_valid_secret(
             assert second.status_code == 401
             assert second.json()["error"] == "invalid_bootstrap_secret"
     finally:
-        bootstrap_route._CONSUMED_BOOTSTRAP_SECRETS.clear()
         get_settings.cache_clear()
 
 
