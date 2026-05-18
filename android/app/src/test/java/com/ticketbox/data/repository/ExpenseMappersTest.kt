@@ -81,6 +81,23 @@ class ExpenseMappersTest {
     }
 
     @Test
+    fun mapsDeletedMediaFlagsAndConfidence() {
+        val expense = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            imagePath = "/api/expenses/1/image",
+            thumbnailPath = "/api/expenses/1/thumbnail",
+            imageDeletedAt = "2026-05-04T05:00:00Z",
+            thumbnailDeletedAt = null,
+            confidence = 0.42,
+        ).toDomain()
+
+        assertEquals(null, expense.imagePath)
+        assertEquals(null, expense.thumbnailPath)
+        assertEquals("2026-05-04T05:00:00Z", expense.imageDeletedAt)
+        assertEquals(0.42, expense.confidence)
+    }
+
+    @Test
     fun baselineAwareToRequestOmitsFxFieldsWhenUnchanged() {
         val baseline = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
@@ -297,6 +314,11 @@ class ExpenseMappersTest {
         fxRate: String? = null,
         fxRateDate: String? = null,
         fxStatus: String? = null,
+        imagePath: String? = null,
+        thumbnailPath: String? = null,
+        imageDeletedAt: String? = null,
+        thumbnailDeletedAt: String? = null,
+        confidence: Double? = null,
     ): ExpenseDto {
         return ExpenseDto(
             id = 1,
@@ -313,11 +335,13 @@ class ExpenseMappersTest {
             category = category,
             note = "",
             source = "iPhone截图",
-            imagePath = null,
-            thumbnailPath = null,
+            imagePath = imagePath,
+            thumbnailPath = thumbnailPath,
+            imageDeletedAt = imageDeletedAt,
+            thumbnailDeletedAt = thumbnailDeletedAt,
             imageHash = null,
             rawText = "",
-            confidence = null,
+            confidence = confidence,
             duplicateStatus = "none",
             duplicateOfId = null,
             duplicateReason = null,

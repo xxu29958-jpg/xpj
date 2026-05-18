@@ -376,6 +376,71 @@ def _sqlite_column_names(connection, table_name: str) -> set[str]:
     }
 
 
+def _migrate_user_ui_preferences(connection, table_names: set[str]) -> None:
+    if "user_ui_preferences" not in table_names:
+        return
+    columns = _sqlite_column_names(connection, "user_ui_preferences")
+    if {"id", "account_id", "account_name", "preferences", "updated_at"}.issubset(columns):
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_ui_preferences_account_id "
+                "ON user_ui_preferences (account_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_user_ui_preferences_account_id "
+                "ON user_ui_preferences (account_id)"
+            )
+        )
+        return
+
+    now = datetime.now(UTC)
+    connection.execute(
+        text(
+            "CREATE TABLE user_ui_preferences_new ("
+            "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+            "account_id INTEGER NOT NULL, "
+            "account_name VARCHAR(128) NOT NULL, "
+            "preferences TEXT NOT NULL DEFAULT '{}', "
+            "updated_at DATETIME NOT NULL, "
+            "FOREIGN KEY(account_id) REFERENCES accounts (id)"
+            ")"
+        )
+    )
+    if {"account_name", "preferences"}.issubset(columns):
+        updated_at_expr = "pref.updated_at" if "updated_at" in columns else ":now"
+        connection.execute(
+            text(
+                "INSERT INTO user_ui_preferences_new "
+                "(account_id, account_name, preferences, updated_at) "
+                "SELECT account.id, pref.account_name, COALESCE(pref.preferences, '{}'), "
+                f"COALESCE({updated_at_expr}, :now) "
+                "FROM user_ui_preferences AS pref "
+                "JOIN accounts AS account ON account.display_name = pref.account_name "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM user_ui_preferences_new AS existing "
+                "WHERE existing.account_id = account.id"
+                ")"
+            ),
+            {"now": now},
+        )
+    connection.execute(text("DROP TABLE user_ui_preferences"))
+    connection.execute(text("ALTER TABLE user_ui_preferences_new RENAME TO user_ui_preferences"))
+    connection.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_ui_preferences_account_id "
+            "ON user_ui_preferences (account_id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_user_ui_preferences_account_id "
+            "ON user_ui_preferences (account_id)"
+        )
+    )
+
+
 def _clear_invalid_duplicate_scope_data(connection, table_names: set[str]) -> None:
     """Drop derived duplicate metadata that no longer points inside its ledger."""
 
@@ -915,6 +980,7 @@ def migrate_sqlite_schema() -> None:
     with engine.begin() as connection:
         _validate_family_role_data(connection, table_names)
         _validate_legacy_unique_scopes(connection, table_names)
+        _migrate_user_ui_preferences(connection, table_names)
 
     if "expenses" not in table_names:
         return
@@ -1267,6 +1333,19 @@ def migrate_sqlite_schema() -> None:
                 text("UPDATE csv_import_batches SET tenant_id = :tenant_id WHERE tenant_id IS NULL OR tenant_id = ''"),
                 {"tenant_id": DEFAULT_TENANT_ID},
             )
+            csv_batch_additions = {
+                "public_id": "VARCHAR(36)",
+                "locked_until": "DATETIME",
+                "apply_token": "VARCHAR(36)",
+                "last_error": "TEXT",
+                "applied_at": "DATETIME",
+            }
+            csv_batch_columns = _sqlite_column_names(connection, "csv_import_batches")
+            for column_name, column_type in csv_batch_additions.items():
+                if column_name not in csv_batch_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE csv_import_batches ADD COLUMN {column_name} {column_type}")
+                    )
             connection.execute(
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS uq_csv_import_batches_id_tenant_id "
@@ -1274,6 +1353,21 @@ def migrate_sqlite_schema() -> None:
                 )
             )
             csv_batch_columns = _sqlite_column_names(connection, "csv_import_batches")
+            if "public_id" in csv_batch_columns:
+                public_id_rows = connection.execute(
+                    text("SELECT id FROM csv_import_batches WHERE public_id IS NULL OR public_id = ''")
+                ).mappings()
+                for row in public_id_rows:
+                    connection.execute(
+                        text("UPDATE csv_import_batches SET public_id = :public_id WHERE id = :id"),
+                        {"public_id": str(uuid4()), "id": row["id"]},
+                    )
+                connection.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_csv_import_batches_public_id "
+                        "ON csv_import_batches (public_id)"
+                    )
+                )
             if "public_id" in csv_batch_columns:
                 connection.execute(
                     text(

@@ -302,6 +302,25 @@ def apply_csv_import_batch(
                 apply_token=apply_token,
             )
         raise
+    except IntegrityError as exc:
+        db.rollback()
+        _reset_claimed_csv_import_rows(
+            db,
+            tenant_id=tenant_id,
+            row_ids=claimed_row_ids,
+            apply_token=apply_token,
+        )
+        _mark_csv_import_apply_failed(
+            db,
+            tenant_id=tenant_id,
+            public_id=public_id,
+            apply_token=apply_token,
+        )
+        raise AppError(
+            "import_batch_conflict",
+            "导入批次状态已变化，请刷新后重试。",
+            status_code=409,
+        ) from exc
     except Exception:
         db.rollback()
         _reset_claimed_csv_import_rows(

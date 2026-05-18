@@ -10,8 +10,8 @@ Metric definitions:
 - ``missing_merchant``: pending rows with empty / whitespace merchant
 - ``missing_category``: pending or confirmed rows with empty / NULL /
   ``'未分类'`` category — these are the rows that defeat stats slicing
-- ``suspected_duplicates``: rows with ``duplicate_status = 'suspected'``
-  regardless of status (worklist for de-dup review)
+- ``suspected_duplicates``: actionable rows with ``duplicate_status = 'suspected'``
+  that have not already been rejected
 - ``confirmed_without_image``: confirmed rows whose image was deleted by
   retention OR was never uploaded — affects auditability
 - ``oldest_pending_age_days``: days since the oldest pending row was
@@ -98,7 +98,7 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
 
     suspected_duplicates = _count(
         db,
-        base.where(Expense.duplicate_status == "suspected"),
+        base.where(Expense.duplicate_status == "suspected").where(Expense.status != "rejected"),
     )
 
     confirmed_without_image = _count(

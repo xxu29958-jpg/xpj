@@ -36,6 +36,22 @@ class OcrProvider(Protocol):
 
 
 OCR_DRAFT_FIELDS = frozenset({"amount_cents", "merchant", "category", "expense_time"})
+OCR_DRAFT_FIELD_ALIASES = {
+    "amount_cents": "amount_cents",
+    "home_amount_cents": "amount_cents",
+    "original_amount": "amount_cents",
+    "original_amount_minor": "amount_cents",
+    "original_currency": "amount_cents",
+    "original_currency_code": "amount_cents",
+    "exchange_rate_to_cny": "amount_cents",
+    "exchange_rate_date": "amount_cents",
+    "exchange_rate_source": "amount_cents",
+    "fx_status": "amount_cents",
+    "merchant": "merchant",
+    "category": "category",
+    "expense_time": "expense_time",
+    "spent_at": "expense_time",
+}
 LEGACY_AUTO_OCR_WINDOW = timedelta(minutes=5)
 
 
@@ -203,9 +219,26 @@ def ocr_draft_fields(expense: Expense) -> set[str]:
     return {str(item) for item in decoded if str(item) in OCR_DRAFT_FIELDS}
 
 
-def clear_ocr_draft_fields(expense: Expense, fields: set[str] | list[str] | tuple[str, ...]) -> None:
+def canonical_ocr_draft_fields(fields: set[str] | list[str] | tuple[str, ...]) -> set[str]:
+    return {
+        mapped
+        for field in fields
+        if (mapped := OCR_DRAFT_FIELD_ALIASES.get(str(field))) in OCR_DRAFT_FIELDS
+    }
+
+
+def ocr_draft_fields_after_clearing(
+    expense: Expense,
+    fields: set[str] | list[str] | tuple[str, ...],
+) -> str:
     current = ocr_draft_fields(expense)
-    updated = current.difference(fields)
+    updated = current.difference(canonical_ocr_draft_fields(fields))
+    normalized = sorted(field for field in updated if field in OCR_DRAFT_FIELDS)
+    return json.dumps(normalized, ensure_ascii=False)
+
+
+def clear_ocr_draft_fields(expense: Expense, fields: set[str] | list[str] | tuple[str, ...]) -> None:
+    updated = set(json.loads(ocr_draft_fields_after_clearing(expense, fields)))
     _write_ocr_draft_fields(expense, updated)
 
 

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_owner_or_admin_context
+from app.auth import get_current_admin_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
@@ -19,6 +19,7 @@ from app.schemas import (
     PairingCodeResponse,
 )
 from app.services.identity_service import bootstrap_owner, create_pairing_code, hash_secret
+from app.services.admin_scope_service import require_admin_manages_current_ledger
 from app.tenants import AuthContext
 
 
@@ -122,9 +123,10 @@ def post_bootstrap_owner(
 @router.post("/pairing-codes", response_model=PairingCodeResponse)
 def post_pairing_code(
     payload: PairingCodeCreateRequest,
-    auth: AuthContext = Depends(get_current_owner_or_admin_context),
+    auth: AuthContext = Depends(get_current_admin_context),
     db: Session = Depends(get_db),
 ) -> PairingCodeResponse:
+    require_admin_manages_current_ledger(db, auth)
     result = create_pairing_code(
         db,
         ledger_id=auth.ledger_id,

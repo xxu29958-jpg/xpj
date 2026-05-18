@@ -98,10 +98,12 @@ def test_data_quality_suspected_duplicates(client: TestClient) -> None:
         # mark_duplicate_status flags one or both; just verify >=1 to keep
         # this stable across heuristic tweaks.
         assert len(suspected) >= 1
+        suspected[0].status = "rejected"
+        db.commit()
 
     response = client.get("/api/insights/data-quality", headers=app_headers())
     body = response.json()
-    assert body["suspected_duplicates"] >= 1
+    assert body["suspected_duplicates"] == max(0, len(suspected) - 1)
     # Suspected rows must not appear as ready_to_confirm even if amount + merchant set.
     assert body["ready_to_confirm"] + body["suspected_duplicates"] <= body["pending_total"] + 1
 

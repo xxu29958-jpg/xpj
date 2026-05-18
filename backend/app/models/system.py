@@ -4,8 +4,12 @@ from datetime import datetime
 
 from sqlalchemy import (
     DateTime,
+    ForeignKey,
+    Index,
+    Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -50,16 +54,28 @@ class BootstrapSecretConsumption(Base):
 class UserUiPreference(Base):
     """v0.10: account-scoped UI preferences (theme, dashboard-card order key, ...).
 
-    Cross-surface sync target: same account_name across web/Android shares the same row.
+    Cross-surface sync target: the same account_id across web/Android shares the same row.
     `preferences` is a JSON-encoded text column to keep schema flexible (no migration on add).
     Currently used keys: `theme` (paper|mono|midnight). See docs/V0_9_DESIGN_TOKEN_REFERENCE.md.
     Owner Console is NOT a participant (single-device loopback role).
     """
 
     __tablename__ = "user_ui_preferences"
+    __table_args__ = (
+        UniqueConstraint("account_id", name="uq_user_ui_preferences_account_id"),
+    )
 
-    account_name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("accounts.id", name="fk_user_ui_preferences_account"),
+        nullable=False,
+    )
+    account_name: Mapped[str] = mapped_column(String(128), nullable=False)
     preferences: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
     )
+
+
+Index("ix_user_ui_preferences_account_id", UserUiPreference.account_id)

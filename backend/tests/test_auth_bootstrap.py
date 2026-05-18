@@ -300,6 +300,16 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     assert reused.json()["error"] == "pairing_code_used"
 
 
+def test_app_owner_token_cannot_create_bootstrap_pairing_code(client: TestClient) -> None:
+    response = client.post(
+        "/api/bootstrap/pairing-codes",
+        headers=app_headers(),
+        json={"ttl_minutes": 15},
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+
+
 def test_pairing_code_expires(client: TestClient) -> None:
     response = client.post(
         "/api/bootstrap/pairing-codes", headers=admin_headers(), json={"ttl_minutes": 1}

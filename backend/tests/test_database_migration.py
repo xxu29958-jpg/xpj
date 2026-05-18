@@ -841,16 +841,22 @@ def test_legacy_csv_import_tables_without_tenant_id_migrate_before_indexes() -> 
 
         assert "tenant_id" in _table_columns("csv_import_batches")
         assert "tenant_id" in _table_columns("csv_import_rows")
+        batch_columns = _table_columns("csv_import_batches")
+        assert {"public_id", "locked_until", "apply_token", "last_error", "applied_at"}.issubset(
+            batch_columns
+        )
+        assert "ix_csv_import_batches_public_id" in _indexes("csv_import_batches")
         assert "uq_csv_import_batches_id_tenant_id" in _indexes("csv_import_batches")
         assert "uq_csv_import_rows_tenant_batch_line" in _indexes("csv_import_rows")
         with engine.begin() as connection:
-            batch_tenant = connection.execute(
-                text("SELECT tenant_id FROM csv_import_batches WHERE id = 1")
-            ).scalar_one()
+            batch = connection.execute(
+                text("SELECT tenant_id, public_id FROM csv_import_batches WHERE id = 1")
+            ).mappings().one()
             row_tenant = connection.execute(
                 text("SELECT tenant_id FROM csv_import_rows WHERE id = 1")
             ).scalar_one()
-        assert batch_tenant == "owner"
+        assert batch["tenant_id"] == "owner"
+        assert batch["public_id"]
         assert row_tenant == "owner"
     finally:
         database._sqlite_backup_done = False

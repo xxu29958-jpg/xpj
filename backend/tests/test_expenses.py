@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -511,6 +511,31 @@ def test_recognize_text_does_not_overwrite_user_filled_fields(
     assert payload["merchant"] == "用户填写商家"
     assert payload["category"] == "生活"
     assert payload["expense_time"] == "2026-05-04T00:00:00Z"
+
+
+def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.expense_time = datetime(2026, 5, 4, 2, 0, tzinfo=UTC)
+        expense.ocr_draft_fields = '["expense_time"]'
+        db.commit()
+
+    patched = client.patch(
+        f"/api/expenses/{expense_id}",
+        headers=app_headers(),
+        json={"spent_at": "2026-05-04T05:00:00Z"},
+    )
+    assert patched.status_code == 200, patched.json()
+
+    second = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月6日 23:00:00"},
+    )
+    assert second.status_code == 200, second.json()
+    assert second.json()["expense_time"] == "2026-05-04T05:00:00Z"
 
 
 def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(

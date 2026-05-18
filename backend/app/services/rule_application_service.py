@@ -11,6 +11,7 @@ from app.ledger_scope import ledger_filter, ledger_scoped_select
 from app.models import CategoryRule, Expense, RuleApplicationBatch, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.merchant_alias_service import enabled_merchant_alias_map
+from app.services.ocr_service import ocr_draft_fields_after_clearing
 from app.services.rule_service import (
     _casefold_join,
     _merchant_context,
@@ -160,7 +161,11 @@ def _try_apply_rule_category(
         .where(Expense.status == status)
         .where(_auto_fillable_category_filter())
         .where(_updated_at_matches(expense.updated_at))
-        .values(category=after_category, updated_at=now)
+        .values(
+            category=after_category,
+            ocr_draft_fields=ocr_draft_fields_after_clearing(expense, {"category"}),
+            updated_at=now,
+        )
         .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:

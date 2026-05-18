@@ -148,6 +148,14 @@ try:
     if result != "ok":
         print(f"SQLite integrity_check failed: {result}", file=sys.stderr)
         raise SystemExit(1)
+    fk_violations = con.execute("PRAGMA foreign_key_check").fetchall()
+    if fk_violations:
+        samples = ", ".join(
+            f"{row[0]} rowid={row[1]} parent={row[2]}"
+            for row in fk_violations[:3]
+        )
+        print(f"SQLite foreign_key_check failed: {samples}", file=sys.stderr)
+        raise SystemExit(1)
 
     tables = {
         row[0]
@@ -227,6 +235,9 @@ try:
         result = dst.execute('PRAGMA integrity_check').fetchone()[0]
         if result != 'ok':
             raise SystemExit('SQLite backup integrity_check failed: ' + str(result))
+        fk_violations = dst.execute('PRAGMA foreign_key_check').fetchall()
+        if fk_violations:
+            raise SystemExit('SQLite backup foreign_key_check failed')
     finally:
         dst.close()
 finally:

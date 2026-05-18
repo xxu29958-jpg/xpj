@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -170,6 +170,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val Migration7To8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE expenses ADD COLUMN imageDeletedAt TEXT")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN thumbnailDeletedAt TEXT")
+                db.execSQL("ALTER TABLE expenses ADD COLUMN confidence REAL")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -184,6 +192,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration4To5,
                         Migration5To6,
                         Migration6To7,
+                        Migration7To8,
                     )
                     .build()
                     .also { instance = it }

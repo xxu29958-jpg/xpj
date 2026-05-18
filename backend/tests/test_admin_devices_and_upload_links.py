@@ -239,6 +239,71 @@ def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient) 
         assert device.revoked_at is None
 
 
+def test_admin_devices_scope_requires_owned_ledgers_not_visible_membership(client: TestClient) -> None:
+    now = now_utc()
+    with SessionLocal() as db:
+        admin_account = db.query(Account).order_by(Account.id.asc()).first()
+        assert admin_account is not None
+        other_owner = Account(display_name="shared ledger owner", created_at=now)
+        db.add(other_owner)
+        db.flush()
+        shared = Ledger(
+            ledger_id="shared_but_not_owned",
+            name="shared but not owned",
+            owner_account_id=other_owner.id,
+            created_at=now,
+        )
+        db.add(shared)
+        db.flush()
+        db.add_all(
+            [
+                LedgerMember(
+                    ledger_id=shared.ledger_id,
+                    account_id=other_owner.id,
+                    role="owner",
+                    created_at=now,
+                ),
+                LedgerMember(
+                    ledger_id=shared.ledger_id,
+                    account_id=admin_account.id,
+                    role="member",
+                    created_at=now,
+                ),
+            ]
+        )
+        device = Device(
+            account_id=other_owner.id,
+            device_name="other owner phone",
+            platform="android",
+            created_at=now,
+        )
+        db.add(device)
+        db.flush()
+        token_hash = hash_secret("other-owner-shared-ledger-token")
+        db.add(
+            AuthToken(
+                token_hash=token_hash,
+                account_id=other_owner.id,
+                device_id=device.id,
+                ledger_id=shared.ledger_id,
+                scope="app",
+                created_at=now,
+            )
+        )
+        public_id = device.public_id
+        db.commit()
+
+    listed = client.get("/api/admin/devices", headers=admin_headers())
+    assert listed.status_code == 200
+    assert public_id not in {item["public_id"] for item in listed.json()}
+
+    revoke = client.post(f"/api/admin/devices/{public_id}/revoke", headers=admin_headers())
+    assert revoke.status_code == 404
+    with SessionLocal() as db:
+        token = db.query(AuthToken).filter(AuthToken.token_hash == token_hash).one()
+        assert token.revoked_at is None
+
+
 def test_revoke_device_invalidates_its_tokens_and_upload_links(
     client: TestClient,
 ) -> None:

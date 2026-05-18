@@ -1,6 +1,7 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -204,6 +205,11 @@ def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
 
 def test_rule_apply_pending_updates_category(client: TestClient) -> None:
     pending_id = upload_png(client)
+    with SessionLocal() as db:
+        expense = db.get(Expense, pending_id)
+        assert expense is not None
+        expense.ocr_draft_fields = json.dumps(["category", "merchant"])
+        db.commit()
     _set_pending_merchant(client, pending_id, "Starbucks 上海")
 
     # Seed a rule for Starbucks → 餐饮 with high priority.
@@ -225,6 +231,10 @@ def test_rule_apply_pending_updates_category(client: TestClient) -> None:
     items = pending.json()
     target = next((item for item in items if int(item["id"]) == pending_id), None)
     assert target is not None
+    with SessionLocal() as db:
+        expense = db.get(Expense, pending_id)
+        assert expense is not None
+        assert set(json.loads(expense.ocr_draft_fields or "[]")) == set()
     assert target["category"] == "餐饮"
     assert target["status"] == "pending"  # NOT auto-confirmed
 

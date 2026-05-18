@@ -270,6 +270,25 @@ def test_recurring_items_mark_current_month_amount_anomaly(client: TestClient) -
     assert current["last_amount_cents"] == 20000
 
 
+def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client: TestClient) -> None:
+    item = _confirm_candidate(client)
+    one_off_purchase = datetime(2026, 5, 13, 12, 0, tzinfo=UTC)
+    insert_confirmed_expense(
+        amount_cents=120000,
+        merchant="ChatGPT Plus",
+        category="AI订阅",
+        expense_time=one_off_purchase,
+        confirmed_at=one_off_purchase,
+    )
+
+    listed = client.get("/api/recurring/items?month=2026-05&timezone=UTC", headers=app_headers())
+    assert listed.status_code == 200, listed.json()
+    current = listed.json()["items"][0]
+    assert current["public_id"] == item["public_id"]
+    assert current["anomaly_status"] == "none"
+    assert current["current_month_amount_cents"] == 20000
+
+
 def test_recurring_status_filter_and_invalid_candidate_errors(client: TestClient) -> None:
     now = now_utc()
     with SessionLocal() as db:

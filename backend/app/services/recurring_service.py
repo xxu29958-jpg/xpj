@@ -20,6 +20,7 @@ from app.services.time_service import current_month, ensure_utc, local_month_bou
 VALID_FREQUENCIES = {"monthly"}
 VALID_STATUSES = {"active", "paused", "archived"}
 ANOMALY_THRESHOLD_PERCENT = 30
+RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT = 100
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,7 @@ def recurring_amount_anomalies(
         return {}
     start_utc, end_utc = bounds
 
+    active_by_key = {item.merchant_key: item for item in active_items}
     history_amounts: dict[str, list[int]] = {key: [] for key in merchant_keys}
     current_entries: dict[str, list[tuple[datetime, int]]] = {key: [] for key in merchant_keys}
     expenses = db.scalars(
@@ -167,6 +169,9 @@ def recurring_amount_anomalies(
         amount = int(expense.amount_cents or 0)
         if amount <= 0:
             continue
+        item = active_by_key.get(key)
+        if item is None or not _is_recurring_like_amount(item, amount):
+            continue
         if start_utc <= when < end_utc:
             current_entries[key].append((when, amount))
         elif when < start_utc:
@@ -191,6 +196,14 @@ def recurring_amount_anomalies(
             amount_delta_percent=delta_percent,
         )
     return anomalies
+
+
+def _is_recurring_like_amount(item: RecurringItem, amount_cents: int) -> bool:
+    reference = max(int(item.last_amount_cents or 0), int(item.baseline_amount_cents or 0))
+    if reference <= 0:
+        return False
+    delta_percent = abs(amount_cents - reference) * 100 / reference
+    return delta_percent <= RECURRING_AMOUNT_MATCH_MAX_DELTA_PERCENT
 
 
 def confirm_recurring_candidate(

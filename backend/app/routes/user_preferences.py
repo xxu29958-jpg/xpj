@@ -1,4 +1,4 @@
-"""v0.10: cross-surface UI preferences (theme, etc.) per account_name.
+"""v0.10: cross-surface UI preferences (theme, etc.) per account.
 
 GET /api/me/ui-preferences   - read current preferences (defaults if missing)
 PUT /api/me/ui-preferences   - upsert; ignored if invalid
@@ -49,7 +49,7 @@ def get_preferences(
 ) -> UserUiPreferencesResponse:
     pref = (
         db.query(UserUiPreference)
-        .filter(UserUiPreference.account_name == auth.account_name)
+        .filter(UserUiPreference.account_id == auth.account_id)
         .first()
     )
     return _to_response(pref)
@@ -63,7 +63,7 @@ def put_preferences(
 ) -> UserUiPreferencesResponse:
     pref = (
         db.query(UserUiPreference)
-        .filter(UserUiPreference.account_name == auth.account_name)
+        .filter(UserUiPreference.account_id == auth.account_id)
         .first()
     )
     current = _parse(pref)
@@ -73,9 +73,14 @@ def put_preferences(
         current["theme"] = payload.theme
     encoded = json.dumps(current, ensure_ascii=False)
     if pref is None:
-        pref = UserUiPreference(account_name=auth.account_name, preferences=encoded)
+        pref = UserUiPreference(
+            account_id=auth.account_id,
+            account_name=auth.account_name,
+            preferences=encoded,
+        )
         db.add(pref)
     else:
+        pref.account_name = auth.account_name
         pref.preferences = encoded
     db.commit()
     db.refresh(pref)

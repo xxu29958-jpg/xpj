@@ -138,6 +138,7 @@ class LedgerRepository(
             // Wipe stale cache for the target ledger so the upcoming sync
             // produces a clean view.
             expenseDao.clearForLedger(response.ledger.ledgerId)
+            settingsStore.clearLastConfirmedSyncAt()
             response.ledger.toSummary()
         }
     }

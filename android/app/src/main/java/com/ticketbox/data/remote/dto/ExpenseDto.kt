@@ -96,6 +96,10 @@ data class ExpenseDto(
     val imagePath: String?,
     @param:Json(name = "thumbnail_path")
     val thumbnailPath: String?,
+    @param:Json(name = "image_deleted_at")
+    val imageDeletedAt: String? = null,
+    @param:Json(name = "thumbnail_deleted_at")
+    val thumbnailDeletedAt: String? = null,
     @param:Json(name = "image_hash")
     val imageHash: String?,
     @param:Json(name = "raw_text")

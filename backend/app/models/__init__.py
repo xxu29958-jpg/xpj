@@ -28,7 +28,7 @@ from app.models.identity import (
 )
 from app.models.import_csv import CsvImportBatch, CsvImportRow
 from app.models.recurring import RecurringItem
-from app.models.system import BootstrapSecretConsumption, SchemaMigration
+from app.models.system import BootstrapSecretConsumption, SchemaMigration, UserUiPreference
 
 __all__ = [
     "Account",
@@ -61,4 +61,5 @@ __all__ = [
     "SchemaMigration",
     "Tag",
     "UploadLink",
+    "UserUiPreference",
 ]

@@ -178,8 +178,9 @@ def _sqlite_integrity_ok(path: Path) -> bool:
         conn = sqlite3.connect(str(path))
         try:
             result = conn.execute("PRAGMA integrity_check").fetchone()
+            fk_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
         finally:
             conn.close()
     except sqlite3.Error:
         return False
-    return bool(result and result[0] == "ok")
+    return bool(result and result[0] == "ok" and not fk_violations)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -49,6 +51,27 @@ def test_owner_backups_skip_invalid_partial_files(local_client: TestClient, tmp_
         assert partial.name not in {entry.file_name for entry in backup_service.list_backups()}
     finally:
         partial.unlink(missing_ok=True)
+
+
+def test_owner_backups_skip_foreign_key_damaged_files(local_client: TestClient) -> None:
+    del local_client
+    from app.services import backup_service
+
+    damaged = backup_service._backup_dir() / "ticketbox-29991231-235958.db"  # noqa: SLF001
+    conn = sqlite3.connect(damaged)
+    try:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("CREATE TABLE parent (id INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id))")
+        conn.execute("INSERT INTO child (id, parent_id) VALUES (1, 999)")
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        assert backup_service.is_backup_valid(damaged.name) is False
+        assert damaged.name not in {entry.file_name for entry in backup_service.list_backups()}
+    finally:
+        damaged.unlink(missing_ok=True)
 
 
 def test_owner_backups_no_uploads_path_leak(local_client: TestClient) -> None:

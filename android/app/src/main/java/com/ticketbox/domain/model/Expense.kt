@@ -23,6 +23,8 @@ data class Expense(
     val source: String,
     val imagePath: String?,
     val thumbnailPath: String?,
+    val imageDeletedAt: String? = null,
+    val thumbnailDeletedAt: String? = null,
     val imageHash: String?,
     val rawText: String?,
     val confidence: Double?,
