@@ -43,7 +43,7 @@ from app.services.ledger_service import (
     LedgerSummary,
     create_ledger as ledger_service_create_ledger,
     ledger_member_counts,
-    list_ledgers_for_account,
+    list_managed_ledgers_for_account,
 )
 from app.tenants import DEFAULT_TENANT_ID
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
@@ -131,7 +131,7 @@ def _owner_ledger_ids(db: Session) -> list[str]:
     owner_id = get_owner_account_id(db)
     if owner_id is None:
         return []
-    return [row.ledger_id for row in list_ledgers_for_account(db, account_id=owner_id)]
+    return [row.ledger_id for row in list_managed_ledgers_for_account(db, account_id=owner_id)]
 
 
 def _count_recurring(db: Session, ledger_ids: list[str], status: str) -> int:
@@ -559,7 +559,7 @@ def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
     if owner_id is None:
         return []
     rows: list[LedgerHealthVM] = []
-    for summary in list_ledgers_for_account(db, account_id=owner_id):
+    for summary in list_managed_ledgers_for_account(db, account_id=owner_id):
         try:
             dq = data_quality_summary(db, tenant_id=summary.ledger_id)
         except Exception:
@@ -601,14 +601,15 @@ class LedgerConsoleVM:
 def list_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
     """Return ledger rows the local owner can manage from the console.
 
-    Uses the same membership rules as :func:`list_ledgers_for_account`. The
+    Uses the same owner-management rule as API admin scope: visible
+    member/viewer ledgers are not manageable from the local console. The
     "owner account" is the first account row created at bootstrap; multi-
     account login is not part of v0.4-alpha1.
     """
     owner_id = get_owner_account_id(db)
     if owner_id is None:
         return []
-    summaries: list[LedgerSummary] = list_ledgers_for_account(db, account_id=owner_id)
+    summaries: list[LedgerSummary] = list_managed_ledgers_for_account(db, account_id=owner_id)
     rows: list[LedgerConsoleVM] = []
     for summary in summaries:
         pending = int(
@@ -645,7 +646,7 @@ def list_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
 
 
 def list_console_ledger_choices(db: Session) -> list[LedgerSummary]:
-    """Return the ledger summaries the pairing dropdown should show.
+    """Return owner-managed ledgers the pairing dropdown should show.
 
     Returns an empty list before bootstrap so the caller can render a clear
     "service not initialised" message instead of a blank dropdown.
@@ -653,7 +654,7 @@ def list_console_ledger_choices(db: Session) -> list[LedgerSummary]:
     owner_id = get_owner_account_id(db)
     if owner_id is None:
         return []
-    return list_ledgers_for_account(db, account_id=owner_id)
+    return list_managed_ledgers_for_account(db, account_id=owner_id)
 
 
 def do_create_ledger(db: Session, *, name: str) -> LedgerSummary:

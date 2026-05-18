@@ -114,6 +114,28 @@ def list_ledgers_for_account(db: Session, *, account_id: int) -> list[LedgerSumm
     return summaries
 
 
+def list_managed_ledgers_for_account(db: Session, *, account_id: int) -> list[LedgerSummary]:
+    """Return active ledgers where the account is the active owner.
+
+    Use this for management surfaces. Plain visibility is broader than
+    authority: a member/viewer can see a ledger, but must not mint pairing
+    codes, manage upload links, or revoke devices for it.
+    """
+
+    return [
+        summary
+        for summary in list_ledgers_for_account(db, account_id=account_id)
+        if summary.role == "owner"
+    ]
+
+
+def managed_ledger_ids_for_account(db: Session, *, account_id: int) -> set[str]:
+    return {
+        summary.ledger_id
+        for summary in list_managed_ledgers_for_account(db, account_id=account_id)
+    }
+
+
 def get_ledger_for_account(
     db: Session, *, account_id: int, ledger_id: str
 ) -> tuple[Ledger, str]:
@@ -249,5 +271,7 @@ __all__ = [
     "get_ledger_for_account",
     "ledger_member_counts",
     "list_ledgers_for_account",
+    "list_managed_ledgers_for_account",
+    "managed_ledger_ids_for_account",
     "switch_ledger",
 ]

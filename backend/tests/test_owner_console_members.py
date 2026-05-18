@@ -224,6 +224,14 @@ def test_owner_console_transfer_owner_form_demotes_local_owner(local_client: Tes
     assert "当前本机账号不是这个账本的拥有者" in page.text
     assert f"/owner/ledgers/{lid}/members/{member_id}/transfer-owner" not in page.text
 
+    ledgers = local_client.get("/owner/ledgers")
+    assert ledgers.status_code == 200
+    assert f"/owner/ledgers/{lid}/members" not in ledgers.text
+
+    pairing = local_client.get("/owner/pairing")
+    assert pairing.status_code == 200
+    assert f'value="{lid}"' not in pairing.text
+
 
 def test_ledgers_page_links_to_members(local_client: TestClient) -> None:
     lid = _create_ledger(local_client)

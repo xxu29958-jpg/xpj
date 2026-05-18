@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import LedgerMember
+from app.services.ledger_service import managed_ledger_ids_for_account
 from app.tenants import AuthContext
 
 
@@ -17,14 +16,7 @@ def manageable_ledger_ids(db: Session, auth: AuthContext) -> set[str]:
 
     if auth.scope != "admin":
         raise AppError("invalid_token", status_code=401)
-    return set(
-        db.scalars(
-            select(LedgerMember.ledger_id)
-            .where(LedgerMember.account_id == auth.account_id)
-            .where(LedgerMember.role == "owner")
-            .where(LedgerMember.disabled_at.is_(None))
-        ).all()
-    )
+    return managed_ledger_ids_for_account(db, account_id=auth.account_id)
 
 
 def require_admin_manages_current_ledger(db: Session, auth: AuthContext) -> AuthContext:
