@@ -18,10 +18,9 @@ import com.ticketbox.ui.design.AppTextHierarchy
  * - 内部使用 [AppEmptyStateCard]，与空状态共享卡片底版。
  * - 仅做展示职责：不发起任何业务调用，由调用方决定何时显示。
  *
- * v0.10：进度条改为 [SkeletonScaffold] 包裹的骸屏行，按
- * [com.ticketbox.ui.design.LocalSkeletonTokens] 渲染主题色板
- * (midnight 用暖金 alpha，paper / mono 用墨灰)。调用方签名不变；
- * 若调用方未来升级为接管 isLoading 切换，可直接换用 [SkeletonScaffold]。
+ * v0.10：进度条改为 [SkeletonScaffold] 包裹的骸屏行，按 [com.ticketbox.ui.design.LocalSkeletonTokens]
+ * 渲染主题色板（midnight 用暖金 alpha，paper/mono 用墨灰）。调用方签名不变；若调用方未来升级为
+ * "接管 isLoading 切换"，可以直接换用 [SkeletonScaffold]。
  */
 @Composable
 fun AppLoadingState(

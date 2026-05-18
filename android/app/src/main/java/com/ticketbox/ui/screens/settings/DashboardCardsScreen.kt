@@ -167,7 +167,7 @@ fun DashboardCardsScreen(
                         modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     ) {
-                        // v0.10: 长按拾起 + 拖动排序; 上下箭头作为可达性回退保留在 DashboardCardRow 内部.
+                        // v0.10：长按拾起 + 拖动排序。上下箭头作为可达性回退保留在 DashboardCardRow 内部。
                         DraggableReorderColumn(
                             items = cards,
                             key = { it.key },

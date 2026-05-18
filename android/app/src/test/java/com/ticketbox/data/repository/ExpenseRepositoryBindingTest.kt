@@ -52,6 +52,8 @@ import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
+import com.ticketbox.data.remote.dto.UserUiPreferencesDto
+import com.ticketbox.data.remote.dto.UserUiPreferencesUpdateRequestDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseSplitDraft
@@ -1222,6 +1224,12 @@ private class FakeApiService(
     override suspend fun resumeRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = unsupported()
+
+    override suspend fun getUiPreferences(): Response<UserUiPreferencesDto> = unsupported()
+
+    override suspend fun putUiPreferences(
+        request: UserUiPreferencesUpdateRequestDto,
+    ): Response<UserUiPreferencesDto> = unsupported()
 
     override suspend fun listLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto = unsupported()
 

@@ -2509,7 +2509,8 @@
     100% { background-position: 160px 0; }
 }
 .skeleton {
-    /* v0.10: 用 --skeleton-base-bg/--skeleton-shine-bg, midnight 才有可见 shimmer */
+    /* v0.10：渐变颜色改用 shared/tokens.css 的 --skeleton-base-bg / --skeleton-shine-bg，
+     * 让 midnight 主题用暖金 alpha 而非灰，shimmer 才能在深底上看见。 */
     background: linear-gradient(
         90deg,
         var(--skeleton-base-bg) 0%,
@@ -2663,79 +2664,132 @@
 }
 
 /* ───── v0.10 Swipe row ─────────────────────────────────────────
- * desktop.js initSwipeRow 触发 swipe-action 自定义事件。
- * <div class="swipe-row" data-swipe-row>
- *   <div class="swipe-row__bg swipe-row__bg-left"></div>
- *   <div class="swipe-row__bg swipe-row__bg-right"></div>
- *   <div class="swipe-row__fg" data-swipe-fg>...</div>
- * </div>
+ * 由 desktop.js initSwipeRow 绑定，触发 swipe-action 自定义事件。
+ * 结构：
+ *   <div class="swipe-row" data-swipe-row>
+ *     <div class="swipe-row__bg swipe-row__bg-left">...</div>
+ *     <div class="swipe-row__bg swipe-row__bg-right">...</div>
+ *     <div class="swipe-row__fg" data-swipe-fg>...</div>
+ *   </div>
+ * 揭示哪侧由 data-swipe-dir="left"|"right" 决定（JS 写入）。
  */
-.swipe-row { position: relative; overflow: hidden; user-select: none; }
-.swipe-row__bg { position: absolute; inset: 0; display: none; align-items: center; gap: 8px; padding: 0 18px; font-weight: 500; }
+.swipe-row {
+    position: relative;
+    overflow: hidden;
+    user-select: none;
+}
+.swipe-row__bg {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 0 18px;
+    font-weight: 500;
+    color: inherit;
+}
 .swipe-row[data-swipe-dir="right"] .swipe-row__bg-left {
-    display: flex; justify-content: flex-start;
-    background: var(--swipe-confirm-bg); color: var(--swipe-confirm-fg);
+    display: flex;
+    justify-content: flex-start;
+    background: var(--swipe-confirm-bg);
+    color: var(--swipe-confirm-fg);
 }
 .swipe-row[data-swipe-dir="left"] .swipe-row__bg-right {
-    display: flex; justify-content: flex-end;
-    background: var(--swipe-ignore-bg); color: var(--swipe-ignore-fg);
+    display: flex;
+    justify-content: flex-end;
+    background: var(--swipe-ignore-bg);
+    color: var(--swipe-ignore-fg);
 }
 .swipe-row__fg {
-    position: relative; z-index: 1;
+    position: relative;
+    z-index: 1;
     background: var(--surface-card);
-    will-change: transform; touch-action: pan-y;
+    will-change: transform;
+    touch-action: pan-y;
 }
 .swipe-row[data-swipe-dir] .swipe-row__fg {
     box-shadow: var(--elevation-swipe-row, 0 2px 8px rgba(0,0,0,.06));
 }
 
 /* ───── v0.10 Drag reorder ──────────────────────────────────────
- * desktop.js initDragReorder; 容器加 [data-drag-reorder], 子项 [draggable="true"][data-reorder-key="..."] */
+ * 由 desktop.js initDragReorder 绑定。容器加 [data-drag-reorder]，
+ * 每个可拖项 [draggable="true"][data-reorder-key="..."]。
+ */
 [data-drag-reorder] [draggable="true"] {
     cursor: grab;
     transition: transform var(--motion-drag-lift, 160ms) var(--ease-overshoot, ease);
 }
-[data-drag-reorder] [draggable="true"]:active { cursor: grabbing; }
+[data-drag-reorder] [draggable="true"]:active {
+    cursor: grabbing;
+}
 [data-drag-reorder] [draggable="true"].dragging {
     opacity: 0.45;
     box-shadow: var(--elevation-dragging-card, 0 8px 24px rgba(0,0,0,.18));
     transform: scale(1.02);
 }
 
-/* ───── v0.10 Split layout (页级 partial) ───────────────────────
- * web/_split_layout.html 配套. 主内容 + 右抽屉二栏, 不破坏其他 23 个页面的 .app 2 栏布局. */
+/* ───── v0.10 Split layout (page-level partial) ─────────────────
+ * web/_split_layout.html 配套样式。让单个页面在 L4 升级 base.html 之前
+ * 试用 "主内容 + 右抽屉" 二栏，不破坏其它 23 个页面的 .app 2 栏布局。
+ */
 .split-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) var(--drawer-w, 380px);
+    gap: 0;
     align-items: start;
 }
-@media (max-width: 1280px) { .split-layout { grid-template-columns: 1fr; } }
-.split-layout__main { min-width: 0; }
+@media (max-width: 1280px) {
+    .split-layout {
+        grid-template-columns: 1fr;
+    }
+}
+.split-layout__main {
+    min-width: 0;
+}
 
-/* ───── v0.10 Drawer host ───────────────────────────────────────
- * 三栏 grid 内的 drawer 槽位。:empty 时自动隐藏（无 drawer 内容的页面不占位）. */
+/* ───── v0.10 Drawer host (split layout) ────────────────────────
+ * 三栏 grid 内的 drawer 槽位由 L4 接入 base.html。
+ * L2 提供基础 CSS：≤1280 px overlay、≤880 px 全屏。
+ * 这里默认 desktop 宽屏 inline，未启用时（空 aside）由 :empty 隐藏。
+ */
 .drawer-host {
     background: var(--surface-card);
     border-left: 1px solid var(--border-card);
     min-height: 100vh;
     overflow-y: auto;
 }
-.drawer-host:empty { display: none; }
-body[data-drawer-open] .drawer-host { box-shadow: -8px 0 24px rgba(0, 0, 0, 0.06); }
+.drawer-host:empty {
+    display: none;
+}
+body[data-drawer-open] .drawer-host {
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.06);
+}
 @media (max-width: 1280px) {
     .drawer-host {
-        position: fixed; top: 0; right: 0; bottom: 0;
-        width: var(--drawer-w, 380px); max-width: 92vw;
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: var(--drawer-w, 380px);
+        max-width: 92vw;
         transform: translateX(100%);
         transition: transform var(--motion-normal, 220ms) var(--ease-standard, ease);
         z-index: 50;
     }
-    body[data-drawer-open] .drawer-host { transform: translateX(0); }
+    body[data-drawer-open] .drawer-host {
+        transform: translateX(0);
+    }
     body[data-drawer-open]::after {
         content: "";
-        position: fixed; inset: 0;
+        position: fixed;
+        inset: 0;
         background: var(--drawer-overlay-bg, rgba(0,0,0,.32));
         z-index: 49;
     }
 }
-@media (max-width: 880px) { .drawer-host { width: 100vw; max-width: 100vw; } }
+@media (max-width: 880px) {
+    .drawer-host {
+        width: 100vw;
+        max-width: 100vw;
+    }
+}

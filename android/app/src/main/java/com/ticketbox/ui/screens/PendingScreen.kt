@@ -251,7 +251,8 @@ fun PendingScreen(
                 items(filteredItems, key = { it.id }) { expense ->
                     val canSwipe = !readOnly && expense.id !in state.actionInProgressIds
                     val swipeTokens = LocalSwipeActionTokens.current
-                    // v0.10: 左滑进入 confirm 流程 (含 missing-amount / duplicate / category / merchant 分支)；右滑触发 reject。
+                    // v0.10：左滑揭示 confirm 动作（沿用现有 onConfirm 的条件分支：缺金额/重复/缺分类/缺商家时跳 sheet），
+                    // 右滑揭示 ignore 动作（直接 reject）。background 颜色完全走 LocalSwipeActionTokens，深色主题下也可读。
                     val leftAction = if (canSwipe) SwipeActionConfig(
                         icon = Icons.Filled.CheckCircle,
                         label = "确认",

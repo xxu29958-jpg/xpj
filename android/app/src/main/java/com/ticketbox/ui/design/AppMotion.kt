@@ -1,9 +1,9 @@
 package com.ticketbox.ui.design
 
-import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 
@@ -28,10 +28,10 @@ object AppMotion {
     const val slowMillis: Int = 320
     const val backgroundMillis: Int = 420
 
-    /** v0.10 拖拽拾起动效时长 (DraggableReorderColumn). */
+    /** v0.10 拖拽拾起动效时长（DraggableReorderColumn 等）。 */
     const val dragLiftMillis: Int = 160
 
-    /** v0.10 左右滑揭示动效时长 (SwipeableActionRow). */
+    /** v0.10 左右滑揭示动效时长（SwipeableActionRow 等）。 */
     const val swipeRevealMillis: Int = 180
 
     /** M3 emphasized standard —— 适合大部分状态切换（hover、selection、show/hide）。 */
@@ -46,24 +46,24 @@ object AppMotion {
     /** 线性——只用于 loading 旋转、shimmer 这类等速场景。 */
     val easeLinear: Easing = LinearEasing
 
+    /** v0.10 回弹/超调——拾起后落位、按钮按下回弹等"有重量感"的反馈。 */
+    val easeOvershoot: Easing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+
     /** Material 3 默认 `FastOutSlowInEasing` 的别名；个别 M3 组件需要它的精确曲线。 */
     val easeM3Default: Easing = FastOutSlowInEasing
-
-    /** v0.10 回弹/超调——拾起后落位、按钮按下回弹等有重量感的反馈。 */
-    val easeOvershoot: Easing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 
     /**
      * 标准状态切换 spec（duration + easeStandard）。
      * 80% 的 `tween(...)` 都应该改用 [standardSpec]。
      */
-    fun <T> standardSpec(durationMillis: Int = normalMillis): AnimationSpec<T> =
+    fun <T> standardSpec(durationMillis: Int = normalMillis): FiniteAnimationSpec<T> =
         tween(durationMillis = durationMillis, easing = easeStandard)
 
     /** 强调进入。配合 [easeEmphasized]。 */
-    fun <T> emphasizedSpec(durationMillis: Int = normalMillis): AnimationSpec<T> =
+    fun <T> emphasizedSpec(durationMillis: Int = normalMillis): FiniteAnimationSpec<T> =
         tween(durationMillis = durationMillis, easing = easeEmphasized)
 
     /** 加速退场。配合 [easeAccelerate]。 */
-    fun <T> exitSpec(durationMillis: Int = fastMillis): AnimationSpec<T> =
+    fun <T> exitSpec(durationMillis: Int = fastMillis): FiniteAnimationSpec<T> =
         tween(durationMillis = durationMillis, easing = easeAccelerate)
 }

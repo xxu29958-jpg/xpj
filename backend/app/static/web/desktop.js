@@ -636,24 +636,28 @@
   }
 
   // ─── v0.10 Drag reorder ────────────────────────────────────────
-  // 容器 [data-drag-reorder] 内的 [draggable="true"][data-reorder-key] 子项；
-  // 拖完 emit CustomEvent("drag-reorder-change", { detail: { order: string[] } }) on the container.
+  // 给容器 [data-drag-reorder] 内的 [draggable="true"] 子项绑 HTML5 native drag.
+  // 拖完后 dispatch CustomEvent("drag-reorder-change", { detail: { order: string[] } }) on the container.
+  // 子项需要有 data-reorder-key 属性，作为 order 数组的元素。
   function initDragReorder() {
     document.querySelectorAll("[data-drag-reorder]").forEach(function (container) {
       if (container.getAttribute("data-drag-reorder-bound") === "1") return;
       container.setAttribute("data-drag-reorder-bound", "1");
+
       function rowsArr() {
         return Array.from(container.querySelectorAll('[draggable="true"][data-reorder-key]'));
       }
       function emit() {
-        var order = rowsArr().map(function (el) { return el.getAttribute("data-reorder-key"); });
+        const order = rowsArr().map(function (el) { return el.getAttribute("data-reorder-key"); });
         container.dispatchEvent(new CustomEvent("drag-reorder-change", { detail: { order: order } }));
       }
-      var dragged = null;
+
+      let dragged = null;
       container.addEventListener("dragstart", function (e) {
-        var t = e.target.closest('[draggable="true"][data-reorder-key]');
+        const t = e.target.closest('[draggable="true"][data-reorder-key]');
         if (!t || !container.contains(t)) return;
-        dragged = t; t.classList.add("dragging");
+        dragged = t;
+        t.classList.add("dragging");
         try { e.dataTransfer.effectAllowed = "move"; } catch (_) {}
         try { e.dataTransfer.setData("text/plain", t.getAttribute("data-reorder-key")); } catch (_) {}
       });
@@ -664,9 +668,12 @@
       container.addEventListener("dragover", function (e) {
         if (!dragged) return;
         e.preventDefault();
-        var after = afterElement(container, e.clientY);
-        if (after == null) container.appendChild(dragged);
-        else if (after !== dragged) container.insertBefore(dragged, after);
+        const after = afterElement(container, e.clientY);
+        if (after == null) {
+          container.appendChild(dragged);
+        } else if (after !== dragged) {
+          container.insertBefore(dragged, after);
+        }
       });
       container.addEventListener("drop", function (e) {
         if (!dragged) return;
@@ -675,11 +682,11 @@
       });
     });
     function afterElement(container, y) {
-      var els = Array.from(container.querySelectorAll('[draggable="true"][data-reorder-key]:not(.dragging)'));
-      var closest = { offset: Number.NEGATIVE_INFINITY, el: null };
-      for (var i = 0; i < els.length; i++) {
-        var rect = els[i].getBoundingClientRect();
-        var offset = y - rect.top - rect.height / 2;
+      const els = Array.from(container.querySelectorAll('[draggable="true"][data-reorder-key]:not(.dragging)'));
+      let closest = { offset: Number.NEGATIVE_INFINITY, el: null };
+      for (let i = 0; i < els.length; i++) {
+        const rect = els[i].getBoundingClientRect();
+        const offset = y - rect.top - rect.height / 2;
         if (offset < 0 && offset > closest.offset) closest = { offset: offset, el: els[i] };
       }
       return closest.el;
@@ -687,41 +694,55 @@
   }
 
   // ─── v0.10 Swipe row ───────────────────────────────────────────
-  // [data-swipe-row] 元素绑左右滑（touch + mouse），过阈值 emit swipe-action event.
+  // 给 [data-swipe-row] 元素绑左右滑动手势（touch + mouse），
+  // 滑过阈值后 dispatch CustomEvent("swipe-action", { detail: { direction: "left"|"right" } })。
+  // 不实际改 DOM，触发后由消费方决定操作（导航、API 调用、动画淡出等）。
   function initSwipeRow() {
-    var THRESHOLD = 0.30;
+    const THRESHOLD = 0.30; // 行宽 30% 触发
     document.querySelectorAll("[data-swipe-row]").forEach(function (row) {
       if (row.getAttribute("data-swipe-bound") === "1") return;
       row.setAttribute("data-swipe-bound", "1");
-      var startX = 0, currentX = 0, dragging = false;
-      var fg = row.querySelector("[data-swipe-fg]") || row;
-      function start(x) { startX = x; currentX = 0; dragging = true; fg.style.transition = "none"; }
+
+      let startX = 0, currentX = 0, dragging = false;
+      const fg = row.querySelector("[data-swipe-fg]") || row;
+
+      function start(x) {
+        startX = x; currentX = 0; dragging = true;
+        fg.style.transition = "none";
+      }
       function move(x) {
         if (!dragging) return;
         currentX = x - startX;
-        var max = row.clientWidth;
-        var clamped = Math.max(-max, Math.min(max, currentX));
+        const max = row.clientWidth;
+        const clamped = Math.max(-max, Math.min(max, currentX));
         fg.style.transform = "translateX(" + clamped + "px)";
         row.setAttribute("data-swipe-dir", clamped > 0 ? "right" : clamped < 0 ? "left" : "");
       }
       function end() {
         if (!dragging) return;
         dragging = false;
-        var max = row.clientWidth;
-        var trigger = max * THRESHOLD;
+        const max = row.clientWidth;
+        const trigger = max * THRESHOLD;
         fg.style.transition = "transform var(--motion-swipe-reveal, 180ms) var(--ease-standard, ease)";
         fg.style.transform = "translateX(0)";
         row.removeAttribute("data-swipe-dir");
-        if (currentX > trigger) row.dispatchEvent(new CustomEvent("swipe-action", { detail: { direction: "right" }, bubbles: true }));
-        else if (currentX < -trigger) row.dispatchEvent(new CustomEvent("swipe-action", { detail: { direction: "left" }, bubbles: true }));
+        if (currentX > trigger) {
+          row.dispatchEvent(new CustomEvent("swipe-action", { detail: { direction: "right" }, bubbles: true }));
+        } else if (currentX < -trigger) {
+          row.dispatchEvent(new CustomEvent("swipe-action", { detail: { direction: "left" }, bubbles: true }));
+        }
       }
+
       row.addEventListener("touchstart", function (e) { start(e.touches[0].clientX); }, { passive: true });
       row.addEventListener("touchmove",  function (e) { move(e.touches[0].clientX); }, { passive: true });
       row.addEventListener("touchend",   end);
       row.addEventListener("touchcancel", end);
-      var mouseDown = false;
+
+      // 鼠标支持：必须按住才算 drag，避免误触发点击
+      let mouseDown = false;
       row.addEventListener("mousedown", function (e) {
-        var tag = (e.target.tagName || "").toLowerCase();
+        // 跳过 input / button / a 等交互元素，避免和点击冲突
+        const tag = (e.target.tagName || "").toLowerCase();
         if (tag === "input" || tag === "button" || tag === "a" || tag === "select" || tag === "textarea") return;
         mouseDown = true; start(e.clientX);
       });
@@ -731,6 +752,8 @@
   }
 
   // ─── v0.10 Skeleton ────────────────────────────────────────────
+  // 简单占位扫描：[data-skeleton] 元素加 .skeleton 类（如 CSS 没用占位类）。
+  // 加载完成后调用方主动移除 data-skeleton 或 .skeleton 类即可。
   function initSkeleton() {
     document.querySelectorAll("[data-skeleton]:not(.skeleton)").forEach(function (el) {
       el.classList.add("skeleton");
@@ -738,17 +761,24 @@
   }
 
   // ─── v0.10 Split layout (drawer ↔ body sync) ───────────────────
+  // 当 #drawer 加上 .on 类时，给 <body> 加 data-drawer-open="true"，
+  // 让 CSS 决定 inline (>1280px) vs overlay (≤1280px) vs full-screen (≤880px)。
+  // 配合 initDrawer 既有的 fragment 注入逻辑使用，不替换它。
   function initSplitLayout() {
-    var drawer = document.getElementById("drawer");
+    const drawer = document.getElementById("drawer");
     if (!drawer) return;
-    var sync = function () {
-      if (drawer.classList.contains("on")) document.body.setAttribute("data-drawer-open", "true");
-      else document.body.removeAttribute("data-drawer-open");
+    const sync = function () {
+      if (drawer.classList.contains("on")) {
+        document.body.setAttribute("data-drawer-open", "true");
+      } else {
+        document.body.removeAttribute("data-drawer-open");
+      }
     };
-    var mo = new MutationObserver(sync);
+    const mo = new MutationObserver(sync);
     mo.observe(drawer, { attributes: true, attributeFilter: ["class"] });
     sync();
   }
+
   // ─── Bootstrap ─────────────────────────────────────────────────
   function boot() {
     // 启动时先把 cookie / localStorage 与 <html data-theme> 对齐（防止刷新闪烁）
