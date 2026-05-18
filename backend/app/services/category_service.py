@@ -111,7 +111,7 @@ class CategoryDashboard:
 
 
 def list_category_summary(
-    db: Session, *, tenant_id: str, month: str
+    db: Session, *, tenant_id: str, month: str, timezone_name: str | None = None
 ) -> CategoryDashboard:
     """Return per-category counts/amounts for the dashboard.
 
@@ -119,7 +119,7 @@ def list_category_summary(
     based on expense time first, then confirmed time. Pending counts are global per category so
     the user can see lingering uncategorized rows regardless of month.
     """
-    start, end = month_bounds_utc(month)
+    start, end = month_bounds_utc(month, timezone_name)
     stat_time = stat_time_expr()
 
     confirmed_rows = db.execute(

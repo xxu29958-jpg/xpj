@@ -543,6 +543,19 @@ def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient) -> Non
     assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
 
 
+def test_web_search_uses_category_alias_terms(web_client: TestClient) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "19.00", "Legacy Category Cafe")
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == expense_id))
+        assert expense is not None
+        expense.category = "吃饭"
+        db.commit()
+
+    page = web_client.get("/web/search?ledger_id=owner&q=餐饮")
+    assert page.status_code == 200
+    assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
+
+
 def test_web_confirmed_batch_markup_and_updates(web_client: TestClient) -> None:
     expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe")
     confirmed = web_client.post(

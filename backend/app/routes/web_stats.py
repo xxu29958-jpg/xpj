@@ -6,7 +6,6 @@ Split from ``web_app.py`` to keep each /web route module under 280 lines.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -24,6 +23,10 @@ from app.routes.web_common import (
 )
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items, recurring_amount_anomalies
+from app.services.spending_contract_service import (
+    current_accounting_month,
+    default_accounting_timezone_name,
+)
 from app.services.stats_service import _confirmed_query, monthly_stats
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -41,9 +44,10 @@ def web_stats(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    timezone_name = default_accounting_timezone_name()
     if not month:
-        month = datetime.now().strftime("%Y-%m")
-    stats = monthly_stats(db, month, selected_id, tag=tag)
+        month = current_accounting_month(timezone_name)
+    stats = monthly_stats(db, month, selected_id, tag=tag, timezone_name=timezone_name)
 
     by_category = [
         {
@@ -56,7 +60,12 @@ def web_stats(
 
     top_rows: list[dict[str, str]] = []
     top_query = (
-        _confirmed_query(tenant_id=selected_id, month=month, tag=tag)
+        _confirmed_query(
+            tenant_id=selected_id,
+            month=month,
+            tag=tag,
+            timezone_name=timezone_name,
+        )
         .where(Expense.amount_cents.is_not(None))
         .order_by(Expense.amount_cents.desc())
         .limit(5)
@@ -74,7 +83,7 @@ def web_stats(
     recurring_candidates_error = False
     try:
         rc_items = recurring_candidates(
-            db, tenant_id=selected_id, timezone_name="Asia/Shanghai"
+            db, tenant_id=selected_id, timezone_name=timezone_name
         )
     except Exception:  # noqa: BLE001 - stats page must never 500 on insight
         logger.warning("Recurring candidate insight failed for /web/stats.", exc_info=True)
@@ -97,7 +106,7 @@ def web_stats(
         tenant_id=selected_id,
         items=recurring_items,
         month=month,
-        timezone_name="Asia/Shanghai",
+        timezone_name=timezone_name,
     )
     recurring_formal = []
     for item in recurring_items[:8]:

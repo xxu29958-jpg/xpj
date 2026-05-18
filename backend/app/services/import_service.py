@@ -45,6 +45,7 @@ from app.services.exchange_rate_service import (
     home_currency_code,
     normalize_currency_code,
 )
+from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc_assuming_local, now_utc
 
@@ -135,7 +136,13 @@ def _parse_expense_time(raw: str, timezone_name: str | None = None) -> tuple[dat
     except ValueError:
         return None, text, "expense_time 不是合法的 ISO 时间", None
     resolved_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
-    return ensure_utc_assuming_local(parsed, resolved_timezone), text, None, parsed.date()
+    normalized_time = ensure_utc_assuming_local(parsed, resolved_timezone)
+    return (
+        normalized_time,
+        text,
+        None,
+        fx_rate_date_for_expense_time(normalized_time, resolved_timezone),
+    )
 
 
 def _parse_optional_int(raw: str, label: str) -> tuple[int | None, str | None]:

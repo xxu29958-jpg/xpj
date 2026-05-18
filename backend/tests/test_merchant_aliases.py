@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import LedgerMember
+from app.models import Expense, LedgerMember
 from app.services.merchant_alias_service import resolve_canonical_merchant
 from conftest import PNG_BYTES, app_headers, gray_app_headers, upload_url_path
 
@@ -248,6 +250,47 @@ def test_rules_preview_and_apply_use_enabled_merchant_alias(client: TestClient) 
     item = next(row for row in pending.json() if row["id"] == expense_id)
     assert item["merchant"] == "STARBUCKS 国贸店"
     assert item["category"] == "餐饮"
+
+
+def test_lifestyle_stats_collapses_frequent_merchants_with_alias(client: TestClient) -> None:
+    _create_alias(client, app_headers(), canonical="Starbucks", alias="SBUX")
+    now = datetime(2026, 5, 8, 12, 0, tzinfo=UTC)
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1200,
+                    merchant="SBUX",
+                    category="Coffee",
+                    status="confirmed",
+                    expense_time=now,
+                    confirmed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                Expense(
+                    tenant_id="owner",
+                    amount_cents=1800,
+                    merchant="Starbucks",
+                    category="Coffee",
+                    status="confirmed",
+                    expense_time=now,
+                    confirmed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
+        db.commit()
+
+    response = client.get(
+        "/api/stats/lifestyle?month=2026-05&timezone=UTC",
+        headers=app_headers(),
+    )
+    assert response.status_code == 200, response.text
+    assert {"merchant": "Starbucks", "count": 2} in response.json()["frequent_merchants"]
+    assert all(item["merchant"] != "SBUX" for item in response.json()["frequent_merchants"])
 
 
 def test_disabled_merchant_alias_does_not_affect_rules(client: TestClient) -> None:

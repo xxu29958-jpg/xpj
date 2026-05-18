@@ -18,7 +18,9 @@ from app.services.spending_contract_service import (
     confirmed_amount_query as _contract_confirmed_amount_query,
     confirmed_ordered as _contract_confirmed_ordered,
     confirmed_query as _contract_confirmed_query,
+    canonical_merchant_display,
     default_accounting_timezone_name,
+    enabled_merchant_display_map,
     filtered_confirmed as _contract_filtered_confirmed,
     month_bounds_utc,
     stat_month_label,
@@ -342,11 +344,11 @@ def lifestyle_stats(
         or 0
     ) if recent_start < recent_end else 0
 
+    alias_map = enabled_merchant_display_map(db, tenant_id=tenant_id)
     merchant_counts: dict[str, int] = defaultdict(int)
     for item in month_expenses:
-        merchant = (item.merchant or "").strip()
-        if merchant:
-            merchant_counts[merchant] += 1
+        if item.merchant and item.merchant.strip():
+            merchant_counts[canonical_merchant_display(item.merchant, alias_map)] += 1
 
     frequent_merchants = [
         {"merchant": merchant, "count": count}

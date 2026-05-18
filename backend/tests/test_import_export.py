@@ -84,6 +84,19 @@ def test_parse_csv_preview_treats_naive_time_as_configured_local_time() -> None:
     assert preview.rows[0].expense_time == datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
 
 
+def test_parse_csv_preview_derives_fx_date_from_local_spending_day() -> None:
+    csv = (
+        "amount_cents,original_currency_code,exchange_rate_to_cny,merchant,expense_time\n"
+        "12345,USD,7.0000,Overseas Cafe,2026-05-04T16:30:00Z\n"
+    )
+    preview = parse_csv_preview(csv, timezone_name="Asia/Shanghai")
+
+    assert preview.valid_count == 1
+    assert preview.rows[0].expense_time == datetime(2026, 5, 4, 16, 30, tzinfo=UTC)
+    assert preview.rows[0].exchange_rate_date
+    assert preview.rows[0].exchange_rate_date.isoformat() == "2026-05-05"
+
+
 def test_parse_csv_preview_flags_invalid_rows() -> None:
     csv = "amount_yuan,merchant\nabc,Bad\n5.00,Good\n"
     preview = parse_csv_preview(csv)

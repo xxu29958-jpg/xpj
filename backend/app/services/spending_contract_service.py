@@ -24,6 +24,7 @@ from app.services.merchant_alias_service import (
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.tag_service import tag_key
 from app.services.time_service import (
+    current_month,
     ensure_utc,
     local_month_bounds_utc,
     local_month_label,
@@ -43,6 +44,10 @@ def accounting_zone(timezone_name: str | None = None) -> ZoneInfo:
 
 def accounting_timezone_key(timezone_name: str | None = None) -> str:
     return accounting_zone(timezone_name).key
+
+
+def current_accounting_month(timezone_name: str | None = None) -> str:
+    return current_month(accounting_timezone_key(timezone_name))
 
 
 def resolve_accounting_timezone(timezone_name: str | None = None) -> tuple[str, ZoneInfo]:
@@ -216,6 +221,12 @@ def merchant_search_terms(db: Session, *, tenant_id: str, term: str) -> list[str
             terms.add(alias.alias)
             terms.add(alias.canonical_merchant)
     return sorted(term for term in terms if term)
+
+
+def category_search_terms(term: str | None) -> list[str]:
+    from app.services.category_service import category_filter_values
+
+    return sorted(value for value in category_filter_values(term) if value)
 
 
 def fx_rate_date_for_expense_time(

@@ -8,8 +8,6 @@ consistent with the API and the /web/pending bulk path.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -33,13 +31,13 @@ from app.services.category_service import (
     list_uncategorized_pending,
     merge_categories,
 )
+from app.services.spending_contract_service import (
+    current_accounting_month,
+    default_accounting_timezone_name,
+)
 
 
 router = APIRouter(prefix="/web", tags=["web"])
-
-
-def _current_month() -> str:
-    return datetime.now().strftime("%Y-%m")
 
 
 @router.get("/categories", response_class=HTMLResponse)
@@ -53,9 +51,15 @@ def web_categories(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
-    target_month = month.strip() or _current_month()
+    timezone_name = default_accounting_timezone_name()
+    target_month = month.strip() or current_accounting_month(timezone_name)
     try:
-        dashboard = list_category_summary(db, tenant_id=selected_id, month=target_month)
+        dashboard = list_category_summary(
+            db,
+            tenant_id=selected_id,
+            month=target_month,
+            timezone_name=timezone_name,
+        )
     except ValueError:
         raise AppError("invalid_request", "请使用 YYYY-MM 格式的月份。", status_code=400)
     rows = []

@@ -22,11 +22,14 @@ from app.routes.web_common import (
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
-from app.services.time_service import current_month, local_month_bounds_utc
+from app.services.spending_contract_service import (
+    current_accounting_month,
+    default_accounting_timezone_name,
+)
+from app.services.time_service import local_month_bounds_utc
 
 
 router = APIRouter(prefix="/web/budgets", tags=["web"])
-WEB_BUDGET_TIMEZONE = "Asia/Shanghai"
 
 
 def _parse_amount_yuan(raw: str, *, label: str, allow_negative: bool = False, required: bool = False) -> int:
@@ -48,10 +51,15 @@ def _split_categories(raw: str) -> list[str]:
     return [part.strip() for part in raw.replace("\n", ",").split(",") if part.strip()]
 
 
-def _safe_month(value: str) -> str:
+def _budget_timezone_name() -> str:
+    return default_accounting_timezone_name()
+
+
+def _safe_month(value: str, timezone_name: str | None = None) -> str:
     month = (value or "").strip()
-    if not month or local_month_bounds_utc(month, WEB_BUDGET_TIMEZONE) is None:
-        return current_month(WEB_BUDGET_TIMEZONE)
+    resolved_timezone = timezone_name or _budget_timezone_name()
+    if not month or local_month_bounds_utc(month, resolved_timezone) is None:
+        return current_accounting_month(resolved_timezone)
     return month
 
 
@@ -143,11 +151,12 @@ def _render_budgets(
     message: str | None = None,
     error: str | None = None,
 ) -> HTMLResponse:
+    timezone_name = _budget_timezone_name()
     budget = get_monthly_budget(
         db,
         tenant_id=selected_id,
         month=month,
-        timezone_name=WEB_BUDGET_TIMEZONE,
+        timezone_name=timezone_name,
     )
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["month"] = month
@@ -168,7 +177,7 @@ def web_budgets(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
-    target_month = _safe_month(month or current_month(WEB_BUDGET_TIMEZONE))
+    target_month = _safe_month(month or current_accounting_month(_budget_timezone_name()))
     return _render_budgets(
         request=request,
         db=db,
@@ -196,7 +205,8 @@ def web_budgets_save(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
     _require_selected_ledger_write(options, selected_id)
-    target_month = (month or "").strip() or current_month(WEB_BUDGET_TIMEZONE)
+    timezone_name = _budget_timezone_name()
+    target_month = (month or "").strip() or current_accounting_month(timezone_name)
     try:
         payload = BudgetMonthlyUpdateRequest(
             total_amount_cents=_parse_amount_yuan(total_amount_yuan, label="月度总预算", required=True),
@@ -213,7 +223,7 @@ def web_budgets_save(
             tenant_id=selected_id,
             month=target_month,
             payload=payload,
-            timezone_name=WEB_BUDGET_TIMEZONE,
+            timezone_name=timezone_name,
         )
     except AppError as exc:
         return _render_budgets(
@@ -221,7 +231,7 @@ def web_budgets_save(
             db=db,
             selected_id=selected_id,
             options=options,
-            month=_safe_month(target_month),
+            month=_safe_month(target_month, timezone_name),
             error=exc.message,
         )
     return RedirectResponse(

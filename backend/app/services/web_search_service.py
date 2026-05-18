@@ -9,7 +9,11 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryRule, Expense, Goal
-from app.services.spending_contract_service import merchant_search_terms, stat_time
+from app.services.spending_contract_service import (
+    category_search_terms,
+    merchant_search_terms,
+    stat_time,
+)
 
 
 MAX_QUERY_LENGTH = 80
@@ -94,11 +98,12 @@ def _merchant_search_terms(db: Session, tenant_id: str, term: str) -> list[str]:
 
 def _matches_expense_search(db: Session, tenant_id: str, term: str) -> object:
     merchant_terms = _merchant_search_terms(db, tenant_id, term)
+    category_terms = category_search_terms(term)
     return or_(
         _matches_any_text(merchant_terms, Expense.merchant),
+        _matches_any_text(category_terms, Expense.category),
         _matches_text(
             term,
-            Expense.category,
             Expense.note,
             Expense.source,
             Expense.tags,

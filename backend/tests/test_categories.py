@@ -157,6 +157,43 @@ def test_category_summary_uses_stat_time_and_normalized_category_aliases(
 # ── T13: /web/categories/uncategorized ─────────────────────────────────────
 
 
+def test_category_summary_uses_accounting_timezone_month_bounds(
+    web_client: TestClient,
+) -> None:
+    del web_client
+    with SessionLocal() as db:
+        now = datetime(2026, 5, 1, 1, 0, tzinfo=UTC)
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=990,
+                merchant="Boundary Cafe",
+                category="Boundary",
+                status="confirmed",
+                expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC),
+                confirmed_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+        shanghai = list_category_summary(
+            db,
+            tenant_id="owner",
+            month="2026-05",
+            timezone_name="Asia/Shanghai",
+        )
+        utc = list_category_summary(
+            db,
+            tenant_id="owner",
+            month="2026-05",
+            timezone_name="UTC",
+        )
+
+    assert any(item.category == "Boundary" for item in shanghai.summaries)
+    assert all(item.category != "Boundary" for item in utc.summaries)
+
+
 def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient) -> None:
     eid_other = _create_pending(web_client)  # stays "其他"
     eid_food = _create_pending(web_client)
