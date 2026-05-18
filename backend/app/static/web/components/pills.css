@@ -70,4 +70,3 @@
 .cat-bar { height: 4px; background: var(--surface-sunken); border-radius: 999px; overflow: hidden; position: relative; }
 .cat-bar-fill { height: 100%; background: var(--text-default); border-radius: inherit; }
 .cat-amt { text-align: right; font-family: var(--font-num); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
-

@@ -238,4 +238,3 @@
 
 /* goals.html .goal-row 在 shell 内的颜色覆盖 (web.css 基础样式由 goal-list 段提供) */
 .desktop-shell-active .goal-row { border-bottom: 1px solid var(--border-card); }
-

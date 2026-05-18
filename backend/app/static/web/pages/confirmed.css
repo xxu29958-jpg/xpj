@@ -165,4 +165,3 @@
 .source-row .head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
 .source-row .head .name { color: var(--text-muted); }
 .source-row .head .num { color: var(--text-meta); font-family: var(--font-num); }
-

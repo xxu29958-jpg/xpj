@@ -95,4 +95,3 @@
 .merch-amt { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--text-default); text-align: right; }
 .merch-amt .delta { display: block; font-size: 10.5px; padding: 0; background: transparent; margin: 0; }
 .merch-row:hover .merch-name { color: var(--brand-primary); }
-

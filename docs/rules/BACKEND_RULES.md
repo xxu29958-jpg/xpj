@@ -43,4 +43,3 @@ cd /d E:\projects\xiaopiaojia\backend
 .venv\Scripts\ruff.exe check app scripts
 .venv\Scripts\python.exe scripts\smoke_test.py
 ```
-

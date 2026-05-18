@@ -161,4 +161,3 @@ a.card-sub:hover { color: var(--text-muted); }
 .delta.up { color: var(--state-danger-fg); background: var(--state-danger-bg); }
 .delta.down { color: var(--state-success-fg); background: var(--state-success-bg); }
 .delta.flat { color: var(--text-meta); background: var(--surface-sunken); }
-
