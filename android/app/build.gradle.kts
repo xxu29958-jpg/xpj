@@ -16,6 +16,11 @@ fun ticketboxLocalProperty(name: String): String? =
 fun ticketboxEnvOrLocal(envName: String, propertyName: String): String? =
     System.getenv(envName)?.trim()?.takeIf { it.isNotBlank() } ?: ticketboxLocalProperty(propertyName)
 
+fun ticketboxBooleanEnvOrLocal(envName: String, propertyName: String): Boolean {
+    val raw = ticketboxEnvOrLocal(envName, propertyName)?.lowercase() ?: return false
+    return raw == "1" || raw == "true" || raw == "yes"
+}
+
 data class TicketboxDebugSigning(
     val keystorePath: String,
     val keyAlias: String,
@@ -37,6 +42,11 @@ val ticketboxDebugKeystorePassword: String? =
     ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEYSTORE_PASSWORD", "ticketbox.debug.storePassword")
 val ticketboxDebugKeyPassword: String? =
     ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEY_PASSWORD", "ticketbox.debug.keyPassword")
+val ticketboxAllowCustomDebugSigning: Boolean =
+    ticketboxBooleanEnvOrLocal(
+        "TICKETBOX_ALLOW_CUSTOM_DEBUG_SIGNING",
+        "ticketbox.debug.allowCustomSigning",
+    )
 val ticketboxCanonicalDebugSigning = TicketboxDebugSigning(
     keystorePath = "config/debug/ticketbox-debug.keystore",
     keyAlias = "ticketbox-debug",
@@ -51,6 +61,15 @@ val ticketboxExternalDebugSigningValues = listOf(
 )
 val ticketboxDebugSigning: TicketboxDebugSigning =
     if (ticketboxExternalDebugSigningValues.all { it != null }) {
+        if (!ticketboxAllowCustomDebugSigning) {
+            error(
+                "Custom debug signing is disabled by default because it breaks adb install -r " +
+                    "replacement between local builds and CI artifacts. Remove the " +
+                    "TICKETBOX_DEBUG_* / ticketbox.debug.* signing overrides to use the " +
+                    "repository debug key, or explicitly set TICKETBOX_ALLOW_CUSTOM_DEBUG_SIGNING=true " +
+                    "or ticketbox.debug.allowCustomSigning=true.",
+            )
+        }
         TicketboxDebugSigning(
             keystorePath = ticketboxDebugKeystorePath!!,
             keyAlias = ticketboxDebugKeyAlias!!,

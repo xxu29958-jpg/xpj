@@ -64,9 +64,12 @@ android\config\debug\ticketbox-debug.keystore
 91:15:22:41:7C:C5:01:6E:DA:DC:FF:AD:DE:7B:90:4D:92:8D:C4:2D:66:A7:97:84:44:45:AC:B5:BC:AE:10:6F
 ```
 
-本机仍可用被 Git 忽略的 `android/local.properties` 或环境变量覆盖 debug 签名。优先级为环境变量高于 `local.properties`，二者高于仓库 debug keystore。
+默认不要覆盖 debug 签名。仓库稳定 debug 证书是保证 `adb install -r`、本机打包和 CI artifact 能互相覆盖升级的唯一来源。
+
+如果确实需要调试自定义 debug 证书，必须显式打开 opt-in；否则构建会失败，避免隐藏的本机配置制造 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
 
 ```properties
+ticketbox.debug.allowCustomSigning=true
 ticketbox.debug.keystore=E\:\\path\\to\\ticketbox-debug.keystore
 ticketbox.debug.keyAlias=ticketbox-debug
 ticketbox.debug.storePassword=...
@@ -80,6 +83,7 @@ $env:TICKETBOX_DEBUG_KEYSTORE_PATH="E:\path\to\ticketbox-debug.keystore"
 $env:TICKETBOX_DEBUG_KEY_ALIAS="ticketbox-debug"
 $env:TICKETBOX_DEBUG_KEYSTORE_PASSWORD="..."
 $env:TICKETBOX_DEBUG_KEY_PASSWORD="..."
+$env:TICKETBOX_ALLOW_CUSTOM_DEBUG_SIGNING="true"
 ```
 
 如果手机上已经安装过旧的不同证书 debug 包，第一次切换到仓库稳定证书时仍然需要卸载一次旧包。之后仓库 CI artifact、本机 `grayDebug/internalDebug` 和安装脚本都可以覆盖升级。
