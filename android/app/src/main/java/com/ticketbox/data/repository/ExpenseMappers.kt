@@ -42,8 +42,8 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 fun ExpenseDto.toDomain(): Expense {
-    val imageAvailable = imageDeletedAt == null
-    val thumbnailAvailable = imageAvailable && thumbnailDeletedAt == null
+    val imageAvailable = isImageAvailable
+    val thumbnailAvailable = isThumbnailAvailable
     return Expense(
         id = id,
         publicId = requiredPublicId(),
@@ -52,15 +52,15 @@ fun ExpenseDto.toDomain(): Expense {
         homeCurrency = CurrencyCode.fromStorageKey(homeCurrency),
         originalCurrency = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
         originalAmount = originalAmount ?: minorToMajorText(originalAmountMinor, CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode)),
-        fxRate = fxRate,
-        fxRateDate = fxRateDate,
-        fxSource = fxSource,
+        fxRate = resolvedFxRate,
+        fxRateDate = resolvedFxRateDate,
+        fxSource = resolvedFxSource,
         fxStatus = fxStatus.orEmpty(),
         originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode),
         originalAmountMinor = originalAmountMinor,
-        exchangeRateToCny = fxRate,
-        exchangeRateDate = fxRateDate,
-        exchangeRateSource = fxSource,
+        exchangeRateToCny = resolvedFxRate,
+        exchangeRateDate = resolvedFxRateDate,
+        exchangeRateSource = resolvedFxSource,
         merchant = merchant,
         category = normalizeExpenseCategory(category),
         note = note,
@@ -95,15 +95,15 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     homeCurrencyCode = CurrencyCode.fromStorageKey(homeCurrency).storageKey,
     originalCurrencyCode = CurrencyCode.fromStorageKey(originalCurrency ?: originalCurrencyCode).storageKey,
     originalAmountMinor = originalAmountMinor ?: amountCents,
-    exchangeRateToCny = fxRate,
-    exchangeRateDate = fxRateDate,
-    exchangeRateSource = fxSource,
+    exchangeRateToCny = resolvedFxRate,
+    exchangeRateDate = resolvedFxRateDate,
+    exchangeRateSource = resolvedFxSource,
     fxStatus = fxStatus.orEmpty(),
     merchant = merchant,
     category = normalizeExpenseCategory(category),
     note = note,
     source = source,
-    thumbnailPath = thumbnailPath,
+    thumbnailPath = thumbnailPath.takeIf { isThumbnailAvailable },
     imageDeletedAt = imageDeletedAt,
     thumbnailDeletedAt = thumbnailDeletedAt,
     imageHash = imageHash,
@@ -121,6 +121,21 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     confirmedAt = confirmedAt,
     updatedAt = updatedAt,
 )
+
+private val ExpenseDto.resolvedFxRate: String?
+    get() = fxRate ?: exchangeRateToCny
+
+private val ExpenseDto.resolvedFxRateDate: String?
+    get() = fxRateDate ?: exchangeRateDate
+
+private val ExpenseDto.resolvedFxSource: String?
+    get() = fxSource ?: exchangeRateSource
+
+private val ExpenseDto.isImageAvailable: Boolean
+    get() = imageDeletedAt == null
+
+private val ExpenseDto.isThumbnailAvailable: Boolean
+    get() = isImageAvailable && thumbnailDeletedAt == null
 
 private fun ExpenseDto.requiredPublicId(): String {
     return publicId

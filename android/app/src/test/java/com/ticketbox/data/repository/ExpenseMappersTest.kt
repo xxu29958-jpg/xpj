@@ -81,6 +81,28 @@ class ExpenseMappersTest {
     }
 
     @Test
+    fun mapsLegacyFxAliasesWhenCanonicalFieldsAreMissing() {
+        val dto = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            originalCurrencyCode = "USD",
+            originalAmountMinor = 12345,
+            exchangeRateToCny = "7.12340000",
+            exchangeRateDate = "2026-05-04",
+            exchangeRateSource = "manual",
+            fxStatus = "ready",
+        )
+
+        val expense = dto.toDomain()
+        val entity = dto.toEntity(ledgerId = "owner")
+
+        assertEquals("7.12340000", expense.fxRate)
+        assertEquals("7.12340000", expense.exchangeRateToCny)
+        assertEquals("2026-05-04", expense.fxRateDate)
+        assertEquals("2026-05-04", entity.exchangeRateDate)
+        assertEquals("manual", entity.exchangeRateSource)
+    }
+
+    @Test
     fun mapsDeletedMediaFlagsAndConfidence() {
         val expense = expenseDto(
             publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
@@ -95,6 +117,18 @@ class ExpenseMappersTest {
         assertEquals(null, expense.thumbnailPath)
         assertEquals("2026-05-04T05:00:00Z", expense.imageDeletedAt)
         assertEquals(0.42, expense.confidence)
+    }
+
+    @Test
+    fun doesNotPersistDeletedThumbnailPathInRoomCache() {
+        val entity = expenseDto(
+            publicId = "691da31d-e8d7-49b0-bece-ec6f61c044b2",
+            thumbnailPath = "/api/expenses/1/thumbnail",
+            thumbnailDeletedAt = "2026-05-04T05:00:00Z",
+        ).toEntity(ledgerId = "owner")
+
+        assertEquals(null, entity.thumbnailPath)
+        assertEquals("2026-05-04T05:00:00Z", entity.thumbnailDeletedAt)
     }
 
     @Test
@@ -311,8 +345,10 @@ class ExpenseMappersTest {
         originalAmountMinor: Long? = null,
         exchangeRateToCny: String? = null,
         exchangeRateDate: String? = null,
+        exchangeRateSource: String? = null,
         fxRate: String? = null,
         fxRateDate: String? = null,
+        fxSource: String? = null,
         fxStatus: String? = null,
         imagePath: String? = null,
         thumbnailPath: String? = null,
@@ -328,8 +364,10 @@ class ExpenseMappersTest {
             originalAmountMinor = originalAmountMinor,
             exchangeRateToCny = exchangeRateToCny,
             exchangeRateDate = exchangeRateDate,
+            exchangeRateSource = exchangeRateSource,
             fxRate = fxRate,
             fxRateDate = fxRateDate,
+            fxSource = fxSource,
             fxStatus = fxStatus,
             merchant = "测试商家",
             category = category,
