@@ -126,6 +126,48 @@ def _linked_to_allowed_ledger(db: Session, device_id: int, ledger_ids: set[str] 
     return bool(token_match or link_match)
 
 
+def _active_device_dependents_exist(
+    db: Session,
+    device_id: int,
+    *,
+    ledger_ids: set[str] | None = None,
+    outside_scope: bool = False,
+) -> bool:
+    token_match = exists().where(AuthToken.device_id == device_id).where(AuthToken.revoked_at.is_(None))
+    link_match = exists().where(UploadLink.device_id == device_id).where(UploadLink.revoked_at.is_(None))
+    if ledger_ids is not None:
+        if not ledger_ids:
+            return False
+        if outside_scope:
+            token_match = token_match.where(AuthToken.ledger_id.not_in(ledger_ids))
+            link_match = link_match.where(UploadLink.ledger_id.not_in(ledger_ids))
+        else:
+            token_match = token_match.where(AuthToken.ledger_id.in_(ledger_ids))
+            link_match = link_match.where(UploadLink.ledger_id.in_(ledger_ids))
+    return bool(db.scalar(select(token_match)) or db.scalar(select(link_match)))
+
+
+def _any_device_dependents_exist(
+    db: Session,
+    device_id: int,
+    *,
+    ledger_ids: set[str] | None = None,
+    outside_scope: bool = False,
+) -> bool:
+    token_match = exists().where(AuthToken.device_id == device_id)
+    link_match = exists().where(UploadLink.device_id == device_id)
+    if ledger_ids is not None:
+        if not ledger_ids:
+            return False
+        if outside_scope:
+            token_match = token_match.where(AuthToken.ledger_id.not_in(ledger_ids))
+            link_match = link_match.where(UploadLink.ledger_id.not_in(ledger_ids))
+        else:
+            token_match = token_match.where(AuthToken.ledger_id.in_(ledger_ids))
+            link_match = link_match.where(UploadLink.ledger_id.in_(ledger_ids))
+    return bool(db.scalar(select(token_match)) or db.scalar(select(link_match)))
+
+
 def list_devices(db: Session, *, ledger_ids: set[str] | None = None) -> list[DeviceSummary]:
     statement = select(Device).order_by(Device.id.asc())
     if ledger_ids is not None:
@@ -165,21 +207,22 @@ def revoke_device(
         )
     device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
     now = now_utc()
-    if device.revoked_at is None:
+    if device.revoked_at is None and ledger_ids is None:
         device.revoked_at = now
-    # Atomically revoke every active auth_token and upload_link for this device
-    db.execute(
-        update(AuthToken)
-        .where(AuthToken.device_id == device.id)
-        .where(AuthToken.revoked_at.is_(None))
-        .values(revoked_at=now)
-    )
-    db.execute(
-        update(UploadLink)
-        .where(UploadLink.device_id == device.id)
-        .where(UploadLink.revoked_at.is_(None))
-        .values(revoked_at=now)
-    )
+    token_update = update(AuthToken).where(AuthToken.device_id == device.id).where(AuthToken.revoked_at.is_(None))
+    link_update = update(UploadLink).where(UploadLink.device_id == device.id).where(UploadLink.revoked_at.is_(None))
+    if ledger_ids is not None:
+        token_update = token_update.where(AuthToken.ledger_id.in_(ledger_ids))
+        link_update = link_update.where(UploadLink.ledger_id.in_(ledger_ids))
+    db.execute(token_update.values(revoked_at=now))
+    db.execute(link_update.values(revoked_at=now))
+    if device.revoked_at is None and not _active_device_dependents_exist(
+        db,
+        device.id,
+        ledger_ids=ledger_ids,
+        outside_scope=True,
+    ):
+        device.revoked_at = now
     db.commit()
     db.refresh(device)
     return _device_with_relations(db, device, ledger_ids=ledger_ids)
@@ -349,15 +392,29 @@ def delete_device(
             status_code=409,
         )
     device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
-    if device.revoked_at is None:
+    if device.revoked_at is None and (
+        ledger_ids is None or _active_device_dependents_exist(db, device.id, ledger_ids=ledger_ids)
+    ):
         raise AppError(
             "invalid_request",
             "请先停用该设备再删除，避免误删活跃绑定。",
             status_code=409,
         )
-    db.execute(AuthToken.__table__.delete().where(AuthToken.device_id == device.id))
-    db.execute(UploadLink.__table__.delete().where(UploadLink.device_id == device.id))
-    db.delete(device)
+    if _active_device_dependents_exist(db, device.id, ledger_ids=ledger_ids):
+        raise AppError(
+            "invalid_request",
+            "请先停用该设备再删除，避免误删活跃绑定。",
+            status_code=409,
+        )
+    token_delete = AuthToken.__table__.delete().where(AuthToken.device_id == device.id)
+    link_delete = UploadLink.__table__.delete().where(UploadLink.device_id == device.id)
+    if ledger_ids is not None:
+        token_delete = token_delete.where(AuthToken.ledger_id.in_(ledger_ids))
+        link_delete = link_delete.where(UploadLink.ledger_id.in_(ledger_ids))
+    db.execute(token_delete)
+    db.execute(link_delete)
+    if not _any_device_dependents_exist(db, device.id, ledger_ids=ledger_ids, outside_scope=True):
+        db.delete(device)
     db.commit()
 
 

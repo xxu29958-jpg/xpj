@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -49,6 +50,11 @@ class BudgetCategory(Base):
         CheckConstraint("amount_cents >= 0", name="ck_budget_categories_amount_non_negative"),
         CheckConstraint("length(month) = 7", name="ck_budget_categories_month_format"),
         UniqueConstraint("tenant_id", "month", "category", name="uq_budget_categories_tenant_month_category"),
+        ForeignKeyConstraint(
+            ["tenant_id", "month"],
+            ["budgets.tenant_id", "budgets.month"],
+            name="fk_budget_categories_budget_month",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

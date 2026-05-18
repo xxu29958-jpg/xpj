@@ -148,6 +148,7 @@ def start_server(port: int) -> subprocess.Popen:
             "OCR_PROVIDER": "empty",
             "ENABLE_HTTP_BOOTSTRAP": "true",
             "HTTP_BOOTSTRAP_SECRET": SMOKE_BOOTSTRAP_SECRET,
+            "XPJ_EXTRA_LOOPBACK_HOSTS": f"{HOST}:{port}",
         }
     )
     return subprocess.Popen(

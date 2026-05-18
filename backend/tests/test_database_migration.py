@@ -250,6 +250,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     budget_categories_sql = _table_create_sql("budget_categories")
     assert "ck_budget_categories_amount_non_negative" in budget_categories_sql
     assert "uq_budget_categories_tenant_month_category" in budget_categories_sql
+    assert "fk_budget_categories_budget_month" in budget_categories_sql
     goals_sql = _table_create_sql("goals")
     assert "ck_goals_type_valid" in goals_sql
     assert "ck_goals_period_valid" in goals_sql
@@ -282,6 +283,29 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
             text("SELECT COUNT(*) FROM schema_migrations WHERE name = 'baseline-v0.9.0a1'")
         ).scalar_one()
     assert migration_count == 1
+
+
+def test_exchange_rates_seed_identity_ledger_ids() -> None:
+    _reset_empty_database()
+    init_db()
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO exchange_rates "
+                "(tenant_id, public_id, currency_code, rate_date, rate_to_cny, source, created_at, updated_at) "
+                "VALUES ('fx_only_ledger', 'fx-seed-public-id', 'JPY', '2026-05-01', 0.05000000, "
+                "'manual', '2026-05-01 00:00:00', '2026-05-01 00:00:00')"
+            )
+        )
+
+    database.seed_identity_data()
+
+    with engine.begin() as connection:
+        count = connection.execute(
+            text("SELECT COUNT(*) FROM ledgers WHERE ledger_id = 'fx_only_ledger'")
+        ).scalar_one()
+    assert count == 1
 
 
 def test_schema_migration_marker_query_is_safe_before_init() -> None:

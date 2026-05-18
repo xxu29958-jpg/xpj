@@ -151,6 +151,94 @@ def test_admin_device_management_is_scoped_to_visible_ledgers(client: TestClient
     assert revoke.status_code == 404
 
 
+def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient) -> None:
+    now = now_utc()
+    with SessionLocal() as db:
+        member_account = Account(display_name="family member private owner", created_at=now)
+        db.add(member_account)
+        db.flush()
+        private = Ledger(
+            ledger_id="member_private_ledger",
+            name="成员私有账本",
+            owner_account_id=member_account.id,
+            created_at=now,
+        )
+        db.add(private)
+        db.flush()
+        db.add_all(
+            [
+                LedgerMember(
+                    ledger_id="owner",
+                    account_id=member_account.id,
+                    role="member",
+                    created_at=now,
+                ),
+                LedgerMember(
+                    ledger_id=private.ledger_id,
+                    account_id=member_account.id,
+                    role="owner",
+                    created_at=now,
+                ),
+            ]
+        )
+        device = Device(
+            account_id=member_account.id,
+            device_name="member shared phone",
+            platform="android",
+            created_at=now,
+        )
+        db.add(device)
+        db.flush()
+        shared_token_hash = hash_secret("member-shared-token")
+        private_token_hash = hash_secret("member-private-token")
+        private_link_hash = hash_secret("member-private-upload")
+        db.add_all(
+            [
+                AuthToken(
+                    token_hash=shared_token_hash,
+                    account_id=member_account.id,
+                    device_id=device.id,
+                    ledger_id="owner",
+                    scope="app",
+                    created_at=now,
+                ),
+                AuthToken(
+                    token_hash=private_token_hash,
+                    account_id=member_account.id,
+                    device_id=device.id,
+                    ledger_id=private.ledger_id,
+                    scope="app",
+                    created_at=now,
+                ),
+                UploadLink(
+                    token_hash=private_link_hash,
+                    account_id=member_account.id,
+                    device_id=device.id,
+                    ledger_id=private.ledger_id,
+                    created_at=now,
+                ),
+            ]
+        )
+        public_id = device.public_id
+        db.commit()
+
+    response = client.post(
+        f"/api/admin/devices/{public_id}/revoke",
+        headers=admin_headers(),
+    )
+
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        shared_token = db.query(AuthToken).filter(AuthToken.token_hash == shared_token_hash).one()
+        private_token = db.query(AuthToken).filter(AuthToken.token_hash == private_token_hash).one()
+        private_link = db.query(UploadLink).filter(UploadLink.token_hash == private_link_hash).one()
+        device = db.query(Device).filter(Device.public_id == public_id).one()
+        assert shared_token.revoked_at is not None
+        assert private_token.revoked_at is None
+        assert private_link.revoked_at is None
+        assert device.revoked_at is None
+
+
 def test_revoke_device_invalidates_its_tokens_and_upload_links(
     client: TestClient,
 ) -> None:

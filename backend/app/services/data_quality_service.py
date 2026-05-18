@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.fx_constants import FX_STATUS_READY
 from app.models import Expense
 
 
@@ -111,6 +112,7 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         db,
         base.where(Expense.status == "pending")
         .where(Expense.amount_cents.is_not(None))
+        .where(Expense.fx_status == FX_STATUS_READY)
         .where(~empty_merchant)
         .where(Expense.duplicate_status != "suspected"),
     )

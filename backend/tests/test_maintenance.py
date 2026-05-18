@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 from api_contract_helpers import (
     upload_png,
 )
+from app.main import app
+from app.network_boundary import require_admin_network_boundary
 from conftest import (
     admin_headers,
     app_headers,
@@ -20,6 +22,20 @@ def test_admin_maintenance_requires_admin_token(client: TestClient) -> None:
     response = client.post("/api/maintenance/cleanup-images", headers=admin_headers())
     assert response.status_code == 200
     assert response.json()["enabled"] is False
+
+
+def test_maintenance_rejects_public_host_even_with_admin_token(client: TestClient) -> None:
+    app.dependency_overrides.pop(require_admin_network_boundary, None)
+    try:
+        response = client.post(
+            "/api/maintenance/cleanup-images",
+            headers={**admin_headers(), "host": "api.example.com"},
+        )
+    finally:
+        app.dependency_overrides[require_admin_network_boundary] = lambda: None
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "admin_api_local_only"
 
 
 def test_server_settings_snapshot_does_not_expose_paths_or_tokens(

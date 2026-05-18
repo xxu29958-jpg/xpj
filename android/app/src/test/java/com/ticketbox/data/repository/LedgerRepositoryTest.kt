@@ -62,9 +62,12 @@ import com.ticketbox.data.remote.dto.UserUiPreferencesDto
 import com.ticketbox.data.remote.dto.UserUiPreferencesUpdateRequestDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.security.SessionTokenStore
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
@@ -227,6 +230,48 @@ class LedgerRepositoryTest {
         assertEquals("old-token", tokenStore.getToken())
         assertNull(store.activeLedgerId())
         assertFalse(failure.message.isNullOrBlank())
+    }
+
+    @Test
+    fun concurrentSwitchLedgerRequestsAreSerializedSoLatestCallWins() = runTest {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val api = StubApi(
+            switchHandler = { ledgerId ->
+                if (ledgerId == "L_first") {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                }
+                LedgerSwitchResponseDto(
+                    sessionToken = "token-$ledgerId",
+                    ledger = ledgerDto(ledgerId, ledgerId, role = "owner"),
+                    accountName = "我",
+                    deviceName = "Pixel",
+                )
+            },
+        )
+        val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val first = async { repo.switchLedger("L_first") }
+        firstStarted.await()
+        val second = async { repo.switchLedger("L_second") }
+        yield()
+
+        assertEquals(listOf("L_first"), api.switchRequests)
+        releaseFirst.complete(Unit)
+
+        assertEquals("L_first", first.await().getOrThrow().ledgerId)
+        assertEquals("L_second", second.await().getOrThrow().ledgerId)
+        assertEquals(listOf("L_first", "L_second"), api.switchRequests)
+        assertEquals("token-L_second", tokenStore.getToken())
+        assertEquals("L_second", store.activeLedgerId())
     }
 
     @Test
@@ -781,6 +826,7 @@ private class StubApi(
     var listLedgersError: Throwable? = null,
     var createResult: LedgerDto? = null,
     var switchResult: LedgerSwitchResponseDto? = null,
+    var switchHandler: (suspend (String) -> LedgerSwitchResponseDto)? = null,
     var switchError: Throwable? = null,
     var membersResult: LedgerMemberListResponseDto? = null,
     var auditResult: LedgerAuditListResponseDto? = null,
@@ -791,6 +837,7 @@ private class StubApi(
     var previewError: Throwable? = null,
     var acceptResult: InvitationAcceptResponseDto? = null,
     var acceptError: Throwable? = null,
+    val switchRequests: MutableList<String> = mutableListOf(),
     val memberLedgerRequests: MutableList<String> = mutableListOf(),
     val auditRequests: MutableList<Pair<String, Int>> = mutableListOf(),
     val roleUpdateTargets: MutableList<Pair<String, Long>> = mutableListOf(),
@@ -819,7 +866,9 @@ private class StubApi(
     }
 
     override suspend fun switchLedger(ledgerId: String): LedgerSwitchResponseDto {
+        switchRequests += ledgerId
         switchError?.let { throw it }
+        switchHandler?.let { return it(ledgerId) }
         return switchResult ?: error("Unexpected switch call")
     }
 

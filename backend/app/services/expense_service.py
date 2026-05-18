@@ -661,8 +661,6 @@ def _replace_ocr_draft_items_from_text(
     if expense.status != "pending":
         return
     parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
-    if not parsed.items:
-        return
 
     from app.services.receipt_item_service import replace_ocr_draft_items
 

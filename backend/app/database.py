@@ -182,6 +182,7 @@ def seed_identity_data() -> None:
         ExpenseItem,
         ExpenseSplit,
         ExpenseTag,
+        ExchangeRate,
         Goal,
         MerchantAlias,
         RuleApplicationBatch,
@@ -217,6 +218,8 @@ def seed_identity_data() -> None:
             ids.update(str(value) for value in db.scalars(select(Budget.tenant_id).distinct()) if value)
         if inspect(engine).has_table("budget_categories"):
             ids.update(str(value) for value in db.scalars(select(BudgetCategory.tenant_id).distinct()) if value)
+        if inspect(engine).has_table("exchange_rates"):
+            ids.update(str(value) for value in db.scalars(select(ExchangeRate.tenant_id).distinct()) if value)
         if inspect(engine).has_table("goals"):
             ids.update(str(value) for value in db.scalars(select(Goal.tenant_id).distinct()) if value)
         if inspect(engine).has_table("dashboard_card_preferences"):
@@ -510,6 +513,21 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
         )
         if invalid:
             raise RuntimeError("Invalid legacy data: csv_import_rows contains cross-ledger expense references")
+
+    if {"budget_categories", "budgets"}.issubset(table_names):
+        invalid = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM budget_categories AS category "
+                    "LEFT JOIN budgets AS budget "
+                    "ON budget.tenant_id = category.tenant_id "
+                    "AND budget.month = category.month "
+                    "WHERE budget.id IS NULL"
+                )
+            ).scalar_one()
+        )
+        if invalid:
+            raise RuntimeError("Invalid legacy data: budget_categories contains rows without parent budgets")
 
     if {"expense_tags", "expenses", "tags"}.issubset(table_names):
         invalid_expenses = int(

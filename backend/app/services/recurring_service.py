@@ -4,7 +4,8 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -267,7 +268,19 @@ def confirm_recurring_candidate(
         updated_at=now,
     )
     db.add(item)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing_after_race = _existing_item(
+            db,
+            tenant_id=tenant_id,
+            merchant_key=merchant_key,
+            frequency=frequency,
+        )
+        if existing_after_race is not None:
+            return existing_after_race
+        raise
     db.refresh(item)
     return item
 
@@ -304,40 +317,56 @@ def get_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Recurr
 
 
 def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
-    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
-    if item.status == "archived":
-        raise AppError("recurring_item_archived", status_code=409)
-    if item.status != "paused":
-        now = now_utc()
-        item.status = "paused"
-        item.paused_at = now
-        item.updated_at = now
+    now = now_utc()
+    result = db.execute(
+        update(RecurringItem)
+        .where(RecurringItem.tenant_id == tenant_id)
+        .where(RecurringItem.public_id == public_id)
+        .where(RecurringItem.status != "archived")
+        .where(RecurringItem.archived_at.is_(None))
+        .values(status="paused", paused_at=now, updated_at=now)
+    )
+    if result.rowcount:
         db.commit()
-        db.refresh(item)
+        return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    db.rollback()
+    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    if item.status == "archived" or item.archived_at is not None:
+        raise AppError("recurring_item_archived", status_code=409)
     return item
 
 
 def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
-    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
-    if item.status == "archived":
-        raise AppError("recurring_item_archived", status_code=409)
-    if item.status != "active":
-        now = now_utc()
-        item.status = "active"
-        item.paused_at = None
-        item.updated_at = now
+    now = now_utc()
+    result = db.execute(
+        update(RecurringItem)
+        .where(RecurringItem.tenant_id == tenant_id)
+        .where(RecurringItem.public_id == public_id)
+        .where(RecurringItem.status != "archived")
+        .where(RecurringItem.archived_at.is_(None))
+        .values(status="active", paused_at=None, updated_at=now)
+    )
+    if result.rowcount:
         db.commit()
-        db.refresh(item)
+        return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    db.rollback()
+    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
+    if item.status == "archived" or item.archived_at is not None:
+        raise AppError("recurring_item_archived", status_code=409)
     return item
 
 
 def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
-    item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
-    if item.status != "archived":
-        now = now_utc()
-        item.status = "archived"
-        item.archived_at = now
-        item.updated_at = now
+    now = now_utc()
+    result = db.execute(
+        update(RecurringItem)
+        .where(RecurringItem.tenant_id == tenant_id)
+        .where(RecurringItem.public_id == public_id)
+        .where(RecurringItem.status != "archived")
+        .values(status="archived", archived_at=now, updated_at=now)
+    )
+    if result.rowcount:
         db.commit()
-        db.refresh(item)
-    return item
+    else:
+        db.rollback()
+    return get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)

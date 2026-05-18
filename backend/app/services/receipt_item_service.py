@@ -57,7 +57,7 @@ def replace_ocr_draft_items(
     expense: Expense,
     parsed_items: tuple[ParsedReceiptItem, ...],
 ) -> None:
-    if expense.status != "pending" or not parsed_items:
+    if expense.status != "pending":
         return
 
     existing = list(

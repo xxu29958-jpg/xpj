@@ -26,6 +26,8 @@ import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.security.SessionTokenStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.IOException
@@ -57,6 +59,7 @@ class LedgerRepository(
         LedgerDto::class.java,
     )
     private val ledgerListAdapter = moshi.adapter<List<LedgerDto>>(ledgerListType)
+    private val switchLedgerMutex = Mutex()
 
     private fun api() = apiProvider.current()
 
@@ -113,21 +116,23 @@ class LedgerRepository(
      * exclusively with rows belonging to [ledgerId].
      */
     suspend fun switchLedger(ledgerId: String): Result<LedgerSummary> = wrap {
-        val response = api().switchLedger(ledgerId)
-        // Persist the new token *first*; the old one is now revoked.
-        tokenStore.saveToken(response.sessionToken)
-        settingsStore.saveIdentity(
-            accountName = response.accountName,
-            ledgerId = response.ledger.ledgerId,
-            ledgerName = response.ledger.name,
-            deviceName = response.deviceName,
-            role = response.ledger.role,
-            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
-        )
-        // Wipe stale cache for the target ledger so the upcoming sync
-        // produces a clean view.
-        expenseDao.clearForLedger(response.ledger.ledgerId)
-        response.ledger.toSummary()
+        switchLedgerMutex.withLock {
+            val response = api().switchLedger(ledgerId)
+            // Persist the new token *first*; the old one is now revoked.
+            tokenStore.saveToken(response.sessionToken)
+            settingsStore.saveIdentity(
+                accountName = response.accountName,
+                ledgerId = response.ledger.ledgerId,
+                ledgerName = response.ledger.name,
+                deviceName = response.deviceName,
+                role = response.ledger.role,
+                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            )
+            // Wipe stale cache for the target ledger so the upcoming sync
+            // produces a clean view.
+            expenseDao.clearForLedger(response.ledger.ledgerId)
+            response.ledger.toSummary()
+        }
     }
 
     suspend fun refreshFamilyMembers(ledgerId: String? = activeLedgerId()): Result<List<FamilyMember>> = wrap {

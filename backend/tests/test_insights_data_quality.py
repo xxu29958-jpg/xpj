@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from api_contract_helpers import insert_confirmed_expense, upload_png
 from app.database import SessionLocal
+from app.fx_constants import FX_STATUS_PENDING
 from app.models import Expense
 from conftest import app_headers
 
@@ -102,6 +103,29 @@ def test_data_quality_suspected_duplicates(client: TestClient) -> None:
     assert body["suspected_duplicates"] >= 1
     # Suspected rows must not appear as ready_to_confirm even if amount + merchant set.
     assert body["ready_to_confirm"] + body["suspected_duplicates"] <= body["pending_total"] + 1
+
+
+def test_data_quality_ready_to_confirm_excludes_pending_fx(client: TestClient) -> None:
+    with SessionLocal() as db:
+        db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=1000,
+                merchant="Tokyo Store",
+                category="餐饮",
+                source="csv",
+                status="pending",
+                fx_status=FX_STATUS_PENDING,
+                duplicate_status="none",
+            )
+        )
+        db.commit()
+
+    response = client.get("/api/insights/data-quality", headers=app_headers())
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["pending_total"] == 1
+    assert body["ready_to_confirm"] == 0
 
 
 def test_data_quality_confirmed_without_image(client: TestClient) -> None:

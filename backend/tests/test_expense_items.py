@@ -202,6 +202,22 @@ def test_recognize_text_replaces_existing_ocr_draft_items(client: TestClient) ->
     assert all(item["is_ocr_draft"] is True for item in payload["items"])
 
 
+def test_recognize_text_without_items_clears_existing_ocr_draft_items(client: TestClient) -> None:
+    expense_id = upload_png(client)
+    _recognize_receipt_items(client, expense_id)
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=app_headers(),
+        json={"raw_text": "星巴克\n支付成功\n谢谢惠顾"},
+    )
+    assert response.status_code == 200, response.json()
+
+    listed = client.get(f"/api/expenses/{expense_id}/items", headers=app_headers())
+    assert listed.status_code == 200, listed.json()
+    assert listed.json()["items"] == []
+
+
 def test_recognize_text_does_not_overwrite_manual_items(client: TestClient) -> None:
     expense_id = upload_png(client)
     _recognize_receipt_items(client, expense_id)

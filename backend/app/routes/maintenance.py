@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import verify_admin_token
 from app.database import get_db
+from app.network_boundary import require_admin_network_boundary
 from app.schemas import MaintenanceCleanupResponse, MaintenanceOrphanCleanupResponse
 from app.services.cleanup_service import cleanup_confirmed_images, cleanup_orphan_uploads, cleanup_rejected_images
 from app.tenants import AuthContext
@@ -13,6 +14,7 @@ from app.tenants import AuthContext
 router = APIRouter(
     prefix="/api/maintenance",
     tags=["maintenance"],
+    dependencies=[Depends(require_admin_network_boundary)],
 )
 
 
