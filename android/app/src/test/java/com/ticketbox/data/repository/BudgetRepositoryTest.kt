@@ -265,6 +265,8 @@ private class BudgetFakeSettingsStore(
     }
     override fun saveLastConfirmedSyncAt(value: String) = Unit
     override fun clearLastConfirmedSyncAt() = Unit
+    override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) = Unit
+    override fun clearLedgerScopedRuntimeState() = Unit
     override fun lastUploadAt(): String? = null
     override fun saveLastUploadAt(value: String) = Unit
     override fun saveAppSkinKey(skinKey: String) = Unit

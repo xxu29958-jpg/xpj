@@ -156,6 +156,31 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
+    override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) {
+        val activeLedgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
+        prefs.edit {
+            remove(lastConfirmedSyncAtKey(ledgerId))
+            if (ledgerId == activeLedgerId) {
+                remove(KEY_LAST_CONFIRMED_SYNC_AT)
+            }
+        }
+    }
+
+    override fun clearLedgerScopedRuntimeState() {
+        prefs.edit {
+            prefs.all.keys
+                .filter { key ->
+                    key == KEY_LAST_CONFIRMED_SYNC_AT ||
+                        key == KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED ||
+                        key == KEY_LAST_UPLOAD_AT ||
+                        key == KEY_LAST_UPLOAD_AT_MIGRATED ||
+                        key.startsWith(KEY_LAST_CONFIRMED_SYNC_AT_BY_LEDGER_PREFIX) ||
+                        key.startsWith(KEY_LAST_UPLOAD_AT_BY_LEDGER_PREFIX)
+                }
+                .forEach(::remove)
+        }
+    }
+
     override fun lastUploadAt(): String? {
         val key = lastUploadAtKey()
         prefs.getString(key, null)?.let { return it }
@@ -268,6 +293,10 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     private fun lastConfirmedSyncAtKey(): String {
         val ledgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
+        return lastConfirmedSyncAtKey(ledgerId)
+    }
+
+    private fun lastConfirmedSyncAtKey(ledgerId: String): String {
         return "$KEY_LAST_CONFIRMED_SYNC_AT_BY_LEDGER_PREFIX$ledgerId"
     }
 

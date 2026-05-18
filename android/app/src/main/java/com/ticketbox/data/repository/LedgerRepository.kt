@@ -49,6 +49,11 @@ class LedgerRepository(
     private val tokenStore: SessionTokenStore,
     private val expenseDao: ExpenseDao,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(
+        settingsStore,
+        tokenStore,
+        expenseDao,
+    ),
 ) {
     private val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
@@ -125,20 +130,18 @@ class LedgerRepository(
     suspend fun switchLedger(ledgerId: String): Result<LedgerSummary> = wrap {
         switchLedgerMutex.withLock {
             val response = api().switchLedger(ledgerId)
-            // Persist the new token *first*; the old one is now revoked.
-            tokenStore.saveToken(response.sessionToken)
-            settingsStore.saveIdentity(
-                accountName = response.accountName,
-                ledgerId = response.ledger.ledgerId,
-                ledgerName = response.ledger.name,
-                deviceName = response.deviceName,
-                role = response.ledger.role,
-                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            sessionCoordinator.applyTransition(
+                sessionToken = response.sessionToken,
+                identity = LedgerSessionIdentity(
+                    accountName = response.accountName,
+                    ledgerId = response.ledger.ledgerId,
+                    ledgerName = response.ledger.name,
+                    deviceName = response.deviceName,
+                    role = response.ledger.role,
+                    boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+                ),
+                cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
             )
-            // Wipe stale cache for the target ledger so the upcoming sync
-            // produces a clean view.
-            expenseDao.clearForLedger(response.ledger.ledgerId)
-            settingsStore.clearLastConfirmedSyncAt()
             response.ledger.toSummary()
         }
     }
@@ -246,19 +249,19 @@ class LedgerRepository(
                 deviceName = cleanDevice,
             ),
         )
-        // Persist the new token *first*; any prior token is now stale.
-        tokenStore.saveToken(response.sessionToken)
-        settingsStore.saveAvailableLedgersJson(null)
-        settingsStore.saveIdentity(
-            accountName = response.accountName,
-            ledgerId = response.ledgerId,
-            ledgerName = response.ledgerName,
-            deviceName = response.deviceName,
-            role = response.role,
-            boundAt = java.time.Instant.now().toString(),
+        sessionCoordinator.applyTransition(
+            sessionToken = response.sessionToken,
+            identity = LedgerSessionIdentity(
+                accountName = response.accountName,
+                ledgerId = response.ledgerId,
+                ledgerName = response.ledgerName,
+                deviceName = response.deviceName,
+                role = response.role,
+                boundAt = java.time.Instant.now().toString(),
+            ),
+            cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
+            clearAvailableLedgers = true,
         )
-        // Wipe stale cache so the new ledger view starts clean.
-        expenseDao.clearForLedger(response.ledgerId)
         // Refresh the ledger list so the picker shows the joined ledger.
         runCatching { refreshLedgers() }
         LedgerSummary(
@@ -306,25 +309,27 @@ class LedgerRepository(
         }
     }
 
-    private fun persistSelfRoleIfChanged(member: FamilyMember, expectedLedgerId: String) {
+    private suspend fun persistSelfRoleIfChanged(member: FamilyMember, expectedLedgerId: String) {
         if (!member.isSelf) return
         persistCurrentRoleIfChanged(member.role, expectedLedgerId)
     }
 
-    private fun persistCurrentRoleIfChanged(role: String, expectedLedgerId: String) {
+    private suspend fun persistCurrentRoleIfChanged(role: String, expectedLedgerId: String) {
         if (settingsStore.activeLedgerId() != expectedLedgerId) return
         if (role == settingsStore.role()) return
         val accountName = settingsStore.accountName() ?: return
         val ledgerId = settingsStore.activeLedgerId() ?: return
         val ledgerName = settingsStore.activeLedgerName() ?: settingsStore.ledgerName() ?: return
         val deviceName = settingsStore.deviceName() ?: return
-        settingsStore.saveIdentity(
-            accountName = accountName,
-            ledgerId = ledgerId,
-            ledgerName = ledgerName,
-            deviceName = deviceName,
-            role = role,
-            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+        sessionCoordinator.applyTransition(
+            identity = LedgerSessionIdentity(
+                accountName = accountName,
+                ledgerId = ledgerId,
+                ledgerName = ledgerName,
+                deviceName = deviceName,
+                role = role,
+                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            ),
         )
     }
 

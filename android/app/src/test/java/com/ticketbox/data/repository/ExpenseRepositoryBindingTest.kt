@@ -114,9 +114,9 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
-    fun bindDoesNotSendOldSessionTokenAndClearsStaleTargetLedgerCache() = runTest {
+    fun bindDoesNotSendOldSessionTokenAndClearsStaleLocalAccountCache() = runTest {
         val events = mutableListOf<String>()
-        val dao = FakeExpenseDao()
+        val dao = FakeExpenseDao(events)
         dao.insert(
             ExpenseEntity(
                 ledgerId = "owner",
@@ -143,6 +143,14 @@ class ExpenseRepositoryBindingTest {
                 updatedAt = "2026-05-01T00:00:00Z",
             ),
         )
+        dao.insert(
+            cachedConfirmedEntity(
+                serverId = 100,
+                publicId = "old-other-ledger",
+                merchant = "旧家庭",
+                ledgerId = "family",
+            ),
+        )
         val settingsStore = FakeTicketboxSettingsStore(events).apply {
             saveAvailableLedgersJson("""[{"ledger_id":"old","name":"Old","role":"owner"}]""")
         }
@@ -163,7 +171,9 @@ class ExpenseRepositoryBindingTest {
         assertNull(apiFactory.tokenValues.first())
         assertEquals("session-token", apiFactory.tokenValues.last())
         assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertTrue(dao.getConfirmed("family").isEmpty())
         assertNull(settingsStore.availableLedgersJson())
+        assertTrue(events.indexOf("clear") < events.indexOf("saveIdentity"))
     }
 
     @Test
@@ -428,6 +438,71 @@ class ExpenseRepositoryBindingTest {
         assertEquals("家庭账本", settingsStore.ledgerName())
         assertEquals("member", settingsStore.role())
         assertEquals("session-b", tokenStore.getToken())
+    }
+
+    @Test
+    fun authCheckLedgerCorrectionClearsTargetCacheBeforeIdentitySwitch() = runTest {
+        val events = mutableListOf<String>()
+        val dao = FakeExpenseDao(events).apply {
+            insert(
+                cachedConfirmedEntity(
+                    serverId = 8,
+                    publicId = "target-stale",
+                    merchant = "旧家庭",
+                    ledgerId = "family",
+                ),
+            )
+            insert(
+                cachedConfirmedEntity(
+                    serverId = 9,
+                    publicId = "current-cache",
+                    merchant = "当前账本",
+                    ledgerId = "owner",
+                ),
+            )
+        }
+        val settingsStore = FakeTicketboxSettingsStore(events).apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "owner",
+                ledgerName = "我的小票夹",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") }
+        val apiService = FakeApiService(
+            events = events,
+            confirmedFailuresRemaining = 0,
+            checkAuthResult = AuthCheckDto(
+                status = "ok",
+                accountName = "我",
+                ledgerId = "family",
+                ledgerName = "家庭账本",
+                deviceName = "Pixel",
+                role = "member",
+                scope = "app",
+            ),
+        )
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.testConnection().getOrThrow()
+
+        assertEquals("family", settingsStore.activeLedgerId())
+        assertTrue(dao.getConfirmed("family").isEmpty())
+        assertEquals(listOf(9L), dao.getConfirmed("owner").map { it.serverId })
+        assertTrue(events.indexOf("clearForLedger:family") < events.lastIndexOf("saveIdentity"))
+        assertTrue(
+            events.indexOf("clearLastConfirmedSyncAtForLedger:family") < events.lastIndexOf("saveIdentity"),
+        )
     }
 
     @Test
@@ -1617,6 +1692,19 @@ private class FakeTicketboxSettingsStore(
         lastConfirmedSyncAt = null
     }
 
+    override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) {
+        events += "clearLastConfirmedSyncAtForLedger:$ledgerId"
+        if (ledgerId == ledgerIdFlow.value) {
+            lastConfirmedSyncAt = null
+        }
+    }
+
+    override fun clearLedgerScopedRuntimeState() {
+        events += "clearLedgerScopedRuntimeState"
+        lastConfirmedSyncAt = null
+        lastUploadAt = null
+    }
+
     override fun lastUploadAt(): String? = lastUploadAt
 
     override fun saveLastUploadAt(value: String) {
@@ -1676,7 +1764,9 @@ private class FakeSessionTokenStore(
     }
 }
 
-private class FakeExpenseDao : ExpenseDao {
+private class FakeExpenseDao(
+    private val events: MutableList<String> = mutableListOf(),
+) : ExpenseDao {
     private val expenses = linkedMapOf<Long, ExpenseEntity>()
     private val flows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     private var nextId = 1L
@@ -1725,12 +1815,14 @@ private class FakeExpenseDao : ExpenseDao {
     }
 
     override suspend fun clear() {
+        events += "clear"
         val touched = expenses.values.map { it.ledgerId }.toSet()
         expenses.clear()
         touched.forEach { emit(it) }
     }
 
     override suspend fun clearForLedger(ledgerId: String) {
+        events += "clearForLedger:$ledgerId"
         expenses.values
             .filter { it.ledgerId == ledgerId }
             .map { it.id }

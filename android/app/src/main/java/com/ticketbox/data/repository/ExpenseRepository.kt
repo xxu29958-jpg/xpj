@@ -131,6 +131,11 @@ class ExpenseRepository(
     private val tokenStore: SessionTokenStore,
     private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
+    private val sessionCoordinator: LocalLedgerSessionCoordinator = LocalLedgerSessionCoordinator(
+        settingsStore,
+        tokenStore,
+        expenseDao,
+    ),
 ) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
@@ -194,7 +199,7 @@ class ExpenseRepository(
         }
     }
 
-    private fun persistAuthCheck(
+    private suspend fun persistAuthCheck(
         check: com.ticketbox.data.remote.dto.AuthCheckDto,
         expectedLedgerId: String?,
         expectedToken: String?,
@@ -202,28 +207,37 @@ class ExpenseRepository(
         if (expectedToken != null && tokenStore.getToken() != expectedToken) return
         val currentLedgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
         if (expectedLedgerId != null && currentLedgerId != expectedLedgerId) return
-        settingsStore.saveIdentity(
-            accountName = check.accountName,
-            ledgerId = check.ledgerId,
-            ledgerName = check.ledgerName,
-            deviceName = check.deviceName,
-            role = check.role,
-            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+        sessionCoordinator.applyTransition(
+            identity = LedgerSessionIdentity(
+                accountName = check.accountName,
+                ledgerId = check.ledgerId,
+                ledgerName = check.ledgerName,
+                deviceName = check.deviceName,
+                role = check.role,
+                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            ),
+            cacheInvalidation = if (check.ledgerId != currentLedgerId) {
+                LedgerCacheInvalidation.TargetLedger
+            } else {
+                LedgerCacheInvalidation.None
+            },
         )
     }
 
-    private fun persistServerSettings(settings: ServerSettingsDto, expectedLedgerId: String?) {
+    private suspend fun persistServerSettings(settings: ServerSettingsDto, expectedLedgerId: String?) {
         val expected = expectedLedgerId ?: return
         val ledgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() } ?: return
         if (ledgerId != expected) return
         if (settings.ledgerId != null && settings.ledgerId != expected) return
-        settingsStore.saveIdentity(
-            accountName = settings.accountName,
-            ledgerId = ledgerId,
-            ledgerName = settings.ledgerName,
-            deviceName = settings.deviceName,
-            role = settings.role,
-            boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+        sessionCoordinator.applyTransition(
+            identity = LedgerSessionIdentity(
+                accountName = settings.accountName,
+                ledgerId = ledgerId,
+                ledgerName = settings.ledgerName,
+                deviceName = settings.deviceName,
+                role = settings.role,
+                boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
+            ),
         )
     }
 
@@ -237,20 +251,21 @@ class ExpenseRepository(
                     platform = "android",
                 ),
             )
-            settingsStore.saveServerUrl(normalized)
-            tokenStore.saveToken(pairResponse.sessionToken)
-            settingsStore.saveAvailableLedgersJson(null)
-            settingsStore.saveIdentity(
-                accountName = pairResponse.accountName,
-                ledgerId = pairResponse.ledgerId,
-                ledgerName = pairResponse.ledgerName,
-                deviceName = pairResponse.deviceName,
-                role = pairResponse.role,
-                boundAt = Instant.now().toString(),
+            sessionCoordinator.applyTransition(
+                serverUrl = normalized,
+                sessionToken = pairResponse.sessionToken,
+                identity = LedgerSessionIdentity(
+                    accountName = pairResponse.accountName,
+                    ledgerId = pairResponse.ledgerId,
+                    ledgerName = pairResponse.ledgerName,
+                    deviceName = pairResponse.deviceName,
+                    role = pairResponse.role,
+                    boundAt = Instant.now().toString(),
+                ),
+                cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
+                clearAvailableLedgers = true,
+                markUnlocked = true,
             )
-            settingsStore.markUnlocked()
-            expenseDao.clearForLedger(pairResponse.ledgerId)
-            settingsStore.clearLastConfirmedSyncAt()
             val restoreFailed = try {
                 syncConfirmedFromService(
                     service = api(normalized, pairResponse.sessionToken),

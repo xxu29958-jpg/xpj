@@ -92,6 +92,10 @@ interface TicketboxSettingsStore {
 
     fun clearLastConfirmedSyncAt()
 
+    fun clearLastConfirmedSyncAtForLedger(ledgerId: String)
+
+    fun clearLedgerScopedRuntimeState()
+
     fun lastUploadAt(): String?
 
     fun saveLastUploadAt(value: String)

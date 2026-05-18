@@ -275,7 +275,7 @@ class LedgerRepositoryTest {
     }
 
     @Test
-    fun acceptInvitationPersistsTokenIdentityAndWipesTargetCache() = runTest {
+    fun acceptInvitationPersistsTokenIdentityAndWipesLocalAccountCache() = runTest {
         val newToken = "session-token-fresh"
         val api = StubApi(
             acceptResult = InvitationAcceptResponseDto(
@@ -295,7 +295,8 @@ class LedgerRepositoryTest {
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
         val apiFactory = LedgerStubApiFactory(api)
         val dao = LedgerFakeDao().apply {
-            // Pre-seed cache for the target ledger so we can prove it gets wiped.
+            // Invitation accept replaces the local account, so all old local
+            // ledger caches must be discarded before the new identity is shown.
             insertEntity(ledgerEntity(id = 1, ledgerId = "L_family", serverId = 100))
             insertEntity(ledgerEntity(id = 2, ledgerId = "L_other", serverId = 200))
         }
@@ -326,9 +327,9 @@ class LedgerRepositoryTest {
         assertEquals("Pixel 8", store.capturedDeviceName)
         assertEquals("member", store.capturedRole)
         assertFalse(store.capturedBoundAt.isNullOrBlank())
-        // Target-ledger cache wiped; unrelated ledger preserved.
+        // The account boundary was replaced; old ledger caches are gone.
         assertNull(dao.find(1))
-        assertNotNull(dao.find(2))
+        assertNull(dao.find(2))
     }
 
     @Test
@@ -1088,6 +1089,8 @@ private class LedgerFakeSettingsStore : TicketboxSettingsStore {
     }
     override fun saveLastConfirmedSyncAt(value: String) = Unit
     override fun clearLastConfirmedSyncAt() = Unit
+    override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) = Unit
+    override fun clearLedgerScopedRuntimeState() = Unit
     override fun lastUploadAt(): String? = null
     override fun saveLastUploadAt(value: String) = Unit
     override fun saveAppSkinKey(skinKey: String) = Unit

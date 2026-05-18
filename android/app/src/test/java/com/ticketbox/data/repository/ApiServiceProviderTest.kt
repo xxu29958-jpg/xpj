@@ -183,6 +183,10 @@ private class ProviderSettingsStore : TicketboxSettingsStore {
 
     override fun clearLastConfirmedSyncAt() = Unit
 
+    override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) = Unit
+
+    override fun clearLedgerScopedRuntimeState() = Unit
+
     override fun lastUploadAt(): String? = null
 
     override fun saveLastUploadAt(value: String) = Unit

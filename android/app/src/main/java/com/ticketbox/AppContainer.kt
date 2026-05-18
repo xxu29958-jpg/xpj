@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.LocalLedgerSessionCoordinator
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
@@ -21,6 +22,11 @@ class AppContainer(context: Context) {
     private val database = AppDatabase.getDatabase(appContext)
     private val apiClient = ApiClient(appContext)
     private val apiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore)
+    private val ledgerSessionCoordinator = LocalLedgerSessionCoordinator(
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        expenseDao = database.expenseDao(),
+    )
 
     val expenseRepository = ExpenseRepository(
         expenseDao = database.expenseDao(),
@@ -28,6 +34,7 @@ class AppContainer(context: Context) {
         settingsStore = settingsStore,
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
+        sessionCoordinator = ledgerSessionCoordinator,
     )
 
     val ledgerRepository = LedgerRepository(
@@ -36,6 +43,7 @@ class AppContainer(context: Context) {
         tokenStore = tokenStore,
         expenseDao = database.expenseDao(),
         apiProvider = apiServiceProvider,
+        sessionCoordinator = ledgerSessionCoordinator,
     )
 
     val recurringRepository = RecurringRepository(
