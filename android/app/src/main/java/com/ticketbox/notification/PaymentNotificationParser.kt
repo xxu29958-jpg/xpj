@@ -31,6 +31,14 @@ object PaymentNotificationParser {
     private val expenseWords = Regex("""(付款成功|成功付款|已成功付款|支付成功|已支付|消费|支出|扣款|交易成功|支出人民币|消费人民币)""")
     private val incomeOrRefundWords = Regex("""(收款|到账|收入|转入|退款|退回|红包)""")
     private val genericTitleWords = Regex("""(微信支付|支付宝|银行|通知|交易提醒|动账提醒|服务通知)""")
+    private val weChatPackages = setOf("com.tencent.mm")
+    private val alipayPackages = setOf("com.eg.android.alipaygphone")
+    private val smsPackages = setOf(
+        "com.android.mms",
+        "com.android.messaging",
+        "com.google.android.apps.messaging",
+        "com.samsung.android.messaging",
+    )
 
     fun parse(snapshot: PaymentNotificationSnapshot): NotificationDraft? {
         val joined = snapshot.joinedText()
@@ -53,19 +61,24 @@ object PaymentNotificationParser {
     private fun resolveSource(packageName: String, text: String): NotificationDraftSource? {
         val normalizedPackage = packageName.lowercase()
         return when {
-            normalizedPackage == "com.tencent.mm" || text.contains("微信支付") -> {
+            normalizedPackage in weChatPackages -> {
                 NotificationDraftSource.WeChat
             }
-            normalizedPackage == "com.eg.android.alipaygphone" || text.contains("支付宝") -> {
+            normalizedPackage in alipayPackages -> {
                 NotificationDraftSource.Alipay
             }
-            normalizedPackage.contains("mms") || normalizedPackage.contains("sms") -> {
+            isSmsPackage(normalizedPackage) -> {
                 if (bankContext.containsMatchIn(text)) NotificationDraftSource.BankSms else null
             }
-            bankContext.containsMatchIn(text) -> NotificationDraftSource.BankApp
             else -> null
         }
     }
+
+    private fun isSmsPackage(packageName: String): Boolean =
+        packageName in smsPackages ||
+            packageName.contains(".mms") ||
+            packageName.contains(".sms") ||
+            packageName.contains("messaging")
 
     private fun parseAmountCents(text: String): Long? {
         val amount = currencyBeforeAmount.find(text)?.groupValues?.getOrNull(1)

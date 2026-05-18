@@ -23,14 +23,67 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
-from app.models import AuthToken, Device, UploadLink
+from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadLink
 from app.services.identity_service import hash_secret
+from app.services.time_service import now_utc
 from conftest import (
     PNG_BYTES,
     admin_headers,
     app_headers,
     upload_url_path,
 )
+
+
+def _insert_external_device_and_upload_link() -> tuple[str, str]:
+    now = now_utc()
+    with SessionLocal() as db:
+        account = Account(display_name="external admin boundary", created_at=now)
+        db.add(account)
+        db.flush()
+        ledger = Ledger(
+            ledger_id="external_admin_boundary",
+            name="external admin boundary",
+            owner_account_id=account.id,
+            created_at=now,
+        )
+        db.add(ledger)
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=ledger.ledger_id,
+                account_id=account.id,
+                role="owner",
+                created_at=now,
+            )
+        )
+        device = Device(
+            account_id=account.id,
+            device_name="external phone",
+            platform="android",
+            created_at=now,
+        )
+        db.add(device)
+        db.flush()
+        db.add(
+            AuthToken(
+                token_hash=hash_secret("external-device-token"),
+                account_id=account.id,
+                device_id=device.id,
+                ledger_id=ledger.ledger_id,
+                scope="app",
+                created_at=now,
+            )
+        )
+        link = UploadLink(
+            token_hash=hash_secret("external-upload-token"),
+            account_id=account.id,
+            device_id=device.id,
+            ledger_id=ledger.ledger_id,
+            created_at=now,
+        )
+        db.add(link)
+        db.commit()
+        return device.public_id, link.public_id
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +128,27 @@ def test_list_devices_returns_public_ids_not_db_ids(client: TestClient) -> None:
         assert "session_token" not in device
         assert "admin_token" not in device
         assert "Bearer" not in str(device)
+
+
+def test_admin_device_management_is_scoped_to_visible_ledgers(client: TestClient) -> None:
+    external_device_public_id, _ = _insert_external_device_and_upload_link()
+
+    response = client.get("/api/admin/devices", headers=admin_headers())
+    assert response.status_code == 200
+    assert "external phone" not in response.text
+
+    rename = client.post(
+        f"/api/admin/devices/{external_device_public_id}/rename",
+        headers=admin_headers(),
+        json={"device_name": "should not rename"},
+    )
+    assert rename.status_code == 404
+
+    revoke = client.post(
+        f"/api/admin/devices/{external_device_public_id}/revoke",
+        headers=admin_headers(),
+    )
+    assert revoke.status_code == 404
 
 
 def test_revoke_device_invalidates_its_tokens_and_upload_links(
@@ -229,6 +303,27 @@ def test_list_upload_links_masks_full_url(client: TestClient) -> None:
         from conftest import CURRENT_UPLOAD_KEY  # noqa: PLC0415
 
         assert CURRENT_UPLOAD_KEY not in body
+
+
+def test_admin_upload_link_management_is_scoped_to_visible_ledgers(client: TestClient) -> None:
+    _, external_link_public_id = _insert_external_device_and_upload_link()
+
+    response = client.get("/api/admin/upload-links", headers=admin_headers())
+    assert response.status_code == 200
+    assert external_link_public_id not in response.text
+
+    revoke = client.post(
+        f"/api/admin/upload-links/{external_link_public_id}/revoke",
+        headers=admin_headers(),
+    )
+    assert revoke.status_code == 404
+
+    create = client.post(
+        "/api/admin/upload-links",
+        headers=admin_headers(),
+        json={"ledger_id": "external_admin_boundary", "default_timezone": "Asia/Shanghai"},
+    )
+    assert create.status_code == 404
 
 
 def test_create_upload_link_returns_secret_once(client: TestClient) -> None:

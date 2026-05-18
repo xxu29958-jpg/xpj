@@ -182,13 +182,14 @@ class LedgerRepositoryTest {
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val apiFactory = LedgerStubApiFactory(api)
         val dao = LedgerFakeDao().apply {
             // Pre-seed the cache for both ledgers.
             insertEntity(ledgerEntity(id = 1, ledgerId = "L_owner", serverId = 100))
             insertEntity(ledgerEntity(id = 2, ledgerId = "L_house", serverId = 200))
         }
         val repo = LedgerRepository(
-            apiClient = LedgerStubApiFactory(api),
+            apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
             expenseDao = dao,
@@ -247,13 +248,14 @@ class LedgerRepositoryTest {
         )
         val store = LedgerFakeSettingsStore().apply { saveServerUrl("https://api.example.com") }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val apiFactory = LedgerStubApiFactory(api)
         val dao = LedgerFakeDao().apply {
             // Pre-seed cache for the target ledger so we can prove it gets wiped.
             insertEntity(ledgerEntity(id = 1, ledgerId = "L_family", serverId = 100))
             insertEntity(ledgerEntity(id = 2, ledgerId = "L_other", serverId = 200))
         }
         val repo = LedgerRepository(
-            apiClient = LedgerStubApiFactory(api),
+            apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
             expenseDao = dao,
@@ -270,6 +272,8 @@ class LedgerRepositoryTest {
         // The plain token is trimmed before being sent to the server.
         assertEquals("inv_PLAINTOKEN", api.acceptRequests.single().inviteToken)
         assertEquals("android", api.acceptRequests.single().platform)
+        // Invitation accept is a public endpoint; do not leak the previous session token.
+        assertNull(apiFactory.tokenProviders.first().invoke())
         // Token rotated; identity captured; active ledger switched.
         assertEquals(newToken, tokenStore.getToken())
         assertEquals("L_family", store.activeLedgerId())
@@ -305,8 +309,9 @@ class LedgerRepositoryTest {
             )
         }
         val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val apiFactory = LedgerStubApiFactory(api)
         val repo = LedgerRepository(
-            apiClient = LedgerStubApiFactory(api),
+            apiClient = apiFactory,
             settingsStore = store,
             tokenStore = tokenStore,
             expenseDao = LedgerFakeDao(),
@@ -319,6 +324,8 @@ class LedgerRepositoryTest {
         assertEquals("viewer", preview.role)
         assertEquals("2026-05-20T00:00:00Z", preview.expiresAt)
         assertEquals("inv_PREVIEW", api.previewRequests.single().inviteToken)
+        // Invitation preview is a public endpoint; it must not attach the existing token.
+        assertNull(apiFactory.tokenProviders.single().invoke())
         assertEquals("old-token", tokenStore.getToken())
         assertEquals("L_old", store.activeLedgerId())
         assertEquals("旧账号", store.accountName())
@@ -761,7 +768,12 @@ class LedgerRepositoryTest {
 }
 
 private class LedgerStubApiFactory(private val service: ApiService) : ApiServiceFactory {
-    override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = service
+    val tokenProviders: MutableList<() -> String?> = mutableListOf()
+
+    override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
+        tokenProviders += tokenProvider
+        return service
+    }
 }
 
 private class StubApi(

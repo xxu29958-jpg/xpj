@@ -18,6 +18,7 @@ E:\projects\xiaopiaojia\
     diagnose_ticketbox.ps1
     ensure_ticketbox_runtime.ps1
     maintenance_ticketbox.ps1
+    restore_ticketbox_db.ps1
     install_windows_tasks.ps1
     real_device_preflight.ps1
     start_backend.ps1
@@ -145,7 +146,6 @@ backend\
     backup_database.ps1
     export_confirmed.ps1
     install_startup_task.ps1
-    restore_database.ps1
     preflight_v1_migration.py
     setup_backend.ps1
     start_backend.ps1

@@ -173,6 +173,40 @@ def test_recurring_item_state_transitions(client: TestClient) -> None:
     assert blocked.json()["error"] == "recurring_item_archived"
 
 
+def test_confirm_candidate_reactivates_archived_item(client: TestClient) -> None:
+    item = _confirm_candidate(client)
+    public_id = item["public_id"]
+
+    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=app_headers())
+    assert archived.status_code == 200, archived.json()
+    assert archived.json()["status"] == "archived"
+
+    last_seen = _seed_monthly_candidate(merchant="ChatGPT Plus", amount_cents=20000)
+    response = client.post(
+        "/api/recurring/from-candidate?timezone=UTC",
+        headers=app_headers(),
+        json={
+            "merchant": "ChatGPT Plus",
+            "amount_cents": 20000,
+            "occurrence_count": 3,
+            "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
+            "confidence": "high",
+            "frequency": "monthly",
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert payload["public_id"] == public_id
+    assert payload["status"] == "active"
+    assert payload["archived_at"] is None
+    assert payload["paused_at"] is None
+
+    listed = client.get("/api/recurring/items", headers=app_headers())
+    assert listed.status_code == 200, listed.json()
+    assert [entry["public_id"] for entry in listed.json()["items"]] == [public_id]
+
+
 def test_viewer_cannot_mutate_recurring_items(client: TestClient) -> None:
     item = _confirm_candidate(client)
     public_id = item["public_id"]

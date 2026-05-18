@@ -83,6 +83,45 @@ class PaymentNotificationParserTest {
         assertNull(draft)
     }
 
+    @Test
+    fun rejectsWechatTextFromUntrustedPackage() {
+        val draft = PaymentNotificationParser.parse(
+            snapshot(
+                packageName = "com.example.spoof",
+                title = "微信支付",
+                text = "你已成功付款给 星巴克 ¥25.80",
+            ),
+        )
+
+        assertNull(draft)
+    }
+
+    @Test
+    fun rejectsAlipayTextFromUntrustedPackage() {
+        val draft = PaymentNotificationParser.parse(
+            snapshot(
+                packageName = "com.example.spoof",
+                title = "支付宝",
+                text = "付款成功 ￥12.34 商家：便利蜂",
+            ),
+        )
+
+        assertNull(draft)
+    }
+
+    @Test
+    fun rejectsBankContextFromNonSmsPackage() {
+        val draft = PaymentNotificationParser.parse(
+            snapshot(
+                packageName = "com.example.spoof",
+                title = "招商银行",
+                text = "您尾号1234储蓄账户支出人民币88.00元，交易商户：美团",
+            ),
+        )
+
+        assertNull(draft)
+    }
+
     private fun snapshot(
         packageName: String,
         title: String,

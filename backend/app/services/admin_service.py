@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -67,13 +67,20 @@ class UploadLinkSecret:
     default_timezone: str | None
 
 
-def _device_with_relations(db: Session, device: Device) -> DeviceSummary:
+def _device_with_relations(
+    db: Session,
+    device: Device,
+    *,
+    ledger_ids: set[str] | None = None,
+) -> DeviceSummary:
     account = db.get(Account, device.account_id)
     # A device's nominal ledger is its most recently used active auth_token's
     # ledger; if none, fall back to the most recent token of any state.
+    token_statement = select(AuthToken).where(AuthToken.device_id == device.id)
+    if ledger_ids is not None:
+        token_statement = token_statement.where(AuthToken.ledger_id.in_(ledger_ids))
     token = db.scalar(
-        select(AuthToken)
-        .where(AuthToken.device_id == device.id)
+        token_statement
         .order_by(AuthToken.last_used_at.desc().nullslast(), AuthToken.id.desc())
         .limit(1)
     )
@@ -97,26 +104,66 @@ def _device_with_relations(db: Session, device: Device) -> DeviceSummary:
     )
 
 
-def list_devices(db: Session) -> list[DeviceSummary]:
-    devices = db.scalars(select(Device).order_by(Device.id.asc())).all()
-    return [_device_with_relations(db, d) for d in devices]
+def _linked_to_allowed_ledger(db: Session, device_id: int, ledger_ids: set[str] | None) -> bool:
+    if ledger_ids is None:
+        return True
+    if not ledger_ids:
+        return False
+    token_match = db.scalar(
+        select(
+            exists()
+            .where(AuthToken.device_id == device_id)
+            .where(AuthToken.ledger_id.in_(ledger_ids))
+        )
+    )
+    link_match = db.scalar(
+        select(
+            exists()
+            .where(UploadLink.device_id == device_id)
+            .where(UploadLink.ledger_id.in_(ledger_ids))
+        )
+    )
+    return bool(token_match or link_match)
 
 
-def _device_by_public_id(db: Session, public_id: str) -> Device:
+def list_devices(db: Session, *, ledger_ids: set[str] | None = None) -> list[DeviceSummary]:
+    statement = select(Device).order_by(Device.id.asc())
+    if ledger_ids is not None:
+        if not ledger_ids:
+            return []
+        token_device_ids = select(AuthToken.device_id).where(AuthToken.ledger_id.in_(ledger_ids))
+        link_device_ids = select(UploadLink.device_id).where(UploadLink.ledger_id.in_(ledger_ids))
+        statement = statement.where(Device.id.in_(token_device_ids) | Device.id.in_(link_device_ids))
+    devices = db.scalars(statement).all()
+    return [_device_with_relations(db, d, ledger_ids=ledger_ids) for d in devices]
+
+
+def _device_by_public_id(
+    db: Session,
+    public_id: str,
+    *,
+    ledger_ids: set[str] | None = None,
+) -> Device:
     device = db.scalar(select(Device).where(Device.public_id == public_id).limit(1))
-    if device is None:
+    if device is None or not _linked_to_allowed_ledger(db, device.id, ledger_ids):
         raise AppError("invalid_request", "设备不存在。", status_code=404)
     return device
 
 
-def revoke_device(db: Session, *, public_id: str, current_device_public_id: str) -> DeviceSummary:
+def revoke_device(
+    db: Session,
+    *,
+    public_id: str,
+    current_device_public_id: str,
+    ledger_ids: set[str] | None = None,
+) -> DeviceSummary:
     if public_id == current_device_public_id:
         raise AppError(
             "invalid_request",
             "不能停用当前正在使用的管理员设备，请先用本地脚本切换。",
             status_code=409,
         )
-    device = _device_by_public_id(db, public_id)
+    device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
     now = now_utc()
     if device.revoked_at is None:
         device.revoked_at = now
@@ -135,18 +182,24 @@ def revoke_device(db: Session, *, public_id: str, current_device_public_id: str)
     )
     db.commit()
     db.refresh(device)
-    return _device_with_relations(db, device)
+    return _device_with_relations(db, device, ledger_ids=ledger_ids)
 
 
-def rename_device(db: Session, *, public_id: str, new_name: str) -> DeviceSummary:
+def rename_device(
+    db: Session,
+    *,
+    public_id: str,
+    new_name: str,
+    ledger_ids: set[str] | None = None,
+) -> DeviceSummary:
     name = (new_name or "").strip()
     if not name or len(name) > 120:
         raise AppError("invalid_request", "设备名称需在 1-120 字符之间。", status_code=422)
-    device = _device_by_public_id(db, public_id)
+    device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
     device.device_name = name
     db.commit()
     db.refresh(device)
-    return _device_with_relations(db, device)
+    return _device_with_relations(db, device, ledger_ids=ledger_ids)
 
 
 def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
@@ -169,14 +222,24 @@ def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
     )
 
 
-def list_upload_links(db: Session) -> list[UploadLinkSummary]:
-    links = db.scalars(select(UploadLink).order_by(UploadLink.id.asc())).all()
+def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> list[UploadLinkSummary]:
+    statement = select(UploadLink).order_by(UploadLink.id.asc())
+    if ledger_ids is not None:
+        if not ledger_ids:
+            return []
+        statement = statement.where(UploadLink.ledger_id.in_(ledger_ids))
+    links = db.scalars(statement).all()
     return [_upload_link_summary(db, link) for link in links]
 
 
-def _upload_link_by_public_id(db: Session, public_id: str) -> UploadLink:
+def _upload_link_by_public_id(
+    db: Session,
+    public_id: str,
+    *,
+    ledger_ids: set[str] | None = None,
+) -> UploadLink:
     link = db.scalar(select(UploadLink).where(UploadLink.public_id == public_id).limit(1))
-    if link is None:
+    if link is None or (ledger_ids is not None and link.ledger_id not in ledger_ids):
         raise AppError("invalid_request", "上传链接不存在。", status_code=404)
     return link
 
@@ -187,7 +250,10 @@ def create_upload_link(
     ledger_id: str,
     admin_account_id: int,
     default_timezone: str | None,
+    ledger_ids: set[str] | None = None,
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
+    if ledger_ids is not None and ledger_id not in ledger_ids:
+        raise AppError("invalid_request", "账本不存在。", status_code=404)
     ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
     if ledger is None or ledger.archived_at is not None:
         raise AppError("invalid_request", "账本不存在。", status_code=404)
@@ -216,9 +282,9 @@ def create_upload_link(
 
 
 def rotate_upload_link(
-    db: Session, *, public_id: str
+    db: Session, *, public_id: str, ledger_ids: set[str] | None = None
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
-    link = _upload_link_by_public_id(db, public_id)
+    link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
     if link.revoked_at is not None:
         raise AppError(
             "invalid_request",
@@ -248,8 +314,13 @@ def rotate_upload_link(
     return summary, secret
 
 
-def revoke_upload_link(db: Session, *, public_id: str) -> UploadLinkSummary:
-    link = _upload_link_by_public_id(db, public_id)
+def revoke_upload_link(
+    db: Session,
+    *,
+    public_id: str,
+    ledger_ids: set[str] | None = None,
+) -> UploadLinkSummary:
+    link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
     if link.revoked_at is None:
         link.revoked_at = now_utc()
         db.commit()
@@ -257,7 +328,13 @@ def revoke_upload_link(db: Session, *, public_id: str) -> UploadLinkSummary:
     return _upload_link_summary(db, link)
 
 
-def delete_device(db: Session, *, public_id: str, current_device_public_id: str) -> None:
+def delete_device(
+    db: Session,
+    *,
+    public_id: str,
+    current_device_public_id: str,
+    ledger_ids: set[str] | None = None,
+) -> None:
     """Permanently remove a device row and its dependents.
 
     Only allowed for devices that have been revoked first; the active admin
@@ -271,7 +348,7 @@ def delete_device(db: Session, *, public_id: str, current_device_public_id: str)
             "不能删除当前正在使用的管理员设备。",
             status_code=409,
         )
-    device = _device_by_public_id(db, public_id)
+    device = _device_by_public_id(db, public_id, ledger_ids=ledger_ids)
     if device.revoked_at is None:
         raise AppError(
             "invalid_request",
@@ -284,13 +361,18 @@ def delete_device(db: Session, *, public_id: str, current_device_public_id: str)
     db.commit()
 
 
-def delete_upload_link(db: Session, *, public_id: str) -> None:
+def delete_upload_link(
+    db: Session,
+    *,
+    public_id: str,
+    ledger_ids: set[str] | None = None,
+) -> None:
     """Permanently remove an UploadLink row.
 
     Only allowed for already-revoked links so we never delete a key that an
     iPhone Shortcut might still be using.
     """
-    link = _upload_link_by_public_id(db, public_id)
+    link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
     if link.revoked_at is None:
         raise AppError(
             "invalid_request",

@@ -3,13 +3,16 @@ from __future__ import annotations
 from dataclasses import replace
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from api_contract_helpers import (
     _stored_upload_files,
     make_heic_bytes,
     upload_png_as_raw_body,
 )
+from app.database import SessionLocal
 from app.main import app
+from app.models import LedgerMember
 from conftest import (
     PNG_BYTES,
     TEST_UPLOAD_RELATIVE,
@@ -85,6 +88,29 @@ def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> 
     )
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
+    assert _stored_upload_files() == []
+
+
+def test_upload_link_rejects_viewer_after_role_downgrade_before_saving_file(
+    client: TestClient,
+) -> None:
+    with SessionLocal() as db:
+        members = db.scalars(
+            select(LedgerMember).where(LedgerMember.ledger_id == "owner")
+        ).all()
+        assert members
+        for member in members:
+            member.role = "viewer"
+        db.commit()
+
+    response = client.post(
+        upload_url_path(),
+        headers={**upload_headers(), "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "permission_denied"
     assert _stored_upload_files() == []
 
 

@@ -60,11 +60,11 @@ powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1
 ### 恢复到某个备份
 
 ```powershell
-cd E:\projects\xiaopiaojia\backend
-powershell -ExecutionPolicy Bypass -File scripts\restore_database.ps1 -BackupPath backups\ticketbox-YYYYMMDD-HHMMSS.db
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath backend\backups\ticketbox-YYYYMMDD-HHMMSS.db
 ```
 
-执行前后端必须停止。`uploads/` 目录不动——图片文件路径以数据库 `expenses.image_path` 为权威，回滚库时图片自然对齐。
+脚本会拒绝在后端运行时覆盖数据库，并通过临时文件校验后再原子替换。`uploads/` 目录不动——图片文件路径以数据库 `expenses.image_path` 为权威，回滚库时图片自然对齐。
 
 ### 版本特定的数据库回滚注意
 

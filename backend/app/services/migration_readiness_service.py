@@ -33,6 +33,8 @@ REQUIRED_V09_TABLES = {
     "invitations",
     "ledger_audit_logs",
     "expenses",
+    "expense_items",
+    "expense_splits",
     "category_rules",
     "duplicate_ignores",
     "recurring_items",
@@ -45,6 +47,8 @@ REQUIRED_V09_TABLES = {
     "expense_tags",
     "rule_application_batches",
     "rule_application_changes",
+    "exchange_rates",
+    "fx_rates",
 }
 
 REQUIRED_V09_INDEXES = {
@@ -67,6 +71,20 @@ REQUIRED_V09_INDEXES = {
     },
     "recurring_items": {
         "ix_recurring_items_tenant_status_next",
+    },
+    "expense_items": {
+        "ix_expense_items_tenant_expense_position",
+        "ix_expense_items_tenant_public_id",
+    },
+    "expense_splits": {
+        "ix_expense_splits_tenant_expense_position",
+        "ix_expense_splits_tenant_public_id",
+    },
+    "exchange_rates": {
+        "ix_exchange_rates_tenant_currency_date",
+    },
+    "fx_rates": {
+        "ix_fx_rates_source_home_currency_date",
     },
 }
 

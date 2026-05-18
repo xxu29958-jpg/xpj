@@ -3,9 +3,9 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.BudgetActions
-import com.ticketbox.data.repository.ExpenseRepository
-import com.ticketbox.data.repository.RecurringRepository
+import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.data.repository.StatsActions
 import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.DailySpend
 import com.ticketbox.domain.model.DashboardCard
@@ -32,6 +32,7 @@ import com.ticketbox.domain.model.toBudgetProgress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
@@ -62,22 +63,71 @@ data class StatsUiState(
     val message: String? = null,
 )
 
+private data class BudgetCacheKey(val ledgerId: String?, val month: String)
+
+private data class StatsRefreshSnapshot(
+    val generation: Long,
+    val ledgerId: String?,
+    val month: String,
+    val selectedTag: String,
+)
+
 class StatsViewModel(
-    private val repository: ExpenseRepository,
-    private val recurringRepository: RecurringRepository,
+    private val repository: StatsActions,
+    private val recurringRepository: RecurringActions,
     private val budgetRepository: BudgetActions? = null,
     private val reportsRepository: ReportsActions? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
     private var confirmedCache: List<Expense> = emptyList()
-    private val budgetCache = mutableMapOf<String, BudgetProgress?>()
+    private val budgetCache = mutableMapOf<BudgetCacheKey, BudgetProgress?>()
+    private var activeLedgerId: String? = null
+    private var refreshGeneration = 0L
+    private var observedLedgerOnce = false
 
     init {
-        loadMonths()
-        loadTags()
+        observeLedgerChanges()
         observeDailyTrend()
-        refresh()
+    }
+
+    private fun observeLedgerChanges() {
+        viewModelScope.launch {
+            repository.observeActiveLedgerId()
+                .distinctUntilChanged()
+                .collect { ledgerId ->
+                    val normalizedLedgerId = ledgerId?.takeIf { it.isNotBlank() }
+                    if (observedLedgerOnce && activeLedgerId == normalizedLedgerId) {
+                        return@collect
+                    }
+                    observedLedgerOnce = true
+                    activeLedgerId = normalizedLedgerId
+                    refreshGeneration += 1
+                    confirmedCache = emptyList()
+                    budgetCache.clear()
+                    _uiState.update {
+                        it.copy(
+                            stats = null,
+                            lifestyleStats = null,
+                            dailyTrend = emptyList(),
+                            monthComparison = null,
+                            budgetProgress = null,
+                            categoryInsight = null,
+                            recurringItems = emptyList(),
+                            recurringCandidates = emptyList(),
+                            reportsOverview = null,
+                            reportGoals = emptyList(),
+                            dashboardCardsLoading = false,
+                            reportsLoading = false,
+                            dataQuality = null,
+                            message = null,
+                        )
+                    }
+                    loadMonths()
+                    loadTags()
+                    refresh()
+                }
+        }
     }
 
     private fun loadMonths() {
@@ -172,6 +222,7 @@ class StatsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
+            val snapshot = beginRefreshSnapshot()
             _uiState.update {
                 it.copy(
                     loading = true,
@@ -179,45 +230,49 @@ class StatsViewModel(
                     lastUploadAt = repository.lastUploadAt(),
                 )
             }
-            val month = _uiState.value.month.trim().ifBlank { null }
-            val tag = _uiState.value.selectedTag.trim().ifBlank { null }
+            val month = snapshot.month.trim().ifBlank { null }
+            val tag = snapshot.selectedTag.trim().ifBlank { null }
             val selectedMonth = month ?: YearMonth.now().toString()
             val shouldLoadReports = tag == null
             budgetRepository?.let { budgetRepo ->
                 launch {
-                    budgetRepo.monthlyBudget(selectedMonth)
-                        .onSuccess { budget ->
-                            budgetCache[selectedMonth] = budget.toBudgetProgress()
-                            _uiState.update {
-                                it.copy(budgetProgress = budgetProgressFor(it.month, it.stats))
-                            }
+                    val result = budgetRepo.monthlyBudget(selectedMonth)
+                    if (!snapshot.isCurrent()) return@launch
+                    result.onSuccess { budget ->
+                        budgetCache[BudgetCacheKey(snapshot.ledgerId, selectedMonth)] = budget.toBudgetProgress()
+                        _uiState.update {
+                            it.copy(budgetProgress = budgetProgressFor(it.month, it.stats))
                         }
+                    }
                 }
             }
             // Fire-and-forget recurring reads; stats should remain usable if this section fails.
             launch {
-                recurringRepository.items(status = null, includeArchived = false, month = month)
-                    .onSuccess { items ->
-                        _uiState.update { it.copy(recurringItems = items) }
-                    }
+                val result = recurringRepository.items(status = null, includeArchived = false, month = month)
+                if (!snapshot.isCurrent()) return@launch
+                result.onSuccess { items ->
+                    _uiState.update { it.copy(recurringItems = items) }
+                }
             }
             launch {
-                recurringRepository.candidates()
-                    .onSuccess { items ->
-                        _uiState.update { it.copy(recurringCandidates = items) }
-                    }
+                val result = recurringRepository.candidates()
+                if (!snapshot.isCurrent()) return@launch
+                result.onSuccess { items ->
+                    _uiState.update { it.copy(recurringCandidates = items) }
+                }
             }
             // Fire-and-forget data quality summary; failure is non-fatal.
             launch {
-                repository.dataQualitySummary()
-                    .onSuccess { summary ->
-                        _uiState.update { it.copy(dataQuality = summary) }
-                    }
+                val result = repository.dataQualitySummary()
+                if (!snapshot.isCurrent()) return@launch
+                result.onSuccess { summary ->
+                    _uiState.update { it.copy(dataQuality = summary) }
+                }
             }
             reportsRepository?.let { reportsRepo ->
-                loadDashboardCards(reportsRepo)
+                loadDashboardCards(reportsRepo, snapshot)
                 if (shouldLoadReports) {
-                    loadReports(reportsRepo, selectedMonth)
+                    loadReports(reportsRepo, snapshot, selectedMonth)
                 } else {
                     _uiState.update {
                         it.copy(
@@ -229,11 +284,16 @@ class StatsViewModel(
                     }
                 }
             }
-            repository.monthlyStats(month = month, tag = tag)
+            val statsResult = repository.monthlyStats(month = month, tag = tag)
+            if (!snapshot.isCurrent()) return@launch
+            statsResult
                 .onSuccess { stats ->
-                    repository.lifestyleStats(month)
+                    val lifestyleResult = repository.lifestyleStats(month)
+                    if (!snapshot.isCurrent()) return@launch
+                    lifestyleResult
                         .onSuccess { lifestyle ->
                             repository.syncConfirmed(month = month, category = null, tag = tag)
+                            if (!snapshot.isCurrent()) return@launch
                             _uiState.update {
                                 it.copy(
                                     stats = stats,
@@ -245,6 +305,7 @@ class StatsViewModel(
                             }
                         }
                         .onFailure { error ->
+                            if (!snapshot.isCurrent()) return@launch
                             _uiState.update {
                                 it.copy(
                                     stats = stats,
@@ -257,6 +318,7 @@ class StatsViewModel(
                         }
                 }
                 .onFailure { error ->
+                    if (!snapshot.isCurrent()) return@launch
                     _uiState.update {
                         val fallbackStats = month?.let { value ->
                             monthlyStatsFromConfirmedExpenses(confirmedCache, value, tag.orEmpty())
@@ -278,7 +340,26 @@ class StatsViewModel(
         }
     }
 
-    private fun loadDashboardCards(reportsRepo: ReportsActions) {
+    private fun beginRefreshSnapshot(): StatsRefreshSnapshot {
+        val state = _uiState.value
+        refreshGeneration += 1
+        return StatsRefreshSnapshot(
+            generation = refreshGeneration,
+            ledgerId = activeLedgerId,
+            month = state.month,
+            selectedTag = state.selectedTag.trim(),
+        )
+    }
+
+    private fun StatsRefreshSnapshot.isCurrent(): Boolean {
+        val state = _uiState.value
+        return generation == refreshGeneration &&
+            ledgerId == activeLedgerId &&
+            month == state.month &&
+            selectedTag == state.selectedTag.trim()
+    }
+
+    private fun loadDashboardCards(reportsRepo: ReportsActions, snapshot: StatsRefreshSnapshot) {
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -286,7 +367,9 @@ class StatsViewModel(
                     dashboardCardsMessage = null,
                 )
             }
-            reportsRepo.dashboardCards(DashboardSurface.Android)
+            val result = reportsRepo.dashboardCards(DashboardSurface.Android)
+            if (!snapshot.isCurrent()) return@launch
+            result
                 .onSuccess { cards ->
                     _uiState.update {
                         it.copy(
@@ -307,7 +390,7 @@ class StatsViewModel(
         }
     }
 
-    private fun loadReports(reportsRepo: ReportsActions, month: String) {
+    private fun loadReports(reportsRepo: ReportsActions, snapshot: StatsRefreshSnapshot, month: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(reportsLoading = true, reportsMessage = null) }
             val overviewResult = reportsRepo.reportsOverview(
@@ -317,8 +400,7 @@ class StatsViewModel(
                 ),
             )
             val goalsResult = reportsRepo.goals(month = month)
-            val currentState = _uiState.value
-            if (currentState.month != month || currentState.selectedTag.isNotBlank()) {
+            if (!snapshot.isCurrent()) {
                 return@launch
             }
             _uiState.update {
@@ -338,7 +420,8 @@ class StatsViewModel(
 
     private fun budgetProgressFor(month: String, stats: MonthlyStats?): BudgetProgress? {
         if (budgetRepository != null) {
-            return if (budgetCache.containsKey(month)) budgetCache[month] else null
+            val key = BudgetCacheKey(activeLedgerId, month)
+            return if (budgetCache.containsKey(key)) budgetCache[key] else null
         }
         return monthlyBudgetProgress(stats, repository.monthlyBudgetCents())
     }

@@ -70,6 +70,23 @@ interface LedgerActions {
     suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense>
 }
 
+interface StatsActions {
+    fun observeActiveLedgerId(): Flow<String?>
+    fun observeConfirmed(): Flow<List<Expense>>
+    fun monthlyBudgetCents(): Long?
+    fun lastUploadAt(): String?
+    suspend fun months(): Result<List<String>>
+    suspend fun tags(): Result<List<String>>
+    suspend fun monthlyStats(month: String? = null, tag: String? = null): Result<MonthlyStats>
+    suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats>
+    suspend fun syncConfirmed(
+        month: String?,
+        category: String?,
+        tag: String?,
+    ): Result<List<Expense>>
+    suspend fun dataQualitySummary(): Result<DataQualitySummary>
+}
+
 internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): String {
     return when (errorCode.trim()) {
         "invalid_token" -> "绑定已失效，请重新绑定账本。"
@@ -114,7 +131,7 @@ class ExpenseRepository(
     private val tokenStore: SessionTokenStore,
     private val deviceNameProvider: () -> String = ::defaultAndroidDeviceName,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
-) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions {
+) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
     private companion object {
         const val NETWORK_LOG_TAG = "TicketboxNetwork"
     }
@@ -586,11 +603,11 @@ class ExpenseRepository(
             .distinctUntilChanged()
             .flatMapLatest { id -> expenseDao.observeConfirmed(id).map { rows -> rows.map { it.toDomain() } } }
 
-    suspend fun monthlyStats(month: String? = null, tag: String? = null): Result<MonthlyStats> = errorHandler.safeCall {
+    override suspend fun monthlyStats(month: String?, tag: String?): Result<MonthlyStats> = errorHandler.safeCall {
         api().monthlyStats(month = month, tag = tag?.trim()?.ifBlank { null }, timezone = currentTimezoneId()).toDomain()
     }
 
-    suspend fun lifestyleStats(month: String? = null): Result<LifestyleStats> = errorHandler.safeCall {
+    override suspend fun lifestyleStats(month: String?): Result<LifestyleStats> = errorHandler.safeCall {
         api().lifestyleStats(month = month, timezone = currentTimezoneId()).toDomain()
     }
 
@@ -598,7 +615,7 @@ class ExpenseRepository(
         api().recurringCandidates(timezone = currentTimezoneId()).items.map { it.toDomain() }
     }
 
-    suspend fun dataQualitySummary(): Result<DataQualitySummary> = errorHandler.safeCall {
+    override suspend fun dataQualitySummary(): Result<DataQualitySummary> = errorHandler.safeCall {
         api().dataQualitySummary().toDomain()
     }
 
@@ -609,11 +626,11 @@ class ExpenseRepository(
         settings.toDomain()
     }
 
-    fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()
+    override fun monthlyBudgetCents(): Long? = settingsStore.monthlyBudgetCents()
 
     override fun lastConfirmedSyncAt(): String? = settingsStore.lastConfirmedSyncAt()
 
-    fun lastUploadAt(): String? = settingsStore.lastUploadAt()
+    override fun lastUploadAt(): String? = settingsStore.lastUploadAt()
 
     fun saveMonthlyBudgetCents(amountCents: Long?) {
         settingsStore.saveMonthlyBudgetCents(amountCents)

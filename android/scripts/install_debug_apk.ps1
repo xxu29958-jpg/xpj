@@ -187,7 +187,7 @@ Write-Host "apk: $resolvedApk"
 $deviceSerial = Select-DeviceSerial -AdbPath $adbPath -RequestedSerial $Serial
 Write-Host "设备：$deviceSerial"
 
-$installArgs = @("-s", $deviceSerial, "install", "-r", $resolvedApk)
+$installArgs = @("-s", $deviceSerial, "install", "-r", "-d", $resolvedApk)
 $installOutput = @(& $adbPath @installArgs 2>&1)
 foreach ($line in $installOutput) {
     Write-Host $line

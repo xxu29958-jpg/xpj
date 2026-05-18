@@ -19,6 +19,55 @@ from app.main import app
 from app.routes.owner_console import _require_local
 
 
+def _insert_external_console_device() -> str:
+    from app.database import SessionLocal
+    from app.models import Account, AuthToken, Device, Ledger, LedgerMember
+    from app.services.identity_service import hash_secret
+    from app.services.time_service import now_utc
+
+    now = now_utc()
+    with SessionLocal() as db:
+        account = Account(display_name="external console boundary", created_at=now)
+        db.add(account)
+        db.flush()
+        ledger = Ledger(
+            ledger_id="external_console_boundary",
+            name="external console boundary",
+            owner_account_id=account.id,
+            created_at=now,
+        )
+        db.add(ledger)
+        db.flush()
+        db.add(
+            LedgerMember(
+                ledger_id=ledger.ledger_id,
+                account_id=account.id,
+                role="owner",
+                created_at=now,
+            )
+        )
+        device = Device(
+            account_id=account.id,
+            device_name="external console phone",
+            platform="android",
+            created_at=now,
+        )
+        db.add(device)
+        db.flush()
+        db.add(
+            AuthToken(
+                token_hash=hash_secret("external-console-token"),
+                account_id=account.id,
+                device_id=device.id,
+                ledger_id=ledger.ledger_id,
+                scope="app",
+                created_at=now,
+            )
+        )
+        db.commit()
+        return device.public_id
+
+
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
     """Client with loopback check bypassed (simulates 127.0.0.1 access)."""
@@ -54,6 +103,27 @@ def test_owner_devices_page_opens(local_client: TestClient) -> None:
     resp = local_client.get("/owner/devices")
     assert resp.status_code == 200
     assert "设备管理" in resp.text or "设备" in resp.text
+
+
+def test_owner_devices_page_and_actions_are_ledger_scoped(local_client: TestClient) -> None:
+    external_public_id = _insert_external_console_device()
+
+    resp = local_client.get("/owner/devices")
+    assert resp.status_code == 200
+    assert "external console phone" not in resp.text
+
+    rename = local_client.post(
+        f"/owner/devices/{external_public_id}/rename",
+        data={"device_name": "should not rename"},
+        follow_redirects=False,
+    )
+    assert rename.status_code == 404
+
+    revoke = local_client.post(
+        f"/owner/devices/{external_public_id}/revoke",
+        follow_redirects=False,
+    )
+    assert revoke.status_code == 404
 
 
 def test_owner_devices_html_no_token_hash(local_client: TestClient) -> None:
@@ -646,6 +716,7 @@ def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.M
         ("https://api.example.com/foo/", "路径"),
         ("https://api.example.com?x=1",  "查询"),
         ("https://api.example.com#abc",  "片段"),
+        ("https://", "主机"),
     ],
 )
 def test_owner_settings_rejects_non_origin_url(
@@ -713,4 +784,3 @@ def test_owner_settings_trailing_slash_stripped(
     finally:
         monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
         app_config.get_settings.cache_clear()
-

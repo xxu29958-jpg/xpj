@@ -118,6 +118,12 @@ def _validate_public_base_url(raw: str) -> str:
     if " " in value or "\n" in value or "\r" in value:
         raise AppError("invalid_request", "公网域名不能包含空格或换行。", status_code=422)
     parsed = urlparse(value)
+    if not parsed.netloc:
+        raise AppError(
+            "invalid_request",
+            "公网域名必须包含主机名，例如 https://api.example.com。",
+            status_code=422,
+        )
     if parsed.path.rstrip("/"):
         raise AppError(
             "invalid_request",

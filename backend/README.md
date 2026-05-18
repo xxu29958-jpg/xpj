@@ -181,12 +181,12 @@ powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1 -Keep 60
 从备份恢复数据库：
 
 ```powershell
-cd E:\projects\xiaopiaojia\backend
-powershell -ExecutionPolicy Bypass -File scripts\restore_database.ps1 `
-  -BackupFile backups\ticketbox-20260504-120000.db
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 `
+  -BackupPath backend\backups\ticketbox-20260504-120000.db
 ```
 
-恢复脚本只允许从 `backend\backups\ticketbox-*.db` 恢复，并会在覆盖前自动备份当前数据库。
+恢复脚本会检查服务运行状态、校验备份文件，并用临时文件原子替换正式数据库。
 
 ## PowerShell 测试
 

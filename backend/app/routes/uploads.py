@@ -18,6 +18,7 @@ from app.schemas import UploadCheckResponse, UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
 from app.services.file_service import SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
 from app.services.identity_service import authenticate_upload_link, upload_link_default_timezone
+from app.services.permission_service import require_write_expense
 from app.tenants import AuthContext
 
 
@@ -214,6 +215,7 @@ async def upload_link_screenshot(
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     auth = authenticate_upload_link(db, upload_key)
+    require_write_expense(auth)
     resolved_timezone = (
         (timezone or "").strip()
         or (tz or "").strip()

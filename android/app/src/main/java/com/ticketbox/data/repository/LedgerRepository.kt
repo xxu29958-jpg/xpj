@@ -60,6 +60,12 @@ class LedgerRepository(
 
     private fun api() = apiProvider.current()
 
+    private fun unauthenticatedApi() = apiProvider.unauthenticated(
+        requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
+            "账本地址未绑定"
+        },
+    )
+
     suspend fun refreshLedgers(): Result<List<LedgerSummary>> = wrap {
         val response = api().listLedgers()
         val summaries = response.ledgers.map { it.toSummary() }
@@ -183,7 +189,7 @@ class LedgerRepository(
     suspend fun previewInvitation(inviteToken: String): Result<InvitationPreview> = wrap {
         val cleanToken = inviteToken.trim()
         require(cleanToken.isNotEmpty()) { "请粘贴邀请明文。" }
-        api().previewInvitation(
+        unauthenticatedApi().previewInvitation(
             InvitationPreviewRequestDto(inviteToken = cleanToken),
         ).toInvitationPreview()
     }
@@ -212,7 +218,7 @@ class LedgerRepository(
         val cleanDevice = deviceName.trim()
         require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
         require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
-        val response = api().acceptInvitation(
+        val response = unauthenticatedApi().acceptInvitation(
             InvitationAcceptRequestDto(
                 inviteToken = cleanToken,
                 accountName = cleanAccount,

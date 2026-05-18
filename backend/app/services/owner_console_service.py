@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
-from app.models import Account, Device, Expense, RecurringItem, UploadLink
+from app.models import Account, Expense, RecurringItem, UploadLink
 from app.services.admin_service import (
     DeviceSummary,
     UploadLinkSecret,
@@ -304,9 +304,8 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
     pending_count = _expense_status_count(db, tenant_ids=visible_ledger_ids, status="pending")
     confirmed_count = _expense_status_count(db, tenant_ids=visible_ledger_ids, status="confirmed")
 
-    active_devices = int(
-        db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_(None))) or 0
-    )
+    visible_devices = list_devices(db, ledger_ids=visible_ledger_ids)
+    active_devices = sum(1 for device in visible_devices if device.revoked_at is None)
     active_links = _active_upload_link_count(db, ledger_ids=visible_ledger_ids)
 
     primary_tenant_id = primary_ledger.ledger_id if primary_ledger else DEFAULT_TENANT_ID
@@ -386,47 +385,77 @@ def _budget_status_for_primary_ledger(
 
 
 def get_devices(db: Session) -> list[DeviceSummary]:
-    return list_devices(db)
+    return list_devices(db, ledger_ids=_visible_console_ledger_ids(db))
 
 
 def do_revoke_device(db: Session, public_id: str, current_device_public_id: str) -> DeviceSummary:
-    return revoke_device(db, public_id=public_id, current_device_public_id=current_device_public_id)
+    return revoke_device(
+        db,
+        public_id=public_id,
+        current_device_public_id=current_device_public_id,
+        ledger_ids=_visible_console_ledger_ids(db),
+    )
 
 
 def do_delete_device(db: Session, public_id: str, current_device_public_id: str) -> None:
-    delete_device(db, public_id=public_id, current_device_public_id=current_device_public_id)
+    delete_device(
+        db,
+        public_id=public_id,
+        current_device_public_id=current_device_public_id,
+        ledger_ids=_visible_console_ledger_ids(db),
+    )
 
 
 def do_rename_device(db: Session, public_id: str, new_name: str) -> DeviceSummary:
-    return rename_device(db, public_id=public_id, new_name=new_name)
+    return rename_device(
+        db,
+        public_id=public_id,
+        new_name=new_name,
+        ledger_ids=_visible_console_ledger_ids(db),
+    )
 
 
 def get_upload_links(db: Session) -> list[UploadLinkSummary]:
     visible_ids = _visible_console_ledger_ids(db)
     if not visible_ids:
         return []
-    return [link for link in list_upload_links(db) if link.ledger_id in visible_ids]
+    return list_upload_links(db, ledger_ids=visible_ids)
 
 
 def do_create_upload_link(
     db: Session, *, ledger_id: str, admin_account_id: int, default_timezone: str
 ) -> tuple[UploadLinkSummary, UploadLinkSecret]:
-    return create_upload_link(db, ledger_id=ledger_id, admin_account_id=admin_account_id, default_timezone=default_timezone)
+    return create_upload_link(
+        db,
+        ledger_id=ledger_id,
+        admin_account_id=admin_account_id,
+        default_timezone=default_timezone,
+        ledger_ids=_visible_console_ledger_ids(db),
+    )
 
 
 def do_rotate_upload_link(db: Session, public_id: str) -> tuple[UploadLinkSummary, UploadLinkSecret]:
-    _ensure_visible_upload_link(db, public_id=public_id)
-    return rotate_upload_link(db, public_id=public_id)
+    return rotate_upload_link(
+        db,
+        public_id=public_id,
+        ledger_ids=_visible_console_ledger_ids(db),
+    )
 
 
 def do_revoke_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
-    _ensure_visible_upload_link(db, public_id=public_id)
-    return revoke_upload_link(db, public_id=public_id)
+    return revoke_upload_link(
+        db,
+        public_id=public_id,
+        ledger_ids=_visible_console_ledger_ids(db),
+    )
 
 
 def do_delete_upload_link(db: Session, public_id: str) -> None:
-    _ensure_visible_upload_link(db, public_id=public_id)
-    delete_upload_link(db, public_id=public_id)
+    delete_upload_link(
+        db,
+        public_id=public_id,
+        ledger_ids=_visible_console_ledger_ids(db),
+    )
 
 
 def compose_public_upload_url(secret: UploadLinkSecret) -> str | None:
@@ -489,13 +518,6 @@ def _active_upload_link_count(db: Session, *, ledger_ids: set[str]) -> int:
         )
         or 0
     )
-
-
-def _ensure_visible_upload_link(db: Session, *, public_id: str) -> None:
-    link = db.scalar(select(UploadLink).where(UploadLink.public_id == public_id).limit(1))
-    visible_ids = _visible_console_ledger_ids(db)
-    if link is None or link.ledger_id not in visible_ids:
-        raise AppError("invalid_request", "上传链接不存在。", status_code=404)
 
 
 def get_owner_account_id(db: Session) -> int | None:

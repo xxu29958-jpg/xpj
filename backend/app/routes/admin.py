@@ -28,6 +28,7 @@ from app.schemas import (
     AdminUploadLinkSecretResponse,
 )
 from app.services import admin_service
+from app.services.ledger_service import list_ledgers_for_account
 from app.tenants import AuthContext
 
 
@@ -51,13 +52,20 @@ def _current_device_public_id(db: Session, auth: AuthContext) -> str:
     return device.public_id if device is not None else ""
 
 
+def _visible_admin_ledger_ids(db: Session, auth: AuthContext) -> set[str]:
+    ledgers = list_ledgers_for_account(db, account_id=auth.account_id)
+    return {ledger.ledger_id for ledger in ledgers}
+
+
 @router.get("/devices", response_model=list[AdminDeviceResponse])
 def list_devices_endpoint(
     auth: AuthContext = Depends(get_current_admin_context),
     db: Session = Depends(get_db),
 ) -> list[AdminDeviceResponse]:
-    del auth
-    return [_device_response(s) for s in admin_service.list_devices(db)]
+    return [
+        _device_response(s)
+        for s in admin_service.list_devices(db, ledger_ids=_visible_admin_ledger_ids(db, auth))
+    ]
 
 
 @router.post(
@@ -71,7 +79,10 @@ def revoke_device_endpoint(
 ) -> AdminDeviceResponse:
     current = _current_device_public_id(db, auth)
     summary = admin_service.revoke_device(
-        db, public_id=public_id, current_device_public_id=current
+        db,
+        public_id=public_id,
+        current_device_public_id=current,
+        ledger_ids=_visible_admin_ledger_ids(db, auth),
     )
     return _device_response(summary)
 
@@ -86,9 +97,11 @@ def rename_device_endpoint(
     auth: AuthContext = Depends(get_current_admin_context),
     db: Session = Depends(get_db),
 ) -> AdminDeviceResponse:
-    del auth
     summary = admin_service.rename_device(
-        db, public_id=public_id, new_name=payload.device_name
+        db,
+        public_id=public_id,
+        new_name=payload.device_name,
+        ledger_ids=_visible_admin_ledger_ids(db, auth),
     )
     return _device_response(summary)
 
@@ -98,8 +111,10 @@ def list_upload_links_endpoint(
     auth: AuthContext = Depends(get_current_admin_context),
     db: Session = Depends(get_db),
 ) -> list[AdminUploadLinkResponse]:
-    del auth
-    return [_link_response(s) for s in admin_service.list_upload_links(db)]
+    return [
+        _link_response(s)
+        for s in admin_service.list_upload_links(db, ledger_ids=_visible_admin_ledger_ids(db, auth))
+    ]
 
 
 @router.post(
@@ -122,6 +137,7 @@ def create_upload_link_endpoint(
         ledger_id=target_ledger,
         admin_account_id=auth.account_id,
         default_timezone=default_tz,
+        ledger_ids=_visible_admin_ledger_ids(db, auth),
     )
     return AdminUploadLinkSecretResponse(
         link=_link_response(summary),
@@ -139,8 +155,11 @@ def rotate_upload_link_endpoint(
     auth: AuthContext = Depends(get_current_admin_context),
     db: Session = Depends(get_db),
 ) -> AdminUploadLinkSecretResponse:
-    del auth
-    summary, secret = admin_service.rotate_upload_link(db, public_id=public_id)
+    summary, secret = admin_service.rotate_upload_link(
+        db,
+        public_id=public_id,
+        ledger_ids=_visible_admin_ledger_ids(db, auth),
+    )
     return AdminUploadLinkSecretResponse(
         link=_link_response(summary),
         upload_url_path=secret.upload_url_path,
@@ -157,5 +176,10 @@ def revoke_upload_link_endpoint(
     auth: AuthContext = Depends(get_current_admin_context),
     db: Session = Depends(get_db),
 ) -> AdminUploadLinkResponse:
-    del auth
-    return _link_response(admin_service.revoke_upload_link(db, public_id=public_id))
+    return _link_response(
+        admin_service.revoke_upload_link(
+            db,
+            public_id=public_id,
+            ledger_ids=_visible_admin_ledger_ids(db, auth),
+        )
+    )

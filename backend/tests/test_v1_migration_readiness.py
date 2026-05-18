@@ -80,3 +80,18 @@ def test_v1_migration_readiness_requires_family_permission_baseline_tables(clien
     assert checks["v09_tables"].status == "error"
     assert "invitations" in checks["v09_tables"].message
     assert "ledger_audit_logs" in checks["v09_tables"].message
+
+
+def test_v1_migration_readiness_requires_current_fx_and_item_tables(client) -> None:
+    del client
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE exchange_rates"))
+        connection.execute(text("DROP TABLE expense_items"))
+
+    report = build_v1_migration_readiness_report(create_backup=False)
+
+    assert report.ready is False
+    checks = {check.code: check for check in report.checks}
+    assert checks["v09_tables"].status == "error"
+    assert "exchange_rates" in checks["v09_tables"].message
+    assert "expense_items" in checks["v09_tables"].message

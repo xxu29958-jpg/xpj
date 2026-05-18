@@ -64,6 +64,34 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
     assert viewer_write.json()["error"] == "permission_denied"
 
 
+def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient) -> None:
+    currency_mismatch = client.put(
+        "/api/exchange-rates/USD/2026-05-04",
+        headers=app_headers(),
+        json={
+            "currency_code": "EUR",
+            "rate_date": "2026-05-04",
+            "rate_to_cny": "7.1234",
+            "source": "manual",
+        },
+    )
+    assert currency_mismatch.status_code == 422
+    assert currency_mismatch.json()["error"] == "invalid_request"
+
+    date_mismatch = client.put(
+        "/api/exchange-rates/USD/2026-05-04",
+        headers=app_headers(),
+        json={
+            "currency_code": "USD",
+            "rate_date": "2026-05-05",
+            "rate_to_cny": "7.1234",
+            "source": "manual",
+        },
+    )
+    assert date_mismatch.status_code == 422
+    assert date_mismatch.json()["error"] == "invalid_request"
+
+
 def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client: TestClient) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",

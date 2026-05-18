@@ -223,6 +223,28 @@ def confirm_recurring_candidate(
         frequency=frequency,
     )
     if existing is not None:
+        if existing.status == "archived" or existing.archived_at is not None:
+            last_seen_at = ensure_utc(payload.last_seen_at) or ensure_utc(candidate.get("last_seen_at"))
+            confidence = payload.confidence or candidate.get("confidence")
+            now = now_utc()
+            existing.merchant_name = str(candidate.get("merchant") or merchant)
+            existing.baseline_amount_cents = amount_cents
+            existing.last_amount_cents = amount_cents
+            existing.occurrence_count = max(
+                int(payload.occurrence_count or 0),
+                int(candidate.get("occurrence_count") or 0),
+                int(existing.occurrence_count or 0),
+            )
+            existing.last_seen_at = last_seen_at
+            existing.next_expected_date = payload.next_expected_date or _next_expected_date(last_seen_at, timezone_name)
+            existing.status = "active"
+            existing.confidence = str(confidence) if confidence else None
+            existing.source = "candidate"
+            existing.paused_at = None
+            existing.archived_at = None
+            existing.updated_at = now
+            db.commit()
+            db.refresh(existing)
         return existing
 
     last_seen_at = ensure_utc(payload.last_seen_at) or ensure_utc(candidate.get("last_seen_at"))
