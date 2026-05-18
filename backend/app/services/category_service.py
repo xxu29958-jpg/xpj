@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.models import CategoryRule, Expense
 from app.schemas import ExpenseUpdateRequest
-from app.services.time_service import local_month_bounds_utc, normalize_month_label
+from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
 
 
 DEFAULT_CATEGORIES = [
@@ -112,20 +110,6 @@ class CategoryDashboard:
     uncategorized_pending: int = 0
 
 
-def _category_month_window(month: str) -> tuple[datetime, datetime]:
-    normalized = normalize_month_label(month)
-    if normalized is None:
-        raise AppError("invalid_request", status_code=422)
-    bounds = local_month_bounds_utc(normalized, get_settings().ocr_default_timezone)
-    if bounds is None:
-        raise AppError("invalid_request", status_code=422)
-    return bounds
-
-
-def _category_time_expr():
-    return func.coalesce(Expense.expense_time, Expense.confirmed_at)
-
-
 def list_category_summary(
     db: Session, *, tenant_id: str, month: str
 ) -> CategoryDashboard:
@@ -135,8 +119,8 @@ def list_category_summary(
     based on expense time first, then confirmed time. Pending counts are global per category so
     the user can see lingering uncategorized rows regardless of month.
     """
-    start, end = _category_month_window(month)
-    stat_time = _category_time_expr()
+    start, end = month_bounds_utc(month)
+    stat_time = stat_time_expr()
 
     confirmed_rows = db.execute(
         select(
