@@ -413,6 +413,73 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
     assert applied.json()["batch"]["status"] == "applied_with_errors"
 
 
+def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient) -> None:
+    csv = "amount_yuan,amount_cents,merchant\n2.00,100,Conflicting Cafe\n"
+    created = client.post(
+        "/api/imports/csv",
+        headers=app_headers(),
+        files={"csv_file": ("conflict.csv", csv.encode("utf-8"), "text/csv")},
+    )
+    assert created.status_code == 201, created.json()
+    batch = created.json()
+    assert batch["valid_rows"] == 0
+    assert batch["error_rows"] == 1
+
+    rows = client.get(
+        f"/api/imports/csv/{batch['public_id']}/rows?status=error",
+        headers=app_headers(),
+    )
+    assert rows.status_code == 200, rows.json()
+    assert rows.json()["items"][0]["status"] == "error"
+    assert "amount_yuan" in rows.json()["items"][0]["error_message"]
+    assert "amount_cents" in rows.json()["items"][0]["error_message"]
+
+
+def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(client: TestClient) -> None:
+    csv = "\n".join(
+        [
+            "amount_cents,original_currency_code,exchange_rate_to_cny,exchange_rate_date,merchant,category",
+            "12345,USD,7.0000,2026-05-04,Foreign Cafe,餐饮",
+            "",
+        ]
+    )
+    created = client.post(
+        "/api/imports/csv",
+        headers=app_headers(),
+        files={"csv_file": ("foreign.csv", csv.encode("utf-8"), "text/csv")},
+    )
+    assert created.status_code == 201, created.json()
+    batch = created.json()
+    assert batch["valid_rows"] == 1
+    assert batch["error_rows"] == 0
+
+    rows = client.get(
+        f"/api/imports/csv/{batch['public_id']}/rows",
+        headers=app_headers(),
+    )
+    assert rows.status_code == 200, rows.json()
+    row = rows.json()["items"][0]
+    assert row["amount_cents"] is None
+    assert row["original_currency_code"] == "USD"
+    assert row["original_amount_minor"] == 12345
+
+    applied = client.post(
+        f"/api/imports/csv/{batch['public_id']}/apply",
+        headers=app_headers(),
+        json={"batch_size": 10},
+    )
+    assert applied.status_code == 200, applied.json()
+    assert applied.json()["inserted_count"] == 1
+
+    pending = client.get("/api/expenses/pending", headers=app_headers())
+    assert pending.status_code == 200, pending.json()
+    target = next(item for item in pending.json() if item["merchant"] == "Foreign Cafe")
+    assert target["original_currency_code"] == "USD"
+    assert target["original_amount_minor"] == 12345
+    assert target["exchange_rate_date"] == "2026-05-04"
+    assert target["amount_cents"] == 86415
+
+
 def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
     client: TestClient,
 ) -> None:

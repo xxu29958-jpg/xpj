@@ -7,6 +7,8 @@ import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+private const val SQLITE_BINDING_CHUNK_SIZE = 500
+
 /**
  * v0.4-alpha1 multi-ledger contract:
  *
@@ -44,6 +46,16 @@ interface ExpenseDao {
         "SELECT * FROM expenses WHERE ledgerId = :ledgerId AND serverId IN (:serverIds)",
     )
     suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity>
+
+    @Query(
+        """
+        SELECT serverId FROM expenses
+        WHERE ledgerId = :ledgerId
+          AND status = 'confirmed'
+          AND serverId IS NOT NULL
+        """,
+    )
+    suspend fun confirmedServerIdsForLedger(ledgerId: String): List<Long>
 
     @Insert
     suspend fun insert(expense: ExpenseEntity): Long
@@ -109,8 +121,33 @@ interface ExpenseDao {
         DELETE FROM expenses
         WHERE ledgerId = :ledgerId
           AND status = 'confirmed'
-          AND serverId NOT IN (:serverIds)
+          AND serverId IN (:serverIds)
         """,
     )
-    suspend fun deleteConfirmedNotInServerIds(ledgerId: String, serverIds: List<Long>)
+    suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>)
+
+    @Transaction
+    suspend fun applyConfirmedSyncForLedger(
+        ledgerId: String,
+        expenses: List<ExpenseEntity>,
+        replaceCache: Boolean,
+        pruneMissing: Boolean,
+    ) {
+        if (replaceCache) {
+            clearForLedger(ledgerId)
+        }
+        expenses.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+            upsertAllByServerIdForLedger(ledgerId, chunk)
+        }
+        if (pruneMissing) {
+            val remoteServerIds = expenses.map { it.serverId }.toSet()
+            val staleServerIds = confirmedServerIdsForLedger(ledgerId)
+                .filter { it !in remoteServerIds }
+            staleServerIds.chunked(SQLITE_BINDING_CHUNK_SIZE).forEach { chunk ->
+                if (chunk.isNotEmpty()) {
+                    deleteConfirmedByServerIds(ledgerId, chunk)
+                }
+            }
+        }
+    }
 }

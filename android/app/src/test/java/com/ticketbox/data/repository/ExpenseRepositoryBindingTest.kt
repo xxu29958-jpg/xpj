@@ -1569,6 +1569,12 @@ private class FakeExpenseDao : ExpenseDao {
         return expenses.values.filter { it.ledgerId == ledgerId && it.serverId in wanted }
     }
 
+    override suspend fun confirmedServerIdsForLedger(ledgerId: String): List<Long> {
+        return expenses.values
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" }
+            .map { it.serverId }
+    }
+
     override suspend fun insert(expense: ExpenseEntity): Long {
         val id = if (expense.id == 0L) nextId++ else expense.id
         expenses[id] = expense.copy(id = id)
@@ -1611,10 +1617,10 @@ private class FakeExpenseDao : ExpenseDao {
         emit(ledgerId)
     }
 
-    override suspend fun deleteConfirmedNotInServerIds(ledgerId: String, serverIds: List<Long>) {
-        val keep = serverIds.toSet()
+    override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {
+        val remove = serverIds.toSet()
         expenses.values
-            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId !in keep }
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId in remove }
             .map { it.id }
             .forEach { expenses.remove(it) }
         emit(ledgerId)

@@ -133,8 +133,15 @@ def calculate_cny_cents(
 
 
 def default_rate_date(expense_time: datetime | None = None) -> date:
+    if expense_time is not None and expense_time.tzinfo is not None and expense_time.utcoffset() is not None:
+        return expense_time.date()
     when = ensure_utc(expense_time) or now_utc()
     return when.date()
+
+
+def _payload_rate_date(payload: CurrencyPayload, expense_time: datetime | None) -> date:
+    payload_time = _payload_attr(payload, "spent_at") or _payload_attr(payload, "expense_time")
+    return default_rate_date(payload_time or expense_time)
 
 
 def get_exchange_rate(
@@ -313,9 +320,9 @@ def apply_currency_payload(
     time_changed = _payload_attr(payload, "spent_at") is not None or _payload_attr(payload, "expense_time") is not None
     rate_date = (
         explicit_rate_date
-        or (default_rate_date(expense.expense_time) if time_changed else None)
+        or (_payload_rate_date(payload, expense.expense_time) if time_changed else None)
         or expense.exchange_rate_date
-        or default_rate_date(expense.expense_time)
+        or _payload_rate_date(payload, expense.expense_time)
     )
     explicit_rate = format_decimal_rate(_payload_attr(payload, "exchange_rate_to_cny"))
     if code == home:

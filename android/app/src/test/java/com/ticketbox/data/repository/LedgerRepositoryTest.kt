@@ -1075,6 +1075,8 @@ private class LedgerFakeDao : ExpenseDao {
         map.values.firstOrNull { it.ledgerId == ledgerId && it.serverId == serverId }
     override suspend fun findByServerIds(ledgerId: String, serverIds: List<Long>): List<ExpenseEntity> =
         map.values.filter { it.ledgerId == ledgerId && it.serverId in serverIds.toSet() }
+    override suspend fun confirmedServerIdsForLedger(ledgerId: String): List<Long> =
+        map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.serverId }
     override suspend fun insert(expense: ExpenseEntity): Long {
         map[expense.id] = expense
         return expense.id
@@ -1091,10 +1093,10 @@ private class LedgerFakeDao : ExpenseDao {
         val ids = map.values.filter { it.ledgerId == ledgerId && it.status == "confirmed" }.map { it.id }
         ids.forEach { map.remove(it) }
     }
-    override suspend fun deleteConfirmedNotInServerIds(ledgerId: String, serverIds: List<Long>) {
-        val keep = serverIds.toSet()
+    override suspend fun deleteConfirmedByServerIds(ledgerId: String, serverIds: List<Long>) {
+        val remove = serverIds.toSet()
         val ids = map.values
-            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId !in keep }
+            .filter { it.ledgerId == ledgerId && it.status == "confirmed" && it.serverId in remove }
             .map { it.id }
         ids.forEach { map.remove(it) }
     }

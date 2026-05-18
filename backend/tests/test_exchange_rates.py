@@ -148,6 +148,38 @@ def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client
     assert "7.12340000" in exported.text
 
 
+def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client: TestClient) -> None:
+    rate = client.put(
+        "/api/exchange-rates/USD/2026-05-01",
+        headers=app_headers(),
+        json={
+            "currency_code": "USD",
+            "rate_date": "2026-05-01",
+            "rate_to_cny": "7.0000",
+            "source": "manual",
+        },
+    )
+    assert rate.status_code == 200, rate.json()
+
+    response = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "original_currency_code": "USD",
+            "original_amount_minor": 100,
+            "merchant": "Local midnight coffee",
+            "category": "餐饮",
+            "spent_at": "2026-05-01T00:30:00+08:00",
+        },
+    )
+    assert response.status_code == 200, response.json()
+    payload = response.json()
+    assert payload["status"] == "confirmed"
+    assert payload["exchange_rate_date"] == "2026-05-01"
+    assert payload["amount_cents"] == 700
+    assert payload["fx_status"] == "ready"
+
+
 def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pending(client: TestClient) -> None:
     missing_rate = client.post(
         "/api/expenses/manual",

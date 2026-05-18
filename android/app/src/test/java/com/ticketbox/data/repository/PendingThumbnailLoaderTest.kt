@@ -105,6 +105,7 @@ private class ThumbnailFakeReviewActions(
         bytes: ByteArray,
         preparationDurationMs: Long?,
         sourceSizeBytes: Long?,
+        expectedLedgerId: String?,
     ): Result<Long> = Result.failure(IllegalStateException("not exercised"))
 }
 

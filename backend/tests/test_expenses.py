@@ -519,7 +519,7 @@ def test_duplicate_detection_never_rejects_or_confirms(client: TestClient) -> No
     assert matched["rejected_at"] is None
 
 
-def test_mark_not_duplicate_only_clears_current_detection_type(
+def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
     client: TestClient,
 ) -> None:
     first_id = upload_png(client)
@@ -551,8 +551,8 @@ def test_mark_not_duplicate_only_clears_current_detection_type(
     assert pending.status_code == 200
     matched = next(item for item in pending.json() if item["id"] == second_id)
     assert matched["status"] == "pending"
-    assert matched["duplicate_status"] == "suspected"
-    assert matched["duplicate_of_id"] == first_id
+    assert matched["duplicate_status"] == "none"
+    assert matched["duplicate_of_id"] is None
 
 
 def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:
@@ -1048,7 +1048,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient) -> None:
     assert reject.json()["status"] == "rejected"
 
 
-def test_similar_expense_duplicate_detection_after_edit(client: TestClient) -> None:
+def test_similar_expense_duplicate_ignore_survives_after_edit(client: TestClient) -> None:
     first_id = upload_png(client)
     second_id = upload_png(client)
     client.post(f"/api/expenses/{second_id}/mark-not-duplicate", headers=app_headers())
@@ -1071,6 +1071,50 @@ def test_similar_expense_duplicate_detection_after_edit(client: TestClient) -> N
 
     second = client.get("/api/expenses/pending", headers=app_headers()).json()
     matched = next(item for item in second if item["id"] == second_id)
-    assert matched["duplicate_status"] == "suspected"
-    assert matched["duplicate_of_id"] == first_id
-    assert "金额" in matched["duplicate_reason"]
+    assert matched["duplicate_status"] == "none"
+    assert matched["duplicate_of_id"] is None
+
+
+def test_editing_duplicate_original_revalidates_stale_references(client: TestClient) -> None:
+    first = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 5200,
+            "merchant": "Same Store",
+            "category": "生活",
+            "expense_time": "2026-05-03T04:20:00Z",
+        },
+    )
+    assert first.status_code == 200, first.json()
+    first_id = first.json()["id"]
+    second = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 5200,
+            "merchant": "Same Store",
+            "category": "生活",
+            "expense_time": "2026-05-03T05:20:00Z",
+        },
+    )
+    assert second.status_code == 200, second.json()
+    second_id = second.json()["id"]
+    assert second.json()["duplicate_of_id"] == first_id
+
+    response = client.patch(
+        f"/api/expenses/{first_id}",
+        headers=app_headers(),
+        json={
+            "amount_cents": 5200,
+            "merchant": "Changed Original",
+            "category": "生活",
+            "expense_time": "2026-05-03T04:20:00Z",
+        },
+    )
+    assert response.status_code == 200
+
+    after = client.get(f"/api/expenses/{second_id}", headers=app_headers())
+    assert after.status_code == 200
+    assert after.json()["duplicate_status"] == "none"
+    assert after.json()["duplicate_of_id"] is None

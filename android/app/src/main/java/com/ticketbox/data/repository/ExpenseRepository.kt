@@ -155,6 +155,8 @@ class ExpenseRepository(
 
     override fun observeActiveLedgerId(): Flow<String?> = settingsStore.observeActiveLedgerId()
 
+    override fun currentActiveLedgerId(): String? = settingsStore.activeLedgerId()
+
     private fun api(serverUrlOverride: String? = null, tokenOverride: String? = null): ApiService {
         if (serverUrlOverride != null || tokenOverride != null) {
             return apiProvider.temporary(
@@ -374,8 +376,13 @@ class ExpenseRepository(
         bytes: ByteArray,
         preparationDurationMs: Long?,
         sourceSizeBytes: Long?,
+        expectedLedgerId: String?,
     ): Result<Long> = errorHandler.safeCall {
         require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
+        val ledgerIdAtUpload = activeLedgerIdOrLegacy()
+        if (expectedLedgerId != null && expectedLedgerId != ledgerIdAtUpload) {
+            throw RepositoryException("账本已切换，请重新选择截图上传。")
+        }
         val cleanName = fileName
             .trim()
             .ifBlank { "ticketbox-screenshot.jpg" }
@@ -385,6 +392,9 @@ class ExpenseRepository(
         val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
         var uploadResponse: UploadResponseDto? = null
         val networkDurationMs = measureTimeMillis {
+            if (expectedLedgerId != null && expectedLedgerId != activeLedgerIdOrLegacy()) {
+                throw RepositoryException("账本已切换，请重新选择截图上传。")
+            }
             uploadResponse = api().uploadScreenshot(filePart, timezone = currentTimezoneId())
         }
         val response = requireNotNull(uploadResponse)
@@ -524,23 +534,13 @@ class ExpenseRepository(
             return emptyList()
         }
 
-        if (replaceCache) {
-            // Scope cache replacement to the ledger that started this sync so a
-            // ledger switch cannot clear one cache and insert into another.
-            expenseDao.clearForLedger(ledgerIdAtRequest)
-        }
         val entities = collectedDtos.map { it.toEntity(ledgerIdAtRequest) }
-        if (entities.isNotEmpty()) {
-            expenseDao.upsertAllByServerIdForLedger(ledgerIdAtRequest, entities)
-        }
-        if (!replaceCache && month == null && category == null && tag == null) {
-            val remoteServerIds = collectedDtos.map { it.id }
-            if (remoteServerIds.isEmpty()) {
-                expenseDao.deleteConfirmedForLedger(ledgerIdAtRequest)
-            } else {
-                expenseDao.deleteConfirmedNotInServerIds(ledgerIdAtRequest, remoteServerIds)
-            }
-        }
+        expenseDao.applyConfirmedSyncForLedger(
+            ledgerId = ledgerIdAtRequest,
+            expenses = entities,
+            replaceCache = replaceCache,
+            pruneMissing = !replaceCache && month == null && category == null && tag == null,
+        )
         if (recordSyncTimestamp) {
             settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
         }

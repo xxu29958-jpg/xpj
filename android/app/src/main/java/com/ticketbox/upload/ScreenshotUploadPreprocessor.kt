@@ -24,6 +24,7 @@ data class PreparedUploadImage(
 private const val MAX_UPLOAD_LONG_SIDE = 1600
 private const val JPEG_QUALITY = 84
 private const val KEEP_ORIGINAL_MAX_BYTES = 450_000L
+internal const val MAX_ORIGINAL_FALLBACK_BYTES = 10L * 1024L * 1024L
 
 fun Context.prepareScreenshotUpload(uri: Uri): PreparedUploadImage? {
     val startedAt = SystemClock.elapsedRealtime()
@@ -216,13 +217,35 @@ private fun scaleToLongSide(bitmap: Bitmap, maxLongSide: Int): Bitmap {
 }
 
 private fun Context.readOriginalUpload(uri: Uri, metadata: UploadMetadata): PreparedUploadImage? {
-    val bytes = contentResolver.openInputStream(uri)?.use { input -> input.readBytes() } ?: return null
+    if (metadata.sizeBytes > MAX_ORIGINAL_FALLBACK_BYTES) {
+        return null
+    }
+    val bytes = contentResolver.openInputStream(uri)?.use { input ->
+        input.readBytesWithLimit(MAX_ORIGINAL_FALLBACK_BYTES)
+    } ?: return null
     return PreparedUploadImage(
         fileName = metadata.fileName.ifBlank { defaultUploadFileName(metadata.contentType) },
         contentType = metadata.contentType,
         bytes = bytes,
         sourceSizeBytes = metadata.sizeBytes.takeIf { it > 0 } ?: bytes.size.toLong(),
     )
+}
+
+internal fun java.io.InputStream.readBytesWithLimit(limitBytes: Long): ByteArray? {
+    if (limitBytes <= 0) return null
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0L
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) break
+        total += read.toLong()
+        if (total > limitBytes) {
+            return null
+        }
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
 }
 
 private fun String.toJpegUploadName(): String {

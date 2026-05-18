@@ -506,6 +506,29 @@ class PendingViewModelReviewActionsTest {
         assertEquals(listOf("New Ledger"), vm.uiState.value.items.map { it.merchant })
     }
 
+    @Test
+    fun uploadPreparedBeforeLedgerChangeIsDroppedBeforeRepositoryCall() = review {
+        val ledgerFlow = MutableStateFlow<String?>("owner")
+        val fake = FakeReviewActions(activeLedgerFlow = ledgerFlow, activeLedgerIdProvider = { ledgerFlow.value })
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        assertTrue(vm.markUploadPreparing())
+        ledgerFlow.value = "family"
+        advanceUntilIdle()
+
+        vm.uploadScreenshot(
+            fileName = "receipt.jpg",
+            contentType = "image/jpeg",
+            bytes = byteArrayOf(1, 2, 3),
+            uploadAlreadyStarted = true,
+        )
+        advanceUntilIdle()
+
+        assertEquals(0, fake.uploadCalls)
+        assertEquals("账本已切换，请重新选择截图上传。", vm.uiState.value.message)
+    }
+
     private fun expense(
         id: Long,
         amountCents: Long? = 100L,
@@ -554,6 +577,7 @@ private class FakeReviewActions(
     private val categoryOptions: List<String> = listOf("餐饮", "交通", "购物"),
     private val canModifyLedger: Boolean = true,
     private val activeLedgerFlow: Flow<String?> = emptyFlow(),
+    private val activeLedgerIdProvider: () -> String? = { null },
 ) : PendingReviewActions {
 
     var pending: List<Expense> = pending
@@ -581,6 +605,8 @@ private class FakeReviewActions(
     override fun canModifyLedger(): Boolean = canModifyLedger
 
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
+
+    override fun currentActiveLedgerId(): String? = activeLedgerIdProvider()
 
     override suspend fun fetchPending(): Result<List<Expense>> {
         fetchPendingCalls += 1
@@ -622,6 +648,7 @@ private class FakeReviewActions(
         bytes: ByteArray,
         preparationDurationMs: Long?,
         sourceSizeBytes: Long?,
+        expectedLedgerId: String?,
     ): Result<Long> {
         uploadCalls += 1
         return Result.failure(IllegalStateException("upload not exercised in tests"))

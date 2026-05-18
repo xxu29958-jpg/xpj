@@ -297,6 +297,7 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
     assert manual.status_code == 200
     skipped = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
     assert skipped.status_code == 200
+    assert skipped.json()["status"] == "rollback_skipped"
     assert skipped.json()["changed"] == 0
     assert skipped.json()["skipped"] == 1
     with SessionLocal() as db:

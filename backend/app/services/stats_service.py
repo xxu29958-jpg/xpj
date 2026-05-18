@@ -331,7 +331,12 @@ def lifestyle_stats(
             ).where(Expense.amount_cents.is_not(None))
         )
     )
-    recent_start = now_utc() - timedelta(days=7)
+    bounds = _stat_month_bounds(month, timezone_name)
+    if bounds is None:
+        raise AppError("invalid_request", status_code=422)
+    month_start, month_end = bounds
+    recent_end = min(now_utc(), month_end)
+    recent_start = max(month_start, recent_end - timedelta(days=7))
 
     ai_subscription_amount_cents = sum(
         item.amount_cents or 0
@@ -353,9 +358,10 @@ def lifestyle_stats(
             .where(Expense.status == "confirmed")
             .where(Expense.amount_cents.is_not(None))
             .where(_stat_time_expr() >= recent_start)
+            .where(_stat_time_expr() < recent_end)
         )
         or 0
-    )
+    ) if recent_start < recent_end else 0
 
     merchant_counts: dict[str, int] = defaultdict(int)
     for item in month_expenses:

@@ -57,6 +57,8 @@ class PendingViewModel(
     internal val _uiState = MutableStateFlow(PendingUiState())
     val uiState: StateFlow<PendingUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
+    private var uploadLedgerIdAtStart: String? = null
+    private var uploadGenerationAtStart = 0
 
     init {
         val readOnly = !repository.canModifyLedger()
@@ -73,6 +75,7 @@ class PendingViewModel(
                 .drop(1)
                 .collect {
                     requestGeneration += 1
+                    uploadLedgerIdAtStart = null
                     val readOnly = isReadOnly()
                     _uiState.value = PendingUiState(
                         readOnly = readOnly,
@@ -92,6 +95,7 @@ class PendingViewModel(
             _uiState.update { it.copy(readOnly = false) }
             return false
         }
+        uploadLedgerIdAtStart = null
         _uiState.update {
             it.copy(
                 readOnly = true,
@@ -133,11 +137,14 @@ class PendingViewModel(
     fun markUploadPreparing(): Boolean {
         if (blockReadOnlyWrite()) return false
         if (_uiState.value.uploading) return false
+        uploadLedgerIdAtStart = repository.currentActiveLedgerId()
+        uploadGenerationAtStart = requestGeneration
         _uiState.update { it.copy(uploading = true, message = null) }
         return true
     }
 
     fun uploadPreparationFailed(message: String = "这张图片暂时无法读取，请换一张试试。") {
+        uploadLedgerIdAtStart = null
         _uiState.update { it.copy(uploading = false, message = message) }
     }
 
@@ -153,7 +160,20 @@ class PendingViewModel(
         if (!uploadAlreadyStarted && _uiState.value.uploading) return
         viewModelScope.launch {
             if (!uploadAlreadyStarted) {
+                uploadLedgerIdAtStart = repository.currentActiveLedgerId()
+                uploadGenerationAtStart = requestGeneration
                 _uiState.update { it.copy(uploading = true, message = null) }
+            }
+            val expectedLedgerId = uploadLedgerIdAtStart
+            if (uploadGenerationAtStart != requestGeneration || expectedLedgerId != repository.currentActiveLedgerId()) {
+                uploadLedgerIdAtStart = null
+                _uiState.update {
+                    it.copy(
+                        uploading = false,
+                        message = "账本已切换，请重新选择截图上传。",
+                    )
+                }
+                return@launch
             }
             repository.uploadScreenshot(
                 fileName = fileName,
@@ -161,14 +181,17 @@ class PendingViewModel(
                 bytes = bytes,
                 preparationDurationMs = preparationDurationMs,
                 sourceSizeBytes = sourceSizeBytes,
+                expectedLedgerId = expectedLedgerId,
             )
                 .onSuccess {
+                    uploadLedgerIdAtStart = null
                     _uiState.update { state ->
                         state.copy(uploading = false, message = "截图已上传，等你确认。")
                     }
                     refresh()
                 }
                 .onFailure { error ->
+                    uploadLedgerIdAtStart = null
                     _uiState.update {
                         it.copy(
                             uploading = false,

@@ -10,6 +10,9 @@ from app.models import DuplicateIgnore, Expense
 from app.services.time_service import ensure_utc
 
 
+ACTIVE_DUPLICATE_IGNORE_KINDS = ("image_hash", "similar")
+
+
 def mark_duplicate_status(db: Session, expense: Expense) -> Expense:
     duplicate = _find_same_image(db, expense)
     if duplicate is not None:
@@ -145,6 +148,21 @@ def clear_duplicate_references_to(db: Session, *, tenant_id: str, duplicate_of_i
     return int(result.rowcount or 0)
 
 
+def revalidate_duplicate_references_to(db: Session, *, tenant_id: str, duplicate_of_id: int) -> int:
+    referenced = list(
+        db.scalars(
+            select(Expense)
+            .where(Expense.tenant_id == tenant_id)
+            .where(Expense.status != "rejected")
+            .where(Expense.duplicate_of_id == duplicate_of_id)
+            .order_by(Expense.id.asc())
+        )
+    )
+    for expense in referenced:
+        mark_duplicate_status(db, expense)
+    return len(referenced)
+
+
 def _clear_rejected_duplicate_targets(db: Session, *, tenant_id: str) -> int:
     rejected_targets = (
         select(Expense.id)
@@ -164,7 +182,8 @@ def _clear_rejected_duplicate_targets(db: Session, *, tenant_id: str) -> int:
 
 def mark_not_duplicate(db: Session, expense: Expense) -> Expense:
     if expense.duplicate_of_id is not None:
-        _remember_duplicate_ignore(db, expense.tenant_id, expense.id, expense.duplicate_of_id, _duplicate_kind(expense))
+        for kind in ACTIVE_DUPLICATE_IGNORE_KINDS:
+            _remember_duplicate_ignore(db, expense.tenant_id, expense.id, expense.duplicate_of_id, kind)
     expense.duplicate_status = "none"
     expense.duplicate_of_id = None
     expense.duplicate_reason = None

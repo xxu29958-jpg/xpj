@@ -28,7 +28,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import StringIO
 
 from sqlalchemy.orm import Session
@@ -92,32 +92,39 @@ class CsvPreview:
 
 
 def _parse_amount(raw_yuan: str, raw_cents: str) -> tuple[int | None, str, str | None]:
-    if raw_cents.strip():
+    cents_text = raw_cents.strip()
+    yuan_text = raw_yuan.strip()
+    parsed_yuan_cents: int | None = None
+    if yuan_text:
         try:
-            cents = int(raw_cents.strip())
+            amount = Decimal(yuan_text)
+        except (InvalidOperation, ValueError):
+            return None, yuan_text, "amount_yuan 不是合法数字"
+        if amount < 0:
+            return None, yuan_text, "金额不能为负"
+        parsed_yuan_cents = int((amount * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    if cents_text:
+        try:
+            cents = int(cents_text)
         except ValueError:
             return None, raw_cents, "amount_cents 不是整数"
         if cents < 0:
             return None, raw_cents, "金额不能为负"
+        if parsed_yuan_cents is not None and parsed_yuan_cents != cents:
+            return None, cents_text, "amount_yuan 与 amount_cents 不一致"
         yuan = (Decimal(cents) / Decimal(100)).quantize(Decimal("0.01"))
         return cents, f"{yuan}", None
-    text = raw_yuan.strip()
-    if not text:
+    if not yuan_text:
         return None, "", "缺少 amount_yuan 或 amount_cents"
-    try:
-        amount = Decimal(text)
-    except (InvalidOperation, ValueError):
-        return None, text, "amount_yuan 不是合法数字"
-    if amount < 0:
-        return None, text, "金额不能为负"
-    cents = int((amount * Decimal(100)).quantize(Decimal("1")))
-    return cents, str(amount.quantize(Decimal("0.01"))), None
+    assert parsed_yuan_cents is not None
+    return parsed_yuan_cents, str((Decimal(parsed_yuan_cents) / Decimal(100)).quantize(Decimal("0.01"))), None
 
 
-def _parse_expense_time(raw: str, timezone_name: str | None = None) -> tuple[datetime | None, str, str | None]:
+def _parse_expense_time(raw: str, timezone_name: str | None = None) -> tuple[datetime | None, str, str | None, date | None]:
     text = raw.strip()
     if not text:
-        return None, "", None
+        return None, "", None, None
     try:
         # Accept "2025-01-02T03:04:05+08:00" or "2025-01-02 03:04:05".
         cleaned = text.replace("/", "-")
@@ -125,9 +132,9 @@ def _parse_expense_time(raw: str, timezone_name: str | None = None) -> tuple[dat
             cleaned = cleaned.replace(" ", "T", 1)
         parsed = datetime.fromisoformat(cleaned)
     except ValueError:
-        return None, text, "expense_time 不是合法的 ISO 时间"
+        return None, text, "expense_time 不是合法的 ISO 时间", None
     resolved_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
-    return ensure_utc_assuming_local(parsed, resolved_timezone), text, None
+    return ensure_utc_assuming_local(parsed, resolved_timezone), text, None, parsed.date()
 
 
 def _parse_optional_int(raw: str, label: str) -> tuple[int | None, str | None]:
@@ -230,12 +237,12 @@ def parse_csv_row(
         "exchange_rate_to_cny",
     )
     exchange_rate_date, exchange_rate_date_error = _parse_optional_date(cells.get("exchange_rate_date", ""))
-    expense_time, etime_display, etime_error = _parse_expense_time(
+    expense_time, etime_display, etime_error, expense_rate_date = _parse_expense_time(
         cells.get("expense_time", ""),
         timezone_name=timezone_name,
     )
     if exchange_rate_date is None and expense_time is not None:
-        exchange_rate_date = expense_time.date()
+        exchange_rate_date = expense_rate_date
     has_original_currency_fields = any(
         cells.get(column, "").strip()
         for column in (
@@ -245,6 +252,14 @@ def parse_csv_row(
             "exchange_rate_date",
         )
     )
+    if (
+        has_original_currency_fields
+        and original_amount_minor is None
+        and original_currency_code != home_currency_code()
+        and amount_cents is not None
+    ):
+        original_amount_minor = amount_cents
+        amount_cents = None
     if (
         has_original_currency_fields
         and original_amount_minor is not None

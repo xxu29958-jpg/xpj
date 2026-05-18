@@ -28,6 +28,7 @@ from app.services.duplicate_service import (
     list_suspected_duplicates,
     mark_duplicate_status,
     mark_not_duplicate,
+    revalidate_duplicate_references_to,
 )
 from app.services.exchange_rate_service import apply_currency_payload, refresh_currency_snapshot
 from app.services.file_service import SavedUpload, delete_relative_upload
@@ -555,6 +556,8 @@ def update_expense(
         }
     ):
         mark_duplicate_status(db, expense)
+        db.flush()
+        revalidate_duplicate_references_to(db, tenant_id=tenant_id, duplicate_of_id=expense.id)
     if "tags" in updates:
         sync_expense_tags(db, expense)
 

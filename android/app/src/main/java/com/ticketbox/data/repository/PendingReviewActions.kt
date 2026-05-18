@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.emptyFlow
 interface PendingReviewActions {
     fun canModifyLedger(): Boolean = true
     fun observeActiveLedgerId(): Flow<String?> = emptyFlow()
+    fun currentActiveLedgerId(): String? = null
     suspend fun fetchPending(): Result<List<Expense>>
     suspend fun fetchThumbnail(id: Long): Result<ProtectedImage>
     suspend fun updateExpense(
@@ -36,5 +37,6 @@ interface PendingReviewActions {
         bytes: ByteArray,
         preparationDurationMs: Long? = null,
         sourceSizeBytes: Long? = null,
+        expectedLedgerId: String? = null,
     ): Result<Long>
 }

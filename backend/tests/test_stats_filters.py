@@ -391,3 +391,35 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
     months = client.get("/api/expenses/months", headers=app_headers())
     assert months.status_code == 200
     assert months.json()["items"] == ["2026-05", "2026-04"]
+
+
+def test_lifestyle_recent_7_days_is_bounded_to_requested_month(client: TestClient) -> None:
+    historical = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 1200,
+            "merchant": "Historical Month",
+            "category": "数码",
+            "expense_time": "2024-04-28T10:00:00Z",
+        },
+    )
+    assert historical.status_code == 200, historical.json()
+    current = client.post(
+        "/api/expenses/manual",
+        headers=app_headers(),
+        json={
+            "amount_cents": 9900,
+            "merchant": "Current Real Week",
+            "category": "数码",
+            "expense_time": "2026-05-17T10:00:00Z",
+        },
+    )
+    assert current.status_code == 200, current.json()
+
+    response = client.get(
+        "/api/stats/lifestyle?month=2024-04&timezone=UTC",
+        headers=app_headers(),
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["recent_7_days_amount_cents"] == 1200
