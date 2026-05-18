@@ -255,10 +255,10 @@ cd E:\projects\xiaopiaojia\android
 
 ```text
 账本地址：服务拥有者提供的 HTTPS 地址
-绑定码：服务拥有者提供的 6 位数字
+绑定码：服务拥有者提供的 8 位数字
 ```
 
-> **注意**：v0.3 不再使用旧版 `APP_TOKEN`。Android 绑定需要服务器地址 + 6 位绑定码（Pairing Code）。
+> **注意**：v0.3 不再使用旧版 `APP_TOKEN`。Android 绑定需要服务器地址 + 8 位绑定码（Pairing Code）。
 
 绑定成功后进入 App。灰度用户版设置页只显示账本状态和同步状态；内部联调版设置页才显示"运行检测"。
 

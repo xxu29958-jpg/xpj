@@ -83,7 +83,7 @@ v0.3 使用可撤销凭证系统替代旧版静态 token。
 
 Android 首次绑定：
 
-1. 用户向服务拥有者索要 6 位 Pairing Code。
+1. 用户向服务拥有者索要 8 位 Pairing Code。
 2. 调用 `POST /api/auth/pair` 提交 pairing_code + device_name + platform。
 3. 后端返回 `session_token`。
 4. Android 保存 `session_token` 到 Keystore，后续所有请求使用：

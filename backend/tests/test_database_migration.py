@@ -301,6 +301,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     budget_sql = _table_create_sql("budgets")
     assert "ck_budgets_total_non_negative" in budget_sql
     assert "uq_budgets_tenant_month" in budget_sql
+    assert "fk_budgets_tenant_ledger" in budget_sql
     budget_categories_sql = _table_create_sql("budget_categories")
     assert "ck_budget_categories_amount_non_negative" in budget_categories_sql
     assert "uq_budget_categories_tenant_month_category" in budget_categories_sql
@@ -310,6 +311,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ck_goals_period_valid" in goals_sql
     assert "ck_goals_status_valid" in goals_sql
     assert "ck_goals_target_positive" in goals_sql
+    assert "fk_goals_tenant_ledger" in goals_sql
     assert "uq_goals_active_total_scope" in _indexes("goals")
     assert "uq_goals_active_category_scope" in _indexes("goals")
     exchange_rates_sql = _table_create_sql("exchange_rates")
@@ -322,6 +324,10 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ck_dashboard_cards_surface_valid" in dashboard_cards_sql
     assert "ck_dashboard_cards_position_non_negative" in dashboard_cards_sql
     assert "uq_dashboard_cards_tenant_surface_key" in dashboard_cards_sql
+    assert "uq_dashboard_cards_tenant_surface_position" in dashboard_cards_sql
+    assert "fk_dashboard_cards_tenant_ledger" in dashboard_cards_sql
+    assert "fk_expenses_tenant_ledger" in _table_create_sql("expenses")
+    assert "fk_csv_import_batches_tenant_ledger" in _table_create_sql("csv_import_batches")
     with engine.begin() as connection:
         assert connection.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
         owner_rules = connection.execute(

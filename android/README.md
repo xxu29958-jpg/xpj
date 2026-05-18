@@ -133,7 +133,7 @@ cd E:\projects\xiaopiaojia\android
 
 - `DebugBind` 只允许 internal 版使用。
 - 灰度用户版必须走正常绑定流程，不暴露内部联调入口。
-- 绑定页使用后端生成的 6 位 Pairing Code。绑定成功后，App 把 session token 保存到 Android Keystore，并保存账号、账本、设备和角色信息。
+- 绑定页使用后端生成的 8 位 Pairing Code。绑定成功后，App 把 session token 保存到 Android Keystore，并保存账号、账本、设备和角色信息。
 
 ## Android 自带上传
 

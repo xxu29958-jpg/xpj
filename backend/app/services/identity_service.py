@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import secrets
 from hmac import compare_digest
 
 from sqlalchemy import func, select
@@ -14,9 +13,11 @@ from app.models import Account, AuthToken, Device, Ledger, LedgerMember, Pairing
 from app.services import permission_service
 from app.services.session_lifecycle_service import (
     consume_pairing_code,
+    hash_pairing_code,
     hash_secret,
     issue_auth_token,
     issue_upload_link,
+    new_pairing_code,
     new_session_token as new_session_token,
     new_upload_key as new_upload_key,
 )
@@ -27,7 +28,6 @@ from app.tenants import AuthContext, DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, TEN
 DEFAULT_ACCOUNT_NAME = "我"
 DEFAULT_BOOTSTRAP_DEVICE_NAME = "Windows 后端"
 PAIRING_CODE_TTL_MINUTES = 15
-PAIRING_CODE_DIGITS = 6
 PAIRING_MAX_FAILED_ATTEMPTS = 20
 PAIRING_ATTEMPT_WINDOW = timedelta(minutes=10)
 
@@ -62,12 +62,6 @@ class PairingCodeResult:
     pairing_code: str
     ledger_name: str
     expires_at: str
-
-
-def new_pairing_code() -> str:
-    upper = 10 ** PAIRING_CODE_DIGITS
-    return f"{secrets.randbelow(upper):0{PAIRING_CODE_DIGITS}d}"
-
 
 def _remote_attempt_key(remote_id: str | None) -> str:
     return (remote_id or "unknown").strip() or "unknown"
@@ -273,7 +267,7 @@ def _create_upload_link(
     )
 
 
-def create_pairing_code(
+def _create_pairing_code(
     db: Session,
     *,
     ledger_id: str,
@@ -288,18 +282,38 @@ def create_pairing_code(
     expires_at = now_utc() + timedelta(minutes=ttl)
     while True:
         code = new_pairing_code()
-        if db.scalar(select(PairingCode.id).where(PairingCode.code_hash == hash_secret(code)).limit(1)) is None:
+        code_hash = hash_pairing_code(code)
+        if db.scalar(select(PairingCode.id).where(PairingCode.code_hash == code_hash).limit(1)) is None:
             break
     pairing = PairingCode(
-        code_hash=hash_secret(code),
+        code_hash=code_hash,
         ledger_id=ledger.ledger_id,
         account_id=account_id,
         device_name_hint=_clean_name(device_name_hint, "") or None,
         expires_at=expires_at,
     )
     db.add(pairing)
-    db.commit()
+    db.flush()
     return PairingCodeResult(pairing_code=code, ledger_name=ledger.name, expires_at=to_iso(expires_at) or "")
+
+
+def create_pairing_code(
+    db: Session,
+    *,
+    ledger_id: str,
+    account_id: int | None,
+    device_name_hint: str | None = None,
+    ttl_minutes: int = PAIRING_CODE_TTL_MINUTES,
+) -> PairingCodeResult:
+    result = _create_pairing_code(
+        db,
+        ledger_id=ledger_id,
+        account_id=account_id,
+        device_name_hint=device_name_hint,
+        ttl_minutes=ttl_minutes,
+    )
+    db.commit()
+    return result
 
 
 def bootstrap_owner(
@@ -309,6 +323,7 @@ def bootstrap_owner(
     ledger_name: str | None = None,
     device_name: str | None = None,
     default_timezone: str | None = None,
+    commit: bool = True,
 ) -> BootstrapResult:
     if active_auth_token_count(db) > 0:
         raise AppError("bootstrap_already_initialized", status_code=409)
@@ -342,13 +357,14 @@ def bootstrap_owner(
         ledger_id=default_ledger.ledger_id,
         default_timezone=default_timezone or get_settings().ocr_default_timezone,
     )
-    db.commit()
-    pairing = create_pairing_code(
+    pairing = _create_pairing_code(
         db,
         ledger_id=default_ledger.ledger_id,
         account_id=owner.id,
         device_name_hint="Android",
     )
+    if commit:
+        db.commit()
     return BootstrapResult(
         account_name=owner.display_name,
         ledger_id=default_ledger.ledger_id,
@@ -465,7 +481,7 @@ def pair_device(
     remote_id: str | None = None,
 ) -> PairingResult:
     _check_pairing_attempt_limit(remote_id)
-    code_hash = hash_secret(pairing_code.strip())
+    code_hash = hash_pairing_code(pairing_code.strip())
     pairing = db.scalar(select(PairingCode).where(PairingCode.code_hash == code_hash).limit(1))
     if pairing is None:
         _reject_pairing(remote_id, "invalid_pairing_code", 401)

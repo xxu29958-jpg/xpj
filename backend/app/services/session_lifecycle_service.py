@@ -21,10 +21,26 @@ from app.services.time_service import now_utc
 
 
 PairingConsumeResult = Literal["consumed", "used", "expired"]
+PAIRING_CODE_DIGITS = 8
+PAIRING_CODE_HASH_ITERATIONS = 120_000
+PAIRING_CODE_HASH_SALT = b"ticketbox-pairing-code-v2"
 
 
 def hash_secret(secret: str) -> str:
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def hash_pairing_code(code: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        code.strip().encode("utf-8"),
+        PAIRING_CODE_HASH_SALT,
+        PAIRING_CODE_HASH_ITERATIONS,
+    ).hex()
+
+
+def new_pairing_code() -> str:
+    return f"{secrets.randbelow(10 ** PAIRING_CODE_DIGITS):0{PAIRING_CODE_DIGITS}d}"
 
 
 def new_session_token() -> str:

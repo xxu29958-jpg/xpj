@@ -174,11 +174,11 @@ def test_owner_pairing_post_uses_selected_ledger(local_client: TestClient) -> No
     html = response.text
     # The success card shows the chosen ledger name (not the default one).
     assert "灰度用户1" in html
-    # Six-digit pairing code is rendered.
+    # Eight-digit pairing code is rendered.
     import re
 
-    codes = re.findall(r"\b\d{6}\b", html)
-    assert codes, "expected a 6-digit pairing code in the page"
+    codes = re.findall(r"\b\d{8}\b", html)
+    assert codes, "expected an 8-digit pairing code in the page"
 
 
 def test_owner_pairing_post_rejects_unknown_ledger(local_client: TestClient) -> None:

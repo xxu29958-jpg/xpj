@@ -355,6 +355,7 @@ def test_owner_dashboard_counts_visible_ledgers_only(local_client: TestClient) -
                 created_at=now,
             )
         )
+        db.flush()
         db.add_all(
             [
                 Expense(
@@ -455,6 +456,7 @@ def test_owner_dashboard_budget_status_hides_external_ledger_budget(
                 created_at=now,
             )
         )
+        db.flush()
         db.add(
             Budget(
                 tenant_id="external_budget_status",

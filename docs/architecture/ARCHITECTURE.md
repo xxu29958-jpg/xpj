@@ -184,7 +184,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\start_backend.ps
 v0.3 废弃了旧版三个静态 Token（`UPLOAD_TOKEN`、`APP_TOKEN`、`ADMIN_TOKEN`），改为基于 SQLite 的可撤销凭证系统：
 
 ```text
-PairingCode    Android 绑定入口，6 位数字，一次性，有 TTL（默认 15 分钟）
+PairingCode    Android 绑定入口，8 位数字，一次性，有 TTL（默认 15 分钟）
 AuthToken      设备会话 token，Bearer 鉴权，可撤销
 UploadLink     iPhone 上传入口，URL 路径携带 upload_key，可撤销
 BootstrapAdmin 初始化时生成的 admin token，用于维护接口
@@ -696,7 +696,7 @@ Compose Screen
 ```text
 绑定我的账本
   -> 输入服务器地址，例如 https://api.我的域名.com
-  -> 输入 6 位绑定码（Pairing Code）
+  -> 输入 8 位绑定码（Pairing Code）
   -> 调用 POST /api/auth/pair
   -> 保存 session token 到 Android Keystore
   -> 保存服务器地址和账号 / 账本 / 设备 / 角色

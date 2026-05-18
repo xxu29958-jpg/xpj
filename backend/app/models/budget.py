@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
@@ -34,7 +35,13 @@ class Budget(Base):
     public_id: Mapped[str] = mapped_column(
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_budgets_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     total_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     non_monthly_amount_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -88,7 +95,13 @@ class Goal(Base):
     public_id: Mapped[str] = mapped_column(
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_goals_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     goal_type: Mapped[str] = mapped_column(String(32), default="spending_limit", nullable=False, index=True)
     period: Mapped[str] = mapped_column(String(32), default="monthly", nullable=False, index=True)
@@ -131,13 +144,20 @@ class DashboardCardPreference(Base):
         CheckConstraint("surface IN ('android', 'web')", name="ck_dashboard_cards_surface_valid"),
         CheckConstraint("position >= 0", name="ck_dashboard_cards_position_non_negative"),
         UniqueConstraint("tenant_id", "surface", "card_key", name="uq_dashboard_cards_tenant_surface_key"),
+        UniqueConstraint("tenant_id", "surface", "position", name="uq_dashboard_cards_tenant_surface_position"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(
         String(36), default=lambda: str(uuid4()), nullable=False, unique=True, index=True
     )
-    tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_dashboard_cards_tenant_ledger"),
+        default=DEFAULT_TENANT_ID,
+        nullable=False,
+        index=True,
+    )
     surface: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     card_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

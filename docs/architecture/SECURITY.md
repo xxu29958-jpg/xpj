@@ -18,7 +18,7 @@ v0.3 隔离要求以账号 / 账本 / 设备模型为准，完整要求见 `docs
 v0.3 废弃了旧版的 `APP_TOKEN`/`UPLOAD_TOKEN`/`ADMIN_TOKEN` 静态 token 模型，改为基于 SQLite 的可撤销凭证系统：
 
 ```text
-PairingCode    Android 绑定入口，6 位数字，一次性，有 TTL（默认 15 分钟）
+PairingCode    Android 绑定入口，8 位数字，一次性，有 TTL（默认 15 分钟）
 AuthToken      设备会话 token，Bearer 鉴权，可撤销
 UploadLink     iPhone 上传入口，URL 路径携带 upload_key，可撤销
 BootstrapAdmin 初始化时生成的 admin scope token，用于后续管理操作

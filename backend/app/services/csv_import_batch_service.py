@@ -318,6 +318,7 @@ def _claim_apply_lease(
         update(CsvImportBatch)
         .where(CsvImportBatch.tenant_id == tenant_id)
         .where(CsvImportBatch.public_id == public_id)
+        .where(CsvImportBatch.status.in_(("parsed", "parsed_with_errors", "applying")))
         .where(
             or_(
                 CsvImportBatch.locked_until.is_(None),

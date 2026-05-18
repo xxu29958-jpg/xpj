@@ -316,10 +316,10 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 
 1. 真机打开"小票夹"。
 2. 输入账本地址：`https://api.你的域名.com`。
-3. 输入服务拥有者提供的 6 位绑定码（Pairing Code）。
+3. 输入服务拥有者提供的 8 位绑定码（Pairing Code）。
 4. 点击"绑定账本"。
 
-> **注意**：v0.3 不再使用旧版 `APP_TOKEN`。Android 绑定需要服务器地址 + 6 位数字绑定码。
+> **注意**：v0.3 不再使用旧版 `APP_TOKEN`。Android 绑定需要服务器地址 + 8 位数字绑定码。
 
 **预期结果**：
 
@@ -334,7 +334,7 @@ $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
 - 若提示"绑定没成功，请检查账本地址和绑定码"：
   - 确认地址是 `https://` 开头，不是 `http://`。
   - 确认不是 `localhost` 或 `127.0.0.1`。
-  - 确认输入的是 6 位数字绑定码，不是旧版 `APP_TOKEN`。
+  - 确认输入的是 8 位数字绑定码，不是旧版 `APP_TOKEN`。
   - 确认绑定码未过期（默认 15 分钟）且未被使用过。
   - 用 Safari/浏览器打开 `https://api.你的域名.com/api/health` 确认公网可达。
 - 若返回 `legacy_auth_removed`，说明后端已升级 v0.3，必须使用新绑定码。

@@ -10,7 +10,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import AuthToken, BootstrapSecretConsumption, PairingCode, UploadLink
 from app.routes import bootstrap as bootstrap_route
-from app.services.identity_service import hash_secret
+from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import now_utc
 from conftest import (
     PNG_BYTES,
@@ -202,6 +202,43 @@ def test_bootstrap_owner_accepts_valid_secret(
         get_settings.cache_clear()
 
 
+def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.database import Base, engine, init_db
+    import app.services.identity_service as identity_service
+
+    secret = "rollback-bootstrap-secret"
+    monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
+    monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", secret)
+    get_settings.cache_clear()
+
+    Base.metadata.drop_all(bind=engine)
+    init_db()
+
+    def fail_pairing_creation(*args, **kwargs):
+        raise RuntimeError("pairing creation failed")
+
+    monkeypatch.setattr(identity_service, "_create_pairing_code", fail_pairing_creation)
+
+    try:
+        with TestClient(app) as fresh_client:
+            with pytest.raises(RuntimeError, match="pairing creation failed"):
+                fresh_client.post(
+                    "/api/bootstrap/owner",
+                    headers={"X-Bootstrap-Secret": secret},
+                    json={"account_name": "owner", "ledger_name": "home"},
+                )
+
+        with SessionLocal() as db:
+            assert db.query(AuthToken).count() == 0
+            assert db.query(UploadLink).count() == 0
+            assert db.query(PairingCode).count() == 0
+            assert db.query(BootstrapSecretConsumption).count() == 0
+    finally:
+        get_settings.cache_clear()
+
+
 def test_upload_check_contract(client: TestClient) -> None:
     response = client.get(
         "/api/upload/check", headers={"Upload-Token": TEST_UPLOAD_TOKEN}
@@ -226,7 +263,7 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     pairing = response.json()
     assert pairing["ledger_name"] == "我的小票夹"
     assert pairing["pairing_code"].isdigit()
-    assert len(pairing["pairing_code"]) == 6
+    assert len(pairing["pairing_code"]) == 8
 
     paired = client.post(
         "/api/auth/pair",
@@ -272,7 +309,7 @@ def test_pairing_code_expires(client: TestClient) -> None:
     with SessionLocal() as db:
         pairing = (
             db.query(PairingCode)
-            .filter(PairingCode.code_hash == hash_secret(code))
+            .filter(PairingCode.code_hash == hash_pairing_code(code))
             .one()
         )
         pairing.expires_at = now_utc() - timedelta(minutes=1)

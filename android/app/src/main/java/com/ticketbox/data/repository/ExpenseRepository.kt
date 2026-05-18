@@ -168,6 +168,27 @@ class ExpenseRepository(
         return apiProvider.current()
     }
 
+    private data class BoundLedgerApi(
+        val service: ApiService,
+        val ledgerId: String,
+    )
+
+    private fun boundLedgerApi(): BoundLedgerApi {
+        val ledgerId = activeLedgerIdOrLegacy()
+        val serverUrl = requireNotNull(settingsStore.serverUrl()) { "账本地址未绑定" }
+        val token = requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) { "账本未绑定" }
+        return BoundLedgerApi(
+            service = apiProvider.temporary(serverUrl, token),
+            ledgerId = ledgerId,
+        )
+    }
+
+    private fun requireLedgerStillActive(ledgerIdAtRequest: String) {
+        if (activeLedgerIdOrLegacy() != ledgerIdAtRequest) {
+            throw RepositoryException("账本已切换，请重新操作。")
+        }
+    }
+
     private fun readProtectedImage(response: Response<ResponseBody>): ProtectedImage {
         if (!response.isSuccessful) {
             val errorBody = response.errorBody()?.string()
@@ -366,8 +387,8 @@ class ExpenseRepository(
     }
 
     suspend fun fetchExpense(id: Long): Result<Expense> = errorHandler.safeCall {
-        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
-        cacheIfConfirmed(api().expense(id), ledgerIdAtRequest).toDomain()
+        val bound = boundLedgerApi()
+        cacheIfConfirmed(bound.service.expense(id), bound.ledgerId).toDomain()
     }
 
     override suspend fun uploadScreenshot(
@@ -379,8 +400,8 @@ class ExpenseRepository(
         expectedLedgerId: String?,
     ): Result<Long> = errorHandler.safeCall {
         require(bytes.isNotEmpty()) { "请选择一张账单截图。" }
-        val ledgerIdAtUpload = activeLedgerIdOrLegacy()
-        if (expectedLedgerId != null && expectedLedgerId != ledgerIdAtUpload) {
+        val bound = boundLedgerApi()
+        if (expectedLedgerId != null && expectedLedgerId != bound.ledgerId) {
             throw RepositoryException("账本已切换，请重新选择截图上传。")
         }
         val cleanName = fileName
@@ -392,10 +413,8 @@ class ExpenseRepository(
         val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
         var uploadResponse: UploadResponseDto? = null
         val networkDurationMs = measureTimeMillis {
-            if (expectedLedgerId != null && expectedLedgerId != activeLedgerIdOrLegacy()) {
-                throw RepositoryException("账本已切换，请重新选择截图上传。")
-            }
-            uploadResponse = api().uploadScreenshot(filePart, timezone = currentTimezoneId())
+            requireLedgerStillActive(bound.ledgerId)
+            uploadResponse = bound.service.uploadScreenshot(filePart, timezone = currentTimezoneId())
         }
         val response = requireNotNull(uploadResponse)
         if (BuildConfig.DEBUG) {
@@ -412,7 +431,9 @@ class ExpenseRepository(
                 },
             )
         }
-        settingsStore.saveLastUploadAt(Instant.now().toString())
+        if (activeLedgerIdOrLegacy() == bound.ledgerId) {
+            settingsStore.saveLastUploadAt(Instant.now().toString())
+        }
         response.id
     }
 
@@ -421,8 +442,10 @@ class ExpenseRepository(
         draft: ExpenseDraft,
         baseline: Expense?,
     ): Result<Expense> = errorHandler.safeCall {
-        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
-        cacheIfConfirmed(api().updateExpense(id, draft.toRequest(baseline = baseline)), ledgerIdAtRequest).toDomain()
+        val bound = boundLedgerApi()
+        val updated = cacheIfConfirmed(bound.service.updateExpense(id, draft.toRequest(baseline = baseline)), bound.ledgerId)
+        requireLedgerStillActive(bound.ledgerId)
+        updated.toDomain()
     }
 
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> = errorHandler.safeCall {
@@ -433,10 +456,13 @@ class ExpenseRepository(
         if (!canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
-        api().replaceExpenseItems(
+        val bound = boundLedgerApi()
+        val updated = bound.service.replaceExpenseItems(
             id,
             ExpenseItemReplaceRequestDto(items = items.map { it.toRequest() }),
-        ).toDomain()
+        )
+        requireLedgerStillActive(bound.ledgerId)
+        updated.toDomain()
     }
 
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = errorHandler.safeCall {
@@ -447,16 +473,21 @@ class ExpenseRepository(
         if (!canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
-        api().replaceExpenseSplits(
+        val bound = boundLedgerApi()
+        val updated = bound.service.replaceExpenseSplits(
             id,
             ExpenseSplitReplaceRequestDto(splits = splits.map { it.toRequest() }),
-        ).toDomain()
+        )
+        requireLedgerStillActive(bound.ledgerId)
+        updated.toDomain()
     }
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> = errorHandler.safeCall {
         require(draft.amountCents != null || draft.originalAmountMinor != null) { "请先填写金额。" }
-        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
-        cacheIfConfirmed(api().createManualExpense(draft.toRequest()), ledgerIdAtRequest).toDomain()
+        val bound = boundLedgerApi()
+        val created = cacheIfConfirmed(bound.service.createManualExpense(draft.toRequest()), bound.ledgerId)
+        requireLedgerStillActive(bound.ledgerId)
+        created.toDomain()
     }
 
     suspend fun createNotificationDraft(draft: NotificationDraft): Result<Expense> = errorHandler.safeCall {
@@ -464,8 +495,10 @@ class ExpenseRepository(
     }
 
     override suspend fun confirmExpense(id: Long): Result<Expense> = errorHandler.safeCall {
-        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
-        cacheIfConfirmed(api().confirmExpense(id), ledgerIdAtRequest).toDomain()
+        val bound = boundLedgerApi()
+        val confirmed = cacheIfConfirmed(bound.service.confirmExpense(id), bound.ledgerId)
+        requireLedgerStillActive(bound.ledgerId)
+        confirmed.toDomain()
     }
 
     private suspend fun cacheIfConfirmed(dto: ExpenseDto, ledgerIdAtRequest: String): ExpenseDto {
@@ -476,15 +509,24 @@ class ExpenseRepository(
     }
 
     override suspend fun rejectExpense(id: Long): Result<Expense> = errorHandler.safeCall {
-        api().rejectExpense(id).toDomain()
+        val bound = boundLedgerApi()
+        val rejected = bound.service.rejectExpense(id)
+        requireLedgerStillActive(bound.ledgerId)
+        rejected.toDomain()
     }
 
     suspend fun retryOcr(id: Long): Result<Expense> = errorHandler.safeCall {
-        api().retryOcr(id).toDomain()
+        val bound = boundLedgerApi()
+        val retried = bound.service.retryOcr(id)
+        requireLedgerStillActive(bound.ledgerId)
+        retried.toDomain()
     }
 
     override suspend fun markNotDuplicate(id: Long): Result<Expense> = errorHandler.safeCall {
-        api().markNotDuplicate(id).toDomain()
+        val bound = boundLedgerApi()
+        val updated = bound.service.markNotDuplicate(id)
+        requireLedgerStillActive(bound.ledgerId)
+        updated.toDomain()
     }
 
     suspend fun fetchDuplicates(): Result<List<Expense>> = errorHandler.safeCall {
@@ -492,11 +534,17 @@ class ExpenseRepository(
     }
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = errorHandler.safeCall {
-        readProtectedImage(api().expenseThumbnail(id))
+        val bound = boundLedgerApi()
+        val image = readProtectedImage(bound.service.expenseThumbnail(id))
+        requireLedgerStillActive(bound.ledgerId)
+        image
     }
 
     suspend fun fetchImage(id: Long): Result<ProtectedImage> = errorHandler.safeCall {
-        readProtectedImage(api().expenseImage(id))
+        val bound = boundLedgerApi()
+        val image = readProtectedImage(bound.service.expenseImage(id))
+        requireLedgerStillActive(bound.ledgerId)
+        image
     }
 
     private suspend fun syncConfirmedFromService(

@@ -262,13 +262,15 @@
         <td><code>{{ batch.public_id[:8] }}</code></td>
         <td>
           {% if batch.status == 'rolled_back' %}<span class="dt-pill muted">已回滚</span>
+          {% elif batch.status == 'rollback_partial' %}<span class="dt-pill warn">部分回滚</span>
+          {% elif batch.status == 'rollback_skipped' %}<span class="dt-pill muted">未回滚</span>
           {% elif batch.status == 'applied_confirmed' %}<span class="dt-pill ok">已应用历史</span>
           {% else %}<span class="dt-pill ok">已应用</span>{% endif %}
         </td>
         <td>{{ batch.changed_count }}</td>
         <td>{{ batch.pending_scanned }}</td>
         <td>
-          {% if can_write and batch.status != 'rolled_back' %}
+          {% if can_write and not batch.rolled_back_at %}
           <form method="post" action="/web/rules/applications/{{ batch.public_id }}/rollback" style="display:inline"
                 data-confirm="回滚这次规则应用？只会恢复未被手动改过的账单。">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">

@@ -127,11 +127,15 @@ def update_dashboard_cards(
     resolved_surface = _surface(surface)
     allowed = {definition.key for definition in DEFAULT_DASHBOARD_CARDS[resolved_surface]}
     seen: set[str] = set()
+    positions: set[int] = set()
     for item in payload.cards:
         key = item.key.strip()
         if key not in allowed or key in seen:
             raise AppError("invalid_request", status_code=422)
+        if item.position in positions:
+            raise AppError("invalid_request", status_code=422)
         seen.add(key)
+        positions.add(item.position)
 
     prefs = _preferences(db, tenant_id=tenant_id, surface=resolved_surface)
     now = now_utc()
@@ -139,6 +143,11 @@ def update_dashboard_cards(
         if key not in seen:
             db.delete(pref)
             del prefs[key]
+    db.flush()
+
+    for pref in prefs.values():
+        pref.position = pref.position + 10_000
+    db.flush()
 
     for item in payload.cards:
         key = item.key.strip()

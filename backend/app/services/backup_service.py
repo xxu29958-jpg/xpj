@@ -133,12 +133,7 @@ def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
 
     directory = _backup_dir()
     stamp = now_utc().astimezone().strftime("%Y%m%d-%H%M%S")
-    target = directory / f"{prefix}-{stamp}.db"
-    # Avoid overwriting an existing backup if two clicks land in the same second.
-    counter = 1
-    while target.exists():
-        target = directory / f"{prefix}-{stamp}-{counter}.db"
-        counter += 1
+    target = directory / f"{prefix}-{stamp}-{uuid4().hex[:8]}.db"
 
     temp_target = directory / f".{target.name}.tmp-{uuid4().hex}"
     try:

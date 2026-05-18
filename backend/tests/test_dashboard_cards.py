@@ -122,6 +122,19 @@ def test_dashboard_cards_validation_and_viewer_write_guard(client: TestClient) -
     assert duplicate.status_code == 422
     assert duplicate.json()["error"] == "invalid_request"
 
+    duplicate_position = client.put(
+        "/api/dashboard/cards?surface=web",
+        headers=app_headers(),
+        json={
+            "cards": [
+                {"key": "reports", "visible": True, "position": 0},
+                {"key": "goals", "visible": True, "position": 0},
+            ]
+        },
+    )
+    assert duplicate_position.status_code == 422
+    assert duplicate_position.json()["error"] == "invalid_request"
+
     _set_owner_ledger_role("viewer")
     viewer_read = client.get(
         "/api/dashboard/cards?surface=web",

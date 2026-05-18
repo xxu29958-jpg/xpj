@@ -22,7 +22,7 @@ from app.schemas import (
 )
 from app.services.category_service import normalize_category
 from app.services.classify_service import classify_expense
-from app.services.cleanup_service import cleanup_after_confirm
+from app.services.cleanup_service import cleanup_after_confirm, delete_after_confirm_files
 from app.services.duplicate_service import (
     clear_duplicate_references_to,
     list_suspected_duplicates,
@@ -602,6 +602,7 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     sync_expense_tags(db, expense)
     cleanup_after_confirm(expense)
     db.commit()
+    delete_after_confirm_files(expense)
     db.refresh(expense)
     return expense
 

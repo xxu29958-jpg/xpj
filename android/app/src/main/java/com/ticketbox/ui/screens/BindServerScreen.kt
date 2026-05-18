@@ -80,15 +80,15 @@ fun BindServerScreen(
                 }
                 OutlinedTextField(
                     value = pairingCode,
-                    onValueChange = { pairingCode = it.filter(Char::isDigit).take(6) },
+                    onValueChange = { pairingCode = it.filter(Char::isDigit).take(8) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("绑定码") },
-                    placeholder = { Text("6 位数字") },
+                    placeholder = { Text("8 位数字") },
                     singleLine = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
-                        enabled = !loading && serverUrl.isNotBlank() && pairingCode.length == 6,
+                        enabled = !loading && serverUrl.isNotBlank() && pairingCode.length == 8,
                         modifier = Modifier.weight(1f),
                         onClick = { onBind(serverUrl, pairingCode) },
                     ) {

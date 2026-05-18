@@ -34,8 +34,21 @@ class OrphanCleanupResult:
 
 
 def _delete_relative_file(relative_path: str | None, tenant_id: str) -> bool:
-    if not relative_path:
+    candidate = _resolve_relative_file(relative_path, tenant_id)
+    if candidate is None:
         return False
+    if candidate.is_file():
+        try:
+            candidate.unlink()
+            return True
+        except OSError:
+            return False
+    return False
+
+
+def _resolve_relative_file(relative_path: str | None, tenant_id: str) -> Path | None:
+    if not relative_path:
+        return None
     settings = get_settings()
     tenant_upload_dir = (settings.upload_dir / tenant_id).resolve()
     candidate = (BACKEND_ROOT / relative_path).resolve()
@@ -43,11 +56,13 @@ def _delete_relative_file(relative_path: str | None, tenant_id: str) -> bool:
         candidate.relative_to(settings.upload_dir)
         candidate.relative_to(tenant_upload_dir)
     except ValueError:
-        return False
-    if candidate.is_file():
-        candidate.unlink()
-        return True
-    return False
+        return None
+    return candidate
+
+
+def _relative_file_exists(relative_path: str | None, tenant_id: str) -> bool:
+    candidate = _resolve_relative_file(relative_path, tenant_id)
+    return candidate is not None and candidate.is_file()
 
 
 def _relative_upload_path(path: Path) -> str | None:
@@ -109,9 +124,16 @@ def cleanup_after_confirm(expense: Expense) -> Expense:
         return expense
 
     now = now_utc()
-    if _delete_relative_file(expense.image_path, expense.tenant_id):
+    if _relative_file_exists(expense.image_path, expense.tenant_id):
         expense.image_deleted_at = now
     return expense
+
+
+def delete_after_confirm_files(expense: Expense) -> None:
+    settings = get_settings()
+    if not settings.delete_image_after_confirm:
+        return
+    _delete_relative_file(expense.image_path, expense.tenant_id)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
@@ -138,23 +160,28 @@ def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
     )
 
     now = now_utc()
-    deleted_images = 0
-    deleted_thumbnails = 0
+    pending_image_deletions: list[tuple[str | None, str]] = []
+    pending_thumbnail_deletions: list[tuple[str | None, str]] = []
     for expense in expenses:
         changed = False
-        if expense.image_deleted_at is None and _delete_relative_file(expense.image_path, expense.tenant_id):
+        if expense.image_deleted_at is None and _relative_file_exists(expense.image_path, expense.tenant_id):
             expense.image_deleted_at = now
-            deleted_images += 1
+            pending_image_deletions.append((expense.image_path, expense.tenant_id))
             changed = True
-        if expense.thumbnail_deleted_at is None and _delete_relative_file(expense.thumbnail_path, expense.tenant_id):
+        if expense.thumbnail_deleted_at is None and _relative_file_exists(expense.thumbnail_path, expense.tenant_id):
             expense.thumbnail_deleted_at = now
-            deleted_thumbnails += 1
+            pending_thumbnail_deletions.append((expense.thumbnail_path, expense.tenant_id))
             changed = True
         if changed:
             expense.updated_at = now
 
-    if deleted_images or deleted_thumbnails:
+    if pending_image_deletions or pending_thumbnail_deletions:
         db.commit()
+
+    deleted_images = sum(1 for path, scoped_tenant in pending_image_deletions if _delete_relative_file(path, scoped_tenant))
+    deleted_thumbnails = sum(
+        1 for path, scoped_tenant in pending_thumbnail_deletions if _delete_relative_file(path, scoped_tenant)
+    )
 
     return CleanupResult(
         enabled=True,
@@ -189,23 +216,28 @@ def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
     )
 
     now = now_utc()
-    deleted_images = 0
-    deleted_thumbnails = 0
+    pending_image_deletions: list[tuple[str | None, str]] = []
+    pending_thumbnail_deletions: list[tuple[str | None, str]] = []
     for expense in expenses:
         changed = False
-        if expense.image_deleted_at is None and _delete_relative_file(expense.image_path, expense.tenant_id):
+        if expense.image_deleted_at is None and _relative_file_exists(expense.image_path, expense.tenant_id):
             expense.image_deleted_at = now
-            deleted_images += 1
+            pending_image_deletions.append((expense.image_path, expense.tenant_id))
             changed = True
-        if expense.thumbnail_deleted_at is None and _delete_relative_file(expense.thumbnail_path, expense.tenant_id):
+        if expense.thumbnail_deleted_at is None and _relative_file_exists(expense.thumbnail_path, expense.tenant_id):
             expense.thumbnail_deleted_at = now
-            deleted_thumbnails += 1
+            pending_thumbnail_deletions.append((expense.thumbnail_path, expense.tenant_id))
             changed = True
         if changed:
             expense.updated_at = now
 
-    if deleted_images or deleted_thumbnails:
+    if pending_image_deletions or pending_thumbnail_deletions:
         db.commit()
+
+    deleted_images = sum(1 for path, scoped_tenant in pending_image_deletions if _delete_relative_file(path, scoped_tenant))
+    deleted_thumbnails = sum(
+        1 for path, scoped_tenant in pending_thumbnail_deletions if _delete_relative_file(path, scoped_tenant)
+    )
 
     return CleanupResult(
         enabled=True,

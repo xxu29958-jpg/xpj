@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -73,9 +74,15 @@ def require_http_bootstrap_secret(
     return expected
 
 
+def _consume_secret(db: Session, secret: str) -> None:
+    if secret:
+        db.add(BootstrapSecretConsumption(secret_hash=hash_secret(secret)))
+        db.flush()
+
+
 def _mark_secret_consumed(db: Session, secret: str) -> None:
     if secret:
-        db.merge(BootstrapSecretConsumption(secret_hash=hash_secret(secret)))
+        _consume_secret(db, secret)
         db.commit()
 
 
@@ -85,14 +92,30 @@ def post_bootstrap_owner(
     secret: str = Depends(require_http_bootstrap_secret),
     db: Session = Depends(get_db),
 ) -> BootstrapOwnerResponse:
-    result = bootstrap_owner(
-        db,
-        account_name=payload.account_name,
-        ledger_name=payload.ledger_name,
-        device_name=payload.device_name,
-        default_timezone=payload.default_timezone,
-    )
-    _mark_secret_consumed(db, secret)
+    try:
+        result = bootstrap_owner(
+            db,
+            account_name=payload.account_name,
+            ledger_name=payload.ledger_name,
+            device_name=payload.device_name,
+            default_timezone=payload.default_timezone,
+            commit=False,
+        )
+        _consume_secret(db, secret)
+        db.commit()
+    except AppError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise AppError(
+            "invalid_bootstrap_secret",
+            "Bootstrap secret is invalid or already used.",
+            status_code=401,
+        ) from exc
+    except Exception:
+        db.rollback()
+        raise
     return BootstrapOwnerResponse(**result.__dict__)
 
 

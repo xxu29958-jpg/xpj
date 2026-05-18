@@ -492,6 +492,7 @@ class PendingViewModelReviewActionsTest {
         val vm = PendingViewModel(fake)
         advanceUntilIdle()
 
+        fake.pending = emptyList()
         ledgerFlow.value = "family"
         advanceUntilIdle()
 
@@ -504,6 +505,28 @@ class PendingViewModelReviewActionsTest {
 
         assertEquals(2, fake.fetchPendingCalls)
         assertEquals(listOf("New Ledger"), vm.uiState.value.items.map { it.merchant })
+    }
+
+    @Test
+    fun staleThumbnailResponseAfterLedgerChangeIsIgnored() = review {
+        val ledgerFlow = MutableStateFlow<String?>("owner")
+        val thumbnailResponse = CompletableDeferred<Result<ProtectedImage>>()
+        val fake = FakeReviewActions(
+            pending = listOf(expense(id = 92L, merchant = "Old Ledger", imagePath = "uploads/old.jpg")),
+            activeLedgerFlow = ledgerFlow,
+        )
+        fake.thumbnailResponder = { thumbnailResponse.await() }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        fake.pending = emptyList()
+        ledgerFlow.value = "family"
+        advanceUntilIdle()
+
+        thumbnailResponse.complete(Result.success(image("old-ledger")))
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.thumbnails.containsKey(92L))
     }
 
     @Test
@@ -538,6 +561,7 @@ class PendingViewModelReviewActionsTest {
         status: String = "pending",
         originalCurrencyCode: CurrencyCode = CurrencyCode.CNY,
         originalAmountMinor: Long? = amountCents,
+        imagePath: String? = null,
     ): Expense = Expense(
         id = id,
         publicId = "pub-$id",
@@ -549,7 +573,7 @@ class PendingViewModelReviewActionsTest {
         category = category,
         note = null,
         source = "manual",
-        imagePath = null,
+        imagePath = imagePath,
         thumbnailPath = null,
         imageHash = null,
         rawText = null,
@@ -587,6 +611,7 @@ private class FakeReviewActions(
     var rejectResponder: (suspend (Long) -> Result<Expense>)? = null
     var markNotDuplicateResponder: (suspend (Long) -> Result<Expense>)? = null
     var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null
+    var thumbnailResponder: (suspend (Long) -> Result<ProtectedImage>)? = null
 
     var updateCalls: Int = 0
         private set
@@ -615,7 +640,8 @@ private class FakeReviewActions(
     }
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> =
-        Result.failure(IllegalStateException("no thumbnail in tests"))
+        thumbnailResponder?.invoke(id)
+            ?: Result.failure(IllegalStateException("no thumbnail in tests"))
 
     override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> {
         updateCalls += 1

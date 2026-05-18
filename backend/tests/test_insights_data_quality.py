@@ -9,7 +9,8 @@ from sqlalchemy import select
 from api_contract_helpers import insert_confirmed_expense, upload_png
 from app.database import SessionLocal
 from app.fx_constants import FX_STATUS_PENDING
-from app.models import Expense
+from app.models import Account, Expense, Ledger
+from app.services.time_service import now_utc
 from conftest import app_headers
 
 
@@ -148,6 +149,19 @@ def test_data_quality_ledger_isolation(client: TestClient) -> None:
     upload_png(client)  # owner pending row
 
     with SessionLocal() as db:
+        now = now_utc()
+        account = Account(display_name="Other tenant", created_at=now)
+        db.add(account)
+        db.flush()
+        db.add(
+            Ledger(
+                ledger_id="other-tenant-do-not-leak",
+                name="Other tenant",
+                owner_account_id=account.id,
+                created_at=now,
+            )
+        )
+        db.flush()
         other = Expense(
             tenant_id="other-tenant-do-not-leak",
             amount_cents=None,

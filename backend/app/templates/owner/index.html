@@ -188,6 +188,8 @@
         <td><code>{{ batch.public_id[:8] }}</code></td>
         <td>
           {% if batch.status == 'rolled_back' %}<span class="status-chip status-muted">已回滚</span>
+          {% elif batch.status == 'rollback_partial' %}<span class="status-chip status-warning">部分回滚</span>
+          {% elif batch.status == 'rollback_skipped' %}<span class="status-chip status-muted">未回滚</span>
           {% elif batch.status == 'applied_confirmed' %}<span class="status-chip status-success">已应用历史</span>
           {% elif batch.status == 'applied' %}<span class="status-chip status-success">已应用待确认</span>
           {% else %}<span class="status-chip status-muted">{{ batch.status }}</span>{% endif %}

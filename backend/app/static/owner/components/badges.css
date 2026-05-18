@@ -37,6 +37,7 @@
 .status-active,
 .status-used,
 .status-success { background: var(--state-success-bg); color: var(--state-success-fg); }
+.status-warning { background: var(--state-warn-bg); color: var(--state-warn-fg); }
 .status-pending { background: var(--state-info-bg); color: var(--state-info-fg); }
 .status-disabled,
 .status-revoked { background: var(--state-danger-bg); color: var(--state-danger-fg); }

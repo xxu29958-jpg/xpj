@@ -160,9 +160,9 @@ def test_pairing_to_new_ledger_yields_isolated_token(local_client: TestClient) -
     import re
 
     match = re.search(
-        r'class="code-big"[^>]*>\s*(\d{6})\s*<', response.text
+        r'class="code-big"[^>]*>\s*(\d{8})\s*<', response.text
     )
-    assert match, "expected a 6-digit pairing code rendered in .code-big"
+    assert match, "expected an 8-digit pairing code rendered in .code-big"
     pairing_code = match.group(1)
 
     # Pair as a new device.

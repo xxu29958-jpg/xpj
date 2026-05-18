@@ -125,7 +125,7 @@ class PendingViewModel(
                 .onSuccess { expenses ->
                     if (requestGeneration != generation) return@onSuccess
                     _uiState.update { PendingUiStateReducer.afterRefresh(it, expenses, readOnly = isReadOnly()) }
-                    loadThumbnails(expenses)
+                    loadThumbnails(expenses, generation)
                 }
                 .onFailure { error ->
                     if (requestGeneration != generation) return@onFailure
@@ -184,6 +184,7 @@ class PendingViewModel(
                 expectedLedgerId = expectedLedgerId,
             )
                 .onSuccess {
+                    if (uploadGenerationAtStart != requestGeneration) return@onSuccess
                     uploadLedgerIdAtStart = null
                     _uiState.update { state ->
                         state.copy(uploading = false, message = "截图已上传，等你确认。")
@@ -191,6 +192,7 @@ class PendingViewModel(
                     refresh()
                 }
                 .onFailure { error ->
+                    if (uploadGenerationAtStart != requestGeneration) return@onFailure
                     uploadLedgerIdAtStart = null
                     _uiState.update {
                         it.copy(
@@ -202,8 +204,9 @@ class PendingViewModel(
         }
     }
 
-    private suspend fun loadThumbnails(expenses: List<Expense>) {
+    private suspend fun loadThumbnails(expenses: List<Expense>, generation: Int) {
         val loaded = thumbnailLoader.loadMissing(expenses, _uiState.value.thumbnails)
+        if (requestGeneration != generation) return
         if (loaded.isNotEmpty()) {
             _uiState.update { state -> PendingUiStateReducer.afterLoadedThumbnails(state, loaded) }
         }
@@ -217,14 +220,17 @@ class PendingViewModel(
         }
         if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
+            val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
             repository.confirmExpense(expense.id)
                 .onSuccess { confirmed ->
+                    if (requestGeneration != generation) return@onSuccess
                     _uiState.update { state ->
                         PendingUiStateReducer.afterConfirmed(state, confirmed, message = "已确认入账")
                     }
                 }
                 .onFailure { error ->
+                    if (requestGeneration != generation) return@onFailure
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,
@@ -239,14 +245,17 @@ class PendingViewModel(
         if (blockReadOnlyWrite()) return
         if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
+            val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
             repository.rejectExpense(expense.id)
                 .onSuccess { rejected ->
+                    if (requestGeneration != generation) return@onSuccess
                     _uiState.update { state ->
                         PendingUiStateReducer.afterRejected(state, rejected, message = "已删除")
                     }
                 }
                 .onFailure { error ->
+                    if (requestGeneration != generation) return@onFailure
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,
@@ -261,9 +270,11 @@ class PendingViewModel(
         if (blockReadOnlyWrite()) return
         if (expense.id in _uiState.value.actionInProgressIds) return
         viewModelScope.launch {
+            val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
             repository.markNotDuplicate(expense.id)
                 .onSuccess { updated ->
+                    if (requestGeneration != generation) return@onSuccess
                     _uiState.update { state ->
                         PendingUiStateReducer.afterUpdated(
                             current = state,
@@ -274,6 +285,7 @@ class PendingViewModel(
                     }
                 }
                 .onFailure { error ->
+                    if (requestGeneration != generation) return@onFailure
                     _uiState.update {
                         it.copy(
                             actionInProgressIds = it.actionInProgressIds - expense.id,

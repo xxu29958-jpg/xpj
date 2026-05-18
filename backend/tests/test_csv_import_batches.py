@@ -85,14 +85,14 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
         assert inserted_count == 10_000
         assert applied.batch.status == "applied"
 
-        third_apply = apply_csv_import_batch(
-            db,
-            tenant_id="owner",
-            public_id=batch.public_id,
-            batch_size=700,
-        )
-        assert third_apply.inserted_count == 0
-        assert third_apply.remaining_valid_rows == 0
+        with pytest.raises(AppError) as terminal_apply:
+            apply_csv_import_batch(
+                db,
+                tenant_id="owner",
+                public_id=batch.public_id,
+                batch_size=700,
+            )
+        assert terminal_apply.value.status_code == 409
 
         inserted = db.scalar(
             select(func.count())
