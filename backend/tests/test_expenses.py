@@ -6,14 +6,16 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 import pytest
+from sqlalchemy import func, select
 
 from api_contract_helpers import (
     upload_png,
 )
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Expense
-from app.services.expense_service import confirm_expense, reject_expense
+from app.models import DuplicateIgnore, Expense
+from app.services.duplicate_service import _remember_duplicate_ignore
+from app.services.expense_service import confirm_expense, reject_expense, retry_expense_ocr
 from app.services.ocr_service import MockOcrProvider, OcrResult, apply_ocr_result, retry_ocr
 from conftest import (
     BACKEND_ROOT,
@@ -710,6 +712,25 @@ def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
     assert matched["duplicate_of_id"] is None
 
 
+def test_duplicate_ignore_insert_is_idempotent_for_retries(client: TestClient) -> None:
+    first_id = upload_png(client)
+    second_id = upload_png(client)
+
+    with SessionLocal() as db:
+        _remember_duplicate_ignore(db, "owner", second_id, first_id, "similar")
+        _remember_duplicate_ignore(db, "owner", second_id, first_id, "similar")
+        db.commit()
+
+    with SessionLocal() as db:
+        count = db.scalar(
+            select(func.count())
+            .select_from(DuplicateIgnore)
+            .where(DuplicateIgnore.tenant_id == "owner")
+            .where(DuplicateIgnore.kind == "similar")
+        )
+    assert count == 1
+
+
 def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:
     expense_id = upload_png(client)
     response = client.patch(
@@ -993,6 +1014,41 @@ def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
     assert payload["amount_cents"] == 1173
     assert payload["merchant"] == "高德"
     assert payload["category"] == "交通"
+
+
+def test_retry_ocr_rejects_stale_pending_snapshot(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expense_id = upload_png(client)
+
+    def slow_ocr_result(expense: Expense) -> OcrResult:
+        with SessionLocal() as user_db:
+            row = user_db.get(Expense, expense.id)
+            assert row is not None
+            row.merchant = "鐢ㄦ埛鎵嬪姩淇敼"
+            row.amount_cents = 1234
+            row.updated_at = (row.updated_at or row.created_at) + timedelta(seconds=5)
+            user_db.commit()
+        return OcrResult(
+            raw_text="OCR 鍟嗗\n99.99",
+            amount_cents=9999,
+            merchant="OCR 鍟嗗",
+            confidence=0.9,
+        )
+
+    monkeypatch.setattr("app.services.expense_service.extract_ocr_result", slow_ocr_result)
+
+    with SessionLocal() as db:
+        with pytest.raises(AppError) as exc_info:
+            retry_expense_ocr(db, expense_id, "owner")
+
+    assert exc_info.value.error == "expense_changed"
+    with SessionLocal() as db:
+        row = db.get(Expense, expense_id)
+        assert row is not None
+        assert row.merchant == "鐢ㄦ埛鎵嬪姩淇敼"
+        assert row.amount_cents == 1234
 
 
 def test_mock_ocr_provider_populates_pending_draft() -> None:

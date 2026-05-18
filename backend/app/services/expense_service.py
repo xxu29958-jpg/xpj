@@ -22,7 +22,7 @@ from app.schemas import (
 )
 from app.services.category_service import normalize_category
 from app.services.classify_service import classify_expense
-from app.services.cleanup_service import cleanup_after_confirm, delete_after_confirm_files
+from app.services.cleanup_service import cleanup_after_confirm
 from app.services.duplicate_service import (
     clear_duplicate_references_to,
     list_suspected_duplicates,
@@ -37,7 +37,7 @@ from app.services.ocr_service import (
     apply_ocr_result,
     clear_ocr_draft_fields,
     collect_auto_ocr_results,
-    retry_ocr,
+    extract_ocr_result,
     run_auto_ocr,
 )
 from app.services.receipt_parse_service import parse_receipt_text
@@ -144,6 +144,45 @@ def _expense_has_pending_fx(expense: Expense) -> bool:
     return expense.fx_status == FX_STATUS_PENDING or (
         expense.amount_cents is None and expense.original_amount_minor is not None
     )
+
+
+def _updated_at_matches(value):
+    if value is None:
+        return Expense.updated_at.is_(None)
+    return Expense.updated_at == value
+
+
+def _claim_pending_expense_for_ocr(
+    db: Session,
+    *,
+    expense_id: int,
+    tenant_id: str,
+    expected_updated_at,
+    claimed_at,
+) -> Expense:
+    result = db.execute(
+        update(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.id == expense_id)
+        .where(Expense.status == "pending")
+        .where(_updated_at_matches(expected_updated_at))
+        .values(updated_at=claimed_at)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.expire_all()
+        current = db.scalar(
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
+        )
+        if current is None or current.status != "pending":
+            raise AppError("expense_not_found", status_code=404)
+        raise AppError(
+            "expense_changed",
+            "账单已被修改，请重新打开后再识别。",
+            status_code=409,
+        )
+    db.expire_all()
+    return get_expense(db, expense_id, tenant_id)
 
 
 def _ensure_expense_can_confirm(expense: Expense) -> None:
@@ -600,10 +639,11 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
     sync_expense_tags(db, expense)
-    cleanup_after_confirm(expense)
     db.commit()
-    delete_after_confirm_files(expense)
     db.refresh(expense)
+    if cleanup_after_confirm(expense):
+        db.commit()
+        db.refresh(expense)
     return expense
 
 
@@ -686,7 +726,19 @@ def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
 
-    retry_ocr(expense)
+    expected_updated_at = expense.updated_at
+    result = extract_ocr_result(expense)
+    now = now_utc()
+    expense = _claim_pending_expense_for_ocr(
+        db,
+        expense_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        claimed_at=now,
+    )
+    # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
+    expense.updated_at = expected_updated_at
+    apply_ocr_result(expense, result)
     _replace_ocr_draft_items_from_text(db, expense, expense.raw_text or "")
     if expense.category == "其他":
         classify_expense(db, expense)
@@ -696,7 +748,7 @@ def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
         or expense.expense_time is not None
     ):
         mark_duplicate_status(db, expense)
-    expense.updated_at = now_utc()
+    expense.updated_at = now
     db.commit()
     db.refresh(expense)
     return expense
@@ -710,6 +762,17 @@ def recognize_expense_text(
         raise AppError("expense_not_found", status_code=404)
 
     raw_text = payload.raw_text.strip()
+    expected_updated_at = expense.updated_at
+    now = now_utc()
+    expense = _claim_pending_expense_for_ocr(
+        db,
+        expense_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        claimed_at=now,
+    )
+    # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
+    expense.updated_at = expected_updated_at
     apply_ocr_result(expense, OcrResult(raw_text=raw_text, confidence=None))
     _replace_ocr_draft_items_from_text(db, expense, raw_text)
     if expense.category == "其他":
@@ -720,7 +783,7 @@ def recognize_expense_text(
         or expense.expense_time is not None
     ):
         mark_duplicate_status(db, expense)
-    expense.updated_at = now_utc()
+    expense.updated_at = now
     db.commit()
     db.refresh(expense)
     return expense

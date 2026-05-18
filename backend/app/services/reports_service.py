@@ -501,7 +501,11 @@ def six_month_summary(
             budget = get_monthly_budget(
                 db, tenant_id=tenant_id, month=month_label, timezone_name=timezone_key
             )
-            budget_cents = int(budget.total_amount_cents) if budget.configured else 0
+            budget_cents = (
+                int(budget.total_amount_cents) + int(budget.rollover_amount_cents)
+                if budget.configured
+                else 0
+            )
         except Exception:
             budget_cents = 0
         results.append(

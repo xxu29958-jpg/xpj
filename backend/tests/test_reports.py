@@ -7,7 +7,7 @@ from sqlalchemy import event, select
 
 from app.database import SessionLocal, engine
 from app.models import Expense, LedgerMember
-from app.services.reports_service import reports_overview
+from app.services.reports_service import reports_overview, six_month_summary
 from app.services.time_service import now_utc
 from conftest import app_headers, gray_app_headers
 
@@ -401,6 +401,27 @@ def test_reports_overview_month_granularity_and_viewer_read(
     ]
     assert payload["trend"][1]["amount_cents"] == 1000
     assert payload["trend"][-1]["amount_cents"] == 5000
+
+
+def test_six_month_summary_budget_line_includes_rollover(client: TestClient) -> None:
+    response = client.put(
+        "/api/budgets/monthly/2026-05?timezone=UTC",
+        headers=app_headers(),
+        json={"total_amount_cents": 100000, "rollover_amount_cents": 5000},
+    )
+    assert response.status_code == 200, response.json()
+
+    with SessionLocal() as db:
+        summary = six_month_summary(
+            db,
+            anchor_month="2026-05",
+            tenant_id="owner",
+            timezone_name="UTC",
+        )
+
+    may = next(row for row in summary if row["month"] == "2026-05")
+    assert may["budget_cents"] == 105000
+    assert may["budget_yuan"] == 1050.0
 
 
 def test_reports_overview_invalid_month_and_empty_data(client: TestClient) -> None:

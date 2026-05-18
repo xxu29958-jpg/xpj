@@ -175,9 +175,17 @@ def get_ocr_provider(provider_name: str | None = None) -> OcrProvider:
     return EmptyOcrProvider()
 
 
-def retry_ocr(expense: Expense, provider: OcrProvider | None = None, timezone_name: str | None = None) -> Expense:
+def extract_ocr_result(
+    expense: Expense,
+    provider: OcrProvider | None = None,
+    timezone_name: str | None = None,
+) -> OcrResult:
     active_provider = provider or get_ocr_provider()
-    result = active_provider.extract(expense, timezone_name=timezone_name)
+    return active_provider.extract(expense, timezone_name=timezone_name)
+
+
+def retry_ocr(expense: Expense, provider: OcrProvider | None = None, timezone_name: str | None = None) -> Expense:
+    result = extract_ocr_result(expense, provider=provider, timezone_name=timezone_name)
     apply_ocr_result(expense, result, timezone_name=timezone_name)
     return expense
 

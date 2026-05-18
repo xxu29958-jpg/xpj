@@ -168,6 +168,26 @@ def _try_apply_rule_category(
     return (int(expense.id), int(rule.id), rule.keyword, before_category, after_category)
 
 
+def _try_rollback_rule_change(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense: Expense,
+    change: RuleApplicationChange,
+    now,
+) -> bool:
+    result = db.execute(
+        update(Expense)
+        .where(ledger_filter(Expense, tenant_id))
+        .where(Expense.id == change.expense_id)
+        .where(Expense.category == expense.category)
+        .where(_updated_at_matches(expense.updated_at))
+        .values(category=change.before_category, updated_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
+
+
 def _matching_rule_category(
     expense: Expense,
     rules: list[CategoryRule],
@@ -574,8 +594,17 @@ def rollback_rule_application(
             change.rolled_back_at = now
             skipped += 1
             continue
-        expense.category = change.before_category
-        expense.updated_at = now
+        if not _try_rollback_rule_change(
+            db,
+            tenant_id=tenant_id,
+            expense=expense,
+            change=change,
+            now=now,
+        ):
+            change.status = "skipped"
+            change.rolled_back_at = now
+            skipped += 1
+            continue
         change.status = "rolled_back"
         change.rolled_back_at = now
         changed += 1

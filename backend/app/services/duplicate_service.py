@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import and_, or_
 from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models import DuplicateIgnore, Expense
@@ -96,27 +96,18 @@ def _is_duplicate_ignored(db: Session, tenant_id: str, expense_id: int, duplicat
 
 def _remember_duplicate_ignore(db: Session, tenant_id: str, expense_id: int, duplicate_of_id: int, kind: str) -> None:
     left_id, right_id = _normalize_pair(expense_id, duplicate_of_id)
-    exists = db.scalar(
-        select(DuplicateIgnore)
-        .where(DuplicateIgnore.tenant_id == tenant_id)
-        .where(
-            or_(
-                and_(
-                    DuplicateIgnore.expense_id == left_id,
-                    DuplicateIgnore.duplicate_of_id == right_id,
-                    DuplicateIgnore.kind == kind,
-                ),
-                and_(
-                    DuplicateIgnore.expense_id == right_id,
-                    DuplicateIgnore.duplicate_of_id == left_id,
-                    DuplicateIgnore.kind == kind,
-                ),
-            )
+    db.execute(
+        sqlite_insert(DuplicateIgnore)
+        .values(
+            tenant_id=tenant_id,
+            expense_id=left_id,
+            duplicate_of_id=right_id,
+            kind=kind,
         )
-        .limit(1)
+        .on_conflict_do_nothing(
+            index_elements=["tenant_id", "expense_id", "duplicate_of_id", "kind"]
+        )
     )
-    if exists is None:
-        db.add(DuplicateIgnore(tenant_id=tenant_id, expense_id=left_id, duplicate_of_id=right_id, kind=kind))
 
 
 def _normalize_pair(expense_id: int, duplicate_of_id: int) -> tuple[int, int]:

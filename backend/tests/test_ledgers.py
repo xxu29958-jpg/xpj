@@ -127,6 +127,8 @@ def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient) -> None
     # Old token is revoked: subsequent calls fail with 401.
     old = client.get("/api/expenses/pending", headers=app_headers())
     assert old.status_code == 401
+    stale_switch = client.post(f"/api/ledgers/{target_id}/switch", headers=app_headers())
+    assert stale_switch.status_code == 401
 
     # New token works and points at the new ledger.
     new_headers = {"Authorization": f"Bearer {new_token}"}

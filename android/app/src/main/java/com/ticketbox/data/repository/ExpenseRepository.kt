@@ -505,7 +505,7 @@ class ExpenseRepository(
 
     override suspend fun markNotDuplicate(id: Long): Result<Expense> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bind()
-        val updated = bound.call { it.markNotDuplicate(id) }
+        val updated = cacheIfConfirmed(bound.call { it.markNotDuplicate(id) }, bound.ledgerId)
         updated.toDomain()
     }
 
@@ -534,6 +534,7 @@ class ExpenseRepository(
         replaceCache: Boolean = false,
         recordSyncTimestamp: Boolean = true,
     ): List<Expense> {
+        val isFullLedgerSync = month == null && category == null && tag == null
         val collectedDtos = mutableListOf<ExpenseDto>()
         var page = 1
         val pageSize = 50
@@ -568,9 +569,9 @@ class ExpenseRepository(
             ledgerId = ledgerIdAtRequest,
             expenses = entities,
             replaceCache = replaceCache,
-            pruneMissing = !replaceCache && month == null && category == null && tag == null,
+            pruneMissing = !replaceCache && isFullLedgerSync,
         )
-        if (recordSyncTimestamp) {
+        if (recordSyncTimestamp && isFullLedgerSync) {
             settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
         }
         return collected

@@ -74,6 +74,42 @@ def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestCli
         assert row.image_deleted_at is not None
 
 
+def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    from app.services import cleanup_service
+
+    expense_id = _upload_png(client)
+    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    assert rejected.status_code == 200
+
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.rejected_at = now_utc() - timedelta(days=3)
+        db.commit()
+
+    settings = cleanup_service.get_settings()
+    monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, delete_rejected_after_days=1))
+
+    def fail_unlink(self):
+        raise PermissionError("file is locked")
+
+    monkeypatch.setattr(cleanup_service.Path, "unlink", fail_unlink)
+
+    response = client.post("/api/maintenance/cleanup-rejected", headers=admin_headers())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["scanned"] == 1
+    assert payload["deleted_images"] == 0
+
+    with SessionLocal() as db:
+        row = db.get(Expense, expense_id)
+        assert row is not None
+        assert row.image_deleted_at is None
+
+
 def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monkeypatch) -> None:
     from app.services import cleanup_service
 

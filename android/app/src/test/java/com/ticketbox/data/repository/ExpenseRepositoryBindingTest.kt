@@ -237,16 +237,18 @@ class ExpenseRepositoryBindingTest {
         val cached = dao.getConfirmed("owner")
         assertEquals(listOf(9L), cached.map { it.serverId })
         assertEquals("高德", cached.single().merchant)
+        assertTrue(settingsStore.lastConfirmedSyncAt() != null)
     }
 
     @Test
     fun filteredConfirmedSyncDoesNotDeleteUnreturnedCachedRows() = runTest {
         val dao = FakeExpenseDao()
         dao.insert(cachedConfirmedEntity(serverId = 99, publicId = "other-filter-row", merchant = "不在当前筛选"))
+        val settingsStore = boundSettingsStore()
         val repository = ExpenseRepository(
             expenseDao = dao,
             apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
-            settingsStore = boundSettingsStore(),
+            settingsStore = settingsStore,
             tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
             deviceNameProvider = { "Android Test Device" },
         )
@@ -254,6 +256,7 @@ class ExpenseRepositoryBindingTest {
         repository.syncConfirmed(month = "2026-05", category = "交通", tag = null).getOrThrow()
 
         assertEquals(listOf(9L, 99L), dao.getConfirmed("owner").map { it.serverId }.sorted())
+        assertNull(settingsStore.lastConfirmedSyncAt())
     }
 
     @Test
@@ -920,6 +923,23 @@ class ExpenseRepositoryBindingTest {
         assertTrue(dao.getConfirmed("family").isEmpty())
     }
 
+    @Test
+    fun markNotDuplicateRefreshesConfirmedCacheForActiveLedger() = runTest {
+        val dao = FakeExpenseDao()
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+            settingsStore = boundSettingsStore(),
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val result = repository.markNotDuplicate(9).getOrThrow()
+
+        assertEquals(9L, result.id)
+        assertEquals(listOf(9L), dao.getConfirmed("owner").map { it.serverId })
+    }
+
 
     @Test
     fun viewerCannotReplaceExpenseItemsOrSplitsLocally() = runTest {
@@ -994,6 +1014,7 @@ private class FakeApiService(
     val splitReplaceRequests = mutableListOf<ExpenseSplitReplaceRequestDto>()
     val expenseFetchIds = mutableListOf<Long>()
     val confirmExpenseIds = mutableListOf<Long>()
+    val markNotDuplicateIds = mutableListOf<Long>()
     var onConfirmedRequest: (() -> Unit)? = null
     var onExpenseFetch: (() -> Unit)? = null
     var onConfirmExpense: (() -> Unit)? = null
@@ -1134,7 +1155,10 @@ private class FakeApiService(
 
     override suspend fun retryOcr(id: Long): ExpenseDto = unsupported()
 
-    override suspend fun markNotDuplicate(id: Long): ExpenseDto = unsupported()
+    override suspend fun markNotDuplicate(id: Long): ExpenseDto {
+        markNotDuplicateIds += id
+        return confirmedExpenseDto()
+    }
 
     override suspend fun expenseImage(id: Long): Response<ResponseBody> = unsupported()
 

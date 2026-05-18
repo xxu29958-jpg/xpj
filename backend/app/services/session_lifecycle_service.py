@@ -12,7 +12,7 @@ import hashlib
 import secrets
 from typing import Literal
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -160,16 +160,20 @@ def rotate_app_token_for_ledger(
 ) -> tuple[str, datetime]:
     rotated_at = rotated_at or now_utc()
     current_hash = hash_secret(current_token_value)
-    current = db.scalar(
-        select(AuthToken)
+
+    result = db.execute(
+        update(AuthToken)
         .where(AuthToken.token_hash == current_hash)
+        .where(AuthToken.account_id == account_id)
+        .where(AuthToken.device_id == device_id)
+        .where(AuthToken.scope == "app")
         .where(AuthToken.revoked_at.is_(None))
-        .limit(1)
+        .values(revoked_at=rotated_at)
+        .execution_options(synchronize_session=False)
     )
-    if current is None or current.account_id != account_id or current.device_id != device_id:
+    if result.rowcount != 1:
         raise AppError("invalid_token", status_code=401)
 
-    current.revoked_at = rotated_at
     new_token = issue_auth_token(
         db,
         account_id=account_id,

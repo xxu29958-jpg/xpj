@@ -9,7 +9,7 @@ from sqlalchemy import select
 from api_contract_helpers import insert_confirmed_expense, upload_png
 from app.database import SessionLocal
 from app.models import CategoryRule, Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
-from app.services.rule_application_service import _try_apply_rule_category
+from app.services.rule_application_service import _try_apply_rule_category, _try_rollback_rule_change
 from app.services.time_service import now_utc
 from conftest import app_headers, gray_app_headers
 
@@ -452,6 +452,51 @@ def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient)
         expense = db.scalar(select(Expense).where(Expense.id == pending_id))
         assert expense is not None
         assert expense.category == "交通"
+
+
+def test_rule_application_rollback_cas_skips_stale_expense_snapshot(client: TestClient) -> None:
+    pending_id = upload_png(client)
+    _set_pending_merchant(client, pending_id, "RollbackRaceCafe")
+    client.post(
+        "/api/rules/categories",
+        headers=app_headers(),
+        json={"keyword": "RollbackRaceCafe", "category": "Food", "enabled": True, "priority": 1},
+    )
+    applied = _apply_pending_rules(client)
+    assert applied.status_code == 200
+
+    with SessionLocal() as stale_db:
+        stale_expense = stale_db.scalar(select(Expense).where(Expense.id == pending_id))
+        change = stale_db.scalar(
+            select(RuleApplicationChange).where(RuleApplicationChange.expense_id == pending_id)
+        )
+        assert stale_expense is not None
+        assert change is not None
+        stale_db.expunge(stale_expense)
+        stale_db.expunge(change)
+
+    with SessionLocal() as user_db:
+        expense = user_db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        expense.category = "Manual"
+        expense.updated_at = now_utc()
+        user_db.commit()
+
+    with SessionLocal() as rollback_db:
+        rolled_back = _try_rollback_rule_change(
+            rollback_db,
+            tenant_id="owner",
+            expense=stale_expense,
+            change=change,
+            now=now_utc(),
+        )
+        rollback_db.rollback()
+
+    assert rolled_back is False
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == pending_id))
+        assert expense is not None
+        assert expense.category == "Manual"
 
 
 def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient) -> None:

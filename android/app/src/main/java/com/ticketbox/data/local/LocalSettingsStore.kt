@@ -70,7 +70,20 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         }
     }
 
-    override fun lastConfirmedSyncAt(): String? = prefs.getString(KEY_LAST_CONFIRMED_SYNC_AT, null)
+    override fun lastConfirmedSyncAt(): String? {
+        val key = lastConfirmedSyncAtKey()
+        prefs.getString(key, null)?.let { return it }
+
+        val legacyValue = prefs.getString(KEY_LAST_CONFIRMED_SYNC_AT, null) ?: return null
+        if (prefs.getBoolean(KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED, false)) {
+            return null
+        }
+        prefs.edit {
+            putString(key, legacyValue)
+            putBoolean(KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED, true)
+        }
+        return legacyValue
+    }
 
     override fun accountName(): String? = prefs.getString(KEY_ACCOUNT_NAME, null)
 
@@ -130,12 +143,15 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     override fun saveLastConfirmedSyncAt(value: String) {
         prefs.edit {
+            putString(lastConfirmedSyncAtKey(), value)
             putString(KEY_LAST_CONFIRMED_SYNC_AT, value)
+            putBoolean(KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED, true)
         }
     }
 
     override fun clearLastConfirmedSyncAt() {
         prefs.edit {
+            remove(lastConfirmedSyncAtKey())
             remove(KEY_LAST_CONFIRMED_SYNC_AT)
         }
     }
@@ -250,6 +266,11 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         return "$KEY_LAST_UPLOAD_AT_BY_LEDGER_PREFIX$ledgerId"
     }
 
+    private fun lastConfirmedSyncAtKey(): String {
+        val ledgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
+        return "$KEY_LAST_CONFIRMED_SYNC_AT_BY_LEDGER_PREFIX$ledgerId"
+    }
+
     private companion object {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_APP_SKIN = "app_skin"
@@ -264,6 +285,8 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
         const val KEY_ROLE = "role"
         const val KEY_BOUND_AT = "bound_at"
         const val KEY_LAST_CONFIRMED_SYNC_AT = "last_confirmed_sync_at"
+        const val KEY_LAST_CONFIRMED_SYNC_AT_BY_LEDGER_PREFIX = "last_confirmed_sync_at_by_ledger:"
+        const val KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED = "last_confirmed_sync_at_migrated"
         const val KEY_LAST_UPLOAD_AT = "last_upload_at"
         const val KEY_LAST_UPLOAD_AT_BY_LEDGER_PREFIX = "last_upload_at_by_ledger:"
         const val KEY_LAST_UPLOAD_AT_MIGRATED = "last_upload_at_migrated"

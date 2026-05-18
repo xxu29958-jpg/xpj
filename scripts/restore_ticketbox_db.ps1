@@ -79,6 +79,20 @@ function Resolve-Python {
     throw "未找到 Python，无法校验 SQLite 备份。"
 }
 
+function Get-BackendVersion {
+    param([Parameter(Mandatory = $true)][string]$BackendRoot)
+
+    $versionFile = Join-Path $BackendRoot "app\version.py"
+    if (-not (Test-Path -LiteralPath $versionFile)) {
+        throw "未找到后端版本文件：$versionFile"
+    }
+    $content = Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8
+    if ($content -notmatch "BACKEND_VERSION\s*=\s*['""]([^'""]+)['""]") {
+        throw "无法从 app\version.py 读取 BACKEND_VERSION。"
+    }
+    return $Matches[1]
+}
+
 function Assert-PathInside {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -99,15 +113,82 @@ function Assert-PathInside {
 }
 
 function Test-SqliteBackup {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$ExpectedBackendVersion
+    )
 
     $python = Resolve-Python
-    & $python -c "import sqlite3, sys; con = sqlite3.connect(sys.argv[1]); result = con.execute('PRAGMA integrity_check').fetchone()[0]; con.close(); raise SystemExit(0 if result == 'ok' else 1)" $Path
+    $script = @'
+import sqlite3
+import sys
+
+path, expected_version = sys.argv[1], sys.argv[2]
+required_tables = {
+    "schema_migrations",
+    "accounts",
+    "ledgers",
+    "ledger_members",
+    "devices",
+    "auth_tokens",
+    "upload_links",
+    "pairing_codes",
+    "expenses",
+    "expense_items",
+    "expense_splits",
+    "budgets",
+    "budget_categories",
+    "category_rules",
+    "duplicate_ignores",
+}
+
+con = sqlite3.connect(path)
+try:
+    result = con.execute("PRAGMA integrity_check").fetchone()[0]
+    if result != "ok":
+        print(f"SQLite integrity_check failed: {result}", file=sys.stderr)
+        raise SystemExit(1)
+
+    tables = {
+        row[0]
+        for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    missing = sorted(required_tables - tables)
+    if missing:
+        print("Missing required Ticketbox tables: " + ", ".join(missing), file=sys.stderr)
+        raise SystemExit(1)
+
+    migration_columns = {
+        row[1] for row in con.execute("PRAGMA table_info(schema_migrations)")
+    }
+    if "backend_version" not in migration_columns:
+        print("schema_migrations.backend_version is missing", file=sys.stderr)
+        raise SystemExit(1)
+
+    versions = {
+        row[0]
+        for row in con.execute(
+            "SELECT DISTINCT backend_version FROM schema_migrations "
+            "WHERE backend_version IS NOT NULL AND backend_version != ''"
+        )
+    }
+    if expected_version not in versions:
+        found = ", ".join(sorted(versions)) or "<none>"
+        print(
+            f"Backup schema was not recorded by backend {expected_version}; found {found}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+finally:
+    con.close()
+'@
+    & $python -c $script $Path $ExpectedBackendVersion
     if ($LASTEXITCODE -ne 0) {
-        throw "SQLite 校验失败：$Path"
+        throw "Ticketbox 备份校验失败：$Path"
     }
 }
 
+$BackendVersion = Get-BackendVersion -BackendRoot $BackendRoot
 $source = Assert-PathInside -Path (Resolve-Path -LiteralPath $BackupPath).Path -Root $BackupDir
 $sourceItem = Get-Item -LiteralPath $source
 if (-not $sourceItem.Name.StartsWith("ticketbox-", [System.StringComparison]::OrdinalIgnoreCase) -or
@@ -121,7 +202,7 @@ if ($listener -and -not $ForceWhileRunning) {
 }
 
 Write-Host "校验备份文件：$source"
-Test-SqliteBackup -Path $source
+Test-SqliteBackup -Path $source -ExpectedBackendVersion $BackendVersion
 Write-Host "备份校验通过：$(Format-Bytes $sourceItem.Length)"
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $DbPath) | Out-Null
@@ -169,7 +250,7 @@ finally:
 $restoreTemp = Join-Path (Split-Path -Parent $DbPath) "ticketbox.restore-$PID.tmp"
 try {
     Copy-Item -LiteralPath $source -Destination $restoreTemp -Force
-    Test-SqliteBackup -Path $restoreTemp
+    Test-SqliteBackup -Path $restoreTemp -ExpectedBackendVersion $BackendVersion
     if (Test-Path -LiteralPath $DbPath) {
         [System.IO.File]::Replace($restoreTemp, $DbPath, $null, $true)
     }
@@ -182,5 +263,5 @@ finally {
         Remove-Item -LiteralPath $restoreTemp -Force
     }
 }
-Test-SqliteBackup -Path $DbPath
+Test-SqliteBackup -Path $DbPath -ExpectedBackendVersion $BackendVersion
 Write-Host "数据库恢复完成：$DbPath"
