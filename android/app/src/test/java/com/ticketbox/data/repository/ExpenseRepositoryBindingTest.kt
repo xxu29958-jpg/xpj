@@ -833,7 +833,7 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
-    fun fetchExpenseSkipsConfirmedCacheWhenLedgerChangesDuringRequest() = runTest {
+    fun fetchExpenseRejectsLateLedgerSwitchAndSkipsConfirmedCache() = runTest {
         val dao = FakeExpenseDao()
         val settingsStore = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://api.zen70.cn")
@@ -866,10 +866,56 @@ class ExpenseRepositoryBindingTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val expense = repository.fetchExpense(9).getOrThrow()
+        val failure = repository.fetchExpense(9).exceptionOrNull()
 
-        assertEquals("confirmed", expense.status)
+        assertEquals("账本已切换，请重新操作。", failure?.message)
         assertEquals(listOf(9L), apiService.expenseFetchIds)
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertTrue(dao.getConfirmed("family").isEmpty())
+    }
+
+    @Test
+    fun confirmExpenseUsesFrozenTokenAndRejectsLateLedgerSwitch() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.zen70.cn")
+            saveIdentity(
+                accountName = "Account",
+                ledgerId = "owner",
+                ledgerName = "Owner Ledger",
+                deviceName = "Pixel",
+                role = "member",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = FakeSessionTokenStore().apply { saveToken("session-owner") }
+        val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply {
+            onConfirmExpense = {
+                tokenStore.saveToken("session-family")
+                settingsStore.saveIdentity(
+                    accountName = "Account",
+                    ledgerId = "family",
+                    ledgerName = "Family Ledger",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:00:00Z",
+                )
+            }
+        }
+        val apiClient = FakeApiServiceFactory(apiService)
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = apiClient,
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val failure = repository.confirmExpense(9).exceptionOrNull()
+
+        assertEquals("账本已切换，请重新操作。", failure?.message)
+        assertEquals(listOf(9L), apiService.confirmExpenseIds)
+        assertEquals(listOf<String?>("session-owner"), apiClient.tokenValues)
         assertTrue(dao.getConfirmed("owner").isEmpty())
         assertTrue(dao.getConfirmed("family").isEmpty())
     }
@@ -947,8 +993,10 @@ private class FakeApiService(
     val splitReplaceIds = mutableListOf<Long>()
     val splitReplaceRequests = mutableListOf<ExpenseSplitReplaceRequestDto>()
     val expenseFetchIds = mutableListOf<Long>()
+    val confirmExpenseIds = mutableListOf<Long>()
     var onConfirmedRequest: (() -> Unit)? = null
     var onExpenseFetch: (() -> Unit)? = null
+    var onConfirmExpense: (() -> Unit)? = null
     var onCheckAuth: (() -> Unit)? = null
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto {
@@ -1076,7 +1124,11 @@ private class FakeApiService(
         return expenseSplitsResponse()
     }
 
-    override suspend fun confirmExpense(id: Long): ExpenseDto = unsupported()
+    override suspend fun confirmExpense(id: Long): ExpenseDto {
+        confirmExpenseIds += id
+        onConfirmExpense?.invoke()
+        return confirmedExpenseDto()
+    }
 
     override suspend fun rejectExpense(id: Long): ExpenseDto = unsupported()
 
