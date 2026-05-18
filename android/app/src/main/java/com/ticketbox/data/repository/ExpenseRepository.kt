@@ -490,8 +490,18 @@ class ExpenseRepository(
         created.toDomain()
     }
 
-    suspend fun createNotificationDraft(draft: NotificationDraft): Result<Expense> = errorHandler.safeCall {
-        api().createNotificationDraft(draft.toRequest()).toDomain()
+    suspend fun createNotificationDraft(
+        draft: NotificationDraft,
+        expectedLedgerId: String? = null,
+    ): Result<Expense> = errorHandler.safeCall {
+        val ledgerIdAtRequest = activeLedgerIdOrLegacy()
+        if (expectedLedgerId != null && expectedLedgerId != ledgerIdAtRequest) {
+            throw RepositoryException("账本已切换，请重新操作。")
+        }
+        val bound = boundLedgerApi()
+        val created = bound.service.createNotificationDraft(draft.toRequest())
+        requireLedgerStillActive(bound.ledgerId)
+        created.toDomain()
     }
 
     override suspend fun confirmExpense(id: Long): Result<Expense> = errorHandler.safeCall {

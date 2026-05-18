@@ -20,12 +20,18 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         if (!preferences.autoCaptureEnabled) return
         if (!container.settingsStore.isBound()) return
         if (!container.expenseRepository.canModifyLedger()) return
+        val ledgerIdAtPost = container.expenseRepository.currentActiveLedgerId()
+            ?.takeIf { it.isNotBlank() }
+            ?: return
 
         val draft = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
         if (!draftDeduper.tryReserve(draft)) return
 
         serviceScope.launch {
-            val result = container.expenseRepository.createNotificationDraft(draft)
+            val result = container.expenseRepository.createNotificationDraft(
+                draft,
+                expectedLedgerId = ledgerIdAtPost,
+            )
             if (result.isFailure) {
                 draftDeduper.release(draft)
             }
