@@ -34,6 +34,9 @@ local.properties
 *.keystore
 *.p12
 *.pfx
+!android/config/
+!android/config/debug/
+!android/config/debug/ticketbox-debug.keystore
 
 # IDE
 .idea/

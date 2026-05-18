@@ -48,11 +48,23 @@ android\app\build\outputs\apk\gray\debug\app-gray-debug.apk
 android\app\build\outputs\apk\internal\debug\app-internal-debug.apk
 ```
 
-## 本机稳定 debug 签名
+## 稳定 debug 签名
 
-`grayDebug` 和 `internalDebug` 可以使用本机固定 debug keystore，避免每次换工作区或换 Gradle 默认 debug key 后，真机覆盖安装出现 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
+`grayDebug` 和 `internalDebug` 默认使用仓库内的公开 debug keystore：
 
-密钥、别名和密码只写入被 Git 忽略的 `android/local.properties` 或环境变量，不进入仓库。优先级为环境变量高于 `local.properties`。
+```text
+android\config\debug\ticketbox-debug.keystore
+```
+
+这不是 release 密钥，只用于 debug 构建和 CI artifact，目的是让不同机器、不同 GitHub Actions runner 产出的 debug APK 使用同一张证书。否则真机上已有 `com.ticketbox` 时，新包会因为签名不同而无法 `adb install -r` 覆盖升级，表现为 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
+
+证书 SHA-256：
+
+```text
+91:15:22:41:7C:C5:01:6E:DA:DC:FF:AD:DE:7B:90:4D:92:8D:C4:2D:66:A7:97:84:44:45:AC:B5:BC:AE:10:6F
+```
+
+本机仍可用被 Git 忽略的 `android/local.properties` 或环境变量覆盖 debug 签名。优先级为环境变量高于 `local.properties`，二者高于仓库 debug keystore。
 
 ```properties
 ticketbox.debug.keystore=E\:\\path\\to\\ticketbox-debug.keystore
@@ -70,7 +82,7 @@ $env:TICKETBOX_DEBUG_KEYSTORE_PASSWORD="..."
 $env:TICKETBOX_DEBUG_KEY_PASSWORD="..."
 ```
 
-如果手机上已经安装过不同证书签名的 `com.ticketbox`，仍然需要卸载一次旧包。之后只要保留同一份本机 debug keystore，`adb install -r` 和安装脚本即可覆盖升级。
+如果手机上已经安装过旧的不同证书 debug 包，第一次切换到仓库稳定证书时仍然需要卸载一次旧包。之后仓库 CI artifact、本机 `grayDebug/internalDebug` 和安装脚本都可以覆盖升级。
 
 项目级完整验证：
 

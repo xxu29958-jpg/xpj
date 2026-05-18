@@ -73,6 +73,12 @@ ticketbox-internal-debug-apk
 
 保留 7 天。
 
+CI 构建的 debug APK 必须使用仓库级稳定 debug 证书，避免每次 GitHub Actions runner 生成不同默认 debug key，导致真机无法覆盖升级安装。Android job 会在上传 artifact 前用 `apksigner verify --print-certs` 校验证书 SHA-256：
+
+```text
+91:15:22:41:7C:C5:01:6E:DA:DC:FF:AD:DE:7B:90:4D:92:8D:C4:2D:66:A7:97:84:44:45:AC:B5:BC:AE:10:6F
+```
+
 ## 安全边界
 
 CI 不需要真实 Token。

@@ -187,7 +187,18 @@ Write-Host "apk: $resolvedApk"
 $deviceSerial = Select-DeviceSerial -AdbPath $adbPath -RequestedSerial $Serial
 Write-Host "设备：$deviceSerial"
 
-Invoke-Checked -FilePath $adbPath -Arguments @("-s", $deviceSerial, "install", "-r", $resolvedApk)
+$installArgs = @("-s", $deviceSerial, "install", "-r", $resolvedApk)
+$installOutput = @(& $adbPath @installArgs 2>&1)
+foreach ($line in $installOutput) {
+    Write-Host $line
+}
+if ($LASTEXITCODE -ne 0) {
+    $joinedInstallOutput = $installOutput -join "`n"
+    if ($joinedInstallOutput -match "INSTALL_FAILED_UPDATE_INCOMPATIBLE|UPDATE_INCOMPATIBLE|signatures.*do not match") {
+        throw "覆盖安装失败：设备上已有 $PackageName，但签名证书与当前 APK 不同。请先确认是否需要保留本地数据；切换到仓库稳定 debug 证书时需要卸载一次旧包：adb -s $deviceSerial uninstall $PackageName"
+    }
+    throw "命令失败：$adbPath $($installArgs -join ' ')"
+}
 Write-Host "安装完成。"
 
 if ($ReverseBackend) {

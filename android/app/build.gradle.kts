@@ -16,6 +16,13 @@ fun ticketboxLocalProperty(name: String): String? =
 fun ticketboxEnvOrLocal(envName: String, propertyName: String): String? =
     System.getenv(envName)?.trim()?.takeIf { it.isNotBlank() } ?: ticketboxLocalProperty(propertyName)
 
+data class TicketboxDebugSigning(
+    val keystorePath: String,
+    val keyAlias: String,
+    val storePassword: String,
+    val keyPassword: String,
+)
+
 // Server URL precedence:
 //   1. ENV: TICKETBOX_SERVER_URL
 //   2. local.properties: ticketbox.serverUrl=...
@@ -30,6 +37,39 @@ val ticketboxDebugKeystorePassword: String? =
     ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEYSTORE_PASSWORD", "ticketbox.debug.storePassword")
 val ticketboxDebugKeyPassword: String? =
     ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEY_PASSWORD", "ticketbox.debug.keyPassword")
+val ticketboxCanonicalDebugSigning = TicketboxDebugSigning(
+    keystorePath = "config/debug/ticketbox-debug.keystore",
+    keyAlias = "ticketbox-debug",
+    storePassword = "ticketbox-debug",
+    keyPassword = "ticketbox-debug",
+)
+val ticketboxExternalDebugSigningValues = listOf(
+    ticketboxDebugKeystorePath,
+    ticketboxDebugKeyAlias,
+    ticketboxDebugKeystorePassword,
+    ticketboxDebugKeyPassword,
+)
+val ticketboxDebugSigning: TicketboxDebugSigning =
+    if (ticketboxExternalDebugSigningValues.all { it != null }) {
+        TicketboxDebugSigning(
+            keystorePath = ticketboxDebugKeystorePath!!,
+            keyAlias = ticketboxDebugKeyAlias!!,
+            storePassword = ticketboxDebugKeystorePassword!!,
+            keyPassword = ticketboxDebugKeyPassword!!,
+        )
+    } else if (ticketboxExternalDebugSigningValues.any { it != null }) {
+        error(
+            "Debug signing config is incomplete. Set all TICKETBOX_DEBUG_KEYSTORE_PATH, " +
+                "TICKETBOX_DEBUG_KEY_ALIAS, TICKETBOX_DEBUG_KEYSTORE_PASSWORD, and " +
+                "TICKETBOX_DEBUG_KEY_PASSWORD, or remove them to use the repository debug key.",
+        )
+    } else {
+        ticketboxCanonicalDebugSigning
+    }
+val ticketboxDebugKeystoreFile = rootProject.file(ticketboxDebugSigning.keystorePath)
+if (!ticketboxDebugKeystoreFile.exists()) {
+    error("Debug keystore does not exist: ${ticketboxDebugKeystoreFile.path}")
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -75,18 +115,11 @@ android {
     }
 
     signingConfigs {
-        if (
-            ticketboxDebugKeystorePath != null &&
-            ticketboxDebugKeyAlias != null &&
-            ticketboxDebugKeystorePassword != null &&
-            ticketboxDebugKeyPassword != null
-        ) {
-            create("stableDebug") {
-                storeFile = rootProject.file(ticketboxDebugKeystorePath)
-                storePassword = ticketboxDebugKeystorePassword
-                keyAlias = ticketboxDebugKeyAlias
-                keyPassword = ticketboxDebugKeyPassword
-            }
+        create("stableDebug") {
+            storeFile = ticketboxDebugKeystoreFile
+            storePassword = ticketboxDebugSigning.storePassword
+            keyAlias = ticketboxDebugSigning.keyAlias
+            keyPassword = ticketboxDebugSigning.keyPassword
         }
 
         val releaseKeystorePath = System.getenv("TICKETBOX_KEYSTORE_PATH")
