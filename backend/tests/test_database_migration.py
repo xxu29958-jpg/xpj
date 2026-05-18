@@ -7,7 +7,8 @@ import app.database as database
 import pytest
 from sqlalchemy import inspect, text
 
-from app.database import BACKEND_ROOT, Base, engine, init_db, migrate_upload_paths_to_tenant_dirs
+from app.database import BACKEND_ROOT, Base, SessionLocal, engine, init_db, migrate_upload_paths_to_tenant_dirs
+from app.models import DuplicateIgnore, Expense
 from conftest import PNG_BYTES, TEST_DB_PATH, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
 
 
@@ -118,6 +119,53 @@ def _fetch_expense(expense_id: int) -> dict[str, object]:
     return dict(row)
 
 
+def _insert_cross_ledger_duplicate_metadata() -> tuple[int, int]:
+    with SessionLocal() as db:
+        owner = Expense(
+            tenant_id="owner",
+            amount_cents=1000,
+            merchant="owner-duplicate-source",
+            category="鍏朵粬",
+            status="pending",
+        )
+        tester = Expense(
+            tenant_id="tester_1",
+            amount_cents=1000,
+            merchant="tester-duplicate-target",
+            category="鍏朵粬",
+            status="pending",
+        )
+        db.add_all([owner, tester])
+        db.commit()
+        owner_id = owner.id
+        tester_id = tester.id
+
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.execute(
+            text(
+                "UPDATE expenses "
+                "SET duplicate_status = 'suspected', "
+                "duplicate_of_id = :target_id, "
+                "duplicate_reason = 'cross-ledger dirty row' "
+                "WHERE id = :expense_id"
+            ),
+            {"expense_id": owner_id, "target_id": tester_id},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO duplicate_ignores "
+                "(tenant_id, expense_id, duplicate_of_id, kind, created_at) "
+                "VALUES ('owner', :expense_id, :target_id, 'similar', '2026-05-04 08:00:00')"
+            ),
+            {"expense_id": owner_id, "target_id": tester_id},
+        )
+        connection.commit()
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    return owner_id, tester_id
+
+
 def test_empty_database_initializes_schema_and_runtime_data() -> None:
     _reset_empty_database()
 
@@ -217,11 +265,16 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "fk_expense_tags_expense_tenant" in expense_tags_sql
     assert "fk_expense_tags_tag_tenant" in expense_tags_sql
     assert "uq_expense_tags_tenant_expense_tag" in expense_tags_sql
+    duplicate_ignores_sql = _table_create_sql("duplicate_ignores")
+    assert "fk_duplicate_ignores_expense_tenant" in duplicate_ignores_sql
+    assert "fk_duplicate_ignores_duplicate_tenant" in duplicate_ignores_sql
+    assert "uq_duplicate_ignore_tenant_pair_kind" in duplicate_ignores_sql
     expenses_sql = _table_create_sql("expenses")
     assert "uq_expenses_id_tenant_id" in expenses_sql
     assert "ck_expenses_amount_non_negative" in expenses_sql
     assert "ck_expenses_status_valid" in expenses_sql
     assert "ck_expenses_duplicate_status_valid" in expenses_sql
+    assert "fk_expenses_duplicate_of_tenant" in expenses_sql
     expense_items_sql = _table_create_sql("expense_items")
     assert "ck_expense_items_position_non_negative" in expense_items_sql
     assert "ck_expense_items_amount_non_negative" in expense_items_sql
@@ -387,6 +440,39 @@ def test_legacy_database_with_cross_ledger_expense_splits_fails_startup() -> Non
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
         with pytest.raises(RuntimeError, match="expense_splits"):
+            database.validate_sqlite_data_integrity()
+    finally:
+        _reset_empty_database()
+
+
+def test_legacy_duplicate_metadata_is_cleared_on_startup() -> None:
+    _reset_empty_database()
+    init_db()
+
+    try:
+        owner_id, _tester_id = _insert_cross_ledger_duplicate_metadata()
+
+        init_db()
+
+        with SessionLocal() as db:
+            owner = db.get(Expense, owner_id)
+            assert owner is not None
+            assert owner.duplicate_status == "none"
+            assert owner.duplicate_of_id is None
+            assert owner.duplicate_reason is None
+            assert db.query(DuplicateIgnore).count() == 0
+    finally:
+        _reset_empty_database()
+
+
+def test_sqlite_integrity_rejects_cross_ledger_duplicate_metadata() -> None:
+    _reset_empty_database()
+    init_db()
+
+    try:
+        _insert_cross_ledger_duplicate_metadata()
+
+        with pytest.raises(RuntimeError, match="duplicate"):
             database.validate_sqlite_data_integrity()
     finally:
         _reset_empty_database()
@@ -683,6 +769,7 @@ def test_missing_tenant_id_backfills_owner_for_expenses_rules_and_duplicate_igno
     _reset_empty_database()
     _create_v01_expenses_table()
     expense_id = _insert_legacy_expense()
+    duplicate_target_id = _insert_legacy_expense()
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -720,8 +807,9 @@ def test_missing_tenant_id_backfills_owner_for_expenses_rules_and_duplicate_igno
         connection.execute(
             text(
                 "INSERT INTO duplicate_ignores (expense_id, duplicate_of_id, created_at) "
-                "VALUES (1, 2, '2026-05-04 08:00:00')"
-            )
+                "VALUES (:expense_id, :duplicate_target_id, '2026-05-04 08:00:00')"
+            ),
+            {"expense_id": expense_id, "duplicate_target_id": duplicate_target_id},
         )
 
     init_db()
@@ -729,7 +817,10 @@ def test_missing_tenant_id_backfills_owner_for_expenses_rules_and_duplicate_igno
     assert _fetch_expense(expense_id)["tenant_id"] == "owner"
     with engine.begin() as connection:
         rule_tenant = connection.execute(text("SELECT tenant_id FROM category_rules WHERE keyword = '老规则'")).scalar_one()
-        ignore = connection.execute(text("SELECT tenant_id, kind FROM duplicate_ignores WHERE expense_id = 1")).mappings().one()
+        ignore = connection.execute(
+            text("SELECT tenant_id, kind FROM duplicate_ignores WHERE expense_id = :expense_id"),
+            {"expense_id": expense_id},
+        ).mappings().one()
     assert rule_tenant == "owner"
     assert {
         "amount_min_cents",

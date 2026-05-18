@@ -11,6 +11,7 @@ from fastapi import UploadFile
 
 from app.config import BACKEND_ROOT, get_settings
 from app.errors import AppError
+from app.tenants import DEFAULT_TENANT_ID
 
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "heic"}
@@ -182,13 +183,16 @@ def _is_under_path(candidate: Path, root: Path) -> bool:
     return True
 
 
-def _is_legacy_unscoped_upload(candidate: Path, upload_dir: Path) -> bool:
+def _is_legacy_unscoped_upload(candidate: Path, upload_dir: Path, tenant_id: str) -> bool:
     """Allow pre-v0.3 paths shaped as uploads/YYYY/MM/file.
 
     New uploads are ledger-scoped under uploads/<ledger_id>/YYYY/MM. Legacy
-    rows without a ledger prefix must remain readable, but a row for one ledger
-    must not be able to point at another ledger's scoped directory.
+    rows without a ledger prefix only existed before family ledgers, so they
+    belong to the default legacy ledger. Non-default ledgers must migrate those
+    files into their own scoped directory before they are readable.
     """
+    if tenant_id != DEFAULT_TENANT_ID:
+        return False
     try:
         parts = candidate.relative_to(upload_dir).parts
     except ValueError:
@@ -217,9 +221,9 @@ def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[
     - require the resolved file to live inside the uploads root
 
     Legacy v0.2 paths (``uploads/YYYY/MM/foo.png`` without a tenant prefix) are
-    accepted as long as they remain inside the uploads root. New uploads are
-    written under ``uploads/<tenant>/...`` but old files are not moved on
-    startup (see docs/runbook/ROLLBACK.md).
+    accepted only for the default legacy ledger as long as they remain inside
+    the uploads root. New uploads are written under ``uploads/<tenant>/...`` but
+    old files are not moved on startup (see docs/runbook/ROLLBACK.md).
     """
 
     if not relative_path:
@@ -241,7 +245,7 @@ def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[
 
     tenant_dir = _tenant_upload_dir(tenant_id)
     if not _is_under_path(candidate, tenant_dir) and not _is_legacy_unscoped_upload(
-        candidate, settings.upload_dir
+        candidate, settings.upload_dir, tenant_id
     ):
         raise AppError("image_not_found", status_code=404)
 

@@ -81,6 +81,16 @@ class ExpenseTag(Base):
 class DuplicateIgnore(Base):
     __tablename__ = "duplicate_ignores"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["expense_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_duplicate_ignores_expense_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["duplicate_of_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_duplicate_ignores_duplicate_tenant",
+        ),
         UniqueConstraint("tenant_id", "expense_id", "duplicate_of_id", "kind", name="uq_duplicate_ignore_tenant_pair_kind"),
     )
 

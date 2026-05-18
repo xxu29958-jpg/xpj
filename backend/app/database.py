@@ -351,6 +351,57 @@ def validate_sqlite_data_integrity() -> None:
         _validate_tenant_child_integrity(connection, table_names)
 
 
+def _sqlite_column_names(connection, table_name: str) -> set[str]:
+    return {
+        str(row["name"])
+        for row in connection.execute(text(f"PRAGMA table_info({table_name})")).mappings()
+    }
+
+
+def _clear_invalid_duplicate_scope_data(connection, table_names: set[str]) -> None:
+    """Drop derived duplicate metadata that no longer points inside its ledger."""
+
+    if "expenses" in table_names:
+        expense_columns = _sqlite_column_names(connection, "expenses")
+        if {"tenant_id", "duplicate_of_id"}.issubset(expense_columns):
+            assignments = ["duplicate_of_id = NULL"]
+            if "duplicate_status" in expense_columns:
+                assignments.append("duplicate_status = 'none'")
+            if "duplicate_reason" in expense_columns:
+                assignments.append("duplicate_reason = NULL")
+            connection.execute(
+                text(
+                    "UPDATE expenses "
+                    f"SET {', '.join(assignments)} "
+                    "WHERE duplicate_of_id IS NOT NULL "
+                    "AND NOT EXISTS ("
+                    "SELECT 1 FROM expenses AS target "
+                    "WHERE target.id = expenses.duplicate_of_id "
+                    "AND target.tenant_id = expenses.tenant_id"
+                    ")"
+                )
+            )
+
+    if {"duplicate_ignores", "expenses"}.issubset(table_names):
+        ignore_columns = _sqlite_column_names(connection, "duplicate_ignores")
+        if {"tenant_id", "expense_id", "duplicate_of_id"}.issubset(ignore_columns):
+            connection.execute(
+                text(
+                    "DELETE FROM duplicate_ignores "
+                    "WHERE NOT EXISTS ("
+                    "SELECT 1 FROM expenses AS expense "
+                    "WHERE expense.id = duplicate_ignores.expense_id "
+                    "AND expense.tenant_id = duplicate_ignores.tenant_id"
+                    ") "
+                    "OR NOT EXISTS ("
+                    "SELECT 1 FROM expenses AS target "
+                    "WHERE target.id = duplicate_ignores.duplicate_of_id "
+                    "AND target.tenant_id = duplicate_ignores.tenant_id"
+                    ")"
+                )
+            )
+
+
 def _validate_expense_core_data(connection, table_names: set[str]) -> None:
     """Reject legacy expense rows that would bypass CHECK constraints."""
 
@@ -469,6 +520,26 @@ def _validate_expense_split_integrity(connection, table_names: set[str]) -> None
 def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
     """Reject tenant-scoped child rows whose parent belongs to another ledger."""
 
+    if "expenses" in table_names:
+        expense_columns = _sqlite_column_names(connection, "expenses")
+        if {"tenant_id", "duplicate_of_id"}.issubset(expense_columns):
+            invalid = int(
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM expenses AS expense "
+                        "LEFT JOIN expenses AS target "
+                        "ON target.id = expense.duplicate_of_id "
+                        "AND target.tenant_id = expense.tenant_id "
+                        "WHERE expense.duplicate_of_id IS NOT NULL "
+                        "AND target.id IS NULL"
+                    )
+                ).scalar_one()
+            )
+            if invalid:
+                raise RuntimeError(
+                    "Invalid legacy data: expenses.duplicate_of_id contains cross-ledger expense references"
+                )
+
     if {"expense_items", "expenses"}.issubset(table_names):
         invalid = int(
             connection.execute(
@@ -556,6 +627,40 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
         )
         if invalid_tags:
             raise RuntimeError("Invalid legacy data: expense_tags contains cross-ledger tag references")
+
+    if {"duplicate_ignores", "expenses"}.issubset(table_names):
+        ignore_columns = _sqlite_column_names(connection, "duplicate_ignores")
+        if {"tenant_id", "expense_id", "duplicate_of_id"}.issubset(ignore_columns):
+            invalid_expenses = int(
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM duplicate_ignores AS ignored "
+                        "LEFT JOIN expenses AS expense "
+                        "ON expense.id = ignored.expense_id "
+                        "AND expense.tenant_id = ignored.tenant_id "
+                        "WHERE expense.id IS NULL"
+                    )
+                ).scalar_one()
+            )
+            if invalid_expenses:
+                raise RuntimeError(
+                    "Invalid legacy data: duplicate_ignores contains cross-ledger expense references"
+                )
+            invalid_targets = int(
+                connection.execute(
+                    text(
+                        "SELECT COUNT(*) FROM duplicate_ignores AS ignored "
+                        "LEFT JOIN expenses AS target "
+                        "ON target.id = ignored.duplicate_of_id "
+                        "AND target.tenant_id = ignored.tenant_id "
+                        "WHERE target.id IS NULL"
+                    )
+                ).scalar_one()
+            )
+            if invalid_targets:
+                raise RuntimeError(
+                    "Invalid legacy data: duplicate_ignores contains cross-ledger expense references"
+                )
 
     if {"rule_application_changes", "rule_application_batches", "expenses"}.issubset(table_names):
         invalid_batches = int(
@@ -1067,6 +1172,8 @@ def migrate_sqlite_schema() -> None:
                     "ON duplicate_ignores (tenant_id, expense_id, duplicate_of_id, kind)"
                 )
             )
+
+        _clear_invalid_duplicate_scope_data(connection, table_names)
 
         if "goals" in table_names:
             _validate_goal_unique_scopes(connection, table_names)

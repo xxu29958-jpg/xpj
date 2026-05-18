@@ -37,6 +37,11 @@ class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
         UniqueConstraint("id", "tenant_id", name="uq_expenses_id_tenant_id"),
+        ForeignKeyConstraint(
+            ["duplicate_of_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_expenses_duplicate_of_tenant",
+        ),
         CheckConstraint(
             "amount_cents IS NULL OR amount_cents >= 0",
             name="ck_expenses_amount_non_negative",

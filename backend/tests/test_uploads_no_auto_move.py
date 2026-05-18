@@ -22,6 +22,7 @@ from conftest import (
     PNG_BYTES,
     TEST_UPLOAD_DIR,
     app_headers,
+    gray_app_headers,
 )
 
 
@@ -95,6 +96,35 @@ def test_protected_image_route_serves_legacy_path_without_migration(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/")
     # File must STILL be at the legacy path; reading must not move it.
+    assert legacy_image.is_file()
+
+
+def test_protected_image_route_rejects_legacy_path_for_non_default_ledger(
+    client: TestClient,
+) -> None:
+    """Unscoped legacy upload paths belong only to the default legacy ledger."""
+
+    legacy_dir = TEST_UPLOAD_DIR / "2025" / "12"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    legacy_image = legacy_dir / "tester-legacy.png"
+    legacy_image.write_bytes(PNG_BYTES)
+    legacy_relative = legacy_image.relative_to(BACKEND_ROOT).as_posix()
+
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="tester_1",
+            image_path=legacy_relative,
+            image_hash="tester-legacy-read-hash",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        db.refresh(expense)
+        expense_id = expense.id
+
+    response = client.get(f"/api/expenses/{expense_id}/image", headers=gray_app_headers())
+    assert response.status_code == 404
+    assert response.json()["error"] == "image_not_found"
     assert legacy_image.is_file()
 
 

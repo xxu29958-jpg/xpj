@@ -13,7 +13,7 @@
    - 文件夹：`backend/uploads/{ledger_id}/YYYY/MM/`
    - 职责：保存 iPhone / Android 上传的账单截图和缩略图
    - 数据库只保存相对路径，不保存本机绝对路径。
-   - 历史 `backend/uploads/YYYY/MM/` 路径如果文件存在，会在启动迁移中移动到账本目录；文件不存在时不报错，访问返回 `image_not_found`。
+   - 历史 `backend/uploads/YYYY/MM/` 路径不会在启动时自动移动；如需整理，可显式运行维护脚本调用 `migrate_upload_paths_to_tenant_dirs()`。未迁移的无账本前缀路径只兼容默认旧账本读取；文件不存在时不报错，访问返回 `image_not_found`。
    - uploads 不作为静态目录公开，只能通过受保护图片接口访问。
 
 3. Android Room
