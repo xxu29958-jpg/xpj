@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -12,6 +13,14 @@ from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRE
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_ROOT / ".env", encoding="utf-8-sig")
+
+# Hosts considered loopback for outbound calls from the backend (e.g. local
+# vision LLM). Anything else makes the URL effectively "off" — see
+# _resolve_local_llm_base_url. Owner can extend via env if they really need to
+# tunnel a vision model from another host, but that's explicit, not implicit.
+_LOOPBACK_OUTBOUND_HOSTS: frozenset[str] = frozenset(
+    {"127.0.0.1", "::1", "localhost"}
+)
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -72,6 +81,29 @@ class Settings:
         return self.max_upload_size_mb * 1024 * 1024
 
 
+def _resolve_local_llm_base_url(raw: str | None) -> str:
+    """Reduce ``LOCAL_LLM_BASE_URL`` to a loopback HTTP(S) origin or empty.
+
+    Returning empty disables the local LLM OCR provider — the OCR layer surfaces
+    a clear error when something tries to use it. Non-loopback hosts here would
+    let the owner accidentally ship uploaded receipts (base64) to a remote
+    server via env misconfiguration, so we fail-closed.
+    """
+
+    if not raw:
+        return ""
+    value = raw.strip().rstrip("/")
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return ""
+    host = (parsed.hostname or "").lower()
+    if host not in _LOOPBACK_OUTBOUND_HOSTS:
+        return ""
+    return value
+
+
 def _resolve_public_base_url(raw: str | None) -> str:
     if not raw:
         return ""
@@ -107,7 +139,7 @@ def get_settings() -> Settings:
         ocr_fallback_provider=os.getenv("OCR_FALLBACK_PROVIDER", "empty").strip().lower(),
         ocr_min_confidence=float(os.getenv("OCR_MIN_CONFIDENCE", "0.65")),
         ocr_default_timezone=os.getenv("OCR_DEFAULT_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
-        local_llm_base_url=os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1").strip().rstrip("/"),
+        local_llm_base_url=_resolve_local_llm_base_url(os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),

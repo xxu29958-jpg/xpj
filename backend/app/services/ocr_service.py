@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -18,6 +19,8 @@ from app.services.file_service import resolve_protected_image
 from app.services.exchange_rate_service import default_rate_date, home_currency_code
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc, ensure_utc_assuming_local
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -107,11 +110,12 @@ class RapidOcrProvider:
 
 class LocalLlmOcrProvider:
     def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
+        settings = get_settings()
+        _require_local_llm_base_url(settings.local_llm_base_url)
         image_path, media_type = resolve_protected_image(expense.image_path, expense.tenant_id)
         image_bytes = image_path.read_bytes()
         media_type = media_type or mimetypes.guess_type(image_path.name)[0] or "image/jpeg"
         encoded = base64.b64encode(image_bytes).decode("ascii")
-        settings = get_settings()
         model = settings.local_llm_model or self._first_available_model(settings.local_llm_base_url)
         payload = {
             "model": model,
@@ -178,6 +182,23 @@ class LocalLlmOcrProvider:
             raise AppError("server_error", f"本地大模型识别失败：{detail[:160]}", status_code=500) from exc
         except (OSError, error.URLError, json.JSONDecodeError) as exc:
             raise AppError("server_error", "本地大模型服务不可用。", status_code=500) from exc
+
+
+def _require_local_llm_base_url(base_url: str) -> None:
+    """Refuse to call the local LLM when config rejected the URL.
+
+    Empty value here means ``_resolve_local_llm_base_url`` (in app.config)
+    treated the configured URL as non-loopback and dropped it. We surface that
+    as a clear, actionable error rather than silently sending uploaded receipts
+    to whatever the env variable pointed at.
+    """
+
+    if not base_url:
+        raise AppError(
+            "server_error",
+            "LOCAL_LLM_BASE_URL 必须是本机回环地址（127.0.0.1 / ::1 / localhost）。",
+            status_code=500,
+        )
 
 
 def get_ocr_provider(provider_name: str | None = None) -> OcrProvider:
@@ -272,6 +293,7 @@ def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None)
         return results
     except Exception:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
+        logger.exception("auto OCR failed for expense=%s ledger=%s", expense.id, expense.tenant_id)
         return []
 
 
