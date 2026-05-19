@@ -14,7 +14,8 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.insights_service import normalize_merchant, recurring_candidates
-from app.services.time_service import current_month, ensure_utc, local_month_bounds_utc, now_utc, safe_zone
+from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
+from app.services.time_service import ensure_utc, now_utc, safe_zone
 
 
 VALID_FREQUENCIES = {"monthly"}
@@ -138,10 +139,10 @@ def recurring_amount_anomalies(
     if not merchant_keys:
         return {}
 
-    bounds = local_month_bounds_utc(month or current_month(timezone_name), timezone_name)
-    if bounds is None:
-        return {}
-    start_utc, end_utc = bounds
+    start_utc, end_utc = month_bounds_utc(
+        month or current_accounting_month(timezone_name),
+        timezone_name,
+    )
 
     active_by_key = {item.merchant_key: item for item in active_items}
     history_amounts: dict[str, list[int]] = {key: [] for key in merchant_keys}
@@ -163,7 +164,7 @@ def recurring_amount_anomalies(
         key = normalize_merchant(expense.merchant)
         if key not in merchant_keys:
             continue
-        when = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
+        when = stat_time(expense)
         if when is None:
             continue
         amount = int(expense.amount_cents or 0)

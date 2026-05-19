@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -42,8 +44,12 @@ def _seed_recurring(
     merchant_key: str = "netflix",
     merchant_name: str = "Netflix",
     baseline_amount_cents: int = 6800,
+    created_at: datetime | None = None,
+    status: str = "active",
+    paused_at: datetime | None = None,
+    archived_at: datetime | None = None,
 ) -> None:
-    now = now_utc()
+    now = created_at or now_utc()
     with SessionLocal() as db:
         db.add(
             RecurringItem(
@@ -55,11 +61,13 @@ def _seed_recurring(
                 last_amount_cents=baseline_amount_cents,
                 occurrence_count=3,
                 last_seen_at=now,
-                status="active",
+                status=status,
                 confidence="high",
                 source="candidate",
                 created_at=now,
                 updated_at=now,
+                paused_at=paused_at,
+                archived_at=archived_at,
             )
         )
         db.commit()
@@ -184,6 +192,39 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     assert gray_payload["remaining_amount_cents"] == 0
     assert gray_payload["overspent_amount_cents"] == 0
     assert gray_payload["category_budgets"] == []
+
+
+def test_monthly_budget_fixed_spend_uses_recurring_month_membership(
+    client: TestClient,
+) -> None:
+    _seed_recurring(
+        merchant_key="may-active",
+        merchant_name="May Active",
+        baseline_amount_cents=5000,
+        created_at=datetime(2026, 5, 10, tzinfo=UTC),
+    )
+    _seed_recurring(
+        merchant_key="june-new",
+        merchant_name="June New",
+        baseline_amount_cents=9000,
+        created_at=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+    _seed_recurring(
+        merchant_key="april-archived",
+        merchant_name="April Archived",
+        baseline_amount_cents=3000,
+        created_at=datetime(2026, 4, 1, tzinfo=UTC),
+        status="archived",
+        archived_at=datetime(2026, 4, 25, tzinfo=UTC),
+    )
+
+    may = client.get("/api/budgets/monthly?month=2026-05&timezone=UTC", headers=app_headers())
+    assert may.status_code == 200, may.json()
+    assert may.json()["fixed_amount_cents"] == 5000
+
+    june = client.get("/api/budgets/monthly?month=2026-06&timezone=UTC", headers=app_headers())
+    assert june.status_code == 200, june.json()
+    assert june.json()["fixed_amount_cents"] == 14000
 
 
 def test_monthly_budget_upsert_replaces_category_rows_without_duplicates(

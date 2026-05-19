@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Budget, BudgetCategory, RecurringItem
+from app.models import Budget, BudgetCategory
 from app.schemas import (
     BudgetCategoryRequest,
     BudgetCategoryResponse,
@@ -20,6 +20,7 @@ from app.services.category_service import normalize_category
 from app.services.spending_contract_service import (
     clean_month,
     confirmed_amount_query,
+    monthly_recurring_fixed_amount_query,
 )
 from app.services.time_service import now_utc
 
@@ -111,12 +112,19 @@ def _list_category_budgets(db: Session, *, tenant_id: str, month: str) -> list[B
     )
 
 
-def _active_fixed_amount_cents(db: Session, *, tenant_id: str) -> int:
+def _fixed_amount_cents_for_month(
+    db: Session,
+    *,
+    tenant_id: str,
+    month: str,
+    timezone_name: str | None,
+) -> int:
     amount = db.scalar(
-        select(func.coalesce(func.sum(RecurringItem.baseline_amount_cents), 0))
-        .where(RecurringItem.tenant_id == tenant_id)
-        .where(RecurringItem.frequency == "monthly")
-        .where(RecurringItem.status == "active")
+        monthly_recurring_fixed_amount_query(
+            tenant_id=tenant_id,
+            month=month,
+            timezone_name=timezone_name,
+        )
     )
     return int(amount or 0)
 
@@ -190,7 +198,12 @@ def _budget_response(
     total_amount_cents = int(budget.total_amount_cents if budget else 0)
     rollover_amount_cents = int(budget.rollover_amount_cents if budget else 0)
     non_monthly_amount_cents = int(budget.non_monthly_amount_cents if budget else 0)
-    fixed_amount_cents = _active_fixed_amount_cents(db, tenant_id=tenant_id)
+    fixed_amount_cents = _fixed_amount_cents_for_month(
+        db,
+        tenant_id=tenant_id,
+        month=month,
+        timezone_name=timezone_name,
+    )
     available_amount_cents = total_amount_cents + rollover_amount_cents
     flex_budget_cents = max(
         available_amount_cents - fixed_amount_cents - non_monthly_amount_cents,

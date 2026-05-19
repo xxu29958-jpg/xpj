@@ -10,12 +10,12 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
-from app.models import Expense, ExpenseTag, Tag
+from app.models import Expense, ExpenseTag, RecurringItem, Tag
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
@@ -157,6 +157,28 @@ def confirmed_amount_query(
         tag=tag,
         timezone_name=timezone_name,
         amount_required=True,
+    )
+
+
+def monthly_recurring_fixed_amount_query(
+    *,
+    tenant_id: str,
+    month: str,
+    timezone_name: str | None = None,
+) -> Select[tuple[int]]:
+    start_utc, end_utc = month_bounds_utc(month, timezone_name)
+    return (
+        select(func.coalesce(func.sum(RecurringItem.baseline_amount_cents), 0))
+        .where(RecurringItem.tenant_id == tenant_id)
+        .where(RecurringItem.frequency == "monthly")
+        .where(RecurringItem.created_at < end_utc)
+        .where(or_(RecurringItem.status != "archived", RecurringItem.archived_at >= start_utc))
+        .where(
+            or_(
+                RecurringItem.status != "paused",
+                RecurringItem.paused_at >= start_utc,
+            )
+        )
     )
 
 
