@@ -201,13 +201,11 @@ class ExpenseRepository(
 
     private suspend fun persistAuthCheck(
         check: com.ticketbox.data.remote.dto.AuthCheckDto,
-        expectedLedgerId: String?,
-        expectedToken: String?,
+        expectedSnapshot: LedgerSessionSnapshot,
     ) {
-        if (expectedToken != null && tokenStore.getToken() != expectedToken) return
-        val currentLedgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
-        if (expectedLedgerId != null && currentLedgerId != expectedLedgerId) return
-        sessionCoordinator.applyTransition(
+        val expectedLedgerId = expectedSnapshot.activeLedgerId?.takeIf { it.isNotBlank() }
+        sessionCoordinator.applyTransitionIfCurrent(
+            expectedSnapshot = expectedSnapshot,
             identity = LedgerSessionIdentity(
                 accountName = check.accountName,
                 ledgerId = check.ledgerId,
@@ -216,7 +214,7 @@ class ExpenseRepository(
                 role = check.role,
                 boundAt = settingsStore.boundAt() ?: Instant.now().toString(),
             ),
-            cacheInvalidation = if (check.ledgerId != currentLedgerId) {
+            cacheInvalidation = if (check.ledgerId != expectedLedgerId) {
                 LedgerCacheInvalidation.TargetLedger
             } else {
                 LedgerCacheInvalidation.None
@@ -224,12 +222,17 @@ class ExpenseRepository(
         )
     }
 
-    private suspend fun persistServerSettings(settings: ServerSettingsDto, expectedLedgerId: String?) {
+    private suspend fun persistServerSettings(
+        settings: ServerSettingsDto,
+        expectedSnapshot: LedgerSessionSnapshot,
+        expectedLedgerId: String?,
+    ) {
         val expected = expectedLedgerId ?: return
-        val ledgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() } ?: return
+        val ledgerId = expectedSnapshot.activeLedgerId?.takeIf { it.isNotBlank() } ?: return
         if (ledgerId != expected) return
         if (settings.ledgerId != null && settings.ledgerId != expected) return
-        sessionCoordinator.applyTransition(
+        sessionCoordinator.applyTransitionIfCurrent(
+            expectedSnapshot = expectedSnapshot,
             identity = LedgerSessionIdentity(
                 accountName = settings.accountName,
                 ledgerId = ledgerId,
@@ -284,12 +287,11 @@ class ExpenseRepository(
 
     suspend fun testConnection(): Result<Unit> = errorHandler.safeCall {
         val expectedLedgerId = settingsStore.activeLedgerId()?.takeIf { it.isNotBlank() }
-        val expectedToken = tokenStore.getToken()
         val bound = ledgerRequestGuard.bind(expectedLedgerId = expectedLedgerId)
+        val requestSnapshot = sessionCoordinator.currentSnapshot()
         persistAuthCheck(
             check = bound.service.checkAuth(),
-            expectedLedgerId = expectedLedgerId,
-            expectedToken = expectedToken,
+            expectedSnapshot = requestSnapshot,
         )
     }
 
@@ -689,8 +691,13 @@ class ExpenseRepository(
 
     suspend fun serverSettings(): Result<ServerSettings> = errorHandler.safeCall {
         ledgerRequestGuard.guardedCall { api ->
+            val requestSnapshot = sessionCoordinator.currentSnapshot()
             val settings = api.serverSettings()
-            persistServerSettings(settings, expectedLedgerId = ledgerId)
+            persistServerSettings(
+                settings = settings,
+                expectedSnapshot = requestSnapshot,
+                expectedLedgerId = ledgerId,
+            )
             settings.toDomain()
         }
     }
