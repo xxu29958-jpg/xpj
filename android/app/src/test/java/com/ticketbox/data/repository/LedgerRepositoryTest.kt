@@ -142,6 +142,62 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun refreshLedgersSlowResponseDoesNotOverwriteCacheAfterBindingChanges() = runTest {
+        val oldLedgers = listOf(ledgerDto("L_old", "旧账本", role = "viewer", isDefault = true))
+        val api = StubApi(listLedgersResult = LedgerListResponseDto(oldLedgers))
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "旧账号",
+                ledgerId = "L_old",
+                ledgerName = "旧账本",
+                deviceName = "Old Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+            saveAvailableLedgersJson(
+                """
+                [
+                  {
+                    "ledger_id": "L_new",
+                    "name": "新账本",
+                    "role": "owner",
+                    "is_default": true,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "archived_at": null
+                  }
+                ]
+                """.trimIndent(),
+            )
+        }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        api.onListLedgers = {
+            tokenStore.saveToken("new-token")
+            store.saveIdentity(
+                accountName = "新账号",
+                ledgerId = "L_new",
+                ledgerName = "新账本",
+                deviceName = "New Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:05:00Z",
+            )
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val ledgers = repo.refreshLedgers().getOrThrow()
+
+        assertEquals(listOf("L_old"), ledgers.map { it.ledgerId })
+        assertEquals("L_new", store.activeLedgerId())
+        assertEquals("owner", store.role())
+        assertEquals(listOf("L_new"), repo.cachedLedgers().map { it.ledgerId })
+    }
+
+    @Test
     fun refreshLedgersWrapsRuntimeExceptions() = runTest {
         val repo = LedgerRepository(
             apiClient = LedgerStubApiFactory(StubApi(listLedgersError = RuntimeException("json bad"))),
@@ -849,9 +905,11 @@ private class StubApi(
     val acceptRequests: MutableList<InvitationAcceptRequestDto> = mutableListOf(),
 ) : ApiService {
     var onLedgerMembers: (() -> Unit)? = null
+    var onListLedgers: (() -> Unit)? = null
 
     override suspend fun listLedgers(): LedgerListResponseDto {
         listLedgersError?.let { throw it }
+        onListLedgers?.invoke()
         return listLedgersResult ?: LedgerListResponseDto(ledgers = emptyList())
     }
 

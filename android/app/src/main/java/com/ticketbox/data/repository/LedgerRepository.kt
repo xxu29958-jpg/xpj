@@ -66,6 +66,12 @@ class LedgerRepository(
     private val ledgerListAdapter = moshi.adapter<List<LedgerDto>>(ledgerListType)
     private val switchLedgerMutex = Mutex()
 
+    private data class LedgerSessionSnapshot(
+        val serverUrl: String,
+        val token: String,
+        val activeLedgerId: String?,
+    )
+
     private fun api() = apiProvider.temporary(
         requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
             "Ledger server is not bound."
@@ -81,15 +87,34 @@ class LedgerRepository(
         },
     )
 
+    private fun ledgerSessionSnapshot(): LedgerSessionSnapshot =
+        LedgerSessionSnapshot(
+            serverUrl = requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
+                "Ledger server is not bound."
+            }.trim().trimEnd('/'),
+            token = requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) {
+                "Ledger token is not bound."
+            },
+            activeLedgerId = settingsStore.activeLedgerId(),
+        )
+
+    private fun LedgerSessionSnapshot.isStillCurrent(): Boolean =
+        settingsStore.serverUrl()?.trim()?.trimEnd('/') == serverUrl &&
+            tokenStore.getToken()?.takeIf { it.isNotBlank() } == token &&
+            settingsStore.activeLedgerId() == activeLedgerId
+
     suspend fun refreshLedgers(): Result<List<LedgerSummary>> = wrap {
-        val response = api().listLedgers()
+        val session = ledgerSessionSnapshot()
+        val response = apiProvider.temporary(session.serverUrl, session.token).listLedgers()
         val summaries = response.ledgers.map { it.toSummary() }
-        settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
-        settingsStore.activeLedgerId()
-            ?.let { activeId ->
-                summaries.firstOrNull { it.ledgerId == activeId }
-                    ?.let { persistCurrentRoleIfChanged(it.role, expectedLedgerId = activeId) }
-            }
+        if (session.isStillCurrent()) {
+            settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
+            settingsStore.activeLedgerId()
+                ?.let { activeId ->
+                    summaries.firstOrNull { it.ledgerId == activeId }
+                        ?.let { persistCurrentRoleIfChanged(it.role, expectedLedgerId = activeId) }
+                }
+        }
         summaries
     }
 
