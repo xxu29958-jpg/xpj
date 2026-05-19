@@ -262,17 +262,14 @@ def apply_csv_import_batch(
             inserted += 1
 
         db.flush()
-        _refresh_batch_counts(db, batch)
-        batch.updated_at = now_utc()
-        remaining_rows = _remaining_importable_rows(db, batch, tenant_id)
-        if _batch_apply_token_matches(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token):
-            batch.locked_until = None
-            batch.apply_token = None
-            if remaining_rows == 0:
-                batch.applied_at = batch.updated_at
-                batch.status = "applied_with_errors" if batch.error_rows else "applied"
-            else:
-                batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
+        remaining_rows = _finalize_csv_import_apply_success(
+            db,
+            batch=batch,
+            tenant_id=tenant_id,
+            public_id=public_id,
+            apply_token=apply_token,
+            now=now_utc(),
+        )
         db.commit()
         db.refresh(batch)
         return CsvImportApplyResponse(
@@ -305,6 +302,15 @@ def apply_csv_import_batch(
         raise
     except IntegrityError as exc:
         db.rollback()
+        resolved = _resolve_csv_import_idempotency_conflict(
+            db,
+            tenant_id=tenant_id,
+            public_id=public_id,
+            row_ids=claimed_row_ids,
+            apply_token=apply_token,
+        )
+        if resolved is not None:
+            return resolved
         _reset_claimed_csv_import_rows(
             db,
             tenant_id=tenant_id,
@@ -362,6 +368,7 @@ def _claim_apply_lease(
             locked_until=now + timedelta(minutes=APPLY_LEASE_MINUTES),
             apply_token=apply_token,
             status="applying",
+            last_error=None,
             updated_at=now,
         )
         .execution_options(synchronize_session=False)
@@ -544,6 +551,84 @@ def _batch_apply_token_matches(
             .where(CsvImportBatch.public_id == public_id)
             .where(CsvImportBatch.apply_token == apply_token)
         )
+    )
+
+
+def _finalize_csv_import_apply_success(
+    db: Session,
+    *,
+    batch: CsvImportBatch,
+    tenant_id: str,
+    public_id: str,
+    apply_token: str,
+    now: datetime,
+) -> int:
+    _refresh_batch_counts(db, batch)
+    batch.updated_at = now
+    remaining_rows = _remaining_importable_rows(db, batch, tenant_id)
+    if _batch_apply_token_matches(db, tenant_id=tenant_id, public_id=public_id, apply_token=apply_token):
+        batch.locked_until = None
+        batch.apply_token = None
+        batch.last_error = None
+        if remaining_rows == 0:
+            batch.applied_at = now
+            batch.status = "applied_with_errors" if batch.error_rows else "applied"
+        else:
+            batch.status = "parsed_with_errors" if batch.error_rows else "parsed"
+    return remaining_rows
+
+
+def _resolve_csv_import_idempotency_conflict(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    row_ids: list[int],
+    apply_token: str,
+) -> CsvImportApplyResponse | None:
+    if not row_ids:
+        return None
+    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
+    rows = list(
+        db.scalars(
+            ledger_scoped_select(CsvImportRow, tenant_id)
+            .where(CsvImportRow.batch_id == batch.id)
+            .where(CsvImportRow.id.in_(row_ids))
+            .where(CsvImportRow.status == "applying")
+            .where(CsvImportRow.apply_token == apply_token)
+            .order_by(CsvImportRow.line_number.asc())
+        )
+    )
+    if len(rows) != len(set(row_ids)):
+        return None
+    now = now_utc()
+    for row in rows:
+        existing_expense_id = _existing_csv_import_expense_id(
+            db,
+            tenant_id=tenant_id,
+            idempotency_key=_csv_import_row_idempotency_key(batch, row),
+        )
+        if existing_expense_id is None:
+            return None
+        row.status = "applied"
+        row.apply_token = None
+        row.expense_id = existing_expense_id
+        row.updated_at = now
+    db.flush()
+    remaining_rows = _finalize_csv_import_apply_success(
+        db,
+        batch=batch,
+        tenant_id=tenant_id,
+        public_id=public_id,
+        apply_token=apply_token,
+        now=now,
+    )
+    db.commit()
+    db.refresh(batch)
+    return CsvImportApplyResponse(
+        batch=CsvImportBatchResponse.model_validate(batch),
+        inserted_count=0,
+        remaining_valid_rows=remaining_rows,
     )
 
 

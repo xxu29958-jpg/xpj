@@ -15,6 +15,7 @@ from app.services.csv_import_batch_service import (
     _claim_apply_lease,
     _claim_csv_import_rows,
     _refresh_claimed_csv_import_row,
+    _resolve_csv_import_idempotency_conflict,
     apply_csv_import_batch,
     create_csv_import_batch,
     list_csv_import_rows,
@@ -451,6 +452,113 @@ def test_csv_import_row_idempotency_prevents_duplicate_expense_after_stale_recla
         assert row.status == "applied"
         assert row.expense_id == expenses[0].id
         assert row.apply_token is None
+
+
+def test_csv_import_idempotency_conflict_resolver_marks_claimed_row_applied(
+    client: TestClient,
+) -> None:
+    del client
+    with SessionLocal() as setup_db:
+        batch = create_csv_import_batch(
+            setup_db,
+            tenant_id="owner",
+            file_name="idempotent-conflict.csv",
+            file_obj=_csv_bytes(1),
+        )
+        public_id = batch.public_id
+        batch_id = batch.id
+        row = setup_db.scalar(
+            select(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.batch_id == batch_id)
+            .limit(1)
+        )
+        assert row is not None
+        setup_db.execute(
+            update(CsvImportBatch)
+            .where(CsvImportBatch.tenant_id == "owner")
+            .where(CsvImportBatch.id == batch_id)
+            .values(
+                status="applying",
+                apply_token="worker-a",
+                locked_until=now_utc() + timedelta(minutes=1),
+                last_error="previous failure",
+                updated_at=now_utc(),
+            )
+        )
+        setup_db.execute(
+            update(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.id == row.id)
+            .values(status="applying", apply_token="worker-a", updated_at=now_utc())
+        )
+        setup_db.add(
+            Expense(
+                tenant_id="owner",
+                amount_cents=100,
+                merchant="Merchant 1",
+                category="餐饮",
+                source="CSV导入",
+                status="pending",
+                draft_idempotency_key=f"csv-import:{public_id}:2",
+                created_at=now_utc(),
+                updated_at=now_utc(),
+            )
+        )
+        setup_db.commit()
+
+    with SessionLocal() as db:
+        resolved = _resolve_csv_import_idempotency_conflict(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            row_ids=[row.id],
+            apply_token="worker-a",
+        )
+        assert resolved is not None
+        assert resolved.inserted_count == 0
+        assert resolved.remaining_valid_rows == 0
+        assert resolved.batch.status == "applied"
+        assert resolved.batch.last_error is None
+
+        row = db.scalar(
+            select(CsvImportRow)
+            .where(CsvImportRow.tenant_id == "owner")
+            .where(CsvImportRow.batch_id == batch_id)
+        )
+        assert row is not None
+        assert row.status == "applied"
+        assert row.expense_id is not None
+        assert row.apply_token is None
+
+
+def test_csv_import_success_clears_previous_apply_error(client: TestClient) -> None:
+    del client
+    with SessionLocal() as setup_db:
+        batch = create_csv_import_batch(
+            setup_db,
+            tenant_id="owner",
+            file_name="clear-last-error.csv",
+            file_obj=_csv_bytes(1),
+        )
+        public_id = batch.public_id
+        setup_db.execute(
+            update(CsvImportBatch)
+            .where(CsvImportBatch.tenant_id == "owner")
+            .where(CsvImportBatch.public_id == public_id)
+            .values(last_error="previous failure")
+        )
+        setup_db.commit()
+
+    with SessionLocal() as db:
+        applied = apply_csv_import_batch(
+            db,
+            tenant_id="owner",
+            public_id=public_id,
+            batch_size=10,
+        )
+        assert applied.batch.status == "applied"
+        assert applied.batch.last_error is None
 
 
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient) -> None:
