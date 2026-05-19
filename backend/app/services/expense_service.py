@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 
 from sqlalchemy import func, select, text, update
@@ -45,6 +46,8 @@ from app.services.spending_contract_service import confirmed_ordered, confirmed_
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
+
+logger = logging.getLogger(__name__)
 
 
 EDITABLE_STATUSES = {"pending", "confirmed"}
@@ -137,6 +140,11 @@ def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | 
     try:
         return generate_thumbnail(relative_path, tenant_id=tenant_id)
     except Exception:
+        logger.exception(
+            "thumbnail generation failed for ledger=%s path=%s",
+            tenant_id,
+            relative_path,
+        )
         return None
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -26,6 +27,8 @@ from app.services.spending_contract_service import (
     shift_month,
     stat_time_expr,
 )
+
+logger = logging.getLogger(__name__)
 
 ReportGranularity = Literal["day", "week", "month"]
 ReportRankingMetric = Literal["amount", "count"]
@@ -507,6 +510,11 @@ def six_month_summary(
                 else 0
             )
         except Exception:
+            logger.exception(
+                "reports trend6: get_monthly_budget failed for ledger=%s month=%s",
+                tenant_id,
+                month_label,
+            )
             budget_cents = 0
         results.append(
             {

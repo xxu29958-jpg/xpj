@@ -21,6 +21,7 @@ Navigation:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -34,6 +35,8 @@ from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
 from app.network_boundary import require_owner_console_local
 from app.services import owner_console_service as svc
 from app.version import BACKEND_VERSION
+
+logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "owner"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
@@ -138,6 +141,7 @@ def owner_index(
 
         ctx["windows_tasks"] = wts.list_windows_tasks()
     except Exception:
+        logger.exception("owner_console index: list_windows_tasks failed")
         ctx["windows_tasks"] = []
     return templates.TemplateResponse(request=request, name="index.html", context=ctx)
 

@@ -7,6 +7,7 @@ on FastAPI Request or return HTTP responses.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -49,6 +50,8 @@ from app.services.ledger_service import (
 from app.tenants import DEFAULT_TENANT_ID
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 from app.services.time_service import current_month, now_utc
+
+logger = logging.getLogger(__name__)
 
 
 OWNER_CONSOLE_TIMEZONE = "Asia/Shanghai"
@@ -315,14 +318,17 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
             db, tenant_id=primary_tenant_id
         )
     except Exception:
+        logger.exception("owner_console index: data_quality_summary failed for ledger=%s", primary_tenant_id)
         dq_summary = None
     try:
         recurring_ops: RecurringOpsVM | None = get_recurring_ops(db)
     except Exception:
+        logger.exception("owner_console index: get_recurring_ops failed")
         recurring_ops = None
     try:
         budget_status = _budget_status_for_primary_ledger(db, primary_ledger)
     except Exception:
+        logger.exception("owner_console index: budget_status failed for ledger=%s", primary_tenant_id)
         budget_status = None
 
     return ConsoleIndexVM(
@@ -564,6 +570,7 @@ def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
         try:
             dq = data_quality_summary(db, tenant_id=summary.ledger_id)
         except Exception:
+            logger.exception("owner_console ledger_health: data_quality_summary failed for ledger=%s", summary.ledger_id)
             continue
         rows.append(
             LedgerHealthVM(

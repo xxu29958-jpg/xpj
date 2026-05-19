@@ -28,9 +28,9 @@ def _parse(pref: UserUiPreference | None) -> dict:
         return {}
     try:
         data = json.loads(pref.preferences)
-        return data if isinstance(data, dict) else {}
-    except Exception:
+    except json.JSONDecodeError:
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _to_response(pref: UserUiPreference | None) -> UserUiPreferencesResponse:
