@@ -76,9 +76,35 @@ def require_http_bootstrap_secret(
 
 
 def _consume_secret(db: Session, secret: str) -> None:
-    if secret:
-        db.add(BootstrapSecretConsumption(secret_hash=hash_secret(secret)))
+    """Mark a one-shot bootstrap secret as consumed.
+
+    Raises ``invalid_bootstrap_secret`` only when the failure is the expected
+    one — another request consumed the same hash between the precheck in
+    ``require_http_bootstrap_secret`` and this insert. All other integrity
+    errors propagate so we never silently translate an unrelated schema
+    failure into "secret already used".
+    """
+
+    if not secret:
+        return
+    secret_hash = hash_secret(secret)
+    try:
+        db.add(BootstrapSecretConsumption(secret_hash=secret_hash))
         db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        already_consumed = db.scalar(
+            select(BootstrapSecretConsumption.secret_hash)
+            .where(BootstrapSecretConsumption.secret_hash == secret_hash)
+            .limit(1)
+        )
+        if already_consumed is not None:
+            raise AppError(
+                "invalid_bootstrap_secret",
+                "Bootstrap secret is invalid or already used.",
+                status_code=401,
+            ) from exc
+        raise
 
 
 def _mark_secret_consumed(db: Session, secret: str) -> None:
@@ -104,17 +130,12 @@ def post_bootstrap_owner(
         )
         _consume_secret(db, secret)
         db.commit()
-    except AppError:
-        db.rollback()
-        raise
-    except IntegrityError as exc:
-        db.rollback()
-        raise AppError(
-            "invalid_bootstrap_secret",
-            "Bootstrap secret is invalid or already used.",
-            status_code=401,
-        ) from exc
     except Exception:
+        # AppError translation for the race-condition case is owned by
+        # _consume_secret. Everything else (real schema bug, unexpected
+        # IntegrityError, etc.) rolls back and propagates as-is so the
+        # global handler surfaces a generic server_error rather than a
+        # misleading "secret already used".
         db.rollback()
         raise
     return BootstrapOwnerResponse(**result.__dict__)
