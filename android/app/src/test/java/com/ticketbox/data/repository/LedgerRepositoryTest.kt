@@ -389,6 +389,75 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun acceptInvitationSlowResponseDoesNotOverwriteBindingChangedDuringRequest() = runTest {
+        val api = StubApi(
+            acceptResult = InvitationAcceptResponseDto(
+                sessionToken = "invite-token",
+                accountName = "邀请账号",
+                ledgerId = "L_invited",
+                ledgerName = "邀请账本",
+                deviceName = "Invite Pixel",
+                role = "member",
+            ),
+        )
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "旧账号",
+                ledgerId = "L_old",
+                ledgerName = "旧账本",
+                deviceName = "Old Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+            saveAvailableLedgersJson(
+                """
+                [
+                  {
+                    "ledger_id": "L_new",
+                    "name": "新账本",
+                    "role": "owner",
+                    "is_default": true,
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "archived_at": null
+                  }
+                ]
+                """.trimIndent(),
+            )
+        }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        api.onAcceptInvitation = {
+            tokenStore.saveToken("new-token")
+            store.saveIdentity(
+                accountName = "新账号",
+                ledgerId = "L_new",
+                ledgerName = "新账本",
+                deviceName = "New Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:05:00Z",
+            )
+        }
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val failure = repo.acceptInvitation(
+            inviteToken = "inv_SLOW",
+            accountName = "邀请账号",
+            deviceName = "Invite Pixel",
+        ).exceptionOrNull()
+
+        assertNotNull(failure)
+        assertEquals("new-token", tokenStore.getToken())
+        assertEquals("L_new", store.activeLedgerId())
+        assertEquals("新账号", store.accountName())
+        assertEquals(listOf("L_new"), repo.cachedLedgers().map { it.ledgerId })
+    }
+
+    @Test
     fun previewInvitationReturnsTargetWithoutReplacingExistingBinding() = runTest {
         val ledgerName = "家庭共同账本" + "很长".repeat(20)
         val api = StubApi(
@@ -906,6 +975,7 @@ private class StubApi(
 ) : ApiService {
     var onLedgerMembers: (() -> Unit)? = null
     var onListLedgers: (() -> Unit)? = null
+    var onAcceptInvitation: (() -> Unit)? = null
 
     override suspend fun listLedgers(): LedgerListResponseDto {
         listLedgersError?.let { throw it }
@@ -976,6 +1046,7 @@ private class StubApi(
     override suspend fun acceptInvitation(request: InvitationAcceptRequestDto): InvitationAcceptResponseDto {
         acceptRequests += request
         acceptError?.let { throw it }
+        onAcceptInvitation?.invoke()
         return acceptResult ?: error("Unexpected accept call")
     }
 

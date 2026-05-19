@@ -66,12 +66,6 @@ class LedgerRepository(
     private val ledgerListAdapter = moshi.adapter<List<LedgerDto>>(ledgerListType)
     private val switchLedgerMutex = Mutex()
 
-    private data class LedgerSessionSnapshot(
-        val serverUrl: String,
-        val token: String,
-        val activeLedgerId: String?,
-    )
-
     private fun api() = apiProvider.temporary(
         requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
             "Ledger server is not bound."
@@ -87,27 +81,13 @@ class LedgerRepository(
         },
     )
 
-    private fun ledgerSessionSnapshot(): LedgerSessionSnapshot =
-        LedgerSessionSnapshot(
-            serverUrl = requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
-                "Ledger server is not bound."
-            }.trim().trimEnd('/'),
-            token = requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) {
-                "Ledger token is not bound."
-            },
-            activeLedgerId = settingsStore.activeLedgerId(),
-        )
-
-    private fun LedgerSessionSnapshot.isStillCurrent(): Boolean =
-        settingsStore.serverUrl()?.trim()?.trimEnd('/') == serverUrl &&
-            tokenStore.getToken()?.takeIf { it.isNotBlank() } == token &&
-            settingsStore.activeLedgerId() == activeLedgerId
-
     suspend fun refreshLedgers(): Result<List<LedgerSummary>> = wrap {
-        val session = ledgerSessionSnapshot()
-        val response = apiProvider.temporary(session.serverUrl, session.token).listLedgers()
+        val session = sessionCoordinator.currentSnapshot()
+        val serverUrl = requireNotNull(session.serverUrl) { "Ledger server is not bound." }
+        val token = requireNotNull(session.sessionToken) { "Ledger token is not bound." }
+        val response = apiProvider.temporary(serverUrl, token).listLedgers()
         val summaries = response.ledgers.map { it.toSummary() }
-        if (session.isStillCurrent()) {
+        if (sessionCoordinator.isCurrent(session)) {
             settingsStore.saveAvailableLedgersJson(ledgerListAdapter.toJson(response.ledgers))
             settingsStore.activeLedgerId()
                 ?.let { activeId ->
@@ -260,10 +240,11 @@ class LedgerRepository(
         val cleanDevice = deviceName.trim()
         require(cleanDevice.isNotEmpty()) { "请填写设备名。" }
         require(cleanDevice.length <= 120) { "设备名最多 120 个字。" }
-        val serverUrl = requireNotNull(settingsStore.serverUrl()?.takeIf { it.isNotBlank() }) {
+        val session = sessionCoordinator.currentSnapshot()
+        val serverUrl = requireNotNull(session.serverUrl?.takeIf { it.isNotBlank() }) {
             "Ledger server is not bound."
         }
-        val previousToken = tokenStore.getToken()?.takeIf { it.isNotBlank() }
+        val previousToken = session.sessionToken
         val acceptApi = previousToken
             ?.let { apiProvider.temporary(serverUrl, tokenOverride = it) }
             ?: unauthenticatedApi()
@@ -274,7 +255,8 @@ class LedgerRepository(
                 deviceName = cleanDevice,
             ),
         )
-        sessionCoordinator.applyTransition(
+        val applied = sessionCoordinator.applyTransitionIfCurrent(
+            expectedSnapshot = session,
             sessionToken = response.sessionToken,
             identity = LedgerSessionIdentity(
                 accountName = response.accountName,
@@ -287,6 +269,9 @@ class LedgerRepository(
             cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
             clearAvailableLedgers = true,
         )
+        if (!applied) {
+            throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
+        }
         // Refresh the ledger list so the picker shows the joined ledger.
         runCatching { refreshLedgers() }
         LedgerSummary(
