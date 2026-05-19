@@ -169,15 +169,81 @@ def _any_device_dependents_exist(
 
 
 def list_devices(db: Session, *, ledger_ids: set[str] | None = None) -> list[DeviceSummary]:
-    statement = select(Device).order_by(Device.id.asc())
+    """Return device summaries in a small fixed number of queries.
+
+    The per-device variant ``_device_with_relations`` is still used by
+    revoke/rename which already start from a single Device. For the list path,
+    re-using it created N+1 (one token query + one ledger query per device);
+    here we batch token, account, and ledger lookups so the cost is constant
+    in the number of rows.
+    """
+
+    device_stmt = select(Device).order_by(Device.id.asc())
     if ledger_ids is not None:
         if not ledger_ids:
             return []
         token_device_ids = select(AuthToken.device_id).where(AuthToken.ledger_id.in_(ledger_ids))
         link_device_ids = select(UploadLink.device_id).where(UploadLink.ledger_id.in_(ledger_ids))
-        statement = statement.where(Device.id.in_(token_device_ids) | Device.id.in_(link_device_ids))
-    devices = db.scalars(statement).all()
-    return [_device_with_relations(db, d, ledger_ids=ledger_ids) for d in devices]
+        device_stmt = device_stmt.where(Device.id.in_(token_device_ids) | Device.id.in_(link_device_ids))
+    devices = list(db.scalars(device_stmt))
+    if not devices:
+        return []
+
+    device_ids = [d.id for d in devices]
+    account_ids = list({d.account_id for d in devices})
+
+    token_stmt = (
+        select(AuthToken)
+        .where(AuthToken.device_id.in_(device_ids))
+        .order_by(AuthToken.last_used_at.desc().nullslast(), AuthToken.id.desc())
+    )
+    if ledger_ids is not None:
+        token_stmt = token_stmt.where(AuthToken.ledger_id.in_(ledger_ids))
+    latest_token_by_device: dict[int, AuthToken] = {}
+    for token in db.scalars(token_stmt):
+        # Stream is already ordered most-recent-first; first hit per device wins.
+        latest_token_by_device.setdefault(token.device_id, token)
+
+    accounts_by_id = {
+        a.id: a
+        for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))
+    }
+
+    ledger_id_set = {t.ledger_id for t in latest_token_by_device.values()}
+    ledgers_by_id: dict[str, Ledger] = (
+        {
+            ledger.ledger_id: ledger
+            for ledger in db.scalars(select(Ledger).where(Ledger.ledger_id.in_(ledger_id_set)))
+        }
+        if ledger_id_set
+        else {}
+    )
+
+    summaries: list[DeviceSummary] = []
+    for device in devices:
+        account = accounts_by_id.get(device.account_id)
+        token = latest_token_by_device.get(device.id)
+        ledger_id: str | None = None
+        ledger_name: str | None = None
+        if token is not None:
+            ledger_id = token.ledger_id
+            ledger = ledgers_by_id.get(token.ledger_id)
+            if ledger is not None:
+                ledger_name = ledger.name
+        summaries.append(
+            DeviceSummary(
+                public_id=device.public_id,
+                device_name=device.device_name,
+                platform=device.platform,
+                account_name=account.display_name if account is not None else "",
+                ledger_id=ledger_id,
+                ledger_name=ledger_name,
+                created_at=to_iso(device.created_at),
+                last_seen_at=to_iso(device.last_seen_at),
+                revoked_at=to_iso(device.revoked_at),
+            )
+        )
+    return summaries
 
 
 def _device_by_public_id(
@@ -266,13 +332,60 @@ def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
 
 
 def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> list[UploadLinkSummary]:
+    """Batched companion to :func:`list_devices`.
+
+    ``_upload_link_summary`` issues one ledger / account / device select per
+    link; that's fine for create/rotate which already start from a single
+    UploadLink, but for the list path we fan out one query per row. This
+    function fetches the parent rows in three batches instead.
+    """
+
     statement = select(UploadLink).order_by(UploadLink.id.asc())
     if ledger_ids is not None:
         if not ledger_ids:
             return []
         statement = statement.where(UploadLink.ledger_id.in_(ledger_ids))
-    links = db.scalars(statement).all()
-    return [_upload_link_summary(db, link) for link in links]
+    links = list(db.scalars(statement))
+    if not links:
+        return []
+
+    ledger_id_set = {link.ledger_id for link in links}
+    account_ids = list({link.account_id for link in links})
+    device_ids = list({link.device_id for link in links})
+
+    ledgers_by_id = {
+        ledger.ledger_id: ledger
+        for ledger in db.scalars(select(Ledger).where(Ledger.ledger_id.in_(ledger_id_set)))
+    }
+    accounts_by_id = {
+        a.id: a for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))
+    }
+    devices_by_id = {
+        d.id: d for d in db.scalars(select(Device).where(Device.id.in_(device_ids)))
+    }
+
+    summaries: list[UploadLinkSummary] = []
+    for link in links:
+        ledger = ledgers_by_id.get(link.ledger_id)
+        account = accounts_by_id.get(link.account_id)
+        device = devices_by_id.get(link.device_id)
+        summaries.append(
+            UploadLinkSummary(
+                public_id=link.public_id,
+                ledger_id=link.ledger_id,
+                ledger_name=ledger.name if ledger is not None else link.ledger_id,
+                account_name=account.display_name if account is not None else "",
+                device_name=device.device_name if device is not None else "",
+                default_timezone=link.default_timezone,
+                # Lists / dashboards must NEVER show the full upload key — only the
+                # public_id is safe to reveal repeatedly.
+                masked_url_path="/u/***",
+                last_used_at=to_iso(link.last_used_at),
+                revoked_at=to_iso(link.revoked_at),
+                created_at=to_iso(link.created_at),
+            )
+        )
+    return summaries
 
 
 def _upload_link_by_public_id(
