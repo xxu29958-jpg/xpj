@@ -589,7 +589,7 @@ class ExpenseRepository(
             pruneMissing = !replaceCache && isFullLedgerSync,
         )
         if (recordSyncTimestamp && isFullLedgerSync) {
-            settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
+            settingsStore.saveLastConfirmedSyncAtForLedger(ledgerIdAtRequest, Instant.now().toString())
         }
         return collected
     }

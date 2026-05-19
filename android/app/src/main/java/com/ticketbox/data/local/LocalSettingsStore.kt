@@ -142,9 +142,16 @@ class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     }
 
     override fun saveLastConfirmedSyncAt(value: String) {
+        val ledgerId = activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID
+        saveLastConfirmedSyncAtForLedger(ledgerId, value)
+    }
+
+    override fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
         prefs.edit {
-            putString(lastConfirmedSyncAtKey(), value)
-            putString(KEY_LAST_CONFIRMED_SYNC_AT, value)
+            putString(lastConfirmedSyncAtKey(ledgerId), value)
+            if (ledgerId == (activeLedgerId()?.takeIf { it.isNotBlank() } ?: LEGACY_LEDGER_ID)) {
+                putString(KEY_LAST_CONFIRMED_SYNC_AT, value)
+            }
             putBoolean(KEY_LAST_CONFIRMED_SYNC_AT_MIGRATED, true)
         }
     }

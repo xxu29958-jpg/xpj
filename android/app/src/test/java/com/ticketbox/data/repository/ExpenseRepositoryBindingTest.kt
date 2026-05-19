@@ -76,6 +76,7 @@ import retrofit2.Response
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -310,6 +311,42 @@ class ExpenseRepositoryBindingTest {
 
         assertEquals(listOf(9L, 99L), dao.getConfirmed("owner").map { it.serverId }.sorted())
         assertNull(settingsStore.lastConfirmedSyncAt())
+    }
+
+    @Test
+    fun fullConfirmedSyncWritesTimestampToRequestLedgerWhenActiveLedgerChangesAfterCacheWrite() = runTest {
+        val dao = FakeExpenseDao()
+        val settingsStore = boundSettingsStore()
+        dao.onAfterApplyConfirmedSync = {
+            settingsStore.saveIdentity(
+                accountName = "Account",
+                ledgerId = "family",
+                ledgerName = "Family Ledger",
+                deviceName = "Pixel",
+                role = "member",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0)),
+            settingsStore = settingsStore,
+            tokenStore = FakeSessionTokenStore().apply { saveToken("session-token") },
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        repository.syncConfirmed().getOrThrow()
+
+        assertNull(settingsStore.lastConfirmedSyncAt())
+        settingsStore.saveIdentity(
+            accountName = "Account",
+            ledgerId = "owner",
+            ledgerName = "Owner Ledger",
+            deviceName = "Pixel",
+            role = "owner",
+            boundAt = "2026-05-01T00:00:00Z",
+        )
+        assertNotNull(settingsStore.lastConfirmedSyncAt())
     }
 
     @Test
@@ -1662,7 +1699,7 @@ private class FakeTicketboxSettingsStore(
     private var deviceName: String? = null
     private var role: String? = null
     private var boundAt: String? = null
-    private var lastConfirmedSyncAt: String? = null
+    private val lastConfirmedSyncAtByLedger = mutableMapOf<String, String>()
     private var lastUploadAt: String? = null
     private var monthlyBudgetCents: Long? = null
     private var appSkinKey: String? = null
@@ -1678,7 +1715,8 @@ private class FakeTicketboxSettingsStore(
         monthlyBudgetCents = amountCents
     }
 
-    override fun lastConfirmedSyncAt(): String? = lastConfirmedSyncAt
+    override fun lastConfirmedSyncAt(): String? =
+        lastConfirmedSyncAtByLedger[activeLedgerId() ?: "legacy"]
 
     override fun accountName(): String? = accountName
 
@@ -1727,23 +1765,25 @@ private class FakeTicketboxSettingsStore(
     }
 
     override fun saveLastConfirmedSyncAt(value: String) {
-        lastConfirmedSyncAt = value
+        saveLastConfirmedSyncAtForLedger(activeLedgerId() ?: "legacy", value)
+    }
+
+    override fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
+        lastConfirmedSyncAtByLedger[ledgerId] = value
     }
 
     override fun clearLastConfirmedSyncAt() {
-        lastConfirmedSyncAt = null
+        lastConfirmedSyncAtByLedger.remove(activeLedgerId() ?: "legacy")
     }
 
     override fun clearLastConfirmedSyncAtForLedger(ledgerId: String) {
         events += "clearLastConfirmedSyncAtForLedger:$ledgerId"
-        if (ledgerId == ledgerIdFlow.value) {
-            lastConfirmedSyncAt = null
-        }
+        lastConfirmedSyncAtByLedger.remove(ledgerId)
     }
 
     override fun clearLedgerScopedRuntimeState() {
         events += "clearLedgerScopedRuntimeState"
-        lastConfirmedSyncAt = null
+        lastConfirmedSyncAtByLedger.clear()
         lastUploadAt = null
     }
 
@@ -1784,7 +1824,7 @@ private class FakeTicketboxSettingsStore(
         deviceName = null
         role = null
         boundAt = null
-        lastConfirmedSyncAt = null
+        lastConfirmedSyncAtByLedger.clear()
         lastUploadAt = null
     }
 }
@@ -1812,6 +1852,7 @@ private class FakeExpenseDao(
     private val expenses = linkedMapOf<Long, ExpenseEntity>()
     private val flows = mutableMapOf<String, MutableStateFlow<List<ExpenseEntity>>>()
     private var nextId = 1L
+    var onAfterApplyConfirmedSync: (() -> Unit)? = null
 
     override fun observeConfirmed(ledgerId: String): Flow<List<ExpenseEntity>> = flowFor(ledgerId)
 
@@ -1887,6 +1928,26 @@ private class FakeExpenseDao(
             .map { it.id }
             .forEach { expenses.remove(it) }
         emit(ledgerId)
+    }
+
+    override suspend fun applyConfirmedSyncForLedger(
+        ledgerId: String,
+        expenses: List<ExpenseEntity>,
+        replaceCache: Boolean,
+        pruneMissing: Boolean,
+    ) {
+        if (replaceCache) {
+            clearForLedger(ledgerId)
+        }
+        expenses.forEach { upsertByServerIdForLedger(ledgerId, it) }
+        if (pruneMissing) {
+            val remoteServerIds = expenses.map { it.serverId }.toSet()
+            val staleServerIds = confirmedServerIdsForLedger(ledgerId).filter { it !in remoteServerIds }
+            if (staleServerIds.isNotEmpty()) {
+                deleteConfirmedByServerIds(ledgerId, staleServerIds)
+            }
+        }
+        onAfterApplyConfirmedSync?.invoke()
     }
 
     private fun flowFor(ledgerId: String): MutableStateFlow<List<ExpenseEntity>> =

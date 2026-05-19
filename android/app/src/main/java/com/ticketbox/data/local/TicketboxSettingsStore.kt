@@ -90,6 +90,10 @@ interface TicketboxSettingsStore {
 
     fun saveLastConfirmedSyncAt(value: String)
 
+    fun saveLastConfirmedSyncAtForLedger(ledgerId: String, value: String) {
+        saveLastConfirmedSyncAt(value)
+    }
+
     fun clearLastConfirmedSyncAt()
 
     fun clearLastConfirmedSyncAtForLedger(ledgerId: String)
