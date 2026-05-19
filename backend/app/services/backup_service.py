@@ -20,6 +20,7 @@ from uuid import uuid4
 
 from app.config import get_settings
 from app.errors import AppError
+from app.services.sqlite_backup_validation_service import is_sqlite_backup_valid
 from app.services.time_service import now_utc
 
 
@@ -172,15 +173,4 @@ def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
 
 
 def _sqlite_integrity_ok(path: Path) -> bool:
-    if not path.is_file():
-        return False
-    try:
-        conn = sqlite3.connect(str(path))
-        try:
-            result = conn.execute("PRAGMA integrity_check").fetchone()
-            fk_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        return False
-    return bool(result and result[0] == "ok" and not fk_violations)
+    return is_sqlite_backup_valid(path)

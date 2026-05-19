@@ -104,8 +104,20 @@ def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
     for script in (
         project_root / "scripts" / "maintenance_ticketbox.ps1",
         project_root / "scripts" / "restore_ticketbox_db.ps1",
+        project_root / "backend" / "scripts" / "backup_database.ps1",
     ):
         text = script.read_text(encoding="utf-8-sig")
         assert "Resolve-DbPath" in text
         assert "DATABASE_URL" in text
         assert '$DbPath = Join-Path $BackendRoot "data\\ticketbox.db"' not in text
+        assert "app.services.sqlite_backup_validation_service" in text
+
+
+def test_legacy_restore_script_delegates_to_canonical_restore_entrypoint() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    text = (project_root / "backend" / "scripts" / "restore_database.ps1").read_text(
+        encoding="utf-8-sig"
+    )
+    assert "scripts\\restore_ticketbox_db.ps1" in text
+    assert "-BackupPath" in text
+    assert "sqlite3.connect" not in text

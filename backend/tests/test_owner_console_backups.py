@@ -74,6 +74,24 @@ def test_owner_backups_skip_foreign_key_damaged_files(local_client: TestClient) 
         damaged.unlink(missing_ok=True)
 
 
+def test_owner_backups_skip_sqlite_files_without_ticketbox_schema(local_client: TestClient) -> None:
+    del local_client
+    from app.services import backup_service
+
+    wrong_schema = backup_service._backup_dir() / "ticketbox-29991231-235957.db"  # noqa: SLF001
+    conn = sqlite3.connect(wrong_schema)
+    try:
+        conn.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        assert backup_service.is_backup_valid(wrong_schema.name) is False
+        assert wrong_schema.name not in {entry.file_name for entry in backup_service.list_backups()}
+    finally:
+        wrong_schema.unlink(missing_ok=True)
+
+
 def test_owner_backups_no_uploads_path_leak(local_client: TestClient) -> None:
     resp = local_client.get("/owner/backups")
     assert resp.status_code == 200

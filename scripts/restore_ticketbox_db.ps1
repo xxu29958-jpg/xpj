@@ -119,80 +119,26 @@ function Test-SqliteBackup {
     )
 
     $python = Resolve-Python
-    $script = @'
-import sqlite3
-import sys
-
-path, expected_version = sys.argv[1], sys.argv[2]
-required_tables = {
-    "schema_migrations",
-    "accounts",
-    "ledgers",
-    "ledger_members",
-    "devices",
-    "auth_tokens",
-    "upload_links",
-    "pairing_codes",
-    "expenses",
-    "expense_items",
-    "expense_splits",
-    "budgets",
-    "budget_categories",
-    "category_rules",
-    "duplicate_ignores",
-}
-
-con = sqlite3.connect(path)
-try:
-    result = con.execute("PRAGMA integrity_check").fetchone()[0]
-    if result != "ok":
-        print(f"SQLite integrity_check failed: {result}", file=sys.stderr)
-        raise SystemExit(1)
-    fk_violations = con.execute("PRAGMA foreign_key_check").fetchall()
-    if fk_violations:
-        samples = ", ".join(
-            f"{row[0]} rowid={row[1]} parent={row[2]}"
-            for row in fk_violations[:3]
-        )
-        print(f"SQLite foreign_key_check failed: {samples}", file=sys.stderr)
-        raise SystemExit(1)
-
-    tables = {
-        row[0]
-        for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    $previousPythonPath = [Environment]::GetEnvironmentVariable("PYTHONPATH")
+    try {
+        if ([string]::IsNullOrWhiteSpace($previousPythonPath)) {
+            $env:PYTHONPATH = $BackendRoot
+        }
+        else {
+            $env:PYTHONPATH = "$BackendRoot;$previousPythonPath"
+        }
+        & $python -m app.services.sqlite_backup_validation_service $Path --expected-backend-version $ExpectedBackendVersion
+        if ($LASTEXITCODE -ne 0) {
+            throw "Ticketbox 备份校验失败：$Path"
+        }
     }
-    missing = sorted(required_tables - tables)
-    if missing:
-        print("Missing required Ticketbox tables: " + ", ".join(missing), file=sys.stderr)
-        raise SystemExit(1)
-
-    migration_columns = {
-        row[1] for row in con.execute("PRAGMA table_info(schema_migrations)")
-    }
-    if "backend_version" not in migration_columns:
-        print("schema_migrations.backend_version is missing", file=sys.stderr)
-        raise SystemExit(1)
-
-    versions = {
-        row[0]
-        for row in con.execute(
-            "SELECT DISTINCT backend_version FROM schema_migrations "
-            "WHERE backend_version IS NOT NULL AND backend_version != ''"
-        )
-    }
-    if expected_version not in versions:
-        found = ", ".join(sorted(versions)) or "<none>"
-        print(
-            f"Backup schema was not recorded by backend {expected_version}; found {found}",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
-finally:
-    con.close()
-'@
-    & $python -c $script $Path $ExpectedBackendVersion
-    if ($LASTEXITCODE -ne 0) {
-        throw "Ticketbox 备份校验失败：$Path"
+    finally {
+        if ($null -eq $previousPythonPath) {
+            Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:PYTHONPATH = $previousPythonPath
+        }
     }
 }
 
@@ -248,6 +194,7 @@ finally:
         if ($LASTEXITCODE -ne 0) {
             throw "恢复前备份失败。"
         }
+        Test-SqliteBackup -Path $preRestoreTemp -ExpectedBackendVersion $BackendVersion
         Move-Item -LiteralPath $preRestoreTemp -Destination $preRestore -Force
     }
     finally {
