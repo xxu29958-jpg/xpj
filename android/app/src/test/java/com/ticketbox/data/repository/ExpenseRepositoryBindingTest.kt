@@ -177,6 +177,46 @@ class ExpenseRepositoryBindingTest {
     }
 
     @Test
+    fun bindRestoreDoesNotWriteOldLedgerRowsAfterLocalLedgerChanges() = runTest {
+        val events = mutableListOf<String>()
+        val dao = FakeExpenseDao(events)
+        val settingsStore = FakeTicketboxSettingsStore(events)
+        val tokenStore = FakeSessionTokenStore(events)
+        val apiService = FakeApiService(events, confirmedFailuresRemaining = 0)
+        var redirected = false
+        settingsStore.onSaveIdentity = {
+            if (!redirected && settingsStore.activeLedgerId() == "owner") {
+                redirected = true
+                tokenStore.saveToken("session-family")
+                settingsStore.saveIdentity(
+                    accountName = "家人",
+                    ledgerId = "family",
+                    ledgerName = "家庭账本",
+                    deviceName = "Pixel",
+                    role = "member",
+                    boundAt = "2026-05-01T00:05:00Z",
+                )
+            }
+        }
+        val repository = ExpenseRepository(
+            expenseDao = dao,
+            apiClient = FakeApiServiceFactory(apiService),
+            settingsStore = settingsStore,
+            tokenStore = tokenStore,
+            deviceNameProvider = { "Android Test Device" },
+        )
+
+        val result = repository.bindServer("https://api.example.com", "123456").getOrThrow()
+
+        assertTrue(!result.confirmedRestoreFailed)
+        assertEquals("family", settingsStore.activeLedgerId())
+        assertEquals("session-family", tokenStore.getToken())
+        assertTrue(dao.getConfirmed("owner").isEmpty())
+        assertTrue(dao.getConfirmed("family").isEmpty())
+        assertNull(settingsStore.lastConfirmedSyncAt())
+    }
+
+    @Test
     fun manualConfirmedSyncStillWorksAfterBindRestoreFailure() = runTest {
         val events = mutableListOf<String>()
         val dao = FakeExpenseDao()
@@ -1626,6 +1666,7 @@ private class FakeTicketboxSettingsStore(
     private var lastUploadAt: String? = null
     private var monthlyBudgetCents: Long? = null
     private var appSkinKey: String? = null
+    var onSaveIdentity: (() -> Unit)? = null
 
     override fun serverUrl(): String? = serverUrl
 
@@ -1682,6 +1723,7 @@ private class FakeTicketboxSettingsStore(
         this.deviceName = deviceName
         this.role = role
         this.boundAt = boundAt
+        onSaveIdentity?.invoke()
     }
 
     override fun saveLastConfirmedSyncAt(value: String) {

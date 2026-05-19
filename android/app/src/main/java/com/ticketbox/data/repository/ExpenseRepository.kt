@@ -269,10 +269,9 @@ class ExpenseRepository(
             val restoreFailed = try {
                 syncConfirmedFromService(
                     service = api(normalized, pairResponse.sessionToken),
+                    ledgerIdAtRequest = pairResponse.ledgerId,
                     replaceCache = true,
-                    recordSyncTimestamp = false,
                 )
-                settingsStore.saveLastConfirmedSyncAt(Instant.now().toString())
                 false
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
