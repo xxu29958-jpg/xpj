@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.services import permission_service
 from app.services.ledger_service import managed_ledger_ids_for_account
 from app.tenants import AuthContext
 
@@ -14,8 +15,7 @@ def manageable_ledger_ids(db: Session, auth: AuthContext) -> set[str]:
     grant authority over every ledger the account can merely view or write.
     """
 
-    if auth.scope != "admin":
-        raise AppError("invalid_token", status_code=401)
+    permission_service.require_admin_maintenance(auth)
     return managed_ledger_ids_for_account(db, account_id=auth.account_id)
 
 
