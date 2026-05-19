@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.config import BACKEND_ROOT, get_settings
+from app.config import get_settings
 from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
 
 
@@ -21,18 +21,14 @@ def _is_under_path(candidate: Path, root: Path) -> bool:
 def generate_thumbnail(
     relative_path: str | None,
     *,
-    tenant_id: str | None = None,
+    tenant_id: str,
     size: tuple[int, int] = (512, 512),
 ) -> str | None:
     settings = get_settings()
     if not settings.generate_thumbnail or not relative_path:
         return None
 
-    source = (
-        resolve_upload_path_for_tenant(relative_path, tenant_id)
-        if tenant_id is not None
-        else (BACKEND_ROOT / relative_path).resolve()
-    )
+    source = resolve_upload_path_for_tenant(relative_path, tenant_id)
     if source is None or not _is_under_path(source, settings.upload_dir):
         return None
     if not source.is_file():
