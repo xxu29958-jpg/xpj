@@ -9,15 +9,19 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.auth import get_current_writer_context, get_removed_upload_context
+from app.auth import get_current_writer_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.models import Expense
-from app.schemas import UploadCheckResponse, UploadResponse
+from app.schemas import UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
 from app.services.file_service import SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
-from app.services.identity_service import authenticate_upload_link, upload_link_default_timezone
+from app.services.identity_service import (
+    authenticate_upload_link,
+    is_legacy_upload_token,
+    upload_link_default_timezone,
+)
 from app.services.permission_service import require_create_pending_expense
 from app.tenants import AuthContext
 
@@ -158,26 +162,37 @@ async def _handle_upload(
     return _upload_response(expense, saved_file, duration_ms, timing_ms)
 
 
-@router.get(
-    "/upload/check",
-    response_model=UploadCheckResponse,
-)
-def upload_check(_: AuthContext = Depends(get_removed_upload_context)) -> UploadCheckResponse:
-    raise AssertionError("unreachable")
+def _reject_legacy_upload_endpoint(upload_token: str | None) -> None:
+    """Legacy-detector for retired Upload-Token endpoints.
+
+    v0.3 retired ``Upload-Token`` auth entirely. The two routes below stay
+    registered only to give old iOS Shortcuts / Android builds a
+    machine-readable hint (``legacy_auth_removed``) so they know to re-pair —
+    a bare 404 would silently break those clients. Any other value still gets
+    a normal ``invalid_token`` so this isn't a probe-friendly oracle.
+    """
+
+    if is_legacy_upload_token(upload_token):
+        raise AppError(
+            "legacy_auth_removed",
+            "请使用新版 iOS 上传链接。",
+            status_code=401,
+        )
+    raise AppError("invalid_token", status_code=401)
 
 
-@router.post(
-    "/upload-screenshot",
-    response_model=UploadResponse,
-)
-async def upload_screenshot(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    timezone: str | None = Header(default=None, alias="X-Timezone"),
-    auth: AuthContext = Depends(get_removed_upload_context),
-    db: Session = Depends(get_db),
-) -> UploadResponse:
-    raise AssertionError("unreachable")
+@router.get("/upload/check", include_in_schema=False)
+def upload_check_legacy_gone(
+    upload_token: str | None = Header(default=None, alias="Upload-Token"),
+) -> None:
+    _reject_legacy_upload_endpoint(upload_token)
+
+
+@router.post("/upload-screenshot", include_in_schema=False)
+async def upload_screenshot_legacy_gone(
+    upload_token: str | None = Header(default=None, alias="Upload-Token"),
+) -> None:
+    _reject_legacy_upload_endpoint(upload_token)
 
 
 @router.post(

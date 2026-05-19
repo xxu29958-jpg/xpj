@@ -294,13 +294,6 @@ class UploadResponse(BaseModel):
     timing_ms: dict[str, int] = Field(default_factory=dict)
 
 
-class UploadCheckResponse(BaseModel):
-    status: str = "ok"
-    max_upload_size_mb: int
-    supported_file_types: list[str]
-    recommended_body: str = "file"
-
-
 class ExpenseManualCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

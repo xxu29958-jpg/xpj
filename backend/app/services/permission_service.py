@@ -76,6 +76,12 @@ def can_use_admin_maintenance(ctx: AuthContext) -> bool:
     return ctx.scope == SCOPE_ADMIN
 
 
+def can_create_top_level_ledger(ctx: AuthContext) -> bool:
+    if ctx.scope == SCOPE_ADMIN:
+        return True
+    return ctx.scope == SCOPE_APP and ctx.role == ROLE_OWNER
+
+
 def _deny(message_key: str = "permission_denied", message: str | None = None) -> None:
     raise AppError(message_key, message=message, status_code=403)
 
@@ -108,3 +114,8 @@ def require_manage_upload_links(ctx: AuthContext) -> None:
 def require_admin_maintenance(ctx: AuthContext) -> None:
     if not can_use_admin_maintenance(ctx):
         raise AppError("invalid_token", status_code=401)
+
+
+def require_create_top_level_ledger(ctx: AuthContext) -> None:
+    if not can_create_top_level_ledger(ctx):
+        _deny()
