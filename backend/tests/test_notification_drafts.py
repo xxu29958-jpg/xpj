@@ -89,6 +89,30 @@ def test_notification_draft_is_pending_structured_and_idempotent(
         }
 
 
+def test_notification_draft_canonicalizes_currency_ocr_ownership(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/expenses/notification-drafts",
+        headers=app_headers(),
+        json={
+            "source": "wechat",
+            "merchant": "Alias Cafe",
+            "original_currency": "USD",
+            "original_amount": "12.34",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        expense = db.get(Expense, response.json()["id"])
+        assert expense is not None
+        assert set(json.loads(expense.ocr_draft_fields or "[]")) == {
+            "amount_cents",
+            "merchant",
+        }
+
+
 def test_notification_draft_time_window_creates_new_pending_after_bucket(
     client: TestClient,
 ) -> None:

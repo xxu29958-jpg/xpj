@@ -422,6 +422,34 @@ def test_apply_ocr_result_is_noop_for_terminal_expenses() -> None:
     assert expense.raw_text == ""
 
 
+def test_ocr_draft_field_aliases_are_canonicalized_when_applying_result() -> None:
+    expense = Expense(
+        status="pending",
+        amount_cents=7200,
+        merchant="Stable Cafe",
+        category="其他",
+        raw_text="",
+        expense_time=datetime(2026, 5, 1, tzinfo=UTC),
+        ocr_draft_fields='["original_amount", "original_currency", "spent_at"]',
+    )
+
+    apply_ocr_result(
+        expense,
+        OcrResult(
+            raw_text="Changed Cafe\n19.00",
+            amount_cents=1900,
+            merchant="Changed Cafe",
+            expense_time=datetime(2026, 5, 2, tzinfo=UTC),
+            confidence=None,
+        ),
+    )
+
+    assert expense.amount_cents == 1900
+    assert expense.merchant == "Stable Cafe"
+    assert expense.expense_time == datetime(2026, 5, 2, tzinfo=UTC)
+    assert expense.ocr_draft_fields == '["amount_cents", "expense_time"]'
+
+
 def test_recognize_text_then_confirm_enters_stats_and_export(
     client: TestClient,
 ) -> None:

@@ -216,7 +216,7 @@ def ocr_draft_fields(expense: Expense) -> set[str]:
         return set()
     if not isinstance(decoded, list):
         return set()
-    return {str(item) for item in decoded if str(item) in OCR_DRAFT_FIELDS}
+    return canonical_ocr_draft_fields([str(item) for item in decoded])
 
 
 def canonical_ocr_draft_fields(fields: set[str] | list[str] | tuple[str, ...]) -> set[str]:
@@ -227,18 +227,22 @@ def canonical_ocr_draft_fields(fields: set[str] | list[str] | tuple[str, ...]) -
     }
 
 
+def serialize_ocr_draft_fields(fields: set[str] | list[str] | tuple[str, ...]) -> str:
+    normalized = sorted(canonical_ocr_draft_fields(fields))
+    return json.dumps(normalized, ensure_ascii=False)
+
+
 def ocr_draft_fields_after_clearing(
     expense: Expense,
     fields: set[str] | list[str] | tuple[str, ...],
 ) -> str:
     current = ocr_draft_fields(expense)
     updated = current.difference(canonical_ocr_draft_fields(fields))
-    normalized = sorted(field for field in updated if field in OCR_DRAFT_FIELDS)
-    return json.dumps(normalized, ensure_ascii=False)
+    return serialize_ocr_draft_fields(list(updated))
 
 
 def clear_ocr_draft_fields(expense: Expense, fields: set[str] | list[str] | tuple[str, ...]) -> None:
-    updated = set(json.loads(ocr_draft_fields_after_clearing(expense, fields)))
+    updated = ocr_draft_fields(expense).difference(canonical_ocr_draft_fields(fields))
     _write_ocr_draft_fields(expense, updated)
 
 
@@ -349,8 +353,7 @@ def _legacy_pending_ocr_draft_fields(expense: Expense) -> set[str]:
 
 
 def _write_ocr_draft_fields(expense: Expense, fields: set[str]) -> None:
-    normalized = sorted(field for field in fields if field in OCR_DRAFT_FIELDS)
-    expense.ocr_draft_fields = json.dumps(normalized, ensure_ascii=False)
+    expense.ocr_draft_fields = serialize_ocr_draft_fields(list(fields))
 
 
 def _merge_result_with_text_parse(

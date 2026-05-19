@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
 from sqlalchemy import func, select, text, update
@@ -39,6 +38,7 @@ from app.services.ocr_service import (
     collect_auto_ocr_results,
     extract_ocr_result,
     run_auto_ocr,
+    serialize_ocr_draft_fields,
 )
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
@@ -130,7 +130,7 @@ def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str |
         fields.add("category")
     if not fields:
         return None
-    return json.dumps(sorted(fields), ensure_ascii=False)
+    return serialize_ocr_draft_fields(list(fields))
 
 
 def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | None:
