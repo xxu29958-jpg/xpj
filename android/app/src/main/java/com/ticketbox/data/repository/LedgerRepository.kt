@@ -134,8 +134,12 @@ class LedgerRepository(
      */
     suspend fun switchLedger(ledgerId: String): Result<LedgerSummary> = wrap {
         switchLedgerMutex.withLock {
-            val response = api().switchLedger(ledgerId)
-            sessionCoordinator.applyTransition(
+            val session = sessionCoordinator.currentSnapshot()
+            val serverUrl = requireNotNull(session.serverUrl) { "Ledger server is not bound." }
+            val token = requireNotNull(session.sessionToken) { "Ledger token is not bound." }
+            val response = apiProvider.temporary(serverUrl, token).switchLedger(ledgerId)
+            val applied = sessionCoordinator.applyTransitionIfCurrent(
+                expectedSnapshot = session,
                 sessionToken = response.sessionToken,
                 identity = LedgerSessionIdentity(
                     accountName = response.accountName,
@@ -147,6 +151,9 @@ class LedgerRepository(
                 ),
                 cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
             )
+            if (!applied) {
+                throw RepositoryException(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE)
+            }
             response.ledger.toSummary()
         }
     }

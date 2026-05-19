@@ -331,6 +331,54 @@ class LedgerRepositoryTest {
     }
 
     @Test
+    fun switchLedgerSlowResponseDoesNotOverwriteBindingChangedDuringRequest() = runTest {
+        val store = LedgerFakeSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "旧账号",
+                ledgerId = "L_old",
+                ledgerName = "旧账本",
+                deviceName = "Old Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokenStore = LedgerFakeTokenStore().apply { saveToken("old-token") }
+        val api = StubApi(
+            switchHandler = { ledgerId ->
+                tokenStore.saveToken("new-token")
+                store.saveIdentity(
+                    accountName = "新账号",
+                    ledgerId = "L_new",
+                    ledgerName = "新账本",
+                    deviceName = "New Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-01T00:05:00Z",
+                )
+                LedgerSwitchResponseDto(
+                    sessionToken = "switched-token",
+                    ledger = ledgerDto(ledgerId, "家庭账本", role = "viewer"),
+                    accountName = "旧账号",
+                    deviceName = "Old Pixel",
+                )
+            },
+        )
+        val repo = LedgerRepository(
+            apiClient = LedgerStubApiFactory(api),
+            settingsStore = store,
+            tokenStore = tokenStore,
+            expenseDao = LedgerFakeDao(),
+        )
+
+        val failure = repo.switchLedger("L_house").exceptionOrNull()
+
+        assertNotNull(failure)
+        assertEquals("new-token", tokenStore.getToken())
+        assertEquals("L_new", store.activeLedgerId())
+        assertEquals("新账号", store.accountName())
+    }
+
+    @Test
     fun acceptInvitationPersistsTokenIdentityAndWipesLocalAccountCache() = runTest {
         val newToken = "session-token-fresh"
         val api = StubApi(
