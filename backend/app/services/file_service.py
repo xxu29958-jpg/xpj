@@ -80,7 +80,7 @@ def _looks_like_allowed_image(ext: str, header: bytes) -> bool:
 
 def _is_decodable_image(ext: str, data: bytes) -> bool:
     try:
-        from PIL import Image
+        from PIL import Image, UnidentifiedImageError
 
         if ext == "heic":
             from pillow_heif import register_heif_opener
@@ -88,7 +88,10 @@ def _is_decodable_image(ext: str, data: bytes) -> bool:
             register_heif_opener()
         with Image.open(BytesIO(data)) as image:
             image.verify()
-    except Exception:
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        # PIL.verify() reports corrupt / unsupported images via these
+        # exception types; the upload route treats False as "not an
+        # image" and rejects with HTTP 400.
         return False
     return True
 

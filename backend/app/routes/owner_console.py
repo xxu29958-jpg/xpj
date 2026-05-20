@@ -72,10 +72,12 @@ def _format_owner_datetime(value: object, tz: str = "Asia/Shanghai") -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     try:
-        from zoneinfo import ZoneInfo
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
         local = dt.astimezone(ZoneInfo(tz))
-    except Exception:
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        # Unknown timezone string or corrupt datetime — fall back to raw
+        # value rather than 500ing the owner index.
         local = dt
     return local.strftime("%Y-%m-%d %H:%M")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import get_settings
+from app.errors import PathTraversalError
 from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
 
 
@@ -54,11 +55,16 @@ def generate_thumbnail(
             rgb = image.convert("RGB")
             rgb.save(thumbnail_path, format="JPEG", quality=82, optimize=True)
     except Exception:
+        # PIL raises many flavors here (UnidentifiedImageError, OSError,
+        # ValueError, sometimes RecursionError on malformed input).
+        # Thumbnail is optional — return None so the caller treats this
+        # row as "no thumbnail" rather than failing the upload.
         return None
 
     try:
         return upload_reference_for_path(thumbnail_path)
-    except RuntimeError:
+    except PathTraversalError:
+        # Resolved path escaped the upload root — refuse to surface it.
         return None
 
 

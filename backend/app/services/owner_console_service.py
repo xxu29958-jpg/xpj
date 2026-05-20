@@ -312,22 +312,26 @@ def get_index_vm(db: Session) -> ConsoleIndexVM:
     active_devices = sum(1 for device in visible_devices if device.revoked_at is None)
     active_links = _active_upload_link_count(db, ledger_ids=managed_ledger_ids)
 
+    # The owner console index renders four independent "cards". A single
+    # service hiccup must not 500 the whole page — the page is the operator's
+    # last line of visibility into the system. Each card therefore guards its
+    # data-fetch with a broad except + logger.exception, and degrades to None.
     primary_tenant_id = primary_ledger.ledger_id if primary_ledger else DEFAULT_TENANT_ID
     try:
         dq_summary: DataQualitySummary | None = data_quality_summary(
             db, tenant_id=primary_tenant_id
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — owner console index card degrades to None
         logger.exception("owner_console index: data_quality_summary failed for ledger=%s", primary_tenant_id)
         dq_summary = None
     try:
         recurring_ops: RecurringOpsVM | None = get_recurring_ops(db)
-    except Exception:
+    except Exception:  # noqa: BLE001 — owner console index card degrades to None
         logger.exception("owner_console index: get_recurring_ops failed")
         recurring_ops = None
     try:
         budget_status = _budget_status_for_primary_ledger(db, primary_ledger)
-    except Exception:
+    except Exception:  # noqa: BLE001 — owner console index card degrades to None
         logger.exception("owner_console index: budget_status failed for ledger=%s", primary_tenant_id)
         budget_status = None
 
@@ -569,7 +573,7 @@ def list_ledger_health(db: Session) -> list[LedgerHealthVM]:
     for summary in list_managed_ledgers_for_account(db, account_id=owner_id):
         try:
             dq = data_quality_summary(db, tenant_id=summary.ledger_id)
-        except Exception:
+        except Exception:  # noqa: BLE001 — one bad ledger must not hide the rest
             logger.exception("owner_console ledger_health: data_quality_summary failed for ledger=%s", summary.ledger_id)
             continue
         rows.append(
