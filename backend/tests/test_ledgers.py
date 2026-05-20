@@ -21,11 +21,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
-from conftest import (
-    admin_headers,
-    app_headers,
-)
-
 
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
@@ -37,8 +32,8 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_owner_ledgers_require_local, None)
 
 
-def test_list_ledgers_returns_active_memberships(client: TestClient) -> None:
-    response = client.get("/api/ledgers", headers=app_headers())
+def test_list_ledgers_returns_active_memberships(client: TestClient, *, identity) -> None:
+    response = client.get("/api/ledgers", headers=identity.app_headers)
     assert response.status_code == 200
     body = response.json()
     assert "ledgers" in body
@@ -65,9 +60,9 @@ def test_list_ledgers_requires_app_token(client: TestClient) -> None:
     ).status_code == 401
 
 
-def test_create_ledger_with_admin_token_adds_membership(client: TestClient) -> None:
+def test_create_ledger_with_admin_token_adds_membership(client: TestClient, *, identity) -> None:
     response = client.post(
-        "/api/ledgers", headers=admin_headers(), json={"name": "家庭账本"}
+        "/api/ledgers", headers=identity.admin_headers, json={"name": "家庭账本"}
     )
     assert response.status_code == 201
     body = response.json()
@@ -78,17 +73,17 @@ def test_create_ledger_with_admin_token_adds_membership(client: TestClient) -> N
     assert new_id.startswith("ledger_")
 
     # The list endpoint now includes the new ledger for the same account.
-    listed = client.get("/api/ledgers", headers=app_headers()).json()["ledgers"]
+    listed = client.get("/api/ledgers", headers=identity.app_headers).json()["ledgers"]
     assert any(row["ledger_id"] == new_id for row in listed)
 
 
-def test_create_ledger_validates_name(client: TestClient) -> None:
-    blank = client.post("/api/ledgers", headers=admin_headers(), json={"name": "  "})
+def test_create_ledger_validates_name(client: TestClient, *, identity) -> None:
+    blank = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": "  "})
     assert blank.status_code == 422
     assert blank.json()["error"] == "ledger_name_required"
 
     too_long = client.post(
-        "/api/ledgers", headers=admin_headers(), json={"name": "x" * 200}
+        "/api/ledgers", headers=identity.admin_headers, json={"name": "x" * 200}
     )
     # Pydantic catches length first (max_length=60) and returns invalid_request.
     assert too_long.status_code == 422
@@ -102,10 +97,10 @@ def test_create_ledger_requires_owner_or_admin(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient) -> None:
+def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient, *, identity) -> None:
     # First, create a fresh second ledger via admin.
     create = client.post(
-        "/api/ledgers", headers=admin_headers(), json={"name": "家庭账本"}
+        "/api/ledgers", headers=identity.admin_headers, json={"name": "家庭账本"}
     )
     assert create.status_code == 201
     target_id = create.json()["ledger_id"]
@@ -114,7 +109,7 @@ def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient) -> None
     # create_ledger already inserts the owner as member. We rely on that.
     # The current app token is bound to ledger "owner". Switch to target.
     switch = client.post(
-        f"/api/ledgers/{target_id}/switch", headers=app_headers()
+        f"/api/ledgers/{target_id}/switch", headers=identity.app_headers
     )
     assert switch.status_code == 200, switch.json()
     body = switch.json()
@@ -125,9 +120,9 @@ def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient) -> None
     assert body["ledger"]["is_default"] is False
 
     # Old token is revoked: subsequent calls fail with 401.
-    old = client.get("/api/expenses/pending", headers=app_headers())
+    old = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert old.status_code == 401
-    stale_switch = client.post(f"/api/ledgers/{target_id}/switch", headers=app_headers())
+    stale_switch = client.post(f"/api/ledgers/{target_id}/switch", headers=identity.app_headers)
     assert stale_switch.status_code == 401
 
     # New token works and points at the new ledger.
@@ -141,12 +136,12 @@ def test_switch_ledger_rotates_token_and_revokes_old(client: TestClient) -> None
     assert check.json()["ledger_name"] == "家庭账本"
 
 
-def test_switch_ledger_blocks_non_member(client: TestClient) -> None:
+def test_switch_ledger_blocks_non_member(client: TestClient, *, identity) -> None:
     # tester_1 token's account *is* the owner account in conftest, which is
     # also a member of "owner" — so we craft a non-membership scenario by
     # asking app_headers (bound to "owner") to switch to a fabricated id.
     response = client.post(
-        "/api/ledgers/ledger_does_not_exist/switch", headers=app_headers()
+        "/api/ledgers/ledger_does_not_exist/switch", headers=identity.app_headers
     )
     assert response.status_code == 403
     assert response.json()["error"] == "ledger_forbidden"
@@ -214,16 +209,16 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     assert "家庭账本" in after.text
 
 
-def test_owner_ledgers_no_secret_leak(local_client: TestClient) -> None:
+def test_owner_ledgers_no_secret_leak(local_client: TestClient, *, identity) -> None:
     """The /owner/ledgers page must not echo runtime tokens or absolute paths."""
     import re
     import conftest as cf
     resp = local_client.get("/owner/ledgers")
     assert resp.status_code == 200
     body = resp.text
-    assert cf.CURRENT_UPLOAD_KEY not in body
-    assert cf.CURRENT_APP_TOKEN not in body
-    assert cf.CURRENT_ADMIN_TOKEN not in body
+    assert identity.upload_key not in body
+    assert identity.app_token not in body
+    assert identity.admin_token not in body
     assert not re.search(r"\b[0-9a-f]{64}\b", body)
 
 

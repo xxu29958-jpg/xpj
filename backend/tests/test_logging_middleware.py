@@ -15,7 +15,6 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
-import conftest as cf  # noqa: F401
 
 
 def test_mask_upload_path_in_log(client: TestClient, caplog: pytest.LogCaptureFixture) -> None:

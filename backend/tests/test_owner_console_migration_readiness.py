@@ -7,7 +7,6 @@ from html.parser import HTMLParser
 import pytest
 from fastapi.testclient import TestClient
 
-import conftest as cf  # noqa: F401
 from app.main import app
 from app.routes.owner_console import _require_local
 from app.services import backup_service

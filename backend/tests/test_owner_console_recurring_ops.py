@@ -7,7 +7,6 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-import conftest as cf
 from app.database import SessionLocal
 from app.main import app
 from app.models import RecurringItem
@@ -22,7 +21,7 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_require_local, None)
 
 
-def test_owner_index_renders_recurring_ops_status(local_client: TestClient) -> None:
+def test_owner_index_renders_recurring_ops_status(local_client: TestClient, *, identity) -> None:
     today = now_utc().date()
     with SessionLocal() as db:
         db.add_all(
@@ -72,7 +71,7 @@ def test_owner_index_renders_recurring_ops_status(local_client: TestClient) -> N
 
     first = local_client.post(
         "/api/expenses/notification-drafts",
-        headers=cf.app_headers(),
+        headers=identity.app_headers,
         json={
             "source": "wechat",
             "amount_cents": 2580,
@@ -83,7 +82,7 @@ def test_owner_index_renders_recurring_ops_status(local_client: TestClient) -> N
     assert first.status_code == 200
     second = local_client.post(
         "/api/expenses/notification-drafts",
-        headers=cf.app_headers(),
+        headers=identity.app_headers,
         json={
             "source": "alipay",
             "amount_cents": 1234,

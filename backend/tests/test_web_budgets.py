@@ -10,8 +10,6 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import Budget, LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
-from conftest import app_headers, gray_app_headers
-
 
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
@@ -67,10 +65,10 @@ def test_web_budgets_renders_unconfigured_state_and_nav(web_client: TestClient) 
     assert "保存预算" in response.text
 
 
-def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient) -> None:
+def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *, identity) -> None:
     web_client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 12500,
             "merchant": "五月餐饮",
@@ -80,7 +78,7 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient) -
     )
     web_client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 3000,
             "merchant": "医保报销",
@@ -124,7 +122,7 @@ def test_web_budgets_viewer_read_only_and_post_denied(web_client: TestClient) ->
     assert _owner_budget_total() == 100000
 
 
-def test_web_budgets_selected_ledger_isolated(web_client: TestClient) -> None:
+def test_web_budgets_selected_ledger_isolated(web_client: TestClient, *, identity) -> None:
     _save_budget(web_client)
     response = web_client.get("/web/budgets?ledger_id=tester_1&month=2026-05")
 
@@ -135,7 +133,7 @@ def test_web_budgets_selected_ledger_isolated(web_client: TestClient) -> None:
 
     gray_expense = web_client.post(
         "/api/expenses/manual",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={
             "amount_cents": 6600,
             "merchant": "灰度餐饮",

@@ -9,8 +9,6 @@ from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
-from conftest import app_headers, gray_app_headers
-
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -48,16 +46,16 @@ def _demote_owner_ledger_to_viewer() -> None:
 
 
 def test_notification_draft_is_pending_structured_and_idempotent(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     first = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json=_payload(),
     )
     second = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json=_payload(),
     )
 
@@ -90,11 +88,11 @@ def test_notification_draft_is_pending_structured_and_idempotent(
 
 
 def test_notification_draft_canonicalizes_currency_ocr_ownership(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     response = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "source": "wechat",
             "merchant": "Alias Cafe",
@@ -114,16 +112,16 @@ def test_notification_draft_canonicalizes_currency_ocr_ownership(
 
 
 def test_notification_draft_time_window_creates_new_pending_after_bucket(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     first = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json=_payload(expense_time="2026-05-13T10:05:00Z"),
     )
     second = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json=_payload(expense_time="2026-05-13T10:35:00Z"),
     )
 
@@ -133,15 +131,15 @@ def test_notification_draft_time_window_creates_new_pending_after_bucket(
     assert _draft_count() == 2
 
 
-def test_notification_draft_idempotency_is_ledger_scoped(client: TestClient) -> None:
+def test_notification_draft_idempotency_is_ledger_scoped(client: TestClient, *, identity) -> None:
     owner = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json=_payload(),
     )
     tester = client.post(
         "/api/expenses/notification-drafts",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json=_payload(),
     )
 
@@ -163,11 +161,11 @@ def test_notification_draft_idempotency_is_ledger_scoped(client: TestClient) -> 
 
 
 def test_notification_draft_rejects_raw_text_and_unknown_source(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     raw_text = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={**_payload(), "raw_text": "原始通知正文不允许上传"},
     )
     assert raw_text.status_code == 422
@@ -175,19 +173,19 @@ def test_notification_draft_rejects_raw_text_and_unknown_source(
 
     unknown = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={**_payload(), "source": "mail"},
     )
     assert unknown.status_code == 422
     assert unknown.json()["error"] == "notification_source_invalid"
 
 
-def test_notification_draft_viewer_is_read_only(client: TestClient) -> None:
+def test_notification_draft_viewer_is_read_only(client: TestClient, *, identity) -> None:
     _demote_owner_ledger_to_viewer()
 
     response = client.post(
         "/api/expenses/notification-drafts",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json=_payload(),
     )
 

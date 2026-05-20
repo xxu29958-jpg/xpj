@@ -12,16 +12,9 @@ from app.models import AuthToken, BootstrapSecretConsumption, PairingCode, Uploa
 from app.routes import bootstrap as bootstrap_route
 from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import now_utc
-from conftest import (
-    PNG_BYTES,
-    TEST_APP_TOKEN,
-    TEST_UPLOAD_TOKEN,
-    admin_headers,
-    app_headers,
-)
-
-
-def test_health_and_auth_contract(client: TestClient) -> None:
+from tests._infra.env import TEST_APP_TOKEN, TEST_UPLOAD_TOKEN
+from tests._infra.assets import PNG_BYTES
+def test_health_and_auth_contract(client: TestClient, *, identity) -> None:
     health = client.get("/api/health")
     assert health.status_code == 200
     health_body = health.json()
@@ -37,7 +30,7 @@ def test_health_and_auth_contract(client: TestClient) -> None:
             assert ":\\" not in value, value
             assert not value.startswith("/"), value
 
-    response = client.get("/api/auth/check", headers=app_headers())
+    response = client.get("/api/auth/check", headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
@@ -252,11 +245,11 @@ def test_upload_check_contract(client: TestClient) -> None:
 
 
 def test_owner_can_create_pairing_code_and_android_can_pair_once(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     response = client.post(
         "/api/bootstrap/pairing-codes",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"ttl_minutes": 15},
     )
     assert response.status_code == 200
@@ -300,19 +293,19 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     assert reused.json()["error"] == "pairing_code_used"
 
 
-def test_app_owner_token_cannot_create_bootstrap_pairing_code(client: TestClient) -> None:
+def test_app_owner_token_cannot_create_bootstrap_pairing_code(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/bootstrap/pairing-codes",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"ttl_minutes": 15},
     )
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
 
 
-def test_pairing_code_expires(client: TestClient) -> None:
+def test_pairing_code_expires(client: TestClient, *, identity) -> None:
     response = client.post(
-        "/api/bootstrap/pairing-codes", headers=admin_headers(), json={"ttl_minutes": 1}
+        "/api/bootstrap/pairing-codes", headers=identity.admin_headers, json={"ttl_minutes": 1}
     )
     assert response.status_code == 200
     code = response.json()["pairing_code"]
@@ -333,8 +326,8 @@ def test_pairing_code_expires(client: TestClient) -> None:
     assert expired.json()["error"] == "pairing_code_expired"
 
 
-def test_framework_errors_use_uniform_chinese_shape(client: TestClient) -> None:
-    response = client.get("/api/not-exists", headers=app_headers())
+def test_framework_errors_use_uniform_chinese_shape(client: TestClient, *, identity) -> None:
+    response = client.get("/api/not-exists", headers=identity.app_headers)
     assert response.status_code == 404
     assert response.json() == {"error": "route_not_found", "message": "没有找到这个功能入口。"}
 

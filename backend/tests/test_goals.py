@@ -10,8 +10,6 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
 from app.services.time_service import now_utc
-from conftest import app_headers, gray_app_headers
-
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -83,10 +81,10 @@ def _assert_permission_denied(response, *, label: str) -> None:
     assert payload["message"] == VIEWER_WRITE_MESSAGE, label
 
 
-def test_goals_create_list_and_progress_by_total_and_category(client: TestClient) -> None:
+def test_goals_create_list_and_progress_by_total_and_category(client: TestClient, *, identity) -> None:
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=1200,
         merchant="早餐店",
         category="餐饮",
@@ -94,7 +92,7 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=3000,
         merchant="地铁",
         category="交通",
@@ -111,7 +109,7 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
 
     total_goal = client.post(
         "/api/goals?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "本月总支出",
             "month": "2026-05",
@@ -127,7 +125,7 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
 
     duplicate_total = client.post(
         "/api/goals?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "重复总目标",
             "month": "2026-05",
@@ -139,7 +137,7 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
 
     category_goal = client.post(
         "/api/goals?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "控制餐饮",
             "month": "2026-05",
@@ -157,7 +155,7 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
 
     duplicate_category = client.post(
         "/api/goals?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "重复餐饮目标",
             "month": "2026-05",
@@ -168,14 +166,14 @@ def test_goals_create_list_and_progress_by_total_and_category(client: TestClient
     assert duplicate_category.status_code == 409
     assert duplicate_category.json()["error"] == "invalid_request"
 
-    goals = client.get("/api/goals?month=2026-05&timezone=UTC", headers=app_headers())
+    goals = client.get("/api/goals?month=2026-05&timezone=UTC", headers=identity.app_headers)
     assert goals.status_code == 200, goals.json()
     items = goals.json()["items"]
     assert [item["name"] for item in items] == ["本月总支出", "控制餐饮"]
     assert [item["spent_amount_cents"] for item in items] == [4200, 1200]
 
 
-def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClient) -> None:
+def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClient, *, identity) -> None:
     _insert_expense(
         amount_cents=1851,
         merchant="手机时区边界账单",
@@ -186,7 +184,7 @@ def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClie
     )
     goal = client.post(
         "/api/goals?timezone=Asia/Shanghai",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "生活目标",
             "month": "2026-05",
@@ -201,17 +199,17 @@ def test_goals_progress_uses_timezone_and_confirmed_at_fallback(client: TestClie
 
     utc_detail = client.get(
         f"/api/goals/{public_id}?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert utc_detail.status_code == 200, utc_detail.json()
     assert utc_detail.json()["spent_amount_cents"] == 0
     assert utc_detail.json()["progress_state"] == "not_started"
 
 
-def test_goals_permissions_and_ledger_isolation(client: TestClient) -> None:
+def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity) -> None:
     owner_goal = client.post(
         "/api/goals",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "Owner Goal",
             "month": "2026-05",
@@ -223,7 +221,7 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient) -> None:
 
     gray_goal = client.post(
         "/api/goals",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={
             "name": "Gray Goal",
             "month": "2026-05",
@@ -233,33 +231,33 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient) -> None:
     assert gray_goal.status_code == 201, gray_goal.json()
     gray_public_id = gray_goal.json()["public_id"]
 
-    gray_list = client.get("/api/goals?month=2026-05", headers=gray_app_headers())
+    gray_list = client.get("/api/goals?month=2026-05", headers=identity.gray_app_headers)
     assert gray_list.status_code == 200, gray_list.json()
     assert [item["name"] for item in gray_list.json()["items"]] == ["Gray Goal"]
 
     gray_reads_owner_goal = client.get(
         f"/api/goals/{owner_public_id}",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
     )
     assert gray_reads_owner_goal.status_code == 404
     assert gray_reads_owner_goal.json()["error"] == "goal_not_found"
 
     owner_reads_gray_goal = client.get(
         f"/api/goals/{gray_public_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert owner_reads_gray_goal.status_code == 404
     assert owner_reads_gray_goal.json()["error"] == "goal_not_found"
 
     _set_owner_ledger_role("viewer")
-    viewer_read = client.get("/api/goals?month=2026-05", headers=app_headers())
+    viewer_read = client.get("/api/goals?month=2026-05", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert [item["name"] for item in viewer_read.json()["items"]] == ["Owner Goal"]
 
     _assert_permission_denied(
         client.post(
             "/api/goals",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={
                 "name": "Viewer Write",
                 "month": "2026-05",
@@ -271,21 +269,21 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient) -> None:
     _assert_permission_denied(
         client.patch(
             f"/api/goals/{owner_public_id}",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={"name": "Viewer Patch"},
         ),
         label="viewer goal patch",
     )
     _assert_permission_denied(
-        client.post(f"/api/goals/{owner_public_id}/archive", headers=app_headers()),
+        client.post(f"/api/goals/{owner_public_id}/archive", headers=identity.app_headers),
         label="viewer goal archive",
     )
 
 
-def test_goals_update_archive_and_validation(client: TestClient) -> None:
+def test_goals_update_archive_and_validation(client: TestClient, *, identity) -> None:
     invalid_month = client.post(
         "/api/goals",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "Bad Month",
             "month": "2026-13",
@@ -297,7 +295,7 @@ def test_goals_update_archive_and_validation(client: TestClient) -> None:
 
     invalid_type = client.post(
         "/api/goals",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "Saving Target",
             "month": "2026-05",
@@ -310,7 +308,7 @@ def test_goals_update_archive_and_validation(client: TestClient) -> None:
 
     created = client.post(
         "/api/goals",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "餐饮目标",
             "month": "2026-05",
@@ -323,7 +321,7 @@ def test_goals_update_archive_and_validation(client: TestClient) -> None:
 
     updated = client.patch(
         f"/api/goals/{public_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "name": "全月目标",
             "category": None,
@@ -335,25 +333,25 @@ def test_goals_update_archive_and_validation(client: TestClient) -> None:
     assert updated.json()["category"] is None
     assert updated.json()["target_amount_cents"] == 5000
 
-    archived = client.post(f"/api/goals/{public_id}/archive", headers=app_headers())
+    archived = client.post(f"/api/goals/{public_id}/archive", headers=identity.app_headers)
     assert archived.status_code == 200, archived.json()
     assert archived.json()["status"] == "archived"
     assert archived.json()["progress_state"] == "archived"
 
-    hidden = client.get("/api/goals?month=2026-05", headers=app_headers())
+    hidden = client.get("/api/goals?month=2026-05", headers=identity.app_headers)
     assert hidden.status_code == 200
     assert hidden.json()["items"] == []
 
     visible = client.get(
         "/api/goals?month=2026-05&include_archived=true",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert visible.status_code == 200
     assert [item["public_id"] for item in visible.json()["items"]] == [public_id]
 
     archived_patch = client.patch(
         f"/api/goals/{public_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"name": "不能修改"},
     )
     assert archived_patch.status_code == 409

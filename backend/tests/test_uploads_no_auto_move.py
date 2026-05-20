@@ -18,14 +18,8 @@ from fastapi.testclient import TestClient
 from app.database import BACKEND_ROOT, SessionLocal, init_db
 from app.models import Expense
 from api_contract_helpers import upload_png
-from conftest import (
-    PNG_BYTES,
-    TEST_UPLOAD_DIR,
-    app_headers,
-    gray_app_headers,
-)
-
-
+from tests._infra.env import TEST_UPLOAD_DIR
+from tests._infra.assets import PNG_BYTES
 def test_init_db_does_not_move_legacy_uploads(client: TestClient) -> None:
     """Pre-existing legacy ``uploads/YYYY/MM/foo.png`` files must stay put
     after ``init_db`` runs again. Re-running init_db is what start-up does.
@@ -67,7 +61,7 @@ def test_init_db_does_not_move_legacy_uploads(client: TestClient) -> None:
 
 
 def test_protected_image_route_serves_legacy_path_without_migration(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     """A pre-v0.3 expense whose ``image_path`` still has no tenant prefix must
     be readable by the owning tenant after the route has verified ownership.
@@ -92,7 +86,7 @@ def test_protected_image_route_serves_legacy_path_without_migration(
         db.refresh(expense)
         expense_id = expense.id
 
-    response = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    response = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/")
     # File must STILL be at the legacy path; reading must not move it.
@@ -100,7 +94,7 @@ def test_protected_image_route_serves_legacy_path_without_migration(
 
 
 def test_protected_thumbnail_route_generates_for_legacy_path_without_migration(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     legacy_dir = TEST_UPLOAD_DIR / "2025" / "12"
     legacy_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +115,7 @@ def test_protected_thumbnail_route_generates_for_legacy_path_without_migration(
         db.refresh(expense)
         expense_id = expense.id
 
-    response = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=app_headers())
+    response = client.get(f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/jpeg")
     assert legacy_image.is_file()
@@ -135,7 +129,7 @@ def test_protected_thumbnail_route_generates_for_legacy_path_without_migration(
 
 
 def test_protected_image_route_rejects_legacy_path_for_non_default_ledger(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     """Unscoped legacy upload paths belong only to the default legacy ledger."""
 
@@ -157,16 +151,16 @@ def test_protected_image_route_rejects_legacy_path_for_non_default_ledger(
         db.refresh(expense)
         expense_id = expense.id
 
-    response = client.get(f"/api/expenses/{expense_id}/image", headers=gray_app_headers())
+    response = client.get(f"/api/expenses/{expense_id}/image", headers=identity.gray_app_headers)
     assert response.status_code == 404
     assert response.json()["error"] == "image_not_found"
     assert legacy_image.is_file()
 
 
 def test_protected_image_route_rejects_absolute_and_drive_paths(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
@@ -182,7 +176,7 @@ def test_protected_image_route_rejects_absolute_and_drive_paths(
             expense.image_path = hostile
             db.commit()
             response = client.get(
-                f"/api/expenses/{expense_id}/image", headers=app_headers()
+                f"/api/expenses/{expense_id}/image", headers=identity.app_headers
             )
             assert response.status_code == 404, hostile
             assert response.json()["error"] == "image_not_found"
@@ -193,13 +187,13 @@ def test_protected_image_route_rejects_absolute_and_drive_paths(
 
 
 def test_protected_image_route_rejects_paths_outside_uploads_root(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     """Even a relative path that resolves outside ``uploads/`` (e.g. via a
     symlink-equivalent traversal) must fail with image_not_found.
     """
 
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
@@ -207,6 +201,6 @@ def test_protected_image_route_rejects_paths_outside_uploads_root(
         expense.image_path = "backups/should-not-be-served.png"
         db.commit()
 
-    response = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    response = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert response.status_code == 404
     assert response.json()["error"] == "image_not_found"

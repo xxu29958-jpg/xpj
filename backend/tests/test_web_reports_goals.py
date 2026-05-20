@@ -12,8 +12,6 @@ from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
-from conftest import app_headers, gray_app_headers
-
 
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
@@ -24,7 +22,7 @@ def web_client(client: TestClient) -> TestClient:
 
 def _create_expense(
     client: TestClient,
-    *,
+    *, identity,
     amount_cents: int,
     merchant: str,
     category: str,
@@ -33,7 +31,7 @@ def _create_expense(
 ) -> None:
     response = client.post(
         "/api/expenses/manual",
-        headers=gray_app_headers() if gray else app_headers(),
+        headers=identity.gray_app_headers if gray else identity.app_headers,
         json={
             "amount_cents": amount_cents,
             "merchant": merchant,
@@ -58,21 +56,21 @@ def test_web_reports_and_goals_remote_return_403(client: TestClient) -> None:
     assert client.get("/web/reports/export.csv").status_code == 403
 
 
-def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient) -> None:
+def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *, identity) -> None:
     _create_expense(
         web_client,
         amount_cents=4200,
         merchant="星巴克",
         category="餐饮",
         expense_time="2026-05-03T12:00:00Z",
-    )
+     identity=identity)
     _create_expense(
         web_client,
         amount_cents=1800,
         merchant="地铁",
         category="交通",
         expense_time="2026-05-04T12:00:00Z",
-    )
+     identity=identity)
     _create_expense(
         web_client,
         amount_cents=9900,
@@ -80,7 +78,7 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient) ->
         category="餐饮",
         expense_time="2026-05-05T12:00:00Z",
         gray=True,
-    )
+     identity=identity)
 
     response = web_client.get(
         "/web/reports?ledger_id=owner&month=2026-05&granularity=week"
@@ -132,14 +130,14 @@ def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) ->
     assert "unpkg.com" not in reports_js.text
 
 
-def test_web_reports_selected_ledger_isolated(web_client: TestClient) -> None:
+def test_web_reports_selected_ledger_isolated(web_client: TestClient, *, identity) -> None:
     _create_expense(
         web_client,
         amount_cents=1200,
         merchant="OwnerOnly",
         category="餐饮",
         expense_time="2026-05-03T12:00:00Z",
-    )
+     identity=identity)
     _create_expense(
         web_client,
         amount_cents=3400,
@@ -147,7 +145,7 @@ def test_web_reports_selected_ledger_isolated(web_client: TestClient) -> None:
         category="购物",
         expense_time="2026-05-03T12:00:00Z",
         gray=True,
-    )
+     identity=identity)
 
     owner = web_client.get("/web/reports?ledger_id=owner&month=2026-05")
     tester = web_client.get("/web/reports?ledger_id=tester_1&month=2026-05")
@@ -160,14 +158,14 @@ def test_web_reports_selected_ledger_isolated(web_client: TestClient) -> None:
     assert "OwnerOnly" not in tester.text
 
 
-def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient) -> None:
+def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, identity) -> None:
     _create_expense(
         web_client,
         amount_cents=64000,
         merchant="本月餐饮",
         category="餐饮",
         expense_time="2026-05-08T12:00:00Z",
-    )
+     identity=identity)
 
     created = web_client.post(
         "/web/goals/create",

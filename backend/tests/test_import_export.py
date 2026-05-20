@@ -10,7 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import conftest as cf
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
 from app.errors import AppError
@@ -32,14 +31,14 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def _create_pending(client: TestClient) -> int:
+def _create_pending(client: TestClient, *, identity) -> int:
     png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
         b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
         b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     resp = client.post(
-        f"/u/{cf.CURRENT_UPLOAD_KEY}",
+        f"/u/{identity.upload_key}",
         headers={"Content-Type": "image/png"},
         content=png,
     )
@@ -273,12 +272,12 @@ def test_web_import_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/import").status_code == 403
 
 
-def test_web_import_no_secret_leak(web_client: TestClient) -> None:
+def test_web_import_no_secret_leak(web_client: TestClient, *, identity) -> None:
     resp = web_client.get("/web/import?ledger_id=owner")
     body = resp.text
-    assert cf.CURRENT_APP_TOKEN not in body
-    assert cf.CURRENT_ADMIN_TOKEN not in body
-    assert cf.CURRENT_UPLOAD_KEY not in body
+    assert identity.app_token not in body
+    assert identity.admin_token not in body
+    assert identity.upload_key not in body
 
 
 # ── service-level smoke for import_rows directly ───────────────────────────

@@ -5,8 +5,6 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
-from conftest import app_headers, gray_app_headers
-
 
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
@@ -37,24 +35,24 @@ def _manual(
     assert response.status_code == 200, response.text
 
 
-def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient) -> None:
+def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient, *, identity) -> None:
     _manual(
         web_client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=2100,
         merchant="Owner Shared",
         tags="Shared",
     )
     _manual(
         web_client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=900,
         merchant="Owner Other",
         tags="Other",
     )
     _manual(
         web_client,
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         amount_cents=3100,
         merchant="Gray Shared",
         tags="Shared",
@@ -78,24 +76,24 @@ def test_web_confirmed_tag_filter_is_ledger_scoped(web_client: TestClient) -> No
     assert "Owner Shared" not in gray_page.text
 
 
-def test_web_export_csv_uses_tag_filter(web_client: TestClient) -> None:
+def test_web_export_csv_uses_tag_filter(web_client: TestClient, *, identity) -> None:
     _manual(
         web_client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=2100,
         merchant="Owner Shared",
         tags="Shared",
     )
     _manual(
         web_client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=900,
         merchant="Owner Other",
         tags="Other",
     )
     _manual(
         web_client,
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         amount_cents=3100,
         merchant="Gray Shared",
         tags="Shared",
@@ -110,17 +108,17 @@ def test_web_export_csv_uses_tag_filter(web_client: TestClient) -> None:
     assert "Gray Shared" not in response.text
 
 
-def test_web_stats_uses_tag_filter(web_client: TestClient) -> None:
+def test_web_stats_uses_tag_filter(web_client: TestClient, *, identity) -> None:
     _manual(
         web_client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=2100,
         merchant="Owner Shared",
         tags="Shared",
     )
     _manual(
         web_client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=900,
         merchant="Owner Other",
         tags="Other",

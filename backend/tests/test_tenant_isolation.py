@@ -8,65 +8,54 @@ from api_contract_helpers import (
 )
 from app.database import SessionLocal, migrate_upload_paths_to_tenant_dirs
 from app.models import Expense
-from conftest import (
-    BACKEND_ROOT,
-    PNG_BYTES,
-    TEST_UPLOAD_DIR,
-    TEST_UPLOAD_RELATIVE,
-    app_headers,
-    gray_app_headers,
-    gray_upload_headers,
-    gray_upload_url_path,
-    upload_headers,
-)
-
-
+from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
+from tests._infra.assets import PNG_BYTES
 def test_android_app_upload_uses_app_token_and_current_tenant(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     response = client.post(
         "/api/app/upload-screenshot",
-        headers=app_headers(),
+        headers=identity.app_headers,
         files={"file": ("android-ticket.png", PNG_BYTES, "image/png")},
     )
     assert response.status_code == 200
     owner_id = int(response.json()["id"])
 
-    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
+    owner_pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert owner_pending.status_code == 200
     assert [item["id"] for item in owner_pending.json()] == [owner_id]
     assert owner_pending.json()[0]["image_path"].startswith(
         f"{TEST_UPLOAD_RELATIVE}/owner/"
     )
 
-    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    tester_pending = client.get("/api/expenses/pending", headers=identity.gray_app_headers)
     assert tester_pending.status_code == 200
     assert tester_pending.json() == []
 
     tester_response = client.post(
         "/api/app/upload-screenshot",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         files={"file": ("tester-android-ticket.png", PNG_BYTES, "image/png")},
     )
     assert tester_response.status_code == 200
     tester_id = int(tester_response.json()["id"])
 
-    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    tester_pending = client.get("/api/expenses/pending", headers=identity.gray_app_headers)
     assert tester_pending.status_code == 200
     assert [item["id"] for item in tester_pending.json()] == [tester_id]
     assert tester_pending.json()[0]["image_path"].startswith(
         f"{TEST_UPLOAD_RELATIVE}/tester_1/"
     )
 
-    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
+    owner_pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert owner_pending.status_code == 200
     assert [item["id"] for item in owner_pending.json()] == [owner_id]
 
 
 def test_protected_image_and_thumbnail_reject_database_path_escape(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
@@ -74,19 +63,19 @@ def test_protected_image_and_thumbnail_reject_database_path_escape(
         expense.thumbnail_path = "../outside-thumb.jpg"
         db.commit()
 
-    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert image.status_code == 404
     assert image.json() == {"error": "image_not_found", "message": "图片不存在或已被清理。"}
 
     thumbnail = client.get(
-        f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()
+        f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
     )
     assert thumbnail.status_code == 404
     assert thumbnail.json() == {"error": "image_not_found", "message": "图片不存在或已被清理。"}
 
 
 def test_legacy_upload_paths_migrate_into_current_tenant_dir(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     legacy_dir = TEST_UPLOAD_DIR / "2026" / "05"
     legacy_dir.mkdir(parents=True, exist_ok=True)
@@ -130,53 +119,53 @@ def test_legacy_upload_paths_migrate_into_current_tenant_dir(
     assert migrated_thumb_path.is_file()
     assert (
         client.get(
-            f"/api/expenses/{expense_id}/image", headers=app_headers()
+            f"/api/expenses/{expense_id}/image", headers=identity.app_headers
         ).status_code
         == 200
     )
     assert (
         client.get(
-            f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()
+            f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
         ).status_code
         == 200
     )
 
 
-def test_expense_mutation_routes_are_tenant_scoped(client: TestClient) -> None:
-    owner_id = upload_png(client, upload_headers())
+def test_expense_mutation_routes_are_tenant_scoped(client: TestClient, *, identity) -> None:
+    owner_id = upload_png(client, identity=identity, headers=identity.upload_headers)
 
     scoped_operations = [
         client.patch(
             f"/api/expenses/{owner_id}",
-            headers=gray_app_headers(),
+            headers=identity.gray_app_headers,
             json={"amount_cents": 1000, "merchant": "跨租户"},
         ),
-        client.post(f"/api/expenses/{owner_id}/confirm", headers=gray_app_headers()),
-        client.post(f"/api/expenses/{owner_id}/reject", headers=gray_app_headers()),
-        client.post(f"/api/expenses/{owner_id}/ocr/retry", headers=gray_app_headers()),
+        client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.gray_app_headers),
+        client.post(f"/api/expenses/{owner_id}/reject", headers=identity.gray_app_headers),
+        client.post(f"/api/expenses/{owner_id}/ocr/retry", headers=identity.gray_app_headers),
         client.post(
             f"/api/expenses/{owner_id}/recognize-text",
-            headers=gray_app_headers(),
+            headers=identity.gray_app_headers,
             json={"raw_text": "交易金额：18.51"},
         ),
         client.post(
-            f"/api/expenses/{owner_id}/mark-not-duplicate", headers=gray_app_headers()
+            f"/api/expenses/{owner_id}/mark-not-duplicate", headers=identity.gray_app_headers
         ),
     ]
     for response in scoped_operations:
         assert response.status_code == 404
         assert response.json()["error"] == "expense_not_found"
 
-    owner = client.get(f"/api/expenses/{owner_id}", headers=app_headers())
+    owner = client.get(f"/api/expenses/{owner_id}", headers=identity.app_headers)
     assert owner.status_code == 200
     assert owner.json()["status"] == "pending"
     assert owner.json()["amount_cents"] is None
 
 
-def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) -> None:
+def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient, *, identity) -> None:
     owner = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 9900,
             "merchant": "owner高频商家",
@@ -186,16 +175,16 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) 
     )
     assert owner.status_code == 200
 
-    tester_upload_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
+    tester_upload_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
 
     tester_confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=gray_app_headers()
+        "/api/expenses/confirmed?month=2026-05", headers=identity.gray_app_headers
     )
     assert tester_confirmed.status_code == 200
     assert tester_confirmed.json()["total"] == 0
 
     tester_lifestyle = client.get(
-        "/api/stats/lifestyle?month=2026-05", headers=gray_app_headers()
+        "/api/stats/lifestyle?month=2026-05", headers=identity.gray_app_headers
     )
     assert tester_lifestyle.status_code == 200
     payload = tester_lifestyle.json()
@@ -203,8 +192,8 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) 
     assert payload["max_expense"] is None
     assert payload["frequent_merchants"] == []
 
-    owner_settings = client.get("/api/settings/server", headers=app_headers())
-    tester_settings = client.get("/api/settings/server", headers=gray_app_headers())
+    owner_settings = client.get("/api/settings/server", headers=identity.app_headers)
+    tester_settings = client.get("/api/settings/server", headers=identity.gray_app_headers)
     assert owner_settings.status_code == 200
     assert tester_settings.status_code == 200
     owner_payload = owner_settings.json()
@@ -231,44 +220,44 @@ def test_confirmed_lifestyle_and_settings_are_tenant_scoped(client: TestClient) 
     assert tester_upload_id in [
         item["id"]
         for item in client.get(
-            "/api/expenses/pending", headers=gray_app_headers()
+            "/api/expenses/pending", headers=identity.gray_app_headers
         ).json()
     ]
 
 
 def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicates(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    owner_id = upload_png(client, upload_headers())
-    tester_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
+    owner_id = upload_png(client, identity=identity, headers=identity.upload_headers)
+    tester_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
 
-    owner_pending = client.get("/api/expenses/pending", headers=app_headers()).json()
+    owner_pending = client.get("/api/expenses/pending", headers=identity.app_headers).json()
     tester_pending = client.get(
-        "/api/expenses/pending", headers=gray_app_headers()
+        "/api/expenses/pending", headers=identity.gray_app_headers
     ).json()
     assert [item["id"] for item in owner_pending] == [owner_id]
     assert [item["id"] for item in tester_pending] == [tester_id]
 
     assert (
-        client.get(f"/api/expenses/{owner_id}", headers=gray_app_headers()).status_code
+        client.get(f"/api/expenses/{owner_id}", headers=identity.gray_app_headers).status_code
         == 404
     )
     assert (
         client.get(
-            f"/api/expenses/{owner_id}/image", headers=gray_app_headers()
+            f"/api/expenses/{owner_id}/image", headers=identity.gray_app_headers
         ).status_code
         == 404
     )
     assert (
         client.get(
-            f"/api/expenses/{owner_id}/thumbnail", headers=gray_app_headers()
+            f"/api/expenses/{owner_id}/thumbnail", headers=identity.gray_app_headers
         ).status_code
         == 404
     )
 
     owner_patch = client.patch(
         f"/api/expenses/{owner_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1000,
             "merchant": "owner商家",
@@ -279,30 +268,30 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
     assert owner_patch.status_code == 200
     assert (
         client.post(
-            f"/api/expenses/{owner_id}/confirm", headers=app_headers()
+            f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers
         ).status_code
         == 200
     )
 
     tester_stats = client.get(
-        "/api/stats/monthly?month=2026-05", headers=gray_app_headers()
+        "/api/stats/monthly?month=2026-05", headers=identity.gray_app_headers
     )
     assert tester_stats.status_code == 200
     assert tester_stats.json()["total_amount_cents"] == 0
 
-    owner_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    owner_stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert owner_stats.status_code == 200
     assert owner_stats.json()["total_amount_cents"] == 1000
 
     tester_csv = client.get(
-        "/api/expenses/export.csv?month=2026-05", headers=gray_app_headers()
+        "/api/expenses/export.csv?month=2026-05", headers=identity.gray_app_headers
     )
     assert tester_csv.status_code == 200
     assert "owner商家" not in tester_csv.text
 
     rule = client.post(
         "/api/rules/categories",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={
             "keyword": "只属于tester",
             "category": "购物",
@@ -311,24 +300,22 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
         },
     )
     assert rule.status_code == 200
-    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    owner_rules = client.get("/api/rules/categories", headers=identity.app_headers).json()
     tester_rules = client.get(
-        "/api/rules/categories", headers=gray_app_headers()
+        "/api/rules/categories", headers=identity.gray_app_headers
     ).json()
     assert all(item["keyword"] != "只属于tester" for item in owner_rules)
     assert any(item["keyword"] == "只属于tester" for item in tester_rules)
 
-    second_owner_id = upload_png(client, upload_headers())
-    owner_duplicates = client.get("/api/duplicates", headers=app_headers()).json()
-    tester_duplicates = client.get("/api/duplicates", headers=gray_app_headers()).json()
+    second_owner_id = upload_png(client, identity=identity, headers=identity.upload_headers)
+    owner_duplicates = client.get("/api/duplicates", headers=identity.app_headers).json()
+    tester_duplicates = client.get("/api/duplicates", headers=identity.gray_app_headers).json()
     assert any(item["id"] == second_owner_id for item in owner_duplicates)
     assert all(item["id"] != second_owner_id for item in tester_duplicates)
 
-    same_hash_tester_id = upload_png(
-        client, gray_upload_headers(), gray_upload_url_path()
-    )
+    same_hash_tester_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
     same_hash_tester_pending = client.get(
-        "/api/expenses/pending", headers=gray_app_headers()
+        "/api/expenses/pending", headers=identity.gray_app_headers
     ).json()
     tester_match = next(
         item for item in same_hash_tester_pending if item["id"] == same_hash_tester_id
@@ -339,14 +326,14 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
 
 
 def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    owner_id = upload_png(client, upload_headers())
-    tester_id = upload_png(client, gray_upload_headers(), gray_upload_url_path())
+    owner_id = upload_png(client, identity=identity, headers=identity.upload_headers)
+    tester_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
 
-    owner_detail = client.get(f"/api/expenses/{owner_id}", headers=app_headers()).json()
+    owner_detail = client.get(f"/api/expenses/{owner_id}", headers=identity.app_headers).json()
     tester_detail = client.get(
-        f"/api/expenses/{tester_id}", headers=gray_app_headers()
+        f"/api/expenses/{tester_id}", headers=identity.gray_app_headers
     ).json()
     assert owner_detail["image_path"].startswith(f"{TEST_UPLOAD_RELATIVE}/owner/")
     assert tester_detail["image_path"].startswith(f"{TEST_UPLOAD_RELATIVE}/tester_1/")
@@ -357,8 +344,8 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
             f"{TEST_UPLOAD_RELATIVE}/tester_1/"
         )
 
-    owner_pending = client.get("/api/expenses/pending", headers=app_headers())
-    tester_pending = client.get("/api/expenses/pending", headers=gray_app_headers())
+    owner_pending = client.get("/api/expenses/pending", headers=identity.app_headers)
+    tester_pending = client.get("/api/expenses/pending", headers=identity.gray_app_headers)
     assert owner_pending.status_code == 200
     assert tester_pending.status_code == 200
     assert [item["id"] for item in owner_pending.json()] == [owner_id]
@@ -367,18 +354,18 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     cross_mutations = [
         client.patch(
             f"/api/expenses/{tester_id}",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={"amount_cents": 1, "merchant": "owner不该改tester"},
         ),
-        client.post(f"/api/expenses/{tester_id}/confirm", headers=app_headers()),
-        client.post(f"/api/expenses/{tester_id}/reject", headers=app_headers()),
+        client.post(f"/api/expenses/{tester_id}/confirm", headers=identity.app_headers),
+        client.post(f"/api/expenses/{tester_id}/reject", headers=identity.app_headers),
         client.patch(
             f"/api/expenses/{owner_id}",
-            headers=gray_app_headers(),
+            headers=identity.gray_app_headers,
             json={"amount_cents": 1, "merchant": "tester不该改owner"},
         ),
-        client.post(f"/api/expenses/{owner_id}/confirm", headers=gray_app_headers()),
-        client.post(f"/api/expenses/{owner_id}/reject", headers=gray_app_headers()),
+        client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.gray_app_headers),
+        client.post(f"/api/expenses/{owner_id}/reject", headers=identity.gray_app_headers),
     ]
     for response in cross_mutations:
         assert response.status_code == 404
@@ -389,17 +376,17 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
         f"/api/expenses/{owner_id}/image",
         f"/api/expenses/{owner_id}/thumbnail",
     ]:
-        assert client.get(path, headers=gray_app_headers()).status_code == 404
+        assert client.get(path, headers=identity.gray_app_headers).status_code == 404
     for path in [
         f"/api/expenses/{tester_id}",
         f"/api/expenses/{tester_id}/image",
         f"/api/expenses/{tester_id}/thumbnail",
     ]:
-        assert client.get(path, headers=app_headers()).status_code == 404
+        assert client.get(path, headers=identity.app_headers).status_code == 404
 
     owner_patch = client.patch(
         f"/api/expenses/{owner_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1111,
             "merchant": "owner隔离商家",
@@ -409,7 +396,7 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     )
     tester_patch = client.patch(
         f"/api/expenses/{tester_id}",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={
             "amount_cents": 2222,
             "merchant": "tester隔离商家",
@@ -421,31 +408,31 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert tester_patch.status_code == 200
     assert (
         client.post(
-            f"/api/expenses/{owner_id}/confirm", headers=app_headers()
+            f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers
         ).status_code
         == 200
     )
     assert (
         client.post(
-            f"/api/expenses/{tester_id}/confirm", headers=gray_app_headers()
+            f"/api/expenses/{tester_id}/confirm", headers=identity.gray_app_headers
         ).status_code
         == 200
     )
 
     owner_confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
     )
     tester_confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=gray_app_headers()
+        "/api/expenses/confirmed?month=2026-05", headers=identity.gray_app_headers
     )
     assert owner_confirmed.status_code == 200
     assert tester_confirmed.status_code == 200
     assert [item["id"] for item in owner_confirmed.json()["items"]] == [owner_id]
     assert [item["id"] for item in tester_confirmed.json()["items"]] == [tester_id]
 
-    owner_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    owner_stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     tester_stats = client.get(
-        "/api/stats/monthly?month=2026-05", headers=gray_app_headers()
+        "/api/stats/monthly?month=2026-05", headers=identity.gray_app_headers
     )
     assert owner_stats.status_code == 200
     assert tester_stats.status_code == 200
@@ -455,10 +442,10 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert tester_stats.json()["count"] == 1
 
     owner_lifestyle = client.get(
-        "/api/stats/lifestyle?month=2026-05", headers=app_headers()
+        "/api/stats/lifestyle?month=2026-05", headers=identity.app_headers
     )
     tester_lifestyle = client.get(
-        "/api/stats/lifestyle?month=2026-05", headers=gray_app_headers()
+        "/api/stats/lifestyle?month=2026-05", headers=identity.gray_app_headers
     )
     assert owner_lifestyle.status_code == 200
     assert tester_lifestyle.status_code == 200
@@ -468,10 +455,10 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert tester_lifestyle.json()["max_expense"]["merchant"] == "tester隔离商家"
 
     owner_export = client.get(
-        "/api/expenses/export.csv?month=2026-05", headers=app_headers()
+        "/api/expenses/export.csv?month=2026-05", headers=identity.app_headers
     )
     tester_export = client.get(
-        "/api/expenses/export.csv?month=2026-05", headers=gray_app_headers()
+        "/api/expenses/export.csv?month=2026-05", headers=identity.gray_app_headers
     )
     assert owner_export.status_code == 200
     assert tester_export.status_code == 200
@@ -481,10 +468,10 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert "owner隔离商家" not in tester_export.text
 
     owner_categories = client.get(
-        "/api/expenses/categories", headers=app_headers()
+        "/api/expenses/categories", headers=identity.app_headers
     ).json()["items"]
     tester_categories = client.get(
-        "/api/expenses/categories", headers=gray_app_headers()
+        "/api/expenses/categories", headers=identity.gray_app_headers
     ).json()["items"]
     assert "Owner自定义类" in owner_categories
     assert "Tester自定义类" not in owner_categories
@@ -493,7 +480,7 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
 
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "keyword": "owner规则",
             "category": "Owner自定义类",
@@ -503,7 +490,7 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     )
     tester_rule = client.post(
         "/api/rules/categories",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={
             "keyword": "tester规则",
             "category": "Tester自定义类",
@@ -513,18 +500,18 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     )
     assert owner_rule.status_code == 200
     assert tester_rule.status_code == 200
-    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    owner_rules = client.get("/api/rules/categories", headers=identity.app_headers).json()
     tester_rules = client.get(
-        "/api/rules/categories", headers=gray_app_headers()
+        "/api/rules/categories", headers=identity.gray_app_headers
     ).json()
     assert any(item["keyword"] == "owner规则" for item in owner_rules)
     assert all(item["keyword"] != "tester规则" for item in owner_rules)
     assert any(item["keyword"] == "tester规则" for item in tester_rules)
     assert all(item["keyword"] != "owner规则" for item in tester_rules)
 
-    owner_settings = client.get("/api/settings/server", headers=app_headers()).json()
+    owner_settings = client.get("/api/settings/server", headers=identity.app_headers).json()
     tester_settings = client.get(
-        "/api/settings/server", headers=gray_app_headers()
+        "/api/settings/server", headers=identity.gray_app_headers
     ).json()
     assert owner_settings["ledger_name"] == "我的小票夹"
     assert tester_settings["ledger_name"] == "灰度用户1"
@@ -539,12 +526,10 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert owner_settings["latest_upload_at"].endswith("Z")
     assert tester_settings["latest_upload_at"].endswith("Z")
 
-    owner_duplicate_id = upload_png(client, upload_headers())
-    tester_duplicate_id = upload_png(
-        client, gray_upload_headers(), gray_upload_url_path()
-    )
-    owner_duplicates = client.get("/api/duplicates", headers=app_headers()).json()
-    tester_duplicates = client.get("/api/duplicates", headers=gray_app_headers()).json()
+    owner_duplicate_id = upload_png(client, identity=identity, headers=identity.upload_headers)
+    tester_duplicate_id = upload_png(client, identity=identity, headers=identity.gray_upload_headers, path=identity.gray_upload_url_path)
+    owner_duplicates = client.get("/api/duplicates", headers=identity.app_headers).json()
+    tester_duplicates = client.get("/api/duplicates", headers=identity.gray_app_headers).json()
     assert any(
         item["id"] == owner_duplicate_id and item["duplicate_of_id"] == owner_id
         for item in owner_duplicates
@@ -557,10 +542,10 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert all(item["id"] != owner_duplicate_id for item in tester_duplicates)
 
 
-def test_category_rule_mutations_are_tenant_scoped(client: TestClient) -> None:
+def test_category_rule_mutations_are_tenant_scoped(client: TestClient, *, identity) -> None:
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "keyword": "owner专属",
             "category": "数码",
@@ -573,19 +558,19 @@ def test_category_rule_mutations_are_tenant_scoped(client: TestClient) -> None:
 
     patch = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={"keyword": "tester不该改", "category": "购物", "priority": 1},
     )
     assert patch.status_code == 404
     assert patch.json()["error"] == "rule_not_found"
 
     delete = client.delete(
-        f"/api/rules/categories/{rule_id}", headers=gray_app_headers()
+        f"/api/rules/categories/{rule_id}", headers=identity.gray_app_headers
     )
     assert delete.status_code == 404
     assert delete.json()["error"] == "rule_not_found"
 
-    owner_rules = client.get("/api/rules/categories", headers=app_headers()).json()
+    owner_rules = client.get("/api/rules/categories", headers=identity.app_headers).json()
     assert any(
         item["id"] == rule_id and item["keyword"] == "owner专属" for item in owner_rules
     )

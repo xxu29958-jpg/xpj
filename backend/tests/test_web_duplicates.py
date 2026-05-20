@@ -6,7 +6,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import conftest as cf
 from app.database import SessionLocal
 from app.main import app
 from app.models import Expense
@@ -20,7 +19,7 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def _create_pending(client: TestClient) -> int:
+def _create_pending(client: TestClient, *, identity) -> int:
     """Upload the same tiny PNG twice in a row produces a suspected duplicate
     on the second row (image hash match)."""
     png = (
@@ -29,7 +28,7 @@ def _create_pending(client: TestClient) -> int:
         b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     resp = client.post(
-        f"/u/{cf.CURRENT_UPLOAD_KEY}",
+        f"/u/{identity.upload_key}",
         headers={"Content-Type": "image/png"},
         content=png,
     )
@@ -37,9 +36,9 @@ def _create_pending(client: TestClient) -> int:
     return int(resp.json()["id"])
 
 
-def _seed_duplicate_pair(web_client: TestClient) -> tuple[int, int]:
-    first = _create_pending(web_client)
-    second = _create_pending(web_client)
+def _seed_duplicate_pair(web_client: TestClient, *, identity) -> tuple[int, int]:
+    first = _create_pending(web_client, identity=identity)
+    second = _create_pending(web_client, identity=identity)
     with SessionLocal() as db:
         row = db.scalar(select(Expense).where(Expense.id == second))
         assert row is not None
@@ -57,8 +56,8 @@ def test_web_duplicates_renders_empty(web_client: TestClient) -> None:
     assert "没有疑似重复" in resp.text
 
 
-def test_web_duplicates_renders_pair(web_client: TestClient) -> None:
-    first, second = _seed_duplicate_pair(web_client)
+def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> None:
+    first, second = _seed_duplicate_pair(web_client, identity=identity)
     resp = web_client.get("/web/duplicates?ledger_id=owner")
     assert resp.status_code == 200
     body = resp.text
@@ -77,19 +76,19 @@ def test_web_duplicates_remote_returns_403(client: TestClient) -> None:
     assert client.post("/web/duplicates/1/reject-original").status_code == 403
 
 
-def test_web_duplicates_no_secret_leak(web_client: TestClient) -> None:
-    _seed_duplicate_pair(web_client)
+def test_web_duplicates_no_secret_leak(web_client: TestClient, *, identity) -> None:
+    _seed_duplicate_pair(web_client, identity=identity)
     body = web_client.get("/web/duplicates?ledger_id=owner").text
-    assert cf.CURRENT_APP_TOKEN not in body
-    assert cf.CURRENT_ADMIN_TOKEN not in body
-    assert cf.CURRENT_UPLOAD_KEY not in body
+    assert identity.app_token not in body
+    assert identity.admin_token not in body
+    assert identity.upload_key not in body
 
 
 # ── Action: keep both ──────────────────────────────────────────────────────
 
 
-def test_web_duplicates_keep_both_clears_flag(web_client: TestClient) -> None:
-    _, second = _seed_duplicate_pair(web_client)
+def test_web_duplicates_keep_both_clears_flag(web_client: TestClient, *, identity) -> None:
+    _, second = _seed_duplicate_pair(web_client, identity=identity)
     resp = web_client.post(
         f"/web/duplicates/{second}/keep",
         data={"ledger_id": "owner"},
@@ -106,8 +105,8 @@ def test_web_duplicates_keep_both_clears_flag(web_client: TestClient) -> None:
 # ── Action: reject current ─────────────────────────────────────────────────
 
 
-def test_web_duplicates_reject_current_marks_rejected(web_client: TestClient) -> None:
-    first, second = _seed_duplicate_pair(web_client)
+def test_web_duplicates_reject_current_marks_rejected(web_client: TestClient, *, identity) -> None:
+    first, second = _seed_duplicate_pair(web_client, identity=identity)
     resp = web_client.post(
         f"/web/duplicates/{second}/reject-current",
         data={"ledger_id": "owner"},
@@ -127,8 +126,8 @@ def test_web_duplicates_reject_current_marks_rejected(web_client: TestClient) ->
 # ── Action: reject original ────────────────────────────────────────────────
 
 
-def test_web_duplicates_reject_original_keeps_current(web_client: TestClient) -> None:
-    first, second = _seed_duplicate_pair(web_client)
+def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *, identity) -> None:
+    first, second = _seed_duplicate_pair(web_client, identity=identity)
     resp = web_client.post(
         f"/web/duplicates/{second}/reject-original",
         data={"ledger_id": "owner"},

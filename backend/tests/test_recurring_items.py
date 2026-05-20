@@ -11,8 +11,6 @@ from api_contract_helpers import insert_confirmed_expense
 from app.database import SessionLocal
 from app.models import LedgerMember, RecurringItem
 from app.services.time_service import now_utc
-from conftest import app_headers, gray_app_headers
-
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -36,14 +34,14 @@ def _seed_monthly_candidate(*, merchant: str = "ChatGPT Plus", amount_cents: int
 
 def _confirm_candidate(
     client: TestClient,
-    *,
+    *, identity,
     merchant: str = "ChatGPT Plus",
     amount_cents: int = 20000,
 ) -> dict:
     last_seen = _seed_monthly_candidate(merchant=merchant, amount_cents=amount_cents)
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "merchant": merchant,
             "amount_cents": amount_cents,
@@ -72,8 +70,8 @@ def _assert_permission_denied(response, *, label: str) -> None:
     assert payload["message"] == VIEWER_WRITE_MESSAGE, label
 
 
-def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: TestClient) -> None:
-    item = _confirm_candidate(client)
+def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
 
     assert item["ledger_id"] == "owner"
     assert item["merchant"] == "ChatGPT Plus"
@@ -89,7 +87,7 @@ def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: Test
 
     again = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
@@ -101,12 +99,12 @@ def test_recurring_candidate_confirm_creates_item_and_is_idempotent(client: Test
     assert again.status_code == 200, again.json()
     assert again.json()["public_id"] == item["public_id"]
 
-    listed = client.get("/api/recurring/items", headers=app_headers())
+    listed = client.get("/api/recurring/items", headers=identity.app_headers)
     assert listed.status_code == 200, listed.json()
     assert [entry["public_id"] for entry in listed.json()["items"]] == [item["public_id"]]
 
 
-def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestClient) -> None:
+def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestClient, *, identity) -> None:
     merchant = "Boundary Billing"
     amount_cents = 9900
     last_seen = datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
@@ -125,7 +123,7 @@ def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestC
 
     response = client.post(
         "/api/recurring/from-candidate?timezone=Asia/Shanghai",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "merchant": merchant,
             "amount_cents": amount_cents,
@@ -141,50 +139,50 @@ def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestC
     assert response.json()["next_expected_date"] == "2026-06-01"
 
 
-def test_recurring_item_state_transitions(client: TestClient) -> None:
-    item = _confirm_candidate(client)
+def test_recurring_item_state_transitions(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
     public_id = item["public_id"]
 
-    paused = client.post(f"/api/recurring/items/{public_id}/pause", headers=app_headers())
+    paused = client.post(f"/api/recurring/items/{public_id}/pause", headers=identity.app_headers)
     assert paused.status_code == 200, paused.json()
     assert paused.json()["status"] == "paused"
     assert paused.json()["paused_at"] is not None
 
-    resumed = client.post(f"/api/recurring/items/{public_id}/resume", headers=app_headers())
+    resumed = client.post(f"/api/recurring/items/{public_id}/resume", headers=identity.app_headers)
     assert resumed.status_code == 200, resumed.json()
     assert resumed.json()["status"] == "active"
     assert resumed.json()["paused_at"] is None
 
-    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=app_headers())
+    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=identity.app_headers)
     assert archived.status_code == 200, archived.json()
     assert archived.json()["status"] == "archived"
     assert archived.json()["archived_at"] is not None
 
-    hidden = client.get("/api/recurring/items", headers=app_headers())
+    hidden = client.get("/api/recurring/items", headers=identity.app_headers)
     assert hidden.status_code == 200, hidden.json()
     assert hidden.json()["items"] == []
 
-    visible = client.get("/api/recurring/items?include_archived=true", headers=app_headers())
+    visible = client.get("/api/recurring/items?include_archived=true", headers=identity.app_headers)
     assert visible.status_code == 200, visible.json()
     assert [entry["public_id"] for entry in visible.json()["items"]] == [public_id]
 
-    blocked = client.post(f"/api/recurring/items/{public_id}/resume", headers=app_headers())
+    blocked = client.post(f"/api/recurring/items/{public_id}/resume", headers=identity.app_headers)
     assert blocked.status_code == 409, blocked.json()
     assert blocked.json()["error"] == "recurring_item_archived"
 
 
-def test_confirm_candidate_reactivates_archived_item(client: TestClient) -> None:
-    item = _confirm_candidate(client)
+def test_confirm_candidate_reactivates_archived_item(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
     public_id = item["public_id"]
 
-    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=app_headers())
+    archived = client.post(f"/api/recurring/items/{public_id}/archive", headers=identity.app_headers)
     assert archived.status_code == 200, archived.json()
     assert archived.json()["status"] == "archived"
 
     last_seen = _seed_monthly_candidate(merchant="ChatGPT Plus", amount_cents=20000)
     response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
@@ -202,19 +200,19 @@ def test_confirm_candidate_reactivates_archived_item(client: TestClient) -> None
     assert payload["archived_at"] is None
     assert payload["paused_at"] is None
 
-    listed = client.get("/api/recurring/items", headers=app_headers())
+    listed = client.get("/api/recurring/items", headers=identity.app_headers)
     assert listed.status_code == 200, listed.json()
     assert [entry["public_id"] for entry in listed.json()["items"]] == [public_id]
 
 
-def test_viewer_cannot_mutate_recurring_items(client: TestClient) -> None:
-    item = _confirm_candidate(client)
+def test_viewer_cannot_mutate_recurring_items(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
     public_id = item["public_id"]
     _demote_owner_ledger_to_viewer()
 
     create_response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "merchant": "ChatGPT Plus",
             "amount_cents": 20000,
@@ -229,27 +227,27 @@ def test_viewer_cannot_mutate_recurring_items(client: TestClient) -> None:
         ("resume", f"/api/recurring/items/{public_id}/resume"),
         ("archive", f"/api/recurring/items/{public_id}/archive"),
     ):
-        _assert_permission_denied(client.post(path, headers=app_headers()), label=label)
+        _assert_permission_denied(client.post(path, headers=identity.app_headers), label=label)
 
 
-def test_recurring_items_are_ledger_isolated(client: TestClient) -> None:
-    owner_item = _confirm_candidate(client)
+def test_recurring_items_are_ledger_isolated(client: TestClient, *, identity) -> None:
+    owner_item = _confirm_candidate(client, identity=identity)
 
-    owner_list = client.get("/api/recurring/items", headers=app_headers())
+    owner_list = client.get("/api/recurring/items", headers=identity.app_headers)
     assert owner_list.status_code == 200, owner_list.json()
     assert [entry["public_id"] for entry in owner_list.json()["items"]] == [owner_item["public_id"]]
 
-    gray_list = client.get("/api/recurring/items", headers=gray_app_headers())
+    gray_list = client.get("/api/recurring/items", headers=identity.gray_app_headers)
     assert gray_list.status_code == 200, gray_list.json()
     assert gray_list.json()["items"] == []
 
-    gray_detail = client.get(f"/api/recurring/items/{owner_item['public_id']}", headers=gray_app_headers())
+    gray_detail = client.get(f"/api/recurring/items/{owner_item['public_id']}", headers=identity.gray_app_headers)
     assert gray_detail.status_code == 404, gray_detail.json()
     assert gray_detail.json()["error"] == "recurring_item_not_found"
 
 
-def test_recurring_items_mark_current_month_amount_anomaly(client: TestClient) -> None:
-    item = _confirm_candidate(client)
+def test_recurring_items_mark_current_month_amount_anomaly(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
     expensive_monthly_charge = datetime(2026, 5, 13, 12, 0, tzinfo=UTC)
     insert_confirmed_expense(
         amount_cents=28000,
@@ -259,7 +257,7 @@ def test_recurring_items_mark_current_month_amount_anomaly(client: TestClient) -
         confirmed_at=expensive_monthly_charge,
     )
 
-    listed = client.get("/api/recurring/items?month=2026-05&timezone=UTC", headers=app_headers())
+    listed = client.get("/api/recurring/items?month=2026-05&timezone=UTC", headers=identity.app_headers)
     assert listed.status_code == 200, listed.json()
     current = listed.json()["items"][0]
     assert current["public_id"] == item["public_id"]
@@ -270,8 +268,8 @@ def test_recurring_items_mark_current_month_amount_anomaly(client: TestClient) -
     assert current["last_amount_cents"] == 20000
 
 
-def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client: TestClient) -> None:
-    item = _confirm_candidate(client)
+def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client: TestClient, *, identity) -> None:
+    item = _confirm_candidate(client, identity=identity)
     one_off_purchase = datetime(2026, 5, 13, 12, 0, tzinfo=UTC)
     insert_confirmed_expense(
         amount_cents=120000,
@@ -281,7 +279,7 @@ def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client
         confirmed_at=one_off_purchase,
     )
 
-    listed = client.get("/api/recurring/items?month=2026-05&timezone=UTC", headers=app_headers())
+    listed = client.get("/api/recurring/items?month=2026-05&timezone=UTC", headers=identity.app_headers)
     assert listed.status_code == 200, listed.json()
     current = listed.json()["items"][0]
     assert current["public_id"] == item["public_id"]
@@ -289,7 +287,7 @@ def test_recurring_anomaly_ignores_unrelated_same_merchant_large_purchase(client
     assert current["current_month_amount_cents"] == 20000
 
 
-def test_recurring_status_filter_and_invalid_candidate_errors(client: TestClient) -> None:
+def test_recurring_status_filter_and_invalid_candidate_errors(client: TestClient, *, identity) -> None:
     now = now_utc()
     with SessionLocal() as db:
         db.add(
@@ -311,17 +309,17 @@ def test_recurring_status_filter_and_invalid_candidate_errors(client: TestClient
         )
         db.commit()
 
-    paused = client.get("/api/recurring/items?status=paused", headers=app_headers())
+    paused = client.get("/api/recurring/items?status=paused", headers=identity.app_headers)
     assert paused.status_code == 200, paused.json()
     assert [entry["merchant"] for entry in paused.json()["items"]] == ["Netflix"]
 
-    invalid_status = client.get("/api/recurring/items?status=unknown", headers=app_headers())
+    invalid_status = client.get("/api/recurring/items?status=unknown", headers=identity.app_headers)
     assert invalid_status.status_code == 422, invalid_status.json()
     assert invalid_status.json()["error"] == "recurring_status_invalid"
 
     not_found = client.post(
         "/api/recurring/from-candidate?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "merchant": "Not Monthly",
             "amount_cents": 1234,

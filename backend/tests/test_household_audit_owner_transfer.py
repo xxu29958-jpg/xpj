@@ -8,15 +8,13 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import AuthToken, Ledger, LedgerAuditLog, LedgerMember
 from app.services.identity_service import hash_secret
-from conftest import admin_headers, app_headers
-
 
 def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_family_ledger(client: TestClient, name: str = "家庭账本") -> str:
-    resp = client.post("/api/ledgers", headers=admin_headers(), json={"name": name})
+def _create_family_ledger(client: TestClient, name: str = "家庭账本", *, identity) -> str:
+    resp = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": name})
     assert resp.status_code == 201, resp.json()
     return resp.json()["ledger_id"]
 
@@ -82,9 +80,9 @@ def _active_owner_count(ledger_id: str) -> int:
         )
 
 
-def test_family_member_audit_records_sensitive_safe_actions(client: TestClient) -> None:
-    ledger_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, ledger_id, app_headers())
+def test_family_member_audit_records_sensitive_safe_actions(client: TestClient, *, identity) -> None:
+    ledger_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, ledger_id, identity.app_headers)
 
     invite_token = _mint_invitation(client, ledger_id, owner_token)
     member_token = _accept_invitation(client, invite_token, account_name="妈妈")
@@ -138,9 +136,9 @@ def test_family_member_audit_records_sensitive_safe_actions(client: TestClient) 
     assert all(row.result == "success" for row in stored)
 
 
-def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: TestClient) -> None:
-    ledger_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, ledger_id, app_headers())
+def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: TestClient, *, identity) -> None:
+    ledger_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, ledger_id, identity.app_headers)
     invite_token = _mint_invitation(client, ledger_id, owner_token)
     member_token = _accept_invitation(client, invite_token, account_name="爸爸")
     member_id = _member_id_for_role(client, ledger_id, owner_token, "member")
@@ -200,28 +198,28 @@ def test_owner_transfer_keeps_single_owner_and_demotes_previous_owner(client: Te
     assert transfer_rows[0]["new_role"] == "owner"
 
 
-def test_owner_transfer_revokes_demoted_owner_admin_tokens(client: TestClient) -> None:
+def test_owner_transfer_revokes_demoted_owner_admin_tokens(client: TestClient, *, identity) -> None:
     ledger_id = "owner"
-    invite_token = _mint_invitation(client, ledger_id, app_headers()["Authorization"].removeprefix("Bearer "))
+    invite_token = _mint_invitation(client, ledger_id, identity.app_headers["Authorization"].removeprefix("Bearer "))
     member_token = _accept_invitation(client, invite_token, account_name="新 owner")
-    member_id = _member_id_for_role(client, ledger_id, app_headers()["Authorization"].removeprefix("Bearer "), "member")
+    member_id = _member_id_for_role(client, ledger_id, identity.app_headers["Authorization"].removeprefix("Bearer "), "member")
 
     before = client.post(
         "/api/bootstrap/pairing-codes",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"ttl_minutes": 15},
     )
     assert before.status_code == 200, before.json()
 
     transfer = client.post(
         f"/api/ledgers/{ledger_id}/members/{member_id}/transfer-owner",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert transfer.status_code == 200, transfer.json()
 
     after = client.post(
         "/api/bootstrap/pairing-codes",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"ttl_minutes": 15},
     )
     assert after.status_code == 401
@@ -235,9 +233,9 @@ def test_owner_transfer_revokes_demoted_owner_admin_tokens(client: TestClient) -
     assert new_owner_allowed.status_code == 201, new_owner_allowed.json()
 
 
-def test_member_and_viewer_cannot_call_owner_member_management(client: TestClient) -> None:
-    ledger_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, ledger_id, app_headers())
+def test_member_and_viewer_cannot_call_owner_member_management(client: TestClient, *, identity) -> None:
+    ledger_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, ledger_id, identity.app_headers)
 
     member_token = _accept_invitation(
         client,
@@ -297,9 +295,9 @@ def test_member_and_viewer_cannot_call_owner_member_management(client: TestClien
     assert _active_owner_count(ledger_id) == 1
 
 
-def test_auth_token_role_is_resolved_from_current_ledger_member(client: TestClient) -> None:
-    ledger_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, ledger_id, app_headers())
+def test_auth_token_role_is_resolved_from_current_ledger_member(client: TestClient, *, identity) -> None:
+    ledger_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, ledger_id, identity.app_headers)
     member_token = _accept_invitation(
         client,
         _mint_invitation(client, ledger_id, owner_token, role="member"),
@@ -340,9 +338,9 @@ def test_auth_token_role_is_resolved_from_current_ledger_member(client: TestClie
     assert check_member.json()["role"] == "member"
 
 
-def test_role_downgrade_makes_existing_token_read_only_immediately(client: TestClient) -> None:
-    ledger_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, ledger_id, app_headers())
+def test_role_downgrade_makes_existing_token_read_only_immediately(client: TestClient, *, identity) -> None:
+    ledger_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, ledger_id, identity.app_headers)
     member_token = _accept_invitation(
         client,
         _mint_invitation(client, ledger_id, owner_token, role="member"),
@@ -399,9 +397,9 @@ def test_role_downgrade_makes_existing_token_read_only_immediately(client: TestC
     )
 
 
-def test_owner_transfer_invalid_target_does_not_change_owner(client: TestClient) -> None:
-    ledger_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, ledger_id, app_headers())
+def test_owner_transfer_invalid_target_does_not_change_owner(client: TestClient, *, identity) -> None:
+    ledger_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, ledger_id, identity.app_headers)
     invite_token = _mint_invitation(client, ledger_id, owner_token)
     _accept_invitation(client, invite_token, account_name="妹妹")
 

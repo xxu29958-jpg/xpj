@@ -9,8 +9,6 @@ from app.database import SessionLocal, engine
 from app.models import Expense, LedgerMember
 from app.services.reports_service import reports_overview, six_month_summary
 from app.services.time_service import now_utc
-from conftest import app_headers, gray_app_headers
-
 
 def _manual_expense(
     client: TestClient,
@@ -73,18 +71,18 @@ def _set_owner_ledger_role(role: str) -> None:
 
 
 def test_reports_overview_trends_rankings_and_category_comparison(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     alias = client.post(
         "/api/merchants/aliases",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"canonical_merchant": "星巴克", "alias": "STARBUCKS", "enabled": True},
     )
     assert alias.status_code == 201, alias.json()
 
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=1200,
         merchant="STARBUCKS",
         category="餐饮",
@@ -92,7 +90,7 @@ def test_reports_overview_trends_rankings_and_category_comparison(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=800,
         merchant="星巴克",
         category="吃饭",
@@ -100,7 +98,7 @@ def test_reports_overview_trends_rankings_and_category_comparison(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=2200,
         merchant="地铁",
         category="交通",
@@ -108,7 +106,7 @@ def test_reports_overview_trends_rankings_and_category_comparison(
     )
     _manual_expense(
         client,
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         amount_cents=9999,
         merchant="灰度商家",
         category="餐饮",
@@ -133,7 +131,7 @@ def test_reports_overview_trends_rankings_and_category_comparison(
 
     response = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC&granularity=day&top_n=5",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert response.status_code == 200, response.json()
     payload = response.json()
@@ -182,12 +180,12 @@ def test_reports_overview_trends_rankings_and_category_comparison(
 
 
 def test_reports_merchant_ranking_category_metric_and_csv_export(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     for _ in range(3):
         _manual_expense(
             client,
-            headers=app_headers(),
+            headers=identity.app_headers,
             amount_cents=100,
             merchant="A店",
             category="餐饮",
@@ -195,7 +193,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
         )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=1000,
         merchant="B店",
         category="吃饭",
@@ -203,7 +201,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=2000,
         merchant="交通店",
         category="交通",
@@ -222,7 +220,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     response = client.get(
         "/api/reports/overview?"
         "month=2026-05&timezone=UTC&merchant_category=吃饭&ranking_metric=count&top_n=2",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert response.status_code == 200, response.json()
     payload = response.json()
@@ -240,7 +238,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
         "/api/reports/overview.csv?"
         "month=2026-05&timezone=UTC&granularity=week&merchant_category=餐饮"
         "&ranking_metric=count&top_n=1",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert csv_response.status_code == 200, csv_response.text
     assert csv_response.headers["content-type"].startswith("text/csv")
@@ -254,7 +252,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     assert "灰度报表导出不应串入" not in csv_response.text
 
 
-def test_reports_csv_neutralizes_formula_cells(client: TestClient) -> None:
+def test_reports_csv_neutralizes_formula_cells(client: TestClient, *, identity) -> None:
     _insert_expense(
         amount_cents=1200,
         merchant='=HYPERLINK("http://example.invalid")',
@@ -266,7 +264,7 @@ def test_reports_csv_neutralizes_formula_cells(client: TestClient) -> None:
 
     response = client.get(
         "/api/reports/overview.csv?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
 
     assert response.status_code == 200, response.text
@@ -324,7 +322,7 @@ def test_reports_daily_trend_uses_bounded_aggregate_query_shape(
 
 
 def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     _insert_expense(
         amount_cents=1851,
@@ -337,7 +335,7 @@ def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
 
     shanghai = client.get(
         "/api/reports/overview?month=2026-05&timezone=Asia/Shanghai&granularity=day",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert shanghai.status_code == 200, shanghai.json()
     shanghai_payload = shanghai.json()
@@ -350,14 +348,14 @@ def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
     }
 
     utc_may = client.get(
-        "/api/reports/overview?month=2026-05&timezone=UTC", headers=app_headers()
+        "/api/reports/overview?month=2026-05&timezone=UTC", headers=identity.app_headers
     )
     assert utc_may.status_code == 200, utc_may.json()
     assert utc_may.json()["total_amount_cents"] == 0
 
     utc_april = client.get(
         "/api/reports/overview?month=2026-04&timezone=UTC&granularity=week",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert utc_april.status_code == 200, utc_april.json()
     assert utc_april.json()["total_amount_cents"] == 1851
@@ -365,11 +363,11 @@ def test_reports_overview_uses_timezone_and_confirmed_at_fallback(
 
 
 def test_reports_overview_month_granularity_and_viewer_read(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=1000,
         merchant="一月",
         category="生活",
@@ -377,7 +375,7 @@ def test_reports_overview_month_granularity_and_viewer_read(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=5000,
         merchant="五月",
         category="生活",
@@ -387,7 +385,7 @@ def test_reports_overview_month_granularity_and_viewer_read(
 
     response = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC&granularity=month",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert response.status_code == 200, response.json()
     payload = response.json()
@@ -403,10 +401,10 @@ def test_reports_overview_month_granularity_and_viewer_read(
     assert payload["trend"][-1]["amount_cents"] == 5000
 
 
-def test_six_month_summary_budget_line_includes_rollover(client: TestClient) -> None:
+def test_six_month_summary_budget_line_includes_rollover(client: TestClient, *, identity) -> None:
     response = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"total_amount_cents": 100000, "rollover_amount_cents": 5000},
     )
     assert response.status_code == 200, response.json()
@@ -424,15 +422,15 @@ def test_six_month_summary_budget_line_includes_rollover(client: TestClient) -> 
     assert may["budget_yuan"] == 1050.0
 
 
-def test_reports_overview_invalid_month_and_empty_data(client: TestClient) -> None:
+def test_reports_overview_invalid_month_and_empty_data(client: TestClient, *, identity) -> None:
     invalid = client.get(
-        "/api/reports/overview?month=2026-13", headers=app_headers()
+        "/api/reports/overview?month=2026-13", headers=identity.app_headers
     )
     assert invalid.status_code == 422
     assert invalid.json()["error"] == "invalid_request"
 
     empty = client.get(
-        "/api/reports/overview?month=2026-06&timezone=UTC", headers=app_headers()
+        "/api/reports/overview?month=2026-06&timezone=UTC", headers=identity.app_headers
     )
     assert empty.status_code == 200, empty.json()
     payload = empty.json()

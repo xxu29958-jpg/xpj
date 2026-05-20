@@ -12,17 +12,13 @@ from api_contract_helpers import (
 from app.database import SessionLocal
 from app.models import Expense
 from app.services import web_stats_service
-from conftest import (
-    app_headers,
-)
-
 
 def test_local_timezone_month_filter_matches_android_display_month(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1851,
             "merchant": "跨月边界账单",
@@ -33,26 +29,26 @@ def test_local_timezone_month_filter_matches_android_display_month(
     assert response.status_code == 200
 
     may_page = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
     )
     assert may_page.status_code == 200
     assert may_page.json()["total"] == 1
 
     april_page = client.get(
-        "/api/expenses/confirmed?month=2026-04", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-04", headers=identity.app_headers
     )
     assert april_page.status_code == 200
     assert april_page.json()["total"] == 0
 
-    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert may_stats.status_code == 200
     assert may_stats.json()["total_amount_cents"] == 1851
 
-    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=app_headers())
+    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=identity.app_headers)
     assert april_stats.status_code == 200
     assert april_stats.json()["total_amount_cents"] == 0
 
-    months = client.get("/api/expenses/months", headers=app_headers())
+    months = client.get("/api/expenses/months", headers=identity.app_headers)
     assert months.status_code == 200
     assert months.json()["items"] == ["2026-05"]
 
@@ -85,7 +81,7 @@ def test_web_stats_day_grouping_uses_configured_local_timezone(
 
 
 def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     insert_confirmed_expense(
         amount_cents=501,
@@ -110,7 +106,7 @@ def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(
     )
 
     may_food_page = client.get(
-        "/api/expenses/confirmed?month=2026-05&category=餐饮", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-05&category=餐饮", headers=identity.app_headers
     )
     assert may_food_page.status_code == 200
     may_food_payload = may_food_page.json()
@@ -118,14 +114,14 @@ def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(
     assert may_food_payload["items"][0]["merchant"] == "确认时间跨月餐饮"
 
     april_food_page = client.get(
-        "/api/expenses/confirmed?month=2026-04&category=餐饮", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-04&category=餐饮", headers=identity.app_headers
     )
     assert april_food_page.status_code == 200
     april_food_payload = april_food_page.json()
     assert april_food_payload["total"] == 1
     assert april_food_payload["items"][0]["merchant"] == "确认时间上月餐饮"
 
-    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    may_stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert may_stats.status_code == 200
     may_stats_payload = may_stats.json()
     assert may_stats_payload["total_amount_cents"] == 1389
@@ -135,16 +131,16 @@ def test_confirmed_month_filter_falls_back_to_confirmed_at_and_category(
         {"category": "餐饮", "amount_cents": 501, "count": 1},
     ]
 
-    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=app_headers())
+    april_stats = client.get("/api/stats/monthly?month=2026-04", headers=identity.app_headers)
     assert april_stats.status_code == 200
     assert april_stats.json()["total_amount_cents"] == 777
 
-    months = client.get("/api/expenses/months", headers=app_headers())
+    months = client.get("/api/expenses/months", headers=identity.app_headers)
     assert months.status_code == 200
     assert months.json()["items"] == ["2026-05", "2026-04"]
 
 
-def test_confirmed_category_filter_includes_legacy_aliases(client: TestClient) -> None:
+def test_confirmed_category_filter_includes_legacy_aliases(client: TestClient, *, identity) -> None:
     insert_confirmed_expense(
         amount_cents=700,
         merchant="旧分类餐饮",
@@ -155,7 +151,7 @@ def test_confirmed_category_filter_includes_legacy_aliases(client: TestClient) -
 
     response = client.get(
         "/api/expenses/confirmed?month=2026-05&category=餐饮",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert response.status_code == 200
     payload = response.json()
@@ -164,7 +160,7 @@ def test_confirmed_category_filter_includes_legacy_aliases(client: TestClient) -
 
 
 def test_confirmed_month_filter_handles_cross_year_local_boundary(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     insert_confirmed_expense(
         amount_cents=1234,
@@ -182,7 +178,7 @@ def test_confirmed_month_filter_handles_cross_year_local_boundary(
     )
 
     january_page = client.get(
-        "/api/expenses/confirmed?month=2027-01&category=餐饮", headers=app_headers()
+        "/api/expenses/confirmed?month=2027-01&category=餐饮", headers=identity.app_headers
     )
     assert january_page.status_code == 200
     january_payload = january_page.json()
@@ -190,7 +186,7 @@ def test_confirmed_month_filter_handles_cross_year_local_boundary(
     assert january_payload["items"][0]["merchant"] == "跨年后餐饮"
 
     december_page = client.get(
-        "/api/expenses/confirmed?month=2026-12&category=餐饮", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-12&category=餐饮", headers=identity.app_headers
     )
     assert december_page.status_code == 200
     december_payload = december_page.json()
@@ -198,24 +194,24 @@ def test_confirmed_month_filter_handles_cross_year_local_boundary(
     assert december_payload["items"][0]["merchant"] == "跨年前餐饮"
 
     january_stats = client.get(
-        "/api/stats/monthly?month=2027-01", headers=app_headers()
+        "/api/stats/monthly?month=2027-01", headers=identity.app_headers
     )
     assert january_stats.status_code == 200
     assert january_stats.json()["total_amount_cents"] == 1234
 
     december_stats = client.get(
-        "/api/stats/monthly?month=2026-12", headers=app_headers()
+        "/api/stats/monthly?month=2026-12", headers=identity.app_headers
     )
     assert december_stats.status_code == 200
     assert december_stats.json()["total_amount_cents"] == 4321
 
-    months = client.get("/api/expenses/months", headers=app_headers())
+    months = client.get("/api/expenses/months", headers=identity.app_headers)
     assert months.status_code == 200
     assert months.json()["items"] == ["2027-01", "2026-12"]
 
 
 def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zero(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     insert_confirmed_expense(
         amount_cents=1234,
@@ -247,7 +243,7 @@ def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zer
         )
         db.commit()
 
-    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200
     stats_payload = stats.json()
     assert stats_payload["total_amount_cents"] == 1234
@@ -256,7 +252,7 @@ def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zer
         {"category": "餐饮", "amount_cents": 1234, "count": 1},
     ]
 
-    exported = client.get("/api/expenses/export.csv?month=2026-05", headers=app_headers())
+    exported = client.get("/api/expenses/export.csv?month=2026-05", headers=identity.app_headers)
     assert exported.status_code == 200
     rows = list(csv.DictReader(StringIO(exported.text.lstrip("\ufeff"))))
     unresolved = next(row for row in rows if row["merchant"] == "待汇率外币账单")
@@ -266,7 +262,7 @@ def test_unresolved_confirmed_fx_expense_does_not_pollute_stats_or_export_as_zer
     assert unresolved["original_amount_minor"] == "999"
 
 
-def test_month_filter_can_follow_client_timezone_query(client: TestClient) -> None:
+def test_month_filter_can_follow_client_timezone_query(client: TestClient, *, identity) -> None:
     insert_confirmed_expense(
         amount_cents=1851,
         merchant="手机时区边界账单",
@@ -277,63 +273,63 @@ def test_month_filter_can_follow_client_timezone_query(client: TestClient) -> No
 
     shanghai_page = client.get(
         "/api/expenses/confirmed?month=2026-05&timezone=Asia/Shanghai",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert shanghai_page.status_code == 200
     assert shanghai_page.json()["total"] == 1
 
     utc_april_page = client.get(
-        "/api/expenses/confirmed?month=2026-04&timezone=UTC", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-04&timezone=UTC", headers=identity.app_headers
     )
     assert utc_april_page.status_code == 200
     assert utc_april_page.json()["total"] == 1
 
     utc_may_stats = client.get(
-        "/api/stats/monthly?month=2026-05&timezone=UTC", headers=app_headers()
+        "/api/stats/monthly?month=2026-05&timezone=UTC", headers=identity.app_headers
     )
     assert utc_may_stats.status_code == 200
     assert utc_may_stats.json()["total_amount_cents"] == 0
 
     shanghai_may_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=Asia/Shanghai",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert shanghai_may_stats.status_code == 200
     assert shanghai_may_stats.json()["total_amount_cents"] == 1851
 
     shanghai_months = client.get(
-        "/api/expenses/months?timezone=Asia/Shanghai", headers=app_headers()
+        "/api/expenses/months?timezone=Asia/Shanghai", headers=identity.app_headers
     )
     assert shanghai_months.status_code == 200
     assert shanghai_months.json()["items"] == ["2026-05"]
 
-    utc_months = client.get("/api/expenses/months?timezone=UTC", headers=app_headers())
+    utc_months = client.get("/api/expenses/months?timezone=UTC", headers=identity.app_headers)
     assert utc_months.status_code == 200
     assert utc_months.json()["items"] == ["2026-04"]
 
     shanghai_export = client.get(
         "/api/expenses/export.csv?month=2026-05&timezone=Asia/Shanghai",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert shanghai_export.status_code == 200
     assert "手机时区边界账单" in shanghai_export.text
 
     utc_may_export = client.get(
-        "/api/expenses/export.csv?month=2026-05&timezone=UTC", headers=app_headers()
+        "/api/expenses/export.csv?month=2026-05&timezone=UTC", headers=identity.app_headers
     )
     assert utc_may_export.status_code == 200
     assert "手机时区边界账单" not in utc_may_export.text
 
     invalid_timezone_page = client.get(
         "/api/expenses/confirmed?month=2026-04&timezone=Not/AZone",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert invalid_timezone_page.status_code == 200
     assert invalid_timezone_page.json()["total"] == 1
 
 
 def test_confirmed_pagination_and_month_filters_are_server_side_contract(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     for index, payload in enumerate(
         [
@@ -366,14 +362,14 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
     ):
         response = client.post(
             "/api/expenses/manual",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={**payload, "note": f"分页测试 {index}"},
         )
         assert response.status_code == 200
 
     first_page = client.get(
         "/api/expenses/confirmed?month=2026-05&page=1&page_size=2",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert first_page.status_code == 200
     first_payload = first_page.json()
@@ -382,7 +378,7 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
 
     second_page = client.get(
         "/api/expenses/confirmed?month=2026-05&page=2&page_size=2",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert second_page.status_code == 200
     second_payload = second_page.json()
@@ -391,7 +387,7 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
 
     category_page = client.get(
         "/api/expenses/confirmed?month=2026-05&category=餐饮&page=1&page_size=50",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert category_page.status_code == 200
     category_payload = category_page.json()
@@ -401,21 +397,21 @@ def test_confirmed_pagination_and_month_filters_are_server_side_contract(
         "早餐店",
     ]
 
-    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200
     stats_payload = stats.json()
     assert stats_payload["total_amount_cents"] == 6600
     assert stats_payload["count"] == 3
 
-    months = client.get("/api/expenses/months", headers=app_headers())
+    months = client.get("/api/expenses/months", headers=identity.app_headers)
     assert months.status_code == 200
     assert months.json()["items"] == ["2026-05", "2026-04"]
 
 
-def test_lifestyle_recent_7_days_is_bounded_to_requested_month(client: TestClient) -> None:
+def test_lifestyle_recent_7_days_is_bounded_to_requested_month(client: TestClient, *, identity) -> None:
     historical = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1200,
             "merchant": "Historical Month",
@@ -426,7 +422,7 @@ def test_lifestyle_recent_7_days_is_bounded_to_requested_month(client: TestClien
     assert historical.status_code == 200, historical.json()
     current = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 9900,
             "merchant": "Current Real Week",
@@ -438,7 +434,7 @@ def test_lifestyle_recent_7_days_is_bounded_to_requested_month(client: TestClien
 
     response = client.get(
         "/api/stats/lifestyle?month=2024-04&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert response.status_code == 200, response.json()
     assert response.json()["recent_7_days_amount_cents"] == 1200

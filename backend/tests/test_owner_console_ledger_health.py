@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-import conftest as cf
 from app.main import app
 from app.routes.owner_console import _require_local
 
@@ -30,9 +29,9 @@ def test_owner_index_renders_ledger_health_section(local_client: TestClient) -> 
     assert "/web/data-quality?ledger_id=" in body
 
 
-def test_owner_ledger_health_shows_pending_count(local_client: TestClient) -> None:
+def test_owner_ledger_health_shows_pending_count(local_client: TestClient, *, identity) -> None:
     resp = local_client.post(
-        f"/u/{cf.CURRENT_UPLOAD_KEY}",
+        f"/u/{identity.upload_key}",
         headers={"Content-Type": "image/png"},
         content=PNG,
     )
@@ -44,8 +43,8 @@ def test_owner_ledger_health_shows_pending_count(local_client: TestClient) -> No
     assert 'href="/web?ledger_id=owner"' in body
 
 
-def test_owner_ledger_health_no_secret_leak(local_client: TestClient) -> None:
+def test_owner_ledger_health_no_secret_leak(local_client: TestClient, *, identity) -> None:
     body = local_client.get("/owner").text
-    assert cf.CURRENT_APP_TOKEN not in body
-    assert cf.CURRENT_ADMIN_TOKEN not in body
-    assert cf.CURRENT_UPLOAD_KEY not in body
+    assert identity.app_token not in body
+    assert identity.admin_token not in body
+    assert identity.upload_key not in body

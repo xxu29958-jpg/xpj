@@ -19,8 +19,6 @@ from app.schemas import (
 from app.services.expense_split_service import replace_expense_splits
 from app.services.receipt_item_service import replace_expense_items
 from app.services.time_service import now_utc
-from conftest import app_headers
-
 
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
@@ -126,7 +124,7 @@ def _seed_detail_rows(expense_id: int) -> None:
         )
 
 
-def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestClient) -> None:
+def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_expense()
     member_id = _owner_member_id()
 
@@ -163,17 +161,17 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
     assert "家庭拆账" in detail.text
     assert "我先记" in detail.text
 
-    api_items = web_client.get(f"/api/expenses/{expense_id}/items", headers=app_headers())
+    api_items = web_client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers)
     assert api_items.status_code == 200, api_items.json()
     assert api_items.json()["items_total_amount_cents"] == 1230
     assert [item["name"] for item in api_items.json()["items"]] == ["牛奶", "面包"]
 
-    api_splits = web_client.get(f"/api/expenses/{expense_id}/splits", headers=app_headers())
+    api_splits = web_client.get(f"/api/expenses/{expense_id}/splits", headers=identity.app_headers)
     assert api_splits.status_code == 200, api_splits.json()
     assert api_splits.json()["splits_total_amount_cents"] == 1234
 
 
-def test_web_detail_rows_do_not_change_confirm_stats_or_export(web_client: TestClient) -> None:
+def test_web_detail_rows_do_not_change_confirm_stats_or_export(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_expense(amount_cents=1234)
     _seed_detail_rows(expense_id)
 
@@ -184,11 +182,11 @@ def test_web_detail_rows_do_not_change_confirm_stats_or_export(web_client: TestC
     )
     assert confirmed.status_code in {303, 307}, confirmed.text
 
-    stats = web_client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    stats = web_client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200, stats.json()
     assert stats.json()["total_amount_cents"] == 1234
 
-    exported = web_client.get("/api/expenses/export.csv?month=2026-05", headers=app_headers())
+    exported = web_client.get("/api/expenses/export.csv?month=2026-05", headers=identity.app_headers)
     assert exported.status_code == 200
     assert "家庭超市" in exported.text
     assert "12.34" in exported.text

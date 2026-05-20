@@ -8,8 +8,6 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Expense, LedgerMember
 from app.services.time_service import now_utc
-from conftest import app_headers, gray_app_headers
-
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -85,7 +83,7 @@ def _assert_permission_denied(response, *, label: str) -> None:
 
 
 def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     _insert_expense(
         amount_cents=1200,
@@ -139,14 +137,14 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
 
     _create_goal(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         name="本月总支出",
         month="2026-05",
         target_amount_cents=5000,
     )
     _create_goal(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         name="餐饮目标",
         month="2026-05",
         category="餐饮",
@@ -155,7 +153,7 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
 
     stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=Asia/Shanghai",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert stats.status_code == 200, stats.json()
     stats_payload = stats.json()
@@ -168,7 +166,7 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
 
     report = client.get(
         "/api/reports/overview?month=2026-05&timezone=Asia/Shanghai&granularity=day",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert report.status_code == 200, report.json()
     report_payload = report.json()
@@ -191,7 +189,7 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
 
     goals = client.get(
         "/api/goals?month=2026-05&timezone=Asia/Shanghai",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert goals.status_code == 200, goals.json()
     goal_payloads = {item["name"]: item for item in goals.json()["items"]}
@@ -202,21 +200,21 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
 
     utc_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert utc_stats.status_code == 200, utc_stats.json()
     assert utc_stats.json()["total_amount_cents"] == 1200
 
     utc_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert utc_report.status_code == 200, utc_report.json()
     assert utc_report.json()["total_amount_cents"] == 1200
 
     utc_goals = client.get(
         "/api/goals?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert utc_goals.status_code == 200, utc_goals.json()
     utc_goal_payloads = {item["name"]: item for item in utc_goals.json()["items"]}
@@ -225,7 +223,7 @@ def test_reports_goals_and_monthly_stats_share_confirmed_time_scope(
 
 
 def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     _insert_expense(
         amount_cents=1100,
@@ -246,7 +244,7 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     )
     owner_goal = _create_goal(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         name="Owner Goal",
         month="2026-05",
         target_amount_cents=5000,
@@ -254,7 +252,7 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     )
     _create_goal(
         client,
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         name="Gray Goal",
         month="2026-05",
         target_amount_cents=7000,
@@ -263,11 +261,11 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
 
     owner_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     gray_stats = client.get(
         "/api/stats/monthly?month=2026-05&timezone=UTC",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
     )
     assert owner_stats.status_code == 200, owner_stats.json()
     assert gray_stats.status_code == 200, gray_stats.json()
@@ -276,11 +274,11 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
 
     owner_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     gray_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
     )
     assert owner_report.status_code == 200, owner_report.json()
     assert gray_report.status_code == 200, gray_report.json()
@@ -291,11 +289,11 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
 
     owner_goals = client.get(
         "/api/goals?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     gray_goals = client.get(
         "/api/goals?month=2026-05&timezone=UTC",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
     )
     assert owner_goals.status_code == 200, owner_goals.json()
     assert gray_goals.status_code == 200, gray_goals.json()
@@ -309,11 +307,11 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     _demote_owner_ledger_to_viewer()
     viewer_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     viewer_goals = client.get(
         "/api/goals?month=2026-05&timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert viewer_report.status_code == 200, viewer_report.json()
     assert viewer_report.json()["total_amount_cents"] == 1100
@@ -323,7 +321,7 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     _assert_permission_denied(
         client.post(
             "/api/goals?timezone=UTC",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={
                 "name": "Viewer Write",
                 "month": "2026-05",
@@ -335,7 +333,7 @@ def test_reports_goals_stats_isolate_ledgers_and_viewer_goal_writes_are_denied(
     _assert_permission_denied(
         client.patch(
             f"/api/goals/{owner_goal['public_id']}?timezone=UTC",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={"target_amount_cents": 3000},
         ),
         label="viewer goal patch",

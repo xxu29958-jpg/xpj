@@ -26,14 +26,7 @@ from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadLink
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
-from conftest import (
-    PNG_BYTES,
-    admin_headers,
-    app_headers,
-    upload_url_path,
-)
-
-
+from tests._infra.assets import PNG_BYTES
 def _insert_external_device_and_upload_link() -> tuple[str, str]:
     now = now_utc()
     with SessionLocal() as db:
@@ -91,7 +84,7 @@ def _insert_external_device_and_upload_link() -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def test_admin_endpoints_reject_app_scope_session(client: TestClient) -> None:
+def test_admin_endpoints_reject_app_scope_session(client: TestClient, *, identity) -> None:
     cases = [
         ("get", "/api/admin/devices", None),
         ("get", "/api/admin/upload-links", None),
@@ -99,9 +92,9 @@ def test_admin_endpoints_reject_app_scope_session(client: TestClient) -> None:
     ]
     for method, path, body in cases:
         if body is None:
-            response = getattr(client, method)(path, headers=app_headers())
+            response = getattr(client, method)(path, headers=identity.app_headers)
         else:
-            response = getattr(client, method)(path, headers=app_headers(), json=body)
+            response = getattr(client, method)(path, headers=identity.app_headers, json=body)
         assert response.status_code in {401, 403}, (path, response.status_code)
 
 
@@ -115,8 +108,8 @@ def test_admin_endpoints_reject_anonymous(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_list_devices_returns_public_ids_not_db_ids(client: TestClient) -> None:
-    response = client.get("/api/admin/devices", headers=admin_headers())
+def test_list_devices_returns_public_ids_not_db_ids(client: TestClient, *, identity) -> None:
+    response = client.get("/api/admin/devices", headers=identity.admin_headers)
     assert response.status_code == 200
     devices = response.json()
     assert len(devices) >= 1
@@ -130,28 +123,28 @@ def test_list_devices_returns_public_ids_not_db_ids(client: TestClient) -> None:
         assert "Bearer" not in str(device)
 
 
-def test_admin_device_management_is_scoped_to_visible_ledgers(client: TestClient) -> None:
+def test_admin_device_management_is_scoped_to_visible_ledgers(client: TestClient, *, identity) -> None:
     external_device_public_id, _ = _insert_external_device_and_upload_link()
 
-    response = client.get("/api/admin/devices", headers=admin_headers())
+    response = client.get("/api/admin/devices", headers=identity.admin_headers)
     assert response.status_code == 200
     assert "external phone" not in response.text
 
     rename = client.post(
         f"/api/admin/devices/{external_device_public_id}/rename",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"device_name": "should not rename"},
     )
     assert rename.status_code == 404
 
     revoke = client.post(
         f"/api/admin/devices/{external_device_public_id}/revoke",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
     )
     assert revoke.status_code == 404
 
 
-def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient) -> None:
+def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, *, identity) -> None:
     now = now_utc()
     with SessionLocal() as db:
         member_account = Account(display_name="family member private owner", created_at=now)
@@ -224,7 +217,7 @@ def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient) 
 
     response = client.post(
         f"/api/admin/devices/{public_id}/revoke",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
     )
 
     assert response.status_code == 200, response.text
@@ -239,7 +232,7 @@ def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient) 
         assert device.revoked_at is None
 
 
-def test_admin_devices_scope_requires_owned_ledgers_not_visible_membership(client: TestClient) -> None:
+def test_admin_devices_scope_requires_owned_ledgers_not_visible_membership(client: TestClient, *, identity) -> None:
     now = now_utc()
     with SessionLocal() as db:
         admin_account = db.query(Account).order_by(Account.id.asc()).first()
@@ -293,11 +286,11 @@ def test_admin_devices_scope_requires_owned_ledgers_not_visible_membership(clien
         public_id = device.public_id
         db.commit()
 
-    listed = client.get("/api/admin/devices", headers=admin_headers())
+    listed = client.get("/api/admin/devices", headers=identity.admin_headers)
     assert listed.status_code == 200
     assert public_id not in {item["public_id"] for item in listed.json()}
 
-    revoke = client.post(f"/api/admin/devices/{public_id}/revoke", headers=admin_headers())
+    revoke = client.post(f"/api/admin/devices/{public_id}/revoke", headers=identity.admin_headers)
     assert revoke.status_code == 404
     with SessionLocal() as db:
         token = db.query(AuthToken).filter(AuthToken.token_hash == token_hash).one()
@@ -305,7 +298,7 @@ def test_admin_devices_scope_requires_owned_ledgers_not_visible_membership(clien
 
 
 def test_revoke_device_invalidates_its_tokens_and_upload_links(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     # The seed creates: an "owner" admin device, plus pytest-android + tester.
     # We grab a non-admin device (the pytest-android app device) and revoke it.
@@ -325,13 +318,13 @@ def test_revoke_device_invalidates_its_tokens_and_upload_links(
 
     response = client.post(
         f"/api/admin/devices/{target_device_public_id}/revoke",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
     )
     assert response.status_code == 200, response.text
     assert response.json()["revoked_at"]
 
     # The previously valid app-scope session token must now fail.
-    check = client.get("/api/auth/check", headers=app_headers())
+    check = client.get("/api/auth/check", headers=identity.app_headers)
     assert check.status_code == 401
     assert check.json()["error"] == "invalid_token"
 
@@ -353,7 +346,7 @@ def test_revoke_device_invalidates_its_tokens_and_upload_links(
             assert link.revoked_at is not None
 
 
-def test_revoke_device_does_not_affect_other_devices(client: TestClient) -> None:
+def test_revoke_device_does_not_affect_other_devices(client: TestClient, *, identity) -> None:
     # Find the owner/admin device and the gray (tester_1) android device.
     gray_device_public_id = None
     with SessionLocal() as db:
@@ -374,12 +367,12 @@ def test_revoke_device_does_not_affect_other_devices(client: TestClient) -> None
     # Revoke the pytest-android device
     response = client.post(
         f"/api/admin/devices/{pytest_android_pid}/revoke",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
     )
     assert response.status_code == 200
 
     # Admin still works
-    listing = client.get("/api/admin/devices", headers=admin_headers())
+    listing = client.get("/api/admin/devices", headers=identity.admin_headers)
     assert listing.status_code == 200
 
     # Gray device's token should not have been touched.
@@ -394,7 +387,7 @@ def test_revoke_device_does_not_affect_other_devices(client: TestClient) -> None
             assert tok.revoked_at is None
 
 
-def test_admin_cannot_revoke_own_device(client: TestClient) -> None:
+def test_admin_cannot_revoke_own_device(client: TestClient, *, identity) -> None:
     own_pid = None
     with SessionLocal() as db:
         for d in db.query(Device).all():
@@ -403,21 +396,21 @@ def test_admin_cannot_revoke_own_device(client: TestClient) -> None:
                 break
     assert own_pid is not None
     response = client.post(
-        f"/api/admin/devices/{own_pid}/revoke", headers=admin_headers()
+        f"/api/admin/devices/{own_pid}/revoke", headers=identity.admin_headers
     )
     assert response.status_code == 409
     assert response.json()["error"] == "invalid_request"
 
 
-def test_revoke_unknown_device_returns_404(client: TestClient) -> None:
+def test_revoke_unknown_device_returns_404(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/admin/devices/00000000-0000-0000-0000-000000000000/revoke",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
     )
     assert response.status_code == 404
 
 
-def test_rename_device(client: TestClient) -> None:
+def test_rename_device(client: TestClient, *, identity) -> None:
     pid = None
     with SessionLocal() as db:
         for d in db.query(Device).all():
@@ -427,7 +420,7 @@ def test_rename_device(client: TestClient) -> None:
     assert pid is not None
     response = client.post(
         f"/api/admin/devices/{pid}/rename",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"device_name": "客厅 iPhone"},
     )
     assert response.status_code == 200
@@ -439,8 +432,8 @@ def test_rename_device(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_list_upload_links_masks_full_url(client: TestClient) -> None:
-    response = client.get("/api/admin/upload-links", headers=admin_headers())
+def test_list_upload_links_masks_full_url(client: TestClient, *, identity) -> None:
+    response = client.get("/api/admin/upload-links", headers=identity.admin_headers)
     assert response.status_code == 200
     items = response.json()
     assert len(items) >= 1
@@ -453,36 +446,35 @@ def test_list_upload_links_masks_full_url(client: TestClient) -> None:
         # The original seeded upload key value (CURRENT_UPLOAD_KEY) is a 32-char
         # hex token from new_upload_key(); make sure it is never exposed in the
         # listing.
-        from conftest import CURRENT_UPLOAD_KEY  # noqa: PLC0415
 
         assert CURRENT_UPLOAD_KEY not in body
 
 
-def test_admin_upload_link_management_is_scoped_to_visible_ledgers(client: TestClient) -> None:
+def test_admin_upload_link_management_is_scoped_to_visible_ledgers(client: TestClient, *, identity) -> None:
     _, external_link_public_id = _insert_external_device_and_upload_link()
 
-    response = client.get("/api/admin/upload-links", headers=admin_headers())
+    response = client.get("/api/admin/upload-links", headers=identity.admin_headers)
     assert response.status_code == 200
     assert external_link_public_id not in response.text
 
     revoke = client.post(
         f"/api/admin/upload-links/{external_link_public_id}/revoke",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
     )
     assert revoke.status_code == 404
 
     create = client.post(
         "/api/admin/upload-links",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"ledger_id": "external_admin_boundary", "default_timezone": "Asia/Shanghai"},
     )
     assert create.status_code == 404
 
 
-def test_create_upload_link_returns_secret_once(client: TestClient) -> None:
+def test_create_upload_link_returns_secret_once(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/admin/upload-links",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"default_timezone": "Asia/Shanghai"},
     )
     assert response.status_code == 200, response.text
@@ -495,7 +487,7 @@ def test_create_upload_link_returns_secret_once(client: TestClient) -> None:
     upload_key = upload_path[len("/u/"):]
 
     # Listing must not expose this key.
-    listing = client.get("/api/admin/upload-links", headers=admin_headers())
+    listing = client.get("/api/admin/upload-links", headers=identity.admin_headers)
     listed = next(item for item in listing.json() if item["public_id"] == public_id)
     assert listed["masked_url_path"] == "/u/***"
     assert upload_key not in str(listing.json())
@@ -509,11 +501,11 @@ def test_create_upload_link_returns_secret_once(client: TestClient) -> None:
     assert upload.json()["status"] == "pending"
 
 
-def test_rotate_upload_link_invalidates_old_key(client: TestClient) -> None:
+def test_rotate_upload_link_invalidates_old_key(client: TestClient, *, identity) -> None:
     # First create one so we have a known key to rotate.
     create = client.post(
         "/api/admin/upload-links",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"default_timezone": "Asia/Shanghai"},
     )
     assert create.status_code == 200
@@ -522,7 +514,7 @@ def test_rotate_upload_link_invalidates_old_key(client: TestClient) -> None:
     public_id = create.json()["link"]["public_id"]
 
     rotate = client.post(
-        f"/api/admin/upload-links/{public_id}/rotate", headers=admin_headers()
+        f"/api/admin/upload-links/{public_id}/rotate", headers=identity.admin_headers
     )
     assert rotate.status_code == 200, rotate.text
     new_payload = rotate.json()
@@ -547,10 +539,10 @@ def test_rotate_upload_link_invalidates_old_key(client: TestClient) -> None:
     assert new_upload.status_code == 200
 
 
-def test_revoke_upload_link_blocks_further_uploads(client: TestClient) -> None:
+def test_revoke_upload_link_blocks_further_uploads(client: TestClient, *, identity) -> None:
     create = client.post(
         "/api/admin/upload-links",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"default_timezone": "Asia/Shanghai"},
     )
     assert create.status_code == 200
@@ -558,7 +550,7 @@ def test_revoke_upload_link_blocks_further_uploads(client: TestClient) -> None:
     key = create.json()["upload_url_path"].split("?")[0][len("/u/"):]
 
     revoke = client.post(
-        f"/api/admin/upload-links/{public_id}/revoke", headers=admin_headers()
+        f"/api/admin/upload-links/{public_id}/revoke", headers=identity.admin_headers
     )
     assert revoke.status_code == 200
     assert revoke.json()["revoked_at"]
@@ -570,16 +562,16 @@ def test_revoke_upload_link_blocks_further_uploads(client: TestClient) -> None:
     assert response.json()["error"] == "invalid_token"
 
     rotate = client.post(
-        f"/api/admin/upload-links/{public_id}/rotate", headers=admin_headers()
+        f"/api/admin/upload-links/{public_id}/rotate", headers=identity.admin_headers
     )
     assert rotate.status_code == 409
     assert rotate.json()["error"] == "invalid_request"
 
 
-def test_upload_link_cannot_read_or_confirm(client: TestClient) -> None:
+def test_upload_link_cannot_read_or_confirm(client: TestClient, *, identity) -> None:
     # The seeded /u/{CURRENT_UPLOAD_KEY} is an UploadLink. Use it to confirm
     # that none of the app-scope routes accept it as authentication.
-    upload_path = upload_url_path()  # /u/<key>
+    upload_path = identity.upload_url_path  # /u/<key>
     upload_key = upload_path[len("/u/"):]
     bearer = {"Authorization": f"Bearer {upload_key}"}
 
@@ -601,20 +593,20 @@ def test_upload_link_cannot_read_or_confirm(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_admin_listings_never_contain_token_hashes(client: TestClient) -> None:
+def test_admin_listings_never_contain_token_hashes(client: TestClient, *, identity) -> None:
     """Belt-and-braces: even after creating/rotating links and renaming
     devices, no admin response body should ever contain a known token hash.
     """
 
     create = client.post(
         "/api/admin/upload-links",
-        headers=admin_headers(),
+        headers=identity.admin_headers,
         json={"default_timezone": "Asia/Shanghai"},
     )
     assert create.status_code == 200
 
-    devices = client.get("/api/admin/devices", headers=admin_headers()).json()
-    links = client.get("/api/admin/upload-links", headers=admin_headers()).json()
+    devices = client.get("/api/admin/devices", headers=identity.admin_headers).json()
+    links = client.get("/api/admin/upload-links", headers=identity.admin_headers).json()
 
     with SessionLocal() as db:
         token_hashes = [t.token_hash for t in db.query(AuthToken).all()]

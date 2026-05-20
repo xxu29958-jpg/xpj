@@ -17,13 +17,13 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-import conftest as cf
 from app.database import SessionLocal
 from app.main import app
 from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.category_service import list_category_summary
 from app.services.merchant_service import display_merchant, normalize_merchant
+from tests._infra.env import BACKEND_ROOT
 
 
 # ── Fixtures (mirror tests/test_web_app.py setup) ───────────────────────────
@@ -36,14 +36,14 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def _create_pending(client: TestClient) -> int:
+def _create_pending(client: TestClient, *, identity) -> int:
     png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
         b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
         b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     resp = client.post(
-        f"/u/{cf.CURRENT_UPLOAD_KEY}",
+        f"/u/{identity.upload_key}",
         headers={"Content-Type": "image/png"},
         content=png,
     )
@@ -103,10 +103,10 @@ def test_web_categories_renders_with_navigation(web_client: TestClient) -> None:
     assert 'href="/web/rules?ledger_id=owner"' in resp.text
 
 
-def test_web_categories_counts_pending_uncategorized(web_client: TestClient) -> None:
+def test_web_categories_counts_pending_uncategorized(web_client: TestClient, *, identity) -> None:
     # Two pending rows still in the default "其他" bucket.
-    _create_pending(web_client)
-    _create_pending(web_client)
+    _create_pending(web_client, identity=identity)
+    _create_pending(web_client, identity=identity)
     resp = web_client.get("/web/categories?ledger_id=owner")
     assert resp.status_code == 200
     # Both pending rows should land under the uncategorized chip.
@@ -194,9 +194,9 @@ def test_category_summary_uses_accounting_timezone_month_bounds(
     assert all(item.category != "Boundary" for item in utc.summaries)
 
 
-def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient) -> None:
-    eid_other = _create_pending(web_client)  # stays "其他"
-    eid_food = _create_pending(web_client)
+def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, identity) -> None:
+    eid_other = _create_pending(web_client, identity=identity)  # stays "其他"
+    eid_food = _create_pending(web_client, identity=identity)
     _save_pending(
         web_client, eid_food, amount_yuan="12.34", merchant="星巴克", category="餐饮"
     )
@@ -207,8 +207,8 @@ def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient) -> N
     assert str(eid_food) not in ids
 
 
-def test_web_uncategorized_bulk_set_category(web_client: TestClient) -> None:
-    eid = _create_pending(web_client)
+def test_web_uncategorized_bulk_set_category(web_client: TestClient, *, identity) -> None:
+    eid = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         "/web/categories/uncategorized/bulk-set",
         data={
@@ -245,13 +245,13 @@ def test_web_categories_remote_returns_403(client: TestClient) -> None:
     assert client.get("/web/categories/uncategorized").status_code == 403
 
 
-def test_web_categories_no_secret_leak(web_client: TestClient) -> None:
-    _create_pending(web_client)
+def test_web_categories_no_secret_leak(web_client: TestClient, *, identity) -> None:
+    _create_pending(web_client, identity=identity)
     for path in ("/web/categories?ledger_id=owner", "/web/categories/uncategorized?ledger_id=owner"):
         resp = web_client.get(path)
         assert resp.status_code == 200
         body = resp.text
-        assert cf.CURRENT_APP_TOKEN not in body
-        assert cf.CURRENT_ADMIN_TOKEN not in body
-        assert cf.CURRENT_UPLOAD_KEY not in body
-        assert str(cf.BACKEND_ROOT) not in body
+        assert identity.app_token not in body
+        assert identity.admin_token not in body
+        assert identity.upload_key not in body
+        assert str(BACKEND_ROOT) not in body

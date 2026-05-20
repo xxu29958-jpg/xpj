@@ -6,13 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import conftest as cf  # noqa: F401
 from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
-from conftest import admin_headers
-
 
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
@@ -21,9 +18,9 @@ def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_web_require_local, None)
 
 
-def _make_ledger_with_role(client: TestClient, role: str) -> str:
+def _make_ledger_with_role(client: TestClient, role: str, *, identity) -> str:
     resp = client.post(
-        "/api/ledgers", headers=admin_headers(), json={"name": f"{role}_ledger"}
+        "/api/ledgers", headers=identity.admin_headers, json={"name": f"{role}_ledger"}
     )
     assert resp.status_code == 201, resp.json()
     lid = resp.json()["ledger_id"]
@@ -77,8 +74,8 @@ def test_web_pending_shows_owner_role_chip_by_default(web_client: TestClient) ->
     assert "批量确认" in resp.text
 
 
-def test_web_pending_viewer_hides_bulk_actions(web_client: TestClient) -> None:
-    lid = _make_ledger_with_role(web_client, "viewer")
+def test_web_pending_viewer_hides_bulk_actions(web_client: TestClient, *, identity) -> None:
+    lid = _make_ledger_with_role(web_client, "viewer", identity=identity)
     _seed_pending(lid)
     resp = web_client.get(f"/web/pending?ledger_id={lid}")
     assert resp.status_code == 200
@@ -91,8 +88,8 @@ def test_web_pending_viewer_hides_bulk_actions(web_client: TestClient) -> None:
     assert "批量忽略" not in resp.text
 
 
-def test_web_member_role_keeps_write_buttons(web_client: TestClient) -> None:
-    lid = _make_ledger_with_role(web_client, "member")
+def test_web_member_role_keeps_write_buttons(web_client: TestClient, *, identity) -> None:
+    lid = _make_ledger_with_role(web_client, "member", identity=identity)
     _seed_pending(lid)
     resp = web_client.get(f"/web/pending?ledger_id={lid}")
     assert resp.status_code == 200
@@ -102,9 +99,9 @@ def test_web_member_role_keeps_write_buttons(web_client: TestClient) -> None:
     assert "批量确认" in resp.text
 
 
-def test_web_edit_viewer_disables_inputs(web_client: TestClient) -> None:
+def test_web_edit_viewer_disables_inputs(web_client: TestClient, *, identity) -> None:
     """Viewer can open edit page but inputs are disabled and Save is gone."""
-    lid = _make_ledger_with_role(web_client, "viewer")
+    lid = _make_ledger_with_role(web_client, "viewer", identity=identity)
     eid = _seed_pending(lid)
 
     resp = web_client.get(f"/web/expenses/{eid}/edit?ledger_id={lid}")

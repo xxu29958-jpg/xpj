@@ -11,8 +11,6 @@ from app.database import SessionLocal
 from app.models import LedgerMember
 from app.services.exchange_rate_service import calculate_cny_cents, default_rate_date
 from app.services.fx_rate_provider import cross_rate_to_home, parse_ecb_daily_rates, upsert_fx_rate
-from conftest import app_headers, gray_app_headers
-
 
 def test_default_rate_date_uses_accounting_local_day_for_stored_utc_time() -> None:
     assert default_rate_date(datetime(2026, 4, 30, 16, 30, tzinfo=UTC)) == date(2026, 5, 1)
@@ -27,10 +25,10 @@ def _demote_owner_ledger_to_viewer() -> None:
         db.commit()
 
 
-def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestClient) -> None:
+def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestClient, *, identity) -> None:
     created = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "currency_code": "USD",
             "rate_date": "2026-05-04",
@@ -42,22 +40,22 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
     assert created.json()["currency_code"] == "USD"
     assert Decimal(created.json()["rate_to_cny"]) == Decimal("7.12340000")
 
-    owner_rates = client.get("/api/exchange-rates?currency_code=USD", headers=app_headers())
+    owner_rates = client.get("/api/exchange-rates?currency_code=USD", headers=identity.app_headers)
     assert owner_rates.status_code == 200, owner_rates.json()
     assert [row["rate_date"] for row in owner_rates.json()["items"]] == ["2026-05-04"]
 
-    gray_rates = client.get("/api/exchange-rates?currency_code=USD", headers=gray_app_headers())
+    gray_rates = client.get("/api/exchange-rates?currency_code=USD", headers=identity.gray_app_headers)
     assert gray_rates.status_code == 200, gray_rates.json()
     assert gray_rates.json()["items"] == []
 
     _demote_owner_ledger_to_viewer()
-    viewer_read = client.get("/api/exchange-rates?currency_code=USD", headers=app_headers())
+    viewer_read = client.get("/api/exchange-rates?currency_code=USD", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert viewer_read.json()["items"][0]["rate_date"] == "2026-05-04"
 
     viewer_write = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "currency_code": "USD",
             "rate_date": "2026-05-05",
@@ -68,10 +66,10 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
     assert viewer_write.json()["error"] == "permission_denied"
 
 
-def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient) -> None:
+def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, identity) -> None:
     currency_mismatch = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "currency_code": "EUR",
             "rate_date": "2026-05-04",
@@ -84,7 +82,7 @@ def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient) -> Non
 
     date_mismatch = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "currency_code": "USD",
             "rate_date": "2026-05-05",
@@ -96,10 +94,10 @@ def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient) -> Non
     assert date_mismatch.json()["error"] == "invalid_request"
 
 
-def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client: TestClient) -> None:
+def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "currency_code": "USD",
             "rate_date": "2026-05-04",
@@ -111,7 +109,7 @@ def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client
 
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency_code": "USD",
             "original_amount_minor": 12345,
@@ -137,11 +135,11 @@ def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client
     assert payload["fx_source"] == "manual"
     assert payload["fx_status"] == "ready"
 
-    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200, stats.json()
     assert stats.json()["total_amount_cents"] == 87938
 
-    exported = client.get("/api/expenses/export.csv?month=2026-05", headers=app_headers())
+    exported = client.get("/api/expenses/export.csv?month=2026-05", headers=identity.app_headers)
     assert exported.status_code == 200, exported.text
     header = exported.text.splitlines()[0]
     assert "original_currency_code" in header
@@ -152,10 +150,10 @@ def test_manual_foreign_expense_uses_stored_daily_rate_and_stats_stay_cny(client
     assert "7.12340000" in exported.text
 
 
-def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client: TestClient) -> None:
+def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-01",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "currency_code": "USD",
             "rate_date": "2026-05-01",
@@ -167,7 +165,7 @@ def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client:
 
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency_code": "USD",
             "original_amount_minor": 100,
@@ -184,10 +182,10 @@ def test_foreign_expense_uses_payload_local_calendar_day_for_rate_lookup(client:
     assert payload["fx_status"] == "ready"
 
 
-def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pending(client: TestClient) -> None:
+def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pending(client: TestClient, *, identity) -> None:
     missing_rate = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency_code": "JPY",
             "original_amount_minor": 1200,
@@ -215,7 +213,7 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
 
     confirmed_pending = client.post(
         f"/api/expenses/{pending_id}/confirm",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert confirmed_pending.status_code == 200, confirmed_pending.json()
     assert confirmed_pending.json()["status"] == "confirmed"
@@ -224,7 +222,7 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
 
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency_code": "JPY",
             "original_amount_minor": 1200,
@@ -243,23 +241,23 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
     assert response.json()["fx_status"] == "ready"
 
 
-def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(client: TestClient) -> None:
+def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(client: TestClient, *, identity) -> None:
     day_one = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
     )
     assert day_one.status_code == 200, day_one.json()
     day_two = client.put(
         "/api/exchange-rates/USD/2026-05-05",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"currency_code": "USD", "rate_date": "2026-05-05", "rate_to_cny": "8.0000"},
     )
     assert day_two.status_code == 200, day_two.json()
 
     created = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency_code": "USD",
             "original_amount_minor": 10000,
@@ -275,7 +273,7 @@ def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(cli
 
     edited = client.patch(
         f"/api/expenses/{int(initial['id'])}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"spent_at": "2026-05-05T02:00:00Z"},
     )
     assert edited.status_code == 200, edited.json()
@@ -285,10 +283,10 @@ def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(cli
     assert body["amount_cents"] == 80000
 
 
-def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient) -> None:
+def test_legacy_amount_payload_defaults_to_cny_rate_one(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1280,
             "merchant": "手动早餐",
@@ -332,10 +330,10 @@ def test_calculate_home_minor_units_respects_no_fraction_home_currency(monkeypat
         get_settings.cache_clear()
 
 
-def test_expense_write_rejects_client_submitted_exchange_rate(client: TestClient) -> None:
+def test_expense_write_rejects_client_submitted_exchange_rate(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency": "USD",
             "original_amount": "12.34",
@@ -348,7 +346,7 @@ def test_expense_write_rejects_client_submitted_exchange_rate(client: TestClient
     assert response.status_code == 422
 
 
-def test_ecb_daily_xml_cross_rate_can_be_stored_as_home_rate(client: TestClient) -> None:
+def test_ecb_daily_xml_cross_rate_can_be_stored_as_home_rate(client: TestClient, *, identity) -> None:
     xml = """
     <gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01"
         xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
@@ -377,7 +375,7 @@ def test_ecb_daily_xml_cross_rate_can_be_stored_as_home_rate(client: TestClient)
 
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency": "USD",
             "original_amount": "12.34",

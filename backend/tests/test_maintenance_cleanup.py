@@ -6,16 +6,17 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
-from conftest import BACKEND_ROOT, PNG_BYTES, TEST_UPLOAD_DIR, admin_headers, app_headers, upload_headers, upload_url_path
+from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR
+from tests._infra.assets import PNG_BYTES
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.time_service import now_utc
 
 
-def _upload_png(client: TestClient) -> int:
+def _upload_png(client: TestClient, *, identity) -> int:
     response = client.post(
-        upload_url_path(),
-        headers=upload_headers(),
+        identity.upload_url_path,
+        headers=identity.upload_headers,
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )
     assert response.status_code == 200
@@ -34,11 +35,11 @@ def _absolute(relative_path: str) -> str:
     return str((BACKEND_ROOT / relative_path).resolve())
 
 
-def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestClient, monkeypatch) -> None:
+def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestClient, monkeypatch, *, identity) -> None:
     from app.services import cleanup_service
 
-    expense_id = _upload_png(client)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    expense_id = _upload_png(client, identity=identity)
+    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
     assert rejected.status_code == 200
 
     with SessionLocal() as db:
@@ -55,7 +56,7 @@ def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestCli
     settings = cleanup_service.get_settings()
     monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, delete_rejected_after_days=1))
 
-    response = client.post("/api/maintenance/cleanup-rejected", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-rejected", headers=identity.admin_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["enabled"] is True
@@ -63,7 +64,7 @@ def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestCli
     assert payload["deleted_images"] == 1
     assert not os.path.exists(image_path)
 
-    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200
     assert detail.json()["status"] == "rejected"
 
@@ -76,12 +77,12 @@ def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestCli
 
 def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
     client: TestClient,
-    monkeypatch,
+    monkeypatch, *, identity,
 ) -> None:
     from app.services import cleanup_service
 
-    expense_id = _upload_png(client)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    expense_id = _upload_png(client, identity=identity)
+    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
     assert rejected.status_code == 200
 
     with SessionLocal() as db:
@@ -98,7 +99,7 @@ def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
 
     monkeypatch.setattr(cleanup_service.Path, "unlink", fail_unlink)
 
-    response = client.post("/api/maintenance/cleanup-rejected", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-rejected", headers=identity.admin_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["scanned"] == 1
@@ -110,7 +111,7 @@ def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
         assert row.image_deleted_at is None
 
 
-def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monkeypatch) -> None:
+def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monkeypatch, *, identity) -> None:
     from app.services import cleanup_service
 
     settings = cleanup_service.get_settings()
@@ -123,7 +124,7 @@ def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monke
     old = (now_utc() - timedelta(hours=3)).timestamp()
     os.utime(orphan, (old, old))
 
-    response = client.post("/api/maintenance/cleanup-orphans?dry_run=true", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=true", headers=identity.admin_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["dry_run"] is True
@@ -134,7 +135,7 @@ def test_cleanup_orphans_dry_run_does_not_delete_files(client: TestClient, monke
 
 def test_cleanup_orphans_continues_when_single_file_unlink_fails(
     client: TestClient,
-    monkeypatch,
+    monkeypatch, *, identity,
 ) -> None:
     from app.services import cleanup_service
 
@@ -153,7 +154,7 @@ def test_cleanup_orphans_continues_when_single_file_unlink_fails(
 
     monkeypatch.setattr(cleanup_service.Path, "unlink", fail_unlink)
 
-    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=identity.admin_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["orphan_files"] == 1
@@ -161,10 +162,10 @@ def test_cleanup_orphans_continues_when_single_file_unlink_fails(
     assert orphan.exists()
 
 
-def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient, monkeypatch) -> None:
+def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient, monkeypatch, *, identity) -> None:
     from app.services import cleanup_service
 
-    expense_id = _upload_png(client)
+    expense_id = _upload_png(client, identity=identity)
     referenced = _expense(expense_id)
     assert referenced.image_path is not None
     referenced_path = _absolute(referenced.image_path)
@@ -185,7 +186,7 @@ def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient,
     os.utime(orphan, (old, old))
     os.utime(tester_orphan, (old, old))
 
-    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=identity.admin_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["dry_run"] is False
@@ -198,11 +199,11 @@ def test_cleanup_orphans_deletes_only_unreferenced_old_files(client: TestClient,
 
 def test_cleanup_orphans_treats_windows_style_upload_paths_as_referenced(
     client: TestClient,
-    monkeypatch,
+    monkeypatch, *, identity,
 ) -> None:
     from app.services import cleanup_service
 
-    expense_id = _upload_png(client)
+    expense_id = _upload_png(client, identity=identity)
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
@@ -220,7 +221,7 @@ def test_cleanup_orphans_treats_windows_style_upload_paths_as_referenced(
     settings = cleanup_service.get_settings()
     monkeypatch.setattr(cleanup_service, "get_settings", lambda: replace(settings, orphan_upload_grace_hours=1))
 
-    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=identity.admin_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["orphan_files"] == 0
@@ -230,7 +231,7 @@ def test_cleanup_orphans_treats_windows_style_upload_paths_as_referenced(
 
 def test_cleanup_orphans_scans_default_ledger_legacy_upload_paths(
     client: TestClient,
-    monkeypatch,
+    monkeypatch, *, identity,
 ) -> None:
     from app.services import cleanup_service
 
@@ -258,7 +259,7 @@ def test_cleanup_orphans_scans_default_ledger_legacy_upload_paths(
         )
         db.commit()
 
-    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-orphans?dry_run=false", headers=identity.admin_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["orphan_files"] == 1

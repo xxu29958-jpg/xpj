@@ -91,12 +91,12 @@ def test_owner_index_renders_windows_tasks_section(local_client: TestClient) -> 
     assert "Windows 计划任务" in body
 
 
-def test_owner_index_no_secret_leak_with_tasks(local_client: TestClient) -> None:
+def test_owner_index_no_secret_leak_with_tasks(local_client: TestClient, *, identity) -> None:
     import conftest as cf
 
     body = local_client.get("/owner").text
-    assert cf.CURRENT_APP_TOKEN not in body
-    assert cf.CURRENT_ADMIN_TOKEN not in body
+    assert identity.app_token not in body
+    assert identity.admin_token not in body
 
 
 def test_db_maintenance_scripts_resolve_configured_database_url() -> None:

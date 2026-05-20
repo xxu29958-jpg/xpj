@@ -8,28 +8,23 @@ from api_contract_helpers import (
 )
 from app.main import app
 from app.network_boundary import require_admin_network_boundary
-from conftest import (
-    admin_headers,
-    app_headers,
-)
 
-
-def test_admin_maintenance_requires_admin_token(client: TestClient) -> None:
-    response = client.post("/api/maintenance/cleanup-images", headers=app_headers())
+def test_admin_maintenance_requires_admin_token(client: TestClient, *, identity) -> None:
+    response = client.post("/api/maintenance/cleanup-images", headers=identity.app_headers)
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
 
-    response = client.post("/api/maintenance/cleanup-images", headers=admin_headers())
+    response = client.post("/api/maintenance/cleanup-images", headers=identity.admin_headers)
     assert response.status_code == 200
     assert response.json()["enabled"] is False
 
 
-def test_maintenance_rejects_public_host_even_with_admin_token(client: TestClient) -> None:
+def test_maintenance_rejects_public_host_even_with_admin_token(client: TestClient, *, identity) -> None:
     app.dependency_overrides.pop(require_admin_network_boundary, None)
     try:
         response = client.post(
             "/api/maintenance/cleanup-images",
-            headers={**admin_headers(), "host": "api.example.com"},
+            headers={**identity.admin_headers, "host": "api.example.com"},
         )
     finally:
         app.dependency_overrides[require_admin_network_boundary] = lambda: None
@@ -39,10 +34,10 @@ def test_maintenance_rejects_public_host_even_with_admin_token(client: TestClien
 
 
 def test_server_settings_snapshot_does_not_expose_paths_or_tokens(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    upload_png(client)
-    response = client.get("/api/settings/server", headers=app_headers())
+    upload_png(client, identity=identity)
+    response = client.get("/api/settings/server", headers=identity.app_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["account_name"] == "我"

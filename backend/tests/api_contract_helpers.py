@@ -8,15 +8,21 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
-from conftest import PNG_BYTES, TEST_UPLOAD_DIR, upload_headers, upload_url_path
+from tests._infra.assets import PNG_BYTES
+from tests._infra.env import TEST_UPLOAD_DIR
+from tests._infra.identity import TestIdentity
 
 
 def upload_png(
-    client: TestClient, headers: dict[str, str] | None = None, path: str | None = None
+    client: TestClient,
+    *,
+    identity: TestIdentity,
+    headers: dict[str, str] | None = None,
+    path: str | None = None,
 ) -> int:
     response = client.post(
-        path or upload_url_path(),
-        headers=headers or upload_headers(),
+        path or identity.upload_url_path,
+        headers=headers if headers is not None else identity.upload_headers,
         files={"file": ("ticket.png", PNG_BYTES, "image/png")},
     )
     assert response.status_code == 200
@@ -39,10 +45,10 @@ def upload_png(
     return int(payload["id"])
 
 
-def upload_png_as_raw_body(client: TestClient) -> int:
+def upload_png_as_raw_body(client: TestClient, *, identity: TestIdentity) -> int:
     response = client.post(
-        upload_url_path(),
-        headers={**upload_headers(), "Content-Type": "image/png"},
+        identity.upload_url_path,
+        headers={**identity.upload_headers, "Content-Type": "image/png"},
         content=PNG_BYTES,
     )
     assert response.status_code == 200

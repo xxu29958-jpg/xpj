@@ -9,9 +9,8 @@ from sqlalchemy import inspect, text
 
 from app.database import BACKEND_ROOT, Base, SessionLocal, engine, init_db, migrate_upload_paths_to_tenant_dirs
 from app.models import DuplicateIgnore, Expense
-from conftest import PNG_BYTES, TEST_DB_PATH, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
-
-
+from tests._infra.env import TEST_DB_PATH, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
+from tests._infra.assets import PNG_BYTES
 def _reset_empty_database() -> None:
     Base.metadata.drop_all(bind=engine)
 

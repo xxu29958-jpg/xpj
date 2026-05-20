@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-import conftest as cf  # noqa: F401 — ensures module-level seeds run
 from app.main import app
 from app.routes.owner_console import _require_local
 
@@ -399,14 +398,14 @@ def test_owner_dashboard_renders_unconfigured_budget_status(local_client: TestCl
 
 
 def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
-    local_client: TestClient,
+    local_client: TestClient, *, identity,
 ) -> None:
     from app.services.time_service import current_month
 
     month = current_month("Asia/Shanghai")
     created = local_client.post(
         "/api/expenses/manual",
-        headers=cf.app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 12000,
             "merchant": "预算状态餐饮",
@@ -417,7 +416,7 @@ def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
     assert created.status_code == 200, created.json()
     budget = local_client.put(
         f"/api/budgets/monthly/{month}?timezone=Asia/Shanghai",
-        headers=cf.app_headers(),
+        headers=identity.app_headers,
         json={
             "total_amount_cents": 100000,
             "category_budgets": [{"category": "餐饮", "amount_cents": 10000}],

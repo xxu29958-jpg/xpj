@@ -16,17 +16,15 @@ from app.database import SessionLocal
 from app.models import AuthToken, Invitation, Ledger, LedgerMember
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
-from conftest import admin_headers, app_headers
-
 
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
 
 
-def _create_family_ledger(client: TestClient, name: str = "家庭账本") -> str:
+def _create_family_ledger(client: TestClient, name: str = "家庭账本", *, identity) -> str:
     """Use admin token to mint a new ledger; owner-account is auto-added."""
-    resp = client.post("/api/ledgers", headers=admin_headers(), json={"name": name})
+    resp = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": name})
     assert resp.status_code == 201, resp.json()
     return resp.json()["ledger_id"]
 
@@ -59,10 +57,10 @@ def _set_member_role(ledger_id: str, account_id: int, role: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_owner_can_create_invitation_and_token_is_returned_once(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
+def test_owner_can_create_invitation_and_token_is_returned_once(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
     # Switch app token to family ledger so caller is owner there.
-    family_app = _switch_to(client, family_id, app_headers())
+    family_app = _switch_to(client, family_id, identity.app_headers)
 
     resp = client.post(
         f"/api/ledgers/{family_id}/invitations",
@@ -96,9 +94,9 @@ def test_owner_can_create_invitation_and_token_is_returned_once(client: TestClie
     assert "invite_token" not in listed_body["invitations"][0]
 
 
-def test_member_cannot_create_invitation(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_member_cannot_create_invitation(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     # Demote owner-of-family-ledger to member (synthetic scenario).
     with SessionLocal() as db:
         owner = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(family_app)))
@@ -114,9 +112,9 @@ def test_member_cannot_create_invitation(client: TestClient) -> None:
     assert resp.json()["error"] == "permission_denied"
 
 
-def test_viewer_cannot_create_invitation(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_viewer_cannot_create_invitation(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     with SessionLocal() as db:
         owner = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(family_app)))
         assert owner is not None
@@ -132,9 +130,9 @@ def test_viewer_cannot_create_invitation(client: TestClient) -> None:
     assert resp.json()["message"] == "当前角色为只读，无法修改账本。"
 
 
-def test_cannot_invite_with_owner_role(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_cannot_invite_with_owner_role(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     resp = client.post(
         f"/api/ledgers/{family_id}/invitations",
         headers=_bearer(family_app),
@@ -159,10 +157,10 @@ def _mint(client: TestClient, family_id: str, family_app: str, role: str = "memb
     return resp.json()["invite_token"]
 
 
-def test_preview_invitation_returns_target_without_consuming_token(client: TestClient) -> None:
+def test_preview_invitation_returns_target_without_consuming_token(client: TestClient, *, identity) -> None:
     ledger_name = "家庭共同账本" + "很长" * 20
-    family_id = _create_family_ledger(client, name=ledger_name)
-    family_app = _switch_to(client, family_id, app_headers())
+    family_id = _create_family_ledger(client, name=ledger_name, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app, role="viewer")
 
     preview = client.post(
@@ -197,9 +195,9 @@ def test_preview_invitation_returns_target_without_consuming_token(client: TestC
     assert accepted.json()["role"] == "viewer"
 
 
-def test_preview_used_invitation_is_invalid(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_preview_used_invitation_is_invalid(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app)
 
     accepted = client.post(
@@ -216,9 +214,9 @@ def test_preview_used_invitation_is_invalid(client: TestClient) -> None:
     assert preview.json()["error"] == "invitation_invalid"
 
 
-def test_accept_invitation_issues_app_token_and_membership(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_accept_invitation_issues_app_token_and_membership(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app, role="member")
 
     resp = client.post(
@@ -244,9 +242,9 @@ def test_accept_invitation_issues_app_token_and_membership(client: TestClient) -
     assert check.json()["ledger_id"] == family_id
 
 
-def test_accept_invitation_with_existing_session_revokes_replaced_token(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_accept_invitation_with_existing_session_revokes_replaced_token(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app, role="member")
 
     resp = client.post(
@@ -271,9 +269,9 @@ def test_accept_invitation_with_existing_session_revokes_replaced_token(client: 
     assert new_check.json()["ledger_id"] == family_id
 
 
-def test_accept_already_used_invitation(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_accept_already_used_invitation(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app)
 
     first = client.post(
@@ -289,9 +287,9 @@ def test_accept_already_used_invitation(client: TestClient) -> None:
     assert second.json()["error"] == "invitation_invalid"
 
 
-def test_accept_revoked_invitation(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_accept_revoked_invitation(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app)
 
     # Fetch public_id via list endpoint.
@@ -315,9 +313,9 @@ def test_accept_revoked_invitation(client: TestClient) -> None:
     assert resp.json()["error"] == "invitation_invalid"
 
 
-def test_accept_expired_invitation(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_accept_expired_invitation(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app)
     with SessionLocal() as db:
         inv = db.scalar(select(Invitation))
@@ -335,10 +333,10 @@ def test_accept_expired_invitation(client: TestClient) -> None:
 
 def test_accept_invitation_rechecks_expiry_when_consuming_token(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, *, identity,
 ) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app)
     base = datetime(2026, 5, 1, 0, 0, tzinfo=UTC)
     with SessionLocal() as db:
@@ -389,9 +387,9 @@ def _make_role_token(client: TestClient, family_id: str, family_app: str, role: 
     return resp.json()["session_token"]
 
 
-def test_viewer_cannot_create_manual_expense(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_viewer_cannot_create_manual_expense(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     viewer_token = _make_role_token(client, family_id, family_app, role="viewer")
 
     resp = client.post(
@@ -403,9 +401,9 @@ def test_viewer_cannot_create_manual_expense(client: TestClient) -> None:
     assert resp.json()["error"] == "permission_denied"
 
 
-def test_member_can_create_manual_expense(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_member_can_create_manual_expense(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
 
     resp = client.post(
@@ -416,9 +414,9 @@ def test_member_can_create_manual_expense(client: TestClient) -> None:
     assert resp.status_code == 200, resp.json()
 
 
-def test_member_cannot_disable_other_member(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_member_cannot_disable_other_member(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
 
     members = client.get(
@@ -434,9 +432,9 @@ def test_member_cannot_disable_other_member(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
-def test_owner_can_change_member_between_writer_and_viewer(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_owner_can_change_member_between_writer_and_viewer(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
 
     members = client.get(
@@ -478,9 +476,9 @@ def test_owner_can_change_member_between_writer_and_viewer(client: TestClient) -
     assert allowed_write.status_code == 200, allowed_write.json()
 
 
-def test_member_cannot_change_roles_and_owner_role_is_fixed(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_member_cannot_change_roles_and_owner_role_is_fixed(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
     members = client.get(
         f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
@@ -509,9 +507,9 @@ def test_member_cannot_change_roles_and_owner_role_is_fixed(client: TestClient) 
 # ---------------------------------------------------------------------------
 
 
-def test_disable_member_revokes_active_tokens(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_disable_member_revokes_active_tokens(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
 
     # Member token works at first.
@@ -535,9 +533,9 @@ def test_disable_member_revokes_active_tokens(client: TestClient) -> None:
     assert fail.status_code == 401
 
 
-def test_cannot_disable_owner_or_self(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_cannot_disable_owner_or_self(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     members = client.get(
         f"/api/ledgers/{family_id}/members", headers=_bearer(family_app)
     ).json()["members"]
@@ -557,9 +555,9 @@ def test_cannot_disable_owner_or_self(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_joiner_does_not_see_owners_personal_ledger(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_joiner_does_not_see_owners_personal_ledger(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
 
     listed = client.get("/api/ledgers", headers=_bearer(member_token)).json()["ledgers"]
@@ -568,9 +566,9 @@ def test_joiner_does_not_see_owners_personal_ledger(client: TestClient) -> None:
     assert ids == {family_id}
 
 
-def test_existing_owner_role_unchanged_after_invite(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_existing_owner_role_unchanged_after_invite(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     _make_role_token(client, family_id, family_app, role="member")
 
     # The original owner (same account) still has 'owner' role across all
@@ -590,13 +588,13 @@ def test_existing_owner_role_unchanged_after_invite(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cannot_administer_other_ledger_through_url(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
+def test_cannot_administer_other_ledger_through_url(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
     # App token is still bound to "owner" ledger; try to mint invitations for
     # the family ledger without switching. Must 404 (we collapse to ledger_not_found).
     resp = client.post(
         f"/api/ledgers/{family_id}/invitations",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"role": "member"},
     )
     assert resp.status_code == 404
@@ -608,9 +606,9 @@ def test_cannot_administer_other_ledger_through_url(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_invite_token_hash_matches_and_not_persisted_plain(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_invite_token_hash_matches_and_not_persisted_plain(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     invite = _mint(client, family_id, family_app)
     with SessionLocal() as db:
         row = db.scalar(select(Invitation))
@@ -626,9 +624,9 @@ def test_invite_token_hash_matches_and_not_persisted_plain(client: TestClient) -
 # ---------------------------------------------------------------------------
 
 
-def test_switching_back_to_personal_ledger_keeps_owner_role(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    fam_token = _switch_to(client, family_id, app_headers())
+def test_switching_back_to_personal_ledger_keeps_owner_role(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    fam_token = _switch_to(client, family_id, identity.app_headers)
     check = client.get("/api/auth/check", headers=_bearer(fam_token))
     assert check.status_code == 200
     assert check.json()["role"] == "owner"
@@ -641,9 +639,9 @@ def test_switching_back_to_personal_ledger_keeps_owner_role(client: TestClient) 
     assert final.json()["ledger_id"] == "owner"
 
 
-def test_member_role_persists_across_switch(client: TestClient) -> None:
-    family_id = _create_family_ledger(client)
-    family_app = _switch_to(client, family_id, app_headers())
+def test_member_role_persists_across_switch(client: TestClient, *, identity) -> None:
+    family_id = _create_family_ledger(client, identity=identity)
+    family_app = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(client, family_id, family_app, role="member")
     # Joiner is only in family_id, so /api/ledgers returns only family_id.
     listed = client.get("/api/ledgers", headers=_bearer(member_token)).json()["ledgers"]

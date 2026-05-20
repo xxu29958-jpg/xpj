@@ -9,7 +9,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import conftest as cf  # noqa: F401
 from app.database import SessionLocal
 from app.main import app
 from app.models import Expense
@@ -216,8 +215,8 @@ def test_web_invalid_ledger_rejected(web_client: TestClient) -> None:
     assert "请选择一个有权限的账本" in body or "invalid_request" in body
 
 
-def test_web_selected_ledger_pending_isolated(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_selected_ledger_pending_isolated(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     # Default (owner) sees the new pending row...
     owner_pending = web_client.get("/web/pending?ledger_id=owner")
     assert owner_pending.status_code == 200
@@ -227,8 +226,8 @@ def test_web_selected_ledger_pending_isolated(web_client: TestClient) -> None:
     assert str(expense_id) not in _row_id_set(tester_pending.text)
 
 
-def test_web_selected_ledger_confirmed_isolated(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_selected_ledger_confirmed_isolated(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={"amount_yuan": "9.99", "merchant": "X", "category": "", "note": "",
@@ -257,8 +256,8 @@ def test_web_selected_ledger_stats_isolated(web_client: TestClient) -> None:
     assert "月度统计" in resp_tester.text
 
 
-def test_web_reject_keeps_selected_ledger(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_reject_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/reject",
         data={"ledger_id": "owner"},
@@ -268,8 +267,8 @@ def test_web_reject_keeps_selected_ledger(web_client: TestClient) -> None:
     assert "ledger_id=owner" in resp.headers.get("location", "")
 
 
-def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={"amount_yuan": "1.50", "merchant": "M", "category": "", "note": "",
@@ -285,7 +284,7 @@ def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient) -> N
     assert "ledger_id=owner" in resp.headers.get("location", "")
 
 
-def test_web_no_secret_leaks(web_client: TestClient) -> None:
+def test_web_no_secret_leaks(web_client: TestClient, *, identity) -> None:
     """No token_hash, upload_key, pairing_code or absolute path in HTML."""
     pages = ["/web", "/web/pending", "/web/confirmed", "/web/stats", "/web/search"]
     for path in pages:
@@ -297,7 +296,7 @@ def test_web_no_secret_leaks(web_client: TestClient) -> None:
         # Upload keys (~40 chars urlsafe). Anything starting with /u/ + token.
         assert "upload_key" not in body, f"upload_key keyword leaked in {path}"
         # Pairing code printed verbatim is fine as a label; ensure runtime value not echoed
-        assert cf.CURRENT_UPLOAD_KEY not in body, f"upload_key value leaked in {path}"
+        assert identity.upload_key not in body, f"upload_key value leaked in {path}"
         # Absolute Windows / POSIX paths
         assert not re.search(r"[A-Za-z]:\\\\[^\"'<>]+", body), f"abs path leaked in {path}"
         assert "/home/" not in body and "C:\\" not in body
@@ -305,7 +304,7 @@ def test_web_no_secret_leaks(web_client: TestClient) -> None:
 
 # ── Existing save/confirm semantics still work ──────────────────────────────
 
-def _create_pending(client: TestClient) -> int:
+def _create_pending(client: TestClient, *, identity) -> int:
     """Helper: upload a tiny PNG to the owner ledger so /web/pending sees it."""
     png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -313,7 +312,7 @@ def _create_pending(client: TestClient) -> int:
         b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     resp = client.post(
-        f"/u/{cf.CURRENT_UPLOAD_KEY}",
+        f"/u/{identity.upload_key}",
         headers={"Content-Type": "image/png"},
         content=png,
     )
@@ -326,8 +325,8 @@ def _row_id_set(html: str) -> set[str]:
     return set(re.findall(r"/web/expenses/(\d+)/edit", html))
 
 
-def test_web_edit_save_updates_amount(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={"amount_yuan": "12.34", "merchant": "测试商家", "category": "餐饮",
@@ -341,16 +340,16 @@ def test_web_edit_save_updates_amount(web_client: TestClient) -> None:
     assert "测试商家" in detail.text
 
 
-def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient) -> None:
+def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient, *, identity) -> None:
     rate = web_client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=cf.app_headers(),
+        headers=identity.app_headers,
         json={"currency_code": "USD", "rate_date": "2026-05-04", "rate_to_cny": "7.0000"},
     )
     assert rate.status_code == 200, rate.json()
     created = web_client.post(
         "/api/expenses/manual",
-        headers=cf.app_headers(),
+        headers=identity.app_headers,
         json={
             "original_currency_code": "USD",
             "original_amount_minor": 12345,
@@ -376,7 +375,7 @@ def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient)
     )
     assert saved.status_code in {303, 307}, saved.text
 
-    detail = web_client.get(f"/api/expenses/{expense_id}", headers=cf.app_headers())
+    detail = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200, detail.json()
     payload = detail.json()
     assert payload["original_currency_code"] == "USD"
@@ -385,8 +384,8 @@ def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient)
     assert payload["merchant"] == "Foreign Cafe Updated"
 
 
-def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert detail.status_code == 200
     assert "data-image-skeleton" in detail.text
@@ -398,8 +397,8 @@ def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient) -> Non
     assert "receipt-image-skeleton" in drawer.text
 
 
-def test_web_save_invalid_amount_shows_error(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={"amount_yuan": "not-a-number", "merchant": "", "category": "", "note": "",
@@ -409,8 +408,8 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient) -> None:
     assert "请填写正确的金额" in resp.text
 
 
-def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/confirm",
         data={"ledger_id": "owner"},
@@ -434,8 +433,8 @@ def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient) 
 )
 def test_web_amount_decimal_precision(
     web_client: TestClient, input_str: str, expected_cents: int
-) -> None:
-    expense_id = _create_pending(web_client)
+, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "",
@@ -449,8 +448,8 @@ def test_web_amount_decimal_precision(
     assert expected_display in detail.text
 
 
-def test_web_save_negative_amount_shows_error(web_client: TestClient) -> None:
-    expense_id = _create_pending(web_client)
+def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identity) -> None:
+    expense_id = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={"amount_yuan": "-5.00", "merchant": "", "category": "", "note": "",
@@ -462,9 +461,9 @@ def test_web_save_negative_amount_shows_error(web_client: TestClient) -> None:
 
 # ----- v0.4-alpha3 Review Center bulk + filter -------------------------
 
-def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00", merchant: str = "测试") -> int:
+def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00", merchant: str = "测试", *, identity) -> int:
     """Upload a tiny PNG then patch amount+merchant via /web/expenses/{id}/save."""
-    expense_id = _create_pending(web_client)
+    expense_id = _create_pending(web_client, identity=identity)
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={"amount_yuan": amount_yuan, "merchant": merchant, "category": "其他",
@@ -475,9 +474,9 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
     return expense_id
 
 
-def test_web_search_finds_current_ledger_entities(web_client: TestClient) -> None:
-    pending_id = _seed_pending_with_amount(web_client, "9.00", "SearchCafe Pending")
-    confirmed_id = _seed_pending_with_amount(web_client, "11.00", "SearchCafe Confirmed")
+def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, identity) -> None:
+    pending_id = _seed_pending_with_amount(web_client, "9.00", "SearchCafe Pending", identity=identity)
+    confirmed_id = _seed_pending_with_amount(web_client, "11.00", "SearchCafe Confirmed", identity=identity)
     confirmed = web_client.post(
         f"/web/expenses/{confirmed_id}/confirm",
         data={"ledger_id": "owner"},
@@ -525,8 +524,8 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient) -> Non
     assert "SearchCafe Confirmed" not in other_ledger.text
 
 
-def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient) -> None:
-    expense_id = _seed_pending_with_amount(web_client, "19.00", "STARBUCKS 国贸店")
+def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient, *, identity) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "19.00", "STARBUCKS 国贸店", identity=identity)
     alias = web_client.post(
         "/web/merchants/aliases/create",
         data={
@@ -543,8 +542,8 @@ def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient) -> Non
     assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
 
 
-def test_web_search_uses_category_alias_terms(web_client: TestClient) -> None:
-    expense_id = _seed_pending_with_amount(web_client, "19.00", "Legacy Category Cafe")
+def test_web_search_uses_category_alias_terms(web_client: TestClient, *, identity) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "19.00", "Legacy Category Cafe", identity=identity)
     with SessionLocal() as db:
         expense = db.scalar(select(Expense).where(Expense.id == expense_id))
         assert expense is not None
@@ -556,8 +555,8 @@ def test_web_search_uses_category_alias_terms(web_client: TestClient) -> None:
     assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
 
 
-def test_web_confirmed_batch_markup_and_updates(web_client: TestClient) -> None:
-    expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe")
+def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, identity) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe", identity=identity)
     confirmed = web_client.post(
         f"/web/expenses/{expense_id}/confirm",
         data={"ledger_id": "owner"},
@@ -598,40 +597,40 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient) -> None:
         follow_redirects=False,
     )
     assert tags_resp.status_code in {303, 307}
-    api_detail = web_client.get(f"/api/expenses/{expense_id}", headers=cf.app_headers())
+    api_detail = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert api_detail.status_code == 200
     assert api_detail.json()["tags"] == "web, family"
 
 
-def test_web_pending_filter_missing_amount(web_client: TestClient) -> None:
-    pending_no_amount = _create_pending(web_client)  # no amount yet
-    pending_with_amount = _seed_pending_with_amount(web_client, "5.00", "A")
+def test_web_pending_filter_missing_amount(web_client: TestClient, *, identity) -> None:
+    pending_no_amount = _create_pending(web_client, identity=identity)  # no amount yet
+    pending_with_amount = _seed_pending_with_amount(web_client, "5.00", "A", identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")
     assert resp.status_code == 200
     assert f"/web/expenses/{pending_no_amount}/edit" in resp.text
     assert f"/web/expenses/{pending_with_amount}/edit" not in resp.text
 
 
-def test_web_pending_filter_ready_excludes_missing_amount(web_client: TestClient) -> None:
+def test_web_pending_filter_ready_excludes_missing_amount(web_client: TestClient, *, identity) -> None:
     # Seed the ready one first so it doesn't get flagged as duplicate of the
     # second upload (same PNG bytes ⇒ second becomes suspected).
-    pending_ready = _seed_pending_with_amount(web_client, "8.00", "Ready")
-    pending_no_amount = _create_pending(web_client)
+    pending_ready = _seed_pending_with_amount(web_client, "8.00", "Ready", identity=identity)
+    pending_no_amount = _create_pending(web_client, identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=ready")
     assert resp.status_code == 200
     assert f"/web/expenses/{pending_ready}/edit" in resp.text
     assert f"/web/expenses/{pending_no_amount}/edit" not in resp.text
 
 
-def test_web_pending_filter_active_tab_marker(web_client: TestClient) -> None:
-    _create_pending(web_client)
+def test_web_pending_filter_active_tab_marker(web_client: TestClient, *, identity) -> None:
+    _create_pending(web_client, identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner&filter=missing_amount")
     assert resp.status_code == 200
     assert 'class="filter-tab is-active"' in resp.text
 
 
-def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestClient) -> None:
-    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestClient, *, identity) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     resp = web_client.get("/web/pending?ledger_id=owner")
     assert resp.status_code == 200
     assert f'data-expense-id="{eid}"' in resp.text
@@ -646,8 +645,8 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'h.name = "expense_ids";' in js
 
 
-def test_web_bulk_set_category_updates_pending(web_client: TestClient) -> None:
-    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+def test_web_bulk_set_category_updates_pending(web_client: TestClient, *, identity) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
         data={"action": "set_category", "ledger_id": "owner",
@@ -659,8 +658,8 @@ def test_web_bulk_set_category_updates_pending(web_client: TestClient) -> None:
     assert "餐饮" in detail.text
 
 
-def test_web_bulk_set_category_requires_value(web_client: TestClient) -> None:
-    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+def test_web_bulk_set_category_requires_value(web_client: TestClient, *, identity) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
         data={"action": "set_category", "ledger_id": "owner",
@@ -671,9 +670,9 @@ def test_web_bulk_set_category_requires_value(web_client: TestClient) -> None:
     assert resp.status_code in {303, 307, 422}
 
 
-def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient) -> None:
-    no_amount = _create_pending(web_client)
-    ready = _seed_pending_with_amount(web_client, "11.00", "Ready")
+def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient, *, identity) -> None:
+    no_amount = _create_pending(web_client, identity=identity)
+    ready = _seed_pending_with_amount(web_client, "11.00", "Ready", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
         data={"action": "confirm_ready", "ledger_id": "owner",
@@ -688,8 +687,8 @@ def test_web_bulk_confirm_ready_skips_missing_amount(web_client: TestClient) -> 
     assert f"/web/expenses/{no_amount}/edit" in pending.text
 
 
-def test_web_bulk_reject_removes_from_pending(web_client: TestClient) -> None:
-    eid = _seed_pending_with_amount(web_client, "12.00", "Y")
+def test_web_bulk_reject_removes_from_pending(web_client: TestClient, *, identity) -> None:
+    eid = _seed_pending_with_amount(web_client, "12.00", "Y", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
         data={"action": "reject", "ledger_id": "owner",
@@ -701,9 +700,9 @@ def test_web_bulk_reject_removes_from_pending(web_client: TestClient) -> None:
     assert f"/web/expenses/{eid}/edit" not in pending.text
 
 
-def test_web_bulk_keep_duplicate_persists_flag_clear(web_client: TestClient) -> None:
-    first = _seed_pending_with_amount(web_client, "12.00", "Duplicate A")
-    second = _seed_pending_with_amount(web_client, "12.00", "Duplicate B")
+def test_web_bulk_keep_duplicate_persists_flag_clear(web_client: TestClient, *, identity) -> None:
+    first = _seed_pending_with_amount(web_client, "12.00", "Duplicate A", identity=identity)
+    second = _seed_pending_with_amount(web_client, "12.00", "Duplicate B", identity=identity)
     with SessionLocal() as db:
         row = db.scalar(select(Expense).where(Expense.id == second))
         assert row is not None
@@ -726,9 +725,9 @@ def test_web_bulk_keep_duplicate_persists_flag_clear(web_client: TestClient) -> 
         assert row.duplicate_of_id is None
 
 
-def test_web_pending_batch_reject_removes_multiple_pending(web_client: TestClient) -> None:
-    first = _seed_pending_with_amount(web_client, "12.00", "Y")
-    second = _seed_pending_with_amount(web_client, "13.00", "Z")
+def test_web_pending_batch_reject_removes_multiple_pending(web_client: TestClient, *, identity) -> None:
+    first = _seed_pending_with_amount(web_client, "12.00", "Y", identity=identity)
+    second = _seed_pending_with_amount(web_client, "13.00", "Z", identity=identity)
     resp = web_client.post(
         "/web/pending/batch-reject",
         data={"ledger_id": "owner", "expense_ids": [str(first), str(second)], "filter": "all"},
@@ -750,8 +749,8 @@ def test_web_pending_batch_reject_requires_selection(web_client: TestClient) -> 
     assert "请先勾选账单" in resp.text
 
 
-def test_web_bulk_unknown_action_returns_error(web_client: TestClient) -> None:
-    eid = _seed_pending_with_amount(web_client, "9.00", "X")
+def test_web_bulk_unknown_action_returns_error(web_client: TestClient, *, identity) -> None:
+    eid = _seed_pending_with_amount(web_client, "9.00", "X", identity=identity)
     resp = web_client.post(
         "/web/review/bulk",
         data={"action": "explode", "ledger_id": "owner",
@@ -761,9 +760,9 @@ def test_web_bulk_unknown_action_returns_error(web_client: TestClient) -> None:
     assert resp.status_code in {400, 422}
 
 
-def test_web_bulk_cross_ledger_id_is_ignored(web_client: TestClient) -> None:
+def test_web_bulk_cross_ledger_id_is_ignored(web_client: TestClient, *, identity) -> None:
     """If an id from another ledger is submitted, action must NOT mutate it."""
-    eid_owner = _seed_pending_with_amount(web_client, "9.00", "Owner")
+    eid_owner = _seed_pending_with_amount(web_client, "9.00", "Owner", identity=identity)
     # Forge a bogus id far outside any existing range.
     bogus_id = eid_owner + 99999
     resp = web_client.post(
@@ -817,8 +816,8 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     assert resp.status_code in {303, 307}
 
 
-def test_web_rules_preview_does_not_mutate(web_client: TestClient) -> None:
-    expense_id = _seed_pending_with_amount(web_client, "9.00", "星巴克 国贸店")
+def test_web_rules_preview_does_not_mutate(web_client: TestClient, *, identity) -> None:
+    expense_id = _seed_pending_with_amount(web_client, "9.00", "星巴克 国贸店", identity=identity)
     resp = web_client.get(
         "/web/rules?ledger_id=owner&preview_keyword=星巴克&preview_category=餐饮"
     )
@@ -831,9 +830,9 @@ def test_web_rules_preview_does_not_mutate(web_client: TestClient) -> None:
 
 
 def test_web_rules_apply_pending_audit_and_rollback_integration(
-    web_client: TestClient,
+    web_client: TestClient, *, identity,
 ) -> None:
-    expense_id = _seed_pending_with_amount(web_client, "9.00", "Starbucks 上海")
+    expense_id = _seed_pending_with_amount(web_client, "9.00", "Starbucks 上海", identity=identity)
     created = web_client.post(
         "/web/rules/create",
         data={
@@ -905,9 +904,9 @@ def test_web_rules_apply_pending_audit_and_rollback_integration(
 
 
 def test_web_rules_apply_confirmed_requires_preview_then_applies(
-    web_client: TestClient,
+    web_client: TestClient, *, identity,
 ) -> None:
-    expense_id = _seed_pending_with_amount(web_client, "9.00", "Historical Starbucks")
+    expense_id = _seed_pending_with_amount(web_client, "9.00", "Historical Starbucks", identity=identity)
     confirmed = web_client.post(
         f"/web/expenses/{expense_id}/confirm",
         data={"ledger_id": "owner"},

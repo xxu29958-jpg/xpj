@@ -7,12 +7,9 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-import conftest as cf  # noqa: F401  — ensures module-level seeds run
 from app.main import app
 from app.routes.owner_console import _require_local as _require_local_console
 from app.routes.owner_ledgers import _require_local as _require_local_ledgers
-from conftest import admin_headers
-
 
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
@@ -23,8 +20,8 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_require_local_ledgers, None)
 
 
-def _create_ledger(client: TestClient, name: str = "家庭账本") -> str:
-    resp = client.post("/api/ledgers", headers=admin_headers(), json={"name": name})
+def _create_ledger(client: TestClient, name: str = "家庭账本", *, identity) -> str:
+    resp = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": name})
     assert resp.status_code == 201, resp.json()
     return str(resp.json()["ledger_id"])
 
@@ -64,18 +61,18 @@ def _mint_and_accept_member(local_client: TestClient, ledger_id: str, account_na
         return int(member.id)
 
 
-def test_members_page_local_200(local_client: TestClient) -> None:
-    lid = _create_ledger(local_client)
+def test_members_page_local_200(local_client: TestClient, *, identity) -> None:
+    lid = _create_ledger(local_client, identity=identity)
     resp = local_client.get(f"/owner/ledgers/{lid}/members")
     assert resp.status_code == 200
     assert "成员管理" in resp.text
     assert "家庭账本" in resp.text
 
 
-def test_members_page_uses_consistent_chips_and_breakable_text(local_client: TestClient) -> None:
+def test_members_page_uses_consistent_chips_and_breakable_text(local_client: TestClient, *, identity) -> None:
     long_name = "家庭共享账本" + ("很长" * 12)
     long_note = "备注" + ("很长" * 20)
-    lid = _create_ledger(local_client, name=long_name)
+    lid = _create_ledger(local_client, name=long_name, identity=identity)
 
     resp = local_client.post(
         f"/owner/ledgers/{lid}/invitations",
@@ -95,8 +92,8 @@ def test_members_page_uses_consistent_chips_and_breakable_text(local_client: Tes
     assert 'class="status-chip status-pending"' in resp.text
 
 
-def test_members_page_remote_403(client: TestClient) -> None:
-    lid = _create_ledger(client)
+def test_members_page_remote_403(client: TestClient, *, identity) -> None:
+    lid = _create_ledger(client, identity=identity)
     resp = client.get(f"/owner/ledgers/{lid}/members")
     assert resp.status_code == 403
 
@@ -107,8 +104,8 @@ def test_members_page_unknown_ledger_shows_error(local_client: TestClient) -> No
     assert "账本不存在" in resp.text
 
 
-def test_invitation_create_revokes_and_lists(local_client: TestClient) -> None:
-    lid = _create_ledger(local_client)
+def test_invitation_create_revokes_and_lists(local_client: TestClient, *, identity) -> None:
+    lid = _create_ledger(local_client, identity=identity)
     resp = local_client.post(
         f"/owner/ledgers/{lid}/invitations",
         data={"role": "member", "note": "妈妈", "ttl_days": "7"},
@@ -148,8 +145,8 @@ def test_invitation_create_revokes_and_lists(local_client: TestClient) -> None:
     assert public_id not in after.text
 
 
-def test_disable_member_endpoint(local_client: TestClient) -> None:
-    lid = _create_ledger(local_client)
+def test_disable_member_endpoint(local_client: TestClient, *, identity) -> None:
+    lid = _create_ledger(local_client, identity=identity)
     from sqlalchemy import select
 
     from app.database import SessionLocal
@@ -170,8 +167,8 @@ def test_disable_member_endpoint(local_client: TestClient) -> None:
     assert "成员管理" in resp.text
 
 
-def test_role_update_form_changes_member_role(local_client: TestClient) -> None:
-    lid = _create_ledger(local_client)
+def test_role_update_form_changes_member_role(local_client: TestClient, *, identity) -> None:
+    lid = _create_ledger(local_client, identity=identity)
     member_id = _mint_and_accept_member(local_client, lid, "爸爸")
 
     role_change = local_client.post(
@@ -189,8 +186,8 @@ def test_role_update_form_changes_member_role(local_client: TestClient) -> None:
     assert "调整角色" in page.text
 
 
-def test_owner_console_transfer_owner_form_demotes_local_owner(local_client: TestClient) -> None:
-    lid = _create_ledger(local_client)
+def test_owner_console_transfer_owner_form_demotes_local_owner(local_client: TestClient, *, identity) -> None:
+    lid = _create_ledger(local_client, identity=identity)
     member_id = _mint_and_accept_member(local_client, lid, "姐姐")
 
     transfer = local_client.post(
@@ -233,8 +230,8 @@ def test_owner_console_transfer_owner_form_demotes_local_owner(local_client: Tes
     assert f'value="{lid}"' not in pairing.text
 
 
-def test_ledgers_page_links_to_members(local_client: TestClient) -> None:
-    lid = _create_ledger(local_client)
+def test_ledgers_page_links_to_members(local_client: TestClient, *, identity) -> None:
+    lid = _create_ledger(local_client, identity=identity)
     resp = local_client.get("/owner/ledgers")
     assert resp.status_code == 200
     assert f"/owner/ledgers/{lid}/members" in resp.text

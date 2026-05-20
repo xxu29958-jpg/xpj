@@ -18,22 +18,16 @@ from app.services.duplicate_service import _remember_duplicate_ignore
 from app.services.expense_service import confirm_expense, reject_expense, retry_expense_ocr
 from app.services.ocr_service import MockOcrProvider, OcrResult, apply_ocr_result, retry_ocr
 from app.services.time_service import now_utc
-from conftest import (
-    BACKEND_ROOT,
-    PNG_BYTES,
-    app_headers,
-    gray_app_headers,
-)
+from tests._infra.env import BACKEND_ROOT
+from tests._infra.assets import PNG_BYTES
+def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
 
-
-def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
-    expense_id = upload_png(client)
-
-    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200
     assert detail.json()["id"] == expense_id
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     item = next(expense for expense in pending.json() if expense["id"] == expense_id)
     assert item["amount_cents"] is None
@@ -47,23 +41,23 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     assert image_without_token.status_code == 401
     assert image_without_token.json()["error"] == "invalid_token"
 
-    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert image.status_code == 200
     assert image.content == PNG_BYTES
 
     thumbnail = client.get(
-        f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()
+        f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
     )
     assert thumbnail.status_code == 200
     assert thumbnail.content.startswith(b"\xff\xd8")
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
     assert response.status_code == 400
     assert response.json()["error"] == "amount_required"
 
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 3680,
             "merchant": "美团外卖",
@@ -75,28 +69,28 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["amount_cents"] == 3680
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json()["status"] == "confirmed"
 
     confirmed = client.get(
         "/api/expenses/confirmed?page=1&page_size=50&month=2026-05&category=餐饮",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 1
 
-    categories = client.get("/api/expenses/categories", headers=app_headers())
+    categories = client.get("/api/expenses/categories", headers=identity.app_headers)
     assert categories.status_code == 200
     assert "餐饮" in categories.json()["items"]
     assert "吃饭" not in categories.json()["items"]
 
-    months = client.get("/api/expenses/months", headers=app_headers())
+    months = client.get("/api/expenses/months", headers=identity.app_headers)
     assert months.status_code == 200
     assert "2026-05" in months.json()["items"]
 
     exported = client.get(
-        "/api/expenses/export.csv?month=2026-05&category=餐饮", headers=app_headers()
+        "/api/expenses/export.csv?month=2026-05&category=餐饮", headers=identity.app_headers
     )
     assert exported.status_code == 200
     assert "text/csv" in exported.headers["content-type"]
@@ -104,16 +98,16 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient) -> None:
     assert "public_id" in exported.text.splitlines()[0]
     assert "3680" in exported.text
 
-    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200
     assert stats.json()["total_amount_cents"] == 3680
 
 
-def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestClient) -> None:
-    expense_id = upload_png(client)
+def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
 
     thumbnail = client.get(
-        f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()
+        f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
     )
     assert thumbnail.status_code == 200
 
@@ -123,10 +117,10 @@ def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestC
         expense.image_deleted_at = now_utc()
         db.commit()
 
-    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert image.status_code == 404
     thumbnail = client.get(
-        f"/api/expenses/{expense_id}/thumbnail", headers=app_headers()
+        f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
     )
     assert thumbnail.status_code == 404
 
@@ -141,19 +135,19 @@ def test_thumbnail_is_not_readable_after_original_image_is_deleted(client: TestC
         "/api/expenses/export.csv?month=0000-05",
     ],
 )
-def test_month_filters_reject_invalid_month_labels(client: TestClient, path: str) -> None:
-    response = client.get(path, headers=app_headers())
+def test_month_filters_reject_invalid_month_labels(client: TestClient, path: str, *, identity) -> None:
+    response = client.get(path, headers=identity.app_headers)
     assert response.status_code == 422
     assert response.json()["error"] == "invalid_request"
 
 
 def test_confirm_removes_expense_from_pending_and_adds_confirmed(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1851,
             "merchant": "中国建设银行",
@@ -163,29 +157,29 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     )
     assert response.status_code == 200
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json()["status"] == "confirmed"
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     assert all(item["id"] != expense_id for item in pending.json())
 
     confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 1
     assert confirmed.json()["items"][0]["id"] == expense_id
 
-    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200
     assert stats.json()["total_amount_cents"] == 1851
 
 
 def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, *, identity,
 ) -> None:
     from app.services import cleanup_service
 
@@ -196,7 +190,7 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
         lambda: replace(settings, delete_image_after_confirm=True),
     )
 
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
@@ -209,7 +203,7 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
 
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1851,
             "merchant": "A",
@@ -219,7 +213,7 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     )
     assert response.status_code == 200
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "confirmed"
@@ -228,11 +222,11 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     assert not image_path.exists()
     assert not thumbnail_path.exists()
 
-    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert image.status_code == 404
     thumbnail = client.get(
         f"/api/expenses/{expense_id}/thumbnail",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert thumbnail.status_code == 404
 
@@ -244,32 +238,32 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
 
 
 def test_reject_removes_expense_from_pending_without_confirming(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
 
-    response = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    response = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "rejected"
     assert payload["confirmed_at"] is None
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     assert all(item["id"] != expense_id for item in pending.json())
 
     confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 0
 
 
-def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient) -> None:
-    expense_id = upload_png(client)
+def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"amount_cents": 3680, "merchant": "A", "category": "餐饮"},
     )
     assert response.status_code == 200
@@ -299,18 +293,18 @@ def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient) -> 
 
 
 def test_ocr_retry_and_recognize_text_only_update_pending_draft(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
 
-    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers)
     assert retry.status_code == 200
     assert retry.json()["status"] == "pending"
     assert retry.json()["confirmed_at"] is None
 
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"
         },
@@ -322,16 +316,16 @@ def test_ocr_retry_and_recognize_text_only_update_pending_draft(
     assert payload["amount_cents"] == 1851
 
     confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-05", headers=identity.app_headers
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 0
 
 
-def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient) -> None:
+def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1234,
             "merchant": "Stable Cafe",
@@ -342,16 +336,16 @@ def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient) -> None:
     assert created.status_code == 200, created.json()
     expense_id = created.json()["id"]
 
-    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers)
     assert retry.status_code == 404
     recognized = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": "Changed Cafe\n99.99"},
     )
     assert recognized.status_code == 404
 
-    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200
     payload = detail.json()
     assert payload["status"] == "confirmed"
@@ -360,30 +354,30 @@ def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient) -> None:
     assert payload["raw_text"] == ""
 
 
-def test_ocr_routes_do_not_modify_rejected_expense(client: TestClient) -> None:
-    expense_id = upload_png(client)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+def test_ocr_routes_do_not_modify_rejected_expense(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
+    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
     assert rejected.status_code == 200
 
-    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers)
     assert retry.status_code == 404
     recognized = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": "Changed Cafe\n99.99"},
     )
     assert recognized.status_code == 404
 
-    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200
     payload = detail.json()
     assert payload["status"] == "rejected"
     assert payload["raw_text"] == ""
 
 
-def test_reject_is_idempotent_for_already_rejected_expense(client: TestClient) -> None:
-    expense_id = upload_png(client)
-    first = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+def test_reject_is_idempotent_for_already_rejected_expense(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
+    first = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
     assert first.status_code == 200
 
     with SessionLocal() as db:
@@ -392,7 +386,7 @@ def test_reject_is_idempotent_for_already_rejected_expense(client: TestClient) -
         rejected_at = expense.rejected_at
         updated_at = expense.updated_at
 
-    second = client.post(f"/api/expenses/{expense_id}/reject", headers=app_headers())
+    second = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
     assert second.status_code == 200
     assert second.json()["status"] == "rejected"
 
@@ -451,9 +445,9 @@ def test_ocr_draft_field_aliases_are_canonicalized_when_applying_result() -> Non
 
 
 def test_recognize_text_then_confirm_enters_stats_and_export(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "账单详情",
@@ -471,7 +465,7 @@ def test_recognize_text_then_confirm_enters_stats_and_export(
 
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200, response.json()
@@ -481,28 +475,28 @@ def test_recognize_text_then_confirm_enters_stats_and_export(
     assert payload["merchant"] == "好想来零食乐园"
     assert payload["category"] == "餐饮"
 
-    pending_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    pending_stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert pending_stats.status_code == 200, pending_stats.json()
     assert pending_stats.json()["total_amount_cents"] == 0
 
     pending_export = client.get(
         "/api/expenses/export.csv?month=2026-05&category=餐饮",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert pending_export.status_code == 200, pending_export.text
     assert "好想来零食乐园" not in pending_export.text
 
-    confirmed = client.post(f"/api/expenses/{expense_id}/confirm", headers=app_headers())
+    confirmed = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
     assert confirmed.status_code == 200, confirmed.json()
     assert confirmed.json()["status"] == "confirmed"
 
-    confirmed_stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    confirmed_stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert confirmed_stats.status_code == 200, confirmed_stats.json()
     assert confirmed_stats.json()["total_amount_cents"] == 1789
 
     confirmed_export = client.get(
         "/api/expenses/export.csv?month=2026-05&category=餐饮",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert confirmed_export.status_code == 200, confirmed_export.text
     assert "好想来零食乐园" in confirmed_export.text
@@ -510,12 +504,12 @@ def test_recognize_text_then_confirm_enters_stats_and_export(
 
 
 def test_recognize_text_does_not_overwrite_user_filled_fields(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 9900,
             "merchant": "用户填写商家",
@@ -527,7 +521,7 @@ def test_recognize_text_does_not_overwrite_user_filled_fields(
 
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"
         },
@@ -541,8 +535,8 @@ def test_recognize_text_does_not_overwrite_user_filled_fields(
     assert payload["expense_time"] == "2026-05-04T00:00:00Z"
 
 
-def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient) -> None:
-    expense_id = upload_png(client)
+def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
@@ -552,14 +546,14 @@ def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient) -> None:
 
     patched = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"spent_at": "2026-05-04T05:00:00Z"},
     )
     assert patched.status_code == 200, patched.json()
 
     second = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月6日 23:00:00"},
     )
     assert second.status_code == 200, second.json()
@@ -567,9 +561,9 @@ def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient) -> None:
 
 
 def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
 
     first_raw_text = "\n".join(
         [
@@ -583,7 +577,7 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": first_raw_text},
     )
     assert response.status_code == 200
@@ -602,7 +596,7 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": corrected_raw_text},
     )
     assert response.status_code == 200
@@ -614,7 +608,7 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
 
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"merchant": "用户手动确认商家"},
     )
     assert response.status_code == 200
@@ -631,7 +625,7 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": newer_raw_text},
     )
     assert response.status_code == 200
@@ -641,8 +635,8 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
     assert payload["status"] == "pending"
 
 
-def test_legacy_recent_ocr_draft_can_be_corrected(client: TestClient) -> None:
-    expense_id = upload_png(client)
+def test_legacy_recent_ocr_draft_can_be_corrected(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
     first_raw_text = "\n".join(
         [
             "账单详情",
@@ -677,7 +671,7 @@ def test_legacy_recent_ocr_draft_can_be_corrected(client: TestClient) -> None:
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": corrected_raw_text},
     )
 
@@ -690,9 +684,9 @@ def test_legacy_recent_ocr_draft_can_be_corrected(client: TestClient) -> None:
 
 
 def test_legacy_stale_or_manual_pending_fields_are_not_overwritten(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     first_raw_text = "\n".join(
         [
             "账单详情",
@@ -727,7 +721,7 @@ def test_legacy_stale_or_manual_pending_fields_are_not_overwritten(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": corrected_raw_text},
     )
 
@@ -738,11 +732,11 @@ def test_legacy_stale_or_manual_pending_fields_are_not_overwritten(
     assert payload["status"] == "pending"
 
 
-def test_duplicate_detection_never_rejects_or_confirms(client: TestClient) -> None:
-    first_id = upload_png(client)
-    second_id = upload_png(client)
+def test_duplicate_detection_never_rejects_or_confirms(client: TestClient, *, identity) -> None:
+    first_id = upload_png(client, identity=identity)
+    second_id = upload_png(client, identity=identity)
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     matched = next(item for item in pending.json() if item["id"] == second_id)
     assert matched["duplicate_status"] == "suspected"
@@ -753,13 +747,13 @@ def test_duplicate_detection_never_rejects_or_confirms(client: TestClient) -> No
 
 
 def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    first_id = upload_png(client)
-    second_id = upload_png(client)
+    first_id = upload_png(client, identity=identity)
+    second_id = upload_png(client, identity=identity)
 
     response = client.post(
-        f"/api/expenses/{second_id}/mark-not-duplicate", headers=app_headers()
+        f"/api/expenses/{second_id}/mark-not-duplicate", headers=identity.app_headers
     )
     assert response.status_code == 200
     assert response.json()["duplicate_status"] == "none"
@@ -770,7 +764,7 @@ def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
     ]:
         response = client.patch(
             f"/api/expenses/{expense_id}",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={
                 "amount_cents": 5200,
                 "merchant": "同一家店",
@@ -780,7 +774,7 @@ def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
         )
         assert response.status_code == 200
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     matched = next(item for item in pending.json() if item["id"] == second_id)
     assert matched["status"] == "pending"
@@ -788,9 +782,9 @@ def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
     assert matched["duplicate_of_id"] is None
 
 
-def test_duplicate_ignore_insert_is_idempotent_for_retries(client: TestClient) -> None:
-    first_id = upload_png(client)
-    second_id = upload_png(client)
+def test_duplicate_ignore_insert_is_idempotent_for_retries(client: TestClient, *, identity) -> None:
+    first_id = upload_png(client, identity=identity)
+    second_id = upload_png(client, identity=identity)
 
     with SessionLocal() as db:
         _remember_duplicate_ignore(db, "owner", second_id, first_id, "similar")
@@ -807,11 +801,11 @@ def test_duplicate_ignore_insert_is_idempotent_for_retries(client: TestClient) -
     assert count == 1
 
 
-def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) -> None:
-    expense_id = upload_png(client)
+def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 3680,
             "merchant": "图片已清理商家",
@@ -822,12 +816,12 @@ def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) 
     assert response.status_code == 200
     assert (
         client.post(
-            f"/api/expenses/{expense_id}/confirm", headers=app_headers()
+            f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers
         ).status_code
         == 200
     )
 
-    detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert detail.status_code == 200
     for path_key in ["image_path", "thumbnail_path"]:
         relative_path = detail.json().get(path_key)
@@ -835,7 +829,7 @@ def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) 
             (BACKEND_ROOT / relative_path).unlink(missing_ok=True)
 
     detail_after_delete = client.get(
-        f"/api/expenses/{expense_id}", headers=app_headers()
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
     )
     assert detail_after_delete.status_code == 200
     payload = detail_after_delete.json()
@@ -843,13 +837,13 @@ def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient) 
     assert payload["amount_cents"] == 3680
     assert payload["merchant"] == "图片已清理商家"
 
-    image = client.get(f"/api/expenses/{expense_id}/image", headers=app_headers())
+    image = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert image.status_code == 404
     assert image.json()["error"] == "image_not_found"
 
 
-def test_recognize_text_extracts_receipt_fields(client: TestClient) -> None:
-    expense_id = upload_png(client)
+def test_recognize_text_extracts_receipt_fields(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "中国建设银行",
@@ -861,7 +855,7 @@ def test_recognize_text_extracts_receipt_fields(client: TestClient) -> None:
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200
@@ -875,9 +869,9 @@ def test_recognize_text_extracts_receipt_fields(client: TestClient) -> None:
 
 
 def test_recognize_text_prefers_transaction_time_over_other_times(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "商品详情：超级咸蛋黄狮子头+泡椒脆笋鸭丝单人套餐",
@@ -894,7 +888,7 @@ def test_recognize_text_prefers_transaction_time_over_other_times(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200
@@ -905,9 +899,9 @@ def test_recognize_text_prefers_transaction_time_over_other_times(
 
 
 def test_recognize_text_prefers_alipay_primary_amount_and_title_merchant(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "账单详情",
@@ -934,7 +928,7 @@ def test_recognize_text_prefers_alipay_primary_amount_and_title_merchant(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200
@@ -946,9 +940,9 @@ def test_recognize_text_prefers_alipay_primary_amount_and_title_merchant(
 
 
 def test_recognize_text_ignores_alipay_success_page_ads_for_merchant(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "支付成功",
@@ -971,7 +965,7 @@ def test_recognize_text_ignores_alipay_success_page_ads_for_merchant(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200
@@ -982,9 +976,9 @@ def test_recognize_text_ignores_alipay_success_page_ads_for_merchant(
 
 
 def test_recognize_text_alipay_success_body_ignores_navigation_title(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "07:55",
@@ -1006,7 +1000,7 @@ def test_recognize_text_alipay_success_body_ignores_navigation_title(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200
@@ -1017,9 +1011,9 @@ def test_recognize_text_alipay_success_body_ignores_navigation_title(
 
 
 def test_recognize_text_wechat_payment_line_merchant_candidate(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "微信支付",
@@ -1043,7 +1037,7 @@ def test_recognize_text_wechat_payment_line_merchant_candidate(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200
@@ -1054,9 +1048,9 @@ def test_recognize_text_wechat_payment_line_merchant_candidate(
 
 
 def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
     raw_text = "\n".join(
         [
             "花溪工业园区",
@@ -1082,7 +1076,7 @@ def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
     )
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"raw_text": raw_text},
     )
     assert response.status_code == 200
@@ -1094,9 +1088,9 @@ def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
 
 def test_retry_ocr_rejects_stale_pending_snapshot(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, *, identity,
 ) -> None:
-    expense_id = upload_png(client)
+    expense_id = upload_png(client, identity=identity)
 
     def slow_ocr_result(expense: Expense) -> OcrResult:
         with SessionLocal() as user_db:
@@ -1136,10 +1130,10 @@ def test_mock_ocr_provider_populates_pending_draft() -> None:
     assert expense.confidence is not None and expense.confidence >= 0.8
 
 
-def test_manual_expense_create_contract(client: TestClient) -> None:
+def test_manual_expense_create_contract(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 1280,
             "merchant": "手动早餐",
@@ -1161,25 +1155,25 @@ def test_manual_expense_create_contract(client: TestClient) -> None:
     assert payload["confirmed_at"].endswith("Z")
 
     confirmed = client.get(
-        "/api/expenses/confirmed?month=2026-05&category=餐饮", headers=app_headers()
+        "/api/expenses/confirmed?month=2026-05&category=餐饮", headers=identity.app_headers
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 1
 
-    stats = client.get("/api/stats/monthly?month=2026-05", headers=app_headers())
+    stats = client.get("/api/stats/monthly?month=2026-05", headers=identity.app_headers)
     assert stats.status_code == 200
     assert stats.json()["total_amount_cents"] == 1280
 
     missing_amount = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"merchant": "无金额"},
     )
     assert missing_amount.status_code == 400
     assert missing_amount.json()["error"] == "amount_required"
 
 
-def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient) -> None:
+def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, identity) -> None:
     def _manual(headers: dict[str, str], merchant: str, category: str) -> int:
         response = client.post(
             "/api/expenses/manual",
@@ -1194,14 +1188,14 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient) -> N
         assert response.status_code == 200, response.json()
         return int(response.json()["id"])
 
-    first_id = _manual(app_headers(), "Batch Coffee A", "OldCat")
-    second_id = _manual(app_headers(), "Batch Coffee B", "OldCat")
-    other_ledger_id = _manual(gray_app_headers(), "Batch Other Ledger", "GrayCat")
-    pending_id = upload_png(client)
+    first_id = _manual(identity.app_headers, "Batch Coffee A", "OldCat")
+    second_id = _manual(identity.app_headers, "Batch Coffee B", "OldCat")
+    other_ledger_id = _manual(identity.gray_app_headers, "Batch Other Ledger", "GrayCat")
+    pending_id = upload_png(client, identity=identity)
 
     response = client.post(
         "/api/expenses/confirmed/batch-update",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "expense_ids": [first_id, second_id, pending_id, other_ledger_id, first_id],
             "category": "Family Meals",
@@ -1218,26 +1212,26 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient) -> N
     }
 
     for expense_id in [first_id, second_id]:
-        detail = client.get(f"/api/expenses/{expense_id}", headers=app_headers())
+        detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
         assert detail.status_code == 200
         assert detail.json()["category"] == "Family Meals"
         assert detail.json()["tags"] == "weekend, shared"
 
-    pending_detail = client.get(f"/api/expenses/{pending_id}", headers=app_headers())
+    pending_detail = client.get(f"/api/expenses/{pending_id}", headers=identity.app_headers)
     assert pending_detail.status_code == 200
     assert pending_detail.json()["category"] != "Family Meals"
 
-    other_detail = client.get(f"/api/expenses/{other_ledger_id}", headers=gray_app_headers())
+    other_detail = client.get(f"/api/expenses/{other_ledger_id}", headers=identity.gray_app_headers)
     assert other_detail.status_code == 200
     assert other_detail.json()["category"] == "GrayCat"
 
 
-def test_expense_update_normalizes_user_text(client: TestClient) -> None:
-    expense_id = upload_png(client)
+def test_expense_update_normalizes_user_text(client: TestClient, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
 
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 990,
             "merchant": "  便利店  ",
@@ -1255,7 +1249,7 @@ def test_expense_update_normalizes_user_text(client: TestClient) -> None:
 
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"category": "吃饭"},
     )
     assert response.status_code == 200
@@ -1263,7 +1257,7 @@ def test_expense_update_normalizes_user_text(client: TestClient) -> None:
 
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "merchant": "   ",
             "category": "   ",
@@ -1279,34 +1273,34 @@ def test_expense_update_normalizes_user_text(client: TestClient) -> None:
     assert payload["tags"] is None
 
 
-def test_duplicate_and_category_rule_contract(client: TestClient) -> None:
-    first_id = upload_png(client)
-    second_id = upload_png(client)
+def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -> None:
+    first_id = upload_png(client, identity=identity)
+    second_id = upload_png(client, identity=identity)
 
-    duplicates = client.get("/api/duplicates", headers=app_headers())
+    duplicates = client.get("/api/duplicates", headers=identity.app_headers)
     assert duplicates.status_code == 200
     assert any(item["id"] == second_id for item in duplicates.json())
 
-    response = client.post(f"/api/expenses/{second_id}/reject", headers=app_headers())
+    response = client.post(f"/api/expenses/{second_id}/reject", headers=identity.app_headers)
     assert response.status_code == 200
-    duplicates = client.get("/api/duplicates", headers=app_headers())
+    duplicates = client.get("/api/duplicates", headers=identity.app_headers)
     assert duplicates.status_code == 200
     assert all(item["id"] != second_id for item in duplicates.json())
 
-    second_id = upload_png(client)
-    duplicates = client.get("/api/duplicates", headers=app_headers())
+    second_id = upload_png(client, identity=identity)
+    duplicates = client.get("/api/duplicates", headers=identity.app_headers)
     assert duplicates.status_code == 200
     assert any(item["id"] == second_id for item in duplicates.json())
 
     response = client.post(
-        f"/api/expenses/{second_id}/mark-not-duplicate", headers=app_headers()
+        f"/api/expenses/{second_id}/mark-not-duplicate", headers=identity.app_headers
     )
     assert response.status_code == 200
     assert response.json()["duplicate_status"] == "none"
 
     response = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "keyword": "测试商家",
             "category": "生活",
@@ -1319,26 +1313,26 @@ def test_duplicate_and_category_rule_contract(client: TestClient) -> None:
 
     response = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"priority": 2, "enabled": False},
     )
     assert response.status_code == 200
     assert response.json()["priority"] == 2
     assert response.json()["enabled"] is False
 
-    response = client.delete(f"/api/rules/categories/{rule_id}", headers=app_headers())
+    response = client.delete(f"/api/rules/categories/{rule_id}", headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
-    reject = client.post(f"/api/expenses/{first_id}/reject", headers=app_headers())
+    reject = client.post(f"/api/expenses/{first_id}/reject", headers=identity.app_headers)
     assert reject.status_code == 200
     assert reject.json()["status"] == "rejected"
 
 
-def test_similar_expense_duplicate_ignore_survives_after_edit(client: TestClient) -> None:
-    first_id = upload_png(client)
-    second_id = upload_png(client)
-    client.post(f"/api/expenses/{second_id}/mark-not-duplicate", headers=app_headers())
+def test_similar_expense_duplicate_ignore_survives_after_edit(client: TestClient, *, identity) -> None:
+    first_id = upload_png(client, identity=identity)
+    second_id = upload_png(client, identity=identity)
+    client.post(f"/api/expenses/{second_id}/mark-not-duplicate", headers=identity.app_headers)
 
     for expense_id, timestamp in [
         (first_id, "2026-05-03T04:20:00Z"),
@@ -1346,7 +1340,7 @@ def test_similar_expense_duplicate_ignore_survives_after_edit(client: TestClient
     ]:
         response = client.patch(
             f"/api/expenses/{expense_id}",
-            headers=app_headers(),
+            headers=identity.app_headers,
             json={
                 "amount_cents": 5200,
                 "merchant": "同一家店",
@@ -1356,16 +1350,16 @@ def test_similar_expense_duplicate_ignore_survives_after_edit(client: TestClient
         )
         assert response.status_code == 200
 
-    second = client.get("/api/expenses/pending", headers=app_headers()).json()
+    second = client.get("/api/expenses/pending", headers=identity.app_headers).json()
     matched = next(item for item in second if item["id"] == second_id)
     assert matched["duplicate_status"] == "none"
     assert matched["duplicate_of_id"] is None
 
 
-def test_editing_duplicate_original_revalidates_stale_references(client: TestClient) -> None:
+def test_editing_duplicate_original_revalidates_stale_references(client: TestClient, *, identity) -> None:
     first = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 5200,
             "merchant": "Same Store",
@@ -1377,7 +1371,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
     first_id = first.json()["id"]
     second = client.post(
         "/api/expenses/manual",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 5200,
             "merchant": "Same Store",
@@ -1391,7 +1385,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
 
     response = client.patch(
         f"/api/expenses/{first_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_cents": 5200,
             "merchant": "Changed Original",
@@ -1401,7 +1395,7 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
     )
     assert response.status_code == 200
 
-    after = client.get(f"/api/expenses/{second_id}", headers=app_headers())
+    after = client.get(f"/api/expenses/{second_id}", headers=identity.app_headers)
     assert after.status_code == 200
     assert after.json()["duplicate_status"] == "none"
     assert after.json()["duplicate_of_id"] is None

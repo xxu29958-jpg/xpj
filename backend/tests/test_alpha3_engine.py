@@ -12,8 +12,6 @@ from app.database import SessionLocal
 from app.models import CategoryRule, Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
 from app.services.rule_application_service import _try_apply_rule_category, _try_rollback_rule_change
 from app.services.time_service import now_utc
-from conftest import app_headers, gray_app_headers
-
 
 # --- T17 Rules Preview ----------------------------------------------------
 
@@ -24,22 +22,22 @@ def _seed_pending_with_merchant(merchant: str) -> int:
     raise RuntimeError("call _patch_pending_merchant from a test using `client`")
 
 
-def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str) -> None:
+def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
     response = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"merchant": merchant, "amount_cents": 3800},
     )
     assert response.status_code == 200
 
 
-def test_rule_preview_does_not_modify(client: TestClient) -> None:
-    first_id = upload_png(client)
-    _set_pending_merchant(client, first_id, "STARBUCKS COFFEE")
+def test_rule_preview_does_not_modify(client: TestClient, *, identity) -> None:
+    first_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, first_id, "STARBUCKS COFFEE", identity=identity)
 
     response = client.post(
         "/api/rules/preview",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "keyword": "STARBUCKS",
             "target_category": "餐饮",
@@ -64,25 +62,25 @@ def test_rule_preview_does_not_modify(client: TestClient) -> None:
         assert expense.category == "其他"
 
 
-def test_rule_preview_rejects_empty_keyword(client: TestClient) -> None:
+def test_rule_preview_rejects_empty_keyword(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/rules/preview",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "   ", "target_category": "餐饮"},
     )
     assert response.status_code == 422
 
 
-def test_rule_preview_caps_items_by_limit(client: TestClient) -> None:
+def test_rule_preview_caps_items_by_limit(client: TestClient, *, identity) -> None:
     ids: list[int] = []
     for index in range(3):
-        new_id = upload_png(client)
-        _set_pending_merchant(client, new_id, f"星巴克门店-{index}")
+        new_id = upload_png(client, identity=identity)
+        _set_pending_merchant(client, new_id, f"星巴克门店-{index}", identity=identity)
         ids.append(new_id)
 
     response = client.post(
         "/api/rules/preview",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "星巴克", "target_category": "餐饮", "limit": 2},
     )
     assert response.status_code == 200
@@ -91,10 +89,10 @@ def test_rule_preview_caps_items_by_limit(client: TestClient) -> None:
     assert len(body["items"]) == 2
 
 
-def test_rule_patch_can_clear_optional_filters(client: TestClient) -> None:
+def test_rule_patch_can_clear_optional_filters(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "keyword": "Coffee",
             "category": "餐饮",
@@ -111,7 +109,7 @@ def test_rule_patch_can_clear_optional_filters(client: TestClient) -> None:
 
     patched = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "amount_min_cents": None,
             "amount_max_cents": None,
@@ -138,43 +136,43 @@ def test_rule_patch_can_clear_optional_filters(client: TestClient) -> None:
 # --- T18 Rules Apply Pending ---------------------------------------------
 
 
-def _apply_pending_rules(client: TestClient, *, max_scan: int = 500):
+def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     preview = client.post(
         f"/api/rules/apply-pending/preview?max_scan={max_scan}",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert preview.status_code == 200, preview.json()
     token = preview.json()["preview_token"]
     return client.post(
         f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True, "preview_token": token},
     )
 
 
 def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    default_id = upload_png(client)
-    _set_pending_merchant(client, default_id, "Starbucks 上海")
-    custom_id = upload_png(client)
+    default_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, default_id, "Starbucks 上海", identity=identity)
+    custom_id = upload_png(client, identity=identity)
     custom = client.patch(
         f"/api/expenses/{custom_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"merchant": "Starbucks 手动分类", "category": "交通", "amount_cents": 1000},
     )
     assert custom.status_code == 200
 
     response = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert response.status_code == 200
 
     preview = client.post(
         "/api/rules/apply-pending/preview?limit=10",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert preview.status_code == 200
     body = preview.json()
@@ -203,30 +201,30 @@ def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
         assert custom_expense.category == "交通"
 
 
-def test_rule_apply_pending_updates_category(client: TestClient) -> None:
-    pending_id = upload_png(client)
+def test_rule_apply_pending_updates_category(client: TestClient, *, identity) -> None:
+    pending_id = upload_png(client, identity=identity)
     with SessionLocal() as db:
         expense = db.get(Expense, pending_id)
         assert expense is not None
         expense.ocr_draft_fields = json.dumps(["category", "merchant"])
         db.commit()
-    _set_pending_merchant(client, pending_id, "Starbucks 上海")
+    _set_pending_merchant(client, pending_id, "Starbucks 上海", identity=identity)
 
     # Seed a rule for Starbucks → 餐饮 with high priority.
     response = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert response.status_code == 200
 
-    response = _apply_pending_rules(client)
+    response = _apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
     body = response.json()
     assert body["pending_scanned"] >= 1
     assert body["changed_count"] >= 1
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200
     items = pending.json()
     target = next((item for item in items if int(item["id"]) == pending_id), None)
@@ -239,12 +237,12 @@ def test_rule_apply_pending_updates_category(client: TestClient) -> None:
     assert target["status"] == "pending"  # NOT auto-confirmed
 
 
-def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient) -> None:
-    pending_id = upload_png(client)
-    _set_pending_merchant(client, pending_id, "PendingPreviewCafe")
+def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient, *, identity) -> None:
+    pending_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, pending_id, "PendingPreviewCafe", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "PendingPreviewCafe", "category": "椁愰ギ", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
@@ -252,25 +250,25 @@ def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient) -> 
 
     missing = client.post(
         "/api/rules/apply-pending",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True},
     )
     assert missing.status_code == 409
     assert missing.json()["error"] == "preview_required"
 
-    preview = client.post("/api/rules/apply-pending/preview", headers=app_headers())
+    preview = client.post("/api/rules/apply-pending/preview", headers=identity.app_headers)
     assert preview.status_code == 200
     token = preview.json()["preview_token"]
 
     changed_rule = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"category": "Transport"},
     )
     assert changed_rule.status_code == 200
     stale = client.post(
         "/api/rules/apply-pending",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True, "preview_token": token},
     )
     assert stale.status_code == 409
@@ -281,29 +279,29 @@ def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient) -> 
         assert expense.category != "Transport"
 
 
-def test_rule_application_audit_and_rollback_integration(client: TestClient) -> None:
+def test_rule_application_audit_and_rollback_integration(client: TestClient, *, identity) -> None:
     """Owner API flow: no-op creates no audit, real apply audits, rollback is idempotent."""
-    upload_png(client)
-    noop = _apply_pending_rules(client)
+    upload_png(client, identity=identity)
+    noop = _apply_pending_rules(client, identity=identity)
     assert noop.status_code == 200
     assert noop.json()["changed_count"] == 0
-    assert client.get("/api/rules/applications", headers=app_headers()).json()["items"] == []
+    assert client.get("/api/rules/applications", headers=identity.app_headers).json()["items"] == []
 
-    pending_id = upload_png(client)
-    _set_pending_merchant(client, pending_id, "AuditCafe 上海")
+    pending_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, pending_id, "AuditCafe 上海", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "AuditCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
     rule_id = created.json()["id"]
 
-    applied = _apply_pending_rules(client)
+    applied = _apply_pending_rules(client, identity=identity)
     assert applied.status_code == 200
     assert applied.json()["changed_count"] == 1
 
-    listed = client.get("/api/rules/applications", headers=app_headers())
+    listed = client.get("/api/rules/applications", headers=identity.app_headers)
     assert listed.status_code == 200
     batch_id = listed.json()["items"][0]["public_id"]
     assert listed.json()["items"][0]["status"] == "applied"
@@ -323,7 +321,7 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient) -> 
         assert change.before_category == "其他"
         assert change.after_category == "餐饮"
 
-    rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+    rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert rollback.status_code == 200
     assert rollback.json()["changed"] == 1
     assert rollback.json()["skipped"] == 0
@@ -332,37 +330,37 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient) -> 
         assert expense is not None
         assert expense.category == "其他"
 
-    second = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+    second = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert second.status_code == 200
     assert second.json()["changed"] == 0
     assert second.json()["skipped"] == 1
 
 
-def test_rule_application_rollback_safety_boundaries_integration(client: TestClient) -> None:
+def test_rule_application_rollback_safety_boundaries_integration(client: TestClient, *, identity) -> None:
     """One integration path covers manual edits, cross-ledger hiding, and writer guard."""
-    pending_id = upload_png(client)
-    _set_pending_merchant(client, pending_id, "BoundaryCafe")
+    pending_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, pending_id, "BoundaryCafe", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "BoundaryCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
-    _apply_pending_rules(client)
-    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+    _apply_pending_rules(client, identity=identity)
+    batch_id = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]["public_id"]
 
-    gray_list = client.get("/api/rules/applications", headers=gray_app_headers())
-    gray_rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=gray_app_headers())
+    gray_list = client.get("/api/rules/applications", headers=identity.gray_app_headers)
+    gray_rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.gray_app_headers)
     assert gray_list.status_code == 200
     assert all(item["public_id"] != batch_id for item in gray_list.json()["items"])
     assert gray_rollback.status_code == 404
 
     manual = client.patch(
         f"/api/expenses/{pending_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"category": "交通"},
     )
     assert manual.status_code == 200
-    skipped = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+    skipped = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert skipped.status_code == 200
     assert skipped.json()["status"] == "rollback_skipped"
     assert skipped.json()["changed"] == 0
@@ -377,34 +375,34 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
         assert member is not None
         member.role = "viewer"
         db.commit()
-    response = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+    response = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert response.status_code == 403
     assert response.json()["error"] == "permission_denied"
 
 
 def test_rule_application_rollback_skips_after_manual_edit_even_when_category_matches(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
-    pending_id = upload_png(client)
-    _set_pending_merchant(client, pending_id, "ManualEditCafe")
+    pending_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, pending_id, "ManualEditCafe", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "ManualEditCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
-    applied = _apply_pending_rules(client)
+    applied = _apply_pending_rules(client, identity=identity)
     assert applied.status_code == 200
-    batch_id = client.get("/api/rules/applications", headers=app_headers()).json()["items"][0]["public_id"]
+    batch_id = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]["public_id"]
 
     manual = client.patch(
         f"/api/expenses/{pending_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"note": "用户后续手工编辑过备注"},
     )
     assert manual.status_code == 200, manual.json()
     assert manual.json()["category"] == "餐饮"
 
-    rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=app_headers())
+    rollback = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
     assert rollback.status_code == 200
     assert rollback.json()["status"] == "rollback_skipped"
     assert rollback.json()["changed"] == 0
@@ -417,12 +415,12 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
         assert expense.note == "用户后续手工编辑过备注"
 
 
-def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient) -> None:
-    pending_id = upload_png(client)
-    _set_pending_merchant(client, pending_id, "RaceCafe")
+def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient, *, identity) -> None:
+    pending_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, pending_id, "RaceCafe", identity=identity)
     created = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "RaceCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
@@ -464,15 +462,15 @@ def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient)
         assert expense.category == "交通"
 
 
-def test_rule_application_rollback_cas_skips_stale_expense_snapshot(client: TestClient) -> None:
-    pending_id = upload_png(client)
-    _set_pending_merchant(client, pending_id, "RollbackRaceCafe")
+def test_rule_application_rollback_cas_skips_stale_expense_snapshot(client: TestClient, *, identity) -> None:
+    pending_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, pending_id, "RollbackRaceCafe", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "RollbackRaceCafe", "category": "Food", "enabled": True, "priority": 1},
     )
-    applied = _apply_pending_rules(client)
+    applied = _apply_pending_rules(client, identity=identity)
     assert applied.status_code == 200
 
     with SessionLocal() as stale_db:
@@ -509,7 +507,7 @@ def test_rule_application_rollback_cas_skips_stale_expense_snapshot(client: Test
         assert expense.category == "Manual"
 
 
-def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient) -> None:
+def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient, *, identity) -> None:
     confirmed_id = insert_confirmed_expense(
         amount_cents=4200,
         merchant="Starbucks 北京",
@@ -519,11 +517,11 @@ def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient) -> None
     )
     client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 
-    response = _apply_pending_rules(client)
+    response = _apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
 
     with SessionLocal() as db:
@@ -534,16 +532,16 @@ def test_rule_apply_pending_does_not_touch_confirmed(client: TestClient) -> None
         assert expense.status == "confirmed"
 
 
-def test_rule_apply_pending_does_not_auto_confirm(client: TestClient) -> None:
-    pending_id = upload_png(client)
-    _set_pending_merchant(client, pending_id, "Kimi 订阅")
+def test_rule_apply_pending_does_not_auto_confirm(client: TestClient, *, identity) -> None:
+    pending_id = upload_png(client, identity=identity)
+    _set_pending_merchant(client, pending_id, "Kimi 订阅", identity=identity)
     client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "Kimi", "category": "AI订阅", "enabled": True, "priority": 1},
     )
 
-    response = _apply_pending_rules(client)
+    response = _apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
 
     with SessionLocal() as db:
@@ -552,22 +550,22 @@ def test_rule_apply_pending_does_not_auto_confirm(client: TestClient) -> None:
         assert expense.status == "pending"
 
 
-def test_rule_apply_pending_skips_non_default_category(client: TestClient) -> None:
-    pending_id = upload_png(client)
+def test_rule_apply_pending_skips_non_default_category(client: TestClient, *, identity) -> None:
+    pending_id = upload_png(client, identity=identity)
     # Already classified as 交通 — apply-pending must respect user choice.
     response = client.patch(
         f"/api/expenses/{pending_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"merchant": "Starbucks", "category": "交通", "amount_cents": 1000},
     )
     assert response.status_code == 200
     client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "Starbucks", "category": "餐饮", "enabled": True, "priority": 1},
     )
 
-    response = _apply_pending_rules(client)
+    response = _apply_pending_rules(client, identity=identity)
     assert response.status_code == 200
 
     with SessionLocal() as db:
@@ -577,7 +575,7 @@ def test_rule_apply_pending_skips_non_default_category(client: TestClient) -> No
 
 
 def test_rule_apply_confirmed_dry_run_then_confirm_integration(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     confirmed_id = insert_confirmed_expense(
         amount_cents=4200,
@@ -602,7 +600,7 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
         db.commit()
     created = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "keyword": "ConfirmedApplyCafe",
             "category": "餐饮",
@@ -619,7 +617,7 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
     assert created.json()["amount_min_cents"] == 1000
     assert created.json()["tag_contains"] == "真香"
 
-    preview = client.post("/api/rules/apply-confirmed", headers=app_headers())
+    preview = client.post("/api/rules/apply-confirmed", headers=identity.app_headers)
 
     assert preview.status_code == 200
     body = preview.json()
@@ -639,7 +637,7 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
 
     response = client.post(
         "/api/rules/apply-confirmed",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True, "preview_token": body["preview_token"]},
     )
 
@@ -672,7 +670,7 @@ def test_rule_apply_confirmed_dry_run_then_confirm_integration(
         assert change.after_category == "餐饮"
 
 
-def test_rule_apply_confirmed_reports_scan_limit(client: TestClient) -> None:
+def test_rule_apply_confirmed_reports_scan_limit(client: TestClient, *, identity) -> None:
     for index in range(2):
         insert_confirmed_expense(
             amount_cents=4200,
@@ -683,21 +681,21 @@ def test_rule_apply_confirmed_reports_scan_limit(client: TestClient) -> None:
         )
     created = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "LimitCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
 
-    preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=app_headers())
+    preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=identity.app_headers)
     first_apply = client.post(
         "/api/rules/apply-confirmed?max_scan=1",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True, "preview_token": preview.json()["preview_token"]},
     )
-    second_preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=app_headers())
+    second_preview = client.post("/api/rules/apply-confirmed?max_scan=1&limit=1", headers=identity.app_headers)
     second_apply = client.post(
         "/api/rules/apply-confirmed?max_scan=1",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True, "preview_token": second_preview.json()["preview_token"]},
     )
 
@@ -714,7 +712,7 @@ def test_rule_apply_confirmed_reports_scan_limit(client: TestClient) -> None:
     assert second_apply.json()["changed_count"] == 1
 
 
-def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient) -> None:
+def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient, *, identity) -> None:
     confirmed_id = insert_confirmed_expense(
         amount_cents=4200,
         merchant="StalePreviewCafe",
@@ -724,26 +722,26 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient) ->
     )
     created = client.post(
         "/api/rules/categories",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"keyword": "StalePreviewCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert created.status_code == 200
     rule_id = created.json()["id"]
 
-    preview = client.post("/api/rules/apply-confirmed", headers=app_headers())
+    preview = client.post("/api/rules/apply-confirmed", headers=identity.app_headers)
     assert preview.status_code == 200
     token = preview.json()["preview_token"]
 
     changed_rule = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"category": "交通"},
     )
     assert changed_rule.status_code == 200
 
     stale_apply = client.post(
         "/api/rules/apply-confirmed",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True, "preview_token": token},
     )
     assert stale_apply.status_code == 409
@@ -753,10 +751,10 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient) ->
         assert expense is not None
         assert expense.category == "其他"
 
-    fresh_preview = client.post("/api/rules/apply-confirmed", headers=app_headers())
+    fresh_preview = client.post("/api/rules/apply-confirmed", headers=identity.app_headers)
     fresh_apply = client.post(
         "/api/rules/apply-confirmed",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True, "preview_token": fresh_preview.json()["preview_token"]},
     )
     assert fresh_apply.status_code == 200
@@ -767,7 +765,7 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient) ->
 
 
 def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     owner_confirmed_id = insert_confirmed_expense(
         amount_cents=4200,
@@ -800,21 +798,21 @@ def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
 
     owner_rule = client.post(
         "/api/rules/categories",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={"keyword": "ConfirmedGuardCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
     assert owner_rule.status_code == 200
 
     owner_denied = client.post(
         "/api/rules/apply-confirmed",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"confirm": True},
     )
-    tester_preview = client.post("/api/rules/apply-confirmed", headers=gray_app_headers())
+    tester_preview = client.post("/api/rules/apply-confirmed", headers=identity.gray_app_headers)
     assert tester_preview.status_code == 200
     tester_apply = client.post(
         "/api/rules/apply-confirmed",
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         json={"confirm": True, "preview_token": tester_preview.json()["preview_token"]},
     )
 
@@ -831,13 +829,13 @@ def test_rule_apply_confirmed_viewer_denied_and_cross_ledger_isolated(
 # --- T24 Recurring candidates --------------------------------------------
 
 
-def test_recurring_candidates_empty(client: TestClient) -> None:
-    response = client.get("/api/insights/recurring-candidates", headers=app_headers())
+def test_recurring_candidates_empty(client: TestClient, *, identity) -> None:
+    response = client.get("/api/insights/recurring-candidates", headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json() == {"items": []}
 
 
-def test_recurring_candidates_detects_monthly_merchant(client: TestClient) -> None:
+def test_recurring_candidates_detects_monthly_merchant(client: TestClient, *, identity) -> None:
     # 3 months of ChatGPT subscription, amounts within 15%.
     base = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
     for month_offset, amount in [(2, 20000), (1, 20000), (0, 20800)]:
@@ -849,7 +847,7 @@ def test_recurring_candidates_detects_monthly_merchant(client: TestClient) -> No
             expense_time=when,
             confirmed_at=when,
         )
-    response = client.get("/api/insights/recurring-candidates", headers=app_headers())
+    response = client.get("/api/insights/recurring-candidates", headers=identity.app_headers)
     assert response.status_code == 200
     items = response.json()["items"]
     chatgpt = next((item for item in items if "ChatGPT" in item["merchant"]), None)
@@ -859,7 +857,7 @@ def test_recurring_candidates_detects_monthly_merchant(client: TestClient) -> No
     assert chatgpt["amount_cents"] > 0
 
 
-def test_recurring_candidates_ignores_one_off(client: TestClient) -> None:
+def test_recurring_candidates_ignores_one_off(client: TestClient, *, identity) -> None:
     when = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
     insert_confirmed_expense(
         amount_cents=99900,
@@ -868,13 +866,13 @@ def test_recurring_candidates_ignores_one_off(client: TestClient) -> None:
         expense_time=when,
         confirmed_at=when,
     )
-    response = client.get("/api/insights/recurring-candidates", headers=app_headers())
+    response = client.get("/api/insights/recurring-candidates", headers=identity.app_headers)
     assert response.status_code == 200
     items = response.json()["items"]
     assert all("一次性家电" not in item["merchant"] for item in items)
 
 
-def test_recurring_candidates_ignores_amount_drift(client: TestClient) -> None:
+def test_recurring_candidates_ignores_amount_drift(client: TestClient, *, identity) -> None:
     # Same merchant 3 months but amounts way off → excluded.
     base = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
     for month_offset, amount in [(2, 5000), (1, 30000), (0, 18000)]:
@@ -886,7 +884,7 @@ def test_recurring_candidates_ignores_amount_drift(client: TestClient) -> None:
             expense_time=when,
             confirmed_at=when,
         )
-    response = client.get("/api/insights/recurring-candidates", headers=app_headers())
+    response = client.get("/api/insights/recurring-candidates", headers=identity.app_headers)
     assert response.status_code == 200
     items = response.json()["items"]
     assert all("水电费" not in item["merchant"] for item in items)
@@ -895,9 +893,9 @@ def test_recurring_candidates_ignores_amount_drift(client: TestClient) -> None:
 # --- No-secret-leak smoke -------------------------------------------------
 
 
-def test_alpha3_endpoints_no_secret_leak(client: TestClient) -> None:
-    upload_png(client)
-    preview_for_apply = client.post("/api/rules/apply-pending/preview", headers=app_headers())
+def test_alpha3_endpoints_no_secret_leak(client: TestClient, *, identity) -> None:
+    upload_png(client, identity=identity)
+    preview_for_apply = client.post("/api/rules/apply-pending/preview", headers=identity.app_headers)
     assert preview_for_apply.status_code == 200
     preview_token = preview_for_apply.json()["preview_token"]
     for path, method, body in [
@@ -911,9 +909,9 @@ def test_alpha3_endpoints_no_secret_leak(client: TestClient) -> None:
         ("/api/insights/recurring-candidates", "GET", None),
     ]:
         if method == "GET":
-            response = client.get(path, headers=app_headers())
+            response = client.get(path, headers=identity.app_headers)
         else:
-            response = client.post(path, headers=app_headers(), json=body)
+            response = client.post(path, headers=identity.app_headers, json=body)
         assert response.status_code == 200
         text = response.text
         assert "token_hash" not in text

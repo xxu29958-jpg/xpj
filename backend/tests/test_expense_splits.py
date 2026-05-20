@@ -7,15 +7,13 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember
-from conftest import PNG_BYTES, admin_headers, app_headers, gray_app_headers
-
-
+from tests._infra.assets import PNG_BYTES
 def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_family_ledger(client: TestClient, name: str = "家庭拆账本") -> str:
-    response = client.post("/api/ledgers", headers=admin_headers(), json={"name": name})
+def _create_family_ledger(client: TestClient, name: str = "家庭拆账本", *, identity) -> str:
+    response = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": name})
     assert response.status_code == 201, response.json()
     return str(response.json()["ledger_id"])
 
@@ -158,10 +156,10 @@ def _replace_splits(
 
 
 def _family_split_fixture(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> tuple[str, str, str, str, int, int, int]:
-    family_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, family_id, app_headers())
+    family_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, family_id, identity.app_headers)
     member_token = _make_role_token(
         client,
         family_id,
@@ -191,7 +189,7 @@ def _family_split_fixture(
     )
 
 
-def test_expense_splits_replace_read_and_audit(client: TestClient) -> None:
+def test_expense_splits_replace_read_and_audit(client: TestClient, *, identity) -> None:
     (
         family_id,
         owner_token,
@@ -200,7 +198,7 @@ def test_expense_splits_replace_read_and_audit(client: TestClient) -> None:
         expense_id,
         owner_member_id,
         member_member_id,
-    ) = _family_split_fixture(client)
+    ) = _family_split_fixture(client, identity=identity)
 
     replaced = _replace_splits(
         client,
@@ -256,7 +254,7 @@ def test_expense_splits_replace_read_and_audit(client: TestClient) -> None:
     } == {item["account_public_id"] for item in audit_detail["before"]}
 
 
-def test_expense_splits_do_not_change_stats_or_export(client: TestClient) -> None:
+def test_expense_splits_do_not_change_stats_or_export(client: TestClient, *, identity) -> None:
     (
         _family_id,
         owner_token,
@@ -265,7 +263,7 @@ def test_expense_splits_do_not_change_stats_or_export(client: TestClient) -> Non
         expense_id,
         owner_member_id,
         member_member_id,
-    ) = _family_split_fixture(client)
+    ) = _family_split_fixture(client, identity=identity)
     replaced = _replace_splits(
         client,
         owner_token,
@@ -295,7 +293,7 @@ def test_expense_splits_do_not_change_stats_or_export(client: TestClient) -> Non
 
 
 def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     (
         _family_id,
@@ -305,7 +303,7 @@ def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
         expense_id,
         owner_member_id,
         member_member_id,
-    ) = _family_split_fixture(client)
+    ) = _family_split_fixture(client, identity=identity)
     _replace_splits(
         client,
         owner_token,
@@ -314,7 +312,7 @@ def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
         member_member_id,
     )
 
-    gray_read = client.get(f"/api/expenses/{expense_id}/splits", headers=gray_app_headers())
+    gray_read = client.get(f"/api/expenses/{expense_id}/splits", headers=identity.gray_app_headers)
     assert gray_read.status_code == 404
     assert gray_read.json()["error"] == "expense_not_found"
 
@@ -332,7 +330,7 @@ def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
 
 
 def test_expense_splits_preserve_disabled_member_attribution(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     (
         family_id,
@@ -342,7 +340,7 @@ def test_expense_splits_preserve_disabled_member_attribution(
         expense_id,
         owner_member_id,
         member_member_id,
-    ) = _family_split_fixture(client)
+    ) = _family_split_fixture(client, identity=identity)
     _replace_splits(
         client,
         owner_token,
@@ -382,7 +380,7 @@ def test_expense_splits_preserve_disabled_member_attribution(
 
 
 def test_expense_splits_reject_duplicate_and_cross_ledger_members(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     (
         _family_id,
@@ -392,7 +390,7 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
         expense_id,
         owner_member_id,
         _member_member_id,
-    ) = _family_split_fixture(client)
+    ) = _family_split_fixture(client, identity=identity)
 
     duplicate = client.put(
         f"/api/expenses/{expense_id}/splits",
@@ -420,7 +418,7 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
     assert cross_ledger.json()["error"] == "member_not_found"
 
 
-def test_rejected_expense_splits_cannot_be_replaced(client: TestClient) -> None:
+def test_rejected_expense_splits_cannot_be_replaced(client: TestClient, *, identity) -> None:
     (
         _family_id,
         owner_token,
@@ -429,7 +427,7 @@ def test_rejected_expense_splits_cannot_be_replaced(client: TestClient) -> None:
         _expense_id,
         owner_member_id,
         _member_member_id,
-    ) = _family_split_fixture(client)
+    ) = _family_split_fixture(client, identity=identity)
     expense_id = _upload_expense(client, owner_token)
     rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=_bearer(owner_token))
     assert rejected.status_code == 200, rejected.json()

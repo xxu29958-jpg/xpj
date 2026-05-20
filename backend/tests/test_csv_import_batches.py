@@ -21,8 +21,6 @@ from app.services.csv_import_batch_service import (
     list_csv_import_rows,
 )
 from app.services.time_service import now_utc
-from conftest import app_headers, gray_app_headers
-
 
 def _csv_bytes(row_count: int) -> BytesIO:
     lines = ["amount_yuan,merchant,category,note"]
@@ -561,11 +559,11 @@ def test_csv_import_success_clears_previous_apply_error(client: TestClient) -> N
         assert applied.batch.last_error is None
 
 
-def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient) -> None:
+def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient, *, identity) -> None:
     csv = "amount_yuan,merchant,category\nabc,Bad,餐饮\n4.50,Good,交通\n"
     created = client.post(
         "/api/imports/csv",
-        headers=app_headers(),
+        headers=identity.app_headers,
         files={"csv_file": ("C:\\temp\\rows.csv", csv.encode("utf-8"), "text/csv")},
     )
     assert created.status_code == 201, created.json()
@@ -579,7 +577,7 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
     public_id = batch["public_id"]
     rows = client.get(
         f"/api/imports/csv/{public_id}/rows?page_size=1",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert rows.status_code == 200, rows.json()
     assert rows.json()["total"] == 2
@@ -587,25 +585,25 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
 
     error_rows = client.get(
         f"/api/imports/csv/{public_id}/rows?status=error",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert error_rows.status_code == 200, error_rows.json()
     assert error_rows.json()["total"] == 1
     assert "amount_yuan" in error_rows.json()["items"][0]["error_message"]
 
-    errors_csv = client.get(f"/api/imports/csv/{public_id}/errors.csv", headers=app_headers())
+    errors_csv = client.get(f"/api/imports/csv/{public_id}/errors.csv", headers=identity.app_headers)
     assert errors_csv.status_code == 200
     assert errors_csv.content.startswith(b"\xef\xbb\xbf")
     assert "Bad" in errors_csv.text
     assert "amount_yuan" in errors_csv.text
 
-    gray_read = client.get(f"/api/imports/csv/{public_id}", headers=gray_app_headers())
+    gray_read = client.get(f"/api/imports/csv/{public_id}", headers=identity.gray_app_headers)
     assert gray_read.status_code == 404
     assert gray_read.json()["error"] == "import_batch_not_found"
 
     applied = client.post(
         f"/api/imports/csv/{public_id}/apply",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"batch_size": 1},
     )
     assert applied.status_code == 200, applied.json()
@@ -614,11 +612,11 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
     assert applied.json()["batch"]["status"] == "applied_with_errors"
 
 
-def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient) -> None:
+def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient, *, identity) -> None:
     csv = "amount_yuan,amount_cents,merchant\n2.00,100,Conflicting Cafe\n"
     created = client.post(
         "/api/imports/csv",
-        headers=app_headers(),
+        headers=identity.app_headers,
         files={"csv_file": ("conflict.csv", csv.encode("utf-8"), "text/csv")},
     )
     assert created.status_code == 201, created.json()
@@ -628,7 +626,7 @@ def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient
 
     rows = client.get(
         f"/api/imports/csv/{batch['public_id']}/rows?status=error",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert rows.status_code == 200, rows.json()
     assert rows.json()["items"][0]["status"] == "error"
@@ -636,10 +634,10 @@ def test_csv_import_rejects_conflicting_amount_yuan_and_cents(client: TestClient
     assert "amount_cents" in rows.json()["items"][0]["error_message"]
 
 
-def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(client: TestClient) -> None:
+def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(client: TestClient, *, identity) -> None:
     rate = client.put(
         "/api/exchange-rates/USD/2026-05-04",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "currency_code": "USD",
             "rate_date": "2026-05-04",
@@ -657,7 +655,7 @@ def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(clien
     )
     created = client.post(
         "/api/imports/csv",
-        headers=app_headers(),
+        headers=identity.app_headers,
         files={"csv_file": ("foreign.csv", csv.encode("utf-8"), "text/csv")},
     )
     assert created.status_code == 201, created.json()
@@ -667,7 +665,7 @@ def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(clien
 
     rows = client.get(
         f"/api/imports/csv/{batch['public_id']}/rows",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert rows.status_code == 200, rows.json()
     row = rows.json()["items"][0]
@@ -677,13 +675,13 @@ def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(clien
 
     applied = client.post(
         f"/api/imports/csv/{batch['public_id']}/apply",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"batch_size": 10},
     )
     assert applied.status_code == 200, applied.json()
     assert applied.json()["inserted_count"] == 1
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200, pending.json()
     target = next(item for item in pending.json() if item["merchant"] == "Foreign Cafe")
     assert target["original_currency_code"] == "USD"
@@ -693,7 +691,7 @@ def test_csv_import_foreign_amount_cents_is_original_minor_not_home_amount(clien
 
 
 def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     csv = "\n".join(
         [
@@ -705,7 +703,7 @@ def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
     )
     created = client.post(
         "/api/imports/csv",
-        headers=app_headers(),
+        headers=identity.app_headers,
         files={"csv_file": ("rich-rows.csv", csv.encode("utf-8"), "text/csv")},
     )
     assert created.status_code == 201, created.json()
@@ -716,14 +714,14 @@ def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
 
     applied = client.post(
         f"/api/imports/csv/{batch['public_id']}/apply",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"batch_size": 10},
     )
     assert applied.status_code == 200, applied.json()
     assert applied.json()["inserted_count"] == 2
     assert applied.json()["remaining_valid_rows"] == 0
 
-    pending = client.get("/api/expenses/pending", headers=app_headers())
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
     assert pending.status_code == 200, pending.json()
     target = next(item for item in pending.json() if item["merchant"] == "CSV咖啡店")
     assert target["status"] == "pending"
@@ -735,14 +733,14 @@ def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
 
     confirmed = client.post(
         f"/api/expenses/{target['id']}/confirm",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert confirmed.status_code == 200, confirmed.json()
     assert confirmed.json()["status"] == "confirmed"
 
     stats = client.get(
         "/api/stats/monthly?month=2026-05&tag=咖啡",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert stats.status_code == 200, stats.json()
     stats_body = stats.json()
@@ -759,7 +757,7 @@ def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
 
     filtered = client.get(
         "/api/expenses/confirmed?month=2026-05&category=餐饮&tag=咖啡",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert filtered.status_code == 200, filtered.json()
     filtered_body = filtered.json()
@@ -769,14 +767,14 @@ def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
 
     category_miss = client.get(
         "/api/expenses/confirmed?month=2026-05&category=购物",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert category_miss.status_code == 200, category_miss.json()
     assert category_miss.json()["total"] == 0
 
     exported = client.get(
         "/api/expenses/export.csv?month=2026-05&category=餐饮&tag=咖啡",
-        headers=app_headers(),
+        headers=identity.app_headers,
     )
     assert exported.status_code == 200, exported.text
     assert "text/csv" in exported.headers["content-type"]
@@ -786,22 +784,22 @@ def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
     assert "CSV文具店" not in exported.text
 
 
-def test_csv_import_viewer_can_read_batch_but_cannot_create_or_apply(client: TestClient) -> None:
+def test_csv_import_viewer_can_read_batch_but_cannot_create_or_apply(client: TestClient, *, identity) -> None:
     created = client.post(
         "/api/imports/csv",
-        headers=app_headers(),
+        headers=identity.app_headers,
         files={"csv_file": ("rows.csv", b"amount_yuan,merchant\n1.00,Cafe\n", "text/csv")},
     )
     assert created.status_code == 201, created.json()
     public_id = created.json()["public_id"]
 
     _demote_owner_ledger_to_viewer()
-    read = client.get(f"/api/imports/csv/{public_id}", headers=app_headers())
+    read = client.get(f"/api/imports/csv/{public_id}", headers=identity.app_headers)
     assert read.status_code == 200, read.json()
 
     denied_apply = client.post(
         f"/api/imports/csv/{public_id}/apply",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"batch_size": 1},
     )
     assert denied_apply.status_code == 403
@@ -809,7 +807,7 @@ def test_csv_import_viewer_can_read_batch_but_cannot_create_or_apply(client: Tes
 
     denied_create = client.post(
         "/api/imports/csv",
-        headers=app_headers(),
+        headers=identity.app_headers,
         files={"csv_file": ("again.csv", b"amount_yuan,merchant\n2.00,Cafe\n", "text/csv")},
     )
     assert denied_create.status_code == 403

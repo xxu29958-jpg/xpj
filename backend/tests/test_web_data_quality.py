@@ -7,8 +7,6 @@ from fastapi.testclient import TestClient
 from api_contract_helpers import upload_png
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
-from conftest import app_headers
-
 
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
@@ -40,9 +38,9 @@ def test_web_data_quality_empty_renders(web_client: TestClient) -> None:
         assert label in resp.text
 
 
-def test_web_data_quality_action_links_appear(web_client: TestClient) -> None:
+def test_web_data_quality_action_links_appear(web_client: TestClient, *, identity) -> None:
     # Seed a pending row with no amount + no merchant — triggers action items.
-    upload_png(web_client)
+    upload_png(web_client, identity=identity)
 
     resp = web_client.get("/web/data-quality")
     assert resp.status_code == 200
@@ -51,9 +49,9 @@ def test_web_data_quality_action_links_appear(web_client: TestClient) -> None:
     assert "filter=missing_merchant" in resp.text
 
 
-def test_web_data_quality_local_uses_app_headers(client: TestClient) -> None:
+def test_web_data_quality_local_uses_app_headers(client: TestClient, *, identity) -> None:
     """A baseline check that the /api endpoint backing this page is reachable."""
-    resp = client.get("/api/insights/data-quality", headers=app_headers())
+    resp = client.get("/api/insights/data-quality", headers=identity.app_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["pending_total"] >= 0

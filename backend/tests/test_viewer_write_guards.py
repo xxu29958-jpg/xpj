@@ -14,9 +14,7 @@ from app.models import AuthToken, Expense, LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
-from conftest import PNG_BYTES, admin_headers, app_headers
-
-
+from tests._infra.assets import PNG_BYTES
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 
@@ -31,14 +29,14 @@ def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_family_ledger(client: TestClient) -> str:
-    response = client.post("/api/ledgers", headers=admin_headers(), json={"name": "viewer-guard"})
+def _create_family_ledger(client: TestClient, *, identity) -> str:
+    response = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": "viewer-guard"})
     assert response.status_code == 201, response.json()
     return response.json()["ledger_id"]
 
 
-def _switch_to(client: TestClient, ledger_id: str) -> str:
-    response = client.post(f"/api/ledgers/{ledger_id}/switch", headers=app_headers())
+def _switch_to(client: TestClient, ledger_id: str, *, identity) -> str:
+    response = client.post(f"/api/ledgers/{ledger_id}/switch", headers=identity.app_headers)
     assert response.status_code == 200, response.json()
     return response.json()["session_token"]
 
@@ -53,9 +51,9 @@ def _mint_invite(client: TestClient, ledger_id: str, owner_token: str, role: str
     return response.json()["invite_token"]
 
 
-def _make_role_token(client: TestClient, role: str) -> tuple[str, str, str]:
-    ledger_id = _create_family_ledger(client)
-    owner_token = _switch_to(client, ledger_id)
+def _make_role_token(client: TestClient, role: str, *, identity) -> tuple[str, str, str]:
+    ledger_id = _create_family_ledger(client, identity=identity)
+    owner_token = _switch_to(client, ledger_id, identity=identity)
     invite = _mint_invite(client, ledger_id, owner_token, role)
     response = client.post(
         "/api/invitations/accept",
@@ -70,8 +68,8 @@ def _make_role_token(client: TestClient, role: str) -> tuple[str, str, str]:
     return ledger_id, owner_token, response.json()["session_token"]
 
 
-def _make_web_ledger_with_role(client: TestClient, role: str) -> str:
-    response = client.post("/api/ledgers", headers=admin_headers(), json={"name": f"web-{role}"})
+def _make_web_ledger_with_role(client: TestClient, role: str, *, identity) -> str:
+    response = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": f"web-{role}"})
     assert response.status_code == 201, response.json()
     ledger_id = response.json()["ledger_id"]
     with SessionLocal() as db:
@@ -109,8 +107,8 @@ def _assert_permission_denied(response, *, label: str) -> None:
     assert payload["message"] == VIEWER_WRITE_MESSAGE, label
 
 
-def test_viewer_cannot_upload_android_screenshot(client: TestClient) -> None:
-    _, _, viewer_token = _make_role_token(client, "viewer")
+def test_viewer_cannot_upload_android_screenshot(client: TestClient, *, identity) -> None:
+    _, _, viewer_token = _make_role_token(client, "viewer", identity=identity)
 
     response = client.post(
         "/api/app/upload-screenshot",
@@ -121,8 +119,8 @@ def test_viewer_cannot_upload_android_screenshot(client: TestClient) -> None:
     _assert_permission_denied(response, label="android screenshot upload")
 
 
-def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient) -> None:
-    _, owner_token, viewer_token = _make_role_token(client, "viewer")
+def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient, *, identity) -> None:
+    _, owner_token, viewer_token = _make_role_token(client, "viewer", identity=identity)
     created = client.post(
         "/api/rules/categories",
         headers=_bearer(owner_token),
@@ -169,8 +167,8 @@ def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient) -> None
         _assert_permission_denied(response, label=label)
 
 
-def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClient) -> None:
-    ledger_id = _make_web_ledger_with_role(web_client, "viewer")
+def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClient, *, identity) -> None:
+    ledger_id = _make_web_ledger_with_role(web_client, "viewer", identity=identity)
     import_payload = json.dumps(
         [
             {
@@ -258,8 +256,8 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
         _assert_permission_denied(response, label=label)
 
 
-def test_viewer_can_export_confirmed_csv_from_api_and_web(web_client: TestClient) -> None:
-    ledger_id, _, viewer_token = _make_role_token(web_client, "viewer")
+def test_viewer_can_export_confirmed_csv_from_api_and_web(web_client: TestClient, *, identity) -> None:
+    ledger_id, _, viewer_token = _make_role_token(web_client, "viewer", identity=identity)
     _insert_confirmed_expense(ledger_id)
 
     api_export = web_client.get(
@@ -276,8 +274,8 @@ def test_viewer_can_export_confirmed_csv_from_api_and_web(web_client: TestClient
     assert "Viewer Export Cafe" in web_export.text
 
 
-def test_role_change_to_viewer_blocks_existing_token_writes(client: TestClient) -> None:
-    ledger_id, owner_token, member_token = _make_role_token(client, "member")
+def test_role_change_to_viewer_blocks_existing_token_writes(client: TestClient, *, identity) -> None:
+    ledger_id, owner_token, member_token = _make_role_token(client, "member", identity=identity)
     with SessionLocal() as db:
         token_row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(member_token)))
         assert token_row is not None

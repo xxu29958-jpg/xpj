@@ -10,8 +10,6 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import Budget, BudgetCategory, LedgerMember, RecurringItem
 from app.services.time_service import now_utc
-from conftest import app_headers, gray_app_headers
-
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -89,7 +87,7 @@ def _assert_permission_denied(response, *, label: str) -> None:
 
 
 def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     _seed_recurring(baseline_amount_cents=6800)
     _seed_recurring(
@@ -100,7 +98,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=12000,
         merchant="五月餐饮",
         category="餐饮",
@@ -108,7 +106,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=3500,
         merchant="五月交通",
         category="交通",
@@ -116,7 +114,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=9900,
         merchant="医保报销",
         category="医疗",
@@ -124,7 +122,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     )
     _manual_expense(
         client,
-        headers=app_headers(),
+        headers=identity.app_headers,
         amount_cents=7777,
         merchant="上月餐饮",
         category="餐饮",
@@ -132,7 +130,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     )
     _manual_expense(
         client,
-        headers=gray_app_headers(),
+        headers=identity.gray_app_headers,
         amount_cents=7777,
         merchant="灰度餐饮",
         category="餐饮",
@@ -141,7 +139,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
 
     response = client.put(
         "/api/budgets/monthly/2026-05?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "total_amount_cents": 100000,
             "non_monthly_amount_cents": 15000,
@@ -181,7 +179,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
         },
     ]
 
-    gray = client.get("/api/budgets/monthly?month=2026-05&timezone=UTC", headers=gray_app_headers())
+    gray = client.get("/api/budgets/monthly?month=2026-05&timezone=UTC", headers=identity.gray_app_headers)
     assert gray.status_code == 200, gray.json()
     gray_payload = gray.json()
     assert gray_payload["ledger_id"] == "tester_1"
@@ -195,7 +193,7 @@ def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
 
 
 def test_monthly_budget_fixed_spend_uses_recurring_month_membership(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     _seed_recurring(
         merchant_key="may-active",
@@ -218,21 +216,21 @@ def test_monthly_budget_fixed_spend_uses_recurring_month_membership(
         archived_at=datetime(2026, 4, 25, tzinfo=UTC),
     )
 
-    may = client.get("/api/budgets/monthly?month=2026-05&timezone=UTC", headers=app_headers())
+    may = client.get("/api/budgets/monthly?month=2026-05&timezone=UTC", headers=identity.app_headers)
     assert may.status_code == 200, may.json()
     assert may.json()["fixed_amount_cents"] == 5000
 
-    june = client.get("/api/budgets/monthly?month=2026-06&timezone=UTC", headers=app_headers())
+    june = client.get("/api/budgets/monthly?month=2026-06&timezone=UTC", headers=identity.app_headers)
     assert june.status_code == 200, june.json()
     assert june.json()["fixed_amount_cents"] == 14000
 
 
 def test_monthly_budget_upsert_replaces_category_rows_without_duplicates(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     first = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "total_amount_cents": 80000,
             "excluded_categories": ["医疗", "医疗"],
@@ -246,7 +244,7 @@ def test_monthly_budget_upsert_replaces_category_rows_without_duplicates(
 
     second = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "total_amount_cents": 90000,
             "non_monthly_amount_cents": 12000,
@@ -287,11 +285,11 @@ def test_monthly_budget_upsert_replaces_category_rows_without_duplicates(
     assert category_count == 1
 
 
-def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient) -> None:
+def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient, *, identity) -> None:
     _set_owner_ledger_role("member")
     member_response = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"total_amount_cents": 50000},
     )
     assert member_response.status_code == 200, member_response.json()
@@ -299,22 +297,22 @@ def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient) -
     _set_owner_ledger_role("viewer")
     viewer_write = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"total_amount_cents": 60000},
     )
     _assert_permission_denied(viewer_write, label="viewer budget update")
 
-    viewer_read = client.get("/api/budgets/monthly?month=2026-05", headers=app_headers())
+    viewer_read = client.get("/api/budgets/monthly?month=2026-05", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert viewer_read.json()["total_amount_cents"] == 50000
 
 
 def test_budget_rejects_invalid_month_and_duplicate_normalized_categories(
-    client: TestClient,
+    client: TestClient, *, identity,
 ) -> None:
     invalid_month = client.put(
         "/api/budgets/monthly/2026-13",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"total_amount_cents": 50000},
     )
     assert invalid_month.status_code == 422, invalid_month.json()
@@ -322,7 +320,7 @@ def test_budget_rejects_invalid_month_and_duplicate_normalized_categories(
 
     duplicate_category = client.put(
         "/api/budgets/monthly/2026-05",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={
             "total_amount_cents": 50000,
             "category_budgets": [
@@ -335,10 +333,10 @@ def test_budget_rejects_invalid_month_and_duplicate_normalized_categories(
     assert duplicate_category.json()["error"] == "invalid_request"
 
 
-def test_budget_rejects_unbounded_month_without_persisting(client: TestClient) -> None:
+def test_budget_rejects_unbounded_month_without_persisting(client: TestClient, *, identity) -> None:
     response = client.put(
         "/api/budgets/monthly/9999-12?timezone=UTC",
-        headers=app_headers(),
+        headers=identity.app_headers,
         json={"total_amount_cents": 50000},
     )
     assert response.status_code == 422, response.json()
