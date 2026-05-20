@@ -365,12 +365,12 @@ def test_upload_cleans_saved_file_when_pending_creation_fails(
 def test_upload_thumbnail_failure_does_not_block_pending(
     client: TestClient, monkeypatch
 ) -> None:
-    from app.services import expense_service
-
     def fail_thumbnail(_: str | None) -> str | None:
         raise RuntimeError("thumbnail backend unavailable")
 
-    monkeypatch.setattr(expense_service, "generate_thumbnail", fail_thumbnail)
+    monkeypatch.setattr(
+        "app.services.expense_service._helpers.generate_thumbnail", fail_thumbnail
+    )
 
     response = client.post(
         upload_url_path(),

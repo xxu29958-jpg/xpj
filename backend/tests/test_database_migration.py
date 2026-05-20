@@ -573,14 +573,14 @@ def test_legacy_ledger_member_parent_key_migrates_before_foreign_key_check() -> 
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         init_db()
 
         assert "uq_ledger_members_id_ledger_id" in _indexes("ledger_members")
         assert "uq_ledger_member_ledger_account" in _indexes("ledger_members")
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -613,12 +613,12 @@ def test_legacy_duplicate_ledger_members_fail_before_unique_index() -> None:
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match="ledger_members"):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -644,12 +644,12 @@ def test_legacy_database_with_invalid_family_roles_fails_startup() -> None:
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match="ledger_members.role"):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
 
 
 @pytest.mark.parametrize(
@@ -691,12 +691,12 @@ def test_legacy_database_with_null_roles_fails_startup(
         connection.execute(text(table_sql))
         connection.execute(text(insert_sql))
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match=message):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -722,12 +722,12 @@ def test_legacy_database_with_invalid_invitation_role_fails_startup() -> None:
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match="invitations.role"):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
 
 
 @pytest.mark.parametrize(
@@ -769,12 +769,12 @@ def test_legacy_database_with_invalid_expense_core_data_fails_startup(
     with engine.begin() as connection:
         connection.execute(text(setup_sql))
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match=message):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -828,12 +828,12 @@ def test_legacy_database_with_duplicate_unique_scope_rows_fails_startup(
         connection.execute(text(table_sql))
         connection.execute(text(insert_sql))
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match=message):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -902,7 +902,7 @@ def test_legacy_csv_import_tables_without_tenant_id_migrate_before_indexes() -> 
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         init_db()
 
@@ -926,7 +926,7 @@ def test_legacy_csv_import_tables_without_tenant_id_migrate_before_indexes() -> 
         assert batch["public_id"]
         assert row_tenant == "owner"
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -967,7 +967,7 @@ def test_legacy_recurring_items_migrate_to_tenant_indexes_and_constraints() -> N
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         init_db()
 
@@ -985,7 +985,7 @@ def test_legacy_recurring_items_migrate_to_tenant_indexes_and_constraints() -> N
         assert row["status"] == "active"
         UUID(str(row["public_id"]))
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -1018,12 +1018,12 @@ def test_legacy_recurring_duplicate_scope_fails_before_unique_index() -> None:
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match="recurring_items"):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -1075,12 +1075,12 @@ def test_legacy_database_with_duplicate_active_goals_fails_before_unique_index()
             )
         )
 
-    database._sqlite_backup_done = True
+    database.reset_sqlite_backup_state(done=True)
     try:
         with pytest.raises(RuntimeError, match="duplicate active total goals"):
             init_db()
     finally:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         _reset_empty_database()
 
 
@@ -1188,12 +1188,12 @@ def test_pre_v03_backup_is_not_recreated_after_identity_migration() -> None:
     _insert_legacy_expense(amount_cents=3680, status="confirmed")
 
     try:
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         init_db()
         first_backups = sorted(backup_dir.glob(backup_pattern))
         assert len(first_backups) == 1
 
-        database._sqlite_backup_done = False
+        database.reset_sqlite_backup_state(done=False)
         init_db()
         second_backups = sorted(backup_dir.glob(backup_pattern))
         assert second_backups == first_backups

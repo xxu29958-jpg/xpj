@@ -1,0 +1,281 @@
+"""Schema package facade.
+
+Pre-split callers used ``from app.schemas import <Model>`` against a single
+~820-line module. That single import path is preserved — every class is
+re-exported here so existing routes, services, and tests need no changes.
+
+Internal layout (one submodule per business domain):
+
+- ``_common``   — error, health, status, auth-check
+- ``_identity`` — pairing, ledgers, members, invitations, admin device/link
+- ``_exchange`` — FX rate requests / responses
+- ``_expense``  — upload, manual create, draft, items, splits, OCR retry
+- ``_csv_import``  — CSV import batch / row / apply
+- ``_stats``    — category/tag totals, month index, monthly snapshot
+- ``_reports``  — trends, rankings, comparisons, lifestyle (imports ExpenseResponse)
+- ``_goals``    — spending goals CRUD
+- ``_dashboard``— dashboard card visibility / ordering
+- ``_rules``    — category rules, merchant aliases, rule-engine apply/preview
+- ``_recurring``— recurring candidates and v0.6 formal recurring items
+- ``_budgets``  — monthly budget dashboard
+- ``_admin``    — data quality, maintenance, server settings, user prefs
+"""
+
+from __future__ import annotations
+
+from app.schemas._admin import (
+    DataQualitySummaryResponse,
+    MaintenanceCleanupResponse,
+    MaintenanceOrphanCleanupResponse,
+    ServerSettingsResponse,
+    UserUiPreferencesResponse,
+    UserUiPreferencesUpdateRequest,
+)
+from app.schemas._budgets import (
+    BudgetCategoryRequest,
+    BudgetCategoryResponse,
+    BudgetExcludedCategoryResponse,
+    BudgetMonthlyResponse,
+    BudgetMonthlyUpdateRequest,
+)
+from app.schemas._common import (
+    AuthCheckResponse,
+    ErrorResponse,
+    HealthResponse,
+    StatusResponse,
+)
+from app.schemas._csv_import import (
+    CsvImportApplyRequest,
+    CsvImportApplyResponse,
+    CsvImportBatchResponse,
+    CsvImportRowResponse,
+    CsvImportRowsResponse,
+)
+from app.schemas._dashboard import (
+    DashboardCardResponse,
+    DashboardCardUpdateRequest,
+    DashboardCardsResponse,
+    DashboardCardsUpdateRequest,
+)
+from app.schemas._exchange import (
+    ExchangeRateListResponse,
+    ExchangeRateRequest,
+    ExchangeRateResponse,
+)
+from app.schemas._expense import (
+    ConfirmedExpenseBatchUpdateRequest,
+    ConfirmedExpenseBatchUpdateResponse,
+    ExpenseItemReplaceRequest,
+    ExpenseItemRequest,
+    ExpenseItemResponse,
+    ExpenseItemsResponse,
+    ExpenseManualCreateRequest,
+    ExpenseRecognizeTextRequest,
+    ExpenseResponse,
+    ExpenseSplitReplaceRequest,
+    ExpenseSplitRequest,
+    ExpenseSplitResponse,
+    ExpenseSplitsResponse,
+    ExpenseUpdateRequest,
+    NotificationDraftCreateRequest,
+    OcrRetryResponse,
+    PaginatedExpensesResponse,
+    UploadResponse,
+)
+from app.schemas._goals import (
+    GoalCreateRequest,
+    GoalListResponse,
+    GoalResponse,
+    GoalUpdateRequest,
+)
+from app.schemas._identity import (
+    AdminDeviceRenameRequest,
+    AdminDeviceResponse,
+    AdminUploadLinkCreateRequest,
+    AdminUploadLinkResponse,
+    AdminUploadLinkSecretResponse,
+    BootstrapOwnerRequest,
+    BootstrapOwnerResponse,
+    InvitationAcceptRequest,
+    InvitationAcceptResponse,
+    InvitationCreateRequest,
+    InvitationCreateResponse,
+    InvitationListResponse,
+    InvitationPreviewRequest,
+    InvitationPreviewResponse,
+    InvitationSummaryResponse,
+    LedgerAuditListResponse,
+    LedgerAuditResponse,
+    LedgerCreateRequest,
+    LedgerListResponse,
+    LedgerMemberListResponse,
+    LedgerMemberResponse,
+    LedgerMemberRoleUpdateRequest,
+    LedgerResponse,
+    LedgerSwitchResponse,
+    OwnerTransferResponse,
+    PairRequest,
+    PairResponse,
+    PairingCodeCreateRequest,
+    PairingCodeResponse,
+)
+from app.schemas._recurring import (
+    RecurringCandidateConfirmRequest,
+    RecurringCandidateItem,
+    RecurringCandidatesResponse,
+    RecurringItemListResponse,
+    RecurringItemResponse,
+)
+from app.schemas._reports import (
+    LifestyleStatsResponse,
+    ReportCategoryComparisonResponse,
+    ReportMerchantRankingResponse,
+    ReportTrendPointResponse,
+    ReportsOverviewResponse,
+)
+from app.schemas._rules import (
+    CategoryRuleCreateRequest,
+    CategoryRuleResponse,
+    CategoryRuleUpdateRequest,
+    MerchantAliasCreateRequest,
+    MerchantAliasListResponse,
+    MerchantAliasResponse,
+    MerchantAliasUpdateRequest,
+    RuleApplicationBatchResponse,
+    RuleApplicationListResponse,
+    RuleApplicationRollbackResponse,
+    RuleApplyConfirmedRequest,
+    RuleApplyConfirmedResponse,
+    RuleApplyPendingPreviewItem,
+    RuleApplyPendingPreviewResponse,
+    RuleApplyPendingRequest,
+    RuleApplyPendingResponse,
+    RulePreviewItem,
+    RulePreviewRequest,
+    RulePreviewResponse,
+)
+from app.schemas._stats import (
+    CategoriesResponse,
+    CategoryStatsResponse,
+    MonthlyStatsResponse,
+    MonthsResponse,
+    TagStatsResponse,
+    TagsResponse,
+)
+
+
+__all__ = [
+    "AdminDeviceRenameRequest",
+    "AdminDeviceResponse",
+    "AdminUploadLinkCreateRequest",
+    "AdminUploadLinkResponse",
+    "AdminUploadLinkSecretResponse",
+    "AuthCheckResponse",
+    "BootstrapOwnerRequest",
+    "BootstrapOwnerResponse",
+    "BudgetCategoryRequest",
+    "BudgetCategoryResponse",
+    "BudgetExcludedCategoryResponse",
+    "BudgetMonthlyResponse",
+    "BudgetMonthlyUpdateRequest",
+    "CategoriesResponse",
+    "CategoryRuleCreateRequest",
+    "CategoryRuleResponse",
+    "CategoryRuleUpdateRequest",
+    "CategoryStatsResponse",
+    "ConfirmedExpenseBatchUpdateRequest",
+    "ConfirmedExpenseBatchUpdateResponse",
+    "CsvImportApplyRequest",
+    "CsvImportApplyResponse",
+    "CsvImportBatchResponse",
+    "CsvImportRowResponse",
+    "CsvImportRowsResponse",
+    "DashboardCardResponse",
+    "DashboardCardUpdateRequest",
+    "DashboardCardsResponse",
+    "DashboardCardsUpdateRequest",
+    "DataQualitySummaryResponse",
+    "ErrorResponse",
+    "ExchangeRateListResponse",
+    "ExchangeRateRequest",
+    "ExchangeRateResponse",
+    "ExpenseItemReplaceRequest",
+    "ExpenseItemRequest",
+    "ExpenseItemResponse",
+    "ExpenseItemsResponse",
+    "ExpenseManualCreateRequest",
+    "ExpenseRecognizeTextRequest",
+    "ExpenseResponse",
+    "ExpenseSplitReplaceRequest",
+    "ExpenseSplitRequest",
+    "ExpenseSplitResponse",
+    "ExpenseSplitsResponse",
+    "ExpenseUpdateRequest",
+    "GoalCreateRequest",
+    "GoalListResponse",
+    "GoalResponse",
+    "GoalUpdateRequest",
+    "HealthResponse",
+    "InvitationAcceptRequest",
+    "InvitationAcceptResponse",
+    "InvitationCreateRequest",
+    "InvitationCreateResponse",
+    "InvitationListResponse",
+    "InvitationPreviewRequest",
+    "InvitationPreviewResponse",
+    "InvitationSummaryResponse",
+    "LedgerAuditListResponse",
+    "LedgerAuditResponse",
+    "LedgerCreateRequest",
+    "LedgerListResponse",
+    "LedgerMemberListResponse",
+    "LedgerMemberResponse",
+    "LedgerMemberRoleUpdateRequest",
+    "LedgerResponse",
+    "LedgerSwitchResponse",
+    "LifestyleStatsResponse",
+    "MaintenanceCleanupResponse",
+    "MaintenanceOrphanCleanupResponse",
+    "MerchantAliasCreateRequest",
+    "MerchantAliasListResponse",
+    "MerchantAliasResponse",
+    "MerchantAliasUpdateRequest",
+    "MonthlyStatsResponse",
+    "MonthsResponse",
+    "NotificationDraftCreateRequest",
+    "OcrRetryResponse",
+    "OwnerTransferResponse",
+    "PaginatedExpensesResponse",
+    "PairRequest",
+    "PairResponse",
+    "PairingCodeCreateRequest",
+    "PairingCodeResponse",
+    "RecurringCandidateConfirmRequest",
+    "RecurringCandidateItem",
+    "RecurringCandidatesResponse",
+    "RecurringItemListResponse",
+    "RecurringItemResponse",
+    "ReportCategoryComparisonResponse",
+    "ReportMerchantRankingResponse",
+    "ReportTrendPointResponse",
+    "ReportsOverviewResponse",
+    "RuleApplicationBatchResponse",
+    "RuleApplicationListResponse",
+    "RuleApplicationRollbackResponse",
+    "RuleApplyConfirmedRequest",
+    "RuleApplyConfirmedResponse",
+    "RuleApplyPendingPreviewItem",
+    "RuleApplyPendingPreviewResponse",
+    "RuleApplyPendingRequest",
+    "RuleApplyPendingResponse",
+    "RulePreviewItem",
+    "RulePreviewRequest",
+    "RulePreviewResponse",
+    "ServerSettingsResponse",
+    "StatusResponse",
+    "TagStatsResponse",
+    "TagsResponse",
+    "UploadResponse",
+    "UserUiPreferencesResponse",
+    "UserUiPreferencesUpdateRequest",
+]

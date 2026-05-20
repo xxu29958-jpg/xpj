@@ -1113,7 +1113,7 @@ def test_retry_ocr_rejects_stale_pending_snapshot(
             confidence=0.9,
         )
 
-    monkeypatch.setattr("app.services.expense_service.extract_ocr_result", slow_ocr_result)
+    monkeypatch.setattr("app.services.expense_service._ocr.extract_ocr_result", slow_ocr_result)
 
     with SessionLocal() as db:
         with pytest.raises(AppError) as exc_info:
