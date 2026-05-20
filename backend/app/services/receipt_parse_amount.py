@@ -14,7 +14,7 @@ from app.services.receipt_parse_rules import (
     TRANSACTION_SUCCESS_KEYWORDS,
     UPPER_MONEY_MARKERS,
 )
-from app.services.receipt_parse_service import (
+from app.services.receipt_parse_common import (
     _AmountCandidate,
     _ReceiptContext,
     _ScoreDimensions,

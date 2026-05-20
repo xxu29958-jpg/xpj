@@ -6,7 +6,7 @@ from app.services.receipt_parse_merchant import (
     _merchant_candidates,
 )
 from app.services.receipt_parse_rules import CATEGORY_HINT_RULES
-from app.services.receipt_parse_service import (
+from app.services.receipt_parse_common import (
     _CategoryCandidate,
     _MerchantCandidate,
     _ReceiptContext,

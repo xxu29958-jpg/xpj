@@ -18,7 +18,7 @@ from app.services.receipt_parse_rules import (
     SUCCESS_PAGE_SKIP_LINES,
     TRANSACTION_SUCCESS_KEYWORDS,
 )
-from app.services.receipt_parse_service import (
+from app.services.receipt_parse_common import (
     _MerchantCandidate,
     _ReceiptContext,
     _ScoreDimensions,

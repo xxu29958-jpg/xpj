@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
 from app.services.receipt_parse_rules import RELATIVE_TIME_PATTERNS, TIME_PATTERNS
-from app.services.receipt_parse_service import (
+from app.services.receipt_parse_common import (
     _ReceiptContext,
     _ScoreDimensions,
     _TimeCandidate,
