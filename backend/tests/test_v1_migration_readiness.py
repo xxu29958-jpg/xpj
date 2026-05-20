@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from sqlalchemy import text
 
-from app.database import engine
+from app.database import engine, settings
 from app.services import backup_service
 from app.services.migration_readiness_service import build_v1_migration_readiness_report
+
+
+pytestmark = pytest.mark.skipif(
+    ":memory:" in settings.database_url or settings.database_url == "sqlite://",
+    reason="Migration-readiness backups require a file-backed SQLite (test runs use in-memory).",
+)
 
 
 def _delete_backup(file_name: str | None) -> None:

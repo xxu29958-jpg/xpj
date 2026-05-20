@@ -32,7 +32,12 @@ os.environ.update(
         "UPLOAD_TOKEN": TEST_UPLOAD_TOKEN,
         "APP_TOKEN": TEST_APP_TOKEN,
         "ADMIN_TOKEN": TEST_ADMIN_TOKEN,
-        "DATABASE_URL": f"sqlite:///data/{TEST_DB_PATH.name}",
+        # In-memory SQLite + StaticPool (see app/database/_core.py): every
+        # Base.metadata.create_all() goes from ~1.3s on a file SQLite to
+        # ~16ms in memory, since each CREATE no longer fsyncs to disk.
+        # TEST_DB_PATH below is kept only as a path token for tests that
+        # assert on backup file naming patterns; no file is materialised.
+        "DATABASE_URL": "sqlite://",
         "UPLOAD_DIR": TEST_UPLOAD_RELATIVE,
         "MAX_UPLOAD_SIZE_MB": "10",
         "DELETE_IMAGE_AFTER_CONFIRM": "false",

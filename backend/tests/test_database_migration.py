@@ -1175,6 +1175,10 @@ def test_legacy_expense_tags_backfill_normalized_relation_rows() -> None:
     assert {str(row[0]) for row in rows} == {"真香", "AI"}
 
 
+@pytest.mark.skipif(
+    ":memory:" in database.settings.database_url or database.settings.database_url == "sqlite://",
+    reason="Backup-file rotation only applies to file-backed SQLite (test runs use in-memory).",
+)
 def test_pre_v03_backup_is_not_recreated_after_identity_migration() -> None:
     backup_dir = BACKEND_ROOT / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)

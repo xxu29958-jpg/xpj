@@ -447,7 +447,7 @@ def test_list_upload_links_masks_full_url(client: TestClient, *, identity) -> No
         # hex token from new_upload_key(); make sure it is never exposed in the
         # listing.
 
-        assert CURRENT_UPLOAD_KEY not in body
+        assert identity.upload_key not in body
 
 
 def test_admin_upload_link_management_is_scoped_to_visible_ledgers(client: TestClient, *, identity) -> None:

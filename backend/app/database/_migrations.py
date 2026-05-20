@@ -192,9 +192,13 @@ def migrate_sqlite_schema() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
 
-    inspector = inspect(engine)
-    table_names = set(inspector.get_table_names())
+    # Use the begin-block's connection for inspection. ``inspect(engine)``
+    # opens an independent logical SQLAlchemy connection; under StaticPool
+    # (in-memory test mode) its release path rolls back any concurrent
+    # transaction's writes via the shared underlying sqlite handle.
     with engine.begin() as connection:
+        inspector = inspect(connection)
+        table_names = set(inspector.get_table_names())
         _validate_family_role_data(connection, table_names)
         _validate_identity_unique_scopes(connection, table_names)
         _migrate_identity_runtime_schema(connection, table_names)
@@ -208,7 +212,8 @@ def migrate_sqlite_schema() -> None:
     source_base = FX_SOURCE_BASE
     status_ready = FX_STATUS_READY
     status_pending = FX_STATUS_PENDING
-    existing_columns = {column["name"] for column in inspector.get_columns("expenses")}
+    with engine.connect() as inspect_conn:
+        existing_columns = {column["name"] for column in inspect(inspect_conn).get_columns("expenses")}
     required_columns = {
         "tenant_id": f"VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'",
         "public_id": "VARCHAR(36)",
@@ -421,7 +426,7 @@ def migrate_sqlite_schema() -> None:
         )
 
         if "category_rules" in table_names:
-            category_rule_columns = {column["name"] for column in inspector.get_columns("category_rules")}
+            category_rule_columns = {column["name"] for column in inspect(connection).get_columns("category_rules")}
             if "tenant_id" not in category_rule_columns:
                 connection.execute(
                     text(f"ALTER TABLE category_rules ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'")
@@ -782,7 +787,7 @@ def migrate_sqlite_schema() -> None:
                 )
 
         if "duplicate_ignores" in table_names:
-            duplicate_ignore_columns = {column["name"] for column in inspector.get_columns("duplicate_ignores")}
+            duplicate_ignore_columns = {column["name"] for column in inspect(connection).get_columns("duplicate_ignores")}
             if "tenant_id" not in duplicate_ignore_columns:
                 connection.execute(
                     text(f"ALTER TABLE duplicate_ignores ADD COLUMN tenant_id VARCHAR(64) NOT NULL DEFAULT '{DEFAULT_TENANT_ID}'")
@@ -853,7 +858,7 @@ def migrate_sqlite_schema() -> None:
         # before the column existed.
         if "upload_links" in table_names:
             upload_link_columns = {
-                column["name"] for column in inspector.get_columns("upload_links")
+                column["name"] for column in inspect(connection).get_columns("upload_links")
             }
             if "public_id" not in upload_link_columns:
                 connection.execute(

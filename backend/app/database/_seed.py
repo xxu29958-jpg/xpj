@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from sqlalchemy import inspect, select
 
-from app.database._core import SessionLocal, engine
+from app.database._core import SessionLocal
 from app.database._validate import _validate_legacy_tenant_ids
 
 
@@ -41,36 +41,44 @@ def seed_identity_data() -> None:
 
     with SessionLocal() as db:
         ensure_identity_seed(db)
+        # Use the session's own connection for inspection. Using
+        # ``inspect(engine)`` here opens an independent connection wrapper;
+        # under StaticPool (in-memory tests) that wrapper's release path
+        # rolls back the session's in-progress writes from
+        # ``ensure_identity_seed`` because it shares the underlying SQLite
+        # connection.
+        inspector = inspect(db.connection())
+        existing = set(inspector.get_table_names())
         ids: set[str] = set()
-        if inspect(engine).has_table("expenses"):
+        if "expenses" in existing:
             ids.update(str(value) for value in db.scalars(select(Expense.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("expense_items"):
+        if "expense_items" in existing:
             ids.update(str(value) for value in db.scalars(select(ExpenseItem.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("expense_splits"):
+        if "expense_splits" in existing:
             ids.update(str(value) for value in db.scalars(select(ExpenseSplit.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("csv_import_batches"):
+        if "csv_import_batches" in existing:
             ids.update(str(value) for value in db.scalars(select(CsvImportBatch.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("csv_import_rows"):
+        if "csv_import_rows" in existing:
             ids.update(str(value) for value in db.scalars(select(CsvImportRow.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("category_rules"):
+        if "category_rules" in existing:
             ids.update(str(value) for value in db.scalars(select(CategoryRule.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("merchant_aliases"):
+        if "merchant_aliases" in existing:
             ids.update(str(value) for value in db.scalars(select(MerchantAlias.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("tags"):
+        if "tags" in existing:
             ids.update(str(value) for value in db.scalars(select(Tag.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("expense_tags"):
+        if "expense_tags" in existing:
             ids.update(str(value) for value in db.scalars(select(ExpenseTag.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("duplicate_ignores"):
+        if "duplicate_ignores" in existing:
             ids.update(str(value) for value in db.scalars(select(DuplicateIgnore.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("budgets"):
+        if "budgets" in existing:
             ids.update(str(value) for value in db.scalars(select(Budget.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("budget_categories"):
+        if "budget_categories" in existing:
             ids.update(str(value) for value in db.scalars(select(BudgetCategory.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("exchange_rates"):
+        if "exchange_rates" in existing:
             ids.update(str(value) for value in db.scalars(select(ExchangeRate.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("goals"):
+        if "goals" in existing:
             ids.update(str(value) for value in db.scalars(select(Goal.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("dashboard_card_preferences"):
+        if "dashboard_card_preferences" in existing:
             ids.update(
                 str(value)
                 for value in db.scalars(
@@ -78,9 +86,9 @@ def seed_identity_data() -> None:
                 )
                 if value
             )
-        if inspect(engine).has_table("rule_application_batches"):
+        if "rule_application_batches" in existing:
             ids.update(str(value) for value in db.scalars(select(RuleApplicationBatch.tenant_id).distinct()) if value)
-        if inspect(engine).has_table("rule_application_changes"):
+        if "rule_application_changes" in existing:
             ids.update(str(value) for value in db.scalars(select(RuleApplicationChange.tenant_id).distinct()) if value)
         _validate_legacy_tenant_ids(ids, source="tenant-scoped tables")
         if ids:

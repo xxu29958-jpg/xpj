@@ -10,6 +10,7 @@ from collections.abc import Generator
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.config import BACKEND_ROOT, get_settings
 
@@ -26,9 +27,25 @@ __all__ = [
 
 
 settings = get_settings()
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+_is_sqlite = settings.database_url.startswith("sqlite")
+_is_memory_sqlite = _is_sqlite and (":memory:" in settings.database_url or settings.database_url == "sqlite://")
+connect_args = {"check_same_thread": False} if _is_sqlite else {}
+engine_kwargs: dict = {"connect_args": connect_args, "future": True}
+# In-memory SQLite needs StaticPool: every new connection otherwise opens a
+# fresh empty DB, so schema / data created via one session vanishes when the
+# next session connects. StaticPool pins a single underlying sqlite handle
+# so all sessions in the process see the same in-memory DB.
+#
+# Note: under StaticPool, any ``inspect(engine)`` call shares the underlying
+# sqlite handle but is wrapped in its own logical SQLAlchemy connection,
+# whose release path issues a rollback that wipes any concurrent
+# transaction's writes. Migrations / seed code must therefore use
+# ``inspect(connection)`` (the same connection that holds the begin block)
+# instead of ``inspect(engine)`` — see _migrations.py and _seed.py.
+if _is_memory_sqlite:
+    engine_kwargs["poolclass"] = StaticPool
 
-engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
+engine = create_engine(settings.database_url, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

@@ -72,8 +72,8 @@ def _validate_legacy_tenant_ids(tenant_ids: set[str], *, source: str) -> None:
 def validate_sqlite_data_integrity() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
-    table_names = set(inspect(engine).get_table_names())
     with engine.begin() as connection:
+        table_names = set(inspect(connection).get_table_names())
         _validate_sqlite_foreign_keys(connection)
         _validate_expense_core_data(connection, table_names)
         _validate_recurring_item_data(connection, table_names)

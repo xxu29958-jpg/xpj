@@ -7,8 +7,15 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+from app.database import settings as _settings
 from app.main import app
 from app.routes.owner_console import _require_local
+
+
+_requires_file_sqlite = pytest.mark.skipif(
+    ":memory:" in _settings.database_url or _settings.database_url == "sqlite://",
+    reason="Requires file-backed SQLite (test runs use in-memory).",
+)
 
 
 @pytest.fixture()
@@ -29,6 +36,7 @@ def test_owner_backups_remote_returns_403(client: TestClient) -> None:
     assert resp.status_code == 403
 
 
+@_requires_file_sqlite
 def test_owner_backups_create_makes_file(local_client: TestClient, tmp_path) -> None:
     from app.services import backup_service
 
