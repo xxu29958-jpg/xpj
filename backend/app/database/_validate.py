@@ -18,6 +18,7 @@ import re
 from sqlalchemy import inspect, text
 
 from app.database._core import _sqlite_column_names, engine, settings
+from app.errors import DataIntegrityError
 
 
 __all__ = [
@@ -66,7 +67,7 @@ def _validate_legacy_tenant_ids(tenant_ids: set[str], *, source: str) -> None:
     invalid = sorted(tenant_id for tenant_id in tenant_ids if not pattern.fullmatch(tenant_id))
     if invalid:
         sample = ", ".join(invalid[:3])
-        raise RuntimeError(f"Invalid legacy data: {source} contains unsupported tenant_id values: {sample}")
+        raise DataIntegrityError(f"Invalid legacy data: {source} contains unsupported tenant_id values: {sample}")
 
 
 def validate_sqlite_data_integrity() -> None:
@@ -87,14 +88,14 @@ def _validate_sqlite_foreign_keys(connection) -> None:
     try:
         violations = list(connection.execute(text("PRAGMA foreign_key_check")).mappings())
     except Exception as exc:
-        raise RuntimeError("Invalid legacy data: SQLite foreign_key_check could not run") from exc
+        raise DataIntegrityError("Invalid legacy data: SQLite foreign_key_check could not run") from exc
     if not violations:
         return
     samples = ", ".join(
         f"{row['table']} rowid={row['rowid']} parent={row['parent']}"
         for row in violations[:3]
     )
-    raise RuntimeError(f"Invalid legacy data: SQLite foreign_key_check failed: {samples}")
+    raise DataIntegrityError(f"Invalid legacy data: SQLite foreign_key_check failed: {samples}")
 
 
 def _clear_invalid_duplicate_scope_data(connection, table_names: set[str]) -> None:
@@ -160,7 +161,7 @@ def _validate_root_tenant_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid:
-            raise RuntimeError(
+            raise DataIntegrityError(
                 f"Invalid legacy data: {table_name}.tenant_id references a missing ledger"
             )
 
@@ -180,7 +181,7 @@ def _validate_expense_core_data(connection, table_names: set[str]) -> None:
         ).scalar_one()
     )
     if invalid_amounts:
-        raise RuntimeError("Invalid legacy data: expenses.amount_cents contains negative values")
+        raise DataIntegrityError("Invalid legacy data: expenses.amount_cents contains negative values")
 
     invalid_statuses = int(
         connection.execute(
@@ -191,7 +192,7 @@ def _validate_expense_core_data(connection, table_names: set[str]) -> None:
         ).scalar_one()
     )
     if invalid_statuses:
-        raise RuntimeError("Invalid legacy data: expenses.status contains unsupported values")
+        raise DataIntegrityError("Invalid legacy data: expenses.status contains unsupported values")
 
     columns = _sqlite_column_names(connection, "expenses")
     if "duplicate_status" in columns:
@@ -204,7 +205,7 @@ def _validate_expense_core_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_duplicate_statuses:
-            raise RuntimeError("Invalid legacy data: expenses.duplicate_status contains unsupported values")
+            raise DataIntegrityError("Invalid legacy data: expenses.duplicate_status contains unsupported values")
 
     if "original_amount_minor" in columns:
         invalid_original_amounts = int(
@@ -216,7 +217,7 @@ def _validate_expense_core_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_original_amounts:
-            raise RuntimeError("Invalid legacy data: expenses.original_amount_minor contains negative values")
+            raise DataIntegrityError("Invalid legacy data: expenses.original_amount_minor contains negative values")
 
     if "exchange_rate_to_cny" in columns:
         invalid_exchange_rates = int(
@@ -228,7 +229,7 @@ def _validate_expense_core_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_exchange_rates:
-            raise RuntimeError("Invalid legacy data: expenses.exchange_rate_to_cny contains non-positive values")
+            raise DataIntegrityError("Invalid legacy data: expenses.exchange_rate_to_cny contains non-positive values")
 
     if "fx_status" in columns:
         invalid_fx_statuses = int(
@@ -240,7 +241,7 @@ def _validate_expense_core_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_fx_statuses:
-            raise RuntimeError("Invalid legacy data: expenses.fx_status contains unsupported values")
+            raise DataIntegrityError("Invalid legacy data: expenses.fx_status contains unsupported values")
 
 
 def _validate_family_role_data(connection, table_names: set[str]) -> None:
@@ -261,7 +262,7 @@ def _validate_family_role_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_members:
-            raise RuntimeError("Invalid legacy data: ledger_members.role contains unsupported values")
+            raise DataIntegrityError("Invalid legacy data: ledger_members.role contains unsupported values")
     if "invitations" in table_names:
         invalid_invitations = int(
             connection.execute(
@@ -272,7 +273,7 @@ def _validate_family_role_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_invitations:
-            raise RuntimeError("Invalid legacy data: invitations.role contains unsupported values")
+            raise DataIntegrityError("Invalid legacy data: invitations.role contains unsupported values")
 
 
 def _validate_identity_unique_scopes(connection, table_names: set[str]) -> None:
@@ -289,7 +290,7 @@ def _validate_identity_unique_scopes(connection, table_names: set[str]) -> None:
             )
         ).mappings().first()
         if duplicate_ledger is not None:
-            raise RuntimeError(
+            raise DataIntegrityError(
                 "Invalid legacy data: ledgers contains duplicate ledger_id rows "
                 f"for ledger_id={duplicate_ledger['ledger_id']}"
             )
@@ -305,7 +306,7 @@ def _validate_identity_unique_scopes(connection, table_names: set[str]) -> None:
             )
         ).mappings().first()
         if duplicate_member is not None:
-            raise RuntimeError(
+            raise DataIntegrityError(
                 "Invalid legacy data: ledger_members contains duplicate ledger/account rows "
                 f"for ledger_id={duplicate_member['ledger_id']} account_id={duplicate_member['account_id']}"
             )
@@ -330,7 +331,7 @@ def _validate_expense_split_integrity(connection, table_names: set[str]) -> None
         ).scalar_one()
     )
     if invalid_expense_refs:
-        raise RuntimeError(
+        raise DataIntegrityError(
             "Invalid legacy data: expense_splits contains cross-ledger expense references"
         )
 
@@ -346,7 +347,7 @@ def _validate_expense_split_integrity(connection, table_names: set[str]) -> None
         ).scalar_one()
     )
     if invalid_member_refs:
-        raise RuntimeError(
+        raise DataIntegrityError(
             "Invalid legacy data: expense_splits contains cross-ledger member references"
         )
 
@@ -370,7 +371,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
                 ).scalar_one()
             )
             if invalid:
-                raise RuntimeError(
+                raise DataIntegrityError(
                     "Invalid legacy data: expenses.duplicate_of_id contains cross-ledger expense references"
                 )
 
@@ -387,7 +388,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid:
-            raise RuntimeError("Invalid legacy data: expense_items contains cross-ledger expense references")
+            raise DataIntegrityError("Invalid legacy data: expense_items contains cross-ledger expense references")
 
     if {"csv_import_rows", "csv_import_batches"}.issubset(table_names):
         invalid = int(
@@ -402,7 +403,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid:
-            raise RuntimeError("Invalid legacy data: csv_import_rows contains cross-ledger batch references")
+            raise DataIntegrityError("Invalid legacy data: csv_import_rows contains cross-ledger batch references")
 
     if {"csv_import_rows", "expenses"}.issubset(table_names):
         invalid = int(
@@ -417,7 +418,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid:
-            raise RuntimeError("Invalid legacy data: csv_import_rows contains cross-ledger expense references")
+            raise DataIntegrityError("Invalid legacy data: csv_import_rows contains cross-ledger expense references")
 
     if {"budget_categories", "budgets"}.issubset(table_names):
         invalid = int(
@@ -432,7 +433,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid:
-            raise RuntimeError("Invalid legacy data: budget_categories contains rows without parent budgets")
+            raise DataIntegrityError("Invalid legacy data: budget_categories contains rows without parent budgets")
 
     if {"expense_tags", "expenses", "tags"}.issubset(table_names):
         invalid_expenses = int(
@@ -447,7 +448,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_expenses:
-            raise RuntimeError("Invalid legacy data: expense_tags contains cross-ledger expense references")
+            raise DataIntegrityError("Invalid legacy data: expense_tags contains cross-ledger expense references")
         invalid_tags = int(
             connection.execute(
                 text(
@@ -460,7 +461,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_tags:
-            raise RuntimeError("Invalid legacy data: expense_tags contains cross-ledger tag references")
+            raise DataIntegrityError("Invalid legacy data: expense_tags contains cross-ledger tag references")
 
     if {"duplicate_ignores", "expenses"}.issubset(table_names):
         ignore_columns = _sqlite_column_names(connection, "duplicate_ignores")
@@ -477,7 +478,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
                 ).scalar_one()
             )
             if invalid_expenses:
-                raise RuntimeError(
+                raise DataIntegrityError(
                     "Invalid legacy data: duplicate_ignores contains cross-ledger expense references"
                 )
             invalid_targets = int(
@@ -492,7 +493,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
                 ).scalar_one()
             )
             if invalid_targets:
-                raise RuntimeError(
+                raise DataIntegrityError(
                     "Invalid legacy data: duplicate_ignores contains cross-ledger expense references"
                 )
 
@@ -509,7 +510,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_batches:
-            raise RuntimeError("Invalid legacy data: rule_application_changes contains cross-ledger batch references")
+            raise DataIntegrityError("Invalid legacy data: rule_application_changes contains cross-ledger batch references")
         invalid_expenses = int(
             connection.execute(
                 text(
@@ -522,7 +523,7 @@ def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_expenses:
-            raise RuntimeError("Invalid legacy data: rule_application_changes contains cross-ledger expense references")
+            raise DataIntegrityError("Invalid legacy data: rule_application_changes contains cross-ledger expense references")
 
 
 def _validate_goal_unique_scopes(connection, table_names: set[str]) -> None:
@@ -542,7 +543,7 @@ def _validate_goal_unique_scopes(connection, table_names: set[str]) -> None:
         )
     ).mappings().first()
     if duplicate_total is not None:
-        raise RuntimeError(
+        raise DataIntegrityError(
             "Invalid legacy data: goals contains duplicate active total goals "
             f"for tenant={duplicate_total['tenant_id']} month={duplicate_total['month']}"
         )
@@ -558,7 +559,7 @@ def _validate_goal_unique_scopes(connection, table_names: set[str]) -> None:
         )
     ).mappings().first()
     if duplicate_category is not None:
-        raise RuntimeError(
+        raise DataIntegrityError(
             "Invalid legacy data: goals contains duplicate active category goals "
             f"for tenant={duplicate_category['tenant_id']} month={duplicate_category['month']} "
             f"category={duplicate_category['category']}"
@@ -579,7 +580,7 @@ def _validate_recurring_item_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_frequency:
-            raise RuntimeError("Invalid legacy data: recurring_items.frequency contains unsupported values")
+            raise DataIntegrityError("Invalid legacy data: recurring_items.frequency contains unsupported values")
     if "status" in columns:
         invalid_status = int(
             connection.execute(
@@ -590,7 +591,7 @@ def _validate_recurring_item_data(connection, table_names: set[str]) -> None:
             ).scalar_one()
         )
         if invalid_status:
-            raise RuntimeError("Invalid legacy data: recurring_items.status contains unsupported values")
+            raise DataIntegrityError("Invalid legacy data: recurring_items.status contains unsupported values")
     if {"tenant_id", "merchant_key", "frequency"}.issubset(columns):
         duplicate_recurring = connection.execute(
             text(
@@ -602,7 +603,7 @@ def _validate_recurring_item_data(connection, table_names: set[str]) -> None:
             )
         ).mappings().first()
         if duplicate_recurring is not None:
-            raise RuntimeError(
+            raise DataIntegrityError(
                 "Invalid legacy data: recurring_items contains duplicate tenant/merchant/frequency rows "
                 f"for tenant={duplicate_recurring['tenant_id']} merchant_key={duplicate_recurring['merchant_key']}"
             )
@@ -622,7 +623,7 @@ def _validate_legacy_unique_scopes(connection, table_names: set[str]) -> None:
                 )
             ).mappings().first()
             if duplicate_budget is not None:
-                raise RuntimeError(
+                raise DataIntegrityError(
                     "Invalid legacy data: budgets contains duplicate tenant/month rows "
                     f"for tenant={duplicate_budget['tenant_id']} month={duplicate_budget['month']}"
                 )
@@ -640,7 +641,7 @@ def _validate_legacy_unique_scopes(connection, table_names: set[str]) -> None:
                 )
             ).mappings().first()
             if duplicate_alias is not None:
-                raise RuntimeError(
+                raise DataIntegrityError(
                     "Invalid legacy data: merchant_aliases contains duplicate tenant/alias_key rows "
                     f"for tenant={duplicate_alias['tenant_id']} alias_key={duplicate_alias['alias_key']}"
                 )

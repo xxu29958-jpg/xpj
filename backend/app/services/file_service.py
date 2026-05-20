@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from app.config import BACKEND_ROOT, get_settings
-from app.errors import AppError
+from app.errors import AppError, PathTraversalError
 from app.tenants import DEFAULT_TENANT_ID
 
 
@@ -167,7 +167,7 @@ def upload_reference_for_path(path: Path) -> str:
     try:
         relative_to_upload_root = resolved.relative_to(settings.upload_dir.resolve())
     except ValueError as exc:
-        raise RuntimeError("Upload file escaped configured upload directory") from exc
+        raise PathTraversalError("Upload file escaped configured upload directory") from exc
     return f"{UPLOAD_REFERENCE_PREFIX}/{relative_to_upload_root.as_posix()}"
 
 

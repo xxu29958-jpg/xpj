@@ -14,6 +14,7 @@ import sqlite3
 
 from app.config import BACKEND_ROOT
 from app.database._core import settings
+from app.errors import DataIntegrityError, PathTraversalError
 
 
 __all__ = [
@@ -79,7 +80,7 @@ def backup_sqlite_database_once() -> Path | None:
     try:
         backup_path.relative_to(backup_dir.resolve())
     except ValueError as exc:
-        raise RuntimeError("SQLite backup target escaped backup directory") from exc
+        raise PathTraversalError("SQLite backup target escaped backup directory") from exc
     shutil.copy2(db_path, backup_path)
     return backup_path
 
@@ -89,7 +90,7 @@ def _needs_pre_v03_backup(db_path: Path) -> bool:
         with sqlite3.connect(db_path) as connection:
             table_rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     except sqlite3.DatabaseError as exc:
-        raise RuntimeError(f"SQLite database cannot be inspected before migration: {db_path}") from exc
+        raise DataIntegrityError(f"SQLite database cannot be inspected before migration: {db_path}") from exc
     table_names = {str(row[0]) for row in table_rows}
     if not table_names:
         return False

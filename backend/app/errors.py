@@ -70,11 +70,35 @@ ERROR_MESSAGES = {
 
 
 class AppError(Exception):
+    """API-surface error: the FastAPI exception handler turns these into
+    JSON ``{error, message}`` payloads with the matching HTTP status."""
+
     def __init__(self, error: str, message: str | None = None, status_code: int = 400) -> None:
         self.error = error
         self.message = message or ERROR_MESSAGES.get(error, ERROR_MESSAGES["server_error"])
         self.status_code = status_code
         super().__init__(self.message)
+
+
+class DataIntegrityError(RuntimeError):
+    """Legacy data on disk does not match the invariants the runtime requires.
+
+    Raised exclusively during ``init_db`` / migration / validation. Inherits
+    from ``RuntimeError`` so existing ``except RuntimeError`` blocks (notably
+    test_database_migration's ``pytest.raises(RuntimeError, match=...)``)
+    keep working. New call sites can ``except DataIntegrityError`` to
+    distinguish migration-time data corruption from other RuntimeErrors.
+    """
+
+
+class PathTraversalError(RuntimeError):
+    """A computed filesystem target escaped the configured boundary.
+
+    Security-sensitive condition raised when an upload or backup path
+    resolution leaves the directory we explicitly confined it to. Subclass
+    of RuntimeError for backwards compatibility with prior `except
+    RuntimeError` callers; should be re-raised, never swallowed.
+    """
 
 
 def error_response(error: str, message: str | None = None, status_code: int = 400) -> JSONResponse:
