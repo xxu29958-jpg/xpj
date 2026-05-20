@@ -87,9 +87,9 @@ def is_schema_migration_applied(name: str) -> bool:
 
     if not settings.database_url.startswith("sqlite"):
         return False
-    if "schema_migrations" not in set(inspect(engine).get_table_names()):
-        return False
     with engine.connect() as connection:
+        if "schema_migrations" not in set(inspect(connection).get_table_names()):
+            return False
         row = connection.execute(
             text("SELECT 1 FROM schema_migrations WHERE name = :name LIMIT 1"),
             {"name": name},

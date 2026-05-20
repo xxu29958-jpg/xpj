@@ -65,7 +65,9 @@ def migrate_upload_paths_to_tenant_dirs() -> None:
     from app.services.identity_service import ledger_ids
     from app.tenants import configured_tenants
 
-    if inspect(engine).has_table("ledgers"):
+    with engine.connect() as inspect_conn:
+        has_ledgers = inspect(inspect_conn).has_table("ledgers")
+    if has_ledgers:
         with SessionLocal() as db:
             tenant_ids = set(ledger_ids(db))
     else:

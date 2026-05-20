@@ -166,8 +166,21 @@ def build_v1_migration_readiness_report(*, create_backup: bool = False) -> Migra
     else:
         checks.append(_check("backup_available", "ok", "已找到最新的 pre-v1.0 回滚备份。"))
 
-    inspector = inspect(engine)
-    table_names = set(inspector.get_table_names())
+    # Use a dedicated connection for inspection. ``inspect(engine)`` under
+    # StaticPool (in-memory tests) would share the underlying SQLite handle
+    # with any session and roll back its pending writes on release.
+    # ``inspect(connection)`` keeps lifecycle inside a single wrapper.
+    with engine.connect() as inspect_conn:
+        inspector = inspect(inspect_conn)
+        table_names = set(inspector.get_table_names())
+        missing_indexes: list[str] = []
+        for table_name, required_indexes in REQUIRED_V09_INDEXES.items():
+            if table_name not in table_names:
+                continue
+            existing = {item["name"] for item in inspector.get_indexes(table_name)}
+            for index_name in sorted(required_indexes - existing):
+                missing_indexes.append(f"{table_name}.{index_name}")
+
     missing_tables = sorted(REQUIRED_V09_TABLES - table_names)
     if missing_tables:
         checks.append(
@@ -180,13 +193,6 @@ def build_v1_migration_readiness_report(*, create_backup: bool = False) -> Migra
     else:
         checks.append(_check("v09_tables", "ok", "v0.9 基线表已就绪。"))
 
-    missing_indexes: list[str] = []
-    for table_name, required_indexes in REQUIRED_V09_INDEXES.items():
-        if table_name not in table_names:
-            continue
-        existing = {item["name"] for item in inspector.get_indexes(table_name)}
-        for index_name in sorted(required_indexes - existing):
-            missing_indexes.append(f"{table_name}.{index_name}")
     if missing_indexes:
         checks.append(
             _check(
