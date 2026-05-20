@@ -40,6 +40,7 @@ __all__ = [
     "NOTIFICATION_DRAFT_SOURCE_LABELS",
     "NOTIFICATION_DRAFT_WINDOW_MINUTES",
     "logger",
+    "background_failure_counts",
     "_begin_immediate_write_if_sqlite",
     "_clean_category",
     "_clean_notification_source",
@@ -51,12 +52,29 @@ __all__ = [
     "_notification_draft_key",
     "_notification_window_key",
     "_replace_ocr_draft_items_from_text",
+    "_record_background_failure",
     "_try_generate_thumbnail",
     "_updated_at_matches",
 ]
 
 
 logger = logging.getLogger(__name__)
+
+
+# Background tasks (thumbnail generation, auto-OCR enrichment) intentionally
+# swallow exceptions so a failure doesn't fail the user-facing upload. The
+# counters below give those silent failures a visible surface so health
+# checks / future metrics exporters can see them.
+_background_failure_counts: dict[str, int] = {}
+
+
+def background_failure_counts() -> dict[str, int]:
+    """Snapshot of in-process background-task failure counters."""
+    return dict(_background_failure_counts)
+
+
+def _record_background_failure(kind: str) -> None:
+    _background_failure_counts[kind] = _background_failure_counts.get(kind, 0) + 1
 
 
 EDITABLE_STATUSES = {"pending", "confirmed"}
@@ -149,6 +167,10 @@ def _try_generate_thumbnail(relative_path: str | None, tenant_id: str) -> str | 
     try:
         return generate_thumbnail(relative_path, tenant_id=tenant_id)
     except Exception:
+        # Thumbnail is an optional artifact — never block the surrounding
+        # upload / enrichment on it. The failure is still recorded so
+        # health checks can see "thumbnails are silently failing".
+        _record_background_failure("thumbnail")
         logger.exception(
             "thumbnail generation failed for ledger=%s path=%s",
             tenant_id,

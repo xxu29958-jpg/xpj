@@ -8,11 +8,16 @@ flows are tenant-facing direct-create paths that bypass uploads entirely.
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
+
+
+logger = logging.getLogger(__name__)
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
 from app.services.classify_service import classify_expense
@@ -152,6 +157,17 @@ def enrich_pending_expense(
             expense.updated_at = now_utc()
             db.commit()
         except Exception:
+            # Auto-enrichment runs after the upload response has already
+            # been returned to the client. We intentionally don't propagate
+            # — the row is still in `pending` and the user can retry OCR
+            # manually. Record the failure so it isn't invisible.
+            from app.services.expense_service._helpers import _record_background_failure
+            _record_background_failure("auto_enrich")
+            logger.exception(
+                "auto enrichment failed for expense_id=%s tenant_id=%s",
+                expense_id,
+                tenant_id,
+            )
             db.rollback()
 
 

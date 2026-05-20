@@ -15,6 +15,36 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class FxRateSyncStatus:
+    """In-process counter for FX sync outcomes.
+
+    The scheduler is a daemon thread with no external metrics pipeline;
+    without this counter, a silent failure (network outage, ECB schema
+    change, DB lock) is only visible by tailing logs. Health endpoints
+    or future Prometheus exporters can call ``fx_rate_sync_status()``
+    to surface ``failed_count`` / ``last_error``.
+    """
+
+    success_count: int = 0
+    failed_count: int = 0
+    last_error: str | None = None
+    last_success_at: datetime | None = None
+
+
+_status = FxRateSyncStatus()
+
+
+def fx_rate_sync_status() -> FxRateSyncStatus:
+    """Snapshot of the background FX sync counters (read-only)."""
+    return FxRateSyncStatus(
+        success_count=_status.success_count,
+        failed_count=_status.failed_count,
+        last_error=_status.last_error,
+        last_success_at=_status.last_success_at,
+    )
+
+
+@dataclass
 class FxRateScheduler:
     thread: threading.Thread
     stop_event: threading.Event
@@ -62,8 +92,16 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
         try:
             with SessionLocal() as db:
                 rows = refresh_ecb_fx_rates(db)
+            _status.success_count += 1
+            _status.last_success_at = datetime.now(timezone)
             logger.info("ECB FX sync completed: %s rates", len(rows))
-        except Exception:
+        except Exception as exc:
+            # Daemon thread: a propagated exception would kill the scheduler
+            # silently. Stay broad on the catch so an upstream library
+            # surprise can't take the worker down, but record the failure
+            # for the health endpoint to see.
+            _status.failed_count += 1
+            _status.last_error = f"{type(exc).__name__}: {exc}"[:200]
             logger.exception("ECB FX sync failed")
 
 
