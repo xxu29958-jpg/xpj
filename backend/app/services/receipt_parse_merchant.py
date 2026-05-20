@@ -154,95 +154,134 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
     return candidates
 
 
+_INSTITUTION_LABEL_KEYWORDS: tuple[str, ...] = ("收单机构", "清算机构", "收款方全称")
+
+
+def _score_bank_reminder(c: _MerchantCandidate, _ctx: _ReceiptContext) -> tuple[int, int, int, list[str]]:
+    if c.value in BANK_KEYWORDS and c.source in {"keyword", "first_line"}:
+        return 22, 0, 0, ["profile_bank_first_party:+22"]
+    return 0, 0, 0, []
+
+
+def _score_alipay_bill_detail(c: _MerchantCandidate, ctx: _ReceiptContext) -> tuple[int, int, int, list[str]]:
+    profile = 0
+    noise = 0
+    evidence: list[str] = []
+    if c.source == "success_title":
+        profile += 16
+        evidence.append("profile_alipay_detail_success_title:+16")
+        if _has_more_specific_nearby_merchant_alias(ctx, c):
+            noise -= 14
+            evidence.append("short_alias_near_specific_merchant:-14")
+    if c.source.startswith("label:收款方") or (
+        c.source in {"keyword", "first_line"} and c.value in BANK_KEYWORDS
+    ):
+        noise -= 28
+        evidence.append("profile_alipay_detail_institution_noise:-28")
+    return profile, 0, noise, evidence
+
+
+def _score_alipay_success_page(c: _MerchantCandidate, _ctx: _ReceiptContext) -> tuple[int, int, int, list[str]]:
+    profile = 0
+    noise = 0
+    evidence: list[str] = []
+    if c.source == "success_body":
+        profile += 18
+        evidence.append("profile_alipay_success_body:+18")
+    if c.value in {"高德", "支付宝"}:
+        noise -= 20
+        evidence.append("profile_alipay_success_ad_platform:-20")
+    return profile, 0, noise, evidence
+
+
+def _score_wechat_payment_detail(c: _MerchantCandidate, _ctx: _ReceiptContext) -> tuple[int, int, int, list[str]]:
+    profile = 0
+    noise = 0
+    evidence: list[str] = []
+    if c.source == "payment_method_previous_line":
+        profile += 16
+        evidence.append("profile_wechat_payment_previous_line:+16")
+    if c.value in {"微信支付", "支付服务"}:
+        noise -= 28
+        evidence.append("profile_wechat_platform_noise:-28")
+    return profile, 0, noise, evidence
+
+
+def _score_mobility_payment(c: _MerchantCandidate, _ctx: _ReceiptContext) -> tuple[int, int, int, list[str]]:
+    if c.value == "高德" or "打车" in c.value:
+        return 18, 0, 0, ["profile_mobility_provider:+18"]
+    return 0, 0, 0, []
+
+
+def _score_taobao_flash_payment(c: _MerchantCandidate, _ctx: _ReceiptContext) -> tuple[int, int, int, list[str]]:
+    profile = 0
+    structure = 0
+    noise = 0
+    evidence: list[str] = []
+    if c.source == "payment_sheet_title":
+        profile += 24
+        structure += 18
+        evidence.append("profile_payment_sheet_title:+42")
+    if c.source.startswith("label:店铺") and any(
+        noise_word in c.value for noise_word in MERCHANT_NOISE_SUBSTRINGS
+    ):
+        noise -= 70
+        evidence.append("profile_payment_sheet_store_activity_noise:-70")
+    return profile, structure, noise, evidence
+
+
+_PROFILE_SCORERS = {
+    "bank_reminder": _score_bank_reminder,
+    "alipay_bill_detail": _score_alipay_bill_detail,
+    "alipay_success_page": _score_alipay_success_page,
+    "wechat_payment_detail": _score_wechat_payment_detail,
+    "mobility_payment": _score_mobility_payment,
+    "taobao_flash_payment": _score_taobao_flash_payment,
+}
+
+
+def _institution_noise(value: str) -> tuple[int, list[str]]:
+    lowered = value.lower()
+    if any(kw.lower() in lowered for kw in _INSTITUTION_LABEL_KEYWORDS):
+        return -18, ["institution_label_noise:-18"]
+    return 0, []
+
+
+def _calibrate_one(candidate: _MerchantCandidate, context: _ReceiptContext) -> _MerchantCandidate:
+    scorer = _PROFILE_SCORERS.get(context.profile)
+    if scorer is None:
+        profile, structure, noise, evidence = 0, 0, 0, []
+    else:
+        profile, structure, noise, evidence = scorer(candidate, context)
+
+    inst_delta, inst_evidence = _institution_noise(candidate.value)
+    noise += inst_delta
+    evidence.extend(inst_evidence)
+
+    if profile == 0 and structure == 0 and noise == 0:
+        return candidate
+
+    dimensions = _merge_dimensions(
+        candidate.dimensions,
+        profile=profile,
+        structure=structure,
+        noise=noise,
+        evidence=tuple(evidence),
+    )
+    return _MerchantCandidate(
+        value=candidate.value,
+        score=dimensions.total,
+        line_index=candidate.line_index,
+        source=candidate.source,
+        evidence=dimensions.evidence,
+        dimensions=dimensions,
+    )
+
+
 def _calibrate_merchant_candidates(
     candidates: list[_MerchantCandidate], context: _ReceiptContext
 ) -> list[_MerchantCandidate]:
-    calibrated: list[_MerchantCandidate] = []
-    for candidate in candidates:
-        profile = 0
-        structure = 0
-        noise = 0
-        evidence: list[str] = []
-
-        if context.profile == "bank_reminder":
-            if candidate.value in BANK_KEYWORDS and candidate.source in {
-                "keyword",
-                "first_line",
-            }:
-                profile += 22
-                evidence.append("profile_bank_first_party:+22")
-        elif context.profile == "alipay_bill_detail":
-            if candidate.source == "success_title":
-                profile += 16
-                evidence.append("profile_alipay_detail_success_title:+16")
-                if _has_more_specific_nearby_merchant_alias(context, candidate):
-                    noise -= 14
-                    evidence.append("short_alias_near_specific_merchant:-14")
-            if candidate.source.startswith("label:收款方") or (
-                candidate.source in {"keyword", "first_line"}
-                and candidate.value in BANK_KEYWORDS
-            ):
-                noise -= 28
-                evidence.append("profile_alipay_detail_institution_noise:-28")
-        elif context.profile == "alipay_success_page":
-            if candidate.source == "success_body":
-                profile += 18
-                evidence.append("profile_alipay_success_body:+18")
-            if candidate.value in {"高德", "支付宝"}:
-                noise -= 20
-                evidence.append("profile_alipay_success_ad_platform:-20")
-        elif context.profile == "wechat_payment_detail":
-            if candidate.source == "payment_method_previous_line":
-                profile += 16
-                evidence.append("profile_wechat_payment_previous_line:+16")
-            if candidate.value in {"微信支付", "支付服务"}:
-                noise -= 28
-                evidence.append("profile_wechat_platform_noise:-28")
-        elif context.profile == "mobility_payment":
-            if candidate.value == "高德" or "打车" in candidate.value:
-                profile += 18
-                evidence.append("profile_mobility_provider:+18")
-        elif context.profile == "taobao_flash_payment":
-            if candidate.source == "payment_sheet_title":
-                profile += 24
-                structure += 18
-                evidence.append("profile_payment_sheet_title:+42")
-            if candidate.source.startswith("label:店铺") and any(
-                noise_word in candidate.value
-                for noise_word in MERCHANT_NOISE_SUBSTRINGS
-            ):
-                noise -= 70
-                evidence.append("profile_payment_sheet_store_activity_noise:-70")
-
-        if any(
-            keyword.lower() in candidate.value.lower()
-            for keyword in ["收单机构", "清算机构", "收款方全称"]
-        ):
-            noise -= 18
-            evidence.append("institution_label_noise:-18")
-
-        if profile == 0 and structure == 0 and noise == 0:
-            calibrated.append(candidate)
-            continue
-
-        dimensions = _merge_dimensions(
-            candidate.dimensions,
-            profile=profile,
-            structure=structure,
-            noise=noise,
-            evidence=tuple(evidence),
-        )
-        calibrated.append(
-            _MerchantCandidate(
-                value=candidate.value,
-                score=dimensions.total,
-                line_index=candidate.line_index,
-                source=candidate.source,
-                evidence=dimensions.evidence,
-                dimensions=dimensions,
-            )
-        )
-    return calibrated
+    return [_calibrate_one(candidate, context) for candidate in candidates]
 
 
 def _score_merchant_candidate(
