@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.services.receipt_parse_service import _ReceiptContext, _ReceiptSignals, _context_quality_bonus, parse_receipt_text
+from app.services.receipt_parse_common import _ReceiptContext, _ReceiptSignals
+from app.services.receipt_parse_service import _context_quality_bonus, parse_receipt_text
 from app.services.time_service import ensure_utc
 
 

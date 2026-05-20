@@ -16,7 +16,6 @@ from app.routes import owner_ledgers
 from app.routes import web_app
 from app.routes import web_budgets
 from app.routes import web_categories
-from app.routes import web_confirmed
 from app.routes import web_data_quality
 from app.routes import web_dashboard
 from app.routes import web_duplicates
@@ -93,7 +92,6 @@ app.include_router(owner_console.router)
 app.include_router(owner_ledgers.router)
 app.include_router(web_app.router)
 app.include_router(web_dashboard.router)
-app.include_router(web_confirmed.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_media.router)
 app.include_router(web_pending.router)
