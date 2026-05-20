@@ -85,6 +85,17 @@ def _legacy_tenant() -> Tenant:
     )
 
 
+def reset_tenant_cache() -> None:
+    """Drop the cached tenants snapshot.
+
+    Mirrors ``app.config.reset_settings_cache`` — production doesn't use
+    this (TENANTS_JSON is immutable for the process lifetime). Tests
+    and dev tooling that change tenant config between runs call it
+    explicitly.
+    """
+    configured_tenants.cache_clear()
+
+
 @lru_cache
 def configured_tenants() -> tuple[Tenant, ...]:
     settings = get_settings()

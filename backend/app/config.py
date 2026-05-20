@@ -115,6 +115,20 @@ def _resolve_public_base_url(raw: str | None) -> str:
     return value
 
 
+def reset_settings_cache() -> None:
+    """Drop the cached ``Settings`` snapshot so the next ``get_settings()``
+    re-reads ``os.environ``.
+
+    Production never calls this — settings are immutable for the process
+    lifetime. Tests and dev tooling that mutate ``os.environ`` between
+    runs use it explicitly. This is the *only* documented escape hatch
+    out of the lru_cache; callers that need a per-request settings view
+    should refactor to dependency injection instead of widening this
+    contract.
+    """
+    get_settings.cache_clear()
+
+
 @lru_cache
 def get_settings() -> Settings:
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
