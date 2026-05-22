@@ -246,12 +246,12 @@ def audit_sql_in_routes_or_services():
                 items.append((p, i, line.strip()[:90]))
     print(f"== B4. SQL string literals outside app/database/ ({len(items)} lines) ==")
     by_file = defaultdict(list)
-    for p, ln, l in items:
-        by_file[p].append((ln, l))
+    for p, ln, line in items:
+        by_file[p].append((ln, line))
     for p, locs in sorted(by_file.items(), key=lambda x: -len(x[1]))[:15]:
         print(f"  {len(locs):3d}  {p}")
-        for ln, l in locs[:2]:
-            print(f"          L{ln} {l}")
+        for ln, line in locs[:2]:
+            print(f"          L{ln} {line}")
     print()
 
 
@@ -347,7 +347,7 @@ def audit_globals_and_module_state():
     for p, ln, n in g_writes:
         print(f"  {p}:{ln}  global {n}")
     print()
-    print(f"== D2. Module-level mutable state (excluding __all__) ==")
+    print("== D2. Module-level mutable state (excluding __all__) ==")
     for p, ln, name, kind in mod_mutable:
         if name == "__all__":
             continue
@@ -405,7 +405,7 @@ def audit_type_hint_coverage():
                         unannotated_long.append((p, node.lineno, length, node.name))
     pct_any = (annotated / total_fns * 100) if total_fns else 0
     pct_full = (fully / total_fns * 100) if total_fns else 0
-    print(f"== E1. Type-hint coverage ==")
+    print("== E1. Type-hint coverage ==")
     print(f"  total functions: {total_fns}")
     print(f"  any annotation:  {annotated} ({pct_any:.1f}%)")
     print(f"  fully annotated: {fully} ({pct_full:.1f}%)")
@@ -429,8 +429,8 @@ def audit_deep_arg_dicts():
             if "def " in line and rx.search(line):
                 items.append((p, i, line.strip()[:120]))
     print(f"== E2. Nested-dict argument signatures ({len(items)}) ==")
-    for p, ln, l in items[:30]:
-        print(f"  {p}:{ln}  {l}")
+    for p, ln, line in items[:30]:
+        print(f"  {p}:{ln}  {line}")
     print()
 
 
@@ -536,15 +536,15 @@ def audit_todos():
                 items.append((p, i, line.strip()[:100]))
     print(f"== G1. TODO/FIXME/XXX/HACK markers ({len(items)}) ==")
     counts: dict[str, int] = Counter()
-    for p, _, l in items:
-        m = re.search(r"(TODO|FIXME|XXX|HACK|TEMP)", l, re.IGNORECASE)
+    for p, _, line in items:
+        m = re.search(r"(TODO|FIXME|XXX|HACK|TEMP)", line, re.IGNORECASE)
         if m:
             counts[m.group(1).upper()] += 1
     for k, v in counts.most_common():
         print(f"  {k}: {v}")
-    print(f"  -- first 30 occurrences:")
-    for p, ln, l in items[:30]:
-        print(f"  {p}:{ln}  {l}")
+    print("  -- first 30 occurrences:")
+    for p, ln, line in items[:30]:
+        print(f"  {p}:{ln}  {line}")
     print()
 
 
@@ -567,16 +567,16 @@ def audit_hardcoded_paths_urls():
             if m and "test_" not in str(p).lower():
                 magic.append((p, i, line.strip()[:120]))
     print(f"== G2. Hardcoded URLs ({len(urls)}) ==")
-    for p, ln, l in urls[:20]:
-        print(f"  {p}:{ln}  {l}")
+    for p, ln, line in urls[:20]:
+        print(f"  {p}:{ln}  {line}")
     print()
     print(f"== G3. Hardcoded absolute paths ({len(paths)}) ==")
-    for p, ln, l in paths[:20]:
-        print(f"  {p}:{ln}  {l}")
+    for p, ln, line in paths[:20]:
+        print(f"  {p}:{ln}  {line}")
     print()
     print(f"== G4. Magic-number-ish constants (3+ digits inline) ({len(magic)}) ==")
-    for p, ln, l in magic[:30]:
-        print(f"  {p}:{ln}  {l}")
+    for p, ln, line in magic[:30]:
+        print(f"  {p}:{ln}  {line}")
     print()
 
 
@@ -596,8 +596,8 @@ def audit_credentials_risk():
                     continue
                 items.append((p, i, line.strip()[:120]))
     print(f"== G5. Possible hard-coded credentials ({len(items)}) ==")
-    for p, ln, l in items[:30]:
-        print(f"  {p}:{ln}  {l}")
+    for p, ln, line in items[:30]:
+        print(f"  {p}:{ln}  {line}")
     print()
 
 

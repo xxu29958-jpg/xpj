@@ -15,9 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-
-
-logger = logging.getLogger(__name__)
 from app.models import Expense
 from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateRequest
 from app.services.classify_service import classify_expense
@@ -40,6 +37,9 @@ from app.services.expense_service._helpers import (
 )
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
+
+
+logger = logging.getLogger(__name__)
 
 
 __all__ = [

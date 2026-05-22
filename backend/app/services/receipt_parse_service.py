@@ -3,6 +3,14 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 
+from app.services.receipt_parse_amount import (
+    _amount_candidates,
+    _calibrate_amount_candidates,
+)
+from app.services.receipt_parse_category import (
+    _calibrate_category_candidates,
+    _category_candidates,
+)
 from app.services.receipt_parse_common import (
     ParsedReceipt,
     ParsedReceiptItem,
@@ -16,7 +24,15 @@ from app.services.receipt_parse_common import (
     _normalize_text,
     _score_ratio,
 )
+from app.services.receipt_parse_merchant import (
+    _calibrate_merchant_candidates,
+    _merchant_candidates,
+)
 from app.services.receipt_parse_rules import CATEGORY_HINT_RULES
+from app.services.receipt_parse_time import (
+    _calibrate_time_candidates,
+    _time_candidates,
+)
 
 
 ITEM_LINE_PATTERN = re.compile(
@@ -218,24 +234,6 @@ def _item_money_to_cents(value: str) -> int | None:
         return None
     cents = (amount * Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     return int(cents)
-
-
-from app.services.receipt_parse_amount import (
-    _amount_candidates,
-    _calibrate_amount_candidates,
-)
-from app.services.receipt_parse_category import (
-    _calibrate_category_candidates,
-    _category_candidates,
-)
-from app.services.receipt_parse_merchant import (
-    _calibrate_merchant_candidates,
-    _merchant_candidates,
-)
-from app.services.receipt_parse_time import (
-    _calibrate_time_candidates,
-    _time_candidates,
-)
 
 
 def parse_receipt_text(

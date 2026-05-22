@@ -212,7 +212,6 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
 def test_owner_ledgers_no_secret_leak(local_client: TestClient, *, identity) -> None:
     """The /owner/ledgers page must not echo runtime tokens or absolute paths."""
     import re
-    import conftest as cf
     resp = local_client.get("/owner/ledgers")
     assert resp.status_code == 200
     body = resp.text

@@ -14,7 +14,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -37,9 +37,7 @@ from app.routes.web_common import (
 )
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month
-from app.schemas import DashboardCardUpdateRequest, DashboardCardsUpdateRequest
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
-from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
     ensure_image_file,

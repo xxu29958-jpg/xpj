@@ -92,8 +92,6 @@ def test_owner_index_renders_windows_tasks_section(local_client: TestClient) -> 
 
 
 def test_owner_index_no_secret_leak_with_tasks(local_client: TestClient, *, identity) -> None:
-    import conftest as cf
-
     body = local_client.get("/owner").text
     assert identity.app_token not in body
     assert identity.admin_token not in body
