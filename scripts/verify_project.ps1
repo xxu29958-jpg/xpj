@@ -134,6 +134,7 @@ if (-not $SkipBackend) {
         Invoke-Checked -FilePath $tools.Ruff -Arguments @("check", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
     }
     Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest") -WorkingDirectory $BackendRoot
+    Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
     if (-not $SkipSmoke) {
         Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
     }
