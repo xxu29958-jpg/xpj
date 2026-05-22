@@ -153,19 +153,14 @@ $forbiddenChecks = @(
     @{ Name = 'public POST /api/admin/devices'; Url = "$BaseUrl/api/admin/devices";      Method = 'POST' }
     @{ Name = 'public POST /api/admin/upload-links'; Url = "$BaseUrl/api/admin/upload-links"; Method = 'POST' }
     @{ Name = 'public /api/bootstrap/owner';    Url = "$BaseUrl/api/bootstrap/owner";    Method = 'POST' }
+    @{ Name = 'public /api/bootstrap/pairing-codes'; Url = "$BaseUrl/api/bootstrap/pairing-codes"; Method = 'POST' }
+    @{ Name = 'public POST /api/maintenance/cleanup-images'; Url = "$BaseUrl/api/maintenance/cleanup-images"; Method = 'POST' }
     @{ Name = 'public /docs';                   Url = "$BaseUrl/docs";                   Method = 'GET'  }
     @{ Name = 'public /openapi.json';           Url = "$BaseUrl/openapi.json";           Method = 'GET'  }
     @{ Name = 'public /redoc';                  Url = "$BaseUrl/redoc";                  Method = 'GET'  }
-    # /web — local-only ledger browser (must never be reachable from public internet)
-    @{ Name = 'public /web';                             Url = "$BaseUrl/web";                             Method = 'GET'  }
-    @{ Name = 'public /web/pending';                     Url = "$BaseUrl/web/pending";                     Method = 'GET'  }
-    @{ Name = 'public /web/confirmed';                   Url = "$BaseUrl/web/confirmed";                   Method = 'GET'  }
-    @{ Name = 'public /web/stats';                       Url = "$BaseUrl/web/stats";                       Method = 'GET'  }
-    @{ Name = 'public GET /web/expenses/1/edit';         Url = "$BaseUrl/web/expenses/1/edit";             Method = 'GET'  }
-    @{ Name = 'public POST /web/expenses/1/confirm';     Url = "$BaseUrl/web/expenses/1/confirm";          Method = 'POST' }
-    @{ Name = 'public POST /web/expenses/1/reject';      Url = "$BaseUrl/web/expenses/1/reject";           Method = 'POST' }
-    @{ Name = 'public GET /web/expenses/1/image';        Url = "$BaseUrl/web/expenses/1/image";            Method = 'GET'  }
-    @{ Name = 'public GET /web/expenses/1/thumbnail';    Url = "$BaseUrl/web/expenses/1/thumbnail";        Method = 'GET'  }
+    # Uploads dir must NEVER be statically served — image bytes only via auth API.
+    @{ Name = 'public /uploads/owner/fake.png';          Url = "$BaseUrl/uploads/owner/2026/05/fake.png";  Method = 'GET'  }
+    @{ Name = 'public /static/uploads/fake.png';         Url = "$BaseUrl/static/uploads/fake.png";         Method = 'GET'  }
 )
 
 foreach ($c in $forbiddenChecks) {
@@ -175,6 +170,32 @@ foreach ($c in $forbiddenChecks) {
     Add-Result -Name $c.Name -Url $c.Url -Method $c.Method `
         -Expectation '401/403/404/405' -Actual $code -Pass $ok
 }
+
+# ── 4) /web public mode (PR #60 dual mode) ─────────────────────────────────
+# /web is no longer forbidden — it's session-gated: no cookie → 303 to login.
+# The login flow itself must be reachable; everything else under /web must
+# redirect rather than render owner data.
+$webRedirectChecks = @(
+    @{ Name = 'public /web (no cookie)';                  Url = "$BaseUrl/web";                              Method = 'GET'  }
+    @{ Name = 'public /web/pending (no cookie)';          Url = "$BaseUrl/web/pending";                      Method = 'GET'  }
+    @{ Name = 'public /web/confirmed (no cookie)';        Url = "$BaseUrl/web/confirmed";                    Method = 'GET'  }
+    @{ Name = 'public /web/stats (no cookie)';            Url = "$BaseUrl/web/stats";                        Method = 'GET'  }
+    @{ Name = 'public GET /web/expenses/1/edit (no cookie)'; Url = "$BaseUrl/web/expenses/1/edit";           Method = 'GET'  }
+    @{ Name = 'public GET /web/expenses/1/image (no cookie)';     Url = "$BaseUrl/web/expenses/1/image";     Method = 'GET'  }
+    @{ Name = 'public GET /web/expenses/1/thumbnail (no cookie)'; Url = "$BaseUrl/web/expenses/1/thumbnail"; Method = 'GET'  }
+)
+foreach ($c in $webRedirectChecks) {
+    $code = Invoke-Probe -Url $c.Url -Method $c.Method
+    # 303 is what web_session middleware emits; allow 302 as defensive equivalence.
+    $ok = ($code -in 302, 303)
+    Add-Result -Name $c.Name -Url $c.Url -Method $c.Method `
+        -Expectation '303 redirect to /web/auth/login' -Actual $code -Pass $ok
+}
+
+# /web/auth/login must be REACHABLE (otherwise the cookie flow is broken).
+$loginCode = Invoke-Probe -Url "$BaseUrl/web/auth/login" -Method 'GET'
+Add-Result -Name 'public /web/auth/login (reachable)' -Url "$BaseUrl/web/auth/login" -Method 'GET' `
+    -Expectation '200' -Actual $loginCode -Pass ($loginCode -eq 200)
 
 # ── 4) summary ──────────────────────────────────────────────────────────────
 $rows = $results | ForEach-Object {
