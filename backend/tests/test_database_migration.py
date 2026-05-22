@@ -380,6 +380,44 @@ def test_exchange_rates_seed_identity_ledger_ids() -> None:
     assert count == 1
 
 
+def test_baseline_records_current_backend_version_for_restore_validation() -> None:
+    from app.version import BACKEND_VERSION
+
+    _reset_empty_database()
+    init_db()
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                "SELECT backend_version FROM schema_migrations "
+                "WHERE name = 'baseline-v0.9.0a1'"
+            )
+        ).first()
+    assert row is not None
+    assert row[0] == BACKEND_VERSION
+
+
+def test_record_schema_migration_persists_backend_version() -> None:
+    _reset_empty_database()
+    init_db()
+
+    database.record_schema_migration(
+        "test-marker-with-version",
+        backend_version="9.9.9-test",
+        note="unit",
+    )
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                "SELECT backend_version FROM schema_migrations "
+                "WHERE name = 'test-marker-with-version'"
+            )
+        ).first()
+    assert row is not None
+    assert row[0] == "9.9.9-test"
+
+
 def test_schema_migration_marker_query_is_safe_before_init() -> None:
     _reset_empty_database()
 

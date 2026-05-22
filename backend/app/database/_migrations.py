@@ -45,21 +45,30 @@ __all__ = [
 ]
 
 
-def record_schema_migration(name: str, *, note: str | None = None) -> None:
+def record_schema_migration(
+    name: str,
+    *,
+    backend_version: str | None = None,
+    note: str | None = None,
+) -> None:
     """Record that the named migration step has been applied.
 
-    Idempotent: re-recording the same name is a no-op.
+    Idempotent: re-recording the same name is a no-op. ``backend_version``
+    is what backup/restore validators match against — leaving it None means
+    the row will not satisfy ``--expected-backend-version`` checks.
     """
 
     with engine.begin() as connection:
         connection.execute(
             text(
-                "INSERT OR IGNORE INTO schema_migrations (name, applied_at, note) "
-                "VALUES (:name, :applied_at, :note)"
+                "INSERT OR IGNORE INTO schema_migrations "
+                "(name, applied_at, backend_version, note) "
+                "VALUES (:name, :applied_at, :backend_version, :note)"
             ),
             {
                 "name": name,
                 "applied_at": datetime.now(UTC),
+                "backend_version": backend_version,
                 "note": note,
             },
         )
