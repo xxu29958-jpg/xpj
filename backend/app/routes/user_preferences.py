@@ -7,39 +7,19 @@ Owner Console does NOT participate (single-device loopback role). Web + Android 
 """
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
-from app.models.system import UserUiPreference
 from app.schemas import UserUiPreferencesResponse, UserUiPreferencesUpdateRequest
+from app.services.user_preferences_service import (
+    get_ui_preferences,
+    upsert_ui_preferences,
+)
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/me", tags=["user-preferences"])
-
-_VALID_THEMES = {"paper", "mono", "midnight"}
-
-
-def _parse(pref: UserUiPreference | None) -> dict:
-    if pref is None or not pref.preferences:
-        return {}
-    try:
-        data = json.loads(pref.preferences)
-    except json.JSONDecodeError:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _to_response(pref: UserUiPreference | None) -> UserUiPreferencesResponse:
-    data = _parse(pref)
-    theme = data.get("theme")
-    return UserUiPreferencesResponse(
-        theme=theme if theme in _VALID_THEMES else None,
-        updated_at=pref.updated_at if pref else None,
-    )
 
 
 @router.get("/ui-preferences", response_model=UserUiPreferencesResponse)
@@ -47,12 +27,7 @@ def get_preferences(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> UserUiPreferencesResponse:
-    pref = (
-        db.query(UserUiPreference)
-        .filter(UserUiPreference.account_id == auth.account_id)
-        .first()
-    )
-    return _to_response(pref)
+    return get_ui_preferences(db, account_id=auth.account_id)
 
 
 @router.put("/ui-preferences", response_model=UserUiPreferencesResponse)
@@ -61,27 +36,9 @@ def put_preferences(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> UserUiPreferencesResponse:
-    pref = (
-        db.query(UserUiPreference)
-        .filter(UserUiPreference.account_id == auth.account_id)
-        .first()
+    return upsert_ui_preferences(
+        db,
+        account_id=auth.account_id,
+        account_name=auth.account_name,
+        payload=payload,
     )
-    current = _parse(pref)
-    # Invalid theme values are silently dropped, not rejected, to keep the endpoint forgiving
-    # for clients that may roll new theme keys (V0.11+) before the server understands them.
-    if payload.theme is not None and payload.theme in _VALID_THEMES:
-        current["theme"] = payload.theme
-    encoded = json.dumps(current, ensure_ascii=False)
-    if pref is None:
-        pref = UserUiPreference(
-            account_id=auth.account_id,
-            account_name=auth.account_name,
-            preferences=encoded,
-        )
-        db.add(pref)
-    else:
-        pref.account_name = auth.account_name
-        pref.preferences = encoded
-    db.commit()
-    db.refresh(pref)
-    return _to_response(pref)
