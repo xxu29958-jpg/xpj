@@ -101,36 +101,60 @@ class PathTraversalError(RuntimeError):
     """
 
 
-def error_response(error: str, message: str | None = None, status_code: int = 400) -> JSONResponse:
-    return Utf8JSONResponse(
-        status_code=status_code,
-        content={
-            "error": error,
-            "message": message or ERROR_MESSAGES.get(error, ERROR_MESSAGES["server_error"]),
-        },
+def error_response(
+    error: str,
+    message: str | None = None,
+    status_code: int = 400,
+    *,
+    request_id: str | None = None,
+) -> JSONResponse:
+    content: dict[str, str] = {
+        "error": error,
+        "message": message or ERROR_MESSAGES.get(error, ERROR_MESSAGES["server_error"]),
+    }
+    if request_id:
+        # Echo back to make screenshots / chat reports actionable; the same
+        # value is on the X-Request-Id response header set by the logging
+        # middleware. See ENGINEERING_RULES §12.
+        content["request_id"] = request_id
+    return Utf8JSONResponse(status_code=status_code, content=content)
+
+
+def _request_id(request: Request) -> str | None:
+    return getattr(request.state, "request_id", None)
+
+
+async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    return error_response(exc.error, exc.message, exc.status_code, request_id=_request_id(request))
+
+
+async def validation_error_handler(request: Request, __: RequestValidationError) -> JSONResponse:
+    return error_response(
+        "invalid_request",
+        ERROR_MESSAGES["invalid_request"],
+        422,
+        request_id=_request_id(request),
     )
 
 
-async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
-    return error_response(exc.error, exc.message, exc.status_code)
-
-
-async def validation_error_handler(_: Request, __: RequestValidationError) -> JSONResponse:
-    return error_response("invalid_request", ERROR_MESSAGES["invalid_request"], 422)
-
-
-async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_error_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    request_id = _request_id(request)
     if exc.status_code in {401, 403}:
-        return error_response("invalid_token", ERROR_MESSAGES["invalid_token"], exc.status_code)
+        return error_response("invalid_token", ERROR_MESSAGES["invalid_token"], exc.status_code, request_id=request_id)
     if exc.status_code == 404:
-        return error_response("route_not_found", ERROR_MESSAGES["route_not_found"], exc.status_code)
+        return error_response("route_not_found", ERROR_MESSAGES["route_not_found"], exc.status_code, request_id=request_id)
     if exc.status_code == 405:
-        return error_response("method_not_allowed", ERROR_MESSAGES["method_not_allowed"], exc.status_code)
-    return error_response("invalid_request", str(exc.detail), exc.status_code)
+        return error_response("method_not_allowed", ERROR_MESSAGES["method_not_allowed"], exc.status_code, request_id=request_id)
+    return error_response("invalid_request", str(exc.detail), exc.status_code, request_id=request_id)
 
 
-async def unhandled_error_handler(_: Request, __: Exception) -> JSONResponse:
-    return error_response("server_error", ERROR_MESSAGES["server_error"], 500)
+async def unhandled_error_handler(request: Request, __: Exception) -> JSONResponse:
+    return error_response(
+        "server_error",
+        ERROR_MESSAGES["server_error"],
+        500,
+        request_id=_request_id(request),
+    )
 
 
 def add_exception_handlers(app: FastAPI) -> None:

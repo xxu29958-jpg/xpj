@@ -466,10 +466,9 @@ def test_upload_screenshot_rejects_multipart_without_image_file(
         files={"note": (None, "not an image")},
     )
     assert response.status_code == 422
-    assert response.json() == {
-        "error": "invalid_request",
-        "message": "表单里没有找到图片文件。",
-    }
+    body = response.json()
+    assert body["error"] == "invalid_request"
+    assert body["message"] == "表单里没有找到图片文件。"
 
 
 def test_upload_rejects_image_exceeding_pixel_cap(

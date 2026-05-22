@@ -66,13 +66,17 @@ def test_protected_image_and_thumbnail_reject_database_path_escape(
 
     image = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert image.status_code == 404
-    assert image.json() == {"error": "image_not_found", "message": "图片不存在或已被清理。"}
+    image_body = image.json()
+    assert image_body["error"] == "image_not_found"
+    assert image_body["message"] == "图片不存在或已被清理。"
 
     thumbnail = client.get(
         f"/api/expenses/{expense_id}/thumbnail", headers=identity.app_headers
     )
     assert thumbnail.status_code == 404
-    assert thumbnail.json() == {"error": "image_not_found", "message": "图片不存在或已被清理。"}
+    thumb_body = thumbnail.json()
+    assert thumb_body["error"] == "image_not_found"
+    assert thumb_body["message"] == "图片不存在或已被清理。"
 
 
 def test_legacy_upload_paths_migrate_into_current_tenant_dir(

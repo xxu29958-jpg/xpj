@@ -330,11 +330,12 @@ def test_pairing_code_expires(client: TestClient, *, identity) -> None:
 def test_framework_errors_use_uniform_chinese_shape(client: TestClient, *, identity) -> None:
     response = client.get("/api/not-exists", headers=identity.app_headers)
     assert response.status_code == 404
-    assert response.json() == {"error": "route_not_found", "message": "没有找到这个功能入口。"}
+    body = response.json()
+    assert body["error"] == "route_not_found"
+    assert body["message"] == "没有找到这个功能入口。"
 
     response = client.post("/api/health")
     assert response.status_code == 405
-    assert response.json() == {
-        "error": "method_not_allowed",
-        "message": "这个入口不支持当前操作。",
-    }
+    body = response.json()
+    assert body["error"] == "method_not_allowed"
+    assert body["message"] == "这个入口不支持当前操作。"
