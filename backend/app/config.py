@@ -104,12 +104,24 @@ def _resolve_local_llm_base_url(raw: str | None) -> str:
 
 
 def _resolve_public_base_url(raw: str | None) -> str:
+    """Validate the public base URL the Cloudflare Tunnel (or other reverse
+    proxy) hands out for /u/<upload_key>. ``http://`` is only accepted when
+    the host is loopback (local dev); over the open internet UploadLink URLs
+    must be ``https://`` because the upload_key in the path is a credential.
+    Anything else is dropped silently (settings stay empty, Owner Console
+    falls back to its "no public URL" UI).
+    """
+
     if not raw:
         return ""
     value = raw.strip().rstrip("/")
     if not value:
         return ""
-    if not (value.startswith("http://") or value.startswith("https://")):
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return ""
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "http" and host not in _LOOPBACK_OUTBOUND_HOSTS:
         return ""
     return value
 

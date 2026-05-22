@@ -719,6 +719,9 @@ def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.M
         ("https://api.example.com?x=1",  "查询"),
         ("https://api.example.com#abc",  "片段"),
         ("https://", "主机"),
+        # http:// + public host: upload_key is a credential — refuse downgrade
+        ("http://api.example.com", "https"),
+        ("http://api.zen70.cn:8000", "https"),
     ],
 )
 def test_owner_settings_rejects_non_origin_url(

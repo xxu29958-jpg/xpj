@@ -94,6 +94,9 @@ def get_about_view() -> AboutView:
     )
 
 
+_LOOPBACK_HOST_NAMES = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
 def _validate_public_base_url(raw: str) -> str:
     """Validate and normalise PUBLIC_BASE_URL.
 
@@ -101,9 +104,14 @@ def _validate_public_base_url(raw: str) -> str:
     query strings and fragments are rejected to prevent accidental
     misconfiguration that would produce malformed upload URLs.
 
+    ``http://`` is only accepted when the host is a loopback alias (local
+    dev). Public hostnames must use ``https://`` — UploadLink URLs include
+    the ``upload_key`` in the path, which is a credential.
+
     Allowed:   https://api.example.com   http://127.0.0.1:8000
-    Rejected:  https://api.example.com/  https://api.example.com/foo
-               https://api.example.com?x=1  https://api.example.com#abc
+    Rejected:  http://api.example.com    (public http downgrade attack)
+               https://api.example.com/  (trailing slash / path)
+               https://api.example.com?x=1
     """
     value = (raw or "").strip()
     if not value:
@@ -121,6 +129,14 @@ def _validate_public_base_url(raw: str) -> str:
         raise AppError(
             "invalid_request",
             "公网域名必须包含主机名，例如 https://api.example.com。",
+            status_code=422,
+        )
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "http" and host not in _LOOPBACK_HOST_NAMES:
+        raise AppError(
+            "invalid_request",
+            "公网域名必须使用 https://；http:// 只允许本机环回（127.0.0.1 / localhost / ::1）。"
+            "UploadLink URL 含一次性凭证，明文 http 走公网会被中间人截获。",
             status_code=422,
         )
     if parsed.path.rstrip("/"):
