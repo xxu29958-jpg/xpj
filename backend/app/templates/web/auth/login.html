@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小票夹 网页版 — 输入绑定码</title>
+  <link rel="stylesheet" href="/static/shared/tokens.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      background: var(--surface-app);
+      color: var(--text-default);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      display: grid; place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 360px;
+      background: var(--surface-card);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-card);
+      padding: 32px 28px;
+      box-shadow: var(--shadow-card);
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 22px; font-weight: 600;
+      color: var(--brand-primary);
+    }
+    .hint {
+      margin: 0 0 24px;
+      font-size: 13px; color: var(--text-meta);
+    }
+    label {
+      display: block;
+      font-size: 13px; color: var(--text-muted);
+      margin: 16px 0 6px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid var(--border-input);
+      border-radius: var(--radius-input);
+      background: var(--surface-raised);
+      color: var(--text-default);
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.12em;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--brand-primary);
+      box-shadow: 0 0 0 3px var(--brand-focus-ring);
+    }
+    button {
+      width: 100%;
+      margin-top: 24px;
+      padding: 11px 14px;
+      background: var(--brand-primary);
+      color: var(--text-on-primary);
+      border: 0;
+      border-radius: var(--radius-input);
+      font-size: 15px; font-weight: 500;
+      cursor: pointer;
+    }
+    button:hover { background: var(--brand-primary-strong); }
+    .error {
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      background: var(--state-danger-bg);
+      color: var(--state-danger-fg);
+      border: 1px solid var(--state-danger-border);
+      border-radius: var(--radius-input);
+      font-size: 13px;
+    }
+    .foot {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-card);
+      font-size: 12px; color: var(--text-faint);
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>小票夹</h1>
+    <p class="hint">向账本所有者索取 8 位绑定码后，在此输入。</p>
+
+    {% if error_message %}
+    <div class="error" role="alert">{{ error_message }}</div>
+    {% endif %}
+
+    <form method="post" action="/web/auth/login" autocomplete="off">
+      <input type="hidden" name="next" value="{{ next_url }}">
+
+      <label for="pairing_code">绑定码（8 位数字）</label>
+      <input
+        id="pairing_code"
+        name="pairing_code"
+        type="text"
+        inputmode="numeric"
+        pattern="[0-9]{8}"
+        maxlength="8"
+        autofocus
+        required
+      >
+
+      <label for="device_name">浏览器名称（可选）</label>
+      <input
+        id="device_name"
+        name="device_name"
+        type="text"
+        placeholder="例如：客厅 iPad"
+        maxlength="120"
+      >
+
+      <button type="submit">登录</button>
+    </form>
+
+    <p class="foot">
+      绑定码一次性使用，每位家庭成员需要单独的码。<br>
+      旧版静态 token 已废弃；不要在此输入旧的 APP_TOKEN。
+    </p>
+  </main>
+</body>
+</html>

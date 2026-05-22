@@ -19,6 +19,12 @@ axes:
 - ``media`` — protected binary stream (image / thumbnail). Authorisation
   is enforced inside the service layer, not at route level.
 
+- ``auth`` — the cookie session flow itself (login form / submit /
+  logout / whoami). These are intentionally NOT gated by
+  ``_require_selected_ledger_write`` — login by definition runs without
+  any prior session — and they don't depend on the owner-default ledger
+  either. Public host is fine.
+
 This file is the **single source of truth** for that classification. The
 tests below assert:
 
@@ -44,11 +50,17 @@ from starlette.routing import Route
 
 from app.main import app
 
-Classification = Literal["local-only-rendering", "writer-only", "media"]
+Classification = Literal["local-only-rendering", "writer-only", "media", "auth"]
 
 
 # (method, path) -> classification. Keep sorted by path for diff readability.
 _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
+    # Cookie session flow — public-host safe by design (login runs before
+    # any session exists; logout / whoami carry the cookie themselves).
+    ("GET", "/web/auth/login"): "auth",
+    ("POST", "/web/auth/login"): "auth",
+    ("POST", "/web/auth/logout"): "auth",
+    ("GET", "/web/auth/whoami"): "auth",
     # /web root and slash redirect (web_app + web_dashboard both register;
     # FastAPI's first-registered-wins rule means web_app handles GET /web).
     ("GET", "/web"): "local-only-rendering",

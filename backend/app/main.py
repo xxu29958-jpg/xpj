@@ -37,6 +37,7 @@ from app.routes import (
     uploads,
     user_preferences,
     web_app,
+    web_auth,
     web_budgets,
     web_categories,
     web_dashboard,
@@ -112,6 +113,9 @@ app.include_router(merchants.router)
 app.include_router(admin_routes.router)
 app.include_router(owner_console.router)
 app.include_router(owner_ledgers.router)
+# web_auth must come before web_app so its /web/auth/* routes win over any
+# generic /web matcher (FastAPI registers first-mounted-first-matched).
+app.include_router(web_auth.router)
 app.include_router(web_app.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
