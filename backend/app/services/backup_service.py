@@ -12,6 +12,7 @@ explicit local command.
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -156,10 +157,8 @@ def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
             )
         temp_target.replace(target)
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             temp_target.unlink()
-        except FileNotFoundError:
-            pass
 
     stat = target.stat()
     created_at = datetime.fromtimestamp(stat.st_mtime).astimezone()

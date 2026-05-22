@@ -59,8 +59,8 @@ def web_categories(
             month=target_month,
             timezone_name=timezone_name,
         )
-    except ValueError:
-        raise AppError("invalid_request", "请使用 YYYY-MM 格式的月份。", status_code=400)
+    except ValueError as exc:
+        raise AppError("invalid_request", "请使用 YYYY-MM 格式的月份。", status_code=400) from exc
     rows = []
     for s in dashboard.summaries:
         rows.append(

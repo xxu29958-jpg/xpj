@@ -191,8 +191,8 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
     try:
         reader = csv.reader(StringIO(text))
         header_row = next(reader)
-    except StopIteration:
-        raise AppError("invalid_request", "CSV 缺少表头。", status_code=400)
+    except StopIteration as exc:
+        raise AppError("invalid_request", "CSV 缺少表头。", status_code=400) from exc
     except csv.Error as exc:
         raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
     headers = [h.strip().lstrip("\ufeff").lower() for h in header_row]

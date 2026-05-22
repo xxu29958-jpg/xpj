@@ -26,17 +26,15 @@ TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
 TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 
 
-if os.environ.get("XPJ_TEST_FILE_BACKED") == "1":
-    # File-backed lane covers the migration-readiness / pre-v1 backup tests
-    # that skip on in-memory SQLite. Cleanup in tests/_infra/db.cleanup_runtime
-    # already targets TEST_DB_PATH, so the file lives under data/ and is
-    # removed at session end.
-    _database_url = f"sqlite:///{TEST_DB_PATH.as_posix()}"
-else:
-    # In-memory SQLite + StaticPool (see app/database/_core.py): every
-    # Base.metadata.create_all() goes from ~1.3s on a file SQLite to ~16ms
-    # in memory. Default lane.
-    _database_url = "sqlite://"
+# File-backed lane (XPJ_TEST_FILE_BACKED=1) covers migration-readiness /
+# pre-v1 backup tests that skip on in-memory SQLite. Default lane is
+# in-memory + StaticPool (see app/database/_core.py): ~1.3s -> ~16ms per
+# Base.metadata.create_all().
+_database_url = (
+    f"sqlite:///{TEST_DB_PATH.as_posix()}"
+    if os.environ.get("XPJ_TEST_FILE_BACKED") == "1"
+    else "sqlite://"
+)
 
 os.environ.update(
     {

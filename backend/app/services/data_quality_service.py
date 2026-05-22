@@ -125,10 +125,7 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
     if oldest_dt is None:
         oldest_pending_age_days = None
     else:
-        if oldest_dt.tzinfo is None:
-            oldest_dt_aware = oldest_dt.replace(tzinfo=UTC)
-        else:
-            oldest_dt_aware = oldest_dt
+        oldest_dt_aware = oldest_dt.replace(tzinfo=UTC) if oldest_dt.tzinfo is None else oldest_dt
         delta = datetime.now(tz=UTC) - oldest_dt_aware
         oldest_pending_age_days = max(0, int(delta.total_seconds() // 86400))
 

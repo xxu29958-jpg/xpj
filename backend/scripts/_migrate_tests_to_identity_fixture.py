@@ -207,19 +207,19 @@ def rewrite_cross_file_helper_calls(text: str) -> str:
         # 3-arg
         text = re.sub(
             rf"(?<!def )\b{name}\(\s*([^,()]+?)\s*,\s*([^,()]+(?:\([^()]*\))?)\s*,\s*([^,()]+(?:\([^()]*\))?)\s*\)",
-            lambda m: rewrite_three(m, name),
+            lambda m, _n=name: rewrite_three(m, _n),
             text,
         )
         # 2-arg
         text = re.sub(
             rf"(?<!def )\b{name}\(\s*([^,()]+?)\s*,\s*([^,()]+(?:\([^()]*\))?)\s*\)",
-            lambda m: rewrite_two(m, name),
+            lambda m, _n=name: rewrite_two(m, _n),
             text,
         )
         # 1-arg
         text = re.sub(
             rf"(?<!def )\b{name}\(\s*([^,()]+?)\s*\)",
-            lambda m: rewrite_one(m, name),
+            lambda m, _n=name: rewrite_one(m, _n),
             text,
         )
     return text
@@ -339,12 +339,10 @@ def inject_identity_param(signature_text: str, fn_name: str) -> str:
         if not stripped:
             continue
         last_real_idx = i
-        if stripped.startswith("**"):
-            if kwarg_idx == -1:
-                kwarg_idx = i
-        elif stripped.startswith("*"):
-            if star_idx == -1:
-                star_idx = i
+        if stripped.startswith("**") and kwarg_idx == -1:
+            kwarg_idx = i
+        elif stripped.startswith("*") and star_idx == -1:
+            star_idx = i
 
     if star_idx >= 0:
         # Insert immediately after the `*` / `*args` marker (now keyword-only land).

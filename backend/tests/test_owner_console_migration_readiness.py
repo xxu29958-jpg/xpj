@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from html.parser import HTMLParser
 
 import pytest
@@ -26,10 +27,8 @@ def _delete_backup(file_name: str | None) -> None:
     if not file_name:
         return
     path = backup_service._backup_dir() / file_name  # noqa: SLF001
-    try:
+    with contextlib.suppress(FileNotFoundError):
         path.unlink()
-    except FileNotFoundError:
-        pass
 
 
 class _VisibleTextParser(HTMLParser):

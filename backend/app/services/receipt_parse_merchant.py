@@ -405,9 +405,7 @@ def _is_title_merchant_candidate(value: str | None) -> bool:
         or "WIFI" in upper_value
     ):
         return False
-    if any(label in value for label in MERCHANT_REJECT_SUBSTRINGS):
-        return False
-    return True
+    return not any(label in value for label in MERCHANT_REJECT_SUBSTRINGS)
 
 
 def _looks_like_payment_institution_context(text: str, keyword: str) -> bool:

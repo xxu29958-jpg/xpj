@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 
 import pytest
@@ -16,10 +17,8 @@ def _delete_backup(file_name: str | None) -> None:
     if not file_name:
         return
     backup_path = backup_service._backup_dir() / file_name  # noqa: SLF001
-    try:
+    with contextlib.suppress(FileNotFoundError):
         backup_path.unlink()
-    except FileNotFoundError:
-        pass
 
 
 def test_v1_migration_readiness_creates_pre_v1_backup(client) -> None:

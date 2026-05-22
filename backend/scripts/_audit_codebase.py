@@ -4,6 +4,7 @@ across 7 dimensions (A-G). Writes nothing to the codebase."""
 from __future__ import annotations
 
 import ast
+import contextlib
 import os
 import pathlib
 import re
@@ -282,9 +283,11 @@ def audit_naming_smells():
         if not tree:
             continue
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                if rx.search(node.name):
-                    items.append((p, node.lineno, node.name))
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and rx.search(node.name)
+            ):
+                items.append((p, node.lineno, node.name))
     print(f"== C1. Smelly names (And/Or/Manager/Helper/Util) ({len(items)}) ==")
     for p, ln, name in items[:40]:
         print(f"  {p}:{ln}  {name}")
@@ -478,9 +481,19 @@ def audit_bare_except():
                         broad.append((p, node.lineno, t))
                 # Swallowed (body is `pass` or just `...`)
                 body = node.body
-                if len(body) == 1 and isinstance(body[0], (ast.Pass, ast.Expr)):
-                    if isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and body[0].value.value is ... or isinstance(body[0], ast.Pass):
-                        swallow.append((p, node.lineno))
+                if (
+                    len(body) == 1
+                    and isinstance(body[0], (ast.Pass, ast.Expr))
+                    and (
+                        isinstance(body[0], ast.Pass)
+                        or (
+                            isinstance(body[0], ast.Expr)
+                            and isinstance(body[0].value, ast.Constant)
+                            and body[0].value.value is ...
+                        )
+                    )
+                ):
+                    swallow.append((p, node.lineno))
     print(f"== F1. Bare `except:` ({len(bare)}) ==")
     for p, ln in bare:
         print(f"  {p}:{ln}")
@@ -531,7 +544,7 @@ def audit_todos():
                 items.append((p, i, line.strip()[:100]))
     print(f"== G1. TODO/FIXME/XXX/HACK markers ({len(items)}) ==")
     counts: dict[str, int] = Counter()
-    for p, _, line in items:
+    for _path, _, line in items:
         m = re.search(r"(TODO|FIXME|XXX|HACK|TEMP)", line, re.IGNORECASE)
         if m:
             counts[m.group(1).upper()] += 1
@@ -604,8 +617,9 @@ def audit_n_plus_one():
         if not tree:
             continue
         class V(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self, file_path):
                 self.loop_stack = 0
+                self._file_path = file_path
             def visit_For(self, n):
                 self.loop_stack += 1
                 self.generic_visit(n)
@@ -622,9 +636,9 @@ def audit_n_plus_one():
                 if self.loop_stack > 0:
                     src = ast.unparse(n.func)
                     if any(m in src for m in ("db.query", "db.scalar", "db.execute", "session.query", "session.scalar", "session.execute", "db.scalars")):
-                        items.append((p, n.lineno, src))
+                        items.append((self._file_path, n.lineno, src))
                 self.generic_visit(n)
-        V().visit(tree)
+        V(p).visit(tree)
     print(f"== G6. DB call inside a loop (N+1 risk) ({len(items)}) ==")
     by_file = defaultdict(list)
     for p, ln, src in items:
@@ -648,10 +662,8 @@ def audit_test_coverage_by_module():
 
     body_blob: list[str] = []
     for p in walk(TESTS):
-        try:
+        with contextlib.suppress(Exception):
             body_blob.append(p.read_text(encoding="utf-8", errors="ignore"))
-        except Exception:
-            pass
     blob = "\n".join(body_blob)
     for mod in grep_targets:
         if mod in blob:

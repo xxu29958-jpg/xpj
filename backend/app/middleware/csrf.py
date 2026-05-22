@@ -58,10 +58,7 @@ def _has_same_origin_source(request: Request) -> bool:
 
     # FastAPI's default TestClient has no browser source headers. Keep existing
     # unit tests deterministic without weakening real browser requests.
-    if _peer_host(request) == "testclient" and not any(request.headers.get(name) for name in _SOURCE_HEADERS):
-        return True
-
-    return False
+    return _peer_host(request) == "testclient" and not any(request.headers.get(name) for name in _SOURCE_HEADERS)
 
 
 def _normalize_host(value: str | None) -> str:

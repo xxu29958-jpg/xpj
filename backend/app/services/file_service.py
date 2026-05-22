@@ -213,11 +213,13 @@ def _resolve_upload_reference(relative_path: str | None) -> Path | None:
     legacy_candidate = (BACKEND_ROOT / Path(*parts)).resolve()
     if _is_under_path(legacy_candidate, upload_dir):
         return legacy_candidate
-    if parts[0] == UPLOAD_REFERENCE_PREFIX:
-        candidate = (upload_dir / Path(*parts[1:])).resolve()
-    else:
-        # Legacy v0.2 rows stored paths relative to BACKEND_ROOT.
-        candidate = legacy_candidate
+    # Legacy v0.2 rows stored paths relative to BACKEND_ROOT; new rows use
+    # the UPLOAD_REFERENCE_PREFIX prefix relative to settings.upload_dir.
+    candidate = (
+        (upload_dir / Path(*parts[1:])).resolve()
+        if parts[0] == UPLOAD_REFERENCE_PREFIX
+        else legacy_candidate
+    )
     if not _is_under_path(candidate, upload_dir):
         return None
     return candidate
