@@ -14,6 +14,11 @@ from app.errors import AppError, PathTraversalError
 from app.tenants import DEFAULT_TENANT_ID
 
 
+# Pre-decode caps: PIL.verify() only checks magic bytes, so a tiny file
+# can still decode to billions of pixels and bomb the thumbnail step.
+MAX_IMAGE_PIXELS = 50_000_000
+MAX_IMAGE_DIMENSION = 12_000
+
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "heic"}
 CONTENT_TYPE_EXTENSION = {
     "image/jpeg": "jpg",
@@ -78,22 +83,35 @@ def _looks_like_allowed_image(ext: str, header: bytes) -> bool:
     return False
 
 
+def _register_pil_decoders(ext: str) -> None:
+    if ext == "heic":
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+
+
+def _image_size_within_cap(data: bytes) -> bool:
+    from PIL import Image
+
+    with Image.open(BytesIO(data)) as image:
+        width, height = image.size
+    if width <= 0 or height <= 0:
+        return False
+    if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+        return False
+    return width * height <= MAX_IMAGE_PIXELS
+
+
 def _is_decodable_image(ext: str, data: bytes) -> bool:
     try:
         from PIL import Image, UnidentifiedImageError
 
-        if ext == "heic":
-            from pillow_heif import register_heif_opener
-
-            register_heif_opener()
+        _register_pil_decoders(ext)
         with Image.open(BytesIO(data)) as image:
             image.verify()
+        return _image_size_within_cap(data)
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
-        # PIL.verify() reports corrupt / unsupported images via these
-        # exception types; the upload route treats False as "not an
-        # image" and rejects with HTTP 400.
         return False
-    return True
 
 
 async def save_upload(file: UploadFile, tenant_id: str) -> SavedUpload:

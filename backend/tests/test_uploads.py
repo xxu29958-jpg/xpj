@@ -475,3 +475,28 @@ def test_upload_screenshot_rejects_multipart_without_image_file(
         "error": "invalid_request",
         "message": "表单里没有找到图片文件。",
     }
+
+
+def test_upload_rejects_image_exceeding_pixel_cap(
+    client: TestClient, monkeypatch, *, identity,
+) -> None:
+    from io import BytesIO
+    from PIL import Image
+    from app.services import file_service
+
+    monkeypatch.setattr(file_service, "MAX_IMAGE_PIXELS", 1_000_000)
+    monkeypatch.setattr(file_service, "MAX_IMAGE_DIMENSION", 1_500)
+
+    oversized = Image.new("RGB", (2000, 2000), color="white")
+    buf = BytesIO()
+    oversized.save(buf, format="PNG", optimize=True)
+
+    response = client.post(
+        identity.upload_url_path,
+        headers={**identity.upload_headers, "Content-Type": "image/png"},
+        content=buf.getvalue(),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "unsupported_file_type"
+    assert _stored_upload_files() == []
