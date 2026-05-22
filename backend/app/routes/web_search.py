@@ -29,7 +29,7 @@ def web_search(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     query = (q or "").strip()
     ctx = _base_ctx(
         request,

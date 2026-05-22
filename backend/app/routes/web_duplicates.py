@@ -71,7 +71,7 @@ def web_duplicates(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     rows = list_duplicate_expenses(db, selected_id)
     pairs = []
     for row in rows:
@@ -131,13 +131,14 @@ def web_duplicates(
 
 @router.post("/duplicates/{expense_id}/keep")
 def web_duplicate_keep(
+    request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         mark_expense_not_duplicate(db, expense_id, selected_id)
@@ -152,13 +153,14 @@ def web_duplicate_keep(
 
 @router.post("/duplicates/{expense_id}/reject-current")
 def web_duplicate_reject_current(
+    request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         reject_expense(db, expense_id, selected_id)
@@ -173,13 +175,14 @@ def web_duplicate_reject_current(
 
 @router.post("/duplicates/{expense_id}/reject-original")
 def web_duplicate_reject_original(
+    request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     msg = "已删除被复制的那条，并保留当前账单。"
     try:

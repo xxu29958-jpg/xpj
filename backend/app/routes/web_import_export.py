@@ -38,6 +38,7 @@ router = APIRouter(prefix="/web", tags=["web"])
 
 @router.get("/export.csv")
 def web_export_csv(
+    request: Request,
     ledger_id: str = "",
     month: str | None = None,
     category: str | None = None,
@@ -47,7 +48,7 @@ def web_export_csv(
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     content = "\ufeff" + export_confirmed_csv(
         db,
         tenant_id=selected_id,
@@ -77,7 +78,7 @@ def web_import_form(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["max_rows"] = MAX_CSV_IMPORT_ROWS
     ctx["flash_message"] = msg
@@ -89,13 +90,14 @@ def web_import_form(
 
 @router.post("/import/preview", response_class=HTMLResponse)
 async def web_import_preview(
+    request: Request,
     ledger_id: str = Form(""),
     csv_file: UploadFile = File(...),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     batch = create_csv_import_batch(
         db,
@@ -121,7 +123,7 @@ def web_import_batch_detail(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     batch = get_csv_import_batch(db, tenant_id=selected_id, public_id=public_id)
     rows_page = list_csv_import_rows(
         db,
@@ -154,6 +156,7 @@ def web_import_batch_detail(
 
 @router.post("/import/{public_id}/apply")
 def web_import_batch_apply(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(""),
     batch_size: int = Form(500),
@@ -161,7 +164,7 @@ def web_import_batch_apply(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     safe_batch_size = min(max(batch_size, 1), 1000)
     applied = apply_csv_import_batch(
@@ -177,13 +180,14 @@ def web_import_batch_apply(
 
 @router.get("/import/{public_id}/errors.csv")
 def web_import_batch_errors_csv(
+    request: Request,
     public_id: str,
     ledger_id: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     content = "\ufeff" + build_csv_import_errors_csv(
         db,
         tenant_id=selected_id,
@@ -198,13 +202,14 @@ def web_import_batch_errors_csv(
 
 @router.post("/import/confirm")
 def web_import_confirm(
+    request: Request,
     ledger_id: str = Form(""),
     payload: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     del payload
     target = _with_ledger(

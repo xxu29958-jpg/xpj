@@ -11,6 +11,7 @@ from app.database import init_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
 from app.middleware.csrf import csrf_loopback_form_guard
 from app.middleware.logging import SanitizedLoggingMiddleware
+from app.middleware.web_session import web_session_gate
 from app.routes import admin as admin_routes
 from app.routes import (
     auth,
@@ -87,6 +88,7 @@ app = FastAPI(
 add_exception_handlers(app)
 app.add_middleware(SanitizedLoggingMiddleware)
 app.middleware("http")(csrf_loopback_form_guard)
+app.middleware("http")(web_session_gate)
 
 app.include_router(auth.router)
 app.include_router(bootstrap.router)

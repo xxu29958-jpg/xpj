@@ -62,7 +62,7 @@ def web_root(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     ctx = _base_ctx(
         request,
         options=options,
@@ -91,12 +91,13 @@ def web_root_slash(
 
 @router.get("/dashboard/data", response_class=JSONResponse)
 def web_dashboard_data(
+    request: Request,
     ledger_id: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> JSONResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     return JSONResponse(_dashboard_data_payload(db, selected_id))
 
 
@@ -148,7 +149,7 @@ def web_dashboard_cards_get(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["dashboard_cards"] = _dashboard_cards_context(db, selected_id)
     ctx["message"] = msg
@@ -157,6 +158,7 @@ def web_dashboard_cards_get(
 
 @router.post("/dashboard/cards/save", response_class=HTMLResponse)
 def web_dashboard_cards_save(
+    request: Request,
     ledger_id: str = Form(default=""),
     card_key: list[str] = Form(default=[]),
     card_position: list[int] = Form(default=[]),
@@ -165,7 +167,7 @@ def web_dashboard_cards_save(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     payload = _dashboard_cards_payload(
         card_key=card_key,
@@ -181,12 +183,13 @@ def web_dashboard_cards_save(
 
 @router.post("/dashboard/cards/reset", response_class=HTMLResponse)
 def web_dashboard_cards_reset(
+    request: Request,
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     update_dashboard_cards(
         db,

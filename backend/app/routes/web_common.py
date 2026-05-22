@@ -39,7 +39,24 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
 def _require_local(request: Request) -> None:
-    """Loopback gate. Same rule as the Owner Console."""
+    """Loopback OR Web-session gate.
+
+    Pre-PR-4 this was a strict loopback check (same rule as Owner Console).
+    PR-4 expands it: a public-host request that already carries a valid
+    ``__Host-session`` cookie (verified by :mod:`app.middleware.web_session`)
+    is also accepted. The middleware stashes :class:`AuthContext` on
+    ``request.state.web_session_auth`` for that case.
+
+    Defense-in-depth: if middleware was ever bypassed (config error, route
+    not reaching middleware), this dependency still requires loopback. So
+    a /web request only reaches a handler when at least one of "loopback
+    peer + Host" or "valid cookie verified by middleware" is true.
+    """
+
+    if getattr(request.state, "web_session_auth", None) is not None:
+        # Middleware already verified the session token AND that the
+        # ?ledger_id= query (if any) matches the session ledger.
+        return
     require_owner_console_local(request)
 
 
@@ -73,14 +90,30 @@ def _list_ledger_options(db: Session) -> list[LedgerOption]:
 
 
 def _resolve_selected_ledger_id(
-    db: Session, requested: str | None, options: list[LedgerOption] | None = None
+    db: Session,
+    requested: str | None,
+    options: list[LedgerOption] | None = None,
+    *,
+    request: Request | None = None,
 ) -> str:
     """Return the ledger_id the current /web page should operate on.
 
     ``requested`` comes from query / form. The result is **only** valid
     when it appears in :func:`owner_console_service.list_console_ledgers`;
     arbitrary tenant_id is rejected with a Chinese error.
+
+    When a Web session cookie identifies the caller (set by
+    :mod:`app.middleware.web_session` for public Host requests), the
+    ledger is locked to the session's account regardless of any
+    ``?ledger_id=`` query — the middleware has already rejected a query
+    that disagreed with the session, so by the time we get here a stale
+    or absent query just defers to the session ledger.
     """
+    if request is not None:
+        session_auth = getattr(request.state, "web_session_auth", None)
+        if session_auth is not None:
+            return session_auth.ledger_id
+
     opts = options if options is not None else _list_ledger_options(db)
     if not opts:
         raise AppError(

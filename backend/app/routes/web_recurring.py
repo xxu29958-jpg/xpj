@@ -123,7 +123,7 @@ def web_recurring(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     return _render_recurring(
         request=request,
         db=db,
@@ -147,7 +147,7 @@ def web_recurring_confirm_candidate(
     db: Session = Depends(get_db),
 ):
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     payload = RecurringCandidateConfirmRequest(
         merchant=merchant,
@@ -175,13 +175,14 @@ def web_recurring_confirm_candidate(
 
 @router.post("/{public_id}/pause", response_class=HTMLResponse)
 def web_recurring_pause(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     pause_recurring_item(db, tenant_id=selected_id, public_id=public_id)
     return RedirectResponse(url=_with_ledger("/web/recurring", selected_id), status_code=303)
@@ -189,13 +190,14 @@ def web_recurring_pause(
 
 @router.post("/{public_id}/resume", response_class=HTMLResponse)
 def web_recurring_resume(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     resume_recurring_item(db, tenant_id=selected_id, public_id=public_id)
     return RedirectResponse(url=_with_ledger("/web/recurring", selected_id), status_code=303)
@@ -203,13 +205,14 @@ def web_recurring_resume(
 
 @router.post("/{public_id}/archive", response_class=HTMLResponse)
 def web_recurring_archive(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     archive_recurring_item(db, tenant_id=selected_id, public_id=public_id)
     return RedirectResponse(url=_with_ledger("/web/recurring", selected_id), status_code=303)

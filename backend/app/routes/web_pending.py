@@ -85,7 +85,7 @@ def web_pending(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     raw_items = [_expense_view(e) for e in list_pending(db, selected_id)]
 
     filter_key = (filter or "all").strip().lower()
@@ -177,6 +177,7 @@ def _reject_pending_rows(
 
 @router.post("/pending/batch-reject", response_class=HTMLResponse)
 def web_pending_batch_reject(
+    request: Request,
     ledger_id: str = Form(default=""),
     expense_ids: list[int] = Form(default=[]),
     filter: str = Form(default="all"),
@@ -184,7 +185,7 @@ def web_pending_batch_reject(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
 
     if not expense_ids:
@@ -210,7 +211,7 @@ def web_review_bulk(  # noqa: C901 - bulk-review action dispatcher: 8 actions ×
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
 
     action_clean = (action or "").strip()

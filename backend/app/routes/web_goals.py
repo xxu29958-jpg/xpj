@@ -103,7 +103,7 @@ def web_goals(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
     return _render_goals(
@@ -129,7 +129,7 @@ def web_goals_create(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
@@ -159,6 +159,7 @@ def web_goals_create(
 
 @router.post("/{public_id}/archive")
 def web_goals_archive(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(default=""),
     month: str = Form(default=""),
@@ -166,7 +167,7 @@ def web_goals_archive(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     timezone_name = get_settings().ocr_default_timezone
     archive_goal(db, tenant_id=selected_id, public_id=public_id, timezone_name=timezone_name)

@@ -32,7 +32,7 @@ def web_data_quality(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     summary = data_quality_summary(db, tenant_id=selected_id)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["summary"] = summary

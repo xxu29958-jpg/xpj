@@ -119,7 +119,7 @@ def web_reports(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
     selected_granularity = _clean_granularity(granularity)
@@ -170,6 +170,7 @@ def web_reports(
 
 @router.get("/export.csv")
 def web_reports_csv(
+    request: Request,
     month: str | None = None,
     granularity: str | None = None,
     ranking_metric: str | None = None,
@@ -179,7 +180,7 @@ def web_reports_csv(
     db: Session = Depends(get_db),
 ) -> Response:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     timezone_name = get_settings().ocr_default_timezone
     target_month = (month or "").strip() or current_month(timezone_name)
     selected_granularity = _clean_granularity(granularity)

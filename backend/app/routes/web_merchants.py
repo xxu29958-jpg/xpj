@@ -41,7 +41,7 @@ def web_merchants(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     aliases = list_merchant_aliases(db, selected_id)
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["aliases"] = aliases
@@ -56,6 +56,7 @@ def web_merchants(
 
 @router.post("/merchants/aliases/create", response_class=HTMLResponse)
 def web_merchant_alias_create(
+    request: Request,
     canonical_merchant: str = Form(""),
     alias: str = Form(""),
     ledger_id: str = Form(""),
@@ -63,7 +64,7 @@ def web_merchant_alias_create(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         item = create_merchant_alias(
@@ -83,13 +84,14 @@ def web_merchant_alias_create(
 
 @router.post("/merchants/aliases/{public_id}/toggle", response_class=HTMLResponse)
 def web_merchant_alias_toggle(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         item = get_merchant_alias(db, tenant_id=selected_id, public_id=public_id)
@@ -105,13 +107,14 @@ def web_merchant_alias_toggle(
 
 @router.post("/merchants/aliases/{public_id}/delete", response_class=HTMLResponse)
 def web_merchant_alias_delete(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         item = get_merchant_alias(db, tenant_id=selected_id, public_id=public_id)

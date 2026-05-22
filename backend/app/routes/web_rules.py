@@ -69,7 +69,7 @@ def web_rules(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     rules = list_rules(db, selected_id)
     rule_applications = list_rule_applications(db, tenant_id=selected_id, limit=8)
     preview = None
@@ -122,6 +122,7 @@ def web_rules(
 
 @router.post("/rules/create", response_class=HTMLResponse)
 def web_rules_create(
+    request: Request,
     keyword: str = Form(""),
     category: str = Form(""),
     priority: int = Form(100),
@@ -134,7 +135,7 @@ def web_rules_create(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         create_rule(
@@ -160,13 +161,14 @@ def web_rules_create(
 
 @router.post("/rules/applications/{public_id}/rollback", response_class=HTMLResponse)
 def web_rules_application_rollback(
+    request: Request,
     public_id: str,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         _batch, changed, skipped = rollback_rule_application(
@@ -193,13 +195,14 @@ def _get_rule(db: Session, rule_id: int, tenant_id: str) -> CategoryRule | None:
 
 @router.post("/rules/{rule_id}/toggle", response_class=HTMLResponse)
 def web_rules_toggle(
+    request: Request,
     rule_id: int,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     rule = _get_rule(db, rule_id, selected_id)
     if rule is None:
@@ -215,13 +218,14 @@ def web_rules_toggle(
 
 @router.post("/rules/{rule_id}/delete", response_class=HTMLResponse)
 def web_rules_delete(
+    request: Request,
     rule_id: int,
     ledger_id: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     rule = _get_rule(db, rule_id, selected_id)
     if rule is None:
@@ -238,6 +242,7 @@ def web_rules_delete(
 
 @router.post("/rules/apply-pending", response_class=HTMLResponse)
 def web_rules_apply_pending(
+    request: Request,
     ledger_id: str = Form(""),
     preview_confirmed: str = Form(""),
     preview_token: str = Form(""),
@@ -245,7 +250,7 @@ def web_rules_apply_pending(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     if preview_confirmed != "yes":
         msg = "请先预览影响范围，再确认应用规则。"
@@ -279,6 +284,7 @@ def web_rules_apply_pending(
 
 @router.post("/rules/apply-confirmed", response_class=HTMLResponse)
 def web_rules_apply_confirmed(
+    request: Request,
     ledger_id: str = Form(""),
     preview_confirmed: str = Form(""),
     preview_token: str = Form(""),
@@ -286,7 +292,7 @@ def web_rules_apply_confirmed(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     if preview_confirmed != "yes":
         msg = "历史账单修改必须先预览影响范围，再确认应用。"

@@ -54,7 +54,7 @@ def web_edit_get(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     ctx = _web_edit_context(db, request, options, selected_id, expense_id)
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
     template_name = "_edit_drawer.html" if fragment else "edit.html"
@@ -102,7 +102,7 @@ def web_save(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     original_amount, error = _parse_original_amount(amount_yuan)
 
@@ -143,7 +143,7 @@ def web_confirm(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     try:
         confirm_expense(db, expense_id, selected_id)
@@ -168,7 +168,7 @@ def web_items_save(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     error: str | None = None
     payload: ExpenseItemReplaceRequest | None = None
@@ -209,7 +209,7 @@ def web_splits_save(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     error: str | None = None
     payload: ExpenseSplitReplaceRequest | None = None
@@ -244,13 +244,14 @@ def web_splits_save(
 
 @router.post("/expenses/{expense_id}/reject", response_class=HTMLResponse)
 def web_reject(
+    request: Request,
     expense_id: int,
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
-    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     reject_expense(db, expense_id, selected_id)
     return RedirectResponse(url=_with_ledger("/web/pending", selected_id), status_code=303)
