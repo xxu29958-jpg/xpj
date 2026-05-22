@@ -14,7 +14,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -38,8 +38,6 @@ from app.routes.web_common import (
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
-    ensure_image_file,
-    ensure_thumbnail_file,
     list_confirmed,
 )
 from app.services.stats_service import monthly_stats
@@ -242,25 +240,8 @@ def web_confirmed_batch_update(
     )
 
 
-@router.get("/expenses/{expense_id}/image", include_in_schema=False)
-def web_image(
-    expense_id: int,
-    ledger_id: str | None = None,
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> FileResponse:
-    selected_id = _resolve_selected_ledger_id(db, ledger_id)
-    path, media_type = ensure_image_file(db, expense_id, selected_id)
-    return FileResponse(path=path, media_type=media_type)
-
-
-@router.get("/expenses/{expense_id}/thumbnail", include_in_schema=False)
-def web_thumbnail(
-    expense_id: int,
-    ledger_id: str | None = None,
-    _local: None = LocalOnly,
-    db: Session = Depends(get_db),
-) -> FileResponse:
-    selected_id = _resolve_selected_ledger_id(db, ledger_id)
-    path, media_type = ensure_thumbnail_file(db, expense_id, selected_id)
-    return FileResponse(path=path, media_type=media_type)
+# /web/expenses/{id}/image and /web/expenses/{id}/thumbnail moved to
+# app/routes/web_media.py during the v0.4-alpha3 route split. They used to
+# be duplicated here as a transitional shim; FastAPI's "first registered
+# wins" rule meant the copy in this file was actually serving traffic and
+# any fix applied to web_media.py would silently no-op. Removed.
