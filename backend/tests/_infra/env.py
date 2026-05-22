@@ -27,17 +27,24 @@ TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
 TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 
 
+if os.environ.get("XPJ_TEST_FILE_BACKED") == "1":
+    # File-backed lane covers the migration-readiness / pre-v1 backup tests
+    # that skip on in-memory SQLite. Cleanup in tests/_infra/db.cleanup_runtime
+    # already targets TEST_DB_PATH, so the file lives under data/ and is
+    # removed at session end.
+    _database_url = f"sqlite:///{TEST_DB_PATH.as_posix()}"
+else:
+    # In-memory SQLite + StaticPool (see app/database/_core.py): every
+    # Base.metadata.create_all() goes from ~1.3s on a file SQLite to ~16ms
+    # in memory. Default lane.
+    _database_url = "sqlite://"
+
 os.environ.update(
     {
         "UPLOAD_TOKEN": TEST_UPLOAD_TOKEN,
         "APP_TOKEN": TEST_APP_TOKEN,
         "ADMIN_TOKEN": TEST_ADMIN_TOKEN,
-        # In-memory SQLite + StaticPool (see app/database/_core.py): every
-        # Base.metadata.create_all() goes from ~1.3s on a file SQLite to
-        # ~16ms in memory, since each CREATE no longer fsyncs to disk.
-        # TEST_DB_PATH below is kept only as a path token for tests that
-        # assert on backup file naming patterns; no file is materialised.
-        "DATABASE_URL": "sqlite://",
+        "DATABASE_URL": _database_url,
         "UPLOAD_DIR": TEST_UPLOAD_RELATIVE,
         "MAX_UPLOAD_SIZE_MB": "10",
         "DELETE_IMAGE_AFTER_CONFIRM": "false",

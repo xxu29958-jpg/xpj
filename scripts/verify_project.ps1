@@ -135,6 +135,21 @@ if (-not $SkipBackend) {
     }
     Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
+    $prevFileBacked = [Environment]::GetEnvironmentVariable("XPJ_TEST_FILE_BACKED")
+    try {
+        $env:XPJ_TEST_FILE_BACKED = "1"
+        Invoke-Checked -FilePath $tools.Python -Arguments @(
+            "-m", "pytest", "-q",
+            "-k", "v1_migration_readiness or owner_migration_readiness or test_owner_backups_create_makes_file or pre_v03_backup_is_not_recreated"
+        ) -WorkingDirectory $BackendRoot
+    }
+    finally {
+        if ($null -eq $prevFileBacked) {
+            Remove-Item Env:\XPJ_TEST_FILE_BACKED -ErrorAction SilentlyContinue
+        } else {
+            $env:XPJ_TEST_FILE_BACKED = $prevFileBacked
+        }
+    }
     if (-not $SkipSmoke) {
         Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\smoke_test.py") -WorkingDirectory $BackendRoot
     }
