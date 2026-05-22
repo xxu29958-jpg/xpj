@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import re
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 
 MONTH_LABEL_PATTERN = re.compile(r"^\d{4}-\d{2}$")
 

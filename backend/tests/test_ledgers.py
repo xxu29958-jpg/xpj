@@ -22,6 +22,7 @@ from app.main import app
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 
+
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
     """Test client with the Owner Console loopback dependency bypassed."""

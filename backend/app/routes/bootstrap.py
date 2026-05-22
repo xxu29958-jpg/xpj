@@ -3,8 +3,8 @@ from __future__ import annotations
 import hmac
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin_context
@@ -18,10 +18,9 @@ from app.schemas import (
     PairingCodeCreateRequest,
     PairingCodeResponse,
 )
-from app.services.identity_service import bootstrap_owner, create_pairing_code, hash_secret
 from app.services.admin_scope_service import require_admin_manages_current_ledger
+from app.services.identity_service import bootstrap_owner, create_pairing_code, hash_secret
 from app.tenants import AuthContext
-
 
 router = APIRouter(prefix="/api/bootstrap", tags=["bootstrap"])
 

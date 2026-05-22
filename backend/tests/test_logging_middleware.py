@@ -16,7 +16,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-
 def test_mask_upload_path_in_log(client: TestClient, caplog: pytest.LogCaptureFixture) -> None:
     """Requesting an upload path with a secret key must not log the raw key."""
     secret_key = "super-secret-upload-key-abc123xyz"

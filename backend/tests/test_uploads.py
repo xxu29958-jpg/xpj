@@ -2,19 +2,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-
 from api_contract_helpers import (
     _stored_upload_files,
     make_heic_bytes,
     upload_png_as_raw_body,
 )
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
 from app.database import SessionLocal
 from app.main import app
 from app.models import LedgerMember
-from tests._infra.env import TEST_UPLOAD_RELATIVE
 from tests._infra.assets import PNG_BYTES
+from tests._infra.env import TEST_UPLOAD_RELATIVE
+
+
 def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity) -> None:
     expense_id = upload_png_as_raw_body(client, identity=identity)
 
@@ -474,7 +476,9 @@ def test_upload_rejects_image_exceeding_pixel_cap(
     client: TestClient, monkeypatch, *, identity,
 ) -> None:
     from io import BytesIO
+
     from PIL import Image
+
     from app.services import file_service
 
     monkeypatch.setattr(file_service, "MAX_IMAGE_PIXELS", 1_000_000)

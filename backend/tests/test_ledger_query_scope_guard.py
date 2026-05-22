@@ -4,7 +4,6 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
-
 APP_ROOT = Path(__file__).resolve().parents[1] / "app"
 SCAN_ROOTS = (APP_ROOT / "routes", APP_ROOT / "services")
 
@@ -220,7 +219,7 @@ def _apply_exemptions(
     sites: list[QuerySite],
 ) -> tuple[list[QuerySite], dict[tuple[str, str, str], int]]:
     allowed = {_exemption_key(exemption): exemption for exemption in EXEMPTIONS}
-    used_counts = {key: 0 for key in allowed}
+    used_counts = dict.fromkeys(allowed, 0)
     remaining: list[QuerySite] = []
     for site in sites:
         key = _site_key(site)

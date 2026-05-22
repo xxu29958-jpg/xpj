@@ -33,7 +33,6 @@ from app.services.csv_import_batch_service import (
 )
 from app.services.stats_service import export_confirmed_csv
 
-
 router = APIRouter(prefix="/web", tags=["web"])
 
 

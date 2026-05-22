@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-import logging
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
@@ -16,12 +16,13 @@ from app.models import FxRate
 from app.services.exchange_rate_service import (
     RATE_QUANT,
     format_decimal_rate,
-    home_currency_code as current_home_currency_code,
     normalize_currency_code,
     supported_currency_codes,
 )
+from app.services.exchange_rate_service import (
+    home_currency_code as current_home_currency_code,
+)
 from app.services.time_service import now_utc
-
 
 FETCH_TIMEOUT_SECONDS = 10
 logger = logging.getLogger(__name__)

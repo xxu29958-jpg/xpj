@@ -10,7 +10,6 @@ from app.models import CategoryRule, Expense
 from app.schemas import ExpenseUpdateRequest
 from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
 
-
 DEFAULT_CATEGORIES = [
     "餐饮",
     "交通",

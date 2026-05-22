@@ -12,7 +12,6 @@ from app.schemas import ExchangeRateListResponse, ExchangeRateRequest, ExchangeR
 from app.services.exchange_rate_service import list_exchange_rates, upsert_exchange_rate
 from app.tenants import AuthContext
 
-
 router = APIRouter(prefix="/api/exchange-rates", tags=["exchange-rates"])
 
 

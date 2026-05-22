@@ -14,7 +14,6 @@ from sqlalchemy.pool import StaticPool
 
 from app.config import BACKEND_ROOT, get_settings
 
-
 __all__ = [
     "BACKEND_ROOT",
     "Base",

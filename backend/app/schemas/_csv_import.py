@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.services.time_service import to_iso
 
-
 __all__ = [
     "CsvImportApplyRequest",
     "CsvImportApplyResponse",

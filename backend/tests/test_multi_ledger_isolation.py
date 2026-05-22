@@ -11,13 +11,15 @@ v0.4-specific token-rotation path.
 from __future__ import annotations
 
 import pytest
+from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 
-from api_contract_helpers import upload_png
 from app.main import app
 from app.routes.owner_console import _require_local as _owner_console_require_local
 from app.routes.owner_ledgers import _require_local as _owner_ledgers_require_local
 from tests._infra.assets import PNG_BYTES
+
+
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
     """TestClient with Owner Console loopback dependency bypassed."""

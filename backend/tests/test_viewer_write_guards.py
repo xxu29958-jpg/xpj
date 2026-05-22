@@ -15,6 +15,7 @@ from app.routes.web_app import _require_local as _web_require_local
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 

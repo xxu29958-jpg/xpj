@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import pytest
+from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 
-from api_contract_helpers import upload_png
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
+
 
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:

@@ -16,7 +16,6 @@ from app.services.merchant_alias_service import (
 from app.services.tag_service import parse_tags, tag_key
 from app.services.time_service import now_utc
 
-
 DEFAULT_RULES = [
     ("美团", "餐饮", 10),
     ("饿了么", "餐饮", 10),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from app.services.receipt_parse_amount import (
     _amount_candidates,
@@ -15,14 +15,14 @@ from app.services.receipt_parse_common import (
     ParsedReceipt,
     ParsedReceiptItem,
     _AmountCandidate,
-    _CategoryCandidate,
-    _MerchantCandidate,
-    _ReceiptContext,
-    _TimeCandidate,
     _best_candidate,
     _build_receipt_context,
+    _CategoryCandidate,
+    _MerchantCandidate,
     _normalize_text,
+    _ReceiptContext,
     _score_ratio,
+    _TimeCandidate,
 )
 from app.services.receipt_parse_merchant import (
     _calibrate_merchant_candidates,
@@ -33,7 +33,6 @@ from app.services.receipt_parse_time import (
     _calibrate_time_candidates,
     _time_candidates,
 )
-
 
 ITEM_LINE_PATTERN = re.compile(
     r"^(?P<name>[A-Za-z一-鿿][A-Za-z0-9一-鿿（）()·+\-/&\s]{0,80}?)"

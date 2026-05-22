@@ -82,7 +82,7 @@ class _ReceiptContext:
     text: str
     lines: tuple[str, ...]
     profile: str
-    signals: "_ReceiptSignals"
+    signals: _ReceiptSignals
 
 
 @dataclass(frozen=True)

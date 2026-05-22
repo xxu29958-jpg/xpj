@@ -13,7 +13,6 @@ from app.services.reports_service import export_reports_overview_csv, reports_ov
 from app.services.time_service import current_month
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/reports",
     tags=["reports"],

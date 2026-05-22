@@ -9,7 +9,6 @@ from app.schemas import AuthCheckResponse, PairRequest, PairResponse
 from app.services.identity_service import pair_device
 from app.tenants import AuthContext
 
-
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 

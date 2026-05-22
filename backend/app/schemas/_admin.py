@@ -13,7 +13,6 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-
 __all__ = [
     "DataQualitySummaryResponse",
     "MaintenanceCleanupResponse",

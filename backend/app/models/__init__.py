@@ -16,8 +16,8 @@ from app.models.classification import (
     RuleApplicationBatch,
     RuleApplicationChange,
 )
-from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.exchange import ExchangeRate, FxRate
+from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.identity import (
     Account,
     AuthToken,

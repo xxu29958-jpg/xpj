@@ -13,11 +13,10 @@ This is read-only; it never modifies the running app.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 from fastapi import FastAPI
-
 
 _INTERNAL_METHODS = {"HEAD", "OPTIONS"}
 

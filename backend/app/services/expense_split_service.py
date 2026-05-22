@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
-import json
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,7 +17,6 @@ from app.schemas import (
 )
 from app.services.expense_service import EDITABLE_STATUSES, get_expense
 from app.services.time_service import now_utc
-
 
 AUDIT_EXPENSE_SPLITS_REPLACED = "expense_splits_replaced"
 

@@ -2,6 +2,15 @@ from __future__ import annotations
 
 import re
 
+from app.services.receipt_parse_common import (
+    _best_candidate,
+    _build_receipt_context,
+    _line_index_for_offset,
+    _MerchantCandidate,
+    _merge_dimensions,
+    _ReceiptContext,
+    _ScoreDimensions,
+)
 from app.services.receipt_parse_rules import (
     BANK_KEYWORDS,
     CLOCK_LINE_PATTERN,
@@ -17,15 +26,6 @@ from app.services.receipt_parse_rules import (
     SUCCESS_PAGE_AD_KEYWORDS,
     SUCCESS_PAGE_SKIP_LINES,
     TRANSACTION_SUCCESS_KEYWORDS,
-)
-from app.services.receipt_parse_common import (
-    _MerchantCandidate,
-    _ReceiptContext,
-    _ScoreDimensions,
-    _best_candidate,
-    _build_receipt_context,
-    _line_index_for_offset,
-    _merge_dimensions,
 )
 
 

@@ -20,7 +20,7 @@ from app.routes.web_common import (
     _with_ledger,
     templates,
 )
-from app.schemas import DashboardCardUpdateRequest, DashboardCardsUpdateRequest
+from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month

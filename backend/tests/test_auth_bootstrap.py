@@ -12,8 +12,10 @@ from app.models import AuthToken, BootstrapSecretConsumption, PairingCode, Uploa
 from app.routes import bootstrap as bootstrap_route
 from app.services.identity_service import hash_pairing_code, hash_secret
 from app.services.time_service import now_utc
-from tests._infra.env import TEST_APP_TOKEN, TEST_UPLOAD_TOKEN
 from tests._infra.assets import PNG_BYTES
+from tests._infra.env import TEST_APP_TOKEN, TEST_UPLOAD_TOKEN
+
+
 def test_health_and_auth_contract(client: TestClient, *, identity) -> None:
     health = client.get("/api/health")
     assert health.status_code == 200
@@ -198,8 +200,8 @@ def test_bootstrap_owner_accepts_valid_secret(
 def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.database import Base, engine, init_db
     import app.services.identity_service as identity_service
+    from app.database import Base, engine, init_db
 
     secret = "rollback-bootstrap-secret"
     monkeypatch.setenv("ENABLE_HTTP_BOOTSTRAP", "true")
@@ -215,13 +217,12 @@ def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
     monkeypatch.setattr(identity_service, "_create_pairing_code", fail_pairing_creation)
 
     try:
-        with TestClient(app) as fresh_client:
-            with pytest.raises(RuntimeError, match="pairing creation failed"):
-                fresh_client.post(
-                    "/api/bootstrap/owner",
-                    headers={"X-Bootstrap-Secret": secret},
-                    json={"account_name": "owner", "ledger_name": "home"},
-                )
+        with TestClient(app) as fresh_client, pytest.raises(RuntimeError, match="pairing creation failed"):
+            fresh_client.post(
+                "/api/bootstrap/owner",
+                headers={"X-Bootstrap-Secret": secret},
+                json={"account_name": "owner", "ledger_name": "home"},
+            )
 
         with SessionLocal() as db:
             assert db.query(AuthToken).count() == 0

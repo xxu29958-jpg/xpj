@@ -19,21 +19,20 @@ Key invariants:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import secrets
+from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AuthToken, Account, Device, Ledger, LedgerMember
+from app.models import Account, AuthToken, Device, Ledger, LedgerMember
 from app.services.identity_service import (
     _ensure_membership,
 )
 from app.services.session_lifecycle_service import rotate_app_token_for_ledger
 from app.services.time_service import to_iso
 from app.tenants import DEFAULT_TENANT_ID
-
 
 LEDGER_ID_PREFIX = "ledger_"
 LEDGER_NAME_MAX_LEN = 60

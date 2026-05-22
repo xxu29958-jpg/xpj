@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.web_app import _require_local as _web_require_local
 
+
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides[_web_require_local] = lambda: None

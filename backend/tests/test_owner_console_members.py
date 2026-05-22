@@ -11,6 +11,7 @@ from app.main import app
 from app.routes.owner_console import _require_local as _require_local_console
 from app.routes.owner_ledgers import _require_local as _require_local_ledgers
 
+
 @pytest.fixture()
 def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides[_require_local_console] = lambda: None

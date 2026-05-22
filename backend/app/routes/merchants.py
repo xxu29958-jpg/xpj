@@ -21,7 +21,6 @@ from app.services.merchant_alias_service import (
 )
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/merchants",
     tags=["merchants"],

@@ -27,7 +27,6 @@ from app.services.spending_contract_service import (
 )
 from app.services.time_service import now_utc
 
-
 SOURCE_LABELS: dict[str, str] = {
     "ios_upload_link": "iPhone",
     "android_upload": "Android",

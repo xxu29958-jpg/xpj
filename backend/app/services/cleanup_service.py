@@ -14,8 +14,8 @@ from app.services.file_service import (
     resolve_upload_path_for_tenant,
     upload_reference_for_path,
 )
-from app.tenants import DEFAULT_TENANT_ID
 from app.services.time_service import now_utc
+from app.tenants import DEFAULT_TENANT_ID
 
 
 @dataclass(frozen=True)

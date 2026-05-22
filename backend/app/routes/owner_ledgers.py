@@ -25,10 +25,9 @@ from app.database import get_db
 from app.errors import AppError
 from app.network_boundary import require_owner_console_local
 from app.routes.owner_console import _base, _format_owner_datetime
-from app.services import owner_console_service as svc
 from app.services import invitation_service
+from app.services import owner_console_service as svc
 from app.version import BACKEND_VERSION  # noqa: F401  (kept for parity with sibling pages)
-
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "owner"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))

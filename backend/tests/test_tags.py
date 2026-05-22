@@ -7,6 +7,7 @@ from app.database import SessionLocal
 from app.models import Expense, ExpenseTag, Tag
 from app.services.import_service import import_rows, parse_csv_preview
 
+
 def _manual(
     client: TestClient,
     *,

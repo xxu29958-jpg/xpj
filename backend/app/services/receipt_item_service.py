@@ -6,10 +6,10 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseItem
 from app.schemas import (
+    ExpenseItemReplaceRequest,
     ExpenseItemRequest,
     ExpenseItemResponse,
     ExpenseItemsResponse,
-    ExpenseItemReplaceRequest,
 )
 from app.services.category_service import normalize_category
 from app.services.expense_service import EDITABLE_STATUSES, get_expense

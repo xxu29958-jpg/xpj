@@ -9,7 +9,6 @@ from app.schemas import DashboardCardsResponse, DashboardCardsUpdateRequest
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/dashboard",
     tags=["dashboard"],

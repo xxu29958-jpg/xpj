@@ -9,6 +9,7 @@ keep their handler bodies tight.
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from pathlib import Path
 
 from fastapi import Depends, Request
@@ -19,7 +20,6 @@ from app.config import get_settings
 from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
 from app.network_boundary import require_owner_console_local
 from app.version import BACKEND_VERSION
-
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _format_owner_datetime(value: object, tz: str = "Asia/Shanghai") -> str:
     """
     if not value:
         return "—"
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     if isinstance(value, str):
         raw = value.strip()
@@ -56,7 +56,7 @@ def _format_owner_datetime(value: object, tz: str = "Asia/Shanghai") -> str:
         return str(value)[:16].replace("T", " ")
 
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     try:
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 

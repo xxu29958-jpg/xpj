@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
+import mimetypes
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-import json
-import mimetypes
 from typing import Any, Protocol
 from urllib import error, request
 
@@ -15,8 +15,8 @@ from app.errors import AppError
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import Expense
 from app.services.category_service import normalize_category
-from app.services.file_service import resolve_protected_image
 from app.services.exchange_rate_service import default_rate_date, home_currency_code
+from app.services.file_service import resolve_protected_image
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc, ensure_utc_assuming_local
 

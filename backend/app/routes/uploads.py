@@ -25,7 +25,6 @@ from app.services.identity_service import (
 from app.services.permission_service import require_create_pending_expense
 from app.tenants import AuthContext
 
-
 router = APIRouter(prefix="/api", tags=["uploads"])
 upload_link_router = APIRouter(tags=["uploads"])
 logger = logging.getLogger("ticketbox.upload")

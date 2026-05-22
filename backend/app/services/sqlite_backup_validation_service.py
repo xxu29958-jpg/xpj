@@ -11,7 +11,6 @@ import argparse
 import sqlite3
 from pathlib import Path
 
-
 REQUIRED_TICKETBOX_TABLES = {
     "accounts",
     "ledgers",

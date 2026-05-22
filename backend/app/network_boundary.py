@@ -21,7 +21,6 @@ from fastapi import Request
 from app.config import get_settings
 from app.errors import AppError
 
-
 # Loopback peer addresses we trust. Anything else is rejected outright.
 _LOOPBACK_PEERS: frozenset[str] = frozenset({"127.0.0.1", "::1", "localhost"})
 

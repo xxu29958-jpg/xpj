@@ -11,8 +11,8 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import re
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,7 +24,6 @@ from app.routes.web_app import _require_local as _web_require_local
 from app.services.category_service import list_category_summary
 from app.services.merchant_service import display_merchant, normalize_merchant
 from tests._infra.env import BACKEND_ROOT
-
 
 # ── Fixtures (mirror tests/test_web_app.py setup) ───────────────────────────
 

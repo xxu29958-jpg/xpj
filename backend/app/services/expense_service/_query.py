@@ -10,7 +10,6 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 
-
 __all__ = ["get_expense", "list_confirmed", "list_pending"]
 
 

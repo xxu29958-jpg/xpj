@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import LedgerMember
 
-
 INVITATION_TTL_DAYS = 7
 INVITATION_TOKEN_PREFIX = "inv_"
 AUDIT_INVITATION_CREATED = "invitation_created"

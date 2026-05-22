@@ -31,7 +31,6 @@ from app.services.recurring_service import (
 )
 from app.services.time_service import current_month, to_iso
 
-
 router = APIRouter(prefix="/web/recurring", tags=["web"])
 
 

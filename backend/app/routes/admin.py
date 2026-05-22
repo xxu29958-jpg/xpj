@@ -31,7 +31,6 @@ from app.services import admin_service
 from app.services.admin_scope_service import manageable_ledger_ids
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/admin",
     tags=["admin"],

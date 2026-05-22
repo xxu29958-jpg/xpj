@@ -14,7 +14,6 @@ import json
 import os
 from pathlib import Path
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 TEST_RUN_ID = f"pid_{os.getpid()}"
 TEST_UPLOAD_TOKEN = "pytest-upload-token"

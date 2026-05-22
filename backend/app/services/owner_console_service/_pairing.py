@@ -9,7 +9,6 @@ from app.services.identity_service import (
     create_pairing_code,
 )
 
-
 __all__ = ["PairingCodeResult", "do_create_pairing_code"]
 
 

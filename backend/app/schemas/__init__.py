@@ -53,9 +53,9 @@ from app.schemas._csv_import import (
 )
 from app.schemas._dashboard import (
     DashboardCardResponse,
-    DashboardCardUpdateRequest,
     DashboardCardsResponse,
     DashboardCardsUpdateRequest,
+    DashboardCardUpdateRequest,
 )
 from app.schemas._exchange import (
     ExchangeRateListResponse,
@@ -114,10 +114,10 @@ from app.schemas._identity import (
     LedgerResponse,
     LedgerSwitchResponse,
     OwnerTransferResponse,
-    PairRequest,
-    PairResponse,
     PairingCodeCreateRequest,
     PairingCodeResponse,
+    PairRequest,
+    PairResponse,
 )
 from app.schemas._recurring import (
     RecurringCandidateConfirmRequest,
@@ -130,8 +130,8 @@ from app.schemas._reports import (
     LifestyleStatsResponse,
     ReportCategoryComparisonResponse,
     ReportMerchantRankingResponse,
-    ReportTrendPointResponse,
     ReportsOverviewResponse,
+    ReportTrendPointResponse,
 )
 from app.schemas._rules import (
     CategoryRuleCreateRequest,
@@ -159,10 +159,9 @@ from app.schemas._stats import (
     CategoryStatsResponse,
     MonthlyStatsResponse,
     MonthsResponse,
-    TagStatsResponse,
     TagsResponse,
+    TagStatsResponse,
 )
-
 
 __all__ = [
     "AdminDeviceRenameRequest",

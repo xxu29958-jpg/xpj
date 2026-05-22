@@ -12,6 +12,7 @@ from app.models import LedgerMember
 from app.services.exchange_rate_service import calculate_cny_cents, default_rate_date
 from app.services.fx_rate_provider import cross_rate_to_home, parse_ecb_daily_rates, upsert_fx_rate
 
+
 def test_default_rate_date_uses_accounting_local_day_for_stored_utc_time() -> None:
     assert default_rate_date(datetime(2026, 4, 30, 16, 30, tzinfo=UTC)) == date(2026, 5, 1)
 

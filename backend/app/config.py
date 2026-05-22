@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_ROOT / ".env", encoding="utf-8-sig")
 

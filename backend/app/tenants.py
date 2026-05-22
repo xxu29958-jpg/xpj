@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from hmac import compare_digest
-import json
-import re
 from typing import Any
 
 from app.config import get_settings
 from app.errors import AppError
-
 
 DEFAULT_TENANT_ID = "owner"
 DEFAULT_TENANT_NAME = "我的小票夹"

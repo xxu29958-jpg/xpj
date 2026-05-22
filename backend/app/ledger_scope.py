@@ -5,7 +5,6 @@ from typing import Any, TypeVar
 from sqlalchemy import select
 from sqlalchemy.sql import ColumnElement, Select
 
-
 ModelT = TypeVar("ModelT")
 
 

@@ -22,14 +22,13 @@ Metric definitions:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.fx_constants import FX_STATUS_READY
 from app.models import Expense
-
 
 _UNCATEGORIZED_TOKENS = {"", "未分类", "未分類", "none", "null"}
 
@@ -127,10 +126,10 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         oldest_pending_age_days = None
     else:
         if oldest_dt.tzinfo is None:
-            oldest_dt_aware = oldest_dt.replace(tzinfo=timezone.utc)
+            oldest_dt_aware = oldest_dt.replace(tzinfo=UTC)
         else:
             oldest_dt_aware = oldest_dt
-        delta = datetime.now(tz=timezone.utc) - oldest_dt_aware
+        delta = datetime.now(tz=UTC) - oldest_dt_aware
         oldest_pending_age_days = max(0, int(delta.total_seconds() // 86400))
 
     return DataQualitySummary(
@@ -142,5 +141,5 @@ def data_quality_summary(db: Session, *, tenant_id: str) -> DataQualitySummary:
         confirmed_without_image=confirmed_without_image,
         ready_to_confirm=ready_to_confirm,
         oldest_pending_age_days=oldest_pending_age_days,
-        generated_at=datetime.now(tz=timezone.utc),
+        generated_at=datetime.now(tz=UTC),
     )

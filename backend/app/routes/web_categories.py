@@ -36,7 +36,6 @@ from app.services.spending_contract_service import (
     default_accounting_timezone_name,
 )
 
-
 router = APIRouter(prefix="/web", tags=["web"])
 
 

@@ -11,7 +11,6 @@ from app.services.goal_service import archive_goal, create_goal, get_goal_respon
 from app.services.time_service import current_month
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/goals",
     tags=["goals"],

@@ -4,17 +4,17 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
-from app.services.receipt_parse_rules import RELATIVE_TIME_PATTERNS, TIME_PATTERNS
 from app.services.receipt_parse_common import (
-    _ReceiptContext,
-    _ScoreDimensions,
-    _TimeCandidate,
     _best_candidate,
     _build_receipt_context,
     _line_index_for_offset,
     _merge_dimensions,
     _nearby_text,
+    _ReceiptContext,
+    _ScoreDimensions,
+    _TimeCandidate,
 )
+from app.services.receipt_parse_rules import RELATIVE_TIME_PATTERNS, TIME_PATTERNS
 from app.services.time_service import ensure_utc
 
 

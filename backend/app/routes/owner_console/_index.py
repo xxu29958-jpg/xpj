@@ -10,7 +10,6 @@ from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, logger, templates
 from app.services import owner_console_service as svc
 
-
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 

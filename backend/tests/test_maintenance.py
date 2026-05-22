@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-
-from fastapi.testclient import TestClient
-
 from api_contract_helpers import (
     upload_png,
 )
+from fastapi.testclient import TestClient
+
 from app.main import app
 from app.network_boundary import require_admin_network_boundary
+
 
 def test_admin_maintenance_requires_admin_token(client: TestClient, *, identity) -> None:
     response = client.post("/api/maintenance/cleanup-images", headers=identity.app_headers)

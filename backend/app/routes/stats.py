@@ -11,7 +11,6 @@ from app.services.stats_service import lifestyle_stats, monthly_stats
 from app.services.time_service import current_month
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/stats",
     tags=["stats"],

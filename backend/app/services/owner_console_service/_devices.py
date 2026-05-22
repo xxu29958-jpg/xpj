@@ -16,7 +16,6 @@ from app.services.owner_console_service._ledger_console import (
     _managed_console_ledger_ids,
 )
 
-
 __all__ = [
     "DeviceSummary",
     "do_delete_device",

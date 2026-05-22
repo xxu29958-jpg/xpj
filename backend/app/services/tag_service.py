@@ -9,7 +9,6 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, ExpenseTag, Tag
 from app.services.time_service import now_utc
 
-
 TAG_SEPARATOR_RE = re.compile(r"[,，;；\n]+")
 TAG_SPACE_RE = re.compile(r"\s+")
 

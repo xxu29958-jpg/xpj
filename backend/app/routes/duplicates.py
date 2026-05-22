@@ -9,7 +9,6 @@ from app.schemas import ExpenseResponse
 from app.services.expense_service import list_duplicate_expenses
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/duplicates",
     tags=["duplicates"],

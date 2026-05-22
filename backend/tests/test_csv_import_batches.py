@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
 from app.database import SessionLocal
-from app.models import CsvImportBatch, CsvImportRow, Expense, LedgerMember
 from app.errors import AppError
+from app.models import CsvImportBatch, CsvImportRow, Expense, LedgerMember
 from app.services.csv_import_batch_service import (
     _claim_apply_lease,
     _claim_csv_import_rows,
@@ -21,6 +21,7 @@ from app.services.csv_import_batch_service import (
     list_csv_import_rows,
 )
 from app.services.time_service import now_utc
+
 
 def _csv_bytes(row_count: int) -> BytesIO:
     lines = ["amount_yuan,merchant,category,note"]
@@ -107,14 +108,13 @@ def test_csv_import_batch_converts_csv_reader_errors_to_invalid_request(client: 
     old_limit = csv_module.field_size_limit()
     csv_module.field_size_limit(8)
     try:
-        with SessionLocal() as db:
-            with pytest.raises(AppError) as exc_info:
-                create_csv_import_batch(
-                    db,
-                    tenant_id="owner",
-                    file_name="bad.csv",
-                    file_obj=BytesIO(b"amount_yuan,merchant\n1.00,VeryLongMerchant\n"),
-                )
+        with SessionLocal() as db, pytest.raises(AppError) as exc_info:
+            create_csv_import_batch(
+                db,
+                tenant_id="owner",
+                file_name="bad.csv",
+                file_obj=BytesIO(b"amount_yuan,merchant\n1.00,VeryLongMerchant\n"),
+            )
     finally:
         csv_module.field_size_limit(old_limit)
     assert exc_info.value.error == "invalid_request"

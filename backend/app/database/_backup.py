@@ -7,15 +7,14 @@ missing the new identity tables). Anything past that point is the
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from pathlib import Path
 import shutil
 import sqlite3
+from datetime import UTC, datetime
+from pathlib import Path
 
 from app.config import BACKEND_ROOT
 from app.database._core import settings
 from app.errors import DataIntegrityError, PathTraversalError
-
 
 __all__ = [
     "V03_IDENTITY_TABLES",

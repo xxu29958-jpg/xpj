@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-from io import BytesIO
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -12,7 +12,6 @@ from fastapi import UploadFile
 from app.config import BACKEND_ROOT, get_settings
 from app.errors import AppError, PathTraversalError
 from app.tenants import DEFAULT_TENANT_ID
-
 
 # Pre-decode caps: PIL.verify() only checks magic bytes, so a tiny file
 # can still decode to billions of pixels and bomb the thumbnail step.

@@ -20,6 +20,7 @@ from app.services.expense_split_service import replace_expense_splits
 from app.services.receipt_item_service import replace_expense_items
 from app.services.time_service import now_utc
 
+
 @pytest.fixture()
 def web_client(client: TestClient) -> TestClient:
     app.dependency_overrides[_web_require_local] = lambda: None

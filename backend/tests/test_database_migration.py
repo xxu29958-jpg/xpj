@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-import app.database as database
 import pytest
 from sqlalchemy import inspect, text
 
+import app.database as database
 from app.database import (
     BACKEND_ROOT,
     BASELINE_MIGRATION_NAME,
@@ -17,8 +17,10 @@ from app.database import (
     migrate_upload_paths_to_tenant_dirs,
 )
 from app.models import DuplicateIgnore, Expense
-from tests._infra.env import TEST_DB_PATH, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
 from tests._infra.assets import PNG_BYTES
+from tests._infra.env import TEST_DB_PATH, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
+
+
 def _reset_empty_database() -> None:
     Base.metadata.drop_all(bind=engine)
 

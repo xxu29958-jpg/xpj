@@ -13,7 +13,6 @@ from sqlalchemy import inspect, select
 from app.database._core import SessionLocal
 from app.database._validate import _validate_legacy_tenant_ids
 
-
 __all__ = ["seed_identity_data", "seed_runtime_data"]
 
 

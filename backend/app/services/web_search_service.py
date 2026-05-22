@@ -15,7 +15,6 @@ from app.services.spending_contract_service import (
     stat_time,
 )
 
-
 MAX_QUERY_LENGTH = 80
 DEFAULT_GROUP_LIMIT = 6
 

@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 from app.services.category_service import normalize_category
+from app.services.receipt_parse_common import (
+    _best_candidate,
+    _build_receipt_context,
+    _CategoryCandidate,
+    _MerchantCandidate,
+    _merge_dimensions,
+    _ReceiptContext,
+    _ScoreDimensions,
+)
 from app.services.receipt_parse_merchant import (
     _calibrate_merchant_candidates,
     _merchant_candidates,
 )
 from app.services.receipt_parse_rules import CATEGORY_HINT_RULES
-from app.services.receipt_parse_common import (
-    _CategoryCandidate,
-    _MerchantCandidate,
-    _ReceiptContext,
-    _ScoreDimensions,
-    _best_candidate,
-    _build_receipt_context,
-    _merge_dimensions,
-)
 
 
 def _suggest_category(text: str, merchant: str | None) -> str | None:

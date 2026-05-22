@@ -34,7 +34,6 @@ from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail
 from app.services.time_service import ensure_utc
 
-
 __all__ = [
     "EDITABLE_STATUSES",
     "NOTIFICATION_DRAFT_SOURCE_LABELS",

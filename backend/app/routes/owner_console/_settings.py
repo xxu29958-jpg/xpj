@@ -14,7 +14,6 @@ from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import route_inspector_service, runtime_settings_service
 
-
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
 

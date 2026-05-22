@@ -75,7 +75,6 @@ from app.services.csv_import_batch_service._row_claim import (
     _refresh_claimed_csv_import_row,
 )
 
-
 __all__ = [
     "APPLY_LEASE_MINUTES",
     "DEFAULT_BATCH_FILE_NAME",

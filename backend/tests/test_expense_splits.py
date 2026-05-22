@@ -8,6 +8,8 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember
 from tests._infra.assets import PNG_BYTES
+
+
 def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 

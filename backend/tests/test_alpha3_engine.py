@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+from api_contract_helpers import insert_confirmed_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from api_contract_helpers import insert_confirmed_expense, upload_png
 from app.database import SessionLocal
 from app.models import CategoryRule, Expense, LedgerMember, RuleApplicationBatch, RuleApplicationChange
 from app.services.rule_application_service import _try_apply_rule_category, _try_rollback_rule_change

@@ -7,11 +7,10 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.services.file_service import resolve_protected_image
 from app.services.expense_service._query import get_expense
+from app.services.file_service import resolve_protected_image
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.time_service import now_utc
-
 
 __all__ = ["ensure_image_file", "ensure_thumbnail_file"]
 

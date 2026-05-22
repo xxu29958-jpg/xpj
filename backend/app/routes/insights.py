@@ -16,7 +16,6 @@ from app.services.data_quality_service import data_quality_summary
 from app.services.insights_service import recurring_candidates
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/insights",
     tags=["insights"],

@@ -18,12 +18,22 @@ from app.services.session_lifecycle_service import (
     issue_auth_token,
     issue_upload_link,
     new_pairing_code,
+)
+from app.services.session_lifecycle_service import (
     new_session_token as new_session_token,
+)
+from app.services.session_lifecycle_service import (
     new_upload_key as new_upload_key,
 )
 from app.services.time_service import ensure_utc, now_utc, to_iso
-from app.tenants import AuthContext, DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, TENANT_ID_PATTERN, Tenant, configured_tenants
-
+from app.tenants import (
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+    TENANT_ID_PATTERN,
+    AuthContext,
+    Tenant,
+    configured_tenants,
+)
 
 DEFAULT_ACCOUNT_NAME = "我"
 DEFAULT_BOOTSTRAP_DEVICE_NAME = "Windows 后端"

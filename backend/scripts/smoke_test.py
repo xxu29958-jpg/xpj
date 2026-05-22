@@ -14,7 +14,6 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 HOST = "127.0.0.1"
 UPLOAD_TOKEN = "smoke-upload-token"
@@ -86,9 +85,9 @@ def multipart_body(filename: str, content_type: str, content: bytes) -> tuple[by
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
         f"Content-Type: {content_type}\r\n\r\n"
-    ).encode("utf-8")
+    ).encode()
     body += content
-    body += f"\r\n--{boundary}--\r\n".encode("utf-8")
+    body += f"\r\n--{boundary}--\r\n".encode()
     return body, f"multipart/form-data; boundary={boundary}"
 
 

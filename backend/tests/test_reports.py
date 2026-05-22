@@ -10,6 +10,7 @@ from app.models import Expense, LedgerMember
 from app.services.reports_service import reports_overview, six_month_summary
 from app.services.time_service import now_utc
 
+
 def _manual_expense(
     client: TestClient,
     *,

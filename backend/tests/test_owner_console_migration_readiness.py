@@ -12,7 +12,6 @@ from app.routes.owner_console import _require_local
 from app.services import backup_service
 from app.services.migration_readiness_service import build_v1_migration_readiness_report
 
-
 _requires_file_sqlite = pytest.mark.file_backed_only
 
 

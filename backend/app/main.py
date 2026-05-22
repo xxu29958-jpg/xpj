@@ -9,32 +9,54 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.database import init_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
-from app.routes import auth, bootstrap, budgets, dashboard, duplicates, exchange_rates, expenses, goals, imports, insights, invitations, ledgers, maintenance, merchants, recurring, reports, rules, settings, stats, uploads, user_preferences
-from app.routes import admin as admin_routes
-from app.routes import owner_console
-from app.routes import owner_ledgers
-from app.routes import web_app
-from app.routes import web_budgets
-from app.routes import web_categories
-from app.routes import web_data_quality
-from app.routes import web_dashboard
-from app.routes import web_duplicates
-from app.routes import web_expense_edit
-from app.routes import web_import_export
-from app.routes import web_media
-from app.routes import web_merchants
-from app.routes import web_pending
-from app.routes import web_recurring
-from app.routes import web_goals
-from app.routes import web_reports
-from app.routes import web_rules as web_rules_routes
-from app.routes import web_search
-from app.routes import web_stats
-from app.schemas import HealthResponse
 from app.middleware.csrf import csrf_loopback_form_guard
+from app.middleware.logging import SanitizedLoggingMiddleware
+from app.routes import admin as admin_routes
+from app.routes import (
+    auth,
+    bootstrap,
+    budgets,
+    dashboard,
+    duplicates,
+    exchange_rates,
+    expenses,
+    goals,
+    imports,
+    insights,
+    invitations,
+    ledgers,
+    maintenance,
+    merchants,
+    owner_console,
+    owner_ledgers,
+    recurring,
+    reports,
+    rules,
+    settings,
+    stats,
+    uploads,
+    user_preferences,
+    web_app,
+    web_budgets,
+    web_categories,
+    web_dashboard,
+    web_data_quality,
+    web_duplicates,
+    web_expense_edit,
+    web_goals,
+    web_import_export,
+    web_media,
+    web_merchants,
+    web_pending,
+    web_recurring,
+    web_reports,
+    web_search,
+    web_stats,
+)
+from app.routes import web_rules as web_rules_routes
+from app.schemas import HealthResponse
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
-from app.middleware.logging import SanitizedLoggingMiddleware
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 

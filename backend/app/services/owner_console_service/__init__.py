@@ -79,7 +79,6 @@ from app.services.owner_console_service._upload_links import (
     get_upload_links,
 )
 
-
 __all__ = [
     "BudgetStatusVM",
     "ConsoleIndexVM",

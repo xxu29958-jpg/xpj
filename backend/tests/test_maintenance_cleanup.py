@@ -6,11 +6,11 @@ from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
-from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR
-from tests._infra.assets import PNG_BYTES
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.time_service import now_utc
+from tests._infra.assets import PNG_BYTES
+from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR
 
 
 def _upload_png(client: TestClient, *, identity) -> int:

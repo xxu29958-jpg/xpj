@@ -11,7 +11,6 @@ from app.main import app
 from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
 
-
 WEB_CARD_KEYS = [
     "monthly_spend",
     "budget",

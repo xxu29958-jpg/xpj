@@ -52,7 +52,6 @@ from app.routes.owner_console._shared import (
     templates,
 )
 
-
 router = APIRouter()
 router.include_router(_index.router)
 router.include_router(_devices.router)

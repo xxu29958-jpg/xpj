@@ -20,7 +20,6 @@ from app.services import backup_service
 from app.services.sqlite_backup_validation_service import REQUIRED_TICKETBOX_TABLES
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
-
 V1_TARGET_VERSION = "1.0"
 
 REQUIRED_V09_TABLES = REQUIRED_TICKETBOX_TABLES

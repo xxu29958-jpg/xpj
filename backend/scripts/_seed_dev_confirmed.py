@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal, init_db
 from app.models import Expense
@@ -16,7 +16,7 @@ def main() -> None:
         ("Test Store", "life", 1290),
         ("Test Subway", "transit", 800),
     ]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with SessionLocal() as db:
         for i, (merchant, category, amount) in enumerate(samples):
             existing = db.query(Expense).filter(Expense.merchant == merchant).first()

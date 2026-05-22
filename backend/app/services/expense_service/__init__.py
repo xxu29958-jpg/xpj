@@ -40,7 +40,6 @@ from app.services.expense_service._update import (
     update_expense,
 )
 
-
 __all__ = [
     "EDITABLE_STATUSES",
     "batch_update_confirmed_expenses",

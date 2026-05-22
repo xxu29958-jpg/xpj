@@ -9,6 +9,7 @@ from app.database import SessionLocal
 from app.models import AuthToken, Ledger, LedgerAuditLog, LedgerMember
 from app.services.identity_service import hash_secret
 
+
 def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 

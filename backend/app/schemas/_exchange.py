@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from app.fx_constants import FX_SOURCE_MANUAL
 from app.services.time_service import to_iso
 
-
 __all__ = [
     "ExchangeRateListResponse",
     "ExchangeRateRequest",

@@ -20,8 +20,6 @@ from app.schemas import ExpenseManualCreateRequest, NotificationDraftCreateReque
 from app.services.classify_service import classify_expense
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload
-from app.services.file_service import SavedUpload, delete_relative_upload
-from app.services.ocr_service import apply_ocr_result, collect_auto_ocr_results, run_auto_ocr
 from app.services.expense_service._helpers import (
     NOTIFICATION_DRAFT_SOURCE_LABELS,
     _begin_immediate_write_if_sqlite,
@@ -35,9 +33,10 @@ from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
     _try_generate_thumbnail,
 )
+from app.services.file_service import SavedUpload, delete_relative_upload
+from app.services.ocr_service import apply_ocr_result, collect_auto_ocr_results, run_auto_ocr
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
-
 
 logger = logging.getLogger(__name__)
 

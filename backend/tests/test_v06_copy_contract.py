@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 FORMAL_COPY = "这些是已经手动确认过的固定支出；只做提醒和对比，不会自动入账。"

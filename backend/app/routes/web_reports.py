@@ -26,7 +26,6 @@ from app.services.reports_service import (
 )
 from app.services.time_service import current_month
 
-
 router = APIRouter(prefix="/web/reports", tags=["web"])
 
 _GRANULARITIES = {"day", "week", "month"}

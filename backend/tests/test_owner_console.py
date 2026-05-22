@@ -679,8 +679,8 @@ def test_admin_boundary_local_allowed() -> None:
 
 
 def test_admin_boundary_public_host_rejected_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.errors import AppError
     from app import network_boundary
+    from app.errors import AppError
 
     # Defensive: ensure the public-allow flag is not enabled by env leakage.
     monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
@@ -756,7 +756,7 @@ def test_owner_settings_service_only_allows_public_base_url() -> None:
     security change that requires explicit review."""
     from app.services.runtime_settings_service import _EDITABLE_KEYS
 
-    assert _EDITABLE_KEYS == frozenset({"PUBLIC_BASE_URL"}), (
+    assert frozenset({"PUBLIC_BASE_URL"}) == _EDITABLE_KEYS, (
         f"_EDITABLE_KEYS should only contain PUBLIC_BASE_URL, got: {_EDITABLE_KEYS}"
     )
 

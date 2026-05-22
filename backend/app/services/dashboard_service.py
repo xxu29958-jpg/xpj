@@ -10,7 +10,6 @@ from app.models import DashboardCardPreference
 from app.schemas import DashboardCardsResponse, DashboardCardsUpdateRequest
 from app.services.time_service import now_utc
 
-
 DashboardSurface = str
 
 

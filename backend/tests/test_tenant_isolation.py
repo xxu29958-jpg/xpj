@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-
-from fastapi.testclient import TestClient
-
 from api_contract_helpers import (
     upload_png,
 )
+from fastapi.testclient import TestClient
+
 from app.database import SessionLocal, migrate_upload_paths_to_tenant_dirs
 from app.models import Expense
-from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
 from tests._infra.assets import PNG_BYTES
+from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
+
+
 def test_android_app_upload_uses_app_token_and_current_tenant(
     client: TestClient, *, identity,
 ) -> None:

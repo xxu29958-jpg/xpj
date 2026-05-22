@@ -9,7 +9,6 @@ from app.schemas import ServerSettingsResponse
 from app.services.server_settings_service import server_settings_snapshot
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/settings",
     tags=["settings"],

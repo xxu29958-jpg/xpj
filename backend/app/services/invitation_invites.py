@@ -23,7 +23,6 @@ from app.services.identity_service import (
     _ledger_by_id,
     hash_secret,
 )
-from app.services.session_lifecycle_service import revoke_token_value
 from app.services.invitation_audit import add_audit_log
 from app.services.invitation_common import (
     AUDIT_INVITATION_ACCEPTED,
@@ -34,6 +33,7 @@ from app.services.invitation_common import (
     new_invite_token,
     require_active_owner,
 )
+from app.services.session_lifecycle_service import revoke_token_value
 from app.services.time_service import ensure_utc, now_utc, to_iso
 
 

@@ -3,14 +3,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from api_contract_helpers import insert_confirmed_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from api_contract_helpers import insert_confirmed_expense, upload_png
 from app.database import SessionLocal
 from app.fx_constants import FX_STATUS_PENDING
 from app.models import Account, Expense, Ledger
 from app.services.time_service import now_utc
+
 
 def _patch(client: TestClient, expense_id: int, *, identity, **fields) -> None:
     response = client.patch(

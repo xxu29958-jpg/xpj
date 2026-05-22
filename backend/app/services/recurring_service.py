@@ -17,7 +17,6 @@ from app.services.insights_service import normalize_merchant, recurring_candidat
 from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
-
 VALID_FREQUENCIES = {"monthly"}
 VALID_STATUSES = {"active", "paused", "archived"}
 ANOMALY_THRESHOLD_PERCENT = 30

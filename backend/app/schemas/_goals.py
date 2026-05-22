@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, field_serializer
 
 from app.services.time_service import to_iso
 
-
 __all__ = [
     "GoalCreateRequest",
     "GoalListResponse",

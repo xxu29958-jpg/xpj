@@ -23,7 +23,6 @@ from app.errors import AppError
 from app.services.sqlite_backup_validation_service import is_sqlite_backup_valid
 from app.services.time_service import now_utc
 
-
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _BACKUP_DIR = _BACKEND_ROOT / "backups"
 _PREFIX = "ticketbox-"

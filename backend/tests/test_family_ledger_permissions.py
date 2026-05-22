@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal

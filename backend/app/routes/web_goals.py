@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -24,7 +24,6 @@ from app.routes.web_common import (
 from app.schemas import GoalCreateRequest
 from app.services.goal_service import archive_goal, create_goal, list_goals
 from app.services.time_service import current_month
-
 
 router = APIRouter(prefix="/web/goals", tags=["web"])
 

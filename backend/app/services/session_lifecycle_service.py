@@ -7,9 +7,9 @@ roles; they call these helpers for the shared atomic state transitions.
 
 from __future__ import annotations
 
-from datetime import datetime
 import hashlib
 import secrets
+from datetime import datetime
 from typing import Literal
 
 from sqlalchemy import update
@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import AuthToken, PairingCode, UploadLink
 from app.services.time_service import now_utc
-
 
 PairingConsumeResult = Literal["consumed", "used", "expired"]
 PAIRING_CODE_DIGITS = 8

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember
-from api_contract_helpers import upload_png
+
 
 def _create_manual_expense(
     client: TestClient,

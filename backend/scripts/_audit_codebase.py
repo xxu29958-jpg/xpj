@@ -10,7 +10,6 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-
 ROOT = pathlib.Path(".")
 APP = pathlib.Path("app")
 TESTS = pathlib.Path("tests")
@@ -214,9 +213,7 @@ def audit_layer_violations():
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
                 m = node.module
-                if m == "app.models" or m.startswith("app.models."):
-                    items.append((p, node.lineno, f"imports {m}"))
-                elif m == "app.database" or m.startswith("app.database."):
+                if m == "app.models" or m.startswith("app.models.") or m == "app.database" or m.startswith("app.database."):
                     items.append((p, node.lineno, f"imports {m}"))
     print(f"== B3. Route modules importing models / database directly ({len(items)}) ==")
     by_file: dict[pathlib.Path, list[tuple[int, str]]] = defaultdict(list)
@@ -482,9 +479,7 @@ def audit_bare_except():
                 # Swallowed (body is `pass` or just `...`)
                 body = node.body
                 if len(body) == 1 and isinstance(body[0], (ast.Pass, ast.Expr)):
-                    if isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and body[0].value.value is ...:
-                        swallow.append((p, node.lineno))
-                    elif isinstance(body[0], ast.Pass):
+                    if isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and body[0].value.value is ... or isinstance(body[0], ast.Pass):
                         swallow.append((p, node.lineno))
     print(f"== F1. Bare `except:` ({len(bare)}) ==")
     for p, ln in bare:

@@ -19,7 +19,6 @@ from app.services.rule_service import (
 )
 from app.services.time_service import now_utc
 
-
 # Categories that are considered "untouched" and safe for rule auto-fill.
 _AUTO_FILLABLE_CATEGORIES = {"其他", "未分类", ""}
 DEFAULT_RULE_APPLICATION_SCAN_LIMIT = 500

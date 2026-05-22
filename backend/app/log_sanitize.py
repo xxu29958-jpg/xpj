@@ -15,8 +15,7 @@ free so they can be used inside hot paths or exception handlers.
 from __future__ import annotations
 
 import re
-from typing import Mapping
-
+from collections.abc import Mapping
 
 _UPLOAD_PATH_RE = re.compile(r"(/u/)([A-Za-z0-9_\-]{4,})")
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 DEFAULT_HOME_CURRENCY_CODE = "CNY"
 DEFAULT_SUPPORTED_CURRENCY_CODES = frozenset({"CNY", "USD", "EUR", "GBP", "JPY", "HKD", "KRW"})
 NO_FRACTION_CURRENCY_CODES = frozenset({"JPY", "KRW"})

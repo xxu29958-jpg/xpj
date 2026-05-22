@@ -27,6 +27,8 @@ from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadL
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+
+
 def _insert_external_device_and_upload_link() -> tuple[str, str]:
     now = now_utc()
     with SessionLocal() as db:

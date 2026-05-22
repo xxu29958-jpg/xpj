@@ -55,7 +55,6 @@ from app.services.invitation_service import (
 )
 from app.tenants import AuthContext
 
-
 router = APIRouter(tags=["family-ledger"])
 
 

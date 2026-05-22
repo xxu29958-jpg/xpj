@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
 from app.models import Expense
 from app.routes.web_app import _require_local as _web_require_local
-
-from api_contract_helpers import upload_png
 
 
 def _manual_expense(

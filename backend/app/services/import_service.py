@@ -26,11 +26,11 @@ with errors are reported in the preview but skipped on import.
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import StringIO
-import re
 
 from sqlalchemy.orm import Session
 
@@ -48,7 +48,6 @@ from app.services.exchange_rate_service import (
 from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc_assuming_local, now_utc
-
 
 MAX_PREVIEW_ROWS = 500
 DEFAULT_SOURCE = "CSV导入"

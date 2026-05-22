@@ -20,7 +20,6 @@ from sqlalchemy import inspect, text
 from app.database._core import _sqlite_column_names, engine, settings
 from app.errors import DataIntegrityError
 
-
 __all__ = [
     "ROOT_TENANT_TABLES",
     "validate_sqlite_data_integrity",

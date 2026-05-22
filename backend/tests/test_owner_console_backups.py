@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routes.owner_console import _require_local
 
-
 _requires_file_sqlite = pytest.mark.file_backed_only
 
 

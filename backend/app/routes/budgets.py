@@ -9,7 +9,6 @@ from app.schemas import BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_service import get_monthly_budget, upsert_monthly_budget
 from app.tenants import AuthContext
 
-
 router = APIRouter(
     prefix="/api/budgets",
     tags=["budgets"],

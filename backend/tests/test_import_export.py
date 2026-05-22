@@ -10,18 +10,17 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.main import app
-from app.routes.web_app import _require_local as _web_require_local
+from app.database import SessionLocal
 from app.errors import AppError
+from app.main import app
+from app.models import CsvImportBatch, Expense
+from app.routes.web_app import _require_local as _web_require_local
+from app.services.fx_rate_provider import upsert_fx_rate
 from app.services.import_service import (
     MAX_PREVIEW_ROWS,
     import_rows,
     parse_csv_preview,
 )
-
-from app.database import SessionLocal
-from app.models import CsvImportBatch, Expense
-from app.services.fx_rate_provider import upsert_fx_rate
 
 
 @pytest.fixture()

@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.models import Account, Expense, UploadLink
 from app.services.ledger_service import list_managed_ledgers_for_account
 
-
 logger = logging.getLogger(__name__)
 
 

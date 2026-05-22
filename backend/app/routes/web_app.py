@@ -27,16 +27,14 @@ from app.routes.web_common import (
     _dashboard_cards,
     _expense_view,
     _list_ledger_options,
+    _require_local,  # re-exported for tests
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
     _trend14_amounts,
     _with_ledger,
     templates,
-    _require_local,  # re-exported for tests
 )
-from app.services.stats_service import monthly_stats
-from app.services.time_service import current_month
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
@@ -44,6 +42,8 @@ from app.services.expense_service import (
     ensure_thumbnail_file,
     list_confirmed,
 )
+from app.services.stats_service import monthly_stats
+from app.services.time_service import current_month
 
 __all__ = ["router", "_require_local", "templates"]
 

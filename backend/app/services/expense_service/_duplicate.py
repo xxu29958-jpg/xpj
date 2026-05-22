@@ -9,7 +9,6 @@ from app.services.duplicate_service import list_suspected_duplicates, mark_not_d
 from app.services.expense_service._query import get_expense
 from app.services.time_service import now_utc
 
-
 __all__ = ["list_duplicate_expenses", "mark_expense_not_duplicate"]
 
 

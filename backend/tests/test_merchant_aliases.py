@@ -11,6 +11,8 @@ from app.database import SessionLocal
 from app.models import Expense, LedgerMember
 from app.services.merchant_alias_service import resolve_canonical_merchant
 from tests._infra.assets import PNG_BYTES
+
+
 def _create_alias(
     client: TestClient,
     headers: dict[str, str],

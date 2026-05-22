@@ -17,7 +17,6 @@ from app.routes.web_common import (
 )
 from app.services.web_search_service import search_web
 
-
 router = APIRouter(prefix="/web", tags=["web"])
 
 

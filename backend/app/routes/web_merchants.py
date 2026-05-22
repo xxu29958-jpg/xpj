@@ -29,7 +29,6 @@ from app.services.merchant_alias_service import (
     update_merchant_alias,
 )
 
-
 router = APIRouter(prefix="/web", tags=["web"])
 
 

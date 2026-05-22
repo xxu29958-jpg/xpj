@@ -28,7 +28,6 @@ import re
 import sys
 from pathlib import Path
 
-
 HELPER_REWRITES: list[tuple[str, str]] = [
     (r"(?<!\.)\bgray_upload_url_path\(\)", "identity.gray_upload_url_path"),
     (r"(?<!\.)\bgray_upload_headers\(\)", "identity.gray_upload_headers"),

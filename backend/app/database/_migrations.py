@@ -38,7 +38,6 @@ from app.fx_constants import (
 from app.tenants import DEFAULT_TENANT_ID
 from app.version import BACKEND_VERSION
 
-
 BASELINE_MIGRATION_NAME = f"baseline-v{BACKEND_VERSION}"
 
 

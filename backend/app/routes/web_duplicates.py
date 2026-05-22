@@ -41,7 +41,6 @@ from app.services.expense_service import (
     reject_expense,
 )
 
-
 router = APIRouter(prefix="/web", tags=["web"])
 
 

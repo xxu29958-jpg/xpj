@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 from app.schemas._expense import ExpenseResponse
 
-
 __all__ = [
     "LifestyleStatsResponse",
     "ReportCategoryComparisonResponse",

@@ -20,7 +20,6 @@ from app.services.duplicate_service import (
     revalidate_duplicate_references_to,
 )
 from app.services.exchange_rate_service import apply_currency_payload, refresh_currency_snapshot
-from app.services.ocr_service import clear_ocr_draft_fields
 from app.services.expense_service._helpers import (
     EDITABLE_STATUSES,
     _clean_category,
@@ -30,9 +29,9 @@ from app.services.expense_service._helpers import (
     _expense_has_pending_fx,
 )
 from app.services.expense_service._query import get_expense
+from app.services.ocr_service import clear_ocr_draft_fields
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
-
 
 __all__ = [
     "batch_update_confirmed_expenses",

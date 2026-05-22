@@ -17,14 +17,13 @@ from app.models import Expense
 from app.schemas import ExpenseRecognizeTextRequest
 from app.services.classify_service import classify_expense
 from app.services.duplicate_service import mark_duplicate_status
-from app.services.ocr_service import OcrResult, apply_ocr_result, extract_ocr_result
 from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
     _updated_at_matches,
 )
 from app.services.expense_service._query import get_expense
+from app.services.ocr_service import OcrResult, apply_ocr_result, extract_ocr_result
 from app.services.time_service import now_utc
-
 
 __all__ = ["recognize_expense_text", "retry_expense_ocr"]
 

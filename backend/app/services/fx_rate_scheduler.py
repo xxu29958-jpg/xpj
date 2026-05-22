@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, time, timedelta
 import logging
 import threading
+from dataclasses import dataclass
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.fx_rate_provider import refresh_ecb_fx_rates
-
 
 logger = logging.getLogger(__name__)
 

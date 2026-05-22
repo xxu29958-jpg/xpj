@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -21,7 +21,6 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import ExchangeRate, Expense
 from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.time_service import now_utc
-
 
 BASE_CURRENCY_CODE = DEFAULT_HOME_CURRENCY_CODE
 HOME_CURRENCY_CODE = DEFAULT_HOME_CURRENCY_CODE

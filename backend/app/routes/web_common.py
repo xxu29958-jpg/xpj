@@ -21,20 +21,18 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
 from app.network_boundary import require_owner_console_local
-from app.services import backup_service
+from app.services import backup_service, web_stats_service
 from app.services import owner_console_service as owner_svc
-from app.services import web_stats_service
 from app.services.budget_service import get_monthly_budget
 from app.services.dashboard_service import list_dashboard_cards
-from app.services.expense_service import list_pending
 from app.services.exchange_rate_service import home_currency_code
+from app.services.expense_service import list_pending
 from app.services.goal_service import list_goals
 from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month, now_utc
 from app.version import BACKEND_VERSION
-
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))

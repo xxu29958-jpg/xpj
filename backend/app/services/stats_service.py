@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import defaultdict
 import csv
+from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
@@ -14,17 +14,31 @@ from app.models import Expense, ExpenseTag, Tag
 from app.services.category_service import merge_categories, normalize_category
 from app.services.csv_security import safe_csv_cell
 from app.services.spending_contract_service import (
-    clean_month as _contract_clean_month,
-    confirmed_amount_query as _contract_confirmed_amount_query,
-    confirmed_ordered as _contract_confirmed_ordered,
-    confirmed_query as _contract_confirmed_query,
     canonical_merchant_display,
     default_accounting_timezone_name,
     enabled_merchant_display_map,
-    filtered_confirmed as _contract_filtered_confirmed,
     month_bounds_utc,
     stat_month_label,
+)
+from app.services.spending_contract_service import (
+    clean_month as _contract_clean_month,
+)
+from app.services.spending_contract_service import (
+    confirmed_amount_query as _contract_confirmed_amount_query,
+)
+from app.services.spending_contract_service import (
+    confirmed_ordered as _contract_confirmed_ordered,
+)
+from app.services.spending_contract_service import (
+    confirmed_query as _contract_confirmed_query,
+)
+from app.services.spending_contract_service import (
+    filtered_confirmed as _contract_filtered_confirmed,
+)
+from app.services.spending_contract_service import (
     stat_time as _contract_stat_time,
+)
+from app.services.spending_contract_service import (
     stat_time_expr as _contract_stat_time_expr,
 )
 from app.services.time_service import (

@@ -27,7 +27,6 @@ import os
 import sys
 from pathlib import Path
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 SNAPSHOT_PATH = REPO_ROOT / "docs" / "architecture" / "openapi_contract.json"

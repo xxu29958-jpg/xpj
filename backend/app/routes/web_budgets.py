@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -27,7 +27,6 @@ from app.services.spending_contract_service import (
     default_accounting_timezone_name,
 )
 from app.services.time_service import local_month_bounds_utc
-
 
 router = APIRouter(prefix="/web/budgets", tags=["web"])
 

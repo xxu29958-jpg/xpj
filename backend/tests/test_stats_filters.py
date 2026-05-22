@@ -4,14 +4,15 @@ import csv
 from datetime import UTC, datetime
 from io import StringIO
 
-from fastapi.testclient import TestClient
-
 from api_contract_helpers import (
     insert_confirmed_expense,
 )
+from fastapi.testclient import TestClient
+
 from app.database import SessionLocal
 from app.models import Expense
 from app.services import web_stats_service
+
 
 def test_local_timezone_month_filter_matches_android_display_month(
     client: TestClient, *, identity,

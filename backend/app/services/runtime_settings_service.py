@@ -22,7 +22,6 @@ from app.config import BACKEND_ROOT, get_settings
 from app.errors import AppError
 from app.version import BACKEND_VERSION
 
-
 _ENV_PATH = BACKEND_ROOT / ".env"
 
 _EDITABLE_KEYS: frozenset[str] = frozenset({"PUBLIC_BASE_URL"})

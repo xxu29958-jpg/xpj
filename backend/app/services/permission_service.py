@@ -22,7 +22,6 @@ from __future__ import annotations
 from app.errors import AppError
 from app.tenants import AuthContext
 
-
 ROLE_OWNER = "owner"
 ROLE_MEMBER = "member"
 ROLE_VIEWER = "viewer"

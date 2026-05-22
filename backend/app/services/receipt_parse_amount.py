@@ -1,8 +1,20 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from app.services.receipt_parse_common import (
+    _AmountCandidate,
+    _best_candidate,
+    _build_receipt_context,
+    _is_before_payment_sheet,
+    _is_payment_sheet_amount,
+    _line_index_for_offset,
+    _merge_dimensions,
+    _nearby_text,
+    _ReceiptContext,
+    _ScoreDimensions,
+)
 from app.services.receipt_parse_rules import (
     AMOUNT_LABEL_SCORES,
     CLOCK_LINE_PATTERN,
@@ -13,18 +25,6 @@ from app.services.receipt_parse_rules import (
     PRIMARY_AMOUNT_LINE_PATTERN,
     TRANSACTION_SUCCESS_KEYWORDS,
     UPPER_MONEY_MARKERS,
-)
-from app.services.receipt_parse_common import (
-    _AmountCandidate,
-    _ReceiptContext,
-    _ScoreDimensions,
-    _best_candidate,
-    _build_receipt_context,
-    _is_before_payment_sheet,
-    _is_payment_sheet_amount,
-    _line_index_for_offset,
-    _merge_dimensions,
-    _nearby_text,
 )
 
 

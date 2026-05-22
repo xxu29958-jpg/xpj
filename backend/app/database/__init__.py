@@ -33,7 +33,6 @@ from app.database._uploads import migrate_upload_paths_to_tenant_dirs
 from app.database._validate import validate_sqlite_data_integrity
 from app.version import BACKEND_VERSION
 
-
 __all__ = [
     "BACKEND_ROOT",
     "BASELINE_MIGRATION_NAME",

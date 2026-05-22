@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import LedgerMember
 
+
 def _set_owner_ledger_role(role: str) -> None:
     with SessionLocal() as db:
         member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))

@@ -12,7 +12,6 @@ from app.services.category_service import normalize_category
 from app.services.spending_contract_service import clean_month, confirmed_amount_query
 from app.services.time_service import now_utc
 
-
 VALID_GOAL_TYPES = {"spending_limit"}
 VALID_PERIODS = {"monthly"}
 

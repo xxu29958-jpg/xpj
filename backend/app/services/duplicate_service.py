@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.models import DuplicateIgnore, Expense
 from app.services.time_service import ensure_utc
 
-
 ACTIVE_DUPLICATE_IGNORE_KINDS = ("image_hash", "similar")
 
 

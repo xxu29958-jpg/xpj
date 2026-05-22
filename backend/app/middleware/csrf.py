@@ -8,7 +8,6 @@ from starlette.responses import Response
 
 from app.errors import error_response
 
-
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 _PROTECTED_PREFIXES = ("/web", "/owner")
 _SOURCE_HEADERS = ("origin", "referer", "sec-fetch-site")

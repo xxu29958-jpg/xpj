@@ -46,7 +46,6 @@ from app.services.ledger_service import (
 )
 from app.tenants import AuthContext
 
-
 router = APIRouter(prefix="/api/ledgers", tags=["ledgers"])
 
 

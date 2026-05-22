@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# Industry-recommended subset (see docs/rules/CODE_QUALITY_STANDARDS.md).
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = [
+    # FastAPI Depends() / Query() / Path() in default arguments is the
+    # framework-blessed pattern; B008 here is intentional.
+    "B008",
+    # Project tolerates long lines; line-length=120 catches egregious cases
+    # but historical lines stay as-is per "no opportunistic refactor".
+    "E501",
+    # Temporary baseline for the 20 manual-fix sites — to be removed by the
+    # follow-up PR that addresses each violation individually.
+    "B007", "B023", "B904", "SIM102", "SIM103", "SIM105", "SIM108",
+]

@@ -8,15 +8,14 @@ from a request path.
 
 from __future__ import annotations
 
-from pathlib import Path
 import secrets
+from pathlib import Path
 
 from sqlalchemy import inspect, text
 
 from app.config import BACKEND_ROOT
 from app.database._core import SessionLocal, engine, settings
 from app.database._validate import _validate_legacy_tenant_ids
-
 
 __all__ = ["migrate_upload_paths_to_tenant_dirs"]
 

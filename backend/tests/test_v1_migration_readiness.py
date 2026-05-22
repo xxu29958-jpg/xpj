@@ -9,7 +9,6 @@ from app.database import engine
 from app.services import backup_service
 from app.services.migration_readiness_service import build_v1_migration_readiness_report
 
-
 pytestmark = pytest.mark.file_backed_only
 
 

@@ -57,7 +57,6 @@ from app.services.invitation_members import (
     update_member_role,
 )
 
-
 # Backward-compatible aliases for older tests that imported private helpers.
 _account_identity = account_identity
 _active_member_by_id = active_member_by_id
