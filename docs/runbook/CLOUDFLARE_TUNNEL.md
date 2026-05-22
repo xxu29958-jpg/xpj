@@ -234,7 +234,92 @@ powershell -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
 
 后端启动脚本默认关闭 Uvicorn access log，避免 UploadLink URL 中的 `upload_key` 被写入日志。排查上传时以脚本输出、pending 列表或数据库状态为准，不要为了看 `/u/<upload_key>` 路径临时打开访问日志。
 
+## 公网路由分层（必读）
+
+Cloudflare Tunnel 配置 ingress 时，下面两类路径互不重叠。**不要**把整个 `/` 直接转发给 `127.0.0.1:8000`——必须按路径白名单/黑名单切。
+
+允许公网（allowlist）：
+
+| 路径前缀 | 用途 | 鉴权 |
+|---|---|---|
+| `/api/health` | Liveness 探测 | 无 |
+| `/api/auth/check` | Android session token 校验 | Bearer token |
+| `/api/auth/pair` | Android 首次绑定（pairing code → session token）| 8 位 code，一次性 + 短 TTL |
+| `/api/expenses/*` `/api/reports/*` `/api/goals/*` `/api/dashboard/*` `/api/budgets/*` `/api/recurring/*` `/api/merchants/*` `/api/rules/*` `/api/duplicates/*` `/api/imports/*` `/api/stats/*` `/api/me/*` `/api/exchange-rates/*` `/api/settings/*` `/api/ledgers/*` `/api/invitations/*` | Android / Web 账本主面 | Bearer token + viewer/member/owner 角色 |
+| `/u/{upload_key}` | iPhone UploadLink | 一次性 upload_key（URL-as-credential，必须 HTTPS）|
+
+拒绝公网（denylist / Tunnel 不要建路由）：
+
+| 路径前缀 | 理由 |
+|---|---|
+| `/owner/*` | Owner Console 永远 loopback only；backend 自带 `require_owner_console_local`，Tunnel 路由层再 deny 一遍是 defense in depth |
+| `/web/*` | 当前 /web 默认 loopback；公网模式要等 v1.0 PR-3/4 完成 Web session 后才能开 |
+| `/api/admin/*` | 默认 `ALLOW_PUBLIC_ADMIN_API=false`，且 backend 挂 `require_admin_network_boundary`；Tunnel 不要建路由 |
+| `/api/bootstrap/*` | `enable_http_bootstrap=false` 默认关；`/api/bootstrap/pairing-codes` 已挂 `require_admin_network_boundary`；Tunnel 不要建路由 |
+| `/api/maintenance/*` | 同 admin |
+| `/docs` `/redoc` `/openapi.json` | `ENABLE_API_DOCS=false` 默认关 |
+| `/static/*` | 不暴露静态资源到公网 |
+| 实际 uploads 目录 | 永不挂载为静态；图片只通过 `/api/expenses/{id}/image` 鉴权读 |
+
+Tunnel 公网 hostname 配置时只给上面 allowlist 的路径建 Public Hostname 条目，每条 Service 都指 `http://127.0.0.1:8000` + path matcher。或者用单一 hostname + Cloudflare Rules / Workers 在边缘做路径过滤。
+
+## WAF rate limit 规则建议
+
+Cloudflare Free Plan 2022 起已经包含 unmetered rate limiting（不算钱），可以直接配。下面是按攻击面权衡的起步规则：
+
+| 规则名 | 匹配 | 限速 | 动作 | 理由 |
+|---|---|---|---|---|
+| upload-link-anti-scan | `path ~ "^/u/"` | 10 req/min/IP | challenge | UploadLink 凭证在 URL 里，必须挡爆破扫描 |
+| pair-anti-brute | `path eq "/api/auth/pair"` | 5 req/min/IP | block 10 min | 8 位 pairing code 防爆破；正常用户成功一次就够 |
+| auth-check-loose | `path eq "/api/auth/check"` | 60 req/min/IP | log only | App 启动时高频；不挡，但留可观测窗口 |
+| api-default | `path ~ "^/api/"` | 100 req/min/token (用 `Authorization` header 当 characteristic) | challenge | 正常 client 远低于；超过基本是凭证泄露后扫表 |
+| size-cap | `cf.threats.request.content_length gt 10485760` | n/a | block | matches backend `MAX_UPLOAD_SIZE_MB=10` |
+
+配置入口：Cloudflare dashboard → Security → WAF → Rate limiting rules。
+
+注意 `characteristic` 选择：
+- `/u/*` 用 client IP（无 token）
+- `/api/auth/pair` 用 client IP（pair 之前没 token）
+- 其它 `/api/*` 用 `Authorization` header（防止单 token 被多 IP 共享后绕单 IP 限）
+
+## Cloudflare Access 是否启用 + 防绕过
+
+当前默认**不启用** Cloudflare Access。Android / iPhone 不适合走 Access（service token 烧进 APK 不可控，参见 [Cloudflare service token 文档](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)，官方明确说服务到服务用，不适合分发给手机客户端）。
+
+如果将来给 `/web` 加 Access 保护（仅 owner 浏览器访问），必须在 backend 校验 `Cf-Access-Jwt-Assertion`，否则 Cloudflare 边缘配置错误时请求会直接到达本机绕过 Access：
+
+> "To secure your origin, you must validate the application token issued by Cloudflare Access. Token validation ensures that any requests which bypass Cloudflare Access (for example, due to a network misconfiguration) are rejected."
+> — [Cloudflare One docs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+
+backend 当前不验证此 header；如果未来开 Access，需要新增 middleware（参考 v1.0 PR backlog）。
+
+## Tunnel config 形态
+
+2026 推荐**远程管理 tunnel**（config 放 Cloudflare dashboard，本机 cloudflared 只需要 token），不再用本机 `config.yml`。优点：
+- 多 replica HA 共享同一 tunnel ID
+- 改 ingress 不用重启本机进程
+- token 不掉地（dashboard 一次性 reveal）
+
+如果坚持要本机 config，最小 starter（**仅参考，实际部署用 dashboard**）：
+
+```yaml
+# 仅本机调试参考，生产用 dashboard remote-managed config
+tunnel: <tunnel-uuid>
+credentials-file: C:\Users\<you>\.cloudflared\<tunnel-uuid>.json
+
+ingress:
+  # allowlist 优先匹配
+  - hostname: api.your-domain.com
+    path: ^/(api/(health|auth/(check|pair)|expenses|reports|goals|dashboard|budgets|recurring|merchants|rules|duplicates|imports|stats|me|exchange-rates|settings|ledgers|invitations)|u/)
+    service: http://127.0.0.1:8000
+  # catch-all return 404，绝对不要让其它路径漏到 backend
+  - service: http_status:404
+```
+
 ## 官方资料
 
 - Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
 - Cloudflare Tunnel 概览：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+- Cloudflare Access self-hosted public app：https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/
+- Cloudflare unmetered rate limiting：https://blog.cloudflare.com/unmetered-ratelimiting/
+- Cloudflare WAF rate limit best practices：https://developers.cloudflare.com/waf/rate-limiting-rules/best-practices/
