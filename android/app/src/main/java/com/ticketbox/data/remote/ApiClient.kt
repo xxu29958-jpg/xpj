@@ -124,7 +124,8 @@ internal fun preferIpv4First(addresses: List<InetAddress>): List<InetAddress> {
 
 internal class GetIoRetryInterceptor(
     private val maxRetries: Int,
-    private val retryDelayMs: Long,
+    private val baseDelayMs: Long,
+    private val randomSource: () -> Double = Math::random,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -136,13 +137,14 @@ internal class GetIoRetryInterceptor(
                 if (!shouldRetryGetIOException(request.method, attempt, maxRetries)) {
                     throw error
                 }
+                val sleepMs = retryBackoffMs(attempt = attempt, baseDelayMs = baseDelayMs, random = randomSource)
                 attempt += 1
                 // OkHttp Interceptor 必须同步执行——这里没法用 coroutine delay。
                 // 但旧 `runCatching` 会吞掉 InterruptedException，导致上游协程取消时
                 // 网络线程还会再睡一轮再重试。改为：被中断就把中断状态重新点回来，
                 // 并抛出原 IOException，让 Call.cancel() 真正生效。
                 try {
-                    Thread.sleep(retryDelayMs * attempt)
+                    Thread.sleep(sleepMs)
                 } catch (interrupted: InterruptedException) {
                     Thread.currentThread().interrupt()
                     throw error
@@ -155,6 +157,32 @@ internal class GetIoRetryInterceptor(
 internal fun shouldRetryGetIOException(method: String, attempt: Int, maxRetries: Int): Boolean {
     return method == "GET" && attempt < maxRetries
 }
+
+/**
+ * Exponential backoff with full jitter, capped — see ENGINEERING_RULES §7
+ * "客户端重试使用指数退避 + jitter，且必须有终止条件".
+ *
+ * `attempt` is the 0-based retry index (0 = first retry, 1 = second, ...).
+ * Returns a value in `[base/2, base * 2^attempt]` clamped to `MAX_BACKOFF_MS`,
+ * so two clients that fail simultaneously won't lockstep into each other's
+ * thundering-herd window. The caller passes a deterministic [random] source
+ * in tests.
+ */
+internal fun retryBackoffMs(
+    attempt: Int,
+    baseDelayMs: Long,
+    random: () -> Double = Math::random,
+): Long {
+    val safeAttempt = attempt.coerceAtLeast(0)
+    val exponential = baseDelayMs.toDouble() * (1L shl safeAttempt.coerceAtMost(10))
+    val capped = exponential.coerceAtMost(MAX_RETRY_BACKOFF_MS.toDouble())
+    // Full jitter, biased away from 0 so we still pace requests instead of
+    // dog-piling immediately when random() returns near zero.
+    val jittered = (capped / 2.0) + (capped / 2.0) * random()
+    return jittered.toLong().coerceAtLeast(1L)
+}
+
+internal const val MAX_RETRY_BACKOFF_MS = 5_000L
 
 internal class NonVpnGetFallbackInterceptor(
     private val networkProvider: NonVpnNetworkProvider?,
