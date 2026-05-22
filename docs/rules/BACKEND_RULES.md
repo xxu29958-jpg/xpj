@@ -22,6 +22,14 @@ v0.3 后端必须遵守 `docs/architecture/ACCOUNT_SYSTEM.md`、`docs/architectu
 - 后台 OCR、CSV apply、规则批量 apply、通知草稿等异步/可重试路径必须处理陈旧写回、重复提交和并发 loser，不能覆盖用户之后的手动编辑。
 - “同账本、同月份、同分类/总支出只能有一个启用目标”这类产品语义必须同时有 service 层校验和数据库级唯一护栏。
 
+## Upload 路径解析
+
+任何需要从 DB 里的 `image_path` / `thumbnail_path` / 其他 upload reference 字符串还原到 `Path` 对象的代码，必须走 `app.services.file_service.resolve_upload_path_for_tenant`（或它的内部封装 `_resolve_upload_reference`）。
+
+禁止手写 `BACKEND_ROOT / relative_path` / `settings.upload_dir / relative_path` 这类直接拼路径。直接拼路径在 `UPLOAD_DIR` 是外部绝对路径时会指向错误位置（DB 存的是 `"uploads/<tenant>/..."` 引用，需要按 prefix 解析才能找到真实文件），并且无法享受 helper 内置的 path-traversal 防护和 legacy v0.2 兼容。
+
+新增任何读上传文件的 service（cleanup / metric / report / 维护脚本）都走同一个 entry point。
+
 ## OCR provider 约束
 
 - `empty` 是默认空实现。
