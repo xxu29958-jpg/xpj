@@ -32,7 +32,12 @@ from app.services.expense_service._duplicate import (
 from app.services.expense_service._helpers import EDITABLE_STATUSES
 from app.services.expense_service._image import ensure_image_file, ensure_thumbnail_file
 from app.services.expense_service._ocr import recognize_expense_text, retry_expense_ocr
-from app.services.expense_service._query import get_expense, list_confirmed, list_pending
+from app.services.expense_service._query import (
+    get_expense,
+    list_confirmed,
+    list_expenses_by_ids,
+    list_pending,
+)
 from app.services.expense_service._update import (
     batch_update_confirmed_expenses,
     confirm_expense,
@@ -53,6 +58,7 @@ __all__ = [
     "get_expense",
     "list_confirmed",
     "list_duplicate_expenses",
+    "list_expenses_by_ids",
     "list_pending",
     "mark_expense_not_duplicate",
     "recognize_expense_text",

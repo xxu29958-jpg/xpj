@@ -10,7 +10,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 
-__all__ = ["get_expense", "list_confirmed", "list_pending"]
+__all__ = ["get_expense", "list_confirmed", "list_expenses_by_ids", "list_pending"]
 
 
 def get_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
@@ -28,6 +28,23 @@ def list_pending(db: Session, tenant_id: str) -> list[Expense]:
             ledger_scoped_select(Expense, tenant_id)
             .where(Expense.status == "pending")
             .order_by(Expense.created_at.desc(), Expense.id.desc())
+        )
+    )
+
+
+def list_expenses_by_ids(
+    db: Session, *, tenant_id: str, expense_ids: list[int]
+) -> list[Expense]:
+    """Fetch ledger-scoped expenses by primary key ids.
+
+    Cross-ledger ids are silently filtered out (caller decides how to surface
+    that via len() comparison). The order of results is not guaranteed.
+    """
+    if not expense_ids:
+        return []
+    return list(
+        db.scalars(
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id.in_(expense_ids))
         )
     )
 

@@ -12,7 +12,6 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Expense
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -27,7 +26,7 @@ from app.services.spending_contract_service import (
     current_accounting_month,
     default_accounting_timezone_name,
 )
-from app.services.stats_service import _confirmed_query, monthly_stats
+from app.services.stats_service import monthly_stats, top_expenses_for_month
 
 router = APIRouter(prefix="/web", tags=["web"])
 logger = logging.getLogger(__name__)
@@ -59,18 +58,13 @@ def web_stats(
     ]
 
     top_rows: list[dict[str, str]] = []
-    top_query = (
-        _confirmed_query(
-            tenant_id=selected_id,
-            month=month,
-            tag=tag,
-            timezone_name=timezone_name,
-        )
-        .where(Expense.amount_cents.is_not(None))
-        .order_by(Expense.amount_cents.desc())
-        .limit(5)
-    )
-    for e in db.scalars(top_query).all():
+    for e in top_expenses_for_month(
+        db,
+        tenant_id=selected_id,
+        month=month,
+        tag=tag,
+        timezone_name=timezone_name,
+    ):
         top_rows.append(
             {
                 "merchant": e.merchant or "未填写商家",

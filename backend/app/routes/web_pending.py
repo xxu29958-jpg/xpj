@@ -9,12 +9,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -28,6 +26,7 @@ from app.routes.web_common import (
 from app.schemas import ExpenseUpdateRequest
 from app.services.expense_service import (
     confirm_expense,
+    list_expenses_by_ids,
     list_pending,
     mark_expense_not_duplicate,
     reject_expense,
@@ -145,13 +144,7 @@ def _reject_pending_rows(
     selected_id: str,
     expense_ids: list[int],
 ) -> str:
-    rows = list(
-        db.scalars(
-            select(Expense)
-            .where(Expense.tenant_id == selected_id)
-            .where(Expense.id.in_(expense_ids))
-        )
-    )
+    rows = list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=expense_ids)
     found_ids = {row.id for row in rows}
     skipped_cross_ledger = len([eid for eid in expense_ids if eid not in found_ids])
     success_count = 0
@@ -227,13 +220,7 @@ def web_review_bulk(
     if not expense_ids:
         return _pending_redirect(selected_id, filter=filter, msg="请先勾选账单。")
 
-    rows = list(
-        db.scalars(
-            select(Expense)
-            .where(Expense.tenant_id == selected_id)
-            .where(Expense.id.in_(expense_ids))
-        )
-    )
+    rows = list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=expense_ids)
     found_ids = {row.id for row in rows}
     skipped_cross_ledger = len([eid for eid in expense_ids if eid not in found_ids])
 

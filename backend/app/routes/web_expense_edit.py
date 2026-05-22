@@ -6,12 +6,10 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Account, LedgerMember
 from app.routes.web_common import (
     LocalOnly,
     _amount_yuan,
@@ -36,7 +34,11 @@ from app.services.expense_service import (
     reject_expense,
     update_expense,
 )
-from app.services.expense_split_service import list_expense_splits, replace_expense_splits
+from app.services.expense_split_service import (
+    list_active_split_members,
+    list_expense_splits,
+    replace_expense_splits,
+)
 from app.services.receipt_item_service import list_expense_items, replace_expense_items
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -324,21 +326,7 @@ def _web_split_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
 
 
 def _web_split_members(db: Session, ledger_id: str) -> list[dict]:
-    rows = db.execute(
-        select(LedgerMember, Account)
-        .join(Account, Account.id == LedgerMember.account_id)
-        .where(LedgerMember.ledger_id == ledger_id)
-        .where(LedgerMember.disabled_at.is_(None))
-        .order_by(LedgerMember.id.asc())
-    ).all()
-    return [
-        {
-            "member_id": member.id,
-            "account_name": account.display_name,
-            "role": member.role,
-        }
-        for member, account in rows
-    ]
+    return list_active_split_members(db, tenant_id=ledger_id)
 
 
 def _item_replace_payload(

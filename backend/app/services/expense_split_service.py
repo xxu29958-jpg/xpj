@@ -35,6 +35,29 @@ def list_expense_splits(db: Session, expense_id: int, tenant_id: str) -> Expense
     return _build_response(db, expense)
 
 
+def list_active_split_members(db: Session, *, tenant_id: str) -> list[dict]:
+    """Active ledger members eligible for split assignment, in member-id order.
+
+    Returns plain dicts so /web template + /api callers can both render
+    without leaking ORM rows past the service boundary.
+    """
+    rows = db.execute(
+        select(LedgerMember, Account)
+        .join(Account, Account.id == LedgerMember.account_id)
+        .where(LedgerMember.ledger_id == tenant_id)
+        .where(LedgerMember.disabled_at.is_(None))
+        .order_by(LedgerMember.id.asc())
+    ).all()
+    return [
+        {
+            "member_id": member.id,
+            "account_name": account.display_name,
+            "role": member.role,
+        }
+        for member, account in rows
+    ]
+
+
 def replace_expense_splits(
     db: Session,
     expense_id: int,
