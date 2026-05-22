@@ -6,12 +6,12 @@
 
 | 维度 | 门槛 | 工具 |
 |---|---|---|
-| Rule sets | `E, W, F, I, N, UP, B, C4, SIM` | ruff |
-| 行长 | 100 | ruff `line-length` |
+| Rule sets | `E, W, F, I, N, UP, B, C4, SIM, C901` | ruff |
+| 行长 | 120（E501 全局 ignore，历史长行按职责拆分收口） | ruff `line-length` |
 | Target | Python 3.11 | ruff `target-version` |
 | 圈复杂度 | ≤10 推荐 / ≤15 容忍 | ruff `C901` (McCabe) |
 
-配置在 `backend/pyproject.toml` 的 `[tool.ruff]` / `[tool.ruff.lint]`。
+配置在 `backend/pyproject.toml` 的 `[tool.ruff]` / `[tool.ruff.lint]` / `[tool.ruff.lint.mccabe]`。`max-complexity = 15` 卡容忍线；6 处历史超线函数带 `# noqa: C901` + 原地说明，等 v1.0-era 职责拆分收口。
 
 ## Kotlin / Android
 
