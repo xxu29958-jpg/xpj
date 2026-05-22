@@ -75,17 +75,10 @@ def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient, *, i
 
 def test_upload_supports_absolute_upload_dir_outside_backend(
     client: TestClient,
-    monkeypatch,
-    tmp_path, *, identity,
+    external_upload_dir,
+    *,
+    identity,
 ) -> None:
-    from app.services import file_service, thumb_service
-
-    external_upload_dir = (tmp_path / "external-uploads").resolve()
-    settings = file_service.get_settings()
-    external_settings = replace(settings, upload_dir=external_upload_dir)
-    monkeypatch.setattr(file_service, "get_settings", lambda: external_settings)
-    monkeypatch.setattr(thumb_service, "get_settings", lambda: external_settings)
-
     response = client.post(
         identity.upload_url_path,
         headers=identity.upload_headers,

@@ -35,6 +35,20 @@ def client(identity: TestIdentity):
         yield test_client
 
 
+@pytest.fixture()
+def external_upload_dir(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    """Point upload_dir at an external (outside-backend) path for the test."""
+    from dataclasses import replace
+
+    from app.services import file_service, thumb_service
+
+    external = (tmp_path / "external-uploads").resolve()
+    overridden = replace(file_service.get_settings(), upload_dir=external)
+    monkeypatch.setattr(file_service, "get_settings", lambda: overridden)
+    monkeypatch.setattr(thumb_service, "get_settings", lambda: overridden)
+    return external
+
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",

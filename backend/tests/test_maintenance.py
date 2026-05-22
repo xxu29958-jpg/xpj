@@ -60,16 +60,9 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(
 
 
 def test_server_settings_storage_metric_counts_external_upload_dir(
-    client: TestClient, monkeypatch, tmp_path, *, identity,
+    client: TestClient, external_upload_dir, *, identity,
 ) -> None:
-    from dataclasses import replace
-
-    from app.services import file_service, thumb_service
-
-    external_upload_dir = (tmp_path / "external-uploads").resolve()
-    external_settings = replace(file_service.get_settings(), upload_dir=external_upload_dir)
-    monkeypatch.setattr(file_service, "get_settings", lambda: external_settings)
-    monkeypatch.setattr(thumb_service, "get_settings", lambda: external_settings)
+    del external_upload_dir  # fixture side-effect: monkeypatched upload_dir
 
     upload_png(client, identity=identity)
 
