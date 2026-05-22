@@ -10,7 +10,7 @@
 - [../runbook/BOOTSTRAP.md](../runbook/BOOTSTRAP.md) — Owner 首次初始化
 - [API.md](API.md) — 后端 API 契约
 - [SECURITY.md](SECURITY.md) — 隔离与边界
-- [../rules/ANDROID_RULES.md](../rules/ANDROID_RULES.md) — Android 开发规则
+- [../rules/ENGINEERING_RULES.md](../rules/ENGINEERING_RULES.md) §1（客户端分层）+ §14（项目特定，含 Android Settings ViewModel 边界、UploadLink、token） — Android 规则已合并
 - [ANDROID_STATE_FLOW.md](ANDROID_STATE_FLOW.md) — Android 状态流
 - [ANDROID_UPLOAD.md](ANDROID_UPLOAD.md) — Android 上传规格
 - [../runbook/RELEASE_PACKAGING.md](../runbook/RELEASE_PACKAGING.md) — Release 打包

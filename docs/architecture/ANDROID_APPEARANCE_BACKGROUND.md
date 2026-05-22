@@ -2,7 +2,7 @@
 
 日期：2026-05-06
 
-本文是 Android 设置二级菜单、主题外观、自定义背景、预览、裁剪和沉浸模式的产品与工程验收文档。总体 UX 以当前 `docs/architecture/ARCHITECTURE.md` 和 `docs/rules/ANDROID_RULES.md` 为准，工程边界仍以 `docs/rules/ANDROID_RULES.md` 和 `docs/DECISIONS/0019-android-custom-background-local-only.md` 为准。
+本文是 Android 设置二级菜单、主题外观、自定义背景、预览、裁剪和沉浸模式的产品与工程验收文档。总体 UX 以当前 `docs/architecture/ARCHITECTURE.md` 和 `docs/rules/ENGINEERING_RULES.md`（§1 客户端分层、§14 项目特定）为准，工程边界仍以 `docs/rules/ENGINEERING_RULES.md` 和 `docs/DECISIONS/0019-android-custom-background-local-only.md` 为准。
 
 ## 1. 目标
 

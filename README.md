@@ -37,9 +37,7 @@ iPhone UploadLink 或 Android 上传截图
 
 ### 开发规范
 
-- [工程规范](docs/rules/ENGINEERING_RULES.md)（单一权威来源）
-- [后端开发规则](docs/rules/BACKEND_RULES.md)（后端补充）
-- [Android 开发规则](docs/rules/ANDROID_RULES.md)（Android 补充）
+- [工程规范](docs/rules/ENGINEERING_RULES.md)（单一权威来源，§14 含小票夹项目特定补充）
 - [关键决策](docs/DECISIONS/)
 - [官方资料与依赖来源](docs/rules/REFERENCES.md)
 - [依赖管理](docs/rules/DEPENDENCIES.md)

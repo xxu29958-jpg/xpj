@@ -22,8 +22,7 @@
 6. [rules/REFERENCES.md](rules/REFERENCES.md) — 官方资料与依赖来源
 7. 与当前任务相关的 [DECISIONS/](DECISIONS/)
 
-后端任务追加：[rules/BACKEND_RULES.md](rules/BACKEND_RULES.md)
-Android 任务追加：[rules/ANDROID_RULES.md](rules/ANDROID_RULES.md)
+后端 / Android 任务的具体补充已合并入 [rules/ENGINEERING_RULES.md](rules/ENGINEERING_RULES.md) §14。
 OCR / 分类 / 重复检测 / 缩略图任务追加：[roadmap/V2_ROADMAP.md](roadmap/V2_ROADMAP.md)
 
 ## 版本真值源

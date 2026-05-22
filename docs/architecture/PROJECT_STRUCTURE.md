@@ -209,8 +209,6 @@ docs\
   README.md                  # 文档导览（入口）
   rules\                     # 开发规范（必读）
     ENGINEERING_RULES.md
-    BACKEND_RULES.md
-    ANDROID_RULES.md
     DEPENDENCIES.md
     REFERENCES.md
     ERROR_MESSAGE_MAPPING.md

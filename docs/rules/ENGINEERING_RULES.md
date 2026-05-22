@@ -1,780 +1,429 @@
-# 小票夹工程规范
+# 工程规范
 
-## 1. 总原则
+> 通用部分采用模板 v1.2.1（2026-05-22）；后端 + 客户端协作项目契约。
+> 任何放宽必须写入 `docs/DECISIONS/`，注明原因、风险、偿还计划和回收条件。
+> 小票夹项目独有补充见 §14。
 
-小票夹以稳定闭环为最高优先级。
+---
 
-当前开发基准以 `docs/architecture/ARCHITECTURE.md` 为总入口，并以 `docs/architecture/ACCOUNT_SYSTEM.md`、`docs/architecture/API.md`、`docs/architecture/SECURITY.md`、`docs/rules/ANDROID_RULES.md`、`docs/rules/BACKEND_RULES.md` 和 `docs/runbook/GRAY_ACCEPTANCE_EXECUTION.md` 作为验收边界。后续实现不得跳过这些文档中的身份、账本隔离、Android 上传、UI 去开发味、release 包、诊断分层和验收要求。
+## 0. 裁决顺序
 
-优先级：
+冲突时按以下优先级判断：
 
-1. 数据正确。
-2. 安全边界清楚。
-3. 能在 Windows 11 本地运行。
-4. Android 能稳定确认入账。
-5. 代码可维护。
-6. UI 美观。
-7. 扩展能力。
+1. 数据正确
+2. 安全边界清晰
+3. 目标环境稳定运行
+4. 端到端闭环稳定
+5. 可维护、可测试
+6. 用户体验
+7. 扩展能力
+8. UI 表现
 
-当前不追求复杂架构，不引入不必要的大型框架。
+架构可以简单，但边界必须清楚；实现可以先小，但必须可替换、可回滚、可验证。
 
-## 3. 后端分层规范
+---
 
-后端采用轻量分层：
+## 1. 分层架构
 
-```text
-routes -> services -> database/models
+### 后端
+
+固定分层：`routes → services → models / providers`
+
+* `routes`：参数解析、鉴权、调用 service、返回 schema；不写业务、不拼复杂 SQL、不返回原始异常。
+* `services`：业务编排、事务、调用 provider；不依赖 HTTP 层、不写 UI 文案、不硬编码凭证。
+* `models`：ORM 实体；不依赖上层。
+* `schemas`：请求/响应结构；不放业务、不放 IO。
+* `providers`：OCR、分类、推送、外部 LLM 等可替换能力；只做识别或建议，不直接确认业务状态。
+
+### 客户端
+
+固定分层：`Screen → ViewModel → Repository → ApiService / Dao / SecureStorage`
+
+* `Screen`：只做 UI 渲染和输入收集。
+* `ViewModel`：管理 UI State，调用 Repository。
+* `Repository`：协调远端、本地缓存、失败兜底，返回领域模型。
+* `ApiService / Dao / SecureStorage`：纯 IO 层，不向 UI 暴露 DTO / Entity / Token。
+
+### 禁忌
+
+禁止跨级调用、DTO/Entity 进 UI、UI 直连网络、route 直查 DB。
+三类模型必须分开：`XxxDto / XxxEntity / Xxx`，转换集中在 `XxxMapper`。
+任何快捷方案必须写入 `DECISIONS/`，标注偿还计划。
+
+---
+
+## 2. 项目结构
+
+目标：从目录就能看出架构意图，新人不读文档也能猜对一类文件该放哪。
+
+### 顶层目录
+
+```
+project-root/
+├── README.md            启动方式 + 最小说明
+├── LICENSE
+├── .gitignore
+├── .env.example         配置模板，禁止真实凭证
+├── docs/                所有文档
+├── scripts/             运维、构建、检查脚本，禁止业务代码
+├── backend/             服务端代码
+├── client/              客户端代码（多端时再切子目录）
+└── tests/               跨端集成测试（可选）
 ```
 
-不强制拆完整 repository 层，但必须保证 route、service、model 和 provider 边界清楚。
+根目录禁止：散文件、个人笔记、tmp、backup、v2、old。
 
-### routes 层
+### 后端目录
 
-职责：
-
-- 接收 HTTP 请求。
-- 解析参数。
-- 调用 Token 校验。
-- 调用 service。
-- 返回 Pydantic schema。
-
-禁止：
-
-- 直接写复杂业务逻辑。
-- 直接拼复杂 SQL。
-- 直接操作真实文件路径。
-- 直接返回 Python exception。
-- 直接返回 Windows 本机路径。
-
-### services 层
-
-职责：
-
-- 业务流程编排。
-- 文件保存。
-- 创建 pending。
-- 修改账单。
-- 确认账单。
-- 拒绝账单。
-- 统计计算。
-- 图片读取。
-- hash 计算。
-
-禁止：
-
-- 依赖 FastAPI Request。
-- 直接返回 HTTP Response。
-- 写 UI 文案。
-- 硬编码真实 Token。
-
-### models 层
-
-职责：
-
-- SQLAlchemy ORM 模型。
-- 数据库字段定义。
-
-禁止：
-
-- 依赖 routes。
-- 依赖 schemas。
-- 依赖 HTTP 层。
-
-### schemas 层
-
-职责：
-
-- Pydantic 请求模型。
-- Pydantic 响应模型。
-
-禁止：
-
-- 放数据库连接逻辑。
-- 放业务流程。
-- 放文件操作。
-
-## 4. 后端扩展规范
-
-当前后端已经具备 OCR、分类规则、重复检测、缩略图和图片清理等能力；新增或调整这些能力时仍必须保持 service 边界。
-
-以下能力不要写死在 route 中：
-
-- OCR。
-- 自动分类。
-- 重复检测。
-- 缩略图。
-- HEIC 转 JPEG。
-- 图片清理策略。
-
-推荐结构：
-
-```text
-services/
-  ocr_service.py
-  classify_service.py
-  duplicate_service.py
-  thumb_service.py
-  cleanup_service.py
+```
+backend/
+├── app/
+│   ├── routes/
+│   ├── services/
+│   ├── models/
+│   ├── schemas/
+│   ├── providers/
+│   ├── config.py / config/       统一配置入口
+│   └── main.py / entrypoints/    启动入口
+├── tests/
+├── migrations/          数据库迁移
+├── scripts/             后端专用脚本
+└── 依赖清单文件
 ```
 
-当前原则：
+后端启动与配置入口必须明确命名，例如 `config.py / config/`、`main.py / entrypoints/`；禁止使用含糊目录名让实现者自行猜测。
 
-```text
-provider 和 service 可以轻量
-但不要把 OCR / 分类 / 去重 / 缩略图逻辑写死在 uploads.py
+### 客户端目录
+
+按"层"组织，业务在层内分子目录，不按"页面"切顶层目录：
+
+大型项目允许按 feature / module 分组，但层边界不得打穿；模块化不是跨层调用的理由。
+
+```
+client/
+├── ui/{module_a, module_b, ...}/
+├── viewmodel/{module_a, module_b, ...}/
+├── repository/
+├── data/{api, db, storage}/
+├── domain/
+├── di/
+└── util/
 ```
 
-OCR 已进入可插拔 provider 管线：
+### 文档目录
 
-```text
-empty      默认空实现，不做识别
-mock       测试和联调假数据
-rapidocr   本地 OCR，把图片转文字
-local_llm  OpenAI 兼容本地视觉模型
+```
+docs/
+├── PROJECT_BOUNDARY.md
+├── API.md
+├── ACCEPTANCE.md
+├── RUNBOOK.md
+├── ENGINEERING_RULES.md
+├── DECISIONS/
+└── assets/              图片、附件
 ```
 
-OCR 强制边界：
+### 运行时产物
 
-- Provider 只能负责识别或结构化建议，不直接确认入账。
-- Provider 不直接写 HTTP Response。
-- Provider 不直接处理 Token。
-- Provider 失败不能破坏上传截图的 pending 创建。
-- 自动 OCR 默认关闭，由 `OCR_AUTO_RUN` 控制。
-- OCR 结果只能填充空字段，不覆盖用户已经手动编辑的金额、商家、消费时间。
-- OCR 提取入口放在 `receipt_parse_service.py`，金额、商家、时间、分类规则分别放在对应 `receipt_parse_*` service 文件中；不要散落在 route 或 Android UI。
-- 本地大模型必须通过配置接入，不允许在代码里写死模型名或服务地址。
+`uploads/  data/  logs/  build/  dist/  本地虚拟环境  依赖缓存目录` 全部进 `.gitignore`，路径走 config，不写死。
 
-## 4.1 强代码硬规则
+### 命名约定
 
-以下规则是强制要求：
+* 目录、文件、字段、API 路径：小写下划线
+* 类、类型：大驼峰
+* 常量、环境变量：大写下划线
+* 关键规范文档：大写下划线 `.md`
+* 普通文档：小写连字符 `.md`
 
-- 高内聚、低耦合。
-- 边界清晰，禁止跨层乱调。
-- 可插拔扩展，禁止把 OCR、分类、去重、缩略图、清理策略写死。
-- 代码要可读、可维护、可测试。
-- 结构要清晰，架构意图要能从目录和命名看出来。
-- 依赖必须来自可靠、活跃、官方推荐或事实标准生态。
-- 禁止过时库、停止维护库、alpha/beta 弱依赖进入主线。
-- 后端直接依赖使用精确版本，避免 Windows 本机安装结果随时间漂移。
-- 禁止为了赶进度写强耦合、弱抽象、难测试的代码。
-- 禁止 UI 层、route 层、数据库层互相穿透。
-- 关键技术决策必须写进 `docs/DECISIONS/`。
-- 新增依赖必须先查 `docs/rules/REFERENCES.md` 所列官方文档或 Maven/包管理元数据。
-- 新增 API 或依赖不是机械禁止项；只有在收益、维护成本、离线部署、安全边界和验证矩阵都说得通时才进入主线。
-- 普通用户主体验不得暴露服务器域名、token、接口名、Cloudflare、端口、日志、计划任务或诊断脚本。
-- 账本隔离不得用前端过滤代替后端 `ledger_id` 语义隔离。
-- Android release 版不得显示开发诊断入口。
-- 外部产品只允许作为体验模式参考，不得照搬 UI、素材、商标或专有文案。
+### 禁忌
 
-允许：
+* 不在根目录散放代码、文档、图片
+* 不留 `v1/ v2/ old/ backup/ tmp/` 残留
+* 不让 git 跟踪运行时产物
+* 不让业务代码进 `scripts/`
+* 不让二进制文件散落在 `docs/` 根部（统一放 `docs/assets/`）
 
-- 当前实现保持轻量。
-- 为后续能力保留清楚扩展点。
-- 先用简单实现，但实现必须可替换。
+---
 
-不允许：
+## 3. 数据规范
 
-- 先凑合写死，后面再说。
-- 在 route 或 Composable 里堆业务逻辑。
-- 把基础设施细节泄露到 UI。
-- 用过时依赖或不稳定依赖冒充现代化。
+### 标识
 
-## 4.2 账单标识规范
+外部实体同时维护：
 
-后端账单必须同时保留：
+* `id`：内部主键，用于本系统路径和关联。
+* `public_id`：UUID，用于跨端同步、导出、追溯、未来合并。
 
-```text
-id: int，自增主键，用于 API 路径和 Android serverId
-public_id: UUID 字符串，用于导出、跨端同步、排查问题和未来多端合并
-```
+普通 UI 不暴露任何 id。
 
-Android 本地模型必须同时保存：
+### 金额
 
-```text
-serverId: Long，在当前 ledgerId 下唯一，对应后端 id
-publicId: String，唯一，对应后端 public_id
-```
+* 金额全链路使用最小货币单位整数，如 `amount_cents: int`。
+* 禁止用 `float / double` 保存金额。
+* 多币种使用：`original_currency_code + original_amount_minor + exchange_rate_*`。
+* 统计只汇总基准币种，禁止跨币种直接相加。
+* 单位换算集中封装，禁止 UI 散写 `÷100`。
 
-规则：
+### 时间
 
-- 不把数据库主键迁移成 UUID。
-- 不在普通 UI 暴露 `public_id`、`serverId` 或数据库主键。
-- 对外导出、日志排错和未来多端合并优先使用 `public_id`。
-- Room 修改 Entity 必须同步提交 schema JSON 和显式迁移策略。
-- 老库新增非空列时必须通过可验证迁移处理，不能只写会被 Room schema 校验击穿的临时 DDL。
+* 存储：UTC。
+* API：ISO 8601。
+* 字段固定：`created_at / updated_at / event_time / confirmed_at / rejected_at`。
+* 统计口径：`COALESCE(event_time, confirmed_at)`。
+* 客户端负责本地时区显示，后端不按客户端时区格式化。
 
-## 5. 金额规范
+### 幂等
 
-全链路统一使用：
+所有写操作必须支持 `client_request_id`。
+重试不得产生重复业务记录。
 
-```text
-amount_cents
-```
+---
 
-单位是分，且固定表示 CNY 基准金额。
+## 4. 接口规范
 
-后端：
+* API 必须有版本策略，如 `/api/v1/...`。
+* 破坏性变更（删字段、改类型、改语义）必须 bump 大版本，并保留旧版本兼容期。
+* 请求/响应字段命名固定，不随 UI 文案变化。
+* 分页统一：`page / page_size / total / items`。
+* 排序、过滤字段必须白名单化。
+* API 不返回服务器本机路径、内部 URL、堆栈信息。
 
-```python
-amount_cents: int | None
-```
-
-Android：
-
-```kotlin
-amountCents: Long?
-```
-
-禁止：
-
-```text
-amount: float
-amount: double
-数据库保存元
-用浮点数保存金额
-```
-
-UI 显示时才转换为元。
-
-外币账单必须通过 `original_currency_code`、`original_amount_minor`、`exchange_rate_to_cny`、`exchange_rate_date` 和 `exchange_rate_source` 表达。统计、预算、报表、Goals 只能汇总 CNY 口径的 `amount_cents`，不得直接相加外币原始金额。
-
-示例：
-
-```text
-3680 -> ¥36.80
-```
-
-金额转换必须集中封装，不允许每个页面手写除以 100。
-
-## 6. 时间规范
-
-数据库保存 UTC 时间。
-
-API 返回 ISO 8601 字符串。
-
-字段含义：
-
-```text
-created_at      上传/创建时间
-updated_at      更新时间
-expense_time    实际消费时间
-confirmed_at    确认入账时间
-rejected_at     拒绝时间
-```
-
-统计口径：
-
-```text
-优先 expense_time
-如果为空，使用 confirmed_at
-```
-
-Android 显示时转本地时间。
-
-禁止：
-
-- 用 `created_at` 当消费时间。
-- Android 伪造 `confirmed_at`。
-- 后端按 Android 本地时区格式化显示。
-
-## 7. 错误返回规范
-
-所有错误统一格式：
+统一错误格式：
 
 ```json
-{
-  "error": "错误代码",
-  "message": "中文错误说明"
-}
+{ "error": "错误代码", "message": "中文说明" }
 ```
 
-固定错误码：
+通用错误码：
 
-```text
-invalid_token
-file_too_large
-unsupported_file_type
-expense_not_found
-amount_required
-server_error
-invalid_request
-route_not_found
-method_not_allowed
-```
+`invalid_token / invalid_request / not_found / method_not_allowed / file_too_large / unsupported_file_type / amount_required / state_conflict / rate_limited / server_error`
 
-禁止：
+禁止返回 traceback、英文底层异常、接口各自发明错误结构、吞异常返回成功。
 
-- 返回 traceback。
-- 返回英文底层异常。
-- 每个接口自定义不同错误结构。
-- 吞异常后返回成功。
+---
 
-## 8. 图片安全规范
+## 5. 鉴权、安全与发布面
 
-uploads 目录绝对不能公开。
+* 服务端 Token / Session 是最终鉴权来源。
+* 客户端生物识别只解锁本地状态，不替代服务端鉴权。
+* Token 不写代码、不进日志、不进 README、不进截图、不进 git。
+* 客户端凭证必须进入系统级安全存储（Keystore / Keychain 等）。
+* 上传目录禁止公开挂载，文件只能通过鉴权接口访问。
+* API 不返回本机文件路径。
 
-禁止：
+构建分级：
 
-```text
-StaticFiles 暴露 uploads
-API 返回 C:\xxx\xxx.png
-API 返回 E:\projects\xxx
-使用原始文件名保存
-```
+| 构建            | 用途   | 诊断入口         | 日志输出上限     |
+| ------------- | ---- | ------------ | ---------- |
+| dev/debug     | 本机开发 | 全开           | DEBUG+     |
+| gray/internal | 内测   | 简化，仅连接状态/版本号 | INFO+，禁 Header/Body |
+| release       | 公开发行 | 全关           | WARN+      |
 
-允许：
+诊断入口必须编译期裁掉，不能只靠运行时隐藏。
+维护接口必须独立 admin 鉴权，只暴露窄能力，禁止任意路径、任意 SQL、通用文件管理。
 
-```text
-数据库保存相对路径
-图片通过 /api/expenses/{id}/image 鉴权读取
-```
+---
 
-图片接口必须校验：
+## 6. 持久化、同步与恢复
 
-```text
-Authorization: Bearer <session_token>
-```
+* 后端 schema 变更必须走迁移工具，附可执行回滚。
+* 客户端 schema 变更必须提交 schema 描述文件和显式迁移策略。
+* 新增非空列按三步走：先可空/默认值 → 数据回填 → 收紧约束。
+* 服务端是业务真源，客户端本地库只是缓存。
+* 同步使用 upsert，唯一键必须叠加隔离键，如 `(tenant_id, server_id)`。
+* 隔离由服务端 `tenant_id / scope_id` 实现，禁止靠前端过滤代替隔离。
+* 数据库和文件存储都必须备份。
+* 每个版本至少做一次恢复演练；没演练的备份等于没有备份。
 
-图片清理只能通过窄维护接口按配置执行：
+---
 
-```text
-POST /api/maintenance/cleanup-images
-Authorization: Bearer <admin_token>
-```
+## 7. 状态、事务、并发与任务
 
-禁止维护接口接收任意路径或提供通用文件管理能力。
+* 核心业务状态必须写成有限状态机，不靠散落 if 判断。
+* 状态流转必须校验当前状态，冲突返回 `state_conflict`。
+* 一个业务动作涉及多表时必须使用事务。
+* 并发写入必须有唯一约束、锁或版本号保护。
+* 后台任务必须可重试、可停止、可观测，不得悄悄吞错。
+* 客户端重试使用指数退避 + jitter，且必须有终止条件。
 
-## 9. 后端配置规范
+---
 
-后端配置统一从 `config.py` 读取。
+## 8. Provider、配置与自动化
 
-配置项：
+OCR、分类、推送、支付、外部 LLM 等必须 provider 化：
 
-```text
-DATABASE_URL
-UPLOAD_DIR
-MAX_UPLOAD_SIZE_MB
-DELETE_IMAGE_AFTER_CONFIRM
-GENERATE_THUMBNAIL
-DELETE_IMAGE_AFTER_DAYS
-OCR_PROVIDER
-```
+* 有显式接口契约。
+* 至少有 empty / mock 实现。
+* 通过配置切换。
+* 失败不得破坏主业务闭环。
 
-禁止业务代码到处读取 `os.environ`。
+业务代码统一从 config 模块读取配置，禁止散写环境变量取值。
+模型名、服务地址、阈值、开关不写死在业务代码里。
+自动识别、自动填充、AI 建议只能填空字段，不得覆盖用户手动编辑值。
+AI/OCR/LLM 结果默认是"建议"，不是事实。
 
-禁止真实 Token 写入：
+---
 
-```text
-代码
-README
-Git
-截图
-日志
-```
+## 9. 依赖治理
 
-## 9.1 Windows UTF-8 规范
+* 版本集中管理：依赖清单、版本目录或锁文件统一维护。
+* 禁止 alpha、beta、停止维护、来源不清依赖进入主线。
+* 新增依赖前查官方文档、维护状态、许可证。
+* 结论写入 `DECISIONS/`。
+* 升级依赖必须跑：单测、关键构建、lint、依赖审计。
 
-小票夹后端脚本面向 Windows 11 和 Windows PowerShell 5.1。
+---
 
-规则：
+## 10. 用户面与文案
 
-```text
-backend/scripts/*.ps1 使用 UTF-8 with BOM
-backend/.env 使用 UTF-8 without BOM
-README 和 docs 使用 UTF-8
-脚本必须能被 powershell.exe -File 直接运行
-不要求 PowerShell 7、WSL、Docker 或 Linux shell
-```
+普通用户界面不得出现：服务器域名、Token、接口名、端口、DNS、TLS、Tunnel、日志路径、诊断脚本名。
 
-原因：
+错误文案像生活 App：
 
-```text
-Windows PowerShell 5.1 对无 BOM 的 UTF-8 脚本可能按 ANSI 解析。
-包含中文输出的脚本如果无 BOM，可能乱码或解析失败。
-```
+* 正确：`连接不上服务器，请稍后再试`
+* 错误：`DNS resolve failed for xxx.example.com:8000`
 
-读取规则：
+技术原因写日志，或放在内测构建连接详情页。
+UI 字符串必须走资源文件，预留 i18n 通道。
 
-```powershell
-Get-Content -Raw -Encoding UTF8 README.md
-Get-Content -Raw -Encoding UTF8 docs\rules\ENGINEERING_RULES.md
-```
+---
 
-禁止：
+## 11. 测试、发布与回滚
 
-```powershell
-Get-Content -Raw README.md
-Get-Content -Raw docs\rules\ENGINEERING_RULES.md
-```
+本规范必须配套 `scripts/verify.*` 检查脚本；没有可执行检查的规范，只算文档，不算工程约束。
 
-原因是 Windows PowerShell 5.1 在无 BOM 文件上可能按系统 ANSI 代码页读取，中文会显示为常见 UTF-8/ANSI 误读乱码。文件本身可以是 UTF-8，但读取命令必须显式声明编码。
+发布前必须全部通过：
 
-验收：
+* 单元测试
+* 关键集成测试
+* API 契约测试
+* lint / 静态检查
+* 依赖审计
+* 数据库迁移和回滚演练
+* 备份恢复演练
+* release 无诊断入口、真实凭证、本机路径、内部 URL
+* API 契约与客户端 DTO 已对齐
+* 验收清单全部勾选
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
-```
+任一项不过，不发。
 
-## 10. 网络与认证规范
+每次发布必须有回滚方案：代码怎么回滚，数据库怎么兼容，旧客户端是否可用，文件存储是否受影响。
 
-上传截图只使用：
+---
 
-```http
-POST /u/<upload_key>?tz=Asia/Shanghai
-```
+## 12. 可观测性与运维
 
-App 接口只使用：
+* `/health/liveness`：进程活着即返回 200，不查依赖。
+* `/health/readiness`：能服务请求才返回 200，检查 DB 和关键 provider。
+* 日志级别 `DEBUG / INFO / WARN / ERROR`：代码按 INFO 写，输出上限由构建决定（见 §5）。
+* 敏感字段必须脱敏。
+* 错误日志必须带 `request_id / trace_id`。
+* 安全和数据修改动作必须记录审计日志。
+* 项目必须有最低性能预算：上传大小、API 超时、分页上限、缓存容量、后台任务并发、日志保留天数。
+* 禁止无上限上传、无上限查询、无上限缓存、无上限后台任务。
 
-```http
-Authorization: Bearer <session_token>
-```
+---
 
-绑定服务器以后只用：
+## 13. 流程、文档与反扩
 
-```http
-GET /api/auth/check
-```
+项目至少维护：
 
-不要用 `/api/health` 判断 Token 是否正确。
+* `README.md`：启动方式和最小说明。
+* `docs/PROJECT_BOUNDARY.md`：项目边界——做什么、不做什么、对接什么、不对接什么。
+* `docs/API.md`：接口契约。
+* `docs/DECISIONS/`：决策记录。
+* `docs/ACCEPTANCE.md`：验收清单。
+* `docs/RUNBOOK.md`：部署、备份、恢复、故障处理。
 
-图片只通过：
+PR Review 必看：分层、目录归位、数据真源、依赖、凭证、迁移、幂等、API 对齐、release 面。
 
-```http
-GET /api/expenses/{id}/image
-```
+不做以下事情：
 
-禁止客户端直接访问 uploads 路径。
+* 不为"以后可能用得上"提前引入大框架。
+* 不用工作流引擎解决几个 if 能解决的问题。
+* 不把 UI、业务、基础设施搅进一个文件里。
+* 不在 release 留工程师彩蛋、后门、隐藏入口。
+* 不靠前端隐藏代替后端鉴权。
+* 不靠"大家都遵守"代替编译期约束、测试和契约检查。
+* 不在主线引入未经验证的大版本升级。
+* 不让 AI/OCR/LLM 自动结果直接改写用户确认过的数据。
 
-## 11. 统计规范
+---
 
-统计主口径以后端为准。
+## 14. 小票夹项目特定补充
 
-后端统计：
+以下是通用模板未覆盖、本项目独有的约束。
 
-```text
-只统计 confirmed
-按 COALESCE(expense_time, confirmed_at)
-金额使用 amount_cents
-```
+### 身份模型（identity_schema=v0.3，冻结）
 
-Android 后续可以做本地离线展示，但不要和后端统计口径冲突。
+`Account / Ledger / LedgerMember / Device / AuthToken / UploadLink / PairingCode / Invitation / LedgerAuditLog`（详见 `docs/architecture/ACCOUNT_SYSTEM.md`）。
 
-## 12. Android 分层规范
+* `tenant_id` 字段在 v0.3 起语义等同 `ledger_id`。
+* 角色：`owner / member / viewer`；viewer 写入必须后端 403，前端隐藏只做体验。
+* 邀请 `Invitation.role` 只接受 `member / viewer`；owner 通过显式 owner-transfer。
 
-Android 后续使用轻量 MVVM：
+### OCR / receipt parse provider
 
-```text
-Screen -> ViewModel -> Repository -> ApiService / Dao / TokenStore
-```
+* Provider 命名：`empty`（默认空）、`mock`（测试）、`rapidocr`（本地图片）、`local_llm`（OpenAI 兼容视觉模型）。
+* 自动 OCR 由 `OCR_AUTO_RUN` 控制，默认关；provider 失败不破坏 pending 创建。
+* 提取入口在 `backend/app/services/receipt_parse_service.py`；金额、商家、时间、分类候选拆到 `receipt_parse_amount.py / _merchant.py / _time.py / _category.py`，禁止散到 route 或 Android UI。
 
-### Screen
+### 暴露面与边界
 
-职责：
+* 公网（Cloudflare Tunnel）仅暴露 `/api/*` 和 `/u/{upload_key}`。
+* `/owner` 和 `/web` 强制 loopback（127.0.0.1 + Host 头双检，见 `backend/app/network_boundary.py`）。
+* `/api/admin/*` 默认 loopback；`ALLOW_PUBLIC_ADMIN_API=true` 才放开（不建议）。
+* `uploads/` 永不 mount 为静态资源；图片只通过 `GET /api/expenses/{id}/image` 鉴权读取。
 
-- 展示 UI。
-- 收集用户输入。
-- 触发 ViewModel 事件。
+### iPhone UploadLink
 
-禁止：
+* 唯一入口：`POST /u/<upload_key>?tz=Asia/Shanghai`。
+* UploadLink 凭证 scope 受限：只能创建 pending，不能读账本/确认/导出/统计/读图片。
 
-- 直接调用 Retrofit。
-- 直接调用 Room。
-- 直接读写 SharedPreferences。
-- 直接保存 Token。
-- 写复杂业务逻辑。
+### Upload path 解析单一入口
 
-### ViewModel
+* 任何 DB 里的 `image_path / thumbnail_path` 还原到 `Path`，必须走 `app.services.file_service.resolve_upload_path_for_tenant`。
+* 禁止手写 `BACKEND_ROOT / relative_path` 或 `settings.upload_dir / relative_path`：外部绝对 upload_dir 配置下会指向错误位置且绕过 path-traversal 防护。
 
-职责：
+### Auth check ≠ health
 
-- 管理页面状态。
-- 调用 Repository。
-- 处理加载中、成功、失败。
-- 暴露 UI State。
+* 客户端绑定后用 `GET /api/auth/check` 验证 token；不要用 `/api/health` 判断。
 
-禁止：
+### Windows PowerShell 5.1 + UTF-8 BOM
 
-- 创建 Retrofit。
-- 创建 Room Database。
-- 持有 Activity。
-- 直接操作 Keystore 加密细节。
+* `backend/scripts/*.ps1` 和 `scripts/*.ps1` 必须 UTF-8 with BOM；`.env` 不带 BOM。
+* PS 脚本读文件必须显式 `Get-Content -Encoding UTF8`（PS 5.1 无 BOM UTF-8 默认按 ANSI 解析，中文乱码）。
+* PS 脚本不能用 `&&` / `||` 链接（5.1 语法错），用 `; if ($?) { ... }`。
+* `scripts/check_text_encoding.ps1` 在 CI / verify 都跑，违反就 fail。
+* 不依赖 PowerShell 7、WSL、Docker 或 Linux shell。
 
-### Repository
+### 三端视觉同步
 
-职责：
+Android / `/web` / `/owner` 共享一套 design tokens（`backend/app/static/shared/tokens.css` + Android `ui/design/`）。改一处颜色/间距/copy 时其它两端同步改，不接受端内分叉。
 
-- 协调远程 API 和本地 Room。
-- 负责同步 confirmed。
-- 负责失败 fallback 到本地缓存。
+### 外部产品参考边界
 
-禁止：
+Monarch、支付宝账单等外部产品只允许作为**体验模式**参考；不得照搬 UI 布局、素材、商标、专有文案（详见 `docs/roadmap/MONARCH_INSPIRED_UI.md`）。
 
-- 写 Compose 状态。
-- 写 UI 控件逻辑。
-- 返回 DTO 给 UI。
+### 代码质量数字门槛
 
-### DAO
+详见 [CODE_QUALITY_STANDARDS.md](CODE_QUALITY_STANDARDS.md)：ruff 规则集、line-length、McCabe 复杂度、detekt 默认门槛、PR size、Conventional Commits。
 
-职责：
+### 依赖与错误码查询
 
-- Room 查询。
-- Room upsert。
-- Room 删除。
+* 依赖管理细则与升级流程：[DEPENDENCIES.md](DEPENDENCIES.md)
+* 错误码 → UI 文案映射：[ERROR_MESSAGE_MAPPING.md](ERROR_MESSAGE_MAPPING.md)
+* 官方文档与依赖来源：[REFERENCES.md](REFERENCES.md)
 
-禁止：
+---
 
-- 返回 DTO。
-- 调用网络。
-- 处理 Token。
+## 附：变更管理
 
-## 13. Android 数据模型规范
+遵循语义化版本：`MAJOR.MINOR.PATCH`。
 
-三类模型必须分开：
+* `MAJOR`：改变工程边界。
+* `MINOR`：增加规则。
+* `PATCH`：修正措辞或格式。
 
-```text
-DTO      服务端接口模型
-Entity   Room 本地模型
-Domain   App 内业务模型
-```
-
-命名：
-
-```text
-ExpenseDto
-ExpenseEntity
-Expense
-ExpenseDraft
-ExpenseUpdateRequest
-```
-
-转换集中放在：
-
-```text
-ExpenseMappers.kt
-```
-
-禁止：
-
-- UI 直接使用 DTO。
-- UI 直接使用 Entity。
-- DTO 带 Room 注解。
-- Entity 带 Moshi 网络注解。
-- Domain 依赖 Android Context。
-
-## 14. Room 规范
-
-Room 的 `serverId` 必须在当前 `ledgerId` 下唯一；`publicId` 必须全局唯一。
-
-confirmed 同步必须使用 upsert。
-
-规则：
-
-```text
-如果当前 ledgerId 下 serverId 已存在，更新本地记录
-如果当前 ledgerId 下 serverId 不存在，插入本地记录
-不允许重复插入
-```
-
-confirmed 必须缓存。
-
-pending 当前可以不缓存。
-
-默认排序：
-
-```sql
-ORDER BY COALESCE(expenseTime, confirmedAt, createdAt) DESC
-```
-
-## 15. Token 与客户端安全规范
-
-Session token：
-
-- 不写死在代码里。
-- 不打印到日志。
-- 不明文存 SharedPreferences。
-- 使用 Android Keystore 保存。
-
-BiometricPrompt：
-
-- 只用于本地解锁。
-- 不替代服务端 Token 校验。
-
-清除绑定必须清除：
-
-```text
-serverUrl
-session token
-accountName / ledgerName / deviceName / role / boundAt
-本地解锁状态
-Room confirmed 缓存
-```
-
-OkHttp 日志：
-
-```text
-gray 版不启用网络日志
-internalDebug 最多 BASIC
-不得打印 Header
-不得打印 Body
-不得打印 Token
-不得在日志里写入完整服务器 URL
-```
-
-## 15.1 Android 依赖规范
-
-Android 插件和库版本统一维护在：
-
-```text
-android/gradle/libs.versions.toml
-```
-
-规则：
-
-- `android/build.gradle.kts` 只通过 `libs.plugins.*` 引用插件。
-- `android/app/build.gradle.kts` 只通过 `libs.*` 引用 Android 第三方依赖。
-- 新增 Android 依赖时先写入 Version Catalog，再在模块中引用。
-- 不在模块 `build.gradle.kts` 中散写版本号。
-- 不引入 alpha、beta、停止维护或来源不清的依赖进入主线。
-- 依赖版本审计统一使用 `scripts\check_dependency_versions.ps1`。
-- 升级依赖必须跑 `:app:testGrayDebugUnitTest`、`:app:assembleGrayDebug`、`:app:assembleInternalDebug` 和 `:app:lintGrayDebug`。
-
-## 16. UI 规范
-
-整体风格：
-
-```text
-中文
-深色优先
-Material 3
-卡片式
-圆角
-生活化
-不要后台管理风
-```
-
-金额为空：
-
-```text
-待填写金额
-```
-
-商家为空：
-
-```text
-未填写商家
-```
-
-HEIC 无法预览：
-
-```text
-截图已保存，当前格式暂不预览
-```
-
-网络失败：
-
-```text
-显示中文错误
-账本页展示本地缓存
-不要白屏
-```
-
-App 前台错误文案必须像私人生活 App：
-
-```text
-连接不上服务器，请稍后再试。
-请填写公网服务器地址。
-```
-
-禁止把 DNS、TLS、Tunnel、接口名、Token 校验、localhost 等工程细节直接显示给普通用户。技术原因写入日志或连接检测详情。
-
-## 17. 实机联调规范
-
-实机联调必须同时覆盖：
-
-```text
-iPhone 快捷指令上传
-Cloudflare Tunnel 公网域名
-Windows FastAPI 后端
-Android 真机绑定和自检
-pending 编辑确认
-Room confirmed 缓存
-统计页刷新
-```
-
-联调脚本：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\real_device_preflight.ps1
-```
-
-约束：
-
-- 预检脚本不得打印 session token、admin token、UploadLink 或旧 token。
-- 测试上传只能使用脚本内置小图或用户明确指定的受控文件，不做通用文件管理能力。
-- 设备安装逻辑复用 `android\scripts\install_debug_apk.ps1`。
-- 真机联调仍然不能公开 `uploads/`。
-- 真机联调仍然不能把后端监听地址改成 `0.0.0.0`。
-- Cloudflare Tunnel 只映射到 `http://127.0.0.1:8000`。
-
-## 19. 后端验收清单
-
-每次后端阶段完成必须能测试：
-
-```text
-GET /api/health
-GET /api/auth/check 正确 Token
-GET /api/auth/check 错误 Token
-POST /u/{upload_key}
-POST /api/app/upload-screenshot
-上传超大文件
-上传不支持格式
-GET /api/expenses/pending
-PATCH /api/expenses/{id}
-POST /api/expenses/{id}/confirm
-amount_cents 为空时 confirm 报 amount_required
-POST /api/expenses/{id}/reject
-GET /api/expenses/confirmed?page=1&page_size=50
-GET /api/expenses/{id}/image 正确 Token
-GET /api/expenses/{id}/image 错误 Token
-GET /api/stats/monthly
-```
-
-自动化命令：
-
-```bat
-.venv\Scripts\python.exe -m compileall app scripts tests
-.venv\Scripts\ruff.exe check app scripts tests
-.venv\Scripts\python.exe -m pytest
-.venv\Scripts\python.exe scripts\smoke_test.py
-```
-
-## 20. Android 验收清单
-
-每次 Android 阶段完成必须验证：
-
-```text
-Gradle Sync 通过
-App 能启动
-绑定服务器页可用
-Token 正确绑定成功
-Token 错误显示中文错误
-生物识别可用
-待确认列表能加载
-编辑页能保存
-金额元转分正确
-确认入账成功
-确认后 Room upsert
-重复同步不重复插入
-账本页能显示本地缓存
-断网后账本页不白屏
-设置页能测试连接
-设置页能清除绑定
-```
-
-自动化命令：
-
-```powershell
-.\gradlew.bat --no-daemon :app:testGrayDebugUnitTest
-.\gradlew.bat --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
-.\gradlew.bat --no-daemon :app:lintGrayDebug
-```
+每次变更必须写明日期、摘要、影响范围。
+规则放宽必须进入 `docs/DECISIONS/`，并写明回收条件。

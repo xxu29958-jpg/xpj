@@ -14,13 +14,7 @@
 6. `docs/rules/REFERENCES.md`
 7. 与当前任务相关的 `docs/DECISIONS/*.md`
 
-后端实现相关任务再阅读：
-
-1. `docs/rules/BACKEND_RULES.md`
-
-Android 实现相关任务再阅读：
-
-1. `docs/rules/ANDROID_RULES.md`
+后端 / Android 任务的具体补充已合并入 `docs/rules/ENGINEERING_RULES.md` §14（项目特定补充）。
 
 第二版、OCR、分类、重复检测、缩略图、图片清理相关任务再阅读：
 
@@ -38,8 +32,14 @@ Android 实现相关任务再阅读：
 
 以下规则的完整详情均在 `docs/rules/ENGINEERING_RULES.md` 中，此处仅列索引：
 
-- 总原则与优先级 → §1
-- 后端分层（routes → services → models） → §3-4
-- 代码质量与依赖约束 → §4.1, §15.1
-- Android 分层（Screen → ViewModel → Repository → DAO） → §12
-- Windows UTF-8 → §9.1
+- 裁决顺序 → §0
+- 后端分层（routes → services → models / providers） → §1
+- 客户端分层（Screen → ViewModel → Repository → IO） → §1
+- 项目结构、命名 → §2
+- 数据规范（金额、时间、id） → §3
+- 错误码格式 → §4
+- 安全 / 鉴权 / 构建分级 → §5
+- 持久化 / 同步 / 隔离 → §6
+- 依赖治理 → §9
+- 测试 / 发布 / 回滚 → §11
+- 小票夹项目特定（identity v0.3、OCR provider、UploadLink、Windows BOM、三端 token 同步等） → §14
