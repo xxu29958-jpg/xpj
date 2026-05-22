@@ -14,12 +14,16 @@ public hostname (e.g. ``api.zen70.cn``) and is the only signal we rely on.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 
 from fastapi import Request
 
 from app.config import get_settings
 from app.errors import AppError
+
+logger = logging.getLogger(__name__)
 
 # Loopback peer addresses we trust. Anything else is rejected outright.
 _LOOPBACK_PEERS: frozenset[str] = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -42,18 +46,55 @@ _BASE_LOOPBACK_HOSTS: frozenset[str] = frozenset(
 )
 
 
+# Loopback-style Host header that the extra-allow list may legitimately need.
+# Only literal loopback addresses + optional port. Anything resembling a DNS
+# name (including the public Cloudflare Tunnel hostname) is rejected — adding
+# such a host to XPJ_EXTRA_LOOPBACK_HOSTS would silently widen /web / /owner
+# beyond loopback-only.
+_LOOPBACK_STYLE_HOST = re.compile(
+    r"^(?:127\.0\.0\.1|::1|\[::1\]|localhost)(?::\d+)?$",
+    re.IGNORECASE,
+)
+
+
+def _is_loopback_style_host(host: str) -> bool:
+    return bool(_LOOPBACK_STYLE_HOST.match(host))
+
+
 def _extra_loopback_hosts() -> frozenset[str]:
     """Honour the ``XPJ_EXTRA_LOOPBACK_HOSTS`` env var (comma-separated).
 
     Used by local tooling that runs uvicorn on a non-default port (e.g. the
     screenshot capture script on :8765). Never expand this list at runtime
     based on request headers — only static, owner-controlled config.
+
+    Non-loopback-style entries (anything that doesn't match 127.0.0.1[:port] /
+    localhost[:port] / [::1][:port] / ::1[:port]) are dropped with a loud
+    log.error — accepting them would let an operator who pastes the public
+    Cloudflare Tunnel hostname into this env var silently disable the /web /
+    /owner Host-header gate.
     """
     raw = os.environ.get("XPJ_EXTRA_LOOPBACK_HOSTS", "")
     if not raw:
         return frozenset()
-    extras = {item.strip().lower() for item in raw.split(",") if item.strip()}
-    return frozenset(extras)
+    accepted: set[str] = set()
+    rejected: list[str] = []
+    for item in raw.split(","):
+        host = item.strip().lower()
+        if not host:
+            continue
+        if _is_loopback_style_host(host):
+            accepted.add(host)
+        else:
+            rejected.append(host)
+    if rejected:
+        logger.error(
+            "XPJ_EXTRA_LOOPBACK_HOSTS contains non-loopback entries; "
+            "ignored: %s. Only 127.0.0.1[:port] / localhost[:port] / "
+            "[::1][:port] / ::1[:port] are accepted.",
+            rejected,
+        )
+    return frozenset(accepted)
 
 
 def _loopback_hosts() -> frozenset[str]:
