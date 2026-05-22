@@ -21,7 +21,7 @@
 
 v0.5-v0.8 已完成。当前版本 v0.9.0a1，正在进行 Reports / Goals / Chart UX 收口。后续仍按每版 RC 门禁验证。
 
-v1.0 前仍然不做：大 CSV 10k+ 流式导入、商品级小票拆分和家庭拆账数据模型。
+v1.0 前已经预埋数据模型与读写 API（`expense_items` / `expense_splits` 表与 `/api/expenses/{id}/items|splits` GET/PUT，Android `ApiService` 也已对接），但 v1.0 RC 仍要求：大 CSV 10k+ 流式导入、商品级 OCR 拆分、家庭拆账 UI 和发布级文档同步落地。`v1.0 前仍然不做`指对外功能未通过 release gate，不指数据模型缺失。
 
 ## 2. 不变原则
 
