@@ -13,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -70,15 +69,70 @@ class StatsViewModelTest {
         assertEquals(111000L, viewModel.uiState.value.stats?.totalAmountCents)
         assertEquals("2026-04", viewModel.uiState.value.lifestyleStats?.month)
     }
+
+    @Test
+    fun statsSourceMarksBackendOnSuccess() = statsTest {
+        val stats = FakeStatsActions()
+        val viewModel = StatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        advanceUntilIdle()
+
+        assertEquals(StatsSource.Backend, viewModel.uiState.value.statsSource)
+    }
+
+    @Test
+    fun statsSourceMarksLocalFallbackOnBackendFailure() = statsTest {
+        val stats = FakeStatsActions()
+        stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
+        val viewModel = StatsViewModel(
+            repository = stats,
+            recurringRepository = FakeStatsRecurringActions(),
+        )
+        // Seed local Room cache so the fallback path has something to compute against.
+        stats.confirmedFlow.value = listOf(
+            Expense(
+                id = 1L,
+                publicId = "e1",
+                amountCents = 12345L,
+                merchant = "本机",
+                category = "餐饮",
+                note = null,
+                source = "android-qa",
+                imagePath = null,
+                thumbnailPath = null,
+                imageHash = null,
+                rawText = null,
+                confidence = null,
+                duplicateStatus = "none",
+                duplicateOfId = null,
+                duplicateReason = null,
+                tags = "",
+                valueScore = null,
+                regretScore = null,
+                status = "confirmed",
+                expenseTime = "2026-05-12T10:15:00Z",
+                createdAt = "2026-05-12T10:15:00Z",
+                updatedAt = "2026-05-12T10:15:00Z",
+                confirmedAt = "2026-05-12T10:15:00Z",
+                rejectedAt = null,
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(StatsSource.LocalFallback, viewModel.uiState.value.statsSource)
+    }
 }
 
 private class FakeStatsActions : StatsActions {
     val ledgerFlow = MutableStateFlow<String?>("owner")
+    val confirmedFlow = MutableStateFlow<List<Expense>>(emptyList())
     var monthlyStatsResponder: (suspend (String?, String?) -> Result<MonthlyStats>)? = null
 
     override fun observeActiveLedgerId(): Flow<String?> = ledgerFlow
 
-    override fun observeConfirmed(): Flow<List<Expense>> = emptyFlow()
+    override fun observeConfirmed(): Flow<List<Expense>> = confirmedFlow
 
     override fun monthlyBudgetCents(): Long? = null
 

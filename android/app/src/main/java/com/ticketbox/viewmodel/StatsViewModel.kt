@@ -37,8 +37,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 
+/**
+ * Whether [StatsUiState.stats] currently comes from the backend (authoritative)
+ * or from the local Room cache (offline fallback). UI should be able to render
+ * a "本机估算" indicator when this is [LocalFallback] — see
+ * ENGINEERING_RULES §14 "数据真源" + audit P2-01.
+ */
+enum class StatsSource { None, Backend, LocalFallback }
+
 data class StatsUiState(
     val stats: MonthlyStats? = null,
+    val statsSource: StatsSource = StatsSource.None,
     val lifestyleStats: LifestyleStats? = null,
     val dailyTrend: List<DailySpend> = emptyList(),
     val monthComparison: MonthComparison? = null,
@@ -108,6 +117,7 @@ class StatsViewModel(
                     _uiState.update {
                         it.copy(
                             stats = null,
+                            statsSource = StatsSource.None,
                             lifestyleStats = null,
                             dailyTrend = emptyList(),
                             monthComparison = null,
@@ -157,8 +167,17 @@ class StatsViewModel(
                     )
                     val localStats = monthlyStatsFromConfirmedExpenses(expenses, it.month, it.selectedTag)
                     val visibleStats = it.stats ?: localStats
+                    // Only flip the source flag if we're actually substituting a local fallback —
+                    // when backend stats already populated `it.stats`, observeConfirmed() must not
+                    // pretend the visible figure is authoritative just because Room is in sync.
+                    val nextSource = when {
+                        it.stats != null -> it.statsSource
+                        visibleStats != null -> StatsSource.LocalFallback
+                        else -> StatsSource.None
+                    }
                     it.copy(
                         stats = visibleStats,
+                        statsSource = nextSource,
                         dailyTrend = recentDailySpending(visibleExpenses),
                         monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
                         budgetProgress = budgetProgressFor(it.month, visibleStats),
@@ -181,6 +200,7 @@ class StatsViewModel(
             it.copy(
                 month = value,
                 stats = localStats,
+                statsSource = if (localStats != null) StatsSource.LocalFallback else StatsSource.None,
                 dailyTrend = recentDailySpending(visibleExpenses),
                 monthComparison = monthlySpendingComparison(visibleExpenses, value),
                 budgetProgress = budgetProgressFor(value, localStats),
@@ -297,6 +317,7 @@ class StatsViewModel(
                             _uiState.update {
                                 it.copy(
                                     stats = stats,
+                                    statsSource = StatsSource.Backend,
                                     lifestyleStats = lifestyle,
                                     budgetProgress = budgetProgressFor(stats.month, stats),
                                     categoryInsight = monthlyCategoryInsight(stats),
@@ -309,6 +330,7 @@ class StatsViewModel(
                             _uiState.update {
                                 it.copy(
                                     stats = stats,
+                                    statsSource = StatsSource.Backend,
                                     budgetProgress = budgetProgressFor(stats.month, stats),
                                     categoryInsight = monthlyCategoryInsight(stats),
                                     loading = false,
@@ -324,8 +346,14 @@ class StatsViewModel(
                             monthlyStatsFromConfirmedExpenses(confirmedCache, value, tag.orEmpty())
                         }
                         val visibleStats = fallbackStats ?: it.stats
+                        val nextSource = when {
+                            fallbackStats != null -> StatsSource.LocalFallback
+                            visibleStats != null -> it.statsSource
+                            else -> StatsSource.None
+                        }
                         it.copy(
                             stats = visibleStats,
+                            statsSource = nextSource,
                             budgetProgress = budgetProgressFor(month ?: it.month, visibleStats),
                             categoryInsight = monthlyCategoryInsight(visibleStats),
                             loading = false,

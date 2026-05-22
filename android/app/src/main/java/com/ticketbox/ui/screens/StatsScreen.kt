@@ -145,6 +145,7 @@ fun StatsScreen(
                     item {
                         StatsOverviewCard(
                             stats = stats,
+                            statsSource = state.statsSource,
                             recent7DaysAmountCents = if (state.selectedTag.isBlank()) {
                                 state.lifestyleStats?.recent7DaysAmountCents
                                     ?: state.dailyTrend.sumOf { it.amountCents }

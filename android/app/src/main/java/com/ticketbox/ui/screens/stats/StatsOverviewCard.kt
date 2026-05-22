@@ -39,6 +39,7 @@ import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.viewmodel.StatsSource
 
 @Composable
 internal fun StatsOverviewCard(
@@ -46,6 +47,7 @@ internal fun StatsOverviewCard(
     recent7DaysAmountCents: Long,
     comparison: MonthComparison?,
     dailyTrend: List<DailySpend> = emptyList(),
+    statsSource: StatsSource = StatsSource.Backend,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
@@ -56,13 +58,31 @@ internal fun StatsOverviewCard(
         ),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
     ) {
-        Text(
-            text = "本月支出",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = "本月支出",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (statsSource == StatsSource.LocalFallback) {
+                Text(
+                    text = "本机估算",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(AppRadius.pill))
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
