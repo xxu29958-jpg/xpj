@@ -3,7 +3,7 @@
 查看 Ticketbox Windows 计划任务状态（不打印任何 token / 域名 / 端口）。
 #>
 param(
-    [string[]]$TaskNames = @("TicketboxBackend", "TicketboxCloudflareTunnel", "TicketboxBackup")
+    [string[]]$TaskNames = @("TicketboxBackend", "TicketboxCloudflareTunnel", "TicketboxBackup", "TicketboxBoundaryCheck")
 )
 
 $ErrorActionPreference = "Stop"

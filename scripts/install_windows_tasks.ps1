@@ -3,12 +3,16 @@
     [string]$BackendTaskName = "TicketboxBackend",
     [string]$TunnelTaskName = "TicketboxCloudflareTunnel",
     [string]$BackupTaskName = "TicketboxBackup",
+    [string]$BoundaryTaskName = "TicketboxBoundaryCheck",
     [string]$BackupTime = "03:30",
+    [string]$BoundaryCheckTime = "04:00",
     [int]$BackupRetentionDays = 30,
+    [int]$BoundaryLogRetentionDays = 14,
     [string]$CloudflaredPath = "",
     [string]$CloudflaredArguments = "",
     [switch]$SkipTunnel,
     [switch]$SkipBackup,
+    [switch]$SkipBoundaryCheck,
     [switch]$ForceTunnelTask,
     [switch]$NoStart
 )
@@ -20,6 +24,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $StartBackendScript = Join-Path $ProjectRoot "scripts\start_backend.ps1"
 $MaintenanceScript = Join-Path $ProjectRoot "scripts\maintenance_ticketbox.ps1"
+$BoundaryCheckScript = Join-Path $ProjectRoot "scripts\scheduled_public_boundary_check.ps1"
 
 function New-TaskSettings {
     New-ScheduledTaskSettingsSet `
@@ -77,6 +82,15 @@ function Resolve-BackupTime {
     }
     catch {
         throw "备份时间格式不正确：$BackupTime。请使用 HH:mm，例如 03:30。"
+    }
+}
+
+function Resolve-BoundaryCheckTime {
+    try {
+        return [datetime]::ParseExact($BoundaryCheckTime, "HH:mm", [Globalization.CultureInfo]::InvariantCulture)
+    }
+    catch {
+        throw "公网边界检查时间格式不正确：$BoundaryCheckTime。请使用 HH:mm，例如 04:00。"
     }
 }
 
@@ -147,6 +161,9 @@ if (-not (Test-Path -LiteralPath $StartBackendScript)) {
 if (-not (Test-Path -LiteralPath $MaintenanceScript)) {
     throw "未找到维护脚本：$MaintenanceScript"
 }
+if (-not (Test-Path -LiteralPath $BoundaryCheckScript)) {
+    throw "未找到公网边界检查脚本：$BoundaryCheckScript"
+}
 
 Write-Host "安装小票夹 Windows 登录自启任务"
 Write-Host "项目目录：$ProjectRoot"
@@ -209,6 +226,18 @@ if (-not $SkipBackup) {
 }
 else {
     Write-Host "SKIP 备份任务：已指定 -SkipBackup。"
+}
+
+if (-not $SkipBoundaryCheck) {
+    Register-DailyTask `
+        -TaskName $BoundaryTaskName `
+        -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$BoundaryCheckScript`" -LogRetentionDays $BoundaryLogRetentionDays" `
+        -At (Resolve-BoundaryCheckTime) `
+        -Description "Daily public-boundary probe for 小票夹 (check_public_boundary.ps1)"
+}
+else {
+    Write-Host "SKIP 公网边界检查任务：已指定 -SkipBoundaryCheck。"
 }
 
 if (-not $NoStart) {

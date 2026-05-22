@@ -66,6 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 ```text
 TicketboxBackend
 TicketboxBackup
+TicketboxBoundaryCheck
 ```
 
 如果本机已经安装了 `cloudflared` Windows 服务，脚本会复用服务，不重复创建 Tunnel 计划任务。
@@ -102,6 +103,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_task
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -BackupRetentionDays 14
+```
+
+`TicketboxBoundaryCheck` 默认在 04:00 调用 `scripts\scheduled_public_boundary_check.ps1`，跑 `check_public_boundary.ps1` 对 `PUBLIC_BASE_URL`（读 `backend\.env`）做 38 项探测。结果写到 `logs\public-boundary-<YYYY-MM-DD>.log`，默认保留 14 天。任意一条 FAIL 会让 `LastTaskResult` 变成 1，可以用 `scripts\check_windows_task_status.ps1` 抓出回归。改时间或保留天数：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 `
+  -BoundaryCheckTime 04:30 -BoundaryLogRetentionDays 7
+```
+
+不想创建公网边界检查任务（例如本机没接 Cloudflare Tunnel）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1 -SkipBoundaryCheck
 ```
 
 ## 启动和停止后端
