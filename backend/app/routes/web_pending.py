@@ -198,7 +198,7 @@ def web_pending_batch_reject(
 
 
 @router.post("/review/bulk", response_class=HTMLResponse)
-def web_review_bulk(
+def web_review_bulk(  # noqa: C901 - bulk-review action dispatcher: 8 actions × per-row outcome buckets dominate the branch count; per-action handler split is its own PR (see audit P2-06)
     request: Request,
     action: str = Form(...),
     ledger_id: str = Form(default=""),

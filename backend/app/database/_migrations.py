@@ -742,7 +742,7 @@ def _migrate_upload_links(connection) -> None:
     ))
 
 
-def migrate_sqlite_schema() -> None:
+def migrate_sqlite_schema() -> None:  # noqa: C901 - migration orchestrator: 17 branches enumerate per-table fixups; splits queued for v1.0 schema refactor
     """Orchestrate idempotent SQLite schema migration on startup.
 
     Two transaction phases:

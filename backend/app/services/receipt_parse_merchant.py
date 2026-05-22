@@ -37,7 +37,7 @@ def _extract_merchant(text: str) -> str | None:
     return candidate.value if candidate else None
 
 
-def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
+def _merchant_candidates(text: str) -> list[_MerchantCandidate]:  # noqa: C901 - merchant-name scoring heuristic; branches enumerate domain signals (length, position, blacklist), splitting flattens not simplifies
     lines = text.splitlines()
     candidates: list[_MerchantCandidate] = []
 

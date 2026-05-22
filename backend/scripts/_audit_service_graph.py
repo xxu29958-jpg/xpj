@@ -8,7 +8,7 @@ import pathlib
 from collections import defaultdict
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901 - one-shot read-only audit script; flat top-level driver, splitting wouldn't reduce branching
     base = pathlib.Path("app/services")
     graph: dict[str, set[str]] = defaultdict(set)
     rev_graph: dict[str, set[str]] = defaultdict(set)

@@ -138,7 +138,7 @@ def audit_directory_density():
 # B. STRUCTURE & COUPLING
 # -----------------------------------------------------------------------------
 
-def audit_import_graph_and_cycles():
+def audit_import_graph_and_cycles():  # noqa: C901 - one-shot read-only audit script; depth of cycle-detection logic isn't worth refactoring
     # Build module-to-module import graph (only app.*)
     graph: dict[str, set[str]] = defaultdict(set)
     rev: dict[str, set[str]] = defaultdict(set)

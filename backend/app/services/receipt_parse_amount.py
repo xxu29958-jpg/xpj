@@ -36,7 +36,7 @@ def _extract_amount_cents(text: str) -> int | None:
     return candidate.amount_cents if candidate else None
 
 
-def _amount_candidates(text: str) -> list[_AmountCandidate]:
+def _amount_candidates(text: str) -> list[_AmountCandidate]:  # noqa: C901 - receipt-amount scoring heuristic; splitting the keyword/pattern matchers off would just spread the same branching across helpers
     lines = text.splitlines()
     candidates: list[_AmountCandidate] = []
 
@@ -142,7 +142,7 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
     return _apply_amount_cross_evidence(candidates)
 
 
-def _calibrate_amount_candidates(
+def _calibrate_amount_candidates(  # noqa: C901 - per-candidate score adjuster; branches encode the receipt-parsing heuristics one-to-one
     candidates: list[_AmountCandidate], context: _ReceiptContext
 ) -> list[_AmountCandidate]:
     has_signed_primary_near_success = any(

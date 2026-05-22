@@ -351,7 +351,7 @@ def _validate_expense_split_integrity(connection, table_names: set[str]) -> None
         )
 
 
-def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:
+def _validate_tenant_child_integrity(connection, table_names: set[str]) -> None:  # noqa: C901 - one branch per child table FK pair; cleanest as a flat dispatch table, splits queued for v1.0 schema refactor
     """Reject tenant-scoped child rows whose parent belongs to another ledger."""
 
     if "expenses" in table_names:
