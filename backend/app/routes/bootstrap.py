@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
 from app.models import BootstrapSecretConsumption
+from app.network_boundary import require_admin_network_boundary
 from app.schemas import (
     BootstrapOwnerRequest,
     BootstrapOwnerResponse,
@@ -140,7 +141,18 @@ def post_bootstrap_owner(
     return BootstrapOwnerResponse(**result.__dict__)
 
 
-@router.post("/pairing-codes", response_model=PairingCodeResponse)
+@router.post(
+    "/pairing-codes",
+    response_model=PairingCodeResponse,
+    # admin token alone is not enough — Cloudflare Tunnel forwards public
+    # requests to 127.0.0.1, so without this guard a leaked admin token would
+    # let an attacker mint pairing codes from the public internet. Owner
+    # workflow always hits Owner Console on loopback, so this is purely a
+    # defense-in-depth tightening. Mirrors admin.py / maintenance.py which
+    # both attach the same guard at router level. See ENGINEERING_RULES §14
+    # "暴露面与边界".
+    dependencies=[Depends(require_admin_network_boundary)],
+)
 def post_pairing_code(
     payload: PairingCodeCreateRequest,
     auth: AuthContext = Depends(get_current_admin_context),

@@ -304,6 +304,29 @@ def test_app_owner_token_cannot_create_bootstrap_pairing_code(client: TestClient
     assert response.json()["error"] == "invalid_token"
 
 
+def test_pairing_codes_rejects_public_host_even_with_admin_token(
+    client: TestClient, *, identity,
+) -> None:
+    # Even with a valid admin token, the pairing-code creation endpoint must
+    # refuse requests forwarded from a public Host (e.g. through Cloudflare
+    # Tunnel). Mirrors the guard already in place on /api/admin/* and
+    # /api/maintenance/*. See ENGINEERING_RULES §14 暴露面与边界.
+    from app.network_boundary import require_admin_network_boundary
+
+    app.dependency_overrides.pop(require_admin_network_boundary, None)
+    try:
+        response = client.post(
+            "/api/bootstrap/pairing-codes",
+            headers={**identity.admin_headers, "host": "api.example.com"},
+            json={"ttl_minutes": 15},
+        )
+    finally:
+        app.dependency_overrides[require_admin_network_boundary] = lambda: None
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "admin_api_local_only"
+
+
 def test_pairing_code_expires(client: TestClient, *, identity) -> None:
     response = client.post(
         "/api/bootstrap/pairing-codes", headers=identity.admin_headers, json={"ttl_minutes": 1}
