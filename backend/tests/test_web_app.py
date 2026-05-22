@@ -300,6 +300,10 @@ def test_web_no_secret_leaks(web_client: TestClient, *, identity) -> None:
         # Absolute Windows / POSIX paths
         assert not re.search(r"[A-Za-z]:\\\\[^\"'<>]+", body), f"abs path leaked in {path}"
         assert "/home/" not in body and "C:\\" not in body
+        # Server endpoint / port leakage in普通用户面 — see ENGINEERING_RULES §10
+        assert "127.0.0.1" not in body, f"loopback IP leaked in {path}"
+        assert "localhost" not in body, f"localhost leaked in {path}"
+        assert ":8000" not in body, f"server port leaked in {path}"
 
 
 # ── Existing save/confirm semantics still work ──────────────────────────────
