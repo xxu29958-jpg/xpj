@@ -68,7 +68,6 @@ iPhone UploadLink 或 Android 上传截图
 
 ### 当前版本
 
-- [v0.9 Reports / Goals 收口报告](docs/current/V0_9_REPORT.md)
 - [CHANGELOG](docs/current/CHANGELOG.md)
 
 ### 设计参考

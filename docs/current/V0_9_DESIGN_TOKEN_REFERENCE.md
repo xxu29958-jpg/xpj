@@ -134,7 +134,7 @@ v0.10 base.html 用 `<html data-theme="{{ ui_theme or 'paper' }}">`，由 `_base
 
 ## 9. 提交边界
 
-按 [UI_IMPLEMENTATION_PLAN.md](../roadmap/UI_IMPLEMENTATION_PLAN.md) 的"tokens only"边界，v0.9 token 重写拆四个 commit：
+v0.9 token 重写按"tokens only"边界拆四个 commit：
 
 1. `tokens(android)`：4 个 sibling token class + ThemeVisuals 追加字段 + 测试。**不动任何 screen 文件**。
 2. `tokens(web)`：抽 `shared/tokens.css` + 5 主题块 + alias shim；`web.css` 删原 `:root` 块改 `@import`。
