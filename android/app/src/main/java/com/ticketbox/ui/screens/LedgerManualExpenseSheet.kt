@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.FxContract
@@ -92,7 +93,15 @@ fun ManualExpenseSheet(
                 }
             },
         ) {
-            DatePicker(state = datePickerState)
+            DatePicker(
+                state = datePickerState,
+                title = {
+                    Text(
+                        "选择日期",
+                        modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
+                    )
+                },
+            )
         }
     }
 

@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -11,6 +12,8 @@ import androidx.compose.material3.TimeInput
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.ticketbox.ui.components.datePickerMillisToUtcIso
 import com.ticketbox.ui.components.selectedDateMillisFromIso
 import com.ticketbox.ui.components.selectedHourFromIso
@@ -47,7 +50,15 @@ internal fun ExpenseEditDatePicker(
             }
         },
     ) {
-        DatePicker(state = datePickerState)
+        DatePicker(
+            state = datePickerState,
+            title = {
+                Text(
+                    "选择日期",
+                    modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp),
+                )
+            },
+        )
     }
 }
 
