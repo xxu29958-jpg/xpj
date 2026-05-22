@@ -43,3 +43,21 @@ def test_safe_headers_redacts_known_secret_headers() -> None:
     assert safe["X-Timezone"] == "Asia/Shanghai"
     # Original mapping must not be mutated.
     assert raw["Authorization"] == "Bearer session-abc"
+
+
+def test_safe_headers_masks_upload_key_in_referer_and_origin() -> None:
+    # A browser following /u/<upload_key> may attach Referer/Origin with the
+    # raw upload_key. Without this rule the upload_key would land in the 5xx
+    # log via SanitizedLoggingMiddleware's headers=... line. The scheme + host
+    # stay visible so the log line still says where the request came from.
+    raw = {
+        "Referer": "https://api.example.com/u/abc1234567890wxyz",
+        "Origin": "https://api.example.com",
+        "X-Forwarded-For": "203.0.113.7",
+    }
+    safe = safe_headers(raw)
+    assert "abc1234567890wxyz" not in safe["Referer"]
+    assert safe["Referer"] == "https://api.example.com/u/***"
+    # Origin without /u/ path is unchanged.
+    assert safe["Origin"] == "https://api.example.com"
+    assert safe["X-Forwarded-For"] == "203.0.113.7"
