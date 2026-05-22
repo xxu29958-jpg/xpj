@@ -23,6 +23,7 @@ from app.database._core import (
     settings,
 )
 from app.database._migrations import (
+    BASELINE_MIGRATION_NAME,
     is_schema_migration_applied,
     migrate_sqlite_schema,
     record_schema_migration,
@@ -35,6 +36,7 @@ from app.version import BACKEND_VERSION
 
 __all__ = [
     "BACKEND_ROOT",
+    "BASELINE_MIGRATION_NAME",
     "Base",
     "SessionLocal",
     "engine",
@@ -59,7 +61,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     migrate_sqlite_schema()
     record_schema_migration(
-        "baseline-v0.9.0a1",
+        BASELINE_MIGRATION_NAME,
         backend_version=BACKEND_VERSION,
         note="legacy hand-written migrate_sqlite_schema baseline",
     )

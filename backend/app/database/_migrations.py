@@ -36,9 +36,14 @@ from app.fx_constants import (
     FX_STATUS_READY,
 )
 from app.tenants import DEFAULT_TENANT_ID
+from app.version import BACKEND_VERSION
+
+
+BASELINE_MIGRATION_NAME = f"baseline-v{BACKEND_VERSION}"
 
 
 __all__ = [
+    "BASELINE_MIGRATION_NAME",
     "is_schema_migration_applied",
     "migrate_sqlite_schema",
     "record_schema_migration",

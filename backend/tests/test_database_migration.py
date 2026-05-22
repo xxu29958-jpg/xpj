@@ -7,7 +7,15 @@ import app.database as database
 import pytest
 from sqlalchemy import inspect, text
 
-from app.database import BACKEND_ROOT, Base, SessionLocal, engine, init_db, migrate_upload_paths_to_tenant_dirs
+from app.database import (
+    BACKEND_ROOT,
+    BASELINE_MIGRATION_NAME,
+    Base,
+    SessionLocal,
+    engine,
+    init_db,
+    migrate_upload_paths_to_tenant_dirs,
+)
 from app.models import DuplicateIgnore, Expense
 from tests._infra.env import TEST_DB_PATH, TEST_UPLOAD_DIR, TEST_UPLOAD_RELATIVE
 from tests._infra.assets import PNG_BYTES
@@ -349,7 +357,8 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert tester_rules > 0
     with engine.begin() as connection:
         migration_count = connection.execute(
-            text("SELECT COUNT(*) FROM schema_migrations WHERE name = 'baseline-v0.9.0a1'")
+            text("SELECT COUNT(*) FROM schema_migrations WHERE name = :name"),
+            {"name": BASELINE_MIGRATION_NAME},
         ).scalar_one()
     assert migration_count == 1
 
@@ -388,10 +397,8 @@ def test_baseline_records_current_backend_version_for_restore_validation() -> No
 
     with engine.begin() as connection:
         row = connection.execute(
-            text(
-                "SELECT backend_version FROM schema_migrations "
-                "WHERE name = 'baseline-v0.9.0a1'"
-            )
+            text("SELECT backend_version FROM schema_migrations WHERE name = :name"),
+            {"name": BASELINE_MIGRATION_NAME},
         ).first()
     assert row is not None
     assert row[0] == BACKEND_VERSION
@@ -421,15 +428,16 @@ def test_record_schema_migration_persists_backend_version() -> None:
 def test_schema_migration_marker_query_is_safe_before_init() -> None:
     _reset_empty_database()
 
-    assert database.is_schema_migration_applied("baseline-v0.9.0a1") is False
+    assert database.is_schema_migration_applied(BASELINE_MIGRATION_NAME) is False
 
     init_db()
 
-    assert database.is_schema_migration_applied("baseline-v0.9.0a1") is True
-    database.record_schema_migration("baseline-v0.9.0a1", note="repeat")
+    assert database.is_schema_migration_applied(BASELINE_MIGRATION_NAME) is True
+    database.record_schema_migration(BASELINE_MIGRATION_NAME, note="repeat")
     with engine.begin() as connection:
         migration_count = connection.execute(
-            text("SELECT COUNT(*) FROM schema_migrations WHERE name = 'baseline-v0.9.0a1'")
+            text("SELECT COUNT(*) FROM schema_migrations WHERE name = :name"),
+            {"name": BASELINE_MIGRATION_NAME},
         ).scalar_one()
     assert migration_count == 1
 
