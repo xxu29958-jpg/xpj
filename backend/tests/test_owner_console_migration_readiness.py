@@ -7,17 +7,13 @@ from html.parser import HTMLParser
 import pytest
 from fastapi.testclient import TestClient
 
-from app.database import settings as _settings
 from app.main import app
 from app.routes.owner_console import _require_local
 from app.services import backup_service
 from app.services.migration_readiness_service import build_v1_migration_readiness_report
 
 
-_requires_file_sqlite = pytest.mark.skipif(
-    ":memory:" in _settings.database_url or _settings.database_url == "sqlite://",
-    reason="Pre-v1 backup tests require a file-backed SQLite (test runs use in-memory).",
-)
+_requires_file_sqlite = pytest.mark.file_backed_only
 
 
 @pytest.fixture()

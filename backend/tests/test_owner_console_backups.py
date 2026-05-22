@@ -7,15 +7,11 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from app.database import settings as _settings
 from app.main import app
 from app.routes.owner_console import _require_local
 
 
-_requires_file_sqlite = pytest.mark.skipif(
-    ":memory:" in _settings.database_url or _settings.database_url == "sqlite://",
-    reason="Requires file-backed SQLite (test runs use in-memory).",
-)
+_requires_file_sqlite = pytest.mark.file_backed_only
 
 
 @pytest.fixture()

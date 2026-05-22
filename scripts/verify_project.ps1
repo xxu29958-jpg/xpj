@@ -139,8 +139,7 @@ if (-not $SkipBackend) {
     try {
         $env:XPJ_TEST_FILE_BACKED = "1"
         Invoke-Checked -FilePath $tools.Python -Arguments @(
-            "-m", "pytest", "-q",
-            "-k", "v1_migration_readiness or owner_migration_readiness or test_owner_backups_create_makes_file or pre_v03_backup_is_not_recreated"
+            "-m", "pytest", "-q", "-m", "file_backed_only"
         ) -WorkingDirectory $BackendRoot
     }
     finally {

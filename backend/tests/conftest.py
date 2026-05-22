@@ -35,5 +35,29 @@ def client(identity: TestIdentity):
         yield test_client
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "file_backed_only: test only meaningful against a file-backed SQLite; "
+        "skipped under the default in-memory lane. Run via XPJ_TEST_FILE_BACKED=1.",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    from app.database import settings as _settings
+
+    url = _settings.database_url
+    if ":memory:" not in url and url != "sqlite://":
+        return
+    skip_marker = pytest.mark.skip(
+        reason="file_backed_only: requires file-backed SQLite (set XPJ_TEST_FILE_BACKED=1)."
+    )
+    for item in items:
+        if "file_backed_only" in item.keywords:
+            item.add_marker(skip_marker)
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     cleanup_runtime()
