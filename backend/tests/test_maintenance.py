@@ -57,3 +57,22 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(
     assert "token" not in str(payload).lower()
     assert "path" not in str(payload).lower()
     assert "E:\\" not in str(payload)
+
+
+def test_server_settings_storage_metric_counts_external_upload_dir(
+    client: TestClient, monkeypatch, tmp_path, *, identity,
+) -> None:
+    from dataclasses import replace
+
+    from app.services import file_service, thumb_service
+
+    external_upload_dir = (tmp_path / "external-uploads").resolve()
+    external_settings = replace(file_service.get_settings(), upload_dir=external_upload_dir)
+    monkeypatch.setattr(file_service, "get_settings", lambda: external_settings)
+    monkeypatch.setattr(thumb_service, "get_settings", lambda: external_settings)
+
+    upload_png(client, identity=identity)
+
+    response = client.get("/api/settings/server", headers=identity.app_headers)
+    assert response.status_code == 200
+    assert response.json()["upload_storage_bytes"] > 0
