@@ -44,6 +44,7 @@ from app.routes import (
     user_preferences,
     web_app,
     web_auth,
+    web_bill_split,
     web_budgets,
     web_categories,
     web_dashboard,
@@ -142,6 +143,7 @@ app.include_router(owner_ledgers.router)
 # generic /web matcher (FastAPI registers first-mounted-first-matched).
 app.include_router(web_auth.router)
 app.include_router(web_app.router)
+app.include_router(web_bill_split.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_media.router)

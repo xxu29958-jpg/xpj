@@ -1715,6 +1715,69 @@
         "title": "Body_web_save_web_expenses__expense_id__save_post",
         "type": "object"
       },
+      "Body_web_split_accept_web_bill_splits__public_id__accept_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "target_ledger_id": {
+            "title": "Target Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_ledger_id"
+        ],
+        "title": "Body_web_split_accept_web_bill_splits__public_id__accept_post",
+        "type": "object"
+      },
+      "Body_web_split_cancel_web_bill_splits__public_id__cancel_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_split_cancel_web_bill_splits__public_id__cancel_post",
+        "type": "object"
+      },
+      "Body_web_split_invite_web_expenses__expense_id__split_invite_post": {
+        "properties": {
+          "amount_yuan": {
+            "title": "Amount Yuan",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "receiver_account_id": {
+            "title": "Receiver Account Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "receiver_account_id",
+          "amount_yuan"
+        ],
+        "title": "Body_web_split_invite_web_expenses__expense_id__split_invite_post",
+        "type": "object"
+      },
+      "Body_web_split_reject_web_bill_splits__public_id__reject_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_split_reject_web_bill_splits__public_id__reject_post",
+        "type": "object"
+      },
       "Body_web_splits_save_web_expenses__expense_id__splits_save_post": {
         "properties": {
           "ledger_id": {
@@ -15328,6 +15391,290 @@
         ]
       }
     },
+    "/web/bill-splits/inbox": {
+      "get": {
+        "operationId": "web_bill_split_inbox_web_bill_splits_inbox_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Bill Split Inbox",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/bill-splits/sent": {
+      "get": {
+        "operationId": "web_bill_split_sent_web_bill_splits_sent_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Bill Split Sent",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/bill-splits/{public_id}/accept": {
+      "post": {
+        "operationId": "web_split_accept_web_bill_splits__public_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_split_accept_web_bill_splits__public_id__accept_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Split Accept",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/bill-splits/{public_id}/cancel": {
+      "post": {
+        "operationId": "web_split_cancel_web_bill_splits__public_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_split_cancel_web_bill_splits__public_id__cancel_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Split Cancel",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/bill-splits/{public_id}/reject": {
+      "post": {
+        "operationId": "web_split_reject_web_bill_splits__public_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_split_reject_web_bill_splits__public_id__reject_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Split Reject",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/budgets": {
       "get": {
         "operationId": "web_budgets_web_budgets_get",
@@ -16510,6 +16857,58 @@
           }
         },
         "summary": "Web Save",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/split-invite": {
+      "post": {
+        "operationId": "web_split_invite_web_expenses__expense_id__split_invite_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_split_invite_web_expenses__expense_id__split_invite_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Split Invite",
         "tags": [
           "web"
         ]

@@ -78,6 +78,25 @@
       <span>疑似重复</span>
       {% if suspected_duplicate_count %}<span class="nav-badge">{{ suspected_duplicate_count }}</span>{% endif %}
     </a>
+    <a class="nav-item {% if '/bill-splits/inbox' in _p %}active{% endif %}" href="/web/bill-splits/inbox{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16v16H4z"/>
+          <path d="M4 9h16"/><path d="M9 4v5"/>
+        </svg>
+      </span>
+      <span>拆账收件箱</span>
+    </a>
+    <a class="nav-item {% if '/bill-splits/sent' in _p %}active{% endif %}" href="/web/bill-splits/sent{{ q }}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>
+        </svg>
+      </span>
+      <span>已发拆账</span>
+    </a>
     <a class="nav-item {% if '/import' in _p or '/export' in _p %}active{% endif %}" href="/web/import{{ q }}">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"

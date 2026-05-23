@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}已发出拆账 · 小票夹{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">已发出的拆账邀请</h1>
+  <div class="page-sub">
+    你从当前账本发起的所有拆账邀请。仅"待处理"状态可以撤回；
+    一旦接收方已接受，对应账单已在对方账本生成，不能再撤回。
+  </div>
+</div>
+
+{% if message %}
+<div class="callout-info">{{ message }}</div>
+{% endif %}
+
+{% if not bill_split_rows %}
+<div class="dt-card">
+  <div class="empty-state">
+    <p>当前账本没有已发起的拆账邀请。从某笔账单详情页点"发起拆账"开始。</p>
+  </div>
+</div>
+{% else %}
+<table class="dt-table">
+  <thead>
+    <tr>
+      <th>状态</th>
+      <th>发给</th>
+      <th>金额</th>
+      <th>商家</th>
+      <th>消费时间</th>
+      <th>到期</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in bill_split_rows %}
+    <tr>
+      <td>
+        {% if row.status == 'invited' %}
+          <span class="dt-pill">待处理</span>
+        {% elif row.status == 'accepted' %}
+          <span class="dt-pill ok">已接受</span>
+        {% elif row.status == 'rejected' %}
+          <span class="dt-pill">已拒绝</span>
+        {% elif row.status == 'cancelled' %}
+          <span class="dt-pill">已撤回</span>
+        {% else %}
+          <span class="dt-pill">已过期</span>
+        {% endif %}
+      </td>
+      <td>{{ row.receiver_display_name }}</td>
+      <td>¥{{ row.amount_yuan }}</td>
+      <td>{{ row.merchant or '—' }}</td>
+      <td>{{ row.expense_time or '—' }}</td>
+      <td>{{ row.expires_at or '—' }}</td>
+      <td>
+        {% if row.status == 'invited' %}
+          <form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="inline-form">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button type="submit" class="dt-btn">撤回</button>
+          </form>
+        {% else %}
+          <span class="meta">—</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -95,6 +95,15 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/acknowledge-mismatch"): "writer-only",
+    # ADR-0029 bill split UI
+    ("POST", "/web/expenses/{expense_id}/split-invite"): "writer-only",
+    ("GET", "/web/bill-splits/inbox"): "local-only-rendering",
+    ("GET", "/web/bill-splits/sent"): "local-only-rendering",
+    # accept / reject 不写 selected_ledger（accept 写 target_ledger
+    # 在 service 层 _load_writer_member 校验；reject 不写任何 ledger）
+    ("POST", "/web/bill-splits/{public_id}/accept"): "local-only-rendering",
+    ("POST", "/web/bill-splits/{public_id}/reject"): "local-only-rendering",
+    ("POST", "/web/bill-splits/{public_id}/cancel"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/splits/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/reject"): "writer-only",
     # Media — handler is in web_media.py (the duplicate in web_app.py was

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}拆账收件箱 · 小票夹{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">拆账收件箱</h1>
+  <div class="page-sub">
+    家人或其他账号给你发起的拆账邀请。接受后会在你选择的账本生成一笔独立的已确认账单，不会影响对方账本。
+  </div>
+</div>
+
+{% if message %}
+<div class="callout-info">{{ message }}</div>
+{% endif %}
+
+{% if not bill_split_rows %}
+<div class="dt-card">
+  <div class="empty-state">
+    <p>暂无拆账邀请。</p>
+  </div>
+</div>
+{% else %}
+<table class="dt-table">
+  <thead>
+    <tr>
+      <th>状态</th>
+      <th>来自</th>
+      <th>金额</th>
+      <th>商家</th>
+      <th>消费时间</th>
+      <th>到期</th>
+      <th style="width:30%">操作</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in bill_split_rows %}
+    <tr>
+      <td>
+        {% if row.status == 'invited' and row.is_expired %}
+          <span class="dt-pill warn">已过期</span>
+        {% elif row.status == 'invited' %}
+          <span class="dt-pill">待处理</span>
+        {% elif row.status == 'accepted' %}
+          <span class="dt-pill ok">已接受</span>
+        {% elif row.status == 'rejected' %}
+          <span class="dt-pill">已拒绝</span>
+        {% elif row.status == 'cancelled' %}
+          <span class="dt-pill">已撤回</span>
+        {% else %}
+          <span class="dt-pill">已过期</span>
+        {% endif %}
+      </td>
+      <td>{{ row.sender_display_name }}</td>
+      <td>¥{{ row.amount_yuan }}</td>
+      <td>{{ row.merchant or '—' }}</td>
+      <td>{{ row.expense_time or '—' }}</td>
+      <td>{{ row.expires_at or '—' }}</td>
+      <td>
+        {% if row.status == 'invited' and not row.is_expired %}
+          {% if row.accept_choices %}
+          <form method="post" action="/web/bill-splits/{{ row.public_id }}/accept" class="inline-form">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <select name="target_ledger_id" required>
+              {% for c in row.accept_choices %}
+                <option value="{{ c.ledger_id }}">{{ c.ledger_id }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="dt-btn">接受到该账本</button>
+          </form>
+          {% else %}
+          <span class="meta text-danger">没有可写入的账本</span>
+          {% endif %}
+          <form method="post" action="/web/bill-splits/{{ row.public_id }}/reject" class="inline-form">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <button type="submit" class="dt-btn">拒绝</button>
+          </form>
+        {% else %}
+          <span class="meta">—</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
