@@ -135,6 +135,13 @@ class Expense(Base):
     items_sum_status: Mapped[str] = mapped_column(
         String(32), default="no_items", server_default="no_items", nullable=False
     )
+    # ADR-0029: when this expense was generated from accepting a cross-
+    # ledger bill split invitation, points back to the invitation.
+    # NULL for normal expenses. Together with ``source='bill_split_received'``
+    # forms the marker used by update_expense's IMMUTABLE guard.
+    split_origin_invitation_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
 
     @property
     def home_amount_cents(self) -> int | None:

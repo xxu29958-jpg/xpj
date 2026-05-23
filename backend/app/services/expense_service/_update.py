@@ -106,6 +106,16 @@ def update_expense(
         raise AppError("expense_not_found", status_code=404)
 
     updates = payload.model_dump(exclude_unset=True)
+
+    # ADR-0029: received split expenses freeze their money / merchant /
+    # time fields — those represent the agreed-upon debt with the sender
+    # and silently mutating them after accept is a data-integrity issue.
+    # Lazy import avoids expense_service ↔ bill_split_service circular
+    # at module load time.
+    from app.services.bill_split_service import assert_no_immutable_field_changes
+
+    assert_no_immutable_field_changes(expense, set(updates.keys()))
+
     if "merchant" in updates:
         expense.merchant = _clean_optional_text(updates["merchant"])
     if "category" in updates and updates["category"]:

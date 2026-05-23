@@ -18,6 +18,7 @@ from app.middleware.web_session import web_session_gate
 from app.routes import admin as admin_routes
 from app.routes import (
     auth,
+    bill_split,
     bootstrap,
     budgets,
     dashboard,
@@ -127,6 +128,8 @@ app.include_router(settings.router)
 app.include_router(user_preferences.router)
 app.include_router(stats.router)
 app.include_router(tasks.router)
+app.include_router(bill_split.sender_router)
+app.include_router(bill_split.inbox_router)
 app.include_router(reports.router)
 app.include_router(imports.router)
 app.include_router(insights.router)

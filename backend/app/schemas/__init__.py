@@ -36,6 +36,15 @@ from app.schemas._background_task import (
     BackgroundTaskResponse,
     BackgroundTaskStatus,
 )
+from app.schemas._bill_split import (
+    BillSplitAcceptRequest,
+    BillSplitInboxListResponse,
+    BillSplitInboxResponse,
+    BillSplitInviteRequest,
+    BillSplitSentListResponse,
+    BillSplitSentResponse,
+    BillSplitStatus,
+)
 from app.schemas._budgets import (
     BudgetCategoryRequest,
     BudgetCategoryResponse,
@@ -178,6 +187,13 @@ __all__ = [
     "BackgroundTaskListResponse",
     "BackgroundTaskResponse",
     "BackgroundTaskStatus",
+    "BillSplitAcceptRequest",
+    "BillSplitInboxListResponse",
+    "BillSplitInboxResponse",
+    "BillSplitInviteRequest",
+    "BillSplitSentListResponse",
+    "BillSplitSentResponse",
+    "BillSplitStatus",
     "BootstrapOwnerRequest",
     "BootstrapOwnerResponse",
     "BudgetCategoryRequest",

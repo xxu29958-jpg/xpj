@@ -814,6 +814,25 @@ def _migrate_expense_items_for_kind(connection, table_names: set[str]) -> None:
     ))
 
 
+def _migrate_expenses_split_origin_invitation_id(
+    connection, existing_expense_columns: set[str]
+) -> None:
+    """ADR-0029: add expenses.split_origin_invitation_id column.
+
+    Pure additive column with default NULL. No backfill — existing rows
+    are not from bill split (no invitation exists pre-v1.0).
+    """
+    if "split_origin_invitation_id" in existing_expense_columns:
+        return
+    connection.execute(text(
+        "ALTER TABLE expenses ADD COLUMN split_origin_invitation_id VARCHAR(36)"
+    ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_expenses_split_origin_invitation_id "
+        "ON expenses (split_origin_invitation_id)"
+    ))
+
+
 def _migrate_expenses_items_sum_status(connection, existing_expense_columns: set[str]) -> None:
     """ADR-0035: add expenses.items_sum_status column + backfill from items."""
     if "items_sum_status" in existing_expense_columns:
@@ -959,3 +978,8 @@ def migrate_sqlite_schema() -> None:  # noqa: C901 - migration orchestrator: 17 
                 column["name"] for column in inspect(connection).get_columns("expenses")
             }
             _migrate_expenses_items_sum_status(connection, expense_columns_post)
+            # ADR-0029: idempotent additive column for bill split link.
+            expense_columns_post2 = {
+                column["name"] for column in inspect(connection).get_columns("expenses")
+            }
+            _migrate_expenses_split_origin_invitation_id(connection, expense_columns_post2)

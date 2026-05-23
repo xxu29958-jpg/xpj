@@ -430,6 +430,472 @@
         "title": "BackgroundTaskResponse",
         "type": "object"
       },
+      "BillSplitAcceptRequest": {
+        "description": "Body for ``POST /api/bill-splits/{public_id}/accept``.\n\nReceiver picks the target ledger. Backend checks write permission.",
+        "properties": {
+          "target_ledger_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Target Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_ledger_id"
+        ],
+        "title": "BillSplitAcceptRequest",
+        "type": "object"
+      },
+      "BillSplitInboxListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BillSplitInboxResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "BillSplitInboxListResponse",
+        "type": "object"
+      },
+      "BillSplitInboxResponse": {
+        "description": "Receiver's view of an invitation addressed to them.\n\nCarries who sent it (sender_account_id + display name) but **never**\nsender's expense_id or ledger_id (privacy: receiver must not pierce\ninto sender's personal ledger).",
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "amount_cents": {
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "category_suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Suggestion"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "exchange_rate_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Date"
+          },
+          "exchange_rate_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Source"
+          },
+          "exchange_rate_to_cny": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate To Cny"
+          },
+          "expense_time_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time Snapshot"
+          },
+          "expired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expired At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "merchant_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Snapshot"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency_code": {
+            "title": "Original Currency Code",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "rejected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At"
+          },
+          "sender_account_id": {
+            "title": "Sender Account Id",
+            "type": "integer"
+          },
+          "sender_display_name": {
+            "title": "Sender Display Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "invited",
+              "accepted",
+              "rejected",
+              "cancelled",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "status",
+          "amount_cents",
+          "home_currency_code",
+          "original_currency_code",
+          "expires_at",
+          "created_at",
+          "sender_account_id",
+          "sender_display_name"
+        ],
+        "title": "BillSplitInboxResponse",
+        "type": "object"
+      },
+      "BillSplitInviteRequest": {
+        "description": "Body for ``POST /api/expenses/{id}/split-invite``.\n\nNOTE the absence of ``receiver_ledger_id`` — see ADR-0029 Q0. Sender\nmust NOT specify which ledger receiver accepts to; receiver picks\nthat at accept time.",
+        "properties": {
+          "amount_cents": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "receiver_account_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Receiver Account Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "receiver_account_id",
+          "amount_cents"
+        ],
+        "title": "BillSplitInviteRequest",
+        "type": "object"
+      },
+      "BillSplitSentListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BillSplitSentResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "BillSplitSentListResponse",
+        "type": "object"
+      },
+      "BillSplitSentResponse": {
+        "description": "Sender's view of one of their own invitations.\n\nIncludes who they sent it to (receiver_account_id + display name) and\nsender's own internal context (sender_expense_id is OK here — sender\nowns this), but **never** ``receiver_ledger_id`` (privacy: sender\nmust not learn which ledger receiver accepted to).",
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "amount_cents": {
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "category_suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Suggestion"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "exchange_rate_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Date"
+          },
+          "exchange_rate_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate Source"
+          },
+          "exchange_rate_to_cny": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Rate To Cny"
+          },
+          "expense_time_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time Snapshot"
+          },
+          "expired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expired At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "merchant_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Snapshot"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency_code": {
+            "title": "Original Currency Code",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "receiver_account_id": {
+            "title": "Receiver Account Id",
+            "type": "integer"
+          },
+          "receiver_display_name_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receiver Display Name Snapshot"
+          },
+          "rejected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At"
+          },
+          "sender_expense_id": {
+            "title": "Sender Expense Id",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "invited",
+              "accepted",
+              "rejected",
+              "cancelled",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "status",
+          "amount_cents",
+          "home_currency_code",
+          "original_currency_code",
+          "expires_at",
+          "created_at",
+          "receiver_account_id",
+          "sender_expense_id"
+        ],
+        "title": "BillSplitSentResponse",
+        "type": "object"
+      },
       "Body_owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post": {
         "properties": {
           "note": {
@@ -7319,6 +7785,288 @@
         ]
       }
     },
+    "/api/bill-splits/inbox": {
+      "get": {
+        "operationId": "list_my_inbox_api_bill_splits_inbox_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitInboxListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List My Inbox",
+        "tags": [
+          "bill-splits"
+        ]
+      }
+    },
+    "/api/bill-splits/sent": {
+      "get": {
+        "operationId": "list_my_sent_api_bill_splits_sent_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitSentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List My Sent",
+        "tags": [
+          "bill-splits"
+        ]
+      }
+    },
+    "/api/bill-splits/{public_id}/accept": {
+      "post": {
+        "operationId": "accept_split_invitation_api_bill_splits__public_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillSplitAcceptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitInboxResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Receiver 接受邀请，选目标账本",
+        "tags": [
+          "bill-splits"
+        ]
+      }
+    },
+    "/api/bill-splits/{public_id}/cancel": {
+      "post": {
+        "operationId": "cancel_split_invitation_api_bill_splits__public_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitSentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Split Invitation",
+        "tags": [
+          "bill-splits"
+        ]
+      }
+    },
+    "/api/bill-splits/{public_id}/reject": {
+      "post": {
+        "operationId": "reject_split_invitation_api_bill_splits__public_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitInboxResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Split Invitation",
+        "tags": [
+          "bill-splits"
+        ]
+      }
+    },
     "/api/bootstrap/owner": {
       "post": {
         "operationId": "post_bootstrap_owner_api_bootstrap_owner_post",
@@ -9210,6 +9958,74 @@
         "summary": "Post Reject Expense",
         "tags": [
           "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{expense_id}/split-invite": {
+      "post": {
+        "operationId": "create_split_invite_api_expenses__expense_id__split_invite_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillSplitInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillSplitSentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "ADR-0029: 发起跨账本拆账邀请",
+        "tags": [
+          "bill-splits"
         ]
       }
     },
