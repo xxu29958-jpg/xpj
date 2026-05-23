@@ -107,3 +107,21 @@ fun joinFamilyLedgerViewModelFactory(
         return JoinFamilyLedgerViewModel(repository) as T
     }
 }
+
+@Suppress("UNCHECKED_CAST")
+fun billSplitViewModelFactory(
+    repository: ExpenseRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return BillSplitViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun backgroundTasksViewModelFactory(
+    repository: ExpenseRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return BackgroundTasksViewModel(repository) as T
+    }
+}

@@ -1231,6 +1231,17 @@ private class StubApi(
     override suspend fun putUiPreferences(
         request: UserUiPreferencesUpdateRequestDto,
     ): Response<UserUiPreferencesDto> = unsupported()
+
+    override suspend fun listBackgroundTasks(): com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto =
+        unsupported()
+
+    override suspend fun getBackgroundTask(
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = unsupported()
+
+    override suspend fun cancelBackgroundTask(
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = unsupported()
 }
 
 private class LedgerFakeSettingsStore : TicketboxSettingsStore {

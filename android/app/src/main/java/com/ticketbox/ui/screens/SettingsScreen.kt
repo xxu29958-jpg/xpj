@@ -15,7 +15,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.R
+import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.domain.model.ledgerRoleCanModify
+import com.ticketbox.ui.screens.BillSplitScreen
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CategoryRule
@@ -43,10 +46,12 @@ import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute
+import com.ticketbox.viewmodel.BillSplitViewModel
 import com.ticketbox.viewmodel.FamilyMembersViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 import com.ticketbox.viewmodel.SettingsUiState
+import com.ticketbox.viewmodel.billSplitViewModelFactory
 import com.ticketbox.viewmodel.familyMembersViewModelFactory
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
@@ -83,6 +88,7 @@ fun SettingsScreen(
     onBindingCleared: () -> Unit,
     showAdvancedTools: Boolean = false,
     ledgerRepository: LedgerRepository? = null,
+    expenseRepository: ExpenseRepository? = null,
     reportsRepository: ReportsActions? = null,
     activeLedgerId: String? = null,
     onBindingChanged: () -> Unit = {},
@@ -141,6 +147,8 @@ fun SettingsScreen(
             onOpenLedgers = { route = SettingsRoute.Ledgers },
             onOpenFamilyMembers = { route = SettingsRoute.FamilyMembers },
             onOpenJoinFamilyLedger = { route = SettingsRoute.JoinFamilyLedger },
+            onOpenBillSplits = { route = SettingsRoute.BillSplits },
+            onOpenBackgroundTasks = { route = SettingsRoute.BackgroundTasks },
             onOpenAbout = { route = SettingsRoute.About },
         )
 
@@ -337,6 +345,46 @@ fun SettingsScreen(
                         onLedgerSwitched()
                         route = SettingsRoute.Ledgers
                     },
+                )
+            } else {
+                route = SettingsRoute.Root
+            }
+        }
+
+        SettingsRoute.BillSplits -> {
+            val expRepo = expenseRepository
+            val ledgerRepo = ledgerRepository
+            if (expRepo != null && ledgerRepo != null) {
+                val vm: BillSplitViewModel = viewModel(
+                    key = "bill-splits",
+                    factory = billSplitViewModelFactory(expRepo),
+                )
+                // Writable target ledgers — receiver picks which of their
+                // own ledgers to accept the invitation into. Server still
+                // re-validates write permission, this is just UX.
+                val candidateTargetLedgerIds = ledgerRepo.cachedLedgers()
+                    .filter { ledgerRoleCanModify(it.role) }
+                    .map { it.ledgerId }
+                BillSplitScreen(
+                    viewModel = vm,
+                    onBack = { route = SettingsRoute.Root },
+                    candidateTargetLedgerIds = candidateTargetLedgerIds,
+                )
+            } else {
+                route = SettingsRoute.Root
+            }
+        }
+
+        SettingsRoute.BackgroundTasks -> {
+            val expRepo = expenseRepository
+            if (expRepo != null) {
+                val vm: com.ticketbox.viewmodel.BackgroundTasksViewModel = viewModel(
+                    key = "background-tasks",
+                    factory = com.ticketbox.viewmodel.backgroundTasksViewModelFactory(expRepo),
+                )
+                com.ticketbox.ui.screens.settings.BackgroundTasksScreen(
+                    viewModel = vm,
+                    onBack = { route = SettingsRoute.Root },
                 )
             } else {
                 route = SettingsRoute.Root

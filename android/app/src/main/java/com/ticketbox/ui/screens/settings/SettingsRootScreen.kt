@@ -119,6 +119,8 @@ fun SettingsRootScreen(
     onOpenLedgers: () -> Unit = {},
     onOpenFamilyMembers: () -> Unit = {},
     onOpenJoinFamilyLedger: () -> Unit = {},
+    onOpenBillSplits: () -> Unit = {},
+    onOpenBackgroundTasks: () -> Unit = {},
     onOpenAbout: () -> Unit,
 ) {
     val connectionTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
@@ -210,6 +212,18 @@ fun SettingsRootScreen(
             subtitle = "使用本机管理后台生成的邀请明文",
             icon = Icons.Filled.GroupAdd,
             onClick = onOpenJoinFamilyLedger,
+        )
+        SettingsEntryRow(
+            title = "拆账",
+            subtitle = "收到的拆账邀请与你发出的拆账",
+            icon = Icons.Filled.Group,
+            onClick = onOpenBillSplits,
+        )
+        SettingsEntryRow(
+            title = "后台任务",
+            subtitle = "CSV 导入 / v1.0 迁移等长任务的状态",
+            icon = Icons.Filled.Tune,
+            onClick = onOpenBackgroundTasks,
         )
         SettingsEntryRow(
             title = "关于",

@@ -438,4 +438,18 @@ interface ApiService {
 
     @PUT("api/me/ui-preferences")
     suspend fun putUiPreferences(@Body request: UserUiPreferencesUpdateRequestDto): Response<UserUiPreferencesDto>
+
+    // ADR-0030 background tasks
+    @GET("api/tasks")
+    suspend fun listBackgroundTasks(): com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
+
+    @GET("api/tasks/{publicId}")
+    suspend fun getBackgroundTask(
+        @Path("publicId") publicId: String,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto
+
+    @POST("api/tasks/{publicId}/cancel")
+    suspend fun cancelBackgroundTask(
+        @Path("publicId") publicId: String,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto
 }

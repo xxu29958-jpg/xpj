@@ -522,6 +522,17 @@ class ExpenseRepository(
         bound.call { it.cancelBillSplitInvitation(publicId) }.toDomain()
     }
 
+    // ADR-0030 background tasks
+    suspend fun fetchBackgroundTasks(): Result<List<com.ticketbox.domain.model.BackgroundTask>> = errorHandler.safeCall {
+        val bound = ledgerRequestGuard.bind()
+        bound.call { it.listBackgroundTasks() }.items.map { it.toDomain() }
+    }
+
+    suspend fun cancelBackgroundTask(publicId: String): Result<com.ticketbox.domain.model.BackgroundTask> = errorHandler.safeCall {
+        val bound = ledgerRequestGuard.bind()
+        bound.call { it.cancelBackgroundTask(publicId) }.toDomain()
+    }
+
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bind()
         bound.call { it.expenseSplits(id) }.toDomain()

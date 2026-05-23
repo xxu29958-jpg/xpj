@@ -1566,6 +1566,17 @@ private class FakeApiService(
         request: UserUiPreferencesUpdateRequestDto,
     ): Response<UserUiPreferencesDto> = unsupported()
 
+    override suspend fun listBackgroundTasks(): com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto =
+        unsupported()
+
+    override suspend fun getBackgroundTask(
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = unsupported()
+
+    override suspend fun cancelBackgroundTask(
+        publicId: String,
+    ): com.ticketbox.data.remote.dto.BackgroundTaskDto = unsupported()
+
     override suspend fun listLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto = unsupported()
 
     override suspend fun createLedger(request: com.ticketbox.data.remote.dto.LedgerCreateRequestDto): com.ticketbox.data.remote.dto.LedgerDto = unsupported()

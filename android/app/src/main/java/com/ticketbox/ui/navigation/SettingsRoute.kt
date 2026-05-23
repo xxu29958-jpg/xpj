@@ -56,6 +56,7 @@ internal fun SettingsRoute(
         onBindingCleared = onBindingCleared,
         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ledgerRepository = screenFactory.ledgerRepository,
+        expenseRepository = screenFactory.repository,
         reportsRepository = screenFactory.reportsRepository,
         activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
         onBindingChanged = settingsViewModel::refreshLocalBindingState,
