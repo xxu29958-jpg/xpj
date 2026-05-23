@@ -36,7 +36,7 @@ def _claim_apply_lease(
     apply_token: str,
 ) -> CsvImportBatch:
     # Lazy import to avoid an apply_lease ↔ lifecycle cycle.
-    from app.services.csv_import_batch_service._lifecycle import get_csv_import_batch
+    from app.services.csv_import_batch_service._queries import get_csv_import_batch
 
     now = now_utc()
     result = db.execute(
@@ -79,7 +79,7 @@ def _mark_csv_import_apply_failed(
     public_id: str,
     apply_token: str,
 ) -> None:
-    from app.services.csv_import_batch_service._lifecycle import get_csv_import_batch
+    from app.services.csv_import_batch_service._queries import get_csv_import_batch
 
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     if batch.apply_token != apply_token:
@@ -99,7 +99,7 @@ def _release_csv_import_apply_lease(
     public_id: str,
     apply_token: str,
 ) -> None:
-    from app.services.csv_import_batch_service._lifecycle import get_csv_import_batch
+    from app.services.csv_import_batch_service._queries import get_csv_import_batch
 
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     if batch.apply_token != apply_token:

@@ -66,6 +66,14 @@ jobs:
       - name: Lint
         run: ruff check app scripts tests
 
+      - name: Audit (release lanes)
+        # Single PR gate for every read-only audit. New lanes added
+        # to scripts/release_audit.py::LANES are automatically gated
+        # here — that's the "sediment the workflow" contract.
+        # Today: service-graph cycles + CI-gap whitelist + codebase
+        # smell report. Any lane that returns non-zero fails the PR.
+        run: python scripts\release_audit.py
+
       - name: Test
         run: python -m pytest --cov=app --cov-report=term-missing
 

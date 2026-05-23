@@ -6,9 +6,11 @@ but CI never invoked it, so the existing ``Android`` job stayed green
 while the only instrumented test we had never actually ran.
 
 The check is intentionally dumb: a hand-maintained whitelist below
-must each appear verbatim somewhere in ``.github/workflows/ci.yml``.
-Adding a new gradle task / pytest lane that should be enforced →
-add it to the whitelist; CI gap is caught immediately.
+must each appear verbatim somewhere under ``.github/workflows/*.yml``
+(any workflow — the lane may live in a sibling workflow file such as
+``android-connected-test.yml``). Adding a new gradle task / pytest
+lane that should be enforced → add it to the whitelist; CI gap is
+caught immediately.
 
 Exit code 0 if every entry is referenced. Exit code 1 otherwise, with
 the missing entries listed on stdout.
@@ -37,41 +39,49 @@ REQUIRED_PYTEST_LANES = [
 ]
 
 
-def _locate_workflow() -> pathlib.Path | None:
+def _locate_workflow_dir() -> pathlib.Path | None:
     candidates = [
-        pathlib.Path("../.github/workflows/ci.yml"),
-        pathlib.Path(".github/workflows/ci.yml"),
+        pathlib.Path("../.github/workflows"),
+        pathlib.Path(".github/workflows"),
     ]
     for candidate in candidates:
-        if candidate.exists():
+        if candidate.is_dir():
             return candidate
     return None
 
 
 def main() -> int:
-    workflow = _locate_workflow()
-    if workflow is None:
-        print("CI gap audit: FAIL — .github/workflows/ci.yml not found")
+    workflow_dir = _locate_workflow_dir()
+    if workflow_dir is None:
+        print("CI gap audit: FAIL — .github/workflows/ directory not found")
         return 1
 
-    text = workflow.read_text(encoding="utf-8")
+    # Concatenate all workflow files so the check is "gated somewhere
+    # in CI?" not "gated in ci.yml?". Catches splits where one
+    # workflow runs unit tests and a sibling runs the emulator lane.
+    combined = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(workflow_dir.glob("*.yml"))
+    )
+
     missing: list[str] = []
     for task in REQUIRED_GRADLE_TASKS:
-        if task not in text:
+        if task not in combined:
             missing.append(f"gradle task: {task}")
     for lane in REQUIRED_PYTEST_LANES:
-        if lane not in text:
+        if lane not in combined:
             missing.append(f"pytest lane: {lane}")
 
     if missing:
         print("=== CI gap audit: FAIL ===")
         for entry in missing:
-            print(f"  missing in ci.yml: {entry}")
+            print(f"  missing across .github/workflows/*.yml: {entry}")
         return 1
 
     print(
         f"=== CI gap audit: OK ({len(REQUIRED_GRADLE_TASKS)} gradle tasks + "
-        f"{len(REQUIRED_PYTEST_LANES)} pytest lanes verified) ==="
+        f"{len(REQUIRED_PYTEST_LANES)} pytest lanes verified across all "
+        f".github/workflows/*.yml) ==="
     )
     return 0
 

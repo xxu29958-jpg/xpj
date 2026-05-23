@@ -42,7 +42,7 @@ from app.services.csv_import_batch_service._idempotency import (
     _existing_csv_import_expense_id,
     _resolve_csv_import_idempotency_conflict,
 )
-from app.services.csv_import_batch_service._lifecycle import get_csv_import_batch
+from app.services.csv_import_batch_service._queries import get_csv_import_batch
 from app.services.csv_import_batch_service._row_claim import (
     _applying_row_count,
     _claim_csv_import_rows,

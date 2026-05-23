@@ -6,7 +6,6 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.fx_constants import (
     DEFAULT_HOME_CURRENCY_CODE,
@@ -19,13 +18,30 @@ from app.fx_constants import (
 )
 from app.ledger_scope import ledger_scoped_select
 from app.models import ExchangeRate, Expense
+from app.services.currency_common import (
+    RATE_QUANT,
+    format_decimal_rate,
+    home_currency_code,
+    normalize_currency_code,
+    supported_currency_codes,
+)
+from app.services.fx_rate_provider import get_fx_rate
 from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.time_service import now_utc
 
 BASE_CURRENCY_CODE = DEFAULT_HOME_CURRENCY_CODE
 HOME_CURRENCY_CODE = DEFAULT_HOME_CURRENCY_CODE
 SUPPORTED_CURRENCY_CODES = set(DEFAULT_SUPPORTED_CURRENCY_CODES)
-RATE_QUANT = Decimal("0.00000001")
+
+# Re-exports — existing callers do ``from app.services.exchange_rate_service
+# import home_currency_code`` etc. Keep that surface working.
+__all_currency_helpers = (
+    RATE_QUANT,
+    format_decimal_rate,
+    home_currency_code,
+    normalize_currency_code,
+    supported_currency_codes,
+)
 
 
 class CurrencyPayload(Protocol):
@@ -38,38 +54,6 @@ class CurrencyPayload(Protocol):
     exchange_rate_to_cny: Decimal | None
     exchange_rate_date: date | None
     exchange_rate_source: str | None
-
-
-def _clean_currency_code(value: str | None) -> str | None:
-    code = (value or "").strip().upper()
-    if not code:
-        return None
-    if len(code) != 3 or not code.isalpha():
-        return None
-    return code
-
-
-def home_currency_code() -> str:
-    return _clean_currency_code(get_settings().fx_home_currency_code) or DEFAULT_HOME_CURRENCY_CODE
-
-
-def supported_currency_codes() -> set[str]:
-    configured = {
-        code
-        for part in get_settings().fx_supported_currency_codes.split(",")
-        if (code := _clean_currency_code(part)) is not None
-    }
-    if not configured:
-        configured = set(DEFAULT_SUPPORTED_CURRENCY_CODES)
-    configured.add(home_currency_code())
-    return configured
-
-
-def normalize_currency_code(value: str | None) -> str:
-    code = _clean_currency_code(value) or home_currency_code()
-    if code not in supported_currency_codes():
-        raise AppError("currency_not_supported", status_code=422)
-    return code
 
 
 def minor_units_for_currency(currency_code: str) -> int:
@@ -90,18 +74,6 @@ def amount_major_to_minor(value: Decimal | None, currency_code: str) -> int | No
     rounded = amount.quantize(quant, rounding=ROUND_HALF_UP)
     multiplier = Decimal(1) if units == 0 else Decimal(100)
     return int((rounded * multiplier).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-
-
-def format_decimal_rate(value: Decimal | None) -> Decimal | None:
-    if value is None:
-        return None
-    try:
-        rate = Decimal(str(value)).quantize(RATE_QUANT, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ValueError) as exc:
-        raise AppError("exchange_rate_invalid", status_code=422) from exc
-    if rate <= 0:
-        raise AppError("exchange_rate_invalid", status_code=422)
-    return rate
 
 
 def calculate_cny_cents(
@@ -226,8 +198,6 @@ def resolve_payload_rate(
     stored = get_exchange_rate(db, tenant_id=tenant_id, currency_code=code, rate_date=rate_date)
     if stored is not None:
         return Decimal(stored.rate_to_cny), stored.source, FX_STATUS_READY
-    from app.services.fx_rate_provider import get_fx_rate
-
     global_rate = get_fx_rate(
         db,
         currency_code=code,

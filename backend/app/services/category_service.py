@@ -8,32 +8,23 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import CategoryRule, Expense
 from app.schemas import ExpenseUpdateRequest
+from app.services.category_common import (
+    DEFAULT_CATEGORIES,
+    LEGACY_CATEGORY_ALIASES,
+    category_filter_values,
+    normalize_category,
+)
 from app.services.spending_contract_service import month_bounds_utc, stat_time_expr
 
-DEFAULT_CATEGORIES = [
-    "餐饮",
-    "交通",
-    "购物",
-    "娱乐",
-    "医疗",
-    "教育",
-    "住房",
-    "通讯",
-    "AI订阅",
-    "数码",
-    "游戏",
-    "生活",
-    "其他",
-]
-
-LEGACY_CATEGORY_ALIASES = {
-    "吃饭": "餐饮",
-}
-
-
-def normalize_category(value: str | None) -> str:
-    cleaned = (value or "其他").strip() or "其他"
-    return LEGACY_CATEGORY_ALIASES.get(cleaned, cleaned)
+# Re-exports — existing callers do
+# ``from app.services.category_service import normalize_category`` etc.
+# Keep that surface stable.
+__all_category_helpers = (
+    DEFAULT_CATEGORIES,
+    LEGACY_CATEGORY_ALIASES,
+    category_filter_values,
+    normalize_category,
+)
 
 
 def category_sort_key(value: str) -> tuple[int, int | str]:
@@ -47,17 +38,6 @@ def merge_categories(values: list[str]) -> list[str]:
     categories = {normalize_category(item) for item in values if item and item.strip()}
     categories.update(DEFAULT_CATEGORIES)
     return sorted(categories, key=category_sort_key)
-
-
-def category_filter_values(category: str | None) -> set[str]:
-    normalized = normalize_category(category)
-    values = {normalized}
-    values.update(
-        legacy
-        for legacy, canonical in LEGACY_CATEGORY_ALIASES.items()
-        if canonical == normalized
-    )
-    return values
 
 
 def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:

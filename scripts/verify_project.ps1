@@ -135,6 +135,7 @@ if (-not $SkipBackend) {
     }
     Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest") -WorkingDirectory $BackendRoot
     Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\check_api_contract.py") -WorkingDirectory $BackendRoot
+    Invoke-Checked -FilePath $tools.Python -Arguments @("scripts\release_audit.py") -WorkingDirectory $BackendRoot
     $prevFileBacked = [Environment]::GetEnvironmentVariable("XPJ_TEST_FILE_BACKED")
     try {
         $env:XPJ_TEST_FILE_BACKED = "1"

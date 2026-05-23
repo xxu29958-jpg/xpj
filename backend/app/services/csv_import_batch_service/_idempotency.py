@@ -50,7 +50,7 @@ def _resolve_csv_import_idempotency_conflict(
     apply_token: str,
 ) -> CsvImportApplyResponse | None:
     # Lazy import to avoid an idempotency ↔ lifecycle cycle.
-    from app.services.csv_import_batch_service._lifecycle import get_csv_import_batch
+    from app.services.csv_import_batch_service._queries import get_csv_import_batch
 
     if not row_ids:
         return None

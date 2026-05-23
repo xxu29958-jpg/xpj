@@ -73,7 +73,7 @@ def build_csv_import_errors_csv(
     public_id: str,
 ) -> str:
     # Lazy import to avoid pulling lifecycle into csv_io.
-    from app.services.csv_import_batch_service._lifecycle import get_csv_import_batch
+    from app.services.csv_import_batch_service._queries import get_csv_import_batch
 
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     rows = list(

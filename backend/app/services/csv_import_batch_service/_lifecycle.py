@@ -24,8 +24,11 @@ from app.schemas import (
 )
 from app.services.csv_import_batch_service._common import MAX_CSV_IMPORT_ROWS
 from app.services.csv_import_batch_service._csv_io import _clean_file_name, _row_from_parsed
+from app.services.csv_import_batch_service._queries import get_csv_import_batch  # re-exported
 from app.services.import_service import parse_csv_row
 from app.services.time_service import now_utc
+
+_ = get_csv_import_batch  # quiet F401: re-exported through this module's surface
 
 
 def create_csv_import_batch(
@@ -103,17 +106,6 @@ def create_csv_import_batch(
     except AppError:
         db.rollback()
         raise
-
-
-def get_csv_import_batch(db: Session, *, tenant_id: str, public_id: str) -> CsvImportBatch:
-    batch = db.scalar(
-        ledger_scoped_select(CsvImportBatch, tenant_id).where(
-            CsvImportBatch.public_id == public_id
-        )
-    )
-    if batch is None:
-        raise AppError("import_batch_not_found", "导入批次不存在。", status_code=404)
-    return batch
 
 
 def list_csv_import_rows(

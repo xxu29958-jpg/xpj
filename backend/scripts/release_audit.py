@@ -1,8 +1,10 @@
 """Release-time audit aggregator.
 
-Runs the three read-only audits in sequence and prints a consolidated
-PASS / FAIL summary. Manual — invoke before cutting a release
-candidate (or anytime you want a snapshot of the slow-rotting parts).
+Auto-discovers every ``_audit_*.py`` in this directory and runs them
+in sequence, printing a consolidated PASS / FAIL summary. There is
+no opt-in step: drop a new audit script next to this one and it is
+already gated by CI (this script is wired into the Backend job in
+``.github/workflows/ci.yml``) and by ``verify_project.ps1``.
 
 "PASS" here means **no new regressions outside each lane's
 allowlist** — it does NOT mean "no architectural debt". Known v0.9
@@ -38,23 +40,55 @@ spot-check the actual symptoms.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-LANES: list[tuple[str, str]] = [
-    ("service-graph", "_audit_service_graph.py"),
-    ("codebase", "_audit_codebase.py"),
-    ("ci-gap", "_audit_ci_gap.py"),
-]
+# Windows CI runs Python with cp1252 stdout by default; audit output
+# contains Chinese identifiers and string literals from source code,
+# so charmap blows up mid-print. Force UTF-8 here so every spawned
+# subprocess inherits it via PYTHONIOENCODING.
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+
+def _discover_lanes(scripts_dir: Path) -> list[tuple[str, str]]:
+    """Every ``_audit_*.py`` in this directory is a lane, no opt-in step.
+
+    Naming convention: ``_audit_<label-with-underscores>.py`` →
+    label ``<label-with-dashes>``. Dropping a new audit script in
+    place picks it up automatically — no edit to this file, no edit
+    to ci.yml, no "remember to add it to LANES" footgun.
+
+    The leading underscore signals "private / single-purpose
+    script, not an importable module"; ``_audit_codebase.py`` lives
+    by the same convention. Files prefixed ``_audit_wip_`` are
+    skipped so an in-flight audit doesn't gate PRs before it's
+    ready.
+    """
+    lanes: list[tuple[str, str]] = []
+    for path in sorted(scripts_dir.glob("_audit_*.py")):
+        stem = path.stem  # e.g. "_audit_service_graph"
+        if stem.startswith("_audit_wip_"):
+            continue
+        label = stem.removeprefix("_audit_").replace("_", "-")
+        lanes.append((label, path.name))
+    return lanes
 
 
 def main() -> int:
     scripts_dir = Path(__file__).resolve().parent
+    lanes = _discover_lanes(scripts_dir)
+    if not lanes:
+        print("RELEASE AUDIT: no _audit_*.py scripts found — nothing to run")
+        return 1
+
     overall_ok = True
     summary: list[tuple[str, bool]] = []
 
-    for label, filename in LANES:
+    for label, filename in lanes:
         script = scripts_dir / filename
         print("=" * 78)
         print(f"AUDIT LANE: {label} ({filename})")

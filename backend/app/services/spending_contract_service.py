@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense, ExpenseTag, RecurringItem, Tag
+from app.services.category_common import category_filter_values
 from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
@@ -122,8 +123,6 @@ def confirmed_query(
     if amount_required:
         query = query.where(Expense.amount_cents.is_not(None))
     if category:
-        from app.services.category_service import category_filter_values
-
         query = query.where(Expense.category.in_(category_filter_values(category)))
     tag_filter = tag_key(tag)
     if tag_filter:
@@ -246,8 +245,6 @@ def merchant_search_terms(db: Session, *, tenant_id: str, term: str) -> list[str
 
 
 def category_search_terms(term: str | None) -> list[str]:
-    from app.services.category_service import category_filter_values
-
     return sorted(value for value in category_filter_values(term) if value)
 
 

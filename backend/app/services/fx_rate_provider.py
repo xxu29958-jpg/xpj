@@ -13,13 +13,13 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.fx_constants import ECB_PROVIDER_BASE_CURRENCY, FX_SOURCE_ECB
 from app.models import FxRate
-from app.services.exchange_rate_service import (
+from app.services.currency_common import (
     RATE_QUANT,
     format_decimal_rate,
     normalize_currency_code,
     supported_currency_codes,
 )
-from app.services.exchange_rate_service import (
+from app.services.currency_common import (
     home_currency_code as current_home_currency_code,
 )
 from app.services.time_service import now_utc
