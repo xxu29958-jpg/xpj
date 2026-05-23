@@ -38,6 +38,7 @@ from app.routes import (
     rules,
     settings,
     stats,
+    tasks,
     uploads,
     user_preferences,
     web_app,
@@ -60,6 +61,10 @@ from app.routes import (
 )
 from app.routes import web_rules as web_rules_routes
 from app.schemas import HealthResponse, StatusResponse
+from app.services.background_task_service import (
+    recover_orphaned_tasks,
+    shutdown_executor,
+)
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
 from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
@@ -70,12 +75,17 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    # ADR-0030 orphan recovery: tasks that were ``running`` when the
+    # backend died last time get force-failed so the UI doesn't show
+    # phantom in-flight tasks.
+    recover_orphaned_tasks()
     fx_scheduler = start_fx_rate_scheduler()
     try:
         yield
     finally:
         if fx_scheduler is not None:
             fx_scheduler.stop()
+        shutdown_executor(wait=False)
 
 
 app = FastAPI(
@@ -116,6 +126,7 @@ app.include_router(rules.router)
 app.include_router(settings.router)
 app.include_router(user_preferences.router)
 app.include_router(stats.router)
+app.include_router(tasks.router)
 app.include_router(reports.router)
 app.include_router(imports.router)
 app.include_router(insights.router)

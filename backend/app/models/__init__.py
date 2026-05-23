@@ -9,6 +9,7 @@ no caller needs to change.
 from __future__ import annotations
 
 from app.models.auth import Invitation, PairingCode, UploadLink
+from app.models.background_task import BackgroundTask
 from app.models.budget import Budget, BudgetCategory, DashboardCardPreference, Goal
 from app.models.catalog import DuplicateIgnore, ExpenseTag, MerchantAlias, Tag
 from app.models.classification import (
@@ -33,6 +34,7 @@ from app.models.system import BootstrapSecretConsumption, SchemaMigration, UserU
 __all__ = [
     "Account",
     "AuthToken",
+    "BackgroundTask",
     "BootstrapSecretConsumption",
     "Budget",
     "BudgetCategory",

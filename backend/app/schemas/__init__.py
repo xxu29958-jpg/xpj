@@ -31,6 +31,11 @@ from app.schemas._admin import (
     UserUiPreferencesResponse,
     UserUiPreferencesUpdateRequest,
 )
+from app.schemas._background_task import (
+    BackgroundTaskListResponse,
+    BackgroundTaskResponse,
+    BackgroundTaskStatus,
+)
 from app.schemas._budgets import (
     BudgetCategoryRequest,
     BudgetCategoryResponse,
@@ -170,6 +175,9 @@ __all__ = [
     "AdminUploadLinkResponse",
     "AdminUploadLinkSecretResponse",
     "AuthCheckResponse",
+    "BackgroundTaskListResponse",
+    "BackgroundTaskResponse",
+    "BackgroundTaskStatus",
     "BootstrapOwnerRequest",
     "BootstrapOwnerResponse",
     "BudgetCategoryRequest",
