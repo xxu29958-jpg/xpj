@@ -63,6 +63,8 @@ from app.routes import (
 )
 from app.routes import web_rules as web_rules_routes
 from app.schemas import HealthResponse, StatusResponse
+from app.services import v1_migration_service
+from app.services.app_meta_service import assert_binary_compatible_with_db
 from app.services.background_task_service import (
     recover_orphaned_tasks,
     shutdown_executor,
@@ -77,10 +79,18 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    # ADR-0030 orphan recovery: tasks that were ``running`` when the
-    # backend died last time get force-failed so the UI doesn't show
-    # phantom in-flight tasks.
+    # ADR-0031 binary↔DB compatibility check (refuse to start a binary
+    # older than the DB's schema_min_compatible).
+    from app.database import SessionLocal as _SessionLocal
+
+    with _SessionLocal() as _db:
+        assert_binary_compatible_with_db(_db)
+    # ADR-0030 orphan recovery: tasks that were running or queued when
+    # the previous process died are now phantoms — force-fail them.
     recover_orphaned_tasks()
+    # ADR-0031 register the v1.0 cut-over handler so /owner/migration
+    # can enqueue it.
+    v1_migration_service.register()
     fx_scheduler = start_fx_rate_scheduler()
     try:
         yield

@@ -8,6 +8,7 @@ no caller needs to change.
 
 from __future__ import annotations
 
+from app.models.app_meta import AppMeta
 from app.models.auth import Invitation, PairingCode, UploadLink
 from app.models.background_task import BackgroundTask
 from app.models.bill_split import BillSplitInvitation
@@ -34,6 +35,7 @@ from app.models.system import BootstrapSecretConsumption, SchemaMigration, UserU
 
 __all__ = [
     "Account",
+    "AppMeta",
     "AuthToken",
     "BackgroundTask",
     "BillSplitInvitation",

@@ -14878,6 +14878,28 @@
         ]
       }
     },
+    "/owner/migration-readiness/cut-over": {
+      "post": {
+        "description": "ADR-0031 cut-over: enqueue the v1_migration handler.\n\nPR-1 MVP: handler re-checks readiness then writes\nschema_version=1.0 / schema_min_compatible=1.0 to app_meta. After\nthis completes, older binaries refuse to start (see\n:func:`app_meta_service.assert_binary_compatible_with_db`).\nShadow DB + atomic file swap + rollback CLI is the PR-2 follow-up.",
+        "operationId": "owner_migration_cut_over_owner_migration_readiness_cut_over_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Migration Cut Over",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/migration-readiness/pre-v1-backup": {
       "post": {
         "operationId": "owner_migration_readiness_create_pre_v1_backup_owner_migration_readiness_pre_v1_backup_post",

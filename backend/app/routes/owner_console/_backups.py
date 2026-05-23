@@ -132,3 +132,37 @@ def owner_migration_readiness_create_pre_v1_backup(
     return templates.TemplateResponse(
         request=request, name="migration_readiness.html", context=ctx
     )
+
+
+@router.post("/migration-readiness/cut-over", response_class=HTMLResponse)
+def owner_migration_cut_over(
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """ADR-0031 cut-over: enqueue the v1_migration handler.
+
+    PR-1 MVP: handler re-checks readiness then writes
+    schema_version=1.0 / schema_min_compatible=1.0 to app_meta. After
+    this completes, older binaries refuse to start (see
+    :func:`app_meta_service.assert_binary_compatible_with_db`).
+    Shadow DB + atomic file swap + rollback CLI is the PR-2 follow-up.
+    """
+    from app.services import background_task_service, v1_migration_service
+
+    task = background_task_service.enqueue(
+        db,
+        task_type=v1_migration_service.V1_MIGRATION_TASK_TYPE,
+        initiator_account_id=None,  # cut-over is system-wide, not user-bound
+        ledger_id=None,
+    )
+    report = migration_readiness_service.build_v1_migration_readiness_report(
+        create_backup=False
+    )
+    ctx = _base(request, db)
+    ctx["migration"] = _migration_readiness_view(report)
+    ctx["created_now"] = None
+    ctx["cut_over_task_public_id"] = task.public_id
+    return templates.TemplateResponse(
+        request=request, name="migration_readiness.html", context=ctx
+    )
