@@ -4,6 +4,14 @@ Runs the three read-only audits in sequence and prints a consolidated
 PASS / FAIL summary. Manual — invoke before cutting a release
 candidate (or anytime you want a snapshot of the slow-rotting parts).
 
+"PASS" here means **no new regressions outside each lane's
+allowlist** — it does NOT mean "no architectural debt". Known v0.9
+service cycles are tracked in ``_audit_service_graph.py::KNOWN_CYCLES``
+and printed as ``(known)`` rather than failing the audit. Fix the
+cycle, or — if it's not on this release's critical path — add it to
+the allowlist with the ticket/commit that introduced it. New cycles
+outside the allowlist DO fail the audit.
+
 What each lane catches (from the v1.0 maturity-audit lessons):
 
 - ``_audit_service_graph.py``  — service-to-service import graph +

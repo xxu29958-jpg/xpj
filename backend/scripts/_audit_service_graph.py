@@ -1,14 +1,38 @@
-"""Read-only audit: service import graph + signals of god/coupling issues."""
+"""Read-only audit: service import graph + signals of god/coupling issues.
+
+Exit code is 0 only if no NEW service-to-service cycles appear. The
+two v0.9 cycles below are tracked as known technical debt
+(lazy-import workarounds) and PASS the audit while still being
+printed; anything outside the allowlist fails so release_audit.py
+catches drift instead of silently rubber-stamping new debt.
+"""
 
 from __future__ import annotations
 
 import ast
 import os
 import pathlib
+import sys
 from collections import defaultdict
 
+# v0.9 cycles intentionally left for v1.x cleanup. Each pair is a
+# lazy-import workaround where service A's hot path needs B and B's
+# cold path needs a pure helper from A. Adding a cycle outside this
+# set fails the audit — fix the cycle (preferred) or add it here
+# with the v1.x ticket / commit that introduced the regression.
+KNOWN_CYCLES: set[frozenset[str]] = {
+    frozenset({
+        "app.services.exchange_rate_service",
+        "app.services.fx_rate_provider",
+    }),
+    frozenset({
+        "app.services.category_service",
+        "app.services.spending_contract_service",
+    }),
+}
 
-def main() -> None:  # noqa: C901 - one-shot read-only audit script; flat top-level driver, splitting wouldn't reduce branching
+
+def main() -> int:  # noqa: C901 - one-shot read-only audit script; flat top-level driver, splitting wouldn't reduce branching
     base = pathlib.Path("app/services")
     graph: dict[str, set[str]] = defaultdict(set)
     rev_graph: dict[str, set[str]] = defaultdict(set)
@@ -69,11 +93,34 @@ def main() -> None:  # noqa: C901 - one-shot read-only audit script; flat top-le
 
     if not found:
         print("  No service-to-service cycles found.")
-    else:
-        unique = {tuple(sorted(set(c))) for c in found}
-        for c in unique:
-            print("  cycle:", " <-> ".join(c))
+        return 0
+
+    unique = {frozenset(c) for c in found}
+    new_cycles = unique - KNOWN_CYCLES
+    stale_allowlist = KNOWN_CYCLES - unique
+
+    for c in sorted(unique, key=lambda s: sorted(s)):
+        kind = "known" if c in KNOWN_CYCLES else "NEW"
+        print(f"  cycle ({kind}):", " <-> ".join(sorted(c)))
+
+    print()
+    if stale_allowlist:
+        print("=== Stale allowlist entries (cycle no longer present) ===")
+        for c in sorted(stale_allowlist, key=lambda s: sorted(s)):
+            print("  ", " <-> ".join(sorted(c)))
+        print("  → remove the corresponding entry from KNOWN_CYCLES.")
+        print()
+
+    if new_cycles:
+        print("=== NEW service-to-service cycles (not in KNOWN_CYCLES) ===")
+        for c in sorted(new_cycles, key=lambda s: sorted(s)):
+            print("  ", " <-> ".join(sorted(c)))
+        print("  → break the cycle (preferred) or add it to KNOWN_CYCLES")
+        print("    with the v1.x ticket / commit that introduced it.")
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
