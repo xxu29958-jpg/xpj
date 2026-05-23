@@ -8,10 +8,14 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.services.time_service import to_iso
+
+ExpenseItemKind = Literal["product", "discount", "tax", "service_fee"]
+ItemsSumStatus = Literal["matched", "mismatch_known", "mismatch_acknowledged", "no_items"]
 
 __all__ = [
     "ConfirmedExpenseBatchUpdateRequest",
@@ -181,12 +185,26 @@ class ExpenseResponse(BaseModel):
 
 class ExpenseItemRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    kind: ExpenseItemKind = "product"
     quantity_text: str | None = Field(default=None, max_length=64)
     unit_price_cents: int | None = Field(default=None, ge=0)
-    amount_cents: int | None = Field(default=None, ge=0)
+    amount_cents: int | None = None
     category: str | None = Field(default=None, max_length=64)
     raw_text: str | None = Field(default=None, max_length=1000)
     confidence: float | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _amount_sign_by_kind(self) -> ExpenseItemRequest:
+        # DB CHECK 也强制，但放在 schema 层让客户端直接拿 422 而不是 IntegrityError。
+        if self.amount_cents is None:
+            return self
+        if self.kind == "discount":
+            if self.amount_cents > 0:
+                raise ValueError("discount line amount_cents must be <= 0")
+        else:
+            if self.amount_cents < 0:
+                raise ValueError(f"{self.kind} line amount_cents must be >= 0")
+        return self
 
 
 class ExpenseItemReplaceRequest(BaseModel):
@@ -198,6 +216,7 @@ class ExpenseItemResponse(BaseModel):
 
     public_id: str
     position: int
+    kind: ExpenseItemKind
     name: str
     quantity_text: str | None
     unit_price_cents: int | None
@@ -219,6 +238,7 @@ class ExpenseItemsResponse(BaseModel):
     parent_amount_cents: int | None
     items_total_amount_cents: int | None
     mismatch_cents: int | None
+    items_sum_status: ItemsSumStatus
     items: list[ExpenseItemResponse]
 
 

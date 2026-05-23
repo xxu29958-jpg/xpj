@@ -2484,7 +2484,6 @@
           "amount_cents": {
             "anyOf": [
               {
-                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -2517,6 +2516,17 @@
               }
             ],
             "title": "Confidence"
+          },
+          "kind": {
+            "default": "product",
+            "enum": [
+              "product",
+              "discount",
+              "tax",
+              "service_fee"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "name": {
             "maxLength": 255,
@@ -2610,6 +2620,16 @@
             "title": "Is Ocr Draft",
             "type": "boolean"
           },
+          "kind": {
+            "enum": [
+              "product",
+              "discount",
+              "tax",
+              "service_fee"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -2670,6 +2690,7 @@
         "required": [
           "public_id",
           "position",
+          "kind",
           "name",
           "quantity_text",
           "unit_price_cents",
@@ -2696,6 +2717,16 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "items_sum_status": {
+            "enum": [
+              "matched",
+              "mismatch_known",
+              "mismatch_acknowledged",
+              "no_items"
+            ],
+            "title": "Items Sum Status",
+            "type": "string"
           },
           "items_total_amount_cents": {
             "anyOf": [
@@ -2736,6 +2767,7 @@
           "parent_amount_cents",
           "items_total_amount_cents",
           "mismatch_cents",
+          "items_sum_status",
           "items"
         ],
         "title": "ExpenseItemsResponse",
@@ -8697,6 +8729,64 @@
           }
         },
         "summary": "Put Expense Item Rows",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{expense_id}/items/acknowledge-mismatch": {
+      "post": {
+        "operationId": "acknowledge_expense_items_mismatch_api_expenses__expense_id__items_acknowledge_mismatch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseItemsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "原小票如此：把 items_sum_status 从 mismatch_known 迁移到 mismatch_acknowledged",
         "tags": [
           "expenses"
         ]

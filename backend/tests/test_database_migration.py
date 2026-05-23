@@ -286,7 +286,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "fk_expenses_duplicate_of_tenant" in expenses_sql
     expense_items_sql = _table_create_sql("expense_items")
     assert "ck_expense_items_position_non_negative" in expense_items_sql
-    assert "ck_expense_items_amount_non_negative" in expense_items_sql
+    # ADR-0035: amount_non_negative CHECK replaced by amount_by_kind + kind_valid
+    assert "ck_expense_items_kind_valid" in expense_items_sql
+    assert "ck_expense_items_amount_by_kind" in expense_items_sql
     assert "fk_expense_items_expense_tenant" in expense_items_sql
     assert "uq_expense_items_tenant_expense_position" in expense_items_sql
     expense_splits_sql = _table_create_sql("expense_splits")

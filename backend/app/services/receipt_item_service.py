@@ -16,6 +16,10 @@ from app.services.expense_service import EDITABLE_STATUSES, get_expense
 from app.services.receipt_parse_service import ParsedReceiptItem
 from app.services.time_service import now_utc
 
+# tolerance for rounding / floating drift between expense.amount_cents and
+# sum(items.amount_cents); 0 = strict integer equality (cents).
+_ITEMS_SUM_TOLERANCE_CENTS = 0
+
 
 def list_expense_items(db: Session, expense_id: int, tenant_id: str) -> ExpenseItemsResponse:
     expense = get_expense(db, expense_id, tenant_id)
@@ -47,6 +51,8 @@ def replace_expense_items(
     for position, request_item in enumerate(payload.items):
         db.add(_new_item(expense, position, request_item, now=now))
     expense.updated_at = now
+    db.flush()
+    recompute_items_sum_status(db, expense)
     db.commit()
     db.refresh(expense)
     return _build_response(db, expense)
@@ -78,6 +84,79 @@ def replace_ocr_draft_items(
     for position, parsed_item in enumerate(parsed_items):
         db.add(_new_ocr_draft_item(expense, position, parsed_item, now=now))
     expense.updated_at = now
+    db.flush()
+    recompute_items_sum_status(db, expense)
+
+
+def acknowledge_items_sum_mismatch(
+    db: Session,
+    expense_id: int,
+    tenant_id: str,
+) -> ExpenseItemsResponse:
+    """User-confirmed "原小票如此" path: mismatch_known → mismatch_acknowledged.
+
+    Reject from other states because UI never offers this path unless
+    items_sum_status is mismatch_known.
+    """
+    expense = get_expense(db, expense_id, tenant_id)
+    if expense.items_sum_status != "mismatch_known":
+        raise AppError(
+            "items_sum_not_in_mismatch",
+            "当前账单不存在可确认的金额差异。",
+            status_code=409,
+        )
+    expense.items_sum_status = "mismatch_acknowledged"
+    expense.updated_at = now_utc()
+    db.commit()
+    db.refresh(expense)
+    return _build_response(db, expense)
+
+
+def recompute_items_sum_status(db: Session, expense: Expense) -> None:
+    """Recompute items_sum_status from current items + expense.amount_cents.
+
+    Caller is responsible for db.flush() / db.commit() after this; this
+    function only mutates expense.items_sum_status in-memory.
+
+    Preserves ``mismatch_acknowledged`` when the same mismatch persists —
+    user already said "原小票如此", don't bounce them back to warning.
+    """
+    items_sum = _compute_items_sum_cents(db, expense)
+    prev_status = expense.items_sum_status
+
+    if items_sum is None:
+        expense.items_sum_status = "no_items"
+        return
+
+    if expense.amount_cents is None:
+        expense.items_sum_status = "matched"
+        return
+
+    delta = abs(expense.amount_cents - items_sum)
+    if delta <= _ITEMS_SUM_TOLERANCE_CENTS:
+        expense.items_sum_status = "matched"
+        return
+
+    # 已 acknowledged 的不要倒回 mismatch_known — 用户确认过的差异保留。
+    if prev_status == "mismatch_acknowledged":
+        return
+    expense.items_sum_status = "mismatch_known"
+
+
+def _compute_items_sum_cents(db: Session, expense: Expense) -> int | None:
+    items = list(
+        db.scalars(
+            ledger_scoped_select(ExpenseItem, expense.tenant_id).where(
+                ExpenseItem.expense_id == expense.id
+            )
+        )
+    )
+    if not items:
+        return None
+    amounts = [item.amount_cents for item in items if item.amount_cents is not None]
+    if not amounts:
+        return None
+    return sum(amounts)
 
 
 def _new_item(
@@ -91,6 +170,7 @@ def _new_item(
         tenant_id=expense.tenant_id,
         expense_id=expense.id,
         position=position,
+        kind=request_item.kind,
         name=_clean_required_text(request_item.name),
         quantity_text=_clean_optional_text(request_item.quantity_text),
         unit_price_cents=request_item.unit_price_cents,
@@ -111,10 +191,13 @@ def _new_ocr_draft_item(
     *,
     now,
 ) -> ExpenseItem:
+    # ParsedReceiptItem.kind 是 PR-2 范围；目前 OCR 草稿默认 product。
+    kind = getattr(parsed_item, "kind", "product")
     return ExpenseItem(
         tenant_id=expense.tenant_id,
         expense_id=expense.id,
         position=position,
+        kind=kind,
         name=_clean_required_text(parsed_item.name),
         quantity_text=_clean_optional_text(parsed_item.quantity_text),
         unit_price_cents=parsed_item.unit_price_cents,
@@ -162,5 +245,6 @@ def _build_response(db: Session, expense: Expense) -> ExpenseItemsResponse:
         parent_amount_cents=expense.amount_cents,
         items_total_amount_cents=items_total,
         mismatch_cents=mismatch,
+        items_sum_status=expense.items_sum_status,
         items=[ExpenseItemResponse.model_validate(item) for item in items],
     )

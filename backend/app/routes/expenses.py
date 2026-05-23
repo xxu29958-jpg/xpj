@@ -40,7 +40,11 @@ from app.services.expense_service import (
     update_expense,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
-from app.services.receipt_item_service import list_expense_items, replace_expense_items
+from app.services.receipt_item_service import (
+    acknowledge_items_sum_mismatch,
+    list_expense_items,
+    replace_expense_items,
+)
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.services.tag_service import list_tags
 from app.tenants import AuthContext
@@ -179,6 +183,19 @@ def put_expense_item_rows(
     db: Session = Depends(get_db),
 ) -> ExpenseItemsResponse:
     return replace_expense_items(db, expense_id, auth.tenant_id, payload)
+
+
+@router.post(
+    "/{expense_id}/items/acknowledge-mismatch",
+    response_model=ExpenseItemsResponse,
+    summary="原小票如此：把 items_sum_status 从 mismatch_known 迁移到 mismatch_acknowledged",
+)
+def acknowledge_expense_items_mismatch(
+    expense_id: int,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ExpenseItemsResponse:
+    return acknowledge_items_sum_mismatch(db, expense_id, auth.tenant_id)
 
 
 @router.get("/{expense_id}/splits", response_model=ExpenseSplitsResponse)

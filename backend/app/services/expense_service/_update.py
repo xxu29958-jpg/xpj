@@ -162,6 +162,13 @@ def update_expense(
     if "tags" in updates:
         sync_expense_tags(db, expense)
 
+    # 0035: amount_cents 改动后必须重算 items_sum_status；lazy import 避免
+    # expense_service ↔ receipt_item_service 双向 import 循环。
+    if "amount_cents" in updates:
+        from app.services.receipt_item_service import recompute_items_sum_status
+
+        recompute_items_sum_status(db, expense)
+
     expense.updated_at = now_utc()
     db.commit()
     db.refresh(expense)

@@ -152,6 +152,7 @@ data class ExpenseItemDto(
     @param:Json(name = "public_id")
     val publicId: String,
     val position: Int,
+    val kind: String = "product",
     val name: String,
     @param:Json(name = "quantity_text")
     val quantityText: String?,
@@ -180,11 +181,14 @@ data class ExpenseItemsResponseDto(
     val itemsTotalAmountCents: Long?,
     @param:Json(name = "mismatch_cents")
     val mismatchCents: Long?,
+    @param:Json(name = "items_sum_status")
+    val itemsSumStatus: String = "no_items",
     val items: List<ExpenseItemDto>,
 )
 
 data class ExpenseItemRequestDto(
     val name: String,
+    val kind: String = "product",
     @param:Json(name = "quantity_text")
     val quantityText: String? = null,
     @param:Json(name = "unit_price_cents")

@@ -66,6 +66,10 @@ class Expense(Base):
             "duplicate_status IN ('none', 'suspected')",
             name="ck_expenses_duplicate_status_valid",
         ),
+        CheckConstraint(
+            "items_sum_status IN ('matched', 'mismatch_known', 'mismatch_acknowledged', 'no_items')",
+            name="ck_expenses_items_sum_status_valid",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -128,6 +132,9 @@ class Expense(Base):
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     image_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     thumbnail_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    items_sum_status: Mapped[str] = mapped_column(
+        String(32), default="no_items", server_default="no_items", nullable=False
+    )
 
     @property
     def home_amount_cents(self) -> int | None:
@@ -190,12 +197,21 @@ class ExpenseItem(Base):
     __tablename__ = "expense_items"
     __table_args__ = (
         CheckConstraint("position >= 0", name="ck_expense_items_position_non_negative"),
-        CheckConstraint("amount_cents IS NULL OR amount_cents >= 0", name="ck_expense_items_amount_non_negative"),
         CheckConstraint(
             "unit_price_cents IS NULL OR unit_price_cents >= 0",
             name="ck_expense_items_unit_price_non_negative",
         ),
         CheckConstraint("confidence IS NULL OR (confidence >= 0 AND confidence <= 1)", name="ck_expense_items_confidence"),
+        CheckConstraint(
+            "kind IN ('product', 'discount', 'tax', 'service_fee')",
+            name="ck_expense_items_kind_valid",
+        ),
+        CheckConstraint(
+            "(kind = 'product' AND (amount_cents IS NULL OR amount_cents >= 0))"
+            " OR (kind = 'discount' AND (amount_cents IS NULL OR amount_cents <= 0))"
+            " OR (kind IN ('tax', 'service_fee') AND (amount_cents IS NULL OR amount_cents >= 0))",
+            name="ck_expense_items_amount_by_kind",
+        ),
         ForeignKeyConstraint(
             ["expense_id", "tenant_id"],
             ["expenses.id", "expenses.tenant_id"],
@@ -211,6 +227,9 @@ class ExpenseItem(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), default=DEFAULT_TENANT_ID, nullable=False, index=True)
     expense_id: Mapped[int] = mapped_column(Integer, ForeignKey("expenses.id"), nullable=False, index=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String(32), default="product", server_default="product", nullable=False
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity_text: Mapped[str | None] = mapped_column(String(64), nullable=True)
     unit_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -158,8 +158,11 @@ class ApiDtoContractTest {
         assertEquals("item-1", item.publicId)
         assertEquals(250L, dto.mismatchCents)
         assertEquals(true, item.isOcrDraft)
+        // ADR-0035: kind 默认 'product'；老服务端响应不含字段时 DTO 用默认值
+        assertEquals("product", item.kind)
+        assertEquals("no_items", dto.itemsSumStatus)
         assertEquals(
-            """{"items":[{"name":"拿铁","quantity_text":"1杯","unit_price_cents":500,"amount_cents":500,"category":"餐饮","raw_text":"拿铁 1杯 5.00","confidence":0.92}]}""",
+            """{"items":[{"name":"拿铁","kind":"product","quantity_text":"1杯","unit_price_cents":500,"amount_cents":500,"category":"餐饮","raw_text":"拿铁 1杯 5.00","confidence":0.92}]}""",
             requestJson,
         )
     }
