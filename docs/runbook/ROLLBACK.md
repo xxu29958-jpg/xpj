@@ -50,9 +50,13 @@ git checkout <tag>          # 例如 v0.8.0
 
 ### 手动备份当前库（回滚前必做）
 
+两个脚本在不同目录，**统一从项目根运行**避免 cd 切换造成的相对路径歧义：
+
 ```powershell
-cd E:\projects\xiaopiaojia\backend
-powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1
+# 备份脚本位于 backend\scripts\backup_database.ps1
+# (根目录 scripts\ 下没有 backup_database.ps1，不要写 scripts\backup_database.ps1)
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File backend\scripts\backup_database.ps1
 ```
 
 输出到 `backend\backups\ticketbox-YYYYMMDD-HHMMSS.db`（SQLite 在线备份，不需要停后端）。Windows 计划备份配置见 [WINDOWS_BACKUP_TASK.md](WINDOWS_BACKUP_TASK.md)。
@@ -60,6 +64,7 @@ powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1
 ### 恢复到某个备份
 
 ```powershell
+# restore 脚本位于根目录 scripts\restore_ticketbox_db.ps1（跟备份脚本路径不同）
 cd E:\projects\xiaopiaojia
 powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath backend\backups\ticketbox-YYYYMMDD-HHMMSS.db
 ```
