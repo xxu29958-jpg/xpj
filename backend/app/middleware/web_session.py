@@ -23,20 +23,22 @@ URL editing).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from urllib.parse import urlencode
 
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
 from app.database import SessionLocal
-from app.errors import AppError
+from app.errors import AppError, error_response
 from app.network_boundary import is_loopback_request
 from app.routes.web_auth import (
+    SESSION_COOKIE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
     clear_session_cookie,
     read_session_token,
 )
-from app.services.identity_service import authenticate_session_token
+from app.services.identity_service import authenticate_web_session_token
 
 
 def _login_redirect_url(request: Request) -> str:
@@ -48,7 +50,7 @@ def _login_redirect_url(request: Request) -> str:
     # Reject obvious junk that would never make sense as a destination.
     if not target_after_login.startswith("/web") or target_after_login.startswith("/web/auth/"):
         target_after_login = "/web"
-    return f"/web/auth/login?next={target_after_login}"
+    return f"/web/auth/login?{urlencode({'next': target_after_login})}"
 
 
 def _is_session_required(request: Request) -> bool:
@@ -84,7 +86,11 @@ async def web_session_gate(
 
     try:
         with SessionLocal() as db:
-            auth = authenticate_session_token(db, token, {"app"})
+            result = authenticate_web_session_token(
+                db,
+                token,
+                ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+            )
     except AppError:
         # Cookie value doesn't map to a live AuthToken anymore — wipe it
         # so the browser stops sending a dead value, then send the user
@@ -93,13 +99,16 @@ async def web_session_gate(
         clear_session_cookie(redirect)
         return redirect
     except SQLAlchemyError:
-        # DB transiently unavailable; let the request through unauthenticated
-        # so the downstream layer's own error handler surfaces a clean 5xx
-        # instead of a cookie-clearing redirect that masks the real fault.
-        return await call_next(request)
+        return error_response(
+            "server_error",
+            "网页版登录状态暂时不可用，请稍后再试。",
+            status_code=503,
+            request_id=getattr(request.state, "request_id", None),
+        )
 
     # Stash session auth so _resolve_selected_ledger_id can force-lock the
     # rendered ledger to the session's account.
+    auth = result.auth
     request.state.web_session_auth = auth
 
     # Defense: the cookie says "I'm bound to ledger X", but the URL says
@@ -108,8 +117,6 @@ async def web_session_gate(
     # different ledger they happen to have query knowledge of.
     requested_ledger = (request.query_params.get("ledger_id") or "").strip()
     if requested_ledger and requested_ledger != auth.ledger_id:
-        from app.errors import error_response
-
         return error_response(
             "ledger_forbidden",
             "当前会话只能访问绑定的账本。",
@@ -117,7 +124,8 @@ async def web_session_gate(
             request_id=getattr(request.state, "request_id", None),
         )
 
-    return await call_next(request)
+    response = await call_next(request)
+    return response
 
 
 __all__ = ["web_session_gate", "SESSION_COOKIE_NAME"]

@@ -40,6 +40,7 @@ DEFAULT_BOOTSTRAP_DEVICE_NAME = "Windows 后端"
 PAIRING_CODE_TTL_MINUTES = 15
 PAIRING_MAX_FAILED_ATTEMPTS = 20
 PAIRING_ATTEMPT_WINDOW = timedelta(minutes=10)
+WEB_SESSION_TTL_SECONDS = 8 * 60 * 60
 
 _pairing_failures_by_remote: dict[str, list[datetime]] = {}
 
@@ -72,6 +73,13 @@ class PairingCodeResult:
     pairing_code: str
     ledger_name: str
     expires_at: str
+
+
+@dataclass(frozen=True)
+class WebSessionAuthResult:
+    auth: AuthContext
+    refreshed: bool
+
 
 def _remote_attempt_key(remote_id: str | None) -> str:
     return (remote_id or "unknown").strip() or "unknown"
@@ -250,13 +258,22 @@ def _ensure_device(db: Session, account_id: int, device_name: str, platform: str
     return device
 
 
-def _create_auth_token(db: Session, *, account_id: int, device_id: int, ledger_id: str, scope: str) -> str:
+def _create_auth_token(
+    db: Session,
+    *,
+    account_id: int,
+    device_id: int,
+    ledger_id: str,
+    scope: str,
+    expires_at: datetime | None = None,
+) -> str:
     return issue_auth_token(
         db,
         account_id=account_id,
         device_id=device_id,
         ledger_id=ledger_id,
         scope=scope,
+        expires_at=expires_at,
     )
 
 
@@ -401,7 +418,7 @@ def _role_for(db: Session, ledger_id: str, account_id: int) -> str:
     return member.role
 
 
-def _context_from_token(db: Session, token: AuthToken) -> AuthContext:
+def _context_parts_from_token(db: Session, token: AuthToken) -> tuple[Account, Device, Ledger, str]:
     account = db.get(Account, token.account_id)
     device = db.get(Device, token.device_id)
     ledger = _ledger_by_id(db, token.ledger_id)
@@ -410,10 +427,12 @@ def _context_from_token(db: Session, token: AuthToken) -> AuthContext:
     if ledger is None or ledger.archived_at is not None:
         raise AppError("invalid_token", status_code=401)
     role = _role_for(db, ledger.ledger_id, account.id)
-    now = now_utc()
-    token.last_used_at = now
-    device.last_seen_at = now
-    db.commit()
+    return account, device, ledger, role
+
+
+def _auth_context_from_parts(
+    token: AuthToken, account: Account, device: Device, ledger: Ledger, role: str
+) -> AuthContext:
     return AuthContext(
         account_id=account.id,
         account_name=account.display_name,
@@ -424,6 +443,34 @@ def _context_from_token(db: Session, token: AuthToken) -> AuthContext:
         role=role,
         scope=token.scope,
     )
+
+
+def _refresh_token_activity(
+    db: Session,
+    token: AuthToken,
+    device: Device,
+    *,
+    now: datetime,
+    min_interval_seconds: int = 0,
+) -> bool:
+    last_used_at = ensure_utc(token.last_used_at)
+    if (
+        min_interval_seconds > 0
+        and last_used_at is not None
+        and last_used_at + timedelta(seconds=min_interval_seconds) > now
+    ):
+        return False
+    token.last_used_at = now
+    device.last_seen_at = now
+    db.commit()
+    return True
+
+
+def _context_from_token(db: Session, token: AuthToken) -> AuthContext:
+    account, device, ledger, role = _context_parts_from_token(db, token)
+    now = now_utc()
+    _refresh_token_activity(db, token, device, now=now)
+    return _auth_context_from_parts(token, account, device, ledger, role)
 
 
 def authenticate_session_token(db: Session, token_value: str, allowed_scopes: set[str]) -> AuthContext:
@@ -437,6 +484,42 @@ def authenticate_session_token(db: Session, token_value: str, allowed_scopes: se
     if token is None or token.scope not in allowed_scopes:
         raise AppError("invalid_token", status_code=401)
     return _context_from_token(db, token)
+
+
+def authenticate_web_session_token(
+    db: Session,
+    token_value: str,
+    *,
+    ttl_seconds: int,
+) -> WebSessionAuthResult:
+    """Authenticate a browser cookie session with a fixed server-side TTL."""
+    token_hash = hash_secret(token_value)
+    token = db.scalar(
+        select(AuthToken)
+        .join(Device, Device.id == AuthToken.device_id)
+        .where(AuthToken.token_hash == token_hash)
+        .where(AuthToken.revoked_at.is_(None))
+        .where(AuthToken.scope == "app")
+        .where(Device.platform == "web")
+        .limit(1)
+    )
+    if token is None:
+        raise AppError("invalid_token", status_code=401)
+
+    account, device, ledger, role = _context_parts_from_token(db, token)
+    now = now_utc()
+    expires_at = ensure_utc(token.expires_at)
+    if expires_at is None:
+        issued_at = ensure_utc(token.created_at) or token.created_at
+        expires_at = issued_at + timedelta(seconds=ttl_seconds)
+    if expires_at <= now:
+        token.revoked_at = now
+        db.commit()
+        raise AppError("invalid_token", status_code=401)
+    return WebSessionAuthResult(
+        auth=_auth_context_from_parts(token, account, device, ledger, role),
+        refreshed=False,
+    )
 
 
 def authenticate_upload_link(db: Session, upload_key: str) -> AuthContext:
@@ -518,12 +601,18 @@ def pair_device(
         _reject_pairing(remote_id, "pairing_code_expired", 410)
 
     device = _ensure_device(db, account.id, device_name, platform)
+    token_expires_at = (
+        used_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS)
+        if (platform or "").strip().lower() == "web"
+        else None
+    )
     token = _create_auth_token(
         db,
         account_id=account.id,
         device_id=device.id,
         ledger_id=ledger.ledger_id,
         scope="app",
+        expires_at=token_expires_at,
     )
     db.commit()
     _clear_pairing_failures(remote_id)

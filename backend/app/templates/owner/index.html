@@ -236,7 +236,10 @@
           {% else %}<span class="badge badge-warn">{{ task.status }}</span>{% endif %}
         </td>
         <td>{{ task.last_run or '—' }}</td>
-        <td>{{ task.last_result or '—' }}</td>
+        <td>
+          {% if task.last_result_failed %}<span class="badge badge-err">{{ task.last_result }}</span>
+          {% else %}{{ task.last_result or '—' }}{% endif %}
+        </td>
         <td>{{ task.next_run or '—' }}</td>
         <td>{{ task.note or '—' }}</td>
       </tr>

@@ -20,14 +20,21 @@ def test_health_and_auth_contract(client: TestClient, *, identity) -> None:
     health = client.get("/api/health")
     assert health.status_code == 200
     health_body = health.json()
-    assert health_body["status"] == "ok"
-    # v0.3.1-alpha2: health surfaces version + identity schema info but must
-    # not leak absolute filesystem paths.
-    assert health_body["backend_version"] == "0.9.0a1"
-    assert health_body["identity_schema"] == "v0.3"
-    assert health_body["database_status"] in {"ok", "missing"}
-    assert health_body["upload_dir_status"] in {"ok", "missing"}
-    for value in health_body.values():
+    assert health_body == {"status": "ok"}
+
+    private_status_anon = client.get("/api/status/private")
+    assert private_status_anon.status_code == 401
+    assert private_status_anon.json()["error"] == "invalid_token"
+
+    private_status = client.get("/api/status/private", headers=identity.app_headers)
+    assert private_status.status_code == 200
+    private_body = private_status.json()
+    assert private_body["status"] == "ok"
+    assert private_body["backend_version"] == "0.9.0a1"
+    assert private_body["identity_schema"] == "v0.3"
+    assert private_body["database_status"] in {"ok", "missing"}
+    assert private_body["upload_dir_status"] in {"ok", "missing"}
+    for value in private_body.values():
         if isinstance(value, str):
             assert ":\\" not in value, value
             assert not value.startswith("/"), value

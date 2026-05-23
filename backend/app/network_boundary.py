@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from ipaddress import ip_address
 
 from fastapi import Request
 
@@ -113,6 +114,24 @@ def is_loopback_request(request: Request) -> bool:
     """Return ``True`` only when both the TCP peer and the Host header look
     like a local-machine request."""
     return _peer_host(request) in _LOOPBACK_PEERS and _request_host(request) in _loopback_hosts()
+
+
+def pairing_rate_limit_key(request: Request) -> str:
+    """Return a rate-limit/audit key, never an authorization signal.
+
+    Public Cloudflare Tunnel requests arrive from a loopback peer with a
+    public Host header. In that narrow case, ``CF-Connecting-IP`` can be used
+    to avoid collapsing every browser login attempt into ``127.0.0.1``.
+    """
+    peer = _peer_host(request) or "unknown"
+    host = _request_host(request)
+    cf_connecting_ip = (request.headers.get("cf-connecting-ip") or "").strip()
+    if peer in _LOOPBACK_PEERS and host not in _loopback_hosts() and cf_connecting_ip:
+        try:
+            return f"cf:{ip_address(cf_connecting_ip)}"
+        except ValueError:
+            pass
+    return f"peer:{peer}"
 
 
 def require_owner_console_local(request: Request) -> None:

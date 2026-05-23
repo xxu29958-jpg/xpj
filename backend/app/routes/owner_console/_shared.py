@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.fx_constants import CURRENCY_SYMBOLS, DEFAULT_HOME_CURRENCY_CODE
+from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
 from app.version import BACKEND_VERSION
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "owner"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
 
 
 def _format_owner_datetime(value: object, tz: str = "Asia/Shanghai") -> str:

@@ -1,8 +1,8 @@
 """T27: Read-only Windows scheduled task status for the Owner Console.
 
-This module surfaces the status of the three scheduled tasks the v0.4
-Windows host runs (backend service, Cloudflare tunnel, daily backup) so the
-owner can spot when something has stopped without opening Task Scheduler.
+This module surfaces the status of the scheduled tasks the Windows host runs
+(backend service, Cloudflare tunnel, daily backup, public boundary check) so
+the owner can spot when something has stopped without opening Task Scheduler.
 
 Strictly read-only: we never create, modify, start, or stop tasks from the
 Web/Owner UI. The implementation is platform-aware and gracefully degrades
@@ -14,6 +14,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 import subprocess  # noqa: S404 - read-only schtasks query, fixed task names
 import sys
 import time
@@ -26,10 +27,24 @@ _DEFAULT_TASKS: tuple[str, ...] = (
     "TicketboxBackend",
     "TicketboxCloudflareTunnel",
     "TicketboxBackup",
+    "TicketboxBoundaryCheck",
 )
 
 _CACHE_TTL_SECONDS = 30.0
 _QUERY_TIMEOUT_SECONDS = 3.0
+
+_TASK_SCHEDULER_INFO_RESULTS: dict[int, str] = {
+    0: "成功",
+    0x41300: "任务已准备好",
+    0x41301: "任务正在运行",
+    0x41302: "任务已禁用",
+    0x41303: "任务尚未运行",
+    0x41304: "没有更多计划运行时间",
+    0x41305: "一个或多个任务属性尚未设置",
+    0x41306: "任务已由用户终止",
+    0x41307: "任务没有触发器或触发器已禁用",
+    0x41308: "事件触发器没有设置运行时间",
+}
 
 
 @dataclass
@@ -48,6 +63,7 @@ class TaskStatusVM:
     last_result: str
     next_run: str
     note: str = ""
+    last_result_failed: bool = False
 
 
 def _task_names() -> tuple[str, ...]:
@@ -59,6 +75,41 @@ def _task_names() -> tuple[str, ...]:
 
 
 _cache: tuple[float, list[TaskStatusVM]] | None = None
+
+
+def _parse_last_result(value: str) -> int | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    match = re.search(r"0x[0-9a-fA-F]+|-?\d+", raw)
+    if match is None:
+        return None
+    token = match.group(0)
+    try:
+        if token.lower().startswith("0x"):
+            return int(token, 16)
+        return int(token, 10)
+    except ValueError:
+        return None
+
+
+def _last_result_note(value: str) -> str:
+    code = _parse_last_result(value)
+    if code is None:
+        return ""
+    if code == 0:
+        return ""
+    note = _TASK_SCHEDULER_INFO_RESULTS.get(code)
+    if note is not None:
+        return f"信息码：{note}"
+    return f"上次运行返回非零结果：{value}"
+
+
+def _last_result_failed(value: str) -> bool:
+    code = _parse_last_result(value)
+    if code is None:
+        return False
+    return code not in _TASK_SCHEDULER_INFO_RESULTS
 
 
 def _query_one(task_name: str) -> TaskStatusVM:
@@ -145,13 +196,16 @@ def _query_one(task_name: str) -> TaskStatusVM:
             next_run="",
             note="schtasks 无返回行",
         )
+    last_result = row.get("Last Result", "").strip()
     return TaskStatusVM(
         name=task_name,
         available=True,
         status=row.get("Status", "").strip() or "Unknown",
         last_run=row.get("Last Run Time", "").strip(),
-        last_result=row.get("Last Result", "").strip(),
+        last_result=last_result,
         next_run=row.get("Next Run Time", "").strip(),
+        note=_last_result_note(last_result),
+        last_result_failed=_last_result_failed(last_result),
     )
 
 

@@ -3,14 +3,17 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.auth import get_current_app_context
 from app.config import get_settings
 from app.database import init_db
 from app.errors import Utf8JSONResponse, add_exception_handlers
+from app.middleware.cloudflare_access import cloudflare_access_guard
 from app.middleware.csrf import csrf_loopback_form_guard
 from app.middleware.logging import SanitizedLoggingMiddleware
+from app.middleware.security_headers import security_headers
 from app.middleware.web_session import web_session_gate
 from app.routes import admin as admin_routes
 from app.routes import (
@@ -56,8 +59,9 @@ from app.routes import (
     web_stats,
 )
 from app.routes import web_rules as web_rules_routes
-from app.schemas import HealthResponse
+from app.schemas import HealthResponse, StatusResponse
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
+from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -87,8 +91,13 @@ app = FastAPI(
 
 add_exception_handlers(app)
 app.add_middleware(SanitizedLoggingMiddleware)
+# Starlette executes the most recently registered HTTP middleware first.
+# Keep response hardening outermost, then Access, then our web session gate,
+# then CSRF for the route body itself.
 app.middleware("http")(csrf_loopback_form_guard)
 app.middleware("http")(web_session_gate)
+app.middleware("http")(cloudflare_access_guard)
+app.middleware("http")(security_headers)
 
 app.include_router(auth.router)
 app.include_router(bootstrap.router)
@@ -138,8 +147,13 @@ app.include_router(web_merchants.router)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
-@app.get("/api/health", response_model=HealthResponse, tags=["health"])
-def health() -> HealthResponse:
+@app.get("/api/health", response_model=StatusResponse, tags=["health"])
+def health() -> StatusResponse:
+    return StatusResponse()
+
+
+@app.get("/api/status/private", response_model=HealthResponse, tags=["health"])
+def private_status(_auth: AuthContext = Depends(get_current_app_context)) -> HealthResponse:
     cfg = get_settings()
     upload_status = "ok" if cfg.upload_dir.is_dir() else "missing"
     # database_status: SQLite file presence is the cheap proxy. We do NOT

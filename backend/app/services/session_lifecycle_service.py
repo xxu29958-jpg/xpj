@@ -57,6 +57,7 @@ def issue_auth_token(
     device_id: int,
     ledger_id: str,
     scope: str,
+    expires_at: datetime | None = None,
 ) -> str:
     token = new_session_token()
     db.add(
@@ -66,6 +67,7 @@ def issue_auth_token(
             device_id=device_id,
             ledger_id=ledger_id,
             scope=scope,
+            expires_at=expires_at,
         )
     )
     db.flush()

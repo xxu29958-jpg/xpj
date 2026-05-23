@@ -61,6 +61,19 @@ DEFAULT_FIXTURE_DIR = _BACKEND_ROOT / "tests" / "_infra" / "ocr_fixtures"
 DEFAULT_TIMEZONE = "Asia/Shanghai"
 
 
+def _configure_output_encoding() -> None:
+    """Avoid Windows console/redirect UnicodeEncodeError for ✓/✗ output."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            # Output encoding is best-effort; benchmark data should still run.
+            continue
+
+
 @dataclass
 class GroundTruth:
     amount_cents: int | None = None
@@ -100,6 +113,7 @@ class ScoreRow:
     time_match: bool | None
     category_match: bool | None
     elapsed_ms: int
+    attempted: bool = True
     note: str = ""
 
     def metrics(self) -> list[str]:
@@ -136,8 +150,22 @@ class BenchmarkReport:
     def aggregate_per_provider(self) -> str:
         per: dict[str, dict[str, int]] = {}
         for row in self.rows:
-            bucket = per.setdefault(row.provider, {"runs": 0, "amount": 0, "merchant": 0, "time": 0, "category": 0, "elapsed_ms": 0})
-            bucket["runs"] += 1
+            bucket = per.setdefault(
+                row.provider,
+                {
+                    "attempted": 0,
+                    "skipped": 0,
+                    "amount": 0,
+                    "merchant": 0,
+                    "time": 0,
+                    "category": 0,
+                    "elapsed_ms": 0,
+                },
+            )
+            if not row.attempted:
+                bucket["skipped"] += 1
+                continue
+            bucket["attempted"] += 1
             bucket["elapsed_ms"] += row.elapsed_ms
             for key, value in (("amount", row.amount_match), ("merchant", row.merchant_match),
                                ("time", row.time_match), ("category", row.category_match)):
@@ -147,18 +175,24 @@ class BenchmarkReport:
             return ""
         lines = [
             "",
-            "| Provider | Runs | Amount % | Merchant % | Time % | Category % | Avg Latency |",
-            "|---|---|---|---|---|---|---|",
+            "| Provider | Attempted | Skipped | Amount % | Merchant % | Time % | Category % | Avg Latency |",
+            "|---|---:|---:|---|---|---|---|---|",
         ]
         for provider, b in sorted(per.items()):
-            runs = b["runs"] or 1
+            attempted = b["attempted"]
+            if attempted:
+                amount_pct = f"{100 * b['amount'] // attempted}%"
+                merchant_pct = f"{100 * b['merchant'] // attempted}%"
+                time_pct = f"{100 * b['time'] // attempted}%"
+                category_pct = f"{100 * b['category'] // attempted}%"
+                avg_latency = f"{b['elapsed_ms'] // attempted}ms"
+            else:
+                amount_pct = merchant_pct = time_pct = category_pct = "—"
+                avg_latency = "—"
             lines.append(
-                f"| {provider} | {b['runs']} | "
-                f"{100 * b['amount'] // runs}% | "
-                f"{100 * b['merchant'] // runs}% | "
-                f"{100 * b['time'] // runs}% | "
-                f"{100 * b['category'] // runs}% | "
-                f"{b['elapsed_ms'] // runs}ms |"
+                f"| {provider} | {attempted} | {b['skipped']} | "
+                f"{amount_pct} | {merchant_pct} | {time_pct} | "
+                f"{category_pct} | {avg_latency} |"
             )
         return "\n".join(lines) + "\n"
 
@@ -312,7 +346,7 @@ def benchmark(fixture_dir: Path, providers: list[str], timezone_name: str) -> Be
                 report.add(ScoreRow(
                     fixture=fixture_name, provider=provider,
                     amount_match=None, merchant_match=None, time_match=None, category_match=None,
-                    elapsed_ms=0, note="unknown provider",
+                    elapsed_ms=0, attempted=False, note="SKIP: unknown provider",
                 ))
                 continue
             start = time.monotonic()
@@ -331,12 +365,13 @@ def benchmark(fixture_dir: Path, providers: list[str], timezone_name: str) -> Be
                 report.add(ScoreRow(
                     fixture=fixture_name, provider=provider,
                     amount_match=None, merchant_match=None, time_match=None, category_match=None,
-                    elapsed_ms=elapsed_ms, note=f"SKIP: {type(exc).__name__}: {exc}",
+                    elapsed_ms=elapsed_ms, attempted=False, note=f"SKIP: {type(exc).__name__}: {exc}",
                 ))
     return report
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_output_encoding()
     parser = argparse.ArgumentParser(description="OCR provider benchmark harness.")
     parser.add_argument(
         "--fixture-dir",

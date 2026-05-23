@@ -10,12 +10,14 @@ need it (LocalOnly bypasses session). The public Host flow (PR-4 will
 wire ``LocalOrWebSession`` dependency into every /web route) will fall
 back here when there's no valid cookie.
 
-Schema: zero changes. ``AuthToken.scope='app'`` with ``Device.platform='web'``
-already distinguishes browser sessions from Android sessions; revoke /
-logout / sessions list all run through the same code paths.
+Session boundary: browser cookies are backed by ``AuthToken.scope='app'`` with
+``Device.platform='web'`` plus a fixed ``AuthToken.expires_at`` server TTL.
+Android app tokens must never be accepted from ``__Host-session`` cookies.
 """
 
 from __future__ import annotations
+
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -24,19 +26,22 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import AuthToken
+from app.models import AuthToken, Device
+from app.network_boundary import pairing_rate_limit_key
 from app.routes.web_common import templates
 from app.services.identity_service import (
-    authenticate_session_token,
+    WEB_SESSION_TTL_SECONDS,
+    authenticate_web_session_token,
     hash_secret,
     pair_device,
 )
 from app.services.time_service import now_utc
+from app.version import BACKEND_VERSION
 
 router = APIRouter(prefix="/web/auth", tags=["web"])
 
 SESSION_COOKIE_NAME = "__Host-session"
-SESSION_COOKIE_MAX_AGE_SECONDS = 8 * 60 * 60  # 8h sliding window (extended on activity)
+SESSION_COOKIE_MAX_AGE_SECONDS = WEB_SESSION_TTL_SECONDS  # fixed 8h server-side TTL
 # `__Host-` prefix demands: Secure, Path=/, no Domain attribute. Browsers
 # refuse to honour the cookie if any of these is missing or modified.
 # See https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes
@@ -83,6 +88,7 @@ def web_login_form(
         context={
             "next_url": _safe_next_url(next),
             "error_message": _ERROR_MESSAGES.get(error or "", "") if error else "",
+            "backend_version": BACKEND_VERSION,
         },
     )
 
@@ -99,7 +105,7 @@ def web_login_submit(
     if not code or not code.isdigit() or len(code) != 8:
         return _redirect_login(next=next, error="invalid_pairing_code")
     cleaned_device_name = _clean_device_name(device_name, request)
-    remote_id = request.client.host if request.client else None
+    remote_id = pairing_rate_limit_key(request)
     try:
         result = pair_device(
             db,
@@ -128,7 +134,14 @@ def web_logout(
         row = db.scalar(
             select(AuthToken).where(AuthToken.token_hash == hash_secret(token)).limit(1)
         )
-        if row is not None and row.revoked_at is None:
+        device = db.get(Device, row.device_id) if row is not None else None
+        is_web_session = (
+            row is not None
+            and row.scope == "app"
+            and device is not None
+            and (device.platform or "").strip().lower() == "web"
+        )
+        if is_web_session and row.revoked_at is None:
             row.revoked_at = now_utc()
             db.commit()
     clear_session_cookie(redirect)
@@ -147,8 +160,13 @@ def web_whoami(
     token = read_session_token(request)
     if not token:
         raise AppError("invalid_token", status_code=401)
-    auth = authenticate_session_token(db, token, {"app"})
-    return Response(
+    result = authenticate_web_session_token(
+        db,
+        token,
+        ttl_seconds=SESSION_COOKIE_MAX_AGE_SECONDS,
+    )
+    auth = result.auth
+    response = Response(
         content=(
             '{"account_name":"' + _escape(auth.account_name) + '",'
             '"ledger_id":"' + _escape(auth.ledger_id) + '",'
@@ -156,6 +174,7 @@ def web_whoami(
         ),
         media_type="application/json; charset=utf-8",
     )
+    return response
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -172,14 +191,14 @@ _ERROR_MESSAGES = {
 
 def _redirect_login(*, next: str, error: str) -> RedirectResponse:  # noqa: A002
     target = "/web/auth/login"
-    params = []
+    params: dict[str, str] = {}
     safe_next = _safe_next_url(next)
     if safe_next:
-        params.append(f"next={safe_next}")
+        params["next"] = safe_next
     if error:
-        params.append(f"error={error}")
+        params["error"] = error
     if params:
-        target = f"{target}?{'&'.join(params)}"
+        target = f"{target}?{urlencode(params)}"
     return RedirectResponse(url=target, status_code=303)
 
 

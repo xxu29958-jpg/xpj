@@ -131,6 +131,12 @@ def _validate_public_base_url(raw: str) -> str:
             "公网域名必须包含主机名，例如 https://api.example.com。",
             status_code=422,
         )
+    if parsed.username or parsed.password:
+        raise AppError("invalid_request", "公网域名不能包含用户名或密码。", status_code=422)
+    try:
+        _ = parsed.port
+    except ValueError as exc:
+        raise AppError("invalid_request", "公网域名端口不合法。", status_code=422) from exc
     host = (parsed.hostname or "").lower()
     if parsed.scheme == "http" and host not in _LOOPBACK_HOST_NAMES:
         raise AppError(

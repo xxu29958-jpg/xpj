@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS, FX_STATUS_PENDING, NO_FRACTION_CURRENCY_CODES
+from app.middleware.csrf import csrf_context
 from app.network_boundary import require_owner_console_local
 from app.services import backup_service, web_stats_service
 from app.services import owner_console_service as owner_svc
@@ -35,7 +36,7 @@ from app.services.time_service import current_month, now_utc
 from app.version import BACKEND_VERSION
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
 
 
 def _require_local(request: Request) -> None:

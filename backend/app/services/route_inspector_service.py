@@ -44,7 +44,12 @@ _GROUPS: tuple[tuple[str, str, str, str], ...] = (
     ("owner", "Owner Console（仅本机）", "本机环回 + Host 头双重校验，公网不可达。", "surface-owner"),
     ("admin", "Admin API（管理 token）", "通常只在本机 + admin token 才能调用，可通过 ALLOW_PUBLIC_ADMIN_API 放开（不建议）。", "surface-admin"),
     ("upload", "上传接口（公网，按 token / Key 校验）", "iPhone 快捷指令 / Android 客户端通过 Cloudflare Tunnel 访问。", "surface-upload"),
-    ("web", "网页版账本（/web）", "本机环回 + Host 头双重校验，公网不可达；桌面浏览器使用的账本流。", "surface-web"),
+    (
+        "web",
+        "网页版账本（/web）",
+        "本机环回免 cookie；公网仅允许 Web session cookie，未登录 303 到 /web/auth/login。",
+        "surface-web",
+    ),
     ("bootstrap", "首次绑定 / 引导", "受 ENABLE_HTTP_BOOTSTRAP 与 secret 控制，绑定完成后建议关闭。", "surface-bootstrap"),
     ("public", "其他公开端点", "/api/health 等无需鉴权的状态查询。", "surface-public"),
     ("docs", "OpenAPI 文档", "默认 ENABLE_API_DOCS=false 时不会挂载。", "surface-docs"),

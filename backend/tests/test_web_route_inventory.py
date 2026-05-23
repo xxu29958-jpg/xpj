@@ -31,7 +31,9 @@ tests below assert:
 1. Every ``/web/*`` route registered on the live FastAPI app appears in
    :data:`_WEB_ROUTE_CLASSIFICATION` (forces a deliberate classification
    whenever a new route is added).
-2. Every ``writer-only`` route's source actually references
+2. No duplicate ``(method, path)`` pair is registered; FastAPI would otherwise
+   silently let the first endpoint win.
+3. Every ``writer-only`` route endpoint itself references
    ``_require_selected_ledger_write`` (so the classification doesn't drift
    away from the code).
 
@@ -42,6 +44,7 @@ point.
 from __future__ import annotations
 
 import inspect
+from collections import Counter
 from collections.abc import Callable
 from typing import Literal
 
@@ -61,8 +64,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/auth/login"): "auth",
     ("POST", "/web/auth/logout"): "auth",
     ("GET", "/web/auth/whoami"): "auth",
-    # /web root and slash redirect (web_app + web_dashboard both register;
-    # FastAPI's first-registered-wins rule means web_app handles GET /web).
+    # /web root and slash redirect.
     ("GET", "/web"): "local-only-rendering",
     ("GET", "/web/"): "local-only-rendering",
     # Account flows
@@ -163,6 +165,20 @@ def _enumerate_web_routes() -> set[tuple[str, str]]:
     return found
 
 
+def _enumerate_web_route_counts() -> Counter[tuple[str, str]]:
+    found: Counter[tuple[str, str]] = Counter()
+    for route in app.routes:
+        if not isinstance(route, Route):
+            continue
+        if not route.path.startswith("/web"):
+            continue
+        for method in route.methods or ():
+            if method in {"HEAD", "OPTIONS"}:
+                continue
+            found[(method, route.path)] += 1
+    return found
+
+
 def _writer_only_paths() -> list[tuple[str, str]]:
     return [
         key for key, kind in _WEB_ROUTE_CLASSIFICATION.items()
@@ -202,23 +218,20 @@ def test_every_web_route_is_classified() -> None:
     )
 
 
+def test_web_routes_are_not_registered_twice() -> None:
+    counts = _enumerate_web_route_counts()
+    duplicates = sorted(key for key, count in counts.items() if count > 1)
+    assert not duplicates, f"duplicate /web route registrations: {duplicates}"
+
+
 @pytest.mark.parametrize("method,path", _writer_only_paths())
 def test_writer_only_routes_actually_check_writer(method: str, path: str) -> None:
-    """``writer-only`` classification must be backed by code: the endpoint
-    source must reference ``_require_selected_ledger_write`` (directly or
-    via a helper called from the endpoint body)."""
+    """``writer-only`` classification must be backed by endpoint code."""
     endpoint = _route_endpoint(method, path)
     assert endpoint is not None, f"endpoint not found: {method} {path}"
     source = inspect.getsource(endpoint)
-    # Find the helper in either the endpoint body or its enclosing module —
-    # the module-level write guard happens to live in web_common, and every
-    # writer-only handler imports + invokes it.
-    if "_require_selected_ledger_write" in source:
-        return
-    module = inspect.getmodule(endpoint)
-    module_source = inspect.getsource(module) if module is not None else ""
-    assert "_require_selected_ledger_write" in module_source, (
+    assert "_require_selected_ledger_write(" in source, (
         f"{method} {path} is classified as writer-only but its handler "
         f"({endpoint.__module__}.{endpoint.__name__}) does not reference "
-        "_require_selected_ledger_write either directly or via the module."
+        "_require_selected_ledger_write directly."
     )

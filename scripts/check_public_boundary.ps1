@@ -1,13 +1,14 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-    v0.3-rc1-preflight public-boundary acceptance probe.
+    v1.0 public-boundary acceptance probe.
 
 .DESCRIPTION
     Confirms that the Cloudflare Tunnel surface (default https://api.example.com)
     only exposes the endpoints intended for public consumption (/api/health,
-    /api/auth/pair, /u/{key}, /api/expenses/* with valid app token) and that
-    Owner Console / admin / bootstrap / docs are all rejected.
+    controlled /api/* subsets, /u/{key}, session-gated /web/*, and
+    /static/web/* + /static/shared/* assets) and that Owner Console / admin /
+    bootstrap / docs / uploads are all rejected.
 
     Independently confirms that the loopback origin still works, to rule out
     "the backend is just down".
@@ -31,9 +32,13 @@
     UploadLink URLs. It also intentionally does NOT accept those values as
     parameters: the public boundary check must not depend on possessing any
     secret. /api/auth/pair is probed with an obviously invalid pairing code
-    that should be rejected with 4xx (NOT 200) — what we are testing is
-    that the endpoint is reachable on the public origin, not that pairing
-    succeeds.
+    that should be rejected with 401 invalid_pairing_code (NOT 200). /web/*
+    without a cookie should return 303 with Location pointing at
+    /web/auth/login?next=...
+
+    If Cloudflare Access is enabled for /web, set TICKETBOX_CF_ACCESS_JWT in
+    the environment. The value is sent as Cf-Access-Jwt-Assertion and is never
+    printed.
 #>
 
 [CmdletBinding()]
@@ -44,6 +49,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $results = @()
+$cloudflareAccessJwt = [string]$env:TICKETBOX_CF_ACCESS_JWT
+$cloudflareAccessJwt = $cloudflareAccessJwt.Trim()
 
 function Add-Result {
     param(
@@ -51,7 +58,7 @@ function Add-Result {
         [string]$Url,
         [string]$Method,
         [string]$Expectation,
-        [int]$Actual,
+        [object]$Actual,
         [bool]$Pass
     )
     $script:results += [pscustomobject]@{
@@ -61,6 +68,77 @@ function Add-Result {
         Expectation = $Expectation
         Actual      = $Actual
         Pass        = $Pass
+    }
+}
+
+function Get-HeaderValue {
+    param(
+        [object]$Headers,
+        [string]$Name
+    )
+    if ($null -eq $Headers) {
+        return ""
+    }
+    try {
+        if ($Headers -is [System.Net.WebHeaderCollection]) {
+            return [string]$Headers.Get($Name)
+        }
+        if ($Headers.ContainsKey($Name)) {
+            $value = $Headers[$Name]
+            if ($value -is [array]) {
+                return [string]$value[0]
+            }
+            return [string]$value
+        }
+    } catch {
+        return ""
+    }
+    return ""
+}
+
+function Read-ErrorResponseBody {
+    param([object]$Response)
+    if ($null -eq $Response) {
+        return ""
+    }
+    try {
+        $stream = $Response.GetResponseStream()
+        if ($null -eq $stream) {
+            return ""
+        }
+        $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8, $true)
+        return $reader.ReadToEnd()
+    } catch {
+        return ""
+    }
+}
+
+function Get-JsonErrorCode {
+    param([string]$Body)
+    if ([string]::IsNullOrWhiteSpace($Body)) {
+        return ""
+    }
+    try {
+        $json = $Body | ConvertFrom-Json
+        if ($json.error) {
+            return [string]$json.error
+        }
+    } catch {
+        return ""
+    }
+    return ""
+}
+
+function New-ProbeResult {
+    param(
+        [int]$StatusCode,
+        [object]$Headers = $null,
+        [string]$Body = ""
+    )
+    [pscustomobject]@{
+        StatusCode = $StatusCode
+        ErrorCode  = Get-JsonErrorCode -Body $Body
+        Location   = Get-HeaderValue -Headers $Headers -Name "Location"
     }
 }
 
@@ -83,92 +161,161 @@ function Invoke-Probe {
             $params['Body'] = ($Body | ConvertTo-Json -Compress)
             $params['ContentType'] = 'application/json'
         }
+        if (-not [string]::IsNullOrWhiteSpace($script:cloudflareAccessJwt)) {
+            $params['Headers'] = @{ 'Cf-Access-Jwt-Assertion' = $script:cloudflareAccessJwt }
+        }
         $resp = Invoke-WebRequest @params
-        return [int]$resp.StatusCode
+        return New-ProbeResult -StatusCode ([int]$resp.StatusCode) -Headers $resp.Headers -Body ([string]$resp.Content)
     } catch [System.Net.WebException] {
         if ($_.Exception.Response -ne $null) {
-            return [int]$_.Exception.Response.StatusCode
+            $response = $_.Exception.Response
+            return New-ProbeResult `
+                -StatusCode ([int]$response.StatusCode) `
+                -Headers $response.Headers `
+                -Body (Read-ErrorResponseBody -Response $response)
         }
-        return -1
+        return New-ProbeResult -StatusCode -1
     } catch {
         if ($_.Exception.Response -ne $null) {
-            try { return [int]$_.Exception.Response.StatusCode } catch { }
+            try {
+                $response = $_.Exception.Response
+                return New-ProbeResult `
+                    -StatusCode ([int]$response.StatusCode) `
+                    -Headers $response.Headers `
+                    -Body (Read-ErrorResponseBody -Response $response)
+            } catch { }
         }
-        return -1
+        return New-ProbeResult -StatusCode -1
     }
 }
 
-Write-Host "=== v0.3-rc1-preflight public boundary check ===" -ForegroundColor Cyan
+function Format-ProbeActual {
+    param([object]$Probe)
+    $parts = @("status=$($Probe.StatusCode)")
+    if (-not [string]::IsNullOrWhiteSpace($Probe.ErrorCode)) {
+        $parts += "error=$($Probe.ErrorCode)"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Probe.Location)) {
+        $parts += "location=$($Probe.Location)"
+    }
+    return ($parts -join " ")
+}
+
+function Test-Probe {
+    param(
+        [string]$Name,
+        [string]$Url,
+        [string]$Method = 'GET',
+        [int[]]$ExpectedStatus,
+        [string]$ExpectedError = "",
+        [string[]]$ExpectedErrors = @(),
+        [string]$ExpectedLocationPrefix = "",
+        [hashtable]$Body = $null
+    )
+    if ($null -eq $ExpectedErrors) {
+        $ExpectedErrors = @()
+    }
+    $probe = Invoke-Probe -Url $Url -Method $Method -Body $Body
+    $ok = ($ExpectedStatus -contains $probe.StatusCode)
+    $expectParts = @("status=$($ExpectedStatus -join '/')")
+    if ($ExpectedErrors.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($ExpectedError)) {
+        $ExpectedErrors = @($ExpectedError)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedError)) {
+        $expectParts += "error=$ExpectedError"
+    }
+    if ($ExpectedErrors.Count -gt 0) {
+        $ok = $ok -and ($ExpectedErrors -contains ([string]$probe.ErrorCode))
+        if ([string]::IsNullOrWhiteSpace($ExpectedError)) {
+            $expectParts += "error=$($ExpectedErrors -join '/')"
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedLocationPrefix)) {
+        $location = [string]$probe.Location
+        $ok = $ok -and $location.StartsWith($ExpectedLocationPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        $expectParts += "location starts $ExpectedLocationPrefix"
+    }
+    Add-Result `
+        -Name $Name `
+        -Url $Url `
+        -Method $Method `
+        -Expectation ($expectParts -join " ") `
+        -Actual (Format-ProbeActual -Probe $probe) `
+        -Pass $ok
+    return $probe
+}
+
+Write-Host "=== v1.0 public boundary check ===" -ForegroundColor Cyan
 Write-Host "BaseUrl  = $BaseUrl"
 Write-Host "LocalUrl = $LocalUrl"
 Write-Host ""
 
 # ── 1) loopback sanity ──────────────────────────────────────────────────────
-$localHealth = Invoke-Probe -Url "$LocalUrl/api/health"
-Add-Result -Name 'local /api/health'  -Url "$LocalUrl/api/health" -Method 'GET' `
-    -Expectation '200' -Actual $localHealth -Pass ($localHealth -eq 200)
-
-$localOwner = Invoke-Probe -Url "$LocalUrl/owner"
-Add-Result -Name 'local /owner'       -Url "$LocalUrl/owner"      -Method 'GET' `
-    -Expectation '200 (loopback)' -Actual $localOwner -Pass ($localOwner -eq 200)
+Test-Probe -Name 'local /api/health' -Url "$LocalUrl/api/health" -Method 'GET' -ExpectedStatus @(200) | Out-Null
+Test-Probe -Name 'local /owner' -Url "$LocalUrl/owner" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 
 # ── 2) public allowed surface ───────────────────────────────────────────────
-$pubHealth = Invoke-Probe -Url "$BaseUrl/api/health"
-Add-Result -Name 'public /api/health' -Url "$BaseUrl/api/health" -Method 'GET' `
-    -Expectation '200' -Actual $pubHealth -Pass ($pubHealth -eq 200)
+Test-Probe -Name 'public /api/health' -Url "$BaseUrl/api/health" -Method 'GET' -ExpectedStatus @(200) | Out-Null
+Test-Probe -Name 'public /api/status/private (no token)' -Url "$BaseUrl/api/status/private" -Method 'GET' `
+    -ExpectedStatus @(401, 404) -ExpectedErrors @('invalid_token', 'route_not_found', '') | Out-Null
+Test-Probe -Name 'public /static/web/web.css' -Url "$BaseUrl/static/web/web.css" -Method 'GET' -ExpectedStatus @(200) | Out-Null
+Test-Probe -Name 'public /static/shared/tokens.css' -Url "$BaseUrl/static/shared/tokens.css" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 
 # /api/auth/pair must be reachable but reject obviously invalid input.
-$pairCode = Invoke-Probe -Url "$BaseUrl/api/auth/pair" -Method 'POST' -Body @{
+Test-Probe -Name 'public /api/auth/pair (bad code)' -Url "$BaseUrl/api/auth/pair" -Method 'POST' `
+    -ExpectedStatus @(401) -ExpectedError 'invalid_pairing_code' -Body @{
     pairing_code = 'AAAAAA'
     device_name  = 'public-boundary-probe'
     platform     = 'android'
-}
-$pairOk = ($pairCode -ge 400 -and $pairCode -lt 500)
-Add-Result -Name 'public /api/auth/pair (bad code)' -Url "$BaseUrl/api/auth/pair" -Method 'POST' `
-    -Expectation '4xx (reachable, rejects)' -Actual $pairCode -Pass $pairOk
+} | Out-Null
 
 # /u/{nonexistent-key} should be reachable but reject.
-$uCode = Invoke-Probe -Url "$BaseUrl/u/upl_does_not_exist_aaaaaaaaaaaaaaaaa" -Method 'POST'
-$uOk = ($uCode -ge 400 -and $uCode -lt 500)
-Add-Result -Name 'public /u/{fake}' -Url "$BaseUrl/u/upl_does_not_exist_*" -Method 'POST' `
-    -Expectation '4xx (reachable, rejects)' -Actual $uCode -Pass $uOk
+Test-Probe -Name 'public /u/{fake}' -Url "$BaseUrl/u/upl_does_not_exist_aaaaaaaaaaaaaaaaa" -Method 'POST' `
+    -ExpectedStatus @(401) -ExpectedError 'invalid_token' | Out-Null
 
 # ── 3) public forbidden surface ─────────────────────────────────────────────
+$edgeOrOwnerForbiddenErrors = @('invalid_request', 'route_not_found', '')
+$edgeOrAdminForbiddenErrors = @('admin_api_local_only', 'route_not_found', '')
+$edgeOrRouteNotFoundErrors = @('route_not_found', '')
+$edgeOrBootstrapDisabledErrors = @('bootstrap_disabled', 'route_not_found', '')
 $forbiddenChecks = @(
-    @{ Name = 'public /owner';                  Url = "$BaseUrl/owner";                  Method = 'GET'  }
-    @{ Name = 'public /owner/devices';          Url = "$BaseUrl/owner/devices";          Method = 'GET'  }
-    @{ Name = 'public /owner/upload-links';     Url = "$BaseUrl/owner/upload-links";     Method = 'GET'  }
-    @{ Name = 'public /owner/pairing';          Url = "$BaseUrl/owner/pairing";          Method = 'GET'  }
-    @{ Name = 'public /owner/diagnostics';      Url = "$BaseUrl/owner/diagnostics";      Method = 'GET'  }
-    @{ Name = 'public /owner/settings';         Url = "$BaseUrl/owner/settings";         Method = 'GET'  }
-    @{ Name = 'public /owner/settings/api';     Url = "$BaseUrl/owner/settings/api";     Method = 'GET'  }
-    @{ Name = 'public /owner/settings/security';Url = "$BaseUrl/owner/settings/security";Method = 'GET'  }
-    @{ Name = 'public /owner/backups';          Url = "$BaseUrl/owner/backups";          Method = 'GET'  }
-    @{ Name = 'public POST /owner/devices/x/revoke';      Url = "$BaseUrl/owner/devices/00000000-0000-0000-0000-000000000000/revoke";      Method = 'POST' }
-    @{ Name = 'public POST /owner/upload-links create';   Url = "$BaseUrl/owner/upload-links";        Method = 'POST' }
-    @{ Name = 'public POST /owner/pairing/refresh';       Url = "$BaseUrl/owner/pairing/refresh";     Method = 'POST' }
-    @{ Name = 'public POST /owner/settings/public-base-url'; Url = "$BaseUrl/owner/settings/public-base-url"; Method = 'POST' }
-    @{ Name = 'public /api/admin/devices';      Url = "$BaseUrl/api/admin/devices";      Method = 'GET'  }
-    @{ Name = 'public /api/admin/upload-links'; Url = "$BaseUrl/api/admin/upload-links"; Method = 'GET' }
-    @{ Name = 'public POST /api/admin/devices'; Url = "$BaseUrl/api/admin/devices";      Method = 'POST' }
-    @{ Name = 'public POST /api/admin/upload-links'; Url = "$BaseUrl/api/admin/upload-links"; Method = 'POST' }
-    @{ Name = 'public /api/bootstrap/owner';    Url = "$BaseUrl/api/bootstrap/owner";    Method = 'POST' }
-    @{ Name = 'public /api/bootstrap/pairing-codes'; Url = "$BaseUrl/api/bootstrap/pairing-codes"; Method = 'POST' }
-    @{ Name = 'public POST /api/maintenance/cleanup-images'; Url = "$BaseUrl/api/maintenance/cleanup-images"; Method = 'POST' }
-    @{ Name = 'public /docs';                   Url = "$BaseUrl/docs";                   Method = 'GET'  }
-    @{ Name = 'public /openapi.json';           Url = "$BaseUrl/openapi.json";           Method = 'GET'  }
-    @{ Name = 'public /redoc';                  Url = "$BaseUrl/redoc";                  Method = 'GET'  }
+    @{ Name = 'public /owner';                  Url = "$BaseUrl/owner";                  Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/devices';          Url = "$BaseUrl/owner/devices";          Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/upload-links';     Url = "$BaseUrl/owner/upload-links";     Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/pairing';          Url = "$BaseUrl/owner/pairing";          Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/diagnostics';      Url = "$BaseUrl/owner/diagnostics";      Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/settings';         Url = "$BaseUrl/owner/settings";         Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/settings/api';     Url = "$BaseUrl/owner/settings/api";     Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/settings/security';Url = "$BaseUrl/owner/settings/security";Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /owner/backups';          Url = "$BaseUrl/owner/backups";          Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public POST /owner/devices/x/revoke';      Url = "$BaseUrl/owner/devices/00000000-0000-0000-0000-000000000000/revoke";      Method = 'POST'; Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public POST /owner/upload-links create';   Url = "$BaseUrl/owner/upload-links";        Method = 'POST'; Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public POST /owner/pairing/refresh';       Url = "$BaseUrl/owner/pairing/refresh";     Method = 'POST'; Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public POST /owner/settings/public-base-url'; Url = "$BaseUrl/owner/settings/public-base-url"; Method = 'POST'; Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
+    @{ Name = 'public /api/admin/devices';      Url = "$BaseUrl/api/admin/devices";      Method = 'GET';  Status = @(403, 404); Errors = $edgeOrAdminForbiddenErrors }
+    @{ Name = 'public /api/admin/upload-links'; Url = "$BaseUrl/api/admin/upload-links"; Method = 'GET';  Status = @(403, 404); Errors = $edgeOrAdminForbiddenErrors }
+    @{ Name = 'public POST /api/admin/devices'; Url = "$BaseUrl/api/admin/devices";      Method = 'POST'; Status = @(403, 404); Errors = $edgeOrAdminForbiddenErrors }
+    @{ Name = 'public POST /api/admin/upload-links'; Url = "$BaseUrl/api/admin/upload-links"; Method = 'POST'; Status = @(403, 404); Errors = $edgeOrAdminForbiddenErrors }
+    @{ Name = 'public /api/bootstrap/owner';    Url = "$BaseUrl/api/bootstrap/owner";    Method = 'POST'; Status = @(404); Errors = $edgeOrBootstrapDisabledErrors; Body = @{} }
+    @{ Name = 'public /api/bootstrap/pairing-codes'; Url = "$BaseUrl/api/bootstrap/pairing-codes"; Method = 'POST'; Status = @(403, 404); Errors = $edgeOrAdminForbiddenErrors }
+    @{ Name = 'public POST /api/maintenance/cleanup-images'; Url = "$BaseUrl/api/maintenance/cleanup-images"; Method = 'POST'; Status = @(403, 404); Errors = $edgeOrAdminForbiddenErrors }
+    @{ Name = 'public /docs';                   Url = "$BaseUrl/docs";                   Method = 'GET';  Status = @(404); Errors = $edgeOrRouteNotFoundErrors }
+    @{ Name = 'public /openapi.json';           Url = "$BaseUrl/openapi.json";           Method = 'GET';  Status = @(404); Errors = $edgeOrRouteNotFoundErrors }
+    @{ Name = 'public /redoc';                  Url = "$BaseUrl/redoc";                  Method = 'GET';  Status = @(404); Errors = $edgeOrRouteNotFoundErrors }
     # Uploads dir must NEVER be statically served — image bytes only via auth API.
-    @{ Name = 'public /uploads/owner/fake.png';          Url = "$BaseUrl/uploads/owner/2026/05/fake.png";  Method = 'GET'  }
-    @{ Name = 'public /static/uploads/fake.png';         Url = "$BaseUrl/static/uploads/fake.png";         Method = 'GET'  }
+    @{ Name = 'public /uploads/owner/fake.png';          Url = "$BaseUrl/uploads/owner/2026/05/fake.png";  Method = 'GET';  Status = @(404); Errors = $edgeOrRouteNotFoundErrors }
+    @{ Name = 'public /static/uploads/fake.png';         Url = "$BaseUrl/static/uploads/fake.png";         Method = 'GET';  Status = @(404); Errors = $edgeOrRouteNotFoundErrors }
 )
 
 foreach ($c in $forbiddenChecks) {
-    $code = Invoke-Probe -Url $c.Url -Method $c.Method
-    # Acceptable rejection codes: 401, 403, 404, 405. Anything 2xx/3xx fails.
-    $ok = ($code -in 401, 403, 404, 405)
-    Add-Result -Name $c.Name -Url $c.Url -Method $c.Method `
-        -Expectation '401/403/404/405' -Actual $code -Pass $ok
+    Test-Probe `
+        -Name $c.Name `
+        -Url $c.Url `
+        -Method $c.Method `
+        -ExpectedStatus $c.Status `
+        -ExpectedError $c.Error `
+        -ExpectedErrors $c.Errors `
+        -Body $c.Body | Out-Null
 }
 
 # ── 4) /web public mode (PR #60 dual mode) ─────────────────────────────────
@@ -176,26 +323,25 @@ foreach ($c in $forbiddenChecks) {
 # The login flow itself must be reachable; everything else under /web must
 # redirect rather than render owner data.
 $webRedirectChecks = @(
-    @{ Name = 'public /web (no cookie)';                  Url = "$BaseUrl/web";                              Method = 'GET'  }
-    @{ Name = 'public /web/pending (no cookie)';          Url = "$BaseUrl/web/pending";                      Method = 'GET'  }
-    @{ Name = 'public /web/confirmed (no cookie)';        Url = "$BaseUrl/web/confirmed";                    Method = 'GET'  }
-    @{ Name = 'public /web/stats (no cookie)';            Url = "$BaseUrl/web/stats";                        Method = 'GET'  }
-    @{ Name = 'public GET /web/expenses/1/edit (no cookie)'; Url = "$BaseUrl/web/expenses/1/edit";           Method = 'GET'  }
-    @{ Name = 'public GET /web/expenses/1/image (no cookie)';     Url = "$BaseUrl/web/expenses/1/image";     Method = 'GET'  }
-    @{ Name = 'public GET /web/expenses/1/thumbnail (no cookie)'; Url = "$BaseUrl/web/expenses/1/thumbnail"; Method = 'GET'  }
+    @{ Name = 'public /web (no cookie)';                  Url = "$BaseUrl/web";                              Method = 'GET'; Location = '/web/auth/login?next=%2Fweb' }
+    @{ Name = 'public /web/pending (no cookie)';          Url = "$BaseUrl/web/pending";                      Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fpending' }
+    @{ Name = 'public /web/confirmed (no cookie)';        Url = "$BaseUrl/web/confirmed";                    Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fconfirmed' }
+    @{ Name = 'public /web/stats (no cookie)';            Url = "$BaseUrl/web/stats";                        Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fstats' }
+    @{ Name = 'public GET /web/expenses/1/edit (no cookie)'; Url = "$BaseUrl/web/expenses/1/edit";           Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fexpenses%2F1%2Fedit' }
+    @{ Name = 'public GET /web/expenses/1/image (no cookie)';     Url = "$BaseUrl/web/expenses/1/image";     Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fexpenses%2F1%2Fimage' }
+    @{ Name = 'public GET /web/expenses/1/thumbnail (no cookie)'; Url = "$BaseUrl/web/expenses/1/thumbnail"; Method = 'GET'; Location = '/web/auth/login?next=%2Fweb%2Fexpenses%2F1%2Fthumbnail' }
 )
 foreach ($c in $webRedirectChecks) {
-    $code = Invoke-Probe -Url $c.Url -Method $c.Method
-    # 303 is what web_session middleware emits; allow 302 as defensive equivalence.
-    $ok = ($code -in 302, 303)
-    Add-Result -Name $c.Name -Url $c.Url -Method $c.Method `
-        -Expectation '303 redirect to /web/auth/login' -Actual $code -Pass $ok
+    Test-Probe `
+        -Name $c.Name `
+        -Url $c.Url `
+        -Method $c.Method `
+        -ExpectedStatus @(303) `
+        -ExpectedLocationPrefix $c.Location | Out-Null
 }
 
 # /web/auth/login must be REACHABLE (otherwise the cookie flow is broken).
-$loginCode = Invoke-Probe -Url "$BaseUrl/web/auth/login" -Method 'GET'
-Add-Result -Name 'public /web/auth/login (reachable)' -Url "$BaseUrl/web/auth/login" -Method 'GET' `
-    -Expectation '200' -Actual $loginCode -Pass ($loginCode -eq 200)
+Test-Probe -Name 'public /web/auth/login (reachable)' -Url "$BaseUrl/web/auth/login" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 
 # ── 4) summary ──────────────────────────────────────────────────────────────
 $rows = $results | ForEach-Object {

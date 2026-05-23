@@ -1,8 +1,6 @@
 ﻿param(
     [Parameter(Mandatory = $false)]
     [string]$ServerUrl = "https://api.example.com",
-    [string]$SessionToken = "",
-    [string]$UploadLink = "",
     [switch]$SkipUpload,
     [switch]$AllowHttp
 )
@@ -27,12 +25,6 @@ $preflightArgs = @(
     "-ServerUrl", $baseUrl,
     "-SkipDevice"
 )
-if ($SessionToken.Trim().Length -gt 0) {
-    $preflightArgs += @("-SessionToken", $SessionToken)
-}
-if ($UploadLink.Trim().Length -gt 0) {
-    $preflightArgs += @("-UploadLink", $UploadLink)
-}
 if ($SkipUpload) {
     $preflightArgs += "-SkipUpload"
 }

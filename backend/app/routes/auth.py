@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
 from app.database import get_db
+from app.network_boundary import pairing_rate_limit_key
 from app.schemas import AuthCheckResponse, PairRequest, PairResponse
 from app.services.identity_service import pair_device
 from app.tenants import AuthContext
@@ -26,7 +27,7 @@ def check_auth(auth: AuthContext = Depends(get_current_app_context)) -> AuthChec
 
 @router.post("/pair", response_model=PairResponse)
 def pair(payload: PairRequest, request: Request, db: Session = Depends(get_db)) -> PairResponse:
-    remote_id = request.client.host if request.client is not None else None
+    remote_id = pairing_rate_limit_key(request)
     result = pair_device(
         db,
         pairing_code=payload.pairing_code,

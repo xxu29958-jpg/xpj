@@ -6,14 +6,25 @@ import pytest
 from fastapi import Request
 
 from app.errors import AppError
-from app.network_boundary import is_loopback_request, require_owner_console_local
+from app.network_boundary import is_loopback_request, pairing_rate_limit_key, require_owner_console_local
 
 
-def _make_request(host: str, *, peer: str = "127.0.0.1") -> Request:
+def _make_request(
+    host: str,
+    *,
+    peer: str = "127.0.0.1",
+    extra_headers: dict[str, str] | None = None,
+) -> Request:
+    headers = [(b"host", host.encode("latin1"))]
+    if extra_headers:
+        headers.extend(
+            (key.lower().encode("latin1"), value.encode("latin1"))
+            for key, value in extra_headers.items()
+        )
     scope = {
         "type": "http",
         "method": "GET",
-        "headers": [(b"host", host.encode("latin1"))],
+        "headers": headers,
         "client": (peer, 12345),
         "path": "/",
         "query_string": b"",
@@ -92,3 +103,32 @@ def test_extra_loopback_hosts_rejects_ip_outside_loopback_range(
     monkeypatch.setenv("XPJ_EXTRA_LOOPBACK_HOSTS", "10.0.0.5:8000, 192.168.1.5")
     assert not is_loopback_request(_make_request("10.0.0.5:8000"))
     assert not is_loopback_request(_make_request("192.168.1.5"))
+
+
+def test_pairing_rate_limit_key_uses_cf_ip_only_for_public_tunnel_request() -> None:
+    req = _make_request(
+        "api.example.com",
+        extra_headers={"cf-connecting-ip": "198.51.100.24"},
+    )
+    assert pairing_rate_limit_key(req) == "cf:198.51.100.24"
+
+
+def test_pairing_rate_limit_key_ignores_cf_ip_for_loopback_or_non_loopback_peer() -> None:
+    local = _make_request(
+        "127.0.0.1:8000",
+        extra_headers={"cf-connecting-ip": "198.51.100.24"},
+    )
+    assert pairing_rate_limit_key(local) == "peer:127.0.0.1"
+
+    direct_public = _make_request(
+        "api.example.com",
+        peer="203.0.113.10",
+        extra_headers={"cf-connecting-ip": "198.51.100.24"},
+    )
+    assert pairing_rate_limit_key(direct_public) == "peer:203.0.113.10"
+
+    malformed = _make_request(
+        "api.example.com",
+        extra_headers={"cf-connecting-ip": "not-an-ip"},
+    )
+    assert pairing_rate_limit_key(malformed) == "peer:127.0.0.1"

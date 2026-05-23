@@ -617,8 +617,8 @@ def test_owner_delete_upload_link_after_revoke(local_client: TestClient) -> None
     assert again.status_code == 404
 
 
-def test_health_owner_console_status_not_unimplemented(client: TestClient) -> None:
-    resp = client.get("/api/health")
+def test_private_status_owner_console_status_not_unimplemented(client: TestClient, *, identity) -> None:
+    resp = client.get("/api/status/private", headers=identity.app_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert data.get("owner_console_status") not in {None, "not-implemented"}

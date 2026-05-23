@@ -17,10 +17,24 @@ These tests exercise the middleware end to end:
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+import re
+from datetime import timedelta
 
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.database import SessionLocal
 from app.main import app
-from app.routes.web_auth import SESSION_COOKIE_NAME
+from app.middleware import web_session as web_session_middleware
+from app.models import AuthToken
+from app.routes.web_auth import (
+    SESSION_COOKIE_MAX_AGE_SECONDS,
+    SESSION_COOKIE_NAME,
+)
+from app.services.identity_service import hash_secret
+from app.services.time_service import ensure_utc, now_utc
 
 # A public host header that the test injects to simulate a Cloudflare
 # Tunnel request reaching the backend.
@@ -38,7 +52,7 @@ def _public_client() -> TestClient:
     """
     return TestClient(
         app,
-        base_url=f"http://{PUBLIC_HOST}",
+        base_url=f"https://{PUBLIC_HOST}",
         client=("203.0.113.10", 50001),
     )
 
@@ -54,20 +68,34 @@ def _request_pairing_code(client: TestClient, *, identity) -> str:
 
 
 def _mint_session(client: TestClient, *, identity) -> str:
+    before = now_utc()
     code = _request_pairing_code(client, identity=identity)
     # Login goes through the public-host TestClient too — login itself is
     # NOT session-gated (see web_auth router). Origin matches the public
     # host so CSRF middleware accepts the form POST as same-site.
     login = _public_client()
+    login_form = login.get("/web/auth/login")
+    assert login_form.status_code == 200
+    match = re.search(r'name="csrf_token" value="([^"]+)"', login_form.text)
+    assert match is not None, login_form.text
     resp = login.post(
         "/web/auth/login",
-        data={"pairing_code": code, "device_name": "pytest browser"},
-        headers={"Origin": f"http://{PUBLIC_HOST}"},
+        data={"pairing_code": code, "device_name": "pytest browser", "csrf_token": match.group(1)},
+        headers={"Origin": f"https://{PUBLIC_HOST}"},
         follow_redirects=False,
     )
+    after = now_utc()
     assert resp.status_code == 303, resp.text
     set_cookie = resp.headers["set-cookie"]
-    return set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
+    token = set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].split(";", 1)[0]
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        expires_at = ensure_utc(row.expires_at)
+        assert expires_at is not None
+        assert expires_at >= before + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
+        assert expires_at <= after + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
+    return token
 
 
 def test_public_host_without_cookie_redirects_to_login(client: TestClient) -> None:
@@ -76,7 +104,7 @@ def test_public_host_without_cookie_redirects_to_login(client: TestClient) -> No
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/web/auth/login")
     # next= must carry the original destination
-    assert "next=/web/pending" in resp.headers["location"]
+    assert "next=%2Fweb%2Fpending" in resp.headers["location"]
 
 
 def test_public_host_login_page_itself_does_not_redirect(client: TestClient) -> None:
@@ -97,6 +125,30 @@ def test_public_host_with_valid_cookie_renders_dashboard(client: TestClient, *, 
     assert resp.status_code == 200, resp.text
     # Lands on the owner ledger (the test identity uses the owner ledger)
     assert "待确认" in resp.text
+    assert SESSION_COOKIE_NAME not in resp.headers.get("set-cookie", "")
+
+
+def test_public_host_cookie_does_not_refresh_last_used_or_cookie(client: TestClient, *, identity) -> None:
+    token = _mint_session(client, identity=identity)
+    old_last_used = now_utc() - timedelta(hours=2)
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        row.last_used_at = old_last_used
+        db.commit()
+
+    pub = _public_client()
+    resp = pub.get(
+        "/web/pending",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert SESSION_COOKIE_NAME not in resp.headers.get("set-cookie", "")
+
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        assert ensure_utc(row.last_used_at) == ensure_utc(old_last_used)
 
 
 def test_public_host_cross_ledger_query_rejected(client: TestClient, *, identity) -> None:
@@ -130,6 +182,133 @@ def test_public_host_dead_cookie_redirects_and_clears(client: TestClient, *, ide
     # browser-honoured deletion form. Starlette's delete_cookie emits
     # an empty value + Max-Age=0.
     assert "Max-Age=0" in set_cookie or set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].startswith(";")
+
+
+def test_public_host_android_app_token_cookie_redirects_clears_and_does_not_revoke(
+    client: TestClient, *, identity
+) -> None:
+    pub = _public_client()
+    resp = pub.get(
+        "/web/pending",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={identity.app_token}"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/web/auth/login")
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert SESSION_COOKIE_NAME in set_cookie
+    assert "Max-Age=0" in set_cookie or set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].startswith(";")
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token))
+        )
+        assert row is not None
+        assert row.revoked_at is None
+
+
+def test_public_host_session_db_error_returns_503(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise_session() -> None:
+        raise SQLAlchemyError("boom")
+
+    monkeypatch.setattr(web_session_middleware, "SessionLocal", _raise_session)
+    pub = _public_client()
+    resp = pub.get(
+        "/web/pending",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}=tbx_fake"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 503
+    assert resp.json()["error"] == "server_error"
+
+
+def test_public_host_server_side_expired_cookie_redirects_clears_and_revokes(
+    client: TestClient, *, identity
+) -> None:
+    token = _mint_session(client, identity=identity)
+    old = now_utc() - timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS + 1)
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        row.created_at = old
+        row.expires_at = old
+        row.last_used_at = old
+        db.commit()
+
+    pub = _public_client()
+    resp = pub.get(
+        "/web/pending",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/web/auth/login")
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert SESSION_COOKIE_NAME in set_cookie
+    assert "Max-Age=0" in set_cookie or set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].startswith(";")
+
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        assert row.revoked_at is not None
+
+
+def test_public_host_fixed_ttl_uses_expires_at_not_last_used(client: TestClient, *, identity) -> None:
+    token = _mint_session(client, identity=identity)
+    now = now_utc()
+    created_at = now - timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS + 60)
+    expires_at = now + timedelta(minutes=5)
+    stale_last_used = now - timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS + 60)
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        row.created_at = created_at
+        row.expires_at = expires_at
+        row.last_used_at = stale_last_used
+        db.commit()
+
+    pub = _public_client()
+    resp = pub.get(
+        "/web/pending",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert SESSION_COOKIE_NAME not in resp.headers.get("set-cookie", "")
+
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        assert ensure_utc(row.last_used_at) == ensure_utc(stale_last_used)
+        assert ensure_utc(row.expires_at) == ensure_utc(expires_at)
+
+
+def test_public_host_legacy_null_expires_at_falls_back_to_created_at(
+    client: TestClient, *, identity
+) -> None:
+    token = _mint_session(client, identity=identity)
+    old = now_utc() - timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS + 1)
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        row.created_at = old
+        row.expires_at = None
+        db.commit()
+
+    pub = _public_client()
+    resp = pub.get(
+        "/web/pending",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/web/auth/login")
+
+    with SessionLocal() as db:
+        row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(token)))
+        assert row is not None
+        assert row.revoked_at is not None
 
 
 def test_loopback_host_still_works_without_cookie(client: TestClient) -> None:

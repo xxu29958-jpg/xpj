@@ -183,6 +183,17 @@ def _migrate_identity_runtime_schema(connection, table_names: set[str]) -> None:
             )
         )
 
+    if "auth_tokens" in table_names:
+        columns = _sqlite_column_names(connection, "auth_tokens")
+        if "expires_at" not in columns:
+            connection.execute(text("ALTER TABLE auth_tokens ADD COLUMN expires_at DATETIME"))
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_auth_tokens_expires_at "
+                "ON auth_tokens (expires_at)"
+            )
+        )
+
 
 # ---------------------------------------------------------------------------
 # Per-table migrators called from ``migrate_sqlite_schema``.

@@ -78,6 +78,7 @@ def test_unavailable_providers_are_skipped_not_crashed() -> None:
     assert len(rows) == 2, rows
     for row in rows:
         assert row.note.startswith("SKIP:"), row.note
+        assert row.attempted is False
         # Score cells must be None (not ✓ / ✗) when the provider didn't run.
         assert row.amount_match is None
         assert row.merchant_match is None
@@ -91,7 +92,18 @@ def test_aggregate_table_renders() -> None:
     agg = report.aggregate_per_provider()
     # Sanity: per-row markdown table has the right columns
     assert "| Fixture | Provider | Amount | Merchant | Time | Category | Latency | Note |" in md
-    # Aggregate has per-provider % columns
-    assert "| Provider | Runs | Amount % | Merchant % |" in agg
+    # Aggregate separates attempted runs from skipped providers.
+    assert "| Provider | Attempted | Skipped | Amount % | Merchant % |" in agg
     assert "empty" in agg
     assert "mock" in agg
+
+
+def test_aggregate_separates_attempted_from_skipped() -> None:
+    report = ocr_benchmark.benchmark(
+        FIXTURE_DIR,
+        ["mock", "rapidocr"],
+        timezone_name="Asia/Shanghai",
+    )
+    agg = report.aggregate_per_provider()
+    assert "| mock | 1 | 0 |" in agg
+    assert "| rapidocr | 0 | 1 | — | — | — | — | — |" in agg

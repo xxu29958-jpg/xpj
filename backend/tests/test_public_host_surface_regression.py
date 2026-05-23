@@ -16,6 +16,7 @@ If any of these regress, the public Host attack surface widened.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -31,7 +32,7 @@ PUBLIC_HOST = "api.example.com"
 def _public_client() -> TestClient:
     return TestClient(
         app,
-        base_url=f"http://{PUBLIC_HOST}",
+        base_url=f"https://{PUBLIC_HOST}",
         client=("203.0.113.10", 50001),
     )
 
@@ -121,7 +122,7 @@ def test_public_host_health_is_publicly_reachable(client: TestClient) -> None:
     pub = _public_client()
     resp = pub.get("/api/health")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    assert resp.json() == {"status": "ok"}
 
 
 # ── /docs / /openapi.json closed by default ─────────────────────────────────
@@ -145,12 +146,12 @@ def test_public_host_web_root_redirects_to_login(client: TestClient) -> None:
 
 
 def test_public_host_web_pending_post_without_cookie_redirects(client: TestClient) -> None:
-    # POST too — gate runs before CSRF / endpoint dependency.
+    # POST too: Access/web-session gate runs before CSRF / endpoint dependency.
     pub = _public_client()
     resp = pub.post(
         "/web/pending/batch-reject",
         data={"expense_ids": "[1]"},
-        headers={"Origin": f"http://{PUBLIC_HOST}"},
+        headers={"Origin": f"https://{PUBLIC_HOST}"},
         follow_redirects=False,
     )
     assert resp.status_code == 303
@@ -201,10 +202,18 @@ def _request_pairing_code(client: TestClient, *, identity) -> str:
 def test_public_host_full_login_to_dashboard_flow(client: TestClient, *, identity) -> None:
     code = _request_pairing_code(client, identity=identity)
     pub = _public_client()
+    login_form = pub.get("/web/auth/login")
+    assert login_form.status_code == 200
+    csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', login_form.text)
+    assert csrf_match is not None, login_form.text
     login = pub.post(
         "/web/auth/login",
-        data={"pairing_code": code, "device_name": "regression bundle"},
-        headers={"Origin": f"http://{PUBLIC_HOST}"},
+        data={
+            "pairing_code": code,
+            "device_name": "regression bundle",
+            "csrf_token": csrf_match.group(1),
+        },
+        headers={"Origin": f"https://{PUBLIC_HOST}"},
         follow_redirects=False,
     )
     assert login.status_code == 303

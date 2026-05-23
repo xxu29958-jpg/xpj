@@ -68,6 +68,9 @@ class Settings:
     enable_api_docs: bool
     allow_public_admin_api: bool
     public_base_url: str
+    cloudflare_access_required: bool
+    cloudflare_access_team_domain: str
+    cloudflare_access_aud: str
     fx_home_currency_code: str
     fx_supported_currency_codes: str
     fx_rate_auto_sync_enabled: bool
@@ -120,10 +123,42 @@ def _resolve_public_base_url(raw: str | None) -> str:
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"}:
         return ""
+    if parsed.username or parsed.password:
+        return ""
+    try:
+        _ = parsed.port
+    except ValueError:
+        return ""
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        return ""
     host = (parsed.hostname or "").lower()
     if parsed.scheme == "http" and host not in _LOOPBACK_OUTBOUND_HOSTS:
         return ""
     return value
+
+
+def _resolve_cloudflare_access_team_domain(raw: str | None) -> str:
+    if not raw:
+        return ""
+    value = raw.strip().rstrip("/")
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    if parsed.scheme != "https":
+        return ""
+    if parsed.username or parsed.password:
+        return ""
+    try:
+        if parsed.port is not None:
+            return ""
+    except ValueError:
+        return ""
+    if parsed.path or parsed.query or parsed.fragment:
+        return ""
+    host = (parsed.hostname or "").lower()
+    if not host.endswith(".cloudflareaccess.com"):
+        return ""
+    return f"https://{host}"
 
 
 def reset_settings_cache() -> None:
@@ -173,6 +208,11 @@ def get_settings() -> Settings:
         enable_api_docs=_bool_env("ENABLE_API_DOCS", False),
         allow_public_admin_api=_bool_env("ALLOW_PUBLIC_ADMIN_API", False),
         public_base_url=_resolve_public_base_url(os.getenv("PUBLIC_BASE_URL")),
+        cloudflare_access_required=_bool_env("CLOUDFLARE_ACCESS_REQUIRED", False),
+        cloudflare_access_team_domain=_resolve_cloudflare_access_team_domain(
+            os.getenv("CLOUDFLARE_ACCESS_TEAM_DOMAIN")
+        ),
+        cloudflare_access_aud=os.getenv("CLOUDFLARE_ACCESS_AUD", "").strip(),
         fx_home_currency_code=os.getenv("FX_HOME_CURRENCY_CODE", DEFAULT_HOME_CURRENCY_CODE).strip().upper()
         or DEFAULT_HOME_CURRENCY_CODE,
         fx_supported_currency_codes=os.getenv(

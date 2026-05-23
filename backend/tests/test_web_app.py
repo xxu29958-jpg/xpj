@@ -111,10 +111,18 @@ def test_web_local_post_accepts_same_origin_source(client: TestClient) -> None:
         base_url="http://127.0.0.1:8000",
         client=("127.0.0.1", 53002),
     ) as local_client:
+        form = local_client.get("/web/confirmed")
+        assert form.status_code == 200
+        match = re.search(r'<meta name="csrf-token" content="([^"]+)"', form.text)
+        assert match is not None, form.text
         resp = local_client.post(
             "/web/confirmed/batch-update",
             headers={"Origin": "http://127.0.0.1:8000"},
-            data={"action": "set_category", "ledger_id": "owner"},
+            data={
+                "action": "set_category",
+                "ledger_id": "owner",
+                "csrf_token": match.group(1),
+            },
             follow_redirects=False,
         )
     assert resp.status_code in {303, 307}

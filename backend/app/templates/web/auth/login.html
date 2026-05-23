@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <title>小票夹 网页版 — 输入绑定码</title>
   <link rel="stylesheet" href="/static/shared/tokens.css">
+  <script defer src="/static/shared/csrf.js?v={{ backend_version }}"></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -92,6 +94,7 @@
     {% endif %}
 
     <form method="post" action="/web/auth/login" autocomplete="off">
+      {{ csrf_field|safe }}
       <input type="hidden" name="next" value="{{ next_url }}">
 
       <label for="pairing_code">绑定码（8 位数字）</label>

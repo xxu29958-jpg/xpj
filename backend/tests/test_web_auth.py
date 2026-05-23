@@ -20,17 +20,20 @@ The tests below verify:
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import AuthToken
+from app.models import AuthToken, Device
 from app.routes.web_auth import (
+    SESSION_COOKIE_MAX_AGE_SECONDS,
     SESSION_COOKIE_NAME,
     _safe_next_url,
 )
 from app.services.identity_service import hash_secret
+from app.services.time_service import ensure_utc, now_utc
 
 
 def _request_pairing_code(client: TestClient, *, identity) -> str:
@@ -57,12 +60,14 @@ def test_login_form_shows_error_param(client: TestClient) -> None:
 
 
 def test_valid_pairing_code_sets_secure_session_cookie(client: TestClient, *, identity) -> None:
+    before = now_utc()
     code = _request_pairing_code(client, identity=identity)
     resp = client.post(
         "/web/auth/login",
         data={"pairing_code": code, "device_name": "我的笔记本"},
         follow_redirects=False,
     )
+    after = now_utc()
     assert resp.status_code == 303
     assert resp.headers["location"] == "/web"
     cookie_header = resp.headers.get("set-cookie", "")
@@ -73,6 +78,16 @@ def test_valid_pairing_code_sets_secure_session_cookie(client: TestClient, *, id
     assert "Path=/" in cookie_header
     assert "samesite=lax" in cookie_header.lower()
     assert "Domain=" not in cookie_header
+    token = _extract_session_cookie(resp)
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(token))
+        )
+        assert row is not None
+        expires_at = ensure_utc(row.expires_at)
+        assert expires_at is not None
+        assert expires_at >= before + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
+        assert expires_at <= after + timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS)
 
 
 def test_login_redirects_to_safe_next_only(client: TestClient, *, identity) -> None:
@@ -106,7 +121,7 @@ def test_invalid_pairing_code_redirects_with_error(client: TestClient) -> None:
     )
     assert resp.status_code == 303
     assert "error=invalid_pairing_code" in resp.headers["location"]
-    assert "set-cookie" not in {k.lower() for k in resp.headers}
+    assert SESSION_COOKIE_NAME not in resp.headers.get("set-cookie", "")
 
 
 def test_non_8_digit_code_rejected_before_call(client: TestClient) -> None:
@@ -122,6 +137,27 @@ def test_non_8_digit_code_rejected_before_call(client: TestClient) -> None:
 def test_whoami_returns_401_without_cookie(client: TestClient) -> None:
     resp = client.get("/web/auth/whoami")
     assert resp.status_code == 401
+
+
+def test_whoami_rejects_android_app_token_in_web_cookie_without_revoking(
+    client: TestClient, *, identity
+) -> None:
+    resp = client.get(
+        "/web/auth/whoami",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={identity.app_token}"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["error"] == "invalid_token"
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token))
+        )
+        assert row is not None
+        device = db.get(Device, row.device_id)
+        assert device is not None
+        assert device.platform == "android"
+        assert row.revoked_at is None
 
 
 def _extract_session_cookie(response) -> str:
@@ -154,6 +190,42 @@ def test_whoami_round_trips_after_login(client: TestClient, *, identity) -> None
     assert body["account_name"] == "我"
     assert body["ledger_id"] == "owner"
     assert body["role"] == "owner"
+
+
+def test_whoami_rejects_server_side_expired_cookie(client: TestClient, *, identity) -> None:
+    code = _request_pairing_code(client, identity=identity)
+    login = client.post(
+        "/web/auth/login",
+        data={"pairing_code": code, "device_name": "PyTest 浏览器"},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+    token = _extract_session_cookie(login)
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(token))
+        )
+        assert row is not None
+        expired = now_utc() - timedelta(seconds=SESSION_COOKIE_MAX_AGE_SECONDS + 1)
+        row.created_at = expired
+        row.expires_at = expired
+        row.last_used_at = expired
+        db.commit()
+
+    resp = client.get(
+        "/web/auth/whoami",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={token}"},
+    )
+    assert resp.status_code == 401
+    assert resp.json()["error"] == "invalid_token"
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(token))
+        )
+        assert row is not None
+        assert row.revoked_at is not None
 
 
 def test_logout_revokes_auth_token_server_side(client: TestClient, *, identity) -> None:
@@ -194,6 +266,26 @@ def test_logout_revokes_auth_token_server_side(client: TestClient, *, identity) 
         headers={"Cookie": f"{SESSION_COOKIE_NAME}={token_value}"},
     )
     assert resp.status_code == 401
+
+
+def test_logout_ignores_android_app_token_in_web_cookie(client: TestClient, *, identity) -> None:
+    logout = client.post(
+        "/web/auth/logout",
+        headers={"Cookie": f"{SESSION_COOKIE_NAME}={identity.app_token}"},
+        follow_redirects=False,
+    )
+    assert logout.status_code == 303
+    assert logout.headers["location"] == "/web/auth/login"
+    set_cookie = logout.headers.get("set-cookie", "")
+    assert SESSION_COOKIE_NAME in set_cookie
+    assert "Max-Age=0" in set_cookie or set_cookie.split(f"{SESSION_COOKIE_NAME}=", 1)[1].startswith(";")
+
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token))
+        )
+        assert row is not None
+        assert row.revoked_at is None
 
 
 def test_safe_next_url_helper() -> None:
