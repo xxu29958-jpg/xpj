@@ -1813,6 +1813,17 @@
         "title": "Body_web_splits_save_web_expenses__expense_id__splits_save_post",
         "type": "object"
       },
+      "Body_web_task_cancel_web_tasks__public_id__cancel_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_task_cancel_web_tasks__public_id__cancel_post",
+        "type": "object"
+      },
       "Body_web_uncategorized_bulk_set_web_categories_uncategorized_bulk_set_post": {
         "properties": {
           "category": {
@@ -18960,6 +18971,122 @@
           }
         },
         "summary": "Web Stats",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/tasks": {
+      "get": {
+        "operationId": "web_tasks_web_tasks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Msg"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Tasks",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/tasks/{public_id}/cancel": {
+      "post": {
+        "operationId": "web_task_cancel_web_tasks__public_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_task_cancel_web_tasks__public_id__cancel_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Task Cancel",
         "tags": [
           "web"
         ]

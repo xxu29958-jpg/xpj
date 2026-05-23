@@ -95,6 +95,11 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/acknowledge-mismatch"): "writer-only",
+    # ADR-0030 background tasks UI
+    ("GET", "/web/tasks"): "local-only-rendering",
+    # Cancel is account-scoped, not ledger-write; service layer enforces
+    # account match in request_cancellation.
+    ("POST", "/web/tasks/{public_id}/cancel"): "local-only-rendering",
     # ADR-0029 bill split UI
     ("POST", "/web/expenses/{expense_id}/split-invite"): "writer-only",
     ("GET", "/web/bill-splits/inbox"): "local-only-rendering",

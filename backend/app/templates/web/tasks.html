@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}后台任务 · 小票夹{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">后台任务</h1>
+  <div class="page-sub">
+    跑数分钟的批量操作（CSV 导入、v1.0 迁移、拆账邀请到期清理等）在这里。任务跨重启会被力清，单进程模型重启后所有未完成任务被标 failed。
+  </div>
+</div>
+
+{% if message %}
+<div class="callout-info">{{ message }}</div>
+{% endif %}
+
+{% if active_task_count > 0 %}
+<div class="callout-info">当前有 {{ active_task_count }} 个活跃任务。</div>
+{% endif %}
+
+{% if not task_rows %}
+<div class="dt-card">
+  <div class="empty-state">
+    <p>暂无后台任务。</p>
+  </div>
+</div>
+{% else %}
+<table class="dt-table">
+  <thead>
+    <tr>
+      <th>状态</th>
+      <th>类型</th>
+      <th>进度</th>
+      <th>开始</th>
+      <th>结束</th>
+      <th>消息</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in task_rows %}
+    <tr>
+      <td>
+        {% if row.status == 'queued' %}<span class="dt-pill">排队</span>
+        {% elif row.status == 'running' %}<span class="dt-pill">运行</span>
+        {% elif row.status == 'completed' %}<span class="dt-pill ok">完成</span>
+        {% elif row.status == 'cancelled' %}<span class="dt-pill">已取消</span>
+        {% elif row.status == 'failed' %}<span class="dt-pill danger">失败</span>
+        {% endif %}
+      </td>
+      <td><code>{{ row.task_type }}</code></td>
+      <td>
+        {% if row.progress_total %}{{ row.progress_current }}/{{ row.progress_total }}{% else %}—{% endif %}
+      </td>
+      <td>{{ row.started_at or '—' }}</td>
+      <td>{{ row.completed_at or '—' }}</td>
+      <td>
+        {% if row.progress_message %}<div class="meta">{{ row.progress_message }}</div>{% endif %}
+        {% if row.error_message %}<div class="text-danger">{{ row.error_message }}</div>{% endif %}
+      </td>
+      <td>
+        {% if row.is_cancellable %}
+        <form method="post" action="/web/tasks/{{ row.public_id }}/cancel" class="inline-form">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+          <button type="submit" class="dt-btn">取消</button>
+        </form>
+        {% else %}
+          <span class="meta">—</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

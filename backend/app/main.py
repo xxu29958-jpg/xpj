@@ -60,6 +60,7 @@ from app.routes import (
     web_reports,
     web_search,
     web_stats,
+    web_tasks,
 )
 from app.routes import web_rules as web_rules_routes
 from app.schemas import HealthResponse, StatusResponse
@@ -154,6 +155,7 @@ app.include_router(owner_ledgers.router)
 app.include_router(web_auth.router)
 app.include_router(web_app.router)
 app.include_router(web_bill_split.router)
+app.include_router(web_tasks.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_media.router)
