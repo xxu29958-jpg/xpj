@@ -159,6 +159,7 @@ def web_items_save(
     expense_id: int,
     request: Request,
     item_name: list[str] = Form(default=[]),
+    item_kind: list[str] = Form(default=[]),
     item_quantity: list[str] = Form(default=[]),
     item_unit_price_yuan: list[str] = Form(default=[]),
     item_amount_yuan: list[str] = Form(default=[]),
@@ -175,6 +176,7 @@ def web_items_save(
     try:
         payload = _item_replace_payload(
             item_name=item_name,
+            item_kind=item_kind,
             item_quantity=item_quantity,
             item_unit_price_yuan=item_unit_price_yuan,
             item_amount_yuan=item_amount_yuan,
@@ -193,6 +195,37 @@ def web_items_save(
         return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
     return RedirectResponse(
         url=_with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, msg="明细已保存。"),
+        status_code=303,
+    )
+
+
+@router.post(
+    "/expenses/{expense_id}/items/acknowledge-mismatch",
+    response_class=HTMLResponse,
+)
+def web_items_acknowledge_mismatch(
+    expense_id: int,
+    request: Request,
+    ledger_id: str = Form(default=""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    error: str | None = None
+    try:
+        from app.services.receipt_item_service import acknowledge_items_sum_mismatch
+
+        acknowledge_items_sum_mismatch(db, expense_id, selected_id)
+    except AppError as exc:
+        error = exc.message
+    if error is not None:
+        ctx = _web_edit_context(db, request, options, selected_id, expense_id)
+        ctx["items_error"] = error
+        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
+    return RedirectResponse(
+        url=_with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, msg="已确认原小票如此。"),
         status_code=303,
     )
 
@@ -277,14 +310,23 @@ def _web_edit_context(
     return ctx
 
 
-def _web_item_rows(db: Session, expense_id: int, ledger_id: str) -> list[dict]:
+def _web_item_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
+    """Returns dict carrying both row list and items_sum_status banner state
+    (ADR-0035). Template iterates ``rows`` for the table, reads ``status`` /
+    ``status_label`` for the warning banner."""
     response = list_expense_items(db, expense_id, ledger_id)
     rows = [
         {
+            "kind": item.kind,
             "name": item.name,
             "quantity_text": item.quantity_text or "",
             "unit_price_yuan": _amount_yuan(item.unit_price_cents),
-            "amount_yuan": _amount_yuan(item.amount_cents),
+            # discount 行 amount_cents 是负数；UI 显示正数（"3.00"），sign 由
+            # kind 表达；form post 时 backend 按 kind=discount 重新翻 sign。
+            "amount_yuan": _amount_yuan(
+                abs(item.amount_cents) if item.amount_cents is not None and item.kind == "discount"
+                else item.amount_cents
+            ),
             "category": item.category,
             "is_ocr_draft": item.is_ocr_draft,
         }
@@ -292,6 +334,7 @@ def _web_item_rows(db: Session, expense_id: int, ledger_id: str) -> list[dict]:
     ]
     rows.extend(
         {
+            "kind": "product",
             "name": "",
             "quantity_text": "",
             "unit_price_yuan": "",
@@ -301,7 +344,12 @@ def _web_item_rows(db: Session, expense_id: int, ledger_id: str) -> list[dict]:
         }
         for _ in range(3)
     )
-    return rows
+    return {
+        "rows": rows,
+        "status": response.items_sum_status,
+        "mismatch_cents": response.mismatch_cents,
+        "mismatch_yuan": _amount_yuan(response.mismatch_cents),
+    }
 
 
 def _web_split_rows(db: Session, expense_id: int, ledger_id: str) -> dict:
@@ -333,6 +381,7 @@ def _web_split_members(db: Session, ledger_id: str) -> list[dict]:
 def _item_replace_payload(
     *,
     item_name: list[str],
+    item_kind: list[str],
     item_quantity: list[str],
     item_unit_price_yuan: list[str],
     item_amount_yuan: list[str],
@@ -341,6 +390,7 @@ def _item_replace_payload(
     items: list[ExpenseItemRequest] = []
     max_len = max(
         len(item_name),
+        len(item_kind),
         len(item_quantity),
         len(item_unit_price_yuan),
         len(item_amount_yuan),
@@ -349,6 +399,7 @@ def _item_replace_payload(
     )
     for index in range(max_len):
         name = _at(item_name, index).strip()
+        kind_raw = _at(item_kind, index).strip() or "product"
         quantity = _at(item_quantity, index).strip()
         unit_raw = _at(item_unit_price_yuan, index)
         amount_raw = _at(item_amount_yuan, index)
@@ -361,15 +412,23 @@ def _item_replace_payload(
         amount_cents, amount_error = _parse_amount_yuan(amount_raw)
         if unit_error or amount_error:
             raise AppError("invalid_request", "请填写正确的明细金额。", status_code=422)
-        items.append(
-            ExpenseItemRequest(
-                name=name,
-                quantity_text=quantity or None,
-                unit_price_cents=unit_price_cents,
-                amount_cents=amount_cents,
-                category=category or None,
+        # ADR-0035: form post 总是发正数 amount_yuan；discount 行在 backend
+        # 翻转 sign。这样模板就不用渲染带 "-" 的 input。
+        if kind_raw == "discount" and amount_cents is not None:
+            amount_cents = -abs(amount_cents)
+        try:
+            items.append(
+                ExpenseItemRequest(
+                    name=name,
+                    kind=kind_raw,
+                    quantity_text=quantity or None,
+                    unit_price_cents=unit_price_cents,
+                    amount_cents=amount_cents,
+                    category=category or None,
+                )
             )
-        )
+        except ValueError as exc:
+            raise AppError("invalid_request", str(exc), status_code=422) from exc
     return ExpenseItemReplaceRequest(items=items)
 
 

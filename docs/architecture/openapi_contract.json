@@ -672,6 +672,17 @@
         "title": "Body_web_import_preview_web_import_preview_post",
         "type": "object"
       },
+      "Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post",
+        "type": "object"
+      },
       "Body_web_items_save_web_expenses__expense_id__items_save_post": {
         "properties": {
           "item_amount_yuan": {
@@ -688,6 +699,14 @@
               "type": "string"
             },
             "title": "Item Category",
+            "type": "array"
+          },
+          "item_kind": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Kind",
             "type": "array"
           },
           "item_name": {
@@ -15146,6 +15165,57 @@
           }
         },
         "summary": "Web Edit Get",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/expenses/{expense_id}/items/acknowledge-mismatch": {
+      "post": {
+        "operationId": "web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Items Acknowledge Mismatch",
         "tags": [
           "web"
         ]

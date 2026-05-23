@@ -83,11 +83,28 @@
     {% if items_error %}
     <div class="dt-alert danger">⚠️ {{ items_error }}</div>
     {% endif %}
+
+    {# ADR-0035: items_sum_status banner — mismatch_known 时提示用户确认或修正 #}
+    {% if receipt_items.status == 'mismatch_known' %}
+    <div class="dt-alert warn">
+      ⚠️ 明细合计与账单金额差 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }}。检查明细，或如果原小票本身如此，点下面"原小票如此"确认。
+    </div>
+    <form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="acknowledge-form">
+      <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+      {% if can_write %}<button type="submit" class="dt-btn">原小票如此</button>{% endif %}
+    </form>
+    {% elif receipt_items.status == 'mismatch_acknowledged' %}
+    <div class="dt-alert info">
+      已确认原小票合计与明细存在 {{ home_currency_symbol }}{{ receipt_items.mismatch_yuan }} 差异；后续编辑不再弹警告。
+    </div>
+    {% endif %}
+
     <form method="post" action="/web/expenses/{{ expense.id }}/items/save">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <table class="dt-table dt-table--compact edit-subtable">
         <thead>
           <tr>
+            <th style="width:110px">类型</th>
             <th>名称</th>
             <th style="width:90px">数量</th>
             <th style="width:110px">单价</th>
@@ -96,8 +113,16 @@
           </tr>
         </thead>
         <tbody>
-        {% for item in receipt_items %}
+        {% for item in receipt_items.rows %}
           <tr>
+            <td>
+              <select name="item_kind" {% if not can_write %}disabled{% endif %}>
+                <option value="product" {% if item.kind == 'product' %}selected{% endif %}>商品</option>
+                <option value="discount" {% if item.kind == 'discount' %}selected{% endif %}>优惠/折扣</option>
+                <option value="tax" {% if item.kind == 'tax' %}selected{% endif %}>税</option>
+                <option value="service_fee" {% if item.kind == 'service_fee' %}selected{% endif %}>服务费</option>
+              </select>
+            </td>
             <td>
               <input type="text" name="item_name" value="{{ item.name }}" maxlength="255" placeholder="商品或服务" {% if not can_write %}disabled{% endif %}>
               {% if item.is_ocr_draft %}<div class="meta">识别草稿</div>{% endif %}

@@ -94,6 +94,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/expenses/{expense_id}/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/confirm"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/items/save"): "writer-only",
+    ("POST", "/web/expenses/{expense_id}/items/acknowledge-mismatch"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/splits/save"): "writer-only",
     ("POST", "/web/expenses/{expense_id}/reject"): "writer-only",
     # Media — handler is in web_media.py (the duplicate in web_app.py was
