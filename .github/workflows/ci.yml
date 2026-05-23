@@ -168,3 +168,86 @@ jobs:
           path: android/app/build/outputs/apk/internal/debug/app-internal-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+  android-emulator:
+    name: Android (emulator instrumented test)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: android
+
+    env:
+      TICKETBOX_SERVER_URL: https://api.zen70.cn
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Enable KVM
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-google-x86_64-v1
+
+      - name: Create AVD + warm cache
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: echo "AVD cache warmed"
+          working-directory: android
+
+      - name: Run connected instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew --no-daemon :app:connectedGrayDebugAndroidTest
+          working-directory: android
+
+      - name: Upload androidTest report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-instrumented-test-report
+          path: android/app/build/reports/androidTests/connected/
+          if-no-files-found: ignore
+          retention-days: 7
