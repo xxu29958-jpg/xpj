@@ -2,8 +2,15 @@
 <html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}" data-home-currency="{{ home_currency_code }}" data-home-currency-symbol="{{ home_currency_symbol }}">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="theme-color" content="#1f6feb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="小票夹">
+  <link rel="manifest" href="/static/web/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/web/icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/static/web/icon.svg">
   <title>{% block title %}小票夹 网页版{% endblock %}</title>
   {# Token + 全局 reset (legacy 收尾) #}
   <link rel="stylesheet" href="/static/shared/tokens.css">
@@ -42,6 +49,7 @@
 
   <link rel="stylesheet" href="/static/shared/confirm-modal.css?v={{ backend_version }}">
   <script defer src="/static/shared/csrf.js?v={{ backend_version }}"></script>
+  <script defer src="/static/web/pwa-register.js?v={{ backend_version }}"></script>
   <script defer src="/static/web/vendor/echarts.min.js"></script>
   <script defer src="/static/web/desktop.js?v={{ backend_version }}"></script>
   <script defer src="/static/shared/confirm-modal.js?v={{ backend_version }}"></script>

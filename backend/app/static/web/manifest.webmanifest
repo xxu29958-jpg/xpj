@@ -1,0 +1,26 @@
+{
+  "name": "小票夹",
+  "short_name": "小票夹",
+  "description": "家庭账本 — 私有部署，记录每一笔小票。",
+  "start_url": "/web",
+  "scope": "/web",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f1e8",
+  "theme_color": "#1f6feb",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/static/web/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/web/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

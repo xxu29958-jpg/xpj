@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="小票夹">
+  <rect width="512" height="512" rx="96" ry="96" fill="#1f6feb"/>
+  <g transform="translate(112 96)">
+    <rect x="0" y="0" width="288" height="320" rx="16" ry="16" fill="#f8fafc"/>
+    <path d="M0 320 L48 296 L96 320 L144 296 L192 320 L240 296 L288 320 L288 336 L0 336 Z" fill="#f8fafc"/>
+    <rect x="32" y="56" width="224" height="14" rx="7" fill="#94a3b8"/>
+    <rect x="32" y="100" width="224" height="14" rx="7" fill="#94a3b8"/>
+    <rect x="32" y="144" width="160" height="14" rx="7" fill="#94a3b8"/>
+    <text x="144" y="252" font-family="-apple-system, 'PingFang SC', sans-serif" font-size="72" font-weight="600" fill="#1f6feb" text-anchor="middle">票</text>
+  </g>
+</svg>

@@ -260,6 +260,11 @@ Test-Probe -Name 'public /api/status/private (no token)' -Url "$BaseUrl/api/stat
     -ExpectedStatus @(401, 404) -ExpectedErrors @('invalid_token', 'route_not_found', '') | Out-Null
 Test-Probe -Name 'public /static/web/web.css' -Url "$BaseUrl/static/web/web.css" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 Test-Probe -Name 'public /static/shared/tokens.css' -Url "$BaseUrl/static/shared/tokens.css" -Method 'GET' -ExpectedStatus @(200) | Out-Null
+# PWA install assets — must be public so iOS Safari / Android Chrome can
+# fetch them when adding to home screen. None contain account data.
+Test-Probe -Name 'public /static/web/manifest.webmanifest' -Url "$BaseUrl/static/web/manifest.webmanifest" -Method 'GET' -ExpectedStatus @(200) | Out-Null
+Test-Probe -Name 'public /static/web/sw.js' -Url "$BaseUrl/static/web/sw.js" -Method 'GET' -ExpectedStatus @(200) | Out-Null
+Test-Probe -Name 'public /static/web/icon.svg' -Url "$BaseUrl/static/web/icon.svg" -Method 'GET' -ExpectedStatus @(200) | Out-Null
 
 # /api/auth/pair must be reachable but reject obviously invalid input.
 # Backend may reject at the auth layer (401 invalid_pairing_code) OR at
