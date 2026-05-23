@@ -327,14 +327,22 @@ UI 字符串必须走资源文件，预留 i18n 通道。
 
 ## 13. 流程、文档与反扩
 
-项目至少维护：
+项目至少维护以下文档角色（具体落点见各项目 README）：
 
-* `README.md`：启动方式和最小说明。
-* `docs/PROJECT_BOUNDARY.md`：项目边界——做什么、不做什么、对接什么、不对接什么。
-* `docs/API.md`：接口契约。
-* `docs/DECISIONS/`：决策记录。
-* `docs/ACCEPTANCE.md`：验收清单。
-* `docs/RUNBOOK.md`：部署、备份、恢复、故障处理。
+* **启动 / 最小说明** —— 一般是 `README.md`。
+* **项目边界** —— 做什么 / 不做什么 / 对接什么 / 不对接什么。本项目落在
+  `docs/architecture/PROJECT_STRUCTURE.md` + `docs/architecture/ARCHITECTURE.md`。
+* **接口契约** —— 本项目落在 `docs/architecture/API.md`（OpenAPI snapshot 在
+  `docs/architecture/openapi_contract.json`）。
+* **关键决策记录** —— 本项目落在 `docs/DECISIONS/`（MADR 格式）。
+* **验收清单** —— 本项目分散在 release runbook（`docs/runbook/RELEASE_PACKAGING.md`、
+  `docs/runbook/GRAY_ACCEPTANCE_EXECUTION.md`、`docs/runbook/ROLLBACK.md` 末尾验收段）。
+* **运维 Runbook** —— 部署 / 备份 / 恢复 / 故障处理。本项目落在 `docs/runbook/`
+  目录（Cloudflare Tunnel / Windows 服务 / 备份任务 / 实机联调 / 回滚等分文件）。
+
+旧版本曾写 `docs/PROJECT_BOUNDARY.md` / `docs/API.md` / `docs/ACCEPTANCE.md` /
+`docs/RUNBOOK.md` 这种平铺文件名——v0.9 已按读者意图重新分组到子目录，没有
+对应文件了。引用时按上面真实路径。
 
 PR Review 必看：分层、目录归位、数据真源、依赖、凭证、迁移、幂等、API 对齐、release 面。
 
