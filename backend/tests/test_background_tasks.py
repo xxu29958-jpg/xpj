@@ -251,47 +251,82 @@ def test_list_recent_tasks_account_scoped(*, identity) -> None:
 # --- orphan recovery --------------------------------------------------
 
 
-def test_orphan_recovery_force_fails_stale_running() -> None:
-    """Simulate a backend crash: row is ``running`` but heartbeat is
-    older than 5 minutes. recover_orphaned_tasks() should force-fail it."""
+def test_orphan_recovery_force_fails_any_running() -> None:
+    """Single-process model: every ``running`` task on startup is an
+    orphan regardless of heartbeat freshness. The previous design used a
+    5-minute ``last_progress_at`` threshold; that leaked phantom rows
+    under fast restarts. New rule: force-fail unconditionally."""
     with SessionLocal() as db:
-        stale = BackgroundTask(
-            task_type="test_orphan",
+        # Even with a heartbeat from "just now" — still an orphan.
+        fresh_running = BackgroundTask(
+            task_type="test_orphan_fresh",
             status="running",
-            last_progress_at=now_utc() - timedelta(minutes=10),
-            started_at=now_utc() - timedelta(minutes=11),
+            last_progress_at=now_utc(),
+            started_at=now_utc() - timedelta(seconds=5),
         )
-        db.add(stale)
+        # And a clearly stale one.
+        stale_running = BackgroundTask(
+            task_type="test_orphan_stale",
+            status="running",
+            last_progress_at=now_utc() - timedelta(minutes=30),
+            started_at=now_utc() - timedelta(minutes=31),
+        )
+        db.add_all([fresh_running, stale_running])
         db.commit()
-        stale_id = stale.id
+        ids = (fresh_running.id, stale_running.id)
+
+    recovered = bgtasks.recover_orphaned_tasks()
+    assert recovered >= 2
+
+    with SessionLocal() as db:
+        for tid in ids:
+            row = db.get(BackgroundTask, tid)
+            assert row.status == "failed"
+            assert row.error_code == "orphaned_after_restart"
+
+
+def test_orphan_recovery_force_fails_queued() -> None:
+    """Bug #2: previous design silently lost ``queued`` rows on backend
+    shutdown — executor's in-memory queue died with the process but the
+    DB row stayed ``queued`` forever. New rule: startup also force-fails
+    every ``queued`` row, since the executor that owned the submit
+    handle is gone."""
+    with SessionLocal() as db:
+        queued = BackgroundTask(
+            task_type="test_orphan_queued",
+            status="queued",
+        )
+        db.add(queued)
+        db.commit()
+        queued_id = queued.id
 
     recovered = bgtasks.recover_orphaned_tasks()
     assert recovered >= 1
 
     with SessionLocal() as db:
-        row = db.get(BackgroundTask, stale_id)
+        row = db.get(BackgroundTask, queued_id)
         assert row.status == "failed"
         assert row.error_code == "orphaned_after_restart"
 
 
-def test_orphan_recovery_leaves_fresh_running_alone() -> None:
-    """A ``running`` row with a recent heartbeat is not touched."""
+def test_orphan_recovery_leaves_terminal_alone() -> None:
+    """Already-terminal tasks (completed / failed / cancelled) are not
+    re-touched."""
     with SessionLocal() as db:
-        fresh = BackgroundTask(
-            task_type="test_fresh",
-            status="running",
-            last_progress_at=now_utc(),
-            started_at=now_utc() - timedelta(seconds=10),
+        done = BackgroundTask(
+            task_type="test_orphan_done",
+            status="completed",
+            completed_at=now_utc() - timedelta(hours=1),
         )
-        db.add(fresh)
+        db.add(done)
         db.commit()
-        fresh_id = fresh.id
+        done_id = done.id
 
     bgtasks.recover_orphaned_tasks()
 
     with SessionLocal() as db:
-        row = db.get(BackgroundTask, fresh_id)
-        assert row.status == "running"
+        row = db.get(BackgroundTask, done_id)
+        assert row.status == "completed"
 
 
 # --- API surface ------------------------------------------------------

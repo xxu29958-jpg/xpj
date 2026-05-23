@@ -21,9 +21,14 @@ Cancellation contract:
 
 Orphan recovery:
     :func:`recover_orphaned_tasks` is called from the FastAPI lifespan and
-    force-fails any ``status='running'`` task whose ``last_progress_at``
-    is older than :data:`ORPHAN_THRESHOLD` (5 min). The process that owned
-    such a task is presumed dead (power loss, force-kill, etc).
+    force-fails any task in ``running`` or ``queued`` state. The
+    in-process executor model means that a backend restart immediately
+    voids every in-flight task (the ThreadPoolExecutor died with the
+    previous process; nothing in this process can resume it) and every
+    queued-but-not-yet-started task (executor never dequeued it; on
+    restart the queue is empty). Both states are therefore orphans the
+    moment startup begins — no heartbeat threshold is required, and a
+    threshold actively leaks phantom rows under fast restart cadence.
 """
 
 from __future__ import annotations
@@ -33,7 +38,6 @@ import logging
 import os
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -47,8 +51,8 @@ from app.services.time_service import now_utc
 logger = logging.getLogger(__name__)
 
 MAX_WORKERS = 2
-ORPHAN_THRESHOLD = timedelta(minutes=5)
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_RECOVERABLE_STATUSES = frozenset({"running", "queued"})
 
 # Sentinel: set XPJ_BACKGROUND_TASK_INLINE=1 in tests for synchronous runs.
 def _inline_mode() -> bool:
@@ -305,17 +309,32 @@ def _mark_cancelled(db: Session, task_id: int) -> None:
 
 
 def recover_orphaned_tasks() -> int:
-    """Force-fail any ``running`` task whose heartbeat is older than
-    :data:`ORPHAN_THRESHOLD`. Returns the count of recovered rows."""
+    """Force-fail every ``running`` and ``queued`` task on startup.
+
+    Why no heartbeat threshold (was 5 min, removed):
+
+    Single-process in-memory executor model. A backend restart kills the
+    ThreadPoolExecutor that owned the in-flight ``running`` tasks (no
+    other process can resume them in this architecture), and discards
+    the in-memory queue that held ``queued`` tasks (they were never
+    persisted as work — just as DB rows + executor.submit handles).
+    Both states are orphans the instant a new process starts, regardless
+    of how recent ``last_progress_at`` was.
+
+    The previous 5-minute threshold leaked phantom rows under fast
+    restart: any ``running`` task whose heartbeat was less than 5 min
+    old would be kept ``running`` forever (no worker to advance it; the
+    next recovery sweep only happens on the *next* restart). It also
+    never covered ``queued`` rows at all — those were silently dropped
+    on shutdown and left stuck.
+
+    Returns the count of recovered rows.
+    """
     with SessionLocal() as db:
-        threshold = now_utc() - ORPHAN_THRESHOLD
         orphans = list(
             db.scalars(
-                select(BackgroundTask)
-                .where(BackgroundTask.status == "running")
-                .where(
-                    (BackgroundTask.last_progress_at.is_(None))
-                    | (BackgroundTask.last_progress_at < threshold)
+                select(BackgroundTask).where(
+                    BackgroundTask.status.in_(_RECOVERABLE_STATUSES)
                 )
             )
         )
@@ -324,8 +343,8 @@ def recover_orphaned_tasks() -> int:
             task.completed_at = now_utc()
             task.error_code = "orphaned_after_restart"
             task.error_message = (
-                "Task was running when the backend restarted; "
-                "heartbeat stale beyond 5 minutes."
+                "Task was running or queued when the backend restarted; "
+                "single-process executor cannot resume across restarts."
             )
         if orphans:
             db.commit()

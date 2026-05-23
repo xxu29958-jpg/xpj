@@ -30,7 +30,7 @@ v1.0 V10-03（10k 行 CSV 导入）和 V10-04（v0.x → v1.0 迁移）会持续
 
 Chosen option: **Stay on [[0016]] red line — `ThreadPoolExecutor(max_workers=2)` + `background_tasks` progress table + 2s client polling**.
 
-Tasks run in-process. Progress writes go to a new `background_tasks` table with `status / progress_current / progress_total / last_progress_at / cancellation_requested_at` columns. Long work is chunked into 50-100 row transactions so a crash mid-way leaves committed prefix intact. Backend startup recovers orphaned `status=running` tasks whose `last_progress_at` is stale > 5 min by marking them `failed`.
+Tasks run in-process. Progress writes go to a new `background_tasks` table with `status / progress_current / progress_total / last_progress_at / cancellation_requested_at` columns. Long work is chunked into 50-100 row transactions so a crash mid-way leaves committed prefix intact. Backend startup force-fails every `status=running` **or** `status=queued` task it sees — single-process model means the previous executor died with the previous process, so anything not already terminal is an orphan the instant a new process starts. **No heartbeat threshold** (a previous draft of this ADR proposed a 5-min `last_progress_at` cutoff borrowed from distributed worker patterns; that's wrong here — fast restarts inside 5 min would leak phantom `running` rows, and `queued` rows would never be cleaned up at all).
 
 Polling is GET `/api/tasks/{public_id}` every 2 s; no WebSocket / SSE. `fx_rate_scheduler` 保留不动——它是系统定时驱动，不是用户触发，跟 background_tasks 模型不重叠。
 
@@ -57,7 +57,7 @@ Bad:
 ## Confirmation
 
 - chunked transaction 崩溃测试：100 行任务在 60 行处异常 → 前 50 行已 commit，result_summary 记 last_committed_row=50
-- orphan recovery 测试：startup 时 `status=running` + `last_progress_at` stale → 自动 `mark failed`
+- orphan recovery 测试：startup 时把 `running` 与 `queued` 全部 force-fail（无 heartbeat 阈值，单进程模型重启即 orphan）
 - cancellation latency 测试：cancel 后 ≤100 ms 任务循环退出
 - concurrent_limit 测试：第 3 个任务入队后 `status=queued`，第 1 个完成才开始
 - account isolation 测试：account A 看不到 account B 的任务列表
