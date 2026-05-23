@@ -23,14 +23,13 @@ from app.routes.web_common import (
     _with_ledger,
     templates,
 )
-from app.schemas import ExpenseUpdateRequest
 from app.services.expense_service import (
-    confirm_expense,
-    list_expenses_by_ids,
     list_pending,
-    mark_expense_not_duplicate,
-    reject_expense,
-    update_expense,
+)
+from app.services.pending_review_bulk_service import (
+    ALLOWED_ACTIONS,
+    BulkResult,
+    apply_review_bulk,
 )
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -122,20 +121,30 @@ def web_pending(
     return templates.TemplateResponse(request=request, name="pending.html", context=ctx)
 
 
-_BULK_ACTIONS = {
-    "set_category",
-    "set_merchant",
-    "reject",
-    "confirm_ready",
-    "keep_duplicate",
-}
-
-
 def _pending_redirect(selected_id: str, *, filter: str, msg: str) -> RedirectResponse:
     return RedirectResponse(
         url=_with_ledger("/web/pending", selected_id, filter=filter or "all", msg=msg),
         status_code=303,
     )
+
+
+_SUCCESS_VERBS = {
+    "reject": "已忽略",
+    "confirm_ready": "已确认",
+    "keep_duplicate": "已保留",
+}
+
+
+def _format_bulk_message(action: str, result: BulkResult) -> str:
+    parts: list[str] = []
+    if result.success_count:
+        verb = _SUCCESS_VERBS.get(action, "已更新")
+        parts.append(f"{verb} {result.success_count} 条")
+    for label, count in result.skipped_reasons.items():
+        parts.append(f"跳过 {count} 条：{label}")
+    if not parts:
+        parts.append("没有可操作的账单。")
+    return "；".join(parts) + "。"
 
 
 def _reject_pending_rows(
@@ -144,35 +153,10 @@ def _reject_pending_rows(
     selected_id: str,
     expense_ids: list[int],
 ) -> str:
-    rows = list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=expense_ids)
-    found_ids = {row.id for row in rows}
-    skipped_cross_ledger = len([eid for eid in expense_ids if eid not in found_ids])
-    success_count = 0
-    skipped_not_pending = 0
-    skipped_failed = 0
-
-    for row in rows:
-        if row.status != "pending":
-            skipped_not_pending += 1
-            continue
-        try:
-            reject_expense(db, row.id, selected_id)
-            success_count += 1
-        except AppError:
-            skipped_failed += 1
-
-    parts: list[str] = []
-    if success_count:
-        parts.append(f"已忽略 {success_count} 条")
-    if skipped_cross_ledger:
-        parts.append(f"跳过 {skipped_cross_ledger} 条：不属于当前账本")
-    if skipped_not_pending:
-        parts.append(f"跳过 {skipped_not_pending} 条：非待确认")
-    if skipped_failed:
-        parts.append(f"跳过 {skipped_failed} 条：忽略失败")
-    if not parts:
-        parts.append("没有可操作的账单")
-    return "；".join(parts) + "。"
+    result = apply_review_bulk(
+        db, tenant_id=selected_id, action="reject", expense_ids=expense_ids
+    )
+    return _format_bulk_message("reject", result)
 
 
 @router.post("/pending/batch-reject", response_class=HTMLResponse)
@@ -199,7 +183,7 @@ def web_pending_batch_reject(
 
 
 @router.post("/review/bulk", response_class=HTMLResponse)
-def web_review_bulk(  # noqa: C901 - bulk-review action dispatcher: 8 actions × per-row outcome buckets dominate the branch count; per-action handler split is its own PR (see audit P2-06)
+def web_review_bulk(
     request: Request,
     action: str = Form(...),
     ledger_id: str = Form(default=""),
@@ -215,107 +199,28 @@ def web_review_bulk(  # noqa: C901 - bulk-review action dispatcher: 8 actions ×
     _require_selected_ledger_write(options, selected_id)
 
     action_clean = (action or "").strip()
-    if action_clean not in _BULK_ACTIONS:
+    if action_clean not in ALLOWED_ACTIONS:
         raise AppError("invalid_request", status_code=422)
 
     if not expense_ids:
         return _pending_redirect(selected_id, filter=filter, msg="请先勾选账单。")
 
-    rows = list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=expense_ids)
-    found_ids = {row.id for row in rows}
-    skipped_cross_ledger = len([eid for eid in expense_ids if eid not in found_ids])
+    try:
+        result = apply_review_bulk(
+            db,
+            tenant_id=selected_id,
+            action=action_clean,
+            expense_ids=expense_ids,
+            category=category,
+            merchant=merchant,
+        )
+    except AppError as exc:
+        if exc.status_code == 422 and exc.error == "invalid_request":
+            return _pending_redirect(selected_id, filter=filter, msg=exc.message)
+        raise
 
-    success_count = 0
-    skipped_reasons: dict[str, int] = {}
-
-    def _bump(label: str) -> None:
-        skipped_reasons[label] = skipped_reasons.get(label, 0) + 1
-
-    if action_clean == "set_category":
-        category_clean = category.strip()
-        if not category_clean:
-            return RedirectResponse(
-                url=_with_ledger("/web/pending", selected_id, filter=filter, msg="请填写分类。"),
-                status_code=303,
-            )
-        for row in rows:
-            if row.status != "pending":
-                _bump("非待确认")
-                continue
-            try:
-                update_expense(db, row.id, selected_id, ExpenseUpdateRequest(category=category_clean))
-                success_count += 1
-            except AppError:
-                _bump("更新失败")
-    elif action_clean == "set_merchant":
-        merchant_clean = merchant.strip()
-        if not merchant_clean:
-            return RedirectResponse(
-                url=_with_ledger("/web/pending", selected_id, filter=filter, msg="请填写商家。"),
-                status_code=303,
-            )
-        for row in rows:
-            if row.status != "pending":
-                _bump("非待确认")
-                continue
-            try:
-                update_expense(db, row.id, selected_id, ExpenseUpdateRequest(merchant=merchant_clean))
-                success_count += 1
-            except AppError:
-                _bump("更新失败")
-    elif action_clean == "reject":
-        for row in rows:
-            if row.status != "pending":
-                _bump("非待确认")
-                continue
-            try:
-                reject_expense(db, row.id, selected_id)
-                success_count += 1
-            except AppError:
-                _bump("忽略失败")
-    elif action_clean == "confirm_ready":
-        for row in rows:
-            if row.status != "pending":
-                _bump("非待确认")
-                continue
-            if row.amount_cents is None:
-                _bump("缺金额")
-                continue
-            try:
-                confirm_expense(db, row.id, selected_id)
-                success_count += 1
-            except AppError:
-                _bump("确认失败")
-    elif action_clean == "keep_duplicate":
-        for row in rows:
-            if (row.duplicate_status or "") != "suspected":
-                _bump("非疑似重复")
-                continue
-            try:
-                mark_expense_not_duplicate(db, row.id, selected_id)
-                success_count += 1
-            except AppError:
-                _bump("更新失败")
-
-    parts: list[str] = []
-    if success_count:
-        if action_clean == "reject":
-            parts.append(f"已忽略 {success_count} 条")
-        elif action_clean == "confirm_ready":
-            parts.append(f"已确认 {success_count} 条")
-        elif action_clean == "keep_duplicate":
-            parts.append(f"已保留 {success_count} 条")
-        else:
-            parts.append(f"已更新 {success_count} 条")
-    if skipped_cross_ledger:
-        parts.append(f"跳过 {skipped_cross_ledger} 条：不属于当前账本")
-    for label, count in skipped_reasons.items():
-        parts.append(f"跳过 {count} 条：{label}")
-    if not parts:
-        parts.append("没有可操作的账单。")
-    msg = "；".join(parts) + "。"
-
-    return RedirectResponse(
-        url=_with_ledger("/web/pending", selected_id, filter=filter or "all", msg=msg),
-        status_code=303,
+    return _pending_redirect(
+        selected_id,
+        filter=filter,
+        msg=_format_bulk_message(action_clean, result),
     )
