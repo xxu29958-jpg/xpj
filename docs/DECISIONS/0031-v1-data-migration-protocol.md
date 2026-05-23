@@ -75,6 +75,27 @@ Bad:
 - 30-day rollback window test：第 31 天 backup 已 purge → rollback CLI 失败 + 明确错误
 - backend startup compatibility check：检测 schema_version vs binary 支持范围，不兼容时拒绝启动并指引
 
+## Errata (2026-05, after PR-1)
+
+ADR 起草时的隐含假设是"v1.0 包含一次性 schema 重写"，所以才描述 shadow-file +
+delta apply + atomic rename 的完整流程。落地时现实是：v1.0 schema 改动
+（bill splits / line item kind / background tasks / items_sum_status /
+split_origin_invitation_id）在 v0.9.x 已通过增量 boot-time migration
+逐一应用，到 v1.0 binary 启动时 DB 已经是 v1.0-shape。
+
+因此 PR-2 把 shadow swap 简化为：
+
+- cut-over handler 在写 `schema_version=1.0` **之前** 强制创建一份
+  `kind=pre-v1.0` SQLite online backup（``backup_service.create_pre_v1_backup``）
+- rollback 不是文件 rename，而是常规 restore_ticketbox_db.ps1 流程
+  反向恢复那份 backup（30 天内可用）
+- 不需要 atomic rename / crash recovery / delta apply（cut-over
+  本身退化为 single transaction：app_meta 写 + 一份 backup snapshot）
+
+ADR 中 "atomic rename / delta apply / crash recovery" 三项 Confirmation
+test 不再适用；仍保留 "30-day rollback window test" 和 "startup
+compatibility check"。
+
 ## More Information
 
 - [InfoQ — Shadow Table Strategy for Data Migrations][infoq-shadow]：业界 zero-downtime migration 标准模式，本 ADR 在 file-level SQLite 上的等价实现

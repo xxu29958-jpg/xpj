@@ -1,25 +1,26 @@
 """ADR-0031 v1.0 cut-over handler.
 
-PR-1 MVP: the cut-over itself is a *one-shot ceremony* that records the
-new schema_version in ``app_meta``. All v1.0 schema changes (bill
-splits, line item kind, background tasks, items_sum_status,
-split_origin_invitation_id) were already applied to the DB through
-incremental boot-time migrations in v0.9.x — there is no separate
-schema rewrite to do here.
+The cut-over is a one-shot ceremony. All v1.0 schema changes were
+already applied to the DB through incremental boot-time migrations in
+v0.9.x — there is no separate schema rewrite. See the ADR's "Errata
+(2026-05)" section for why the shadow-swap protocol simplified to
+"snapshot + restore" once that reality became clear.
 
-The cut-over does three things:
+PR-2 makes the cut-over rollback-safe by forcing a fresh
+``kind=pre-v1.0`` SQLite Online Backup *before* the
+``schema_version=1.0`` write commits. The handler does four things:
 
-1. Re-run :func:`migration_readiness_service.build_v1_migration_readiness_report`
-   and refuse if readiness is red.
-2. Write ``schema_version="1.0"`` / ``schema_min_compatible="1.0"`` /
-   ``migration_completed_at=<now>`` to ``app_meta`` (atomic via single
-   service helper).
-3. Audit-log the event.
+1. Refuse if the current binary is older than v1.0 (would self-lock).
+2. Re-run readiness; refuse if any check is red.
+3. Create a pre-v1.0 backup snapshot (the rollback material).
+4. Write ``schema_version="1.0"`` / ``schema_min_compatible="1.0"`` /
+   ``migration_completed_at=<now>`` to ``app_meta``.
 
-PR-2 follow-up (not in scope of this PR):
-- Shadow DB file-level copy + atomic rename swap
-- 30-day rollback window + rollback_to_v0.ps1 CLI
-- /owner/migration confirm-then-switch two-step UI
+Step 3 is the rollback contract: ``scripts/rollback_to_v0.ps1`` finds
+the latest ``pre-v1.0`` backup, checks age < 30 days, and feeds it to
+``restore_ticketbox_db.ps1``. If step 4 commits but the operator
+later wants to revert, the snapshot at step 3 is the truth they
+restore.
 """
 
 from __future__ import annotations
@@ -30,8 +31,14 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import BackgroundTask
-from app.services import app_meta_service, background_task_service, migration_readiness_service
+from app.services import (
+    app_meta_service,
+    background_task_service,
+    backup_service,
+    migration_readiness_service,
+)
 from app.services.app_meta_service import _version_tuple
 from app.version import BACKEND_VERSION
 
@@ -63,17 +70,37 @@ def _handler(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None
         )
 
     background_task_service.update_progress(
-        db, task.id, current=1, total=2, message="readiness check passed"
+        db, task.id, current=1, total=3, message="readiness check passed"
+    )
+
+    # Rollback material. The schema_version write below is the
+    # point-of-no-return for old binaries; this backup is the only
+    # way out if v1.0 misbehaves within the 30-day rollback window.
+    try:
+        snapshot = backup_service.create_pre_v1_backup()
+    except AppError as exc:
+        raise RuntimeError(
+            f"pre-v1.0 rollback snapshot failed: {exc.message}"
+        ) from exc
+
+    background_task_service.update_progress(
+        db,
+        task.id,
+        current=2,
+        total=3,
+        message=f"pre-v1.0 snapshot: {snapshot.file_name}",
     )
 
     app_meta_service.mark_v1_cut_over_completed(db)
 
     background_task_service.update_progress(
-        db, task.id, current=2, total=2, message="schema_version=1.0 committed"
+        db, task.id, current=3, total=3, message="schema_version=1.0 committed"
     )
     task.result_summary_json = json.dumps({
         "schema_version": app_meta_service.V1_TARGET_VERSION,
         "schema_min_compatible": app_meta_service.V1_TARGET_VERSION,
+        "rollback_snapshot": snapshot.file_name,
+        "rollback_snapshot_size_bytes": snapshot.size_bytes,
     })
     db.commit()
 
