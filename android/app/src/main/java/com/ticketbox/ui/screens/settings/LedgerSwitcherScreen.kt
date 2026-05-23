@@ -17,21 +17,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ticketbox.data.repository.LedgerRepository
-import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 import com.valentinilk.shimmer.shimmer
-import kotlinx.coroutines.launch
 
 private const val LEDGER_NAME_MAX = 60
 
@@ -42,31 +40,22 @@ private const val LEDGER_NAME_MAX = 60
  * switch between them (rotating the session token server-side) and create a
  * new ledger. Ownership is decided server-side; this screen never trusts
  * client-supplied roles for authorization.
+ *
+ * ViewModel-driven as of 2026-05 (was Repository-injected — that broke the
+ * Screen → ViewModel → Repository → IO layer rule).
  */
 @Composable
 fun LedgerSwitcherScreen(
-    repository: LedgerRepository,
+    viewModel: LedgerSwitcherViewModel,
     activeLedgerId: String?,
     onBack: () -> Unit,
     onSwitched: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    var ledgers by remember { mutableStateOf<List<LedgerSummary>>(repository.cachedLedgers()) }
-    var loading by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
+    val state by viewModel.uiState.collectAsState()
     var newLedgerName by remember { mutableStateOf("") }
 
-    suspend fun refresh() {
-        loading = true
-        message = null
-        repository.refreshLedgers()
-            .onSuccess { ledgers = it }
-            .onFailure { message = it.message ?: "获取账本失败。" }
-        loading = false
-    }
-
     LaunchedEffect(Unit) {
-        refresh()
+        viewModel.refresh()
     }
 
     SettingsPageFrame(
@@ -80,17 +69,17 @@ fun LedgerSwitcherScreen(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
                 ) {
-                    if (ledgers.isEmpty() && loading) {
+                    if (state.ledgers.isEmpty() && state.loading) {
                         Column(modifier = Modifier.shimmer()) {
                             repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
                         }
-                    } else if (ledgers.isEmpty()) {
+                    } else if (state.ledgers.isEmpty()) {
                         Text(
                             text = "还没有可显示的账本。请稍后下拉刷新。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    ledgers.forEach { ledger ->
+                    state.ledgers.forEach { ledger ->
                         val isActive = ledger.ledgerId == activeLedgerId
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -121,31 +110,21 @@ fun LedgerSwitcherScreen(
                                 }
                             }
                             if (!isActive) {
-                                TextButton(onClick = {
-                                    if (loading) return@TextButton
-                                    scope.launch {
-                                        loading = true
-                                        message = null
-                                        repository.switchLedger(ledger.ledgerId)
-                                            .onSuccess {
-                                                message = "已切换到“${it.name}”"
-                                                onSwitched()
-                                                refresh()
-                                            }
-                                            .onFailure {
-                                                message = it.message ?: "切换账本失败。"
-                                            }
-                                        loading = false
-                                    }
-                                }) { Text("切换") }
+                                TextButton(
+                                    onClick = {
+                                        if (!state.loading) {
+                                            viewModel.switchTo(ledger.ledgerId, onSwitched)
+                                        }
+                                    },
+                                ) { Text("切换") }
                             }
                         }
                     }
                     OutlinedButton(
-                        onClick = { scope.launch { refresh() } },
-                        enabled = !loading,
+                        onClick = { viewModel.refresh() },
+                        enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (loading) "刷新中…" else "刷新列表") }
+                    ) { Text(if (state.loading) "刷新中…" else "刷新列表") }
                 }
             }
         }
@@ -174,32 +153,19 @@ fun LedgerSwitcherScreen(
                         onClick = {
                             val name = newLedgerName.trim()
                             if (name.isEmpty()) {
-                                message = "请填写账本名称。"
+                                viewModel.showInputError("请填写账本名称。")
                                 return@Button
                             }
-                            scope.launch {
-                                loading = true
-                                message = null
-                                repository.createLedger(name)
-                                    .onSuccess {
-                                        message = "已新建账本“${it.name}”"
-                                        newLedgerName = ""
-                                        refresh()
-                                    }
-                                    .onFailure {
-                                        message = it.message ?: "新建账本失败。"
-                                    }
-                                loading = false
-                            }
+                            viewModel.create(name) { newLedgerName = "" }
                         },
-                        enabled = !loading,
+                        enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("新建账本") }
                 }
             }
         }
 
-        message?.let {
+        state.message?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.secondary,

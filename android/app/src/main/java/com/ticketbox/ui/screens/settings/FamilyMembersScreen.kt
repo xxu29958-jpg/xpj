@@ -17,16 +17,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LEDGER_ROLE_MEMBER
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
@@ -39,96 +38,38 @@ import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.components.ListItemSkeleton
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.viewmodel.FamilyMemberAction
+import com.ticketbox.viewmodel.FamilyMembersViewModel
 import com.valentinilk.shimmer.shimmer
-import kotlinx.coroutines.launch
 
 @Composable
 fun FamilyMembersScreen(
-    repository: LedgerRepository,
+    viewModel: FamilyMembersViewModel,
     activeLedgerId: String?,
     currentRole: String?,
     onBack: () -> Unit,
     onMembershipChanged: () -> Unit = {},
 ) {
-    val scope = rememberCoroutineScope()
-    var members by remember { mutableStateOf<List<FamilyMember>>(emptyList()) }
-    var auditItems by remember { mutableStateOf<List<LedgerAuditEntry>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-    var auditLoading by remember { mutableStateOf(false) }
-    var busyMemberId by remember { mutableStateOf<Long?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
+    val state by viewModel.uiState.collectAsState()
     var pendingAction by remember { mutableStateOf<FamilyMemberAction?>(null) }
-    val canManageMembers = currentRole == LEDGER_ROLE_OWNER &&
-        repository.currentLedgerRole() == LEDGER_ROLE_OWNER
-
-    suspend fun refresh(includeAudit: Boolean = true) {
-        loading = true
-        message = null
-        val memberResult = repository.refreshFamilyMembers(activeLedgerId)
-            .onSuccess { members = it }
-            .onFailure { message = it.message ?: "成员列表暂时打不开。" }
-        val shouldLoadAudit = includeAudit &&
-            currentRole == LEDGER_ROLE_OWNER &&
-            repository.currentLedgerRole() == LEDGER_ROLE_OWNER
-        if (shouldLoadAudit) {
-            auditLoading = true
-            repository.refreshFamilyAudit(activeLedgerId, limit = 20)
-                .onSuccess { auditItems = it }
-                .onFailure {
-                    auditItems = emptyList()
-                    if (memberResult.isSuccess) {
-                        message = it.message ?: "成员记录暂时打不开。"
-                    }
-                }
-            auditLoading = false
-        } else {
-            auditItems = emptyList()
-        }
-        loading = false
-    }
-
-    suspend fun runAction(action: FamilyMemberAction) {
-        pendingAction = null
-        busyMemberId = action.member.memberId
-        message = null
-        val result = when (action) {
-            is FamilyMemberAction.ChangeRole -> repository.updateFamilyMemberRole(
-                memberId = action.member.memberId,
-                role = action.targetRole,
-                ledgerId = activeLedgerId,
-            )
-                .map { "已将${action.member.displayName}设为${ledgerRoleLabel(action.targetRole)}。" }
-
-            is FamilyMemberAction.Disable -> repository.disableFamilyMember(
-                memberId = action.member.memberId,
-                ledgerId = activeLedgerId,
-            )
-                .map { "已停用${action.member.displayName}。" }
-
-            is FamilyMemberAction.TransferOwner -> repository.transferOwner(
-                memberId = action.member.memberId,
-                ledgerId = activeLedgerId,
-            )
-                .map { "已将拥有者转让给${action.member.displayName}。" }
-        }
-        result
-            .onSuccess { success ->
-                refresh(includeAudit = action !is FamilyMemberAction.TransferOwner)
-                message = success
-                onMembershipChanged()
-            }
-            .onFailure { message = it.message ?: "成员管理操作没有完成。" }
-        busyMemberId = null
-    }
+    val canManageMembers = currentRole == LEDGER_ROLE_OWNER && viewModel.deviceIsOwner()
 
     LaunchedEffect(activeLedgerId) {
-        refresh()
+        viewModel.refresh(activeLedgerId, currentRole)
     }
 
     pendingAction?.let { action ->
         FamilyMemberActionDialog(
             action = action,
-            onConfirm = { scope.launch { runAction(action) } },
+            onConfirm = {
+                viewModel.runAction(
+                    action = action,
+                    activeLedgerId = activeLedgerId,
+                    currentRole = currentRole,
+                    onMembershipChanged = onMembershipChanged,
+                )
+                pendingAction = null
+            },
             onDismiss = { pendingAction = null },
         )
     }
@@ -148,21 +89,21 @@ fun FamilyMembersScreen(
                     modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                 ) {
-                    if (members.isEmpty() && loading) {
+                    if (state.members.isEmpty() && state.loading) {
                         Column(modifier = Modifier.shimmer()) {
                             repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
                         }
-                    } else if (members.isEmpty()) {
+                    } else if (state.members.isEmpty()) {
                         Text(
                             text = "还没有可显示的成员。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    members.forEach { member ->
+                    state.members.forEach { member ->
                         FamilyMemberRow(
                             member = member,
                             canManageMembers = canManageMembers,
-                            busy = busyMemberId == member.memberId,
+                            busy = state.busyMemberId == member.memberId,
                             onChangeRole = { targetRole ->
                                 pendingAction = FamilyMemberAction.ChangeRole(member, targetRole)
                             },
@@ -171,12 +112,12 @@ fun FamilyMembersScreen(
                         )
                     }
                     OutlinedButton(
-                        onClick = { scope.launch { refresh() } },
-                        enabled = !loading && busyMemberId == null,
+                        onClick = { viewModel.refresh(activeLedgerId, currentRole) },
+                        enabled = !state.loading && state.busyMemberId == null,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            if (loading) {
+                            if (state.loading) {
                                 "刷新中…"
                             } else if (canManageMembers) {
                                 "刷新成员和记录"
@@ -195,20 +136,20 @@ fun FamilyMembersScreen(
                         modifier = Modifier.padding(AppSpacing.cardPaddingTight),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
                     ) {
-                        if (auditItems.isEmpty() && auditLoading) {
+                        if (state.auditItems.isEmpty() && state.auditLoading) {
                             Column(modifier = Modifier.shimmer()) {
                                 repeat(3) { ListItemSkeleton(horizontalPadding = 0.dp) }
                             }
-                        } else if (auditItems.isEmpty()) {
+                        } else if (state.auditItems.isEmpty()) {
                             Text(
                                 text = "还没有成员变更记录。",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        auditItems.forEach { item ->
+                        state.auditItems.forEach { item ->
                             LedgerAuditRow(item = item)
                         }
-                        if (auditLoading && auditItems.isNotEmpty()) {
+                        if (state.auditLoading && state.auditItems.isNotEmpty()) {
                             Text(
                                 text = "正在刷新成员记录…",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -218,7 +159,7 @@ fun FamilyMembersScreen(
                 }
             }
         }
-        message?.let {
+        state.message?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.secondary,
@@ -398,17 +339,6 @@ private fun roleChangeText(item: LedgerAuditEntry): String? {
         after != null -> "角色：$after"
         else -> null
     }
-}
-
-private sealed class FamilyMemberAction(open val member: FamilyMember) {
-    data class ChangeRole(
-        override val member: FamilyMember,
-        val targetRole: String,
-    ) : FamilyMemberAction(member)
-
-    data class Disable(override val member: FamilyMember) : FamilyMemberAction(member)
-
-    data class TransferOwner(override val member: FamilyMember) : FamilyMemberAction(member)
 }
 
 @Composable

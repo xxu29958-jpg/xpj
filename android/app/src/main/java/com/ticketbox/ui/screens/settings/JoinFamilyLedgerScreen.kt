@@ -8,23 +8,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.domain.model.InvitationPreview
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
-import kotlinx.coroutines.launch
+import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 
 private const val INVITE_TOKEN_MAX = 128
 private const val NAME_MAX = 120
@@ -42,25 +41,24 @@ private const val NAME_MAX = 120
  * Trust model: this screen never persists the plain token. We hold it only
  * for the duration of the request; on success the only persisted material
  * is the freshly minted session token returned by the server.
+ *
+ * ViewModel-driven as of 2026-05; pre-refactor injected ``LedgerRepository``
+ * into the screen body directly, which broke the Android layer rule.
  */
 @Composable
 fun JoinFamilyLedgerScreen(
-    repository: LedgerRepository,
+    viewModel: JoinFamilyLedgerViewModel,
     onBack: () -> Unit,
     onAccepted: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
+    val state by viewModel.uiState.collectAsState()
     var inviteToken by remember { mutableStateOf("") }
     var accountName by remember { mutableStateOf("") }
     var deviceName by remember { mutableStateOf("") }
-    var preview by remember { mutableStateOf<InvitationPreview?>(null) }
-    var previewing by remember { mutableStateOf(false) }
-    var submitting by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var success by remember { mutableStateOf<String?>(null) }
-    val currentAccountName = remember(repository) { repository.currentAccountName().displayOr("未绑定") }
-    val currentLedgerName = remember(repository) { repository.currentLedgerName().displayOr("未绑定") }
-    val currentRole = remember(repository) { ledgerRoleLabel(repository.currentLedgerRole()) }
+
+    val currentAccountName = viewModel.currentAccountName
+    val currentLedgerName = viewModel.currentLedgerName
+    val currentRole = ledgerRoleLabel(viewModel.currentLedgerRole)
 
     SettingsPageFrame(
         title = "加入家庭账本",
@@ -81,8 +79,7 @@ fun JoinFamilyLedgerScreen(
                         value = inviteToken,
                         onValueChange = { value ->
                             inviteToken = value.take(INVITE_TOKEN_MAX)
-                            preview = null
-                            success = null
+                            viewModel.onTokenChanged()
                         },
                         label = { Text("邀请明文") },
                         singleLine = false,
@@ -90,71 +87,38 @@ fun JoinFamilyLedgerScreen(
                     )
                     OutlinedTextField(
                         value = accountName,
-                        onValueChange = { value ->
-                            accountName = value.take(NAME_MAX)
-                        },
+                        onValueChange = { value -> accountName = value.take(NAME_MAX) },
                         label = { Text("你的显示名") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = deviceName,
-                        onValueChange = { value ->
-                            deviceName = value.take(NAME_MAX)
-                        },
+                        onValueChange = { value -> deviceName = value.take(NAME_MAX) },
                         label = { Text("设备名") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedButton(
-                        onClick = {
-                            if (previewing || submitting) return@OutlinedButton
-                            error = null
-                            success = null
-                            scope.launch {
-                                previewing = true
-                                repository.previewInvitation(inviteToken)
-                                    .onSuccess { preview = it }
-                                    .onFailure {
-                                        preview = null
-                                        error = it.message ?: "预览邀请失败。"
-                                    }
-                                previewing = false
-                            }
-                        },
-                        enabled = !previewing && !submitting,
+                        onClick = { viewModel.previewInvitation(inviteToken) },
+                        enabled = !state.previewing && !state.submitting,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (previewing) "预览中…" else "预览邀请") }
-                    preview?.let { InvitationPreviewPanel(preview = it) }
+                    ) { Text(if (state.previewing) "预览中…" else "预览邀请") }
+                    state.preview?.let { InvitationPreviewPanel(preview = it) }
                     Button(
                         onClick = {
-                            if (submitting) return@Button
-                            val acceptedPreview = preview ?: return@Button
-                            error = null
-                            success = null
-                            scope.launch {
-                                submitting = true
-                                repository.acceptInvitation(
-                                    inviteToken = inviteToken,
-                                    accountName = accountName,
-                                    deviceName = deviceName,
-                                ).onSuccess { ledger ->
-                                    success = "已加入“${ledger.name}”，当前角色：${ledger.role}"
-                                    // Clear the plain token from memory once consumed.
-                                    inviteToken = ""
-                                    preview = null
-                                    onAccepted()
-                                }.onFailure {
-                                    preview = acceptedPreview
-                                    error = it.message ?: "接受邀请失败。"
-                                }
-                                submitting = false
-                            }
+                            viewModel.acceptInvitation(
+                                inviteToken = inviteToken,
+                                accountName = accountName,
+                                deviceName = deviceName,
+                                onAccepted = onAccepted,
+                                onConsumed = { inviteToken = "" },
+                            )
                         },
-                        enabled = !submitting && !previewing && preview != null,
+                        enabled = !state.submitting && !state.previewing && state.preview != null,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (submitting) "处理中…" else "接受邀请") }
-                    if (preview == null) {
+                    ) { Text(if (state.submitting) "处理中…" else "接受邀请") }
+                    if (state.preview == null) {
                         Text(
                             text = "预览后才可以接受邀请；接受成功会替换本机当前绑定。",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -164,14 +128,14 @@ fun JoinFamilyLedgerScreen(
             }
         }
 
-        error?.let {
+        state.error?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-        success?.let {
+        state.success?.let {
             Text(
                 text = it,
                 color = MaterialTheme.colorScheme.secondary,

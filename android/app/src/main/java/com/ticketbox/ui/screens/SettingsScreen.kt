@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.integerResource
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerRepository
@@ -42,7 +43,13 @@ import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute
+import com.ticketbox.viewmodel.FamilyMembersViewModel
+import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
+import com.ticketbox.viewmodel.LedgerSwitcherViewModel
 import com.ticketbox.viewmodel.SettingsUiState
+import com.ticketbox.viewmodel.familyMembersViewModelFactory
+import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
+import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
 
 @Composable
 fun SettingsScreen(
@@ -276,8 +283,12 @@ fun SettingsScreen(
         SettingsRoute.Ledgers -> {
             val repo = ledgerRepository
             if (repo != null) {
+                val vm: LedgerSwitcherViewModel = viewModel(
+                    key = "ledger-switcher",
+                    factory = ledgerSwitcherViewModelFactory(repo),
+                )
                 LedgerSwitcherScreen(
-                    repository = repo,
+                    viewModel = vm,
                     activeLedgerId = activeLedgerId,
                     onBack = { route = SettingsRoute.Root },
                     onSwitched = onLedgerSwitched,
@@ -292,8 +303,12 @@ fun SettingsScreen(
         SettingsRoute.FamilyMembers -> {
             val repo = ledgerRepository
             if (repo != null) {
+                val vm: FamilyMembersViewModel = viewModel(
+                    key = "family-members",
+                    factory = familyMembersViewModelFactory(repo),
+                )
                 FamilyMembersScreen(
-                    repository = repo,
+                    viewModel = vm,
                     activeLedgerId = activeLedgerId,
                     currentRole = state.role,
                     onBack = { route = SettingsRoute.Root },
@@ -307,8 +322,12 @@ fun SettingsScreen(
         SettingsRoute.JoinFamilyLedger -> {
             val repo = ledgerRepository
             if (repo != null) {
+                val vm: JoinFamilyLedgerViewModel = viewModel(
+                    key = "join-family-ledger",
+                    factory = joinFamilyLedgerViewModelFactory(repo),
+                )
                 JoinFamilyLedgerScreen(
-                    repository = repo,
+                    viewModel = vm,
                     onBack = { route = SettingsRoute.Root },
                     onAccepted = {
                         // After a successful accept, jump to the ledger

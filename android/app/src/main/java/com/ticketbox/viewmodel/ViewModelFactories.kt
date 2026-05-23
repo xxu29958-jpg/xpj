@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
@@ -77,5 +78,32 @@ fun expenseEditViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return ExpenseEditViewModel(expenseId, repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun ledgerSwitcherViewModelFactory(
+    repository: LedgerRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return LedgerSwitcherViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun familyMembersViewModelFactory(
+    repository: LedgerRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return FamilyMembersViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun joinFamilyLedgerViewModelFactory(
+    repository: LedgerRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return JoinFamilyLedgerViewModel(repository) as T
     }
 }
