@@ -58,6 +58,7 @@ data class ExpenseDraft(
 data class ExpenseItem(
     val publicId: String,
     val position: Int,
+    val kind: String = ExpenseItemKind.PRODUCT,
     val name: String,
     val quantityText: String?,
     val unitPriceCents: Long?,
@@ -75,10 +76,29 @@ data class ExpenseItems(
     val parentAmountCents: Long?,
     val itemsTotalAmountCents: Long?,
     val mismatchCents: Long?,
+    val itemsSumStatus: String = ItemsSumStatus.NO_ITEMS,
     val items: List<ExpenseItem>,
 ) {
     val hasMismatch: Boolean
         get() = mismatchCents != null && mismatchCents != 0L
+    val mismatchKnown: Boolean
+        get() = itemsSumStatus == ItemsSumStatus.MISMATCH_KNOWN
+    val mismatchAcknowledged: Boolean
+        get() = itemsSumStatus == ItemsSumStatus.MISMATCH_ACKNOWLEDGED
+}
+
+object ExpenseItemKind {
+    const val PRODUCT = "product"
+    const val DISCOUNT = "discount"
+    const val TAX = "tax"
+    const val SERVICE_FEE = "service_fee"
+}
+
+object ItemsSumStatus {
+    const val MATCHED = "matched"
+    const val MISMATCH_KNOWN = "mismatch_known"
+    const val MISMATCH_ACKNOWLEDGED = "mismatch_acknowledged"
+    const val NO_ITEMS = "no_items"
 }
 
 data class ExpenseItemDraft(
@@ -89,6 +109,7 @@ data class ExpenseItemDraft(
     val category: String?,
     val rawText: String?,
     val confidence: Double?,
+    val kind: String = ExpenseItemKind.PRODUCT,
 )
 
 data class ExpenseSplit(

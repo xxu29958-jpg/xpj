@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -15,9 +16,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseItem
+import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.ledgerRoleLabel
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppLoadingState
@@ -35,6 +38,7 @@ internal fun ExpenseEditV1DetailsSection(
     splitsLoading: Boolean,
     itemsMessage: String?,
     splitsMessage: String?,
+    onAcknowledgeItemsMismatch: () -> Unit = {},
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
@@ -43,6 +47,7 @@ internal fun ExpenseEditV1DetailsSection(
         loading = itemsLoading,
         message = itemsMessage,
         currencyDisplay = currencyDisplay,
+        onAcknowledgeMismatch = onAcknowledgeItemsMismatch,
     )
     ExpenseSplitsPanel(
         expenseSplits = expenseSplits,
@@ -58,6 +63,7 @@ private fun ExpenseItemsPanel(
     loading: Boolean,
     message: String?,
     currencyDisplay: CurrencyDisplay,
+    onAcknowledgeMismatch: () -> Unit,
 ) {
     AppSolidCard {
         Column(
@@ -83,13 +89,115 @@ private fun ExpenseItemsPanel(
                         mismatchCents = expenseItems.mismatchCents,
                         currencyDisplay = currencyDisplay,
                     )
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        expenseItems.items.forEach { item ->
-                            ExpenseItemRow(item, currencyDisplay)
+                    // ADR-0035 mismatch banner
+                    if (expenseItems.mismatchKnown) {
+                        ItemsSumMismatchBanner(
+                            mismatchCents = expenseItems.mismatchCents,
+                            currencyDisplay = currencyDisplay,
+                            onAcknowledge = onAcknowledgeMismatch,
+                        )
+                    } else if (expenseItems.mismatchAcknowledged) {
+                        ItemsSumAcknowledgedBanner(
+                            mismatchCents = expenseItems.mismatchCents,
+                            currencyDisplay = currencyDisplay,
+                        )
+                    }
+                    // ADR-0035: group items by kind (product / discount / tax / service_fee)
+                    val grouped = expenseItems.items.groupBy { it.kind }
+                    val orderedKinds = listOf(
+                        ExpenseItemKind.PRODUCT,
+                        ExpenseItemKind.DISCOUNT,
+                        ExpenseItemKind.TAX,
+                        ExpenseItemKind.SERVICE_FEE,
+                    )
+                    orderedKinds.forEach { kind ->
+                        val rows = grouped[kind].orEmpty()
+                        if (rows.isNotEmpty()) {
+                            Text(
+                                text = kindGroupTitle(kind),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                rows.forEach { item ->
+                                    ExpenseItemRow(item, currencyDisplay)
+                                }
+                            }
                         }
                     }
+                    // Catch-all: unknown kinds (forward compatibility for v1.x)
+                    grouped
+                        .filterKeys { it !in orderedKinds }
+                        .forEach { (kind, rows) ->
+                            Text(
+                                text = kind,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                rows.forEach { item -> ExpenseItemRow(item, currencyDisplay) }
+                            }
+                        }
                 }
             }
+        }
+    }
+}
+
+private fun kindGroupTitle(kind: String): String = when (kind) {
+    ExpenseItemKind.PRODUCT -> "商品"
+    ExpenseItemKind.DISCOUNT -> "优惠 / 折扣"
+    ExpenseItemKind.TAX -> "税"
+    ExpenseItemKind.SERVICE_FEE -> "服务费"
+    else -> kind
+}
+
+@Composable
+private fun ItemsSumMismatchBanner(
+    mismatchCents: Long?,
+    currencyDisplay: CurrencyDisplay,
+    onAcknowledge: () -> Unit,
+) {
+    val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) } ?: ""
+    AppEmptyStateCard {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "明细合计与账单金额相差 $diff",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "检查商品行，或如果原小票本身就是这个金额，可以确认差异。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onAcknowledge) {
+                Text("原小票如此")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ItemsSumAcknowledgedBanner(
+    mismatchCents: Long?,
+    currencyDisplay: CurrencyDisplay,
+) {
+    val diff = mismatchCents?.let { formatDisplayAmount(kotlin.math.abs(it), currencyDisplay) } ?: ""
+    AppEmptyStateCard {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = "已确认原小票合计与明细存在 $diff 差异",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

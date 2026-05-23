@@ -135,6 +135,30 @@ class ExpenseEditViewModel(
         }
     }
 
+    fun acknowledgeItemsMismatch() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(itemsLoading = true, itemsMessage = null) }
+            repository.acknowledgeExpenseItemsMismatch(expenseId)
+                .onSuccess { items ->
+                    _uiState.update {
+                        it.copy(
+                            expenseItems = items,
+                            itemsLoading = false,
+                            message = "已确认原小票如此。",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            itemsLoading = false,
+                            itemsMessage = error.message ?: "确认差异失败，请稍后重试。",
+                        )
+                    }
+                }
+        }
+    }
+
     private fun loadExpenseSplits() {
         viewModelScope.launch {
             _uiState.update { it.copy(splitsLoading = true, splitsMessage = null) }

@@ -13,12 +13,14 @@ fun ExpenseItemsResponseDto.toDomain(): ExpenseItems = ExpenseItems(
     parentAmountCents = parentAmountCents,
     itemsTotalAmountCents = itemsTotalAmountCents,
     mismatchCents = mismatchCents,
+    itemsSumStatus = itemsSumStatus,
     items = items.map { it.toDomain() },
 )
 
 fun ExpenseItemDto.toDomain(): ExpenseItem = ExpenseItem(
     publicId = publicId,
     position = position,
+    kind = kind,
     name = name,
     quantityText = quantityText,
     unitPriceCents = unitPriceCents,
@@ -38,6 +40,7 @@ fun ExpenseItemDraft.toRequest(): ExpenseItemRequestDto {
     }
     return ExpenseItemRequestDto(
         name = cleanName,
+        kind = kind,
         quantityText = quantityText.cleanOptional(),
         unitPriceCents = unitPriceCents,
         amountCents = amountCents,

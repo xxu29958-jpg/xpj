@@ -59,6 +59,7 @@ fun ExpenseEditScreen(
     onLoadFullImage: () -> Unit,
     onKeepDuplicate: () -> Unit,
     onDone: () -> Unit,
+    onAcknowledgeItemsMismatch: () -> Unit = {},
     allowConfirm: Boolean = true,
     allowReject: Boolean = true,
 ) {
@@ -265,6 +266,7 @@ fun ExpenseEditScreen(
             splitsLoading = state.splitsLoading,
             itemsMessage = state.itemsMessage,
             splitsMessage = state.splitsMessage,
+            onAcknowledgeItemsMismatch = onAcknowledgeItemsMismatch,
         )
 
         ExpenseEditMoreSection(

@@ -141,6 +141,11 @@ interface ApiService {
         @Body request: ExpenseItemReplaceRequestDto,
     ): ExpenseItemsResponseDto
 
+    @POST("api/expenses/{id}/items/acknowledge-mismatch")
+    suspend fun acknowledgeExpenseItemsMismatch(
+        @Path("id") id: Long,
+    ): ExpenseItemsResponseDto
+
     @GET("api/expenses/{id}/splits")
     suspend fun expenseSplits(@Path("id") id: Long): ExpenseSplitsResponseDto
 

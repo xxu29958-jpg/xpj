@@ -56,6 +56,7 @@ internal fun ExpenseEditRoute(
         onRetryOcr = editViewModel::retryOcr,
         onLoadFullImage = editViewModel::loadFullImage,
         onKeepDuplicate = editViewModel::markNotDuplicate,
+        onAcknowledgeItemsMismatch = editViewModel::acknowledgeItemsMismatch,
         onDone = {
             if (editViewModel.consumeDone()) {
                 onCompleted()

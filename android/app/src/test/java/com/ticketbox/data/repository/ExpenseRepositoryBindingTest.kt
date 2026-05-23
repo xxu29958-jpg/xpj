@@ -1286,6 +1286,10 @@ private class FakeApiService(
         return expenseItemsResponse()
     }
 
+    override suspend fun acknowledgeExpenseItemsMismatch(id: Long): ExpenseItemsResponseDto {
+        return expenseItemsResponse()
+    }
+
     override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto {
         splitFetchIds += id
         return expenseSplitsResponse()

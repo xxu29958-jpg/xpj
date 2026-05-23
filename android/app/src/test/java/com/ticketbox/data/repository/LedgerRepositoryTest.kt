@@ -1125,6 +1125,7 @@ private class StubApi(
         id: Long,
         request: ExpenseItemReplaceRequestDto,
     ): ExpenseItemsResponseDto = unsupported()
+    override suspend fun acknowledgeExpenseItemsMismatch(id: Long): ExpenseItemsResponseDto = unsupported()
     override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto = unsupported()
     override suspend fun replaceExpenseSplits(
         id: Long,

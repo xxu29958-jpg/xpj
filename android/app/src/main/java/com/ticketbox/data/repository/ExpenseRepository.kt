@@ -460,6 +460,14 @@ class ExpenseRepository(
         updated.toDomain()
     }
 
+    suspend fun acknowledgeExpenseItemsMismatch(id: Long): Result<ExpenseItems> = errorHandler.safeCall {
+        if (!canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        val bound = ledgerRequestGuard.bind()
+        bound.call { it.acknowledgeExpenseItemsMismatch(id) }.toDomain()
+    }
+
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bind()
         bound.call { it.expenseSplits(id) }.toDomain()
