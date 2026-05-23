@@ -118,6 +118,7 @@ Authorization: Bearer <admin_token>
 | Endpoint | Method | 后端 route | Android ApiService | 请求 DTO / 参数 | 响应 DTO | 鉴权 | 测试覆盖 | 用途 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/api/health` | GET | `backend/app/main.py` | 无 | 无 | `{"status":"ok"}` | 无 | `backend/tests/test_auth_bootstrap.py`, smoke | smoke |
+| `/api/status/private` | GET | `backend/app/main.py` | 无 | header `Authorization` | `HealthResponse` | Session Token | `backend/tests/test_auth_bootstrap.py` | 私有运行状态 |
 | `/api/bootstrap/owner` | POST | `backend/app/routes/bootstrap.py` | 无 | `BootstrapOwnerRequest` | `BootstrapOwnerResponse` | 默认禁用；启用后需 `X-Bootstrap-Secret`（一次性） | `backend/tests/test_auth_bootstrap.py` | owner 初始化 |
 | `/api/bootstrap/pairing-codes` | POST | `backend/app/routes/bootstrap.py` | 无 | `PairingCodeCreateRequest` | `PairingCodeResponse` | Admin Token | `backend/tests/test_auth_bootstrap.py` | 生成新绑定码 |
 | `/api/auth/pair` | POST | `backend/app/routes/auth.py` | `pairDevice()` | `PairRequest` | `PairResponse` | 无 | `backend/tests/test_auth_bootstrap.py` | 设备绑定 |
@@ -202,7 +203,7 @@ Authorization: Bearer <admin_token>
 
 ### GET /api/health
 
-不需要 Token。只表示服务可达。
+不需要 Token。只表示服务可达；公网只能返回最小状态，不暴露版本、DB、上传目录、OCR、备份等内部状态。
 
 返回：
 
@@ -211,6 +212,16 @@ Authorization: Bearer <admin_token>
   "status": "ok"
 }
 ```
+
+### GET /api/status/private
+
+需要有效 session token。用于 Owner / App 侧排查运行状态，不能匿名公网访问。
+
+```http
+Authorization: Bearer <session_token>
+```
+
+返回字段包含 `status`、`backend_version`、`identity_schema`、`database_status`、`upload_dir_status`、`owner_console_status`，但不返回本机绝对路径。
 
 ### GET /api/auth/check
 

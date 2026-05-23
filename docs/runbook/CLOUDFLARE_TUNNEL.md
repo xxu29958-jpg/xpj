@@ -86,8 +86,9 @@ powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
 - 检查 `/api/health`。
 - 检查 `/api/auth/check`（使用 session token）。
 - 用 UploadLink URL 测试上传。
+- 在公网边界脚本中检查 `/web/auth/login` 可达、`/web/*` 无 cookie 返回 `303`，且 `Location` 指向 `/web/auth/login?...`。
 
-> **注意**：v0.3 以后脚本不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`。需要通过 `-SessionToken` / `-UploadLink` 参数，或 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证。`UploadLink` 可以是完整 URL，也可以是 `/u/<upload_key>?tz=...` 路径。
+> **注意**：v0.3 以后脚本不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`，也不接受命令行传 token。请通过 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证，避免 token 进入 PowerShell 历史。`UploadLink` 可以是完整 URL，也可以是 `/u/<upload_key>?tz=...` 路径。
 
 当前 Windows 联调推荐同时启用两个登录自启任务：
 
@@ -112,9 +113,9 @@ Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel
 只检查健康和 session token，不上传测试图：
 
 ```powershell
+$env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
   -ServerUrl https://api.你的域名.com `
-  -SessionToken "<session_token>" `
   -SkipUpload
 ```
 
@@ -238,27 +239,44 @@ powershell -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
 
 Cloudflare Tunnel 配置 ingress 时，下面两类路径互不重叠。**不要**把整个 `/` 直接转发给 `127.0.0.1:8000`——必须按路径白名单/黑名单切。
 
+`/web` 的公网形态不是裸公开，而是四层叠加：
+
+1. Cloudflare Tunnel 只转发 allowlist 路径，catch-all 返回 404。
+2. Cloudflare Access 保护 `/web/*`、`/static/web/*`、`/static/shared/*`；生产建议后端设置 `CLOUDFLARE_ACCESS_REQUIRED=true`，并校验 `Cf-Access-Jwt-Assertion`。
+3. 后端 `web_session_gate` 校验 `__Host-session` cookie，只接受 `AuthToken.scope="app"` 且 `Device.platform="web"` 的浏览器 token。
+4. 账本渲染和写操作继续使用 ledger/session permission，URL 上跨账本 `ledger_id` 直接 `403 ledger_forbidden`。
+
+`/web/auth/login` 负责浏览器绑定码登录；其它 `/web/*` 请求必须带后端签发的 `__Host-session` cookie。没有 cookie、cookie 无效或服务端固定 TTL 过期时，后端返回 `303`，`Location` 指向 `/web/auth/login?next=...`，并在无效 cookie 场景清除 cookie。有有效 cookie 时，后端按 session 绑定的账本渲染页面。服务端 Web token 写入 `auth_tokens.expires_at`，固定 8 小时有效，不做滑动刷新；到期后重新 pairing。所有 `/web` 与 `/owner` 非安全方法还必须通过同源来源头 + CSRF token 校验。
+
 允许公网（allowlist）：
 
 | 路径前缀 | 用途 | 鉴权 |
 |---|---|---|
-| `/api/health` | Liveness 探测 | 无 |
+| `/api/health` | Liveness 探测，只返回 `{"status":"ok"}` | 无 |
 | `/api/auth/check` | Android session token 校验 | Bearer token |
 | `/api/auth/pair` | Android 首次绑定（pairing code → session token）| 8 位 code，一次性 + 短 TTL |
 | `/api/expenses/*` `/api/reports/*` `/api/goals/*` `/api/dashboard/*` `/api/budgets/*` `/api/recurring/*` `/api/merchants/*` `/api/rules/*` `/api/duplicates/*` `/api/imports/*` `/api/stats/*` `/api/me/*` `/api/exchange-rates/*` `/api/settings/*` `/api/ledgers/*` `/api/invitations/*` | Android / Web 账本主面 | Bearer token + viewer/member/owner 角色 |
 | `/u/{upload_key}` | iPhone UploadLink | 一次性 upload_key（URL-as-credential，必须 HTTPS）|
+| `/web/auth/login` | 浏览器登录页和绑定码提交 | GET 无 cookie 返回 200；POST 需 CSRF；成功后 `303` 并设置 `__Host-session` |
+| `/web/auth/logout` | 浏览器退出 | POST 需 CSRF；只撤销 web token 并清除 cookie |
+| `/web/auth/whoami` | 浏览器 session 自检 | 有效 `__Host-session` 返回 200；无效返回 `401 invalid_token` |
+| `/web/*` | 浏览器版账本 | Cloudflare Access JWT（生产建议） + `__Host-session` HttpOnly Secure cookie；`auth_tokens.expires_at` 固定 8h server-side TTL；无 cookie 返回 `303 Location: /web/auth/login?next=...` |
+| `/static/web/*` | `/web` 桌面账本 CSS/JS/font/vendor | 只放无用户数据的静态前端资产 |
+| `/static/shared/*` | `/web` 与 `/owner` 共享设计 token / confirm-modal 资源 | 只放无用户数据的共享静态资产；公网仅供 `/web` 渲染 |
 
 拒绝公网（denylist / Tunnel 不要建路由）：
 
 | 路径前缀 | 理由 |
 |---|---|
 | `/owner/*` | Owner Console 永远 loopback only；backend 自带 `require_owner_console_local`，Tunnel 路由层再 deny 一遍是 defense in depth |
-| `/web/*` | 当前 /web 默认 loopback；公网模式要等 v1.0 PR-3/4 完成 Web session 后才能开 |
 | `/api/admin/*` | 默认 `ALLOW_PUBLIC_ADMIN_API=false`，且 backend 挂 `require_admin_network_boundary`；Tunnel 不要建路由 |
 | `/api/bootstrap/*` | `enable_http_bootstrap=false` 默认关；`/api/bootstrap/pairing-codes` 已挂 `require_admin_network_boundary`；Tunnel 不要建路由 |
 | `/api/maintenance/*` | 同 admin |
+| `/api/status/private` | 私有运行状态（版本、DB、上传目录等），需要 Bearer token；默认不走公网 allowlist |
 | `/docs` `/redoc` `/openapi.json` | `ENABLE_API_DOCS=false` 默认关 |
-| `/static/*` | 不暴露静态资源到公网 |
+| `/static/owner/*` | Owner Console 静态资源跟随 `/owner` loopback only，不走公网 |
+| `/static/uploads/*` | 上传图片目录永不公开；即使路径猜中也必须 404 |
+| `/static/*` 其它子树 | 默认不暴露；新增公网静态子树必须先有 ADR 和 allowlist |
 | 实际 uploads 目录 | 永不挂载为静态；图片只通过 `/api/expenses/{id}/image` 鉴权读 |
 
 Tunnel 公网 hostname 配置时只给上面 allowlist 的路径建 Public Hostname 条目，每条 Service 都指 `http://127.0.0.1:8000` + path matcher。或者用单一 hostname + Cloudflare Rules / Workers 在边缘做路径过滤。
@@ -282,16 +300,29 @@ Cloudflare Free Plan 2022 起已经包含 unmetered rate limiting（不算钱）
 - `/api/auth/pair` 用 client IP（pair 之前没 token）
 - 其它 `/api/*` 用 `Authorization` header（防止单 token 被多 IP 共享后绕单 IP 限）
 
-## Cloudflare Access 是否启用 + 防绕过
+## Cloudflare Access 四层部署
 
-当前默认**不启用** Cloudflare Access。Android / iPhone 不适合走 Access（service token 烧进 APK 不可控，参见 [Cloudflare service token 文档](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)，官方明确说服务到服务用，不适合分发给手机客户端）。
+Android / iPhone 不适合走 Access（service token 烧进 APK 不可控，参见 [Cloudflare service token 文档](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)）。Access 只建议放在浏览器 `/web/*` 前面，作为 Web session 之外的外层身份门。
 
-如果将来给 `/web` 加 Access 保护（仅 owner 浏览器访问），必须在 backend 校验 `Cf-Access-Jwt-Assertion`，否则 Cloudflare 边缘配置错误时请求会直接到达本机绕过 Access：
+后端支持校验 Cloudflare Access application token。生产启用四层时，配置：
 
-> "To secure your origin, you must validate the application token issued by Cloudflare Access. Token validation ensures that any requests which bypass Cloudflare Access (for example, due to a network misconfiguration) are rejected."
-> — [Cloudflare One docs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+```env
+CLOUDFLARE_ACCESS_REQUIRED=true
+CLOUDFLARE_ACCESS_TEAM_DOMAIN=https://<your-team-name>.cloudflareaccess.com
+CLOUDFLARE_ACCESS_AUD=<Application Audience AUD Tag>
+```
 
-backend 当前不验证此 header；如果未来开 Access，需要新增 middleware（参考 v1.0 PR backlog）。
+Cloudflare 官方说明 Access 会把 application token 发送到 origin 的 `Cf-Access-Jwt-Assertion` header，origin 应使用 team domain 的 JWKS 和应用 AUD 校验该 JWT。后端只把这个 header 用作 Access 身份层；最终账本权限仍以本机 `__Host-session` 和 ledger permission 为准。
+
+边界探测：
+
+```powershell
+$env:TICKETBOX_CF_ACCESS_JWT="<从受控浏览器请求中临时取出的 Cf-Access-Jwt-Assertion>"
+powershell -ExecutionPolicy Bypass -File scripts\check_public_boundary.ps1 `
+  -BaseUrl https://api.zen70.cn
+```
+
+不要把 Access JWT 写入命令行参数、日志或文档；只通过临时环境变量传入脚本。若 `CLOUDFLARE_ACCESS_REQUIRED=true` 但请求没有有效 Access JWT，公网 `/web/*` 和 `/static/web/*` 应返回 `403 cloudflare_access_required` 或 `403 cloudflare_access_invalid`，而不是进入后端 Web session。
 
 ## Tunnel config 形态
 
@@ -310,7 +341,7 @@ credentials-file: C:\Users\<you>\.cloudflared\<tunnel-uuid>.json
 ingress:
   # allowlist 优先匹配
   - hostname: api.your-domain.com
-    path: ^/(api/(health|auth/(check|pair)|expenses|reports|goals|dashboard|budgets|recurring|merchants|rules|duplicates|imports|stats|me|exchange-rates|settings|ledgers|invitations)|u/)
+    path: ^/(web(?:/|$)|static/(?:web|shared)(?:/|$)|u/|api/(?:health$|auth/(?:check|pair)$|expenses(?:/|$)|reports(?:/|$)|goals(?:/|$)|dashboard(?:/|$)|budgets(?:/|$)|recurring(?:/|$)|merchants(?:/|$)|rules(?:/|$)|duplicates(?:/|$)|imports(?:/|$)|stats(?:/|$)|me(?:/|$)|exchange-rates(?:/|$)|settings(?:/|$)|ledgers(?:/|$)|invitations(?:/|$)))
     service: http://127.0.0.1:8000
   # catch-all return 404，绝对不要让其它路径漏到 backend
   - service: http_status:404
@@ -321,5 +352,6 @@ ingress:
 - Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
 - Cloudflare Tunnel 概览：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
 - Cloudflare Access self-hosted public app：https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/
+- Cloudflare Access JWT validation：https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
 - Cloudflare unmetered rate limiting：https://blog.cloudflare.com/unmetered-ratelimiting/
 - Cloudflare WAF rate limit best practices：https://developers.cloudflare.com/waf/rate-limiting-rules/best-practices/

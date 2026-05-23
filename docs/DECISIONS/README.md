@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0027。**0018 已撤回**（编号空缺，保留以维持时序）。
+**编号范围**：0001–0028。**0018 已撤回**（编号空缺，保留以维持时序）。
 
 ## 索引
 
@@ -35,10 +35,11 @@
 | [0025](0025-v0.9-android-chart-library-vico.md) | Android 图表库 Vico 3.1.0 | Vico 进 Compose 展示层 | 0023 下落地 |
 | [0026](0026-v0.9-web-chart-library-echarts.md) | /web 图表库 ECharts 6.0.0 | 自托管 ECharts，禁 CDN | 0023 下落地 |
 | [0027](0027-backend-authoritative-fx.md) | Backend Authoritative FX | 后端唯一汇率权威；ECB 参考；缺率返 pending | — |
+| [0028](0028-public-web-session-gated.md) | Public Web Session-Gated Surface | `/web` 公网仅以后端 web session + Cloudflare allowlist 方式开放，`/owner` 仍 loopback | 公网边界 |
 
 ## 编写新 ADR
 
-下一编号 `0028`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0029`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

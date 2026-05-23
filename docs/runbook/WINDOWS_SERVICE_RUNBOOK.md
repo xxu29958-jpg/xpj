@@ -155,7 +155,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start_backend_gui.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_windows_task_status.ps1
 ```
 
-输出 `TicketboxBackend` / `TicketboxCloudflareTunnel` / `TicketboxBackup` 的 `State`、`LastRunTime`、`LastTaskResult`。
+输出 `TicketboxBackend` / `TicketboxCloudflareTunnel` / `TicketboxBackup` / `TicketboxBoundaryCheck` 的 `State`、`LastRunTime`、`LastTaskResult`。`0x413xx` / `2670xx` 这类 Task Scheduler 信息码（例如任务正在运行、尚未运行）不按失败处理；`TicketboxBoundaryCheck` 探测失败仍返回 `1`。
 
 ## 查看当前状态
 
@@ -182,7 +182,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status
 - `TicketboxBackup` 每日 SQLite 备份任务状态。
 - 本机 `/api/health`。
 - 公网 `/api/health`。
-- 公网 `/api/auth/check`（使用 `-SessionToken` 或 `TICKETBOX_SESSION_TOKEN`，不会打印 token）。
+- 公网 `/api/auth/check`（推荐使用 `TICKETBOX_SESSION_TOKEN` 环境变量，避免 token 进入命令行历史；脚本不会打印 token）。
 - 最近后端日志。
 
 更适合日常使用的一键诊断：
@@ -192,7 +192,7 @@ $env:TICKETBOX_SESSION_TOKEN="<session_token>"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.ps1 -Strict
 ```
 
-它会额外汇总数据库大小、待确认数量、已入账数量、最近上传时间和截图存储占用。脚本使用 `-SessionToken` 或 `TICKETBOX_SESSION_TOKEN`，但不会打印 token。UploadLink 只能上传，诊断脚本不会读取或打印 upload key。
+它会额外汇总数据库大小、待确认数量、已入账数量、最近上传时间和截图存储占用。诊断推荐使用 `TICKETBOX_SESSION_TOKEN` 环境变量传入凭证，脚本不会打印 token。UploadLink 只能上传，诊断脚本不会读取或打印 upload key。
 
 默认诊断只输出摘要：
 

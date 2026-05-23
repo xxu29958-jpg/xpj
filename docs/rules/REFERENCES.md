@@ -16,6 +16,7 @@
 - pytest 文档：https://docs.pytest.org/en/stable/
 - pytest PyPI 元数据：https://pypi.org/project/pytest/
 - httpx PyPI 元数据：https://pypi.org/project/httpx/
+- PyJWT 文档：https://pyjwt.readthedocs.io/
 - Pillow PyPI 元数据：https://pypi.org/project/pillow/
 - Pillow 12.2.0 release notes：https://pillow.readthedocs.io/en/stable/releasenotes/12.2.0.html
 - Pillow image file formats：https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html
@@ -69,6 +70,7 @@
 
 - Cloudflare Tunnel 本地应用发布：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/tunnel-guide/local/
 - Cloudflare Tunnel 概览：https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+- Cloudflare Access JWT validation：https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
 - Apple 快捷指令“获取 URL 内容”：https://support.apple.com/guide/shortcuts/use-the-get-contents-of-url-action-apd58d46713f/ios
 
 ## UI / UX

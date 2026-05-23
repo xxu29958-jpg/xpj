@@ -54,9 +54,11 @@
 - 银行卡接口。
 - 第三方支付接口。
 
-> v0.3.3 起后端已提供本机轻量网页版账本 `/web`（loopback only），v0.4-alpha1
-> 起本机 Owner Console 增加 `/owner/ledgers` 多账本管理入口；二者**仍只允许
-> loopback 访问**，不通过 Cloudflare Tunnel 暴露到公网，也不是商业 Web 后台。
+> v0.3.3 起后端已提供轻量网页版账本 `/web`；v1.0 公网形态只允许按
+> ADR-0028 通过 Cloudflare allowlist + Access（生产建议）+ 后端
+> `__Host-session` Web cookie 访问。v0.4-alpha1 起本机 Owner Console 增加
+> `/owner/ledgers` 多账本管理入口；`/owner` **仍只允许 loopback 访问**，
+> 不通过 Cloudflare Tunnel 暴露到公网，也不是商业 Web 后台。
 
 ## 2. 总体流程
 
@@ -209,7 +211,8 @@ Authorization: Bearer <admin_token>
 - Android App 接口需要 `Authorization: Bearer <session_token>`。
 - `/api/maintenance/*` 需要 `Authorization: Bearer <admin_token>`，并只作用于当前 admin 上下文对应的账本。
 - `/api/auth/check` 必须验证 session token。
-- `/api/health` 可以不鉴权，只用于本地或隧道健康检查。
+- `/api/health` 可以不鉴权，只用于本地或隧道健康检查，且只返回 `{"status":"ok"}`。
+- `/api/status/private` 需要 session token，用于版本、DB、上传目录等私有运行状态。
 - 旧版 `APP_TOKEN`、`UPLOAD_TOKEN`、`TENANTS_JSON` app/upload token 一律返回 `legacy_auth_removed`（401）；旧静态 admin token 按无效凭证处理。
 
 ## 6. 统一错误格式
@@ -392,6 +395,13 @@ GET /api/health
 {
   "status": "ok"
 }
+```
+
+私有运行状态使用：
+
+```http
+GET /api/status/private
+Authorization: Bearer <session_token>
 ```
 
 ### 认证检查

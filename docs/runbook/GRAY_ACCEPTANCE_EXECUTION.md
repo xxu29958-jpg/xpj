@@ -104,11 +104,12 @@ powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
   -ServerUrl https://api.你的域名.com
 ```
 
-> v0.3 以后 `check_cloudflare_endpoint.ps1` 不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`。请通过 `-SessionToken` / `-UploadLink` 参数，或 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证。
+> v0.3 以后 `check_cloudflare_endpoint.ps1` 不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`，也不接受命令行传 token。请通过 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证，避免 token 进入命令行历史。
+> 若要验收 `/web` + Cloudflare Access 边界，另跑 `scripts\check_public_boundary.ps1`；Access JWT 只通过临时环境变量 `TICKETBOX_CF_ACCESS_JWT` 传入。
 
 **预期结果**：
 
-- `/api/health` 返回 ok。
+- `/api/health` 返回 `{"status":"ok"}`；私有运行状态走需要 session token 的 `/api/status/private`。
 - `/api/auth/check` 返回 session token 有效。
 - UploadLink 上传测试成功。
 
