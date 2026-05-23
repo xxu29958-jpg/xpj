@@ -317,6 +317,10 @@ $forbiddenChecks = @(
     # Uploads dir must NEVER be statically served — image bytes only via auth API.
     @{ Name = 'public /uploads/owner/fake.png';          Url = "$BaseUrl/uploads/owner/2026/05/fake.png";  Method = 'GET';  Status = @(404); Errors = $edgeOrRouteNotFoundErrors }
     @{ Name = 'public /static/uploads/fake.png';         Url = "$BaseUrl/static/uploads/fake.png";         Method = 'GET';  Status = @(404); Errors = $edgeOrRouteNotFoundErrors }
+    # P2 boundary defense-in-depth: /static/owner/* are loopback-only.
+    # Backend static_owner_guard middleware refuses public requests
+    # even if Cloudflare ingress drifts.
+    @{ Name = 'public /static/owner/owner.css';          Url = "$BaseUrl/static/owner/owner.css";          Method = 'GET';  Status = @(403, 404); Errors = $edgeOrOwnerForbiddenErrors }
 )
 
 foreach ($c in $forbiddenChecks) {

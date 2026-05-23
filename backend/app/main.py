@@ -14,6 +14,7 @@ from app.middleware.cloudflare_access import cloudflare_access_guard
 from app.middleware.csrf import csrf_loopback_form_guard
 from app.middleware.logging import SanitizedLoggingMiddleware
 from app.middleware.security_headers import security_headers
+from app.middleware.static_owner_guard import static_owner_guard
 from app.middleware.web_session import web_session_gate
 from app.routes import admin as admin_routes
 from app.routes import (
@@ -119,6 +120,7 @@ app.add_middleware(SanitizedLoggingMiddleware)
 # then CSRF for the route body itself.
 app.middleware("http")(csrf_loopback_form_guard)
 app.middleware("http")(web_session_gate)
+app.middleware("http")(static_owner_guard)
 app.middleware("http")(cloudflare_access_guard)
 app.middleware("http")(security_headers)
 
