@@ -468,6 +468,60 @@ class ExpenseRepository(
         bound.call { it.acknowledgeExpenseItemsMismatch(id) }.toDomain()
     }
 
+    // ADR-0029 bill split
+    suspend fun createBillSplitInvitation(
+        expenseId: Long,
+        receiverAccountId: Long,
+        amountCents: Long,
+    ): Result<com.ticketbox.domain.model.BillSplitSent> = errorHandler.safeCall {
+        if (!canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        val bound = ledgerRequestGuard.bind()
+        bound.call {
+            it.createBillSplitInvitation(
+                expenseId,
+                com.ticketbox.data.remote.dto.BillSplitInviteRequestDto(receiverAccountId, amountCents),
+            )
+        }.toDomain()
+    }
+
+    suspend fun fetchBillSplitInbox(): Result<List<com.ticketbox.domain.model.BillSplitInbox>> = errorHandler.safeCall {
+        val bound = ledgerRequestGuard.bind()
+        bound.call { it.listBillSplitInbox() }.items.map { it.toDomain() }
+    }
+
+    suspend fun fetchBillSplitSent(): Result<List<com.ticketbox.domain.model.BillSplitSent>> = errorHandler.safeCall {
+        val bound = ledgerRequestGuard.bind()
+        bound.call { it.listBillSplitSent() }.items.map { it.toDomain() }
+    }
+
+    suspend fun acceptBillSplitInvitation(
+        publicId: String,
+        targetLedgerId: String,
+    ): Result<com.ticketbox.domain.model.BillSplitInbox> = errorHandler.safeCall {
+        val bound = ledgerRequestGuard.bind()
+        bound.call {
+            it.acceptBillSplitInvitation(
+                publicId,
+                com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto(targetLedgerId),
+            )
+        }.toDomain()
+    }
+
+    suspend fun rejectBillSplitInvitation(publicId: String): Result<com.ticketbox.domain.model.BillSplitInbox> = errorHandler.safeCall {
+        val bound = ledgerRequestGuard.bind()
+        bound.call { it.rejectBillSplitInvitation(publicId) }.toDomain()
+    }
+
+    suspend fun cancelBillSplitInvitation(publicId: String): Result<com.ticketbox.domain.model.BillSplitSent> = errorHandler.safeCall {
+        if (!canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        val bound = ledgerRequestGuard.bind()
+        bound.call { it.cancelBillSplitInvitation(publicId) }.toDomain()
+    }
+
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bind()
         bound.call { it.expenseSplits(id) }.toDomain()

@@ -1126,6 +1126,18 @@ private class StubApi(
         request: ExpenseItemReplaceRequestDto,
     ): ExpenseItemsResponseDto = unsupported()
     override suspend fun acknowledgeExpenseItemsMismatch(id: Long): ExpenseItemsResponseDto = unsupported()
+    override suspend fun createBillSplitInvitation(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
+    ): com.ticketbox.data.remote.dto.BillSplitSentDto = unsupported()
+    override suspend fun listBillSplitInbox(): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto = unsupported()
+    override suspend fun listBillSplitSent(): com.ticketbox.data.remote.dto.BillSplitSentListResponseDto = unsupported()
+    override suspend fun acceptBillSplitInvitation(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto,
+    ): com.ticketbox.data.remote.dto.BillSplitInboxDto = unsupported()
+    override suspend fun rejectBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitInboxDto = unsupported()
+    override suspend fun cancelBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitSentDto = unsupported()
     override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto = unsupported()
     override suspend fun replaceExpenseSplits(
         id: Long,

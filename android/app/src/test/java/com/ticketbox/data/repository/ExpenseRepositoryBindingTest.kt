@@ -1290,6 +1290,56 @@ private class FakeApiService(
         return expenseItemsResponse()
     }
 
+    private fun stubBillSplitSent(): com.ticketbox.data.remote.dto.BillSplitSentDto =
+        com.ticketbox.data.remote.dto.BillSplitSentDto(
+            publicId = "test-public",
+            status = "invited",
+            amountCents = 2500,
+            merchantSnapshot = null,
+            categorySuggestion = null,
+            expenseTimeSnapshot = null,
+            expiresAt = "2026-06-23T00:00:00Z",
+            createdAt = "2026-05-24T00:00:00Z",
+            acceptedAt = null,
+            rejectedAt = null,
+            cancelledAt = null,
+            expiredAt = null,
+            receiverAccountId = 2,
+            receiverDisplayNameSnapshot = null,
+            senderExpenseId = 1,
+        )
+    private fun stubBillSplitInbox(): com.ticketbox.data.remote.dto.BillSplitInboxDto =
+        com.ticketbox.data.remote.dto.BillSplitInboxDto(
+            publicId = "test-public",
+            status = "invited",
+            amountCents = 2500,
+            merchantSnapshot = null,
+            categorySuggestion = null,
+            expenseTimeSnapshot = null,
+            expiresAt = "2026-06-23T00:00:00Z",
+            createdAt = "2026-05-24T00:00:00Z",
+            acceptedAt = null,
+            rejectedAt = null,
+            cancelledAt = null,
+            expiredAt = null,
+            senderAccountId = 1,
+            senderDisplayName = "Sender",
+        )
+    override suspend fun createBillSplitInvitation(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
+    ): com.ticketbox.data.remote.dto.BillSplitSentDto = stubBillSplitSent()
+    override suspend fun listBillSplitInbox(): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto =
+        com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(items = listOf(stubBillSplitInbox()))
+    override suspend fun listBillSplitSent(): com.ticketbox.data.remote.dto.BillSplitSentListResponseDto =
+        com.ticketbox.data.remote.dto.BillSplitSentListResponseDto(items = listOf(stubBillSplitSent()))
+    override suspend fun acceptBillSplitInvitation(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto,
+    ): com.ticketbox.data.remote.dto.BillSplitInboxDto = stubBillSplitInbox()
+    override suspend fun rejectBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitInboxDto = stubBillSplitInbox()
+    override suspend fun cancelBillSplitInvitation(publicId: String): com.ticketbox.data.remote.dto.BillSplitSentDto = stubBillSplitSent()
+
     override suspend fun expenseSplits(id: Long): ExpenseSplitsResponseDto {
         splitFetchIds += id
         return expenseSplitsResponse()
