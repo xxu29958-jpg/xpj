@@ -37,8 +37,41 @@ from app.services.receipt_parse_time import (
 ITEM_LINE_PATTERN = re.compile(
     r"^(?P<name>[A-Za-z一-鿿][A-Za-z0-9一-鿿（）()·+\-/&\s]{0,80}?)"
     r"(?:\s+(?P<quantity>(?:[xX×]\s*)?\d+(?:\.\d+)?\s*(?:份|杯|个|件|盒|袋|瓶|包|次|斤|克|kg|g)?))?"
-    r"\s+(?:¥|￥)?(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元)?$"
+    r"\s+(?:¥|￥)?(?P<amount>-?[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元)?$"
 )
+
+# ADR-0035: line item kind identifiers. Order matters within classify —
+# discount keywords run before _SUMMARY_KEYWORDS so "优惠" routes to
+# kind=discount, not to noise-skip.
+_DISCOUNT_KEYWORDS = (
+    "优惠",
+    "立减",
+    "满减",
+    "红包",
+    "抵扣",
+    "折扣",
+    "VIP折",
+    "折后",
+    "促销减",
+    "券",
+)
+_TAX_KEYWORDS = (
+    "税额",
+    "增值税",
+    "消费税",
+    "VAT",
+    "GST",
+    "Tax",
+)
+_SERVICE_FEE_KEYWORDS = (
+    "服务费",
+    "茶位费",
+    "包装费",
+    "餐位费",
+    "配送费",
+    "外卖费",
+)
+# Pure summary / non-item lines that should be skipped entirely.
 ITEM_NOISE_KEYWORDS = (
     "交易",
     "支付",
@@ -50,12 +83,7 @@ ITEM_NOISE_KEYWORDS = (
     "总计",
     "实付",
     "应付",
-    "优惠",
-    "立减",
-    "红包",
-    "抵扣",
     "奖励",
-    "券",
     "找零",
     "收款",
     "付款方式",
@@ -152,6 +180,27 @@ def _parse_receipt_items(
     return tuple(items[:200])
 
 
+_DISCOUNT_PATTERNS = (
+    # "满100减10" / "满 100 减 5" promotional rule expressions.
+    # 不直接把单字 "减" 加入 _DISCOUNT_KEYWORDS 以避免误判商品名"减肥茶"。
+    re.compile(r"满\s*\d+\s*减\s*\d*"),
+)
+
+
+def _classify_item_kind(line: str) -> str:
+    """Pick line item kind by keyword. Default 'product'."""
+    # discount 优先：现实"VIP优惠"既含"优惠"也是折扣行，必须走 discount
+    if any(kw in line for kw in _DISCOUNT_KEYWORDS):
+        return "discount"
+    if any(pat.search(line) for pat in _DISCOUNT_PATTERNS):
+        return "discount"
+    if any(kw in line for kw in _SERVICE_FEE_KEYWORDS):
+        return "service_fee"
+    if any(kw in line for kw in _TAX_KEYWORDS):
+        return "tax"
+    return "product"
+
+
 def _parse_receipt_item_line(line: str) -> ParsedReceiptItem | None:
     cleaned = " ".join(line.strip().split())
     if not cleaned or any(keyword in cleaned for keyword in ITEM_NOISE_KEYWORDS):
@@ -161,22 +210,43 @@ def _parse_receipt_item_line(line: str) -> ParsedReceiptItem | None:
         return None
 
     amount_cents = _item_money_to_cents(match.group("amount"))
-    if amount_cents is None or amount_cents <= 0:
+    if amount_cents is None:
         return None
+
+    kind = _classify_item_kind(cleaned)
+    # Normalize amount sign by kind (ADR-0035): discount lines must be ≤ 0,
+    # all others ≥ 0. Real OCR may emit "VIP优惠 3.00" (positive amount
+    # but discount semantically) or "VIP优惠 -3.00" (negative); both
+    # should land as discount with amount_cents <= 0.
+    if kind == "discount":
+        amount_cents = -abs(amount_cents)
+        if amount_cents == 0:
+            return None
+    else:
+        if amount_cents <= 0:
+            return None
 
     name = _clean_item_name(match.group("name"))
     if name is None:
         return None
 
     quantity_text = _clean_item_quantity(match.group("quantity"))
+    # Discount / tax / service_fee don't have unit prices; suppress to avoid
+    # nonsensical "VIP 优惠 unit_price -3.00" UI rendering.
+    unit_price = (
+        _item_unit_price_cents(amount_cents, quantity_text)
+        if kind == "product"
+        else None
+    )
     return ParsedReceiptItem(
         name=name,
         quantity_text=quantity_text,
         amount_cents=amount_cents,
-        unit_price_cents=_item_unit_price_cents(amount_cents, quantity_text),
-        category=_category_for_item_name(name),
+        unit_price_cents=unit_price,
+        category=_category_for_item_name(name) if kind == "product" else None,
         raw_text=cleaned,
         confidence=0.72,
+        kind=kind,
     )
 
 

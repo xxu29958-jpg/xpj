@@ -35,6 +35,10 @@ class ParsedReceiptItem:
     category: str | None = None
     raw_text: str | None = None
     confidence: float | None = None
+    # ADR-0035: line item kind enum. Default 'product' keeps legacy parsers
+    # working without modification. Discount/tax/service_fee are produced by
+    # receipt_parse_service when keyword pattern matches.
+    kind: str = "product"
 
 
 @dataclass(frozen=True)
