@@ -1,6 +1,6 @@
 # 0030 Use in-process thread pool with SQLite progress table for v1.0 long tasks
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-23
 - Decision makers: 项目维护者
 

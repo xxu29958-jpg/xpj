@@ -1,6 +1,6 @@
 # 0029 Use bill split invitations for cross-ledger bill splitting
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-23
 - Decision makers: 项目维护者
 

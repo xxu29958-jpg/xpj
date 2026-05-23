@@ -1,6 +1,6 @@
 # 0035 Use line item kind enum for discounts, taxes, and service fees
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-23
 - Decision makers: 项目维护者
 

@@ -1,6 +1,6 @@
 # 0031 Use shadow database with owner-confirmed cut-over for v1.0 migration
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-23
 - Decision makers: 项目维护者
 
