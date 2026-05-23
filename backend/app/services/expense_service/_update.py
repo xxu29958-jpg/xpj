@@ -12,6 +12,7 @@ from app.schemas import (
     ConfirmedExpenseBatchUpdateResponse,
     ExpenseUpdateRequest,
 )
+from app.services.bill_split_service import assert_no_immutable_field_changes
 from app.services.classify_service import classify_expense
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.duplicate_service import (
@@ -30,6 +31,7 @@ from app.services.expense_service._helpers import (
 )
 from app.services.expense_service._query import get_expense
 from app.services.ocr_service import clear_ocr_draft_fields
+from app.services.receipt_item_service import recompute_items_sum_status
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 
@@ -110,10 +112,6 @@ def update_expense(
     # ADR-0029: received split expenses freeze their money / merchant /
     # time fields — those represent the agreed-upon debt with the sender
     # and silently mutating them after accept is a data-integrity issue.
-    # Lazy import avoids expense_service ↔ bill_split_service circular
-    # at module load time.
-    from app.services.bill_split_service import assert_no_immutable_field_changes
-
     assert_no_immutable_field_changes(expense, set(updates.keys()))
 
     if "merchant" in updates:
@@ -172,11 +170,8 @@ def update_expense(
     if "tags" in updates:
         sync_expense_tags(db, expense)
 
-    # 0035: amount_cents 改动后必须重算 items_sum_status；lazy import 避免
-    # expense_service ↔ receipt_item_service 双向 import 循环。
+    # 0035: amount_cents 改动后必须重算 items_sum_status。
     if "amount_cents" in updates:
-        from app.services.receipt_item_service import recompute_items_sum_status
-
         recompute_items_sum_status(db, expense)
 
     expense.updated_at = now_utc()

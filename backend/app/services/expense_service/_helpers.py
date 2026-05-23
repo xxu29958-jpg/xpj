@@ -29,10 +29,13 @@ from app.fx_constants import FX_STATUS_PENDING
 from app.models import Expense
 from app.schemas import NotificationDraftCreateRequest
 from app.services.category_service import normalize_category
+from app.services.expense_query import EDITABLE_STATUSES  # re-exported
 from app.services.ocr_service import serialize_ocr_draft_fields
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.thumb_service import generate_thumbnail
 from app.services.time_service import ensure_utc
+
+_ = EDITABLE_STATUSES  # quiet F401: re-exported through the package facade
 
 __all__ = [
     "EDITABLE_STATUSES",
@@ -76,7 +79,6 @@ def _record_background_failure(kind: str) -> None:
     _background_failure_counts[kind] = _background_failure_counts.get(kind, 0) + 1
 
 
-EDITABLE_STATUSES = {"pending", "confirmed"}
 NOTIFICATION_DRAFT_WINDOW_MINUTES = 30
 NOTIFICATION_DRAFT_SOURCE_LABELS = {
     "wechat": "微信",
@@ -213,7 +215,10 @@ def _replace_ocr_draft_items_from_text(
     if expense.status != "pending":
         return
     parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
-
+    # Top-level import would form a cycle with receipt_item_service if
+    # that module ever re-introduced an expense_service dependency. It
+    # currently imports from expense_query only, so this stays local
+    # purely as a guard rail.
     from app.services.receipt_item_service import replace_ocr_draft_items
 
     replace_ocr_draft_items(db, expense, parsed.items)

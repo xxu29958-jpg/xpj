@@ -12,7 +12,7 @@ from app.schemas import (
     ExpenseItemsResponse,
 )
 from app.services.category_service import normalize_category
-from app.services.expense_service import EDITABLE_STATUSES, get_expense
+from app.services.expense_query import EDITABLE_STATUSES, get_expense
 from app.services.receipt_parse_service import ParsedReceiptItem
 from app.services.time_service import now_utc
 

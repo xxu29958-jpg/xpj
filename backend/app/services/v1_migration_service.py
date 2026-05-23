@@ -32,6 +32,8 @@ from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask
 from app.services import app_meta_service, background_task_service, migration_readiness_service
+from app.services.app_meta_service import _version_tuple
+from app.version import BACKEND_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +46,6 @@ def _handler(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None
     # binary. Doing so would make THIS very process refuse to restart
     # (assert_binary_compatible_with_db would reject 0.9.x < 1.0). Cut
     # over must be triggered from a v1.0+ binary release.
-    from app.services.app_meta_service import _version_tuple
-    from app.version import BACKEND_VERSION
-
     if _version_tuple(BACKEND_VERSION) < _version_tuple(app_meta_service.V1_TARGET_VERSION):
         raise RuntimeError(
             f"Refuse to cut over: backend binary {BACKEND_VERSION!r} is older "

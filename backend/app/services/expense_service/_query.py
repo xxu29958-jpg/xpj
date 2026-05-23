@@ -5,21 +5,12 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
+from app.services.expense_query import get_expense  # noqa: F401 — re-exported
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 
 __all__ = ["get_expense", "list_confirmed", "list_expenses_by_ids", "list_pending"]
-
-
-def get_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
-    expense = db.scalar(
-        ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
-    )
-    if expense is None:
-        raise AppError("expense_not_found", status_code=404)
-    return expense
 
 
 def list_pending(db: Session, tenant_id: str) -> list[Expense]:
