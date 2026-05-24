@@ -929,6 +929,24 @@
         "title": "Body_owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post",
         "type": "object"
       },
+      "Body_owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post": {
+        "properties": {
+          "algorithm_version": {
+            "title": "Algorithm Version",
+            "type": "string"
+          },
+          "decision_type": {
+            "title": "Decision Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_type",
+          "algorithm_version"
+        ],
+        "title": "Body_owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post",
+        "type": "object"
+      },
       "Body_owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post": {
         "properties": {
           "note": {
@@ -4083,6 +4101,16 @@
             "title": "Category",
             "type": "string"
           },
+          "category_suggestion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingCategorySuggestionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "confidence": {
             "anyOf": [
               {
@@ -4115,6 +4143,13 @@
               }
             ],
             "title": "Created At"
+          },
+          "duplicate_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PendingDuplicateCandidateResponse"
+            },
+            "title": "Duplicate Candidates",
+            "type": "array"
           },
           "duplicate_of_id": {
             "anyOf": [
@@ -6676,6 +6711,85 @@
           "expires_at"
         ],
         "title": "PairingCodeResponse",
+        "type": "object"
+      },
+      "PendingCategorySuggestionResponse": {
+        "properties": {
+          "algorithm_version": {
+            "title": "Algorithm Version",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "decision_public_id": {
+            "title": "Decision Public Id",
+            "type": "string"
+          },
+          "sample_size": {
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "decision_public_id",
+          "category",
+          "score",
+          "sample_size",
+          "algorithm_version"
+        ],
+        "title": "PendingCategorySuggestionResponse",
+        "type": "object"
+      },
+      "PendingDuplicateCandidateResponse": {
+        "properties": {
+          "algorithm_version": {
+            "title": "Algorithm Version",
+            "type": "string"
+          },
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "integer"
+          },
+          "candidate_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Public Id"
+          },
+          "decision_public_id": {
+            "title": "Decision Public Id",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "decision_public_id",
+          "candidate_id",
+          "score",
+          "algorithm_version"
+        ],
+        "title": "PendingDuplicateCandidateResponse",
         "type": "object"
       },
       "RecurringCandidateConfirmRequest": {
@@ -11165,6 +11279,140 @@
         ]
       }
     },
+    "/api/expenses/{expense_id}/suggestions/{decision_public_id}/accept": {
+      "post": {
+        "operationId": "post_accept_pending_suggestion_api_expenses__expense_id__suggestions__decision_public_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "decision_public_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Accept Pending Suggestion",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{expense_id}/suggestions/{decision_public_id}/reject": {
+      "post": {
+        "operationId": "post_reject_pending_suggestion_api_expenses__expense_id__suggestions__decision_public_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "decision_public_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Reject Pending Suggestion",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
     "/api/expenses/{expense_id}/thumbnail": {
       "get": {
         "operationId": "get_expense_thumbnail_api_expenses__expense_id__thumbnail_get",
@@ -15635,6 +15883,68 @@
           }
         },
         "summary": "Owner Ai Advisor Confirmation Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/algorithm-versions": {
+      "get": {
+        "operationId": "owner_algorithm_versions_get_owner_algorithm_versions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Algorithm Versions Get",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/algorithm-versions/withdraw": {
+      "post": {
+        "operationId": "owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Algorithm Versions Withdraw Post",
         "tags": [
           "owner-console"
         ]

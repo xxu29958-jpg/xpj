@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}算法版本 - 小票夹 Owner Console{% endblock %}
+{% block content %}
+<h1>算法版本</h1>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div>
+      <h2>Version Inventory</h2>
+      <p class="text-meta">当前账本：<code>{{ tenant_id }}</code></p>
+    </div>
+    <span class="badge badge-off">治理</span>
+  </div>
+
+  {% if versions %}
+  <div class="table-scroll" style="margin-top:12px">
+    <table>
+      <thead>
+        <tr>
+          <th>类型</th>
+          <th>版本</th>
+          <th class="num">Active</th>
+          <th class="num">Superseded</th>
+          <th class="num">Withdrawn</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in versions %}
+        <tr>
+          <td><code>{{ row.decision_type }}</code></td>
+          <td><code>{{ row.algorithm_version }}</code></td>
+          <td class="num-cell">{{ row.active_count }}</td>
+          <td class="num-cell">{{ row.superseded_count }}</td>
+          <td class="num-cell">{{ row.withdrawn_count }}</td>
+          <td>
+            {% if row.active_count > 0 %}
+            <form method="post" action="/owner/algorithm-versions/withdraw" class="inline" data-confirm-message="撤回该算法版本的所有 active 建议？">
+              <input type="hidden" name="decision_type" value="{{ row.decision_type }}">
+              <input type="hidden" name="algorithm_version" value="{{ row.algorithm_version }}">
+              <button type="submit" class="btn btn-danger">Withdraw</button>
+            </form>
+            {% else %}
+              <span class="text-meta">无 active 建议</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="empty-note">暂无算法建议记录。</p>
+  {% endif %}
+</div>
+{% endblock %}

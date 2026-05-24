@@ -4,9 +4,8 @@ Locks in:
 
 - Default empty provider returns advice=null (clean "AI not configured" UX).
 - Mock provider returns deterministic advice derived from inputs.
-- Builder honours ADR-0036 anonymisation — merchant_canonical / account_id
-  never appear in the dispatched BudgetInputs (we assert against the
-  values the mock actually receives).
+- Builder honours the P3 boundary: advisor inputs are assembled from
+  monthly_report-style aggregates, not raw merchant/member rows.
 - Endpoint requires auth.
 - Payload validation (month format).
 """
@@ -181,14 +180,10 @@ def test_builder_anonymises_merchant_canonical(identity) -> None:  # noqa: ARG00
         inputs = build_budget_inputs(
             db, tenant_id="owner", month=_current_month()
         )
-    # Every merchant_summary row must have an opaque anon_id, never the
-    # real "麦当劳" or "Netflix" canonical name.
-    for row in inputs.merchant_summary:
-        assert row.anon_id.startswith("merchant_")
-        assert "麦当劳" not in row.anon_id
-        assert "netflix" not in row.anon_id.lower()
-    for row in inputs.fixed_expenses:
-        assert row.anon_id.startswith("merchant_")
+    assert inputs.merchant_summary == []
+    assert inputs.fixed_expenses == []
+    assert "麦当劳" not in repr(inputs)
+    assert "Netflix" not in repr(inputs)
 
 
 def test_builder_anonymises_member_account_id(identity) -> None:  # noqa: ARG001
@@ -196,33 +191,25 @@ def test_builder_anonymises_member_account_id(identity) -> None:  # noqa: ARG001
         inputs = build_budget_inputs(
             db, tenant_id="owner", month=_current_month()
         )
-    assert len(inputs.members) >= 1
-    for row in inputs.members:
-        assert row.anon_id.startswith("member_")
+    assert inputs.members == []
 
 
-def test_builder_pulls_income_plan(identity) -> None:  # noqa: ARG001
+def test_builder_does_not_send_income_plan(identity) -> None:  # noqa: ARG001
     _seed_minimal_data()
     with SessionLocal() as db:
         inputs = build_budget_inputs(
             db, tenant_id="owner", month=_current_month()
         )
-    assert any(
-        plan.source_type == "salary" and plan.amount_cents == 1_000_000
-        for plan in inputs.income_plan
-    )
+    assert inputs.income_plan == []
 
 
-def test_builder_pulls_recurring_as_fixed_expenses(identity) -> None:  # noqa: ARG001
+def test_builder_does_not_send_recurring_merchants(identity) -> None:  # noqa: ARG001
     _seed_minimal_data()
     with SessionLocal() as db:
         inputs = build_budget_inputs(
             db, tenant_id="owner", month=_current_month()
         )
-    assert any(
-        fe.amount_cents == 2_000 and fe.frequency == "monthly"
-        for fe in inputs.fixed_expenses
-    )
+    assert inputs.fixed_expenses == []
 
 
 def test_builder_pulls_current_month_category_breakdown(identity) -> None:  # noqa: ARG001
@@ -301,5 +288,5 @@ def test_builder_returns_valid_budget_inputs_when_empty(identity) -> None:  # no
     assert isinstance(inputs, BudgetInputs)
     assert inputs.month == _current_month()
     assert inputs.home_currency == "CNY"
-    # Members include the owner even when nobody else is in the ledger.
-    assert len(inputs.members) >= 1
+    assert inputs.members == []
+    assert inputs.merchant_summary == []

@@ -38,6 +38,7 @@ from app.services.spending_contract_service import (
 class CategoryRollup:
     category: str
     amount_cents: int
+    count: int = 0
 
 
 @dataclass(frozen=True)
@@ -108,10 +109,19 @@ def compose_monthly_report(
     )
     total = sum(amount for _, amount in rows)
     by_category: dict[str, int] = defaultdict(int)
+    count_by_category: dict[str, int] = defaultdict(int)
     for category, amount in rows:
         by_category[category] += amount
+        count_by_category[category] += 1
     top = sorted(
-        (CategoryRollup(category=c, amount_cents=a) for c, a in by_category.items()),
+        (
+            CategoryRollup(
+                category=c,
+                amount_cents=a,
+                count=count_by_category[c],
+            )
+            for c, a in by_category.items()
+        ),
         key=lambda r: r.amount_cents,
         reverse=True,
     )[: max(top_n, 0)]

@@ -16,6 +16,30 @@ data class UploadResponseDto(
     val timingMs: Map<String, Long>? = null,
 )
 
+data class PendingCategorySuggestionDto(
+    @param:Json(name = "decision_public_id")
+    val decisionPublicId: String,
+    val category: String,
+    val score: Double,
+    @param:Json(name = "sample_size")
+    val sampleSize: Int,
+    @param:Json(name = "algorithm_version")
+    val algorithmVersion: String,
+)
+
+data class PendingDuplicateCandidateDto(
+    @param:Json(name = "decision_public_id")
+    val decisionPublicId: String,
+    @param:Json(name = "candidate_id")
+    val candidateId: Long,
+    @param:Json(name = "candidate_public_id")
+    val candidatePublicId: String? = null,
+    val score: Double,
+    val reasons: List<String> = emptyList(),
+    @param:Json(name = "algorithm_version")
+    val algorithmVersion: String,
+)
+
 data class ExpenseDto(
     val id: Long,
     @param:Json(name = "public_id")
@@ -50,6 +74,10 @@ data class ExpenseDto(
     val exchangeRateSource: String? = null,
     val merchant: String?,
     val category: String,
+    @param:Json(name = "category_suggestion")
+    val categorySuggestion: PendingCategorySuggestionDto? = null,
+    @param:Json(name = "duplicate_candidates")
+    val duplicateCandidates: List<PendingDuplicateCandidateDto> = emptyList(),
     val note: String?,
     val source: String,
     @param:Json(name = "image_path")

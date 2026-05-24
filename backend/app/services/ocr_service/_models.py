@@ -19,6 +19,23 @@ class OcrResult:
     category: str | None = None
 
 
+@dataclass(frozen=True)
+class OcrExtraction:
+    provider_name: str
+    ocr_model: str | None
+    result: OcrResult
+
+
+@dataclass(frozen=True)
+class OcrFactSnapshot:
+    raw_text: str | None
+    parsed_amount_cents: int | None
+    parsed_merchant: str | None
+    parsed_category: str | None
+    parsed_expense_time: datetime | None
+    parse_confidence: float | None
+
+
 class OcrProvider(Protocol):
     def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
         ...

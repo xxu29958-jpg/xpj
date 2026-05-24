@@ -12,7 +12,12 @@ from app.services.category_service import normalize_category
 from app.services.exchange_rate_service import default_rate_date, home_currency_code
 from app.services.ocr_service._draft_fields import _write_ocr_draft_fields, ocr_draft_fields
 from app.services.ocr_service._merge import _best_confidence, _merge_result_with_text_parse
-from app.services.ocr_service._models import OcrProvider, OcrResult
+from app.services.ocr_service._models import (
+    OcrExtraction,
+    OcrFactSnapshot,
+    OcrProvider,
+    OcrResult,
+)
 from app.services.ocr_service._providers import get_ocr_provider
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc
@@ -35,15 +40,28 @@ def retry_ocr(expense: Expense, provider: OcrProvider | None = None, timezone_na
     return expense
 
 
-def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None) -> list[OcrResult]:
-    """Run configured OCR providers and return draft results without mutating the expense."""
+def collect_auto_ocr_extractions(
+    expense: Expense, timezone_name: str | None = None
+) -> list[OcrExtraction]:
+    """Run configured OCR providers and return draft results with provenance."""
     settings = get_settings()
     if not settings.ocr_auto_run:
         return []
+    primary_name = _normalise_provider_name(settings.ocr_provider)
+    if primary_name == "empty":
+        return []
 
     try:
-        primary_result = get_ocr_provider(settings.ocr_provider).extract(expense, timezone_name=timezone_name)
-        results = [primary_result]
+        primary_result = get_ocr_provider(primary_name).extract(
+            expense, timezone_name=timezone_name
+        )
+        results = [
+            OcrExtraction(
+                provider_name=primary_name,
+                ocr_model=_provider_model(primary_name),
+                result=primary_result,
+            )
+        ]
 
         draft = Expense(
             amount_cents=expense.amount_cents,
@@ -56,8 +74,21 @@ def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None)
             status="pending",
         )
         apply_ocr_result(draft, primary_result, timezone_name=timezone_name)
-        if _needs_fallback(draft) and settings.ocr_fallback_provider not in {"", "empty", settings.ocr_provider}:
-            results.append(get_ocr_provider(settings.ocr_fallback_provider).extract(expense, timezone_name=timezone_name))
+        fallback_name = _normalise_provider_name(settings.ocr_fallback_provider)
+        if (
+            _needs_fallback(draft)
+            and fallback_name not in {"", "empty", primary_name}
+        ):
+            fallback_result = get_ocr_provider(fallback_name).extract(
+                expense, timezone_name=timezone_name
+            )
+            results.append(
+                OcrExtraction(
+                    provider_name=fallback_name,
+                    ocr_model=_provider_model(fallback_name),
+                    result=fallback_result,
+                )
+            )
         return results
     except Exception:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
@@ -65,9 +96,20 @@ def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None)
         return []
 
 
+def collect_auto_ocr_results(expense: Expense, timezone_name: str | None = None) -> list[OcrResult]:
+    """Backward-compatible result-only wrapper for tests and old callers."""
+
+    return [
+        extraction.result
+        for extraction in collect_auto_ocr_extractions(
+            expense, timezone_name=timezone_name
+        )
+    ]
+
+
 def run_auto_ocr(expense: Expense, timezone_name: str | None = None) -> None:
-    for result in collect_auto_ocr_results(expense, timezone_name=timezone_name):
-        apply_ocr_result(expense, result, timezone_name=timezone_name)
+    for extraction in collect_auto_ocr_extractions(expense, timezone_name=timezone_name):
+        apply_ocr_result(expense, extraction.result, timezone_name=timezone_name)
 
 
 def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | None = None) -> None:
@@ -126,3 +168,48 @@ def _needs_fallback(expense: Expense) -> bool:
         or not (expense.merchant or "").strip()
         or expense.expense_time is None
     )
+
+
+def ocr_fact_snapshot(
+    result: OcrResult, timezone_name: str | None = None
+) -> OcrFactSnapshot:
+    """Build the append-only fact snapshot from the extraction itself.
+
+    This intentionally does not inspect the mutable ``Expense`` row:
+    OCR facts describe what the OCR/text pipeline produced, even if a
+    field is not allowed to overwrite a user-edited draft value.
+    """
+
+    parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
+    merged = _merge_result_with_text_parse(
+        result, parsed_confidence=parsed.confidence, timezone_name=timezone_name
+    )
+    return OcrFactSnapshot(
+        raw_text=merged.raw_text,
+        parsed_amount_cents=merged.amount_cents,
+        parsed_merchant=merged.merchant,
+        parsed_category=normalize_category(merged.category) if merged.category else None,
+        parsed_expense_time=ensure_utc(merged.expense_time),
+        parse_confidence=_best_confidence(
+            merged.confidence, parsed.confidence, None
+        ),
+    )
+
+
+def _normalise_provider_name(provider_name: str | None) -> str:
+    clean = (provider_name or "").strip().lower()
+    if clean in {"rapid_ocr"}:
+        return "rapidocr"
+    if clean in {"local_vlm", "vlm"}:
+        return "local_llm"
+    if clean:
+        return clean
+    return "empty"
+
+
+def _provider_model(provider_name: str) -> str | None:
+    if provider_name == "local_llm":
+        return get_settings().local_llm_model or None
+    if provider_name == "rapidocr":
+        return "rapidocr"
+    return None

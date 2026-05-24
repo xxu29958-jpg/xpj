@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
+from app.errors import AppError
 from app.schemas import (
     CategoriesResponse,
     ConfirmedExpenseBatchUpdateRequest,
@@ -21,6 +24,9 @@ from app.schemas import (
     MonthsResponse,
     NotificationDraftCreateRequest,
     PaginatedExpensesResponse,
+    PendingCategorySuggestionResponse,
+    PendingDuplicateCandidateResponse,
+    StatusResponse,
     TagsResponse,
 )
 from app.services.expense_service import (
@@ -40,6 +46,10 @@ from app.services.expense_service import (
     update_expense,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
+from app.services.pending_suggestion_service import (
+    record_pending_suggestion_event,
+    suggestions_for_pending_expense,
+)
 from app.services.receipt_item_service import (
     acknowledge_items_sum_mismatch,
     list_expense_items,
@@ -48,6 +58,9 @@ from app.services.receipt_item_service import (
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
 from app.services.tag_service import list_tags
 from app.tenants import AuthContext
+
+if TYPE_CHECKING:
+    from app.models import Expense
 
 router = APIRouter(
     prefix="/api/expenses",
@@ -60,7 +73,15 @@ def get_pending_expenses(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> list[ExpenseResponse]:
-    return list_pending(db, auth.tenant_id)
+    items: list[ExpenseResponse] = []
+    for expense in list_pending(db, auth.tenant_id):
+        items.append(
+            _expense_response_with_suggestions(
+                db, tenant_id=auth.tenant_id, expense=expense
+            )
+        )
+    db.commit()
+    return items
 
 
 @router.post("/manual", response_model=ExpenseResponse)
@@ -299,6 +320,58 @@ def post_recognize_text(
     return recognize_expense_text(db, expense_id, auth.tenant_id, payload)
 
 
+@router.post(
+    "/{expense_id}/suggestions/{decision_public_id}/accept",
+    response_model=StatusResponse,
+)
+def post_accept_pending_suggestion(
+    expense_id: int,
+    decision_public_id: str,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> StatusResponse:
+    get_expense(db, expense_id, auth.tenant_id)
+    try:
+        record_pending_suggestion_event(
+            db,
+            tenant_id=auth.tenant_id,
+            expense_id=expense_id,
+            decision_public_id=decision_public_id,
+            event_type="accept",
+            actor_account_id=auth.account_id,
+        )
+    except ValueError as exc:
+        raise AppError("not_found", status_code=404) from exc
+    db.commit()
+    return StatusResponse()
+
+
+@router.post(
+    "/{expense_id}/suggestions/{decision_public_id}/reject",
+    response_model=StatusResponse,
+)
+def post_reject_pending_suggestion(
+    expense_id: int,
+    decision_public_id: str,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> StatusResponse:
+    get_expense(db, expense_id, auth.tenant_id)
+    try:
+        record_pending_suggestion_event(
+            db,
+            tenant_id=auth.tenant_id,
+            expense_id=expense_id,
+            decision_public_id=decision_public_id,
+            event_type="reject",
+            actor_account_id=auth.account_id,
+        )
+    except ValueError as exc:
+        raise AppError("not_found", status_code=404) from exc
+    db.commit()
+    return StatusResponse()
+
+
 @router.post("/{expense_id}/mark-not-duplicate", response_model=ExpenseResponse)
 def post_mark_not_duplicate(
     expense_id: int,
@@ -306,3 +379,32 @@ def post_mark_not_duplicate(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     return mark_expense_not_duplicate(db, expense_id, auth.tenant_id)
+
+
+def _expense_response_with_suggestions(
+    db: Session, *, tenant_id: str, expense: Expense
+) -> ExpenseResponse:
+    suggestions = suggestions_for_pending_expense(
+        db, tenant_id=tenant_id, expense=expense
+    )
+    dto = ExpenseResponse.model_validate(expense)
+    if suggestions.category_suggestion is not None:
+        dto.category_suggestion = PendingCategorySuggestionResponse(
+            decision_public_id=suggestions.category_suggestion.decision_public_id,
+            category=suggestions.category_suggestion.category,
+            score=suggestions.category_suggestion.score,
+            sample_size=suggestions.category_suggestion.sample_size,
+            algorithm_version=suggestions.category_suggestion.algorithm_version,
+        )
+    dto.duplicate_candidates = [
+        PendingDuplicateCandidateResponse(
+            decision_public_id=item.decision_public_id,
+            candidate_id=item.candidate_id,
+            candidate_public_id=item.candidate_public_id,
+            score=item.score,
+            reasons=list(item.reasons),
+            algorithm_version=item.algorithm_version,
+        )
+        for item in suggestions.duplicate_candidates
+    ]
+    return dto

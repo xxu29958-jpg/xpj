@@ -27,6 +27,8 @@ __all__ = [
     "ExpenseManualCreateRequest",
     "ExpenseRecognizeTextRequest",
     "ExpenseResponse",
+    "PendingCategorySuggestionResponse",
+    "PendingDuplicateCandidateResponse",
     "ExpenseSplitReplaceRequest",
     "ExpenseSplitRequest",
     "ExpenseSplitResponse",
@@ -123,6 +125,23 @@ class ExpenseRecognizeTextRequest(BaseModel):
     raw_text: str = Field(min_length=1, max_length=20000)
 
 
+class PendingCategorySuggestionResponse(BaseModel):
+    decision_public_id: str
+    category: str
+    score: float
+    sample_size: int
+    algorithm_version: str
+
+
+class PendingDuplicateCandidateResponse(BaseModel):
+    decision_public_id: str
+    candidate_id: int
+    candidate_public_id: str | None = None
+    score: float
+    reasons: list[str] = Field(default_factory=list)
+    algorithm_version: str
+
+
 class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -165,6 +184,10 @@ class ExpenseResponse(BaseModel):
     rejected_at: datetime | None
     image_deleted_at: datetime | None
     thumbnail_deleted_at: datetime | None
+    category_suggestion: PendingCategorySuggestionResponse | None = None
+    duplicate_candidates: list[PendingDuplicateCandidateResponse] = Field(
+        default_factory=list
+    )
 
     @field_serializer(
         "expense_time",

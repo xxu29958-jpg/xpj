@@ -11,6 +11,7 @@ from __future__ import annotations
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
@@ -21,6 +22,7 @@ from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
     _updated_at_matches,
 )
+from app.services.expense_service._ocr_facts import append_ocr_fact
 from app.services.expense_service._query import get_expense
 from app.services.ocr_service import OcrResult, apply_ocr_result, extract_ocr_result
 from app.services.time_service import now_utc
@@ -79,6 +81,14 @@ def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
     # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
     expense.updated_at = expected_updated_at
     apply_ocr_result(expense, result)
+    provider_name = _active_provider_name()
+    append_ocr_fact(
+        db,
+        expense=expense,
+        result=result,
+        provider_name=provider_name,
+        ocr_model=_active_provider_model(provider_name),
+    )
     _replace_ocr_draft_items_from_text(db, expense, expense.raw_text or "")
     if expense.category == "其他":
         classify_expense(db, expense)
@@ -113,7 +123,14 @@ def recognize_expense_text(
     )
     # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
     expense.updated_at = expected_updated_at
-    apply_ocr_result(expense, OcrResult(raw_text=raw_text, confidence=None))
+    result = OcrResult(raw_text=raw_text, confidence=None)
+    apply_ocr_result(expense, result)
+    append_ocr_fact(
+        db,
+        expense=expense,
+        result=result,
+        provider_name="manual_text",
+    )
     _replace_ocr_draft_items_from_text(db, expense, raw_text)
     if expense.category == "其他":
         classify_expense(db, expense)
@@ -127,3 +144,20 @@ def recognize_expense_text(
     db.commit()
     db.refresh(expense)
     return expense
+
+
+def _active_provider_name() -> str:
+    clean = (get_settings().ocr_provider or "").strip().lower()
+    if clean == "rapid_ocr":
+        return "rapidocr"
+    if clean in {"local_vlm", "vlm"}:
+        return "local_llm"
+    return clean or "empty"
+
+
+def _active_provider_model(provider_name: str) -> str | None:
+    if provider_name == "local_llm":
+        return get_settings().local_llm_model or None
+    if provider_name == "rapidocr":
+        return "rapidocr"
+    return None

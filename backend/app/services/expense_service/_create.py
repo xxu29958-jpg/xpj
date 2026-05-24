@@ -33,8 +33,12 @@ from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
     _try_generate_thumbnail,
 )
+from app.services.expense_service._ocr_facts import append_ocr_fact
 from app.services.file_service import SavedUpload, delete_relative_upload
-from app.services.ocr_service import apply_ocr_result, collect_auto_ocr_results, run_auto_ocr
+from app.services.ocr_service import (
+    apply_ocr_result,
+    collect_auto_ocr_extractions,
+)
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 
@@ -54,8 +58,16 @@ def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
         expense.thumbnail_path = _try_generate_thumbnail(
             expense.image_path, expense.tenant_id
         )
-    run_auto_ocr(expense)
-    _replace_ocr_draft_items_from_text(db, expense, expense.raw_text or "")
+    for extraction in collect_auto_ocr_extractions(expense):
+        apply_ocr_result(expense, extraction.result)
+        append_ocr_fact(
+            db,
+            expense=expense,
+            result=extraction.result,
+            provider_name=extraction.provider_name,
+            ocr_model=extraction.ocr_model,
+        )
+        _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text)
     if expense.category == "其他":
         classify_expense(db, expense)
     if (
@@ -126,7 +138,9 @@ def enrich_pending_expense(
         if expense is None or expense.status != "pending":
             return
 
-        ocr_results = collect_auto_ocr_results(expense, timezone_name=timezone_name)
+        ocr_extractions = collect_auto_ocr_extractions(
+            expense, timezone_name=timezone_name
+        )
 
     with SessionLocal() as db:
         try:
@@ -140,10 +154,20 @@ def enrich_pending_expense(
                 expense.thumbnail_path = _try_generate_thumbnail(
                     expense.image_path, expense.tenant_id
                 )
-            for result in ocr_results:
-                apply_ocr_result(expense, result, timezone_name=timezone_name)
+            for extraction in ocr_extractions:
+                apply_ocr_result(
+                    expense, extraction.result, timezone_name=timezone_name
+                )
+                append_ocr_fact(
+                    db,
+                    expense=expense,
+                    result=extraction.result,
+                    provider_name=extraction.provider_name,
+                    ocr_model=extraction.ocr_model,
+                    timezone_name=timezone_name,
+                )
                 _replace_ocr_draft_items_from_text(
-                    db, expense, result.raw_text, timezone_name=timezone_name
+                    db, expense, extraction.result.raw_text, timezone_name=timezone_name
                 )
             if expense.category == "其他":
                 classify_expense(db, expense)

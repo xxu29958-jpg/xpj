@@ -19,6 +19,12 @@ from app.routes.web_common import (
     _sidebar_counts,
     templates,
 )
+from app.services.monthly_report_service import (
+    BudgetExplanation,
+    MonthlyReport,
+    compose_budget_explanation,
+    compose_monthly_report,
+)
 from app.services.reports_service import (
     export_reports_overview_csv,
     reports_overview,
@@ -107,6 +113,52 @@ def _view_model(payload: dict) -> dict:
     }
 
 
+def _monthly_report_view_model(report: MonthlyReport) -> dict:
+    return {
+        "year_month": report.year_month,
+        "total_amount_yuan": _amount_yuan(report.total_cents),
+        "expense_count": report.expense_count,
+        "delta_vs_previous_yuan": _amount_yuan(report.delta_vs_previous_cents),
+        "delta_pct": report.delta_pct,
+        "top_categories": [
+            {
+                "category": row.category,
+                "amount_cents": row.amount_cents,
+                "amount_yuan": _amount_yuan(row.amount_cents),
+                "count": row.count,
+            }
+            for row in report.top_categories
+        ],
+    }
+
+
+def _budget_explanation_view_model(item: BudgetExplanation) -> dict:
+    return {
+        "category": item.category,
+        "year_month": item.year_month,
+        "actual_yuan": _amount_yuan(item.actual_cents),
+        "p50_yuan": _amount_yuan(item.p50_cents) if item.p50_cents is not None else None,
+        "p75_yuan": _amount_yuan(item.p75_cents) if item.p75_cents is not None else None,
+        "delta_vs_p75_yuan": (
+            _amount_yuan(item.delta_vs_p75_cents)
+            if item.delta_vs_p75_cents is not None
+            else None
+        ),
+        "verdict": item.verdict,
+        "verdict_label": _budget_verdict_label(item.verdict),
+    }
+
+
+def _budget_verdict_label(value: str) -> str:
+    labels = {
+        "under": "低于常规",
+        "on_track": "节奏正常",
+        "over_p75": "高于 P75",
+        "no_history": "历史不足",
+    }
+    return labels.get(value, value)
+
+
 @router.get("", response_class=HTMLResponse)
 def web_reports(
     request: Request,
@@ -133,6 +185,22 @@ def web_reports(
         ranking_metric=selected_metric,
         merchant_category=merchant_category,
     )
+    monthly_report = compose_monthly_report(
+        db,
+        tenant_id=selected_id,
+        year_month=target_month,
+        timezone_name=timezone_name,
+    )
+    explanations = [
+        compose_budget_explanation(
+            db,
+            tenant_id=selected_id,
+            category=row.category,
+            year_month=target_month,
+            timezone_name=timezone_name,
+        )
+        for row in monthly_report.top_categories[:5]
+    ]
     ctx = _base_ctx(
         request,
         options=options,
@@ -145,6 +213,11 @@ def web_reports(
     ctx.update(
         {
             "report": _view_model(payload),
+            "monthly_report": _monthly_report_view_model(monthly_report),
+            "budget_explanations": [
+                _budget_explanation_view_model(item)
+                for item in explanations
+            ],
             "report_export_query": urlencode(
                 {
                     "ledger_id": selected_id,

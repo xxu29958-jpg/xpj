@@ -299,6 +299,50 @@ def test_owner_ai_advisor_confirmation_updates_runtime_env(
         app_config.get_settings.cache_clear()
 
 
+def test_owner_algorithm_versions_inventory_and_withdraw(
+    local_client: TestClient,
+) -> None:
+    from app.database import SessionLocal
+    from app.models import AlgorithmDecision
+    from app.services.learning_service import DecisionDraft, record_decision
+
+    with SessionLocal() as db:
+        decision = record_decision(
+            db,
+            DecisionDraft(
+                tenant_id="owner",
+                decision_type="category_suggestion",
+                algorithm_version="category-history-v1",
+                subject_kind="expense",
+                subject_id=1,
+                payload={"category": "餐饮"},
+            ),
+        )
+        db.commit()
+        decision_id = decision.id
+
+    page = local_client.get("/owner/algorithm-versions")
+    assert page.status_code == 200
+    assert "Version Inventory" in page.text
+    assert "category-history-v1" in page.text
+    assert "/owner/algorithm-versions/withdraw" in page.text
+
+    response = local_client.post(
+        "/owner/algorithm-versions/withdraw",
+        data={
+            "decision_type": "category_suggestion",
+            "algorithm_version": "category-history-v1",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    with SessionLocal() as db:
+        row = db.get(AlgorithmDecision, decision_id)
+        assert row is not None
+        assert row.status == "withdrawn"
+
+
 def test_owner_settings_subpages_open(local_client: TestClient) -> None:
     for slug in ("public-base-url", "security", "api", "about"):
         resp = local_client.get(f"/owner/settings/{slug}")

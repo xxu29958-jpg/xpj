@@ -103,6 +103,8 @@ from app.schemas._expense import (
     NotificationDraftCreateRequest,
     OcrRetryResponse,
     PaginatedExpensesResponse,
+    PendingCategorySuggestionResponse,
+    PendingDuplicateCandidateResponse,
     UploadResponse,
 )
 from app.schemas._goals import (
@@ -298,6 +300,8 @@ __all__ = [
     "PaginatedExpensesResponse",
     "PairRequest",
     "PairResponse",
+    "PendingCategorySuggestionResponse",
+    "PendingDuplicateCandidateResponse",
     "RefreshSessionResponse",
     "PairingCodeCreateRequest",
     "PairingCodeResponse",

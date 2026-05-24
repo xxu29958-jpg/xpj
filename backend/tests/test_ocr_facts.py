@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from api_contract_helpers import upload_png
 
 from app.database import SessionLocal
 from app.models import Expense, OcrFact
@@ -13,6 +15,8 @@ from app.services.learning_service import (
     ocr_facts_for_expense,
     record_ocr_fact,
 )
+from app.services.ocr_service import OcrResult
+from tests._infra.assets import PNG_BYTES
 
 
 def _make_expense(tenant_id: str) -> int:
@@ -190,3 +194,104 @@ def test_facts_table_is_append_only_no_unique_per_expense(*, identity) -> None:
             .count()
         )
         assert count == 2
+
+
+def _facts(expense_id: int):
+    with SessionLocal() as db:
+        return ocr_facts_for_expense(
+            db, tenant_id="owner", expense_id=expense_id
+        )
+
+
+def _enable_mock_auto_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.ocr_service import _apply as ocr_apply
+
+    settings = replace(
+        ocr_apply.get_settings(),
+        ocr_auto_run=True,
+        ocr_provider="mock",
+        ocr_fallback_provider="empty",
+    )
+    monkeypatch.setattr(ocr_apply, "get_settings", lambda: settings)
+
+
+def test_upload_link_auto_ocr_writes_fact(
+    client, monkeypatch: pytest.MonkeyPatch, *, identity
+) -> None:
+    _enable_mock_auto_ocr(monkeypatch)
+
+    response = client.post(
+        identity.upload_url_path,
+        headers=identity.upload_headers,
+        files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+    )
+
+    assert response.status_code == 200, response.json()
+    rows = _facts(response.json()["id"])
+    assert len(rows) == 1
+    assert rows[0].ocr_provider == "mock"
+    assert rows[0].parsed_amount_cents == 1851
+
+
+def test_android_upload_auto_ocr_writes_fact(
+    client, monkeypatch: pytest.MonkeyPatch, *, identity
+) -> None:
+    _enable_mock_auto_ocr(monkeypatch)
+
+    response = client.post(
+        "/api/app/upload-screenshot",
+        headers=identity.app_headers,
+        files={"file": ("ticket.png", PNG_BYTES, "image/png")},
+    )
+
+    assert response.status_code == 200, response.json()
+    rows = _facts(response.json()["id"])
+    assert len(rows) == 1
+    assert rows[0].ocr_provider == "mock"
+    assert rows[0].parsed_amount_cents == 1851
+
+
+def test_recognize_text_writes_manual_text_fact(client, *, identity) -> None:
+    expense_id = upload_png(client, identity=identity)
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=identity.app_headers,
+        json={"raw_text": "星巴克\n交易金额：29.00\n交易时间：2026年5月4日 16:23:25"},
+    )
+
+    assert response.status_code == 200, response.json()
+    rows = _facts(expense_id)
+    assert len(rows) == 1
+    assert rows[0].ocr_provider == "manual_text"
+    assert rows[0].parsed_amount_cents == 2900
+    assert rows[0].raw_text.startswith("星巴克")
+
+
+def test_retry_ocr_appends_fact_each_time(
+    client, monkeypatch: pytest.MonkeyPatch, *, identity
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    runs = iter(
+        [
+            OcrResult(raw_text="retry one\n12.00", confidence=0.7, amount_cents=1200),
+            OcrResult(raw_text="retry two\n13.00", confidence=0.8, amount_cents=1300),
+        ]
+    )
+    monkeypatch.setattr(
+        "app.services.expense_service._ocr.extract_ocr_result",
+        lambda expense: next(runs),
+    )
+
+    first = client.post(
+        f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers
+    )
+    second = client.post(
+        f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers
+    )
+
+    assert first.status_code == 200, first.json()
+    assert second.status_code == 200, second.json()
+    rows = _facts(expense_id)
+    assert [row.raw_text for row in rows] == ["retry two\n13.00", "retry one\n12.00"]
+    assert all(row.ocr_provider == "empty" for row in rows)

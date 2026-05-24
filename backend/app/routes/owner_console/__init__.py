@@ -36,6 +36,7 @@ from fastapi import APIRouter
 
 from app.routes.owner_console import (
     _ai_advisor,
+    _algorithm_versions,
     _backups,
     _devices,
     _diagnostics,
@@ -56,6 +57,7 @@ from app.routes.owner_console._shared import (
 router = APIRouter()
 router.include_router(_index.router)
 router.include_router(_ai_advisor.router)
+router.include_router(_algorithm_versions.router)
 router.include_router(_devices.router)
 router.include_router(_pairing.router)
 router.include_router(_upload_links.router)

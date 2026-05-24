@@ -55,6 +55,78 @@
   </div>
 </div>
 
+{% if monthly_report %}
+<div class="dash-grid" style="margin-top:18px">
+  <div class="col-5">
+    <div class="dt-card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">月报摘要</div>
+          <div class="card-sub" style="margin-top:4px">{{ monthly_report.year_month }} · 本月账单汇总</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px">
+        <div>
+          <div class="label">本月合计</div>
+          <div class="val" style="font-size:24px"><span class="yuan">{{ home_currency_symbol }}</span>{{ monthly_report.total_amount_yuan }}</div>
+        </div>
+        <div>
+          <div class="label">较上月</div>
+          <div class="val" style="font-size:24px">
+            {% if monthly_report.delta_pct is not none %}
+              {{ '%+.1f' % monthly_report.delta_pct }}%
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:grid;gap:8px">
+        {% for c in monthly_report.top_categories[:4] %}
+        <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px">
+          <span>{{ c.category }}</span>
+          <span class="num">{{ home_currency_symbol }}{{ c.amount_yuan }}</span>
+        </div>
+        {% else %}
+        <div class="empty-note">本月暂无已确认账单。</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-7">
+    <div class="dt-card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">预算解释</div>
+          <div class="card-sub" style="margin-top:4px">当前分类对照历史节奏</div>
+        </div>
+      </div>
+      <div style="display:grid;gap:8px;margin-top:12px">
+        {% for item in budget_explanations %}
+        <div style="display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;border-bottom:1px solid var(--border-card);padding:8px 0">
+          <div>
+            <div style="font-weight:650">{{ item.category }}</div>
+            <div class="card-sub">{{ item.verdict_label }}</div>
+          </div>
+          <div class="num">{{ home_currency_symbol }}{{ item.actual_yuan }}</div>
+          <div class="card-sub">
+            {% if item.p75_yuan %}
+              P75 {{ home_currency_symbol }}{{ item.p75_yuan }}
+            {% else %}
+              无历史
+            {% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="empty-note">暂无可解释分类。</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="dash-grid">
   {# 月度趋势：柱+线 ECharts #}
   <div class="col-8">

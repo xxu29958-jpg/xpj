@@ -197,6 +197,18 @@ interface ApiService {
     @POST("api/expenses/{id}/ocr/retry")
     suspend fun retryOcr(@Path("id") id: Long): ExpenseDto
 
+    @POST("api/expenses/{id}/suggestions/{decisionPublicId}/accept")
+    suspend fun acceptPendingSuggestion(
+        @Path("id") id: Long,
+        @Path("decisionPublicId") decisionPublicId: String,
+    ): StatusDto
+
+    @POST("api/expenses/{id}/suggestions/{decisionPublicId}/reject")
+    suspend fun rejectPendingSuggestion(
+        @Path("id") id: Long,
+        @Path("decisionPublicId") decisionPublicId: String,
+    ): StatusDto
+
     @POST("api/expenses/{id}/mark-not-duplicate")
     suspend fun markNotDuplicate(@Path("id") id: Long): ExpenseDto
 
