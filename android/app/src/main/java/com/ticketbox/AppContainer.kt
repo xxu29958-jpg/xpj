@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.IncomePlanRepository
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LocalLedgerSessionCoordinator
 import com.ticketbox.data.repository.MerchantRepository
@@ -54,6 +55,13 @@ class AppContainer(context: Context) {
     )
 
     val budgetRepository = BudgetRepository(
+        apiClient = apiClient,
+        settingsStore = settingsStore,
+        tokenStore = tokenStore,
+        apiProvider = apiServiceProvider,
+    )
+
+    val incomePlanRepository = IncomePlanRepository(
         apiClient = apiClient,
         settingsStore = settingsStore,
         tokenStore = tokenStore,

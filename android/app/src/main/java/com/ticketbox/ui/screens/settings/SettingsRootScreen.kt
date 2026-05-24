@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
@@ -121,6 +122,7 @@ fun SettingsRootScreen(
     onOpenJoinFamilyLedger: () -> Unit = {},
     onOpenBillSplits: () -> Unit = {},
     onOpenBackgroundTasks: () -> Unit = {},
+    onOpenIncomePlans: () -> Unit = {},
     onOpenAbout: () -> Unit,
 ) {
     val connectionTitle = if (showAdvancedTools) "服务器与联调" else "账本连接"
@@ -224,6 +226,12 @@ fun SettingsRootScreen(
             subtitle = "CSV 导入 / v1.0 迁移等长任务的状态",
             icon = Icons.Filled.Tune,
             onClick = onOpenBackgroundTasks,
+        )
+        SettingsEntryRow(
+            title = "收入计划",
+            subtitle = "记录月度收入，算「本月可自由支配」",
+            icon = Icons.Filled.AccountBalanceWallet,
+            onClick = onOpenIncomePlans,
         )
         SettingsEntryRow(
             title = "关于",

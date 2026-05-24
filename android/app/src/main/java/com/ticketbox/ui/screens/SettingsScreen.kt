@@ -90,6 +90,7 @@ fun SettingsScreen(
     ledgerRepository: LedgerRepository? = null,
     expenseRepository: ExpenseRepository? = null,
     reportsRepository: ReportsActions? = null,
+    incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions? = null,
     activeLedgerId: String? = null,
     onBindingChanged: () -> Unit = {},
     onLedgerSwitched: () -> Unit = {},
@@ -149,6 +150,7 @@ fun SettingsScreen(
             onOpenJoinFamilyLedger = { route = SettingsRoute.JoinFamilyLedger },
             onOpenBillSplits = { route = SettingsRoute.BillSplits },
             onOpenBackgroundTasks = { route = SettingsRoute.BackgroundTasks },
+            onOpenIncomePlans = { route = SettingsRoute.IncomePlans },
             onOpenAbout = { route = SettingsRoute.About },
         )
 
@@ -377,6 +379,23 @@ fun SettingsScreen(
                 )
                 com.ticketbox.ui.screens.settings.BackgroundTasksScreen(
                     viewModel = vm,
+                    onBack = { route = SettingsRoute.Root },
+                )
+            } else {
+                route = SettingsRoute.Root
+            }
+        }
+
+        SettingsRoute.IncomePlans -> {
+            val incomeRepo = incomePlanRepository
+            if (incomeRepo != null) {
+                val vm: com.ticketbox.viewmodel.IncomePlanViewModel = viewModel(
+                    key = "income-plans",
+                    factory = com.ticketbox.viewmodel.incomePlanViewModelFactory(incomeRepo),
+                )
+                IncomePlanScreen(
+                    viewModel = vm,
+                    currency = com.ticketbox.ui.design.LocalCurrencyDisplay.current,
                     onBack = { route = SettingsRoute.Root },
                 )
             } else {

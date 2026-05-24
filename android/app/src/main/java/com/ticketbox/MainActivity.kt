@@ -23,6 +23,7 @@ class MainActivity : FragmentActivity() {
                 recurringRepository = container.recurringRepository,
                 budgetRepository = container.budgetRepository,
                 reportsRepository = container.reportsRepository,
+                incomePlanRepository = container.incomePlanRepository,
                 appViewModelFactory = appViewModelFactory(
                     repository = container.expenseRepository,
                     settingsStore = container.settingsStore,

@@ -58,6 +58,7 @@ internal fun SettingsRoute(
         ledgerRepository = screenFactory.ledgerRepository,
         expenseRepository = screenFactory.repository,
         reportsRepository = screenFactory.reportsRepository,
+        incomePlanRepository = screenFactory.incomePlanRepository,
         activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
         onBindingChanged = settingsViewModel::refreshLocalBindingState,
         onLedgerSwitched = settingsViewModel::sync,

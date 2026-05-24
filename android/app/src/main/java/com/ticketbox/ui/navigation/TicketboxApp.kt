@@ -38,6 +38,7 @@ fun TicketboxApp(
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetRepository,
     reportsRepository: ReportsActions,
+    incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
     appViewModelFactory: ViewModelProvider.Factory,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
@@ -73,6 +74,7 @@ fun TicketboxApp(
             recurringRepository = recurringRepository,
             budgetRepository = budgetRepository,
             reportsRepository = reportsRepository,
+            incomePlanRepository = incomePlanRepository,
             settingsViewModelFactory = settingsViewModelFactory,
             biometricAuthManager = biometricAuthManager,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
@@ -89,6 +91,7 @@ private fun TicketboxContent(
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetRepository,
     reportsRepository: ReportsActions,
+    incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
     settingsViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
     onAuthMessageShown: () -> Unit,
@@ -139,6 +142,7 @@ private fun TicketboxContent(
         recurringRepository = recurringRepository,
         budgetRepository = budgetRepository,
         reportsRepository = reportsRepository,
+        incomePlanRepository = incomePlanRepository,
         settingsViewModelFactory = settingsViewModelFactory,
         currentSkin = appState.skin,
         currentCurrency = appState.currency,
@@ -158,6 +162,7 @@ private fun MainShell(
     recurringRepository: RecurringRepository,
     budgetRepository: BudgetRepository,
     reportsRepository: ReportsActions,
+    incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
     settingsViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
     currentCurrency: com.ticketbox.domain.model.CurrencyCode,
@@ -178,6 +183,7 @@ private fun MainShell(
         recurringRepository,
         budgetRepository,
         reportsRepository,
+        incomePlanRepository,
         settingsViewModelFactory,
     ) {
         MainScreenFactory(
@@ -186,6 +192,7 @@ private fun MainShell(
             recurringRepository = recurringRepository,
             budgetRepository = budgetRepository,
             reportsRepository = reportsRepository,
+            incomePlanRepository = incomePlanRepository,
             settingsViewModelFactory = settingsViewModelFactory,
         )
     }

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.RecurringRepository
@@ -56,6 +57,15 @@ fun recurringViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return RecurringViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun incomePlanViewModelFactory(
+    repository: IncomePlanActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return IncomePlanViewModel(repository) as T
     }
 }
 
