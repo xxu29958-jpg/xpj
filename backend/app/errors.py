@@ -85,7 +85,7 @@ class DataIntegrityError(RuntimeError):
 
     Raised exclusively during ``init_db`` / migration / validation. Inherits
     from ``RuntimeError`` so existing ``except RuntimeError`` blocks (notably
-    test_database_migration's ``pytest.raises(RuntimeError, match=...)``)
+    the ``test_database_migration_*.py`` suite's ``pytest.raises(RuntimeError, match=...)``)
     keep working. New call sites can ``except DataIntegrityError`` to
     distinguish migration-time data corruption from other RuntimeErrors.
     """
