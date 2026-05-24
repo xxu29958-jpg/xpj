@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0036（0018 已撤回；0032–0034 未使用，编号跳过无 ADR）。
+**编号范围**：0001–0037（0018 已撤回；0032–0034 未使用，编号跳过无 ADR）。
 
 ## 索引
 
@@ -41,10 +41,11 @@
 | [0031](0031-v1-data-migration-protocol.md) | v1.0 Data Migration Protocol | app_meta schema_version lock + pre-v1.0 backup snapshot + 30 天 rollback CLI | v1.0 cut-over 协议 |
 | [0035](0035-line-items-discount-tax-mismatch.md) | Line Items Discount/Tax Mismatch | line item kind enum + items_sum_status；items 不再要求总额等于 expense | 商品级小票 |
 | [0036](0036-v1.1-ai-budget-provider-privacy-boundary.md) | v1.1 AI Budget Provider Privacy | AI 只看最小结构化摘要 + 本地映射表；不上传原始账本 / 图片 / 真名 / 路径 | v1.1 AI 预算隐私边界 |
+| [0037](0037-v1.2-learning-feedback-dual-tables.md) | v1.2 Learning Feedback Dual Tables | algorithm_decisions / ledger_learning_events / ocr_facts 三表 append-only 建议层，不污染账本 | v1.2 学习反馈底层 |
 
 ## 编写新 ADR
 
-下一编号 `0037`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0038`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

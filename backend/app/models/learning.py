@@ -124,6 +124,13 @@ class AlgorithmDecision(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
     )
+    # v1.2 follow-up: per-row retention window (days). The cleanup
+    # service in :mod:`learning_cleanup_service` deletes rows older
+    # than ``created_at + retention_days``. ``0`` opts a row out of
+    # retention (kept forever).
+    retention_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=180, server_default="180"
+    )
 
 
 class LedgerLearningEvent(Base):
@@ -198,4 +205,7 @@ class LedgerLearningEvent(Base):
     after_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
+    )
+    retention_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=180, server_default="180"
     )

@@ -96,3 +96,6 @@ class OcrFact(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
     )
+    retention_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=180, server_default="180"
+    )

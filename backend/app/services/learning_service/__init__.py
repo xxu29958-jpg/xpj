@@ -42,6 +42,13 @@ from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
 from app.services.learning_service._budget_quantile import (
     ALGORITHM_VERSION as BUDGET_QUANTILE_VERSION,
 )
+from app.services.learning_service._cleanup import (
+    CleanupReport,
+    cleanup_expired_algorithm_decisions,
+    cleanup_expired_learning_events,
+    cleanup_expired_learning_tables,
+    cleanup_expired_ocr_facts,
+)
 from app.services.learning_service._budget_quantile import (
     BudgetQuantileSuggestion,
     compute_budget_quantile_suggestion,
@@ -73,12 +80,17 @@ __all__ = [
     "BudgetQuantileSuggestion",
     "CATEGORY_SUGGESTION_VERSION",
     "CategorySuggestion",
+    "CleanupReport",
     "DUPLICATE_SCORING_VERSION",
     "DecisionDraft",
     "DuplicateCandidateScore",
     "EventDraft",
     "OcrFactDraft",
     "active_decision_for_subject",
+    "cleanup_expired_algorithm_decisions",
+    "cleanup_expired_learning_events",
+    "cleanup_expired_learning_tables",
+    "cleanup_expired_ocr_facts",
     "compute_budget_quantile_suggestion",
     "compute_category_suggestion",
     "list_algorithm_versions",
