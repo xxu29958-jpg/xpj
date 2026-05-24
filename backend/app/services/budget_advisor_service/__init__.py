@@ -17,6 +17,15 @@ with an explicit user-confirmation step.
 
 from __future__ import annotations
 
+from app.services.budget_advisor_service._aliases import (
+    assign_transaction_temp_id,
+    cleanup_session,
+    get_or_create_member_anon,
+    get_or_create_merchant_anon,
+    resolve_member_anon,
+    resolve_merchant_anon,
+    resolve_transaction_temp_id,
+)
 from app.services.budget_advisor_service._models import (
     BudgetAdvice,
     BudgetAdvisorProvider,
@@ -29,6 +38,11 @@ from app.services.budget_advisor_service._models import (
     MemberRef,
     MerchantSummary,
 )
+from app.services.budget_advisor_service._outbound_guard import (
+    ALLOWED_TOP_LEVEL_KEYS,
+    to_outbound_dict,
+    validate_outbound_payload,
+)
 from app.services.budget_advisor_service._providers import (
     EmptyBudgetAdvisor,
     MockBudgetAdvisor,
@@ -36,6 +50,7 @@ from app.services.budget_advisor_service._providers import (
 )
 
 __all__ = [
+    "ALLOWED_TOP_LEVEL_KEYS",
     "BudgetAdvice",
     "BudgetAdvisorProvider",
     "BudgetInputs",
@@ -48,5 +63,14 @@ __all__ = [
     "MemberRef",
     "MerchantSummary",
     "MockBudgetAdvisor",
+    "assign_transaction_temp_id",
+    "cleanup_session",
     "get_budget_advisor",
+    "get_or_create_member_anon",
+    "get_or_create_merchant_anon",
+    "resolve_member_anon",
+    "resolve_merchant_anon",
+    "resolve_transaction_temp_id",
+    "to_outbound_dict",
+    "validate_outbound_payload",
 ]
