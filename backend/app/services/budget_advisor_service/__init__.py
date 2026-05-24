@@ -46,6 +46,7 @@ from app.services.budget_advisor_service._outbound_guard import (
 from app.services.budget_advisor_service._providers import (
     EmptyBudgetAdvisor,
     MockBudgetAdvisor,
+    OpenAiCompatBudgetAdvisor,
     get_budget_advisor,
 )
 
@@ -63,6 +64,7 @@ __all__ = [
     "MemberRef",
     "MerchantSummary",
     "MockBudgetAdvisor",
+    "OpenAiCompatBudgetAdvisor",
     "assign_transaction_temp_id",
     "cleanup_session",
     "get_budget_advisor",

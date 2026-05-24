@@ -63,6 +63,10 @@ class Settings:
     local_llm_model: str
     local_llm_timeout_seconds: int
     budget_advisor_provider: str
+    budget_advisor_base_url: str
+    budget_advisor_api_key: str
+    budget_advisor_model: str
+    budget_advisor_timeout_seconds: int
     tenants_json: str
     enable_http_bootstrap: bool
     http_bootstrap_secret: str
@@ -204,9 +208,16 @@ def get_settings() -> Settings:
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
         # ADR-0036: v1.1 AI budget advisor provider. Default 'empty' = no AI
-        # call, local rules only. 'openai_compat' is wired but raises until
-        # the outbound payload guard ships in PR-2.
+        # call, local rules only. 'openai_compat' covers ollama / vLLM /
+        # llama.cpp / LM Studio locally + OpenAI / DeepSeek / SiliconFlow /
+        # Together / Groq in the cloud — same base_url + api_key + model
+        # triple. No endpoint is preset; selecting openai_compat without
+        # BUDGET_ADVISOR_BASE_URL + MODEL raises at provider lookup.
         budget_advisor_provider=os.getenv("BUDGET_ADVISOR_PROVIDER", "empty").strip().lower(),
+        budget_advisor_base_url=os.getenv("BUDGET_ADVISOR_BASE_URL", "").strip(),
+        budget_advisor_api_key=os.getenv("BUDGET_ADVISOR_API_KEY", "").strip(),
+        budget_advisor_model=os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
+        budget_advisor_timeout_seconds=int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
         enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),

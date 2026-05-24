@@ -114,9 +114,17 @@ def test_mock_provider_handles_empty_inputs() -> None:
 
 
 @pytest.mark.parametrize("name", ["openai_compat", "openai-compat", "openai", "OpenAI_Compat"])
-def test_openai_compat_raises_until_guard_lands(name: str) -> None:
-    with pytest.raises(NotImplementedError, match="outbound payload guard"):
-        get_budget_advisor(name)
+def test_openai_compat_requires_base_url_and_model(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # With no env config, openai_compat must refuse to dispatch — never
+    # silently fall back to Empty (would hide a real misconfiguration).
+    monkeypatch.delenv("BUDGET_ADVISOR_BASE_URL", raising=False)
+    monkeypatch.delenv("BUDGET_ADVISOR_MODEL", raising=False)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(Exception, match="BUDGET_ADVISOR_"):
+            get_budget_advisor(name)
+    finally:
+        get_settings.cache_clear()
 
 
 def test_default_setting_is_empty() -> None:
