@@ -1951,6 +1951,90 @@
         "title": "BootstrapOwnerResponse",
         "type": "object"
       },
+      "BudgetAdviceDto": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetSuggestionDto"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "suggestions",
+          "confidence"
+        ],
+        "title": "BudgetAdviceDto",
+        "type": "object"
+      },
+      "BudgetAdviseRequest": {
+        "description": "Caller picks the month (YYYY-MM); other inputs are read from the\nuser's existing data (income plan, recurring items, confirmed\nexpenses, personal baseline) by the builder service.",
+        "properties": {
+          "month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Month",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "month"
+        ],
+        "title": "BudgetAdviseRequest",
+        "type": "object"
+      },
+      "BudgetAdviseResponse": {
+        "description": "Wrapper so an empty advisor (default config) can return a clean\n\"no advice this time\" without ambiguity.",
+        "properties": {
+          "advice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetAdviceDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider_name": {
+            "title": "Provider Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "advice",
+          "provider_name"
+        ],
+        "title": "BudgetAdviseResponse",
+        "type": "object"
+      },
       "BudgetCategoryRequest": {
         "properties": {
           "amount_cents": {
@@ -2168,6 +2252,36 @@
           "total_amount_cents"
         ],
         "title": "BudgetMonthlyUpdateRequest",
+        "type": "object"
+      },
+      "BudgetSuggestionDto": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "suggested_amount_cents": {
+            "title": "Suggested Amount Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category",
+          "suggested_amount_cents",
+          "rationale"
+        ],
+        "title": "BudgetSuggestionDto",
         "type": "object"
       },
       "CategoriesResponse": {
@@ -8468,6 +8582,66 @@
         "summary": "Post Pairing Code",
         "tags": [
           "bootstrap"
+        ]
+      }
+    },
+    "/api/budget/advise": {
+      "post": {
+        "description": "Build anonymised BudgetInputs → advisor → BudgetAdvice.\n\nADR-0036: payload going out only includes the allowed-field surface\n(enforced inside the provider by ``to_outbound_dict`` /\n``validate_outbound_payload``). The de-anonymisation is the UI's\njob, using the alias resolver on the way back.",
+        "operationId": "post_advise_api_budget_advise_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetAdviseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetAdviseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Advise",
+        "tags": [
+          "budget-advisor"
         ]
       }
     },

@@ -1,10 +1,14 @@
-"""v1.1 budget advisor API — currently only the discretionary endpoint.
+"""v1.1 budget advisor API.
 
-The ``/api/budget/advise`` endpoint that actually calls
-``get_budget_advisor`` is intentionally deferred to a follow-up PR
-together with the ``BudgetInputs`` adapter (which has to anonymise
-real merchant / member / expense data into the ADR-0036 allowed-field
-shape before any HTTP body leaves the backend).
+Two endpoints:
+
+- ``GET /api/budget/discretionary`` — pure arithmetic over the user's
+  income plan + recurring outflows + caller-supplied savings buffer.
+- ``POST /api/budget/advise`` — assemble an anonymised :class:`BudgetInputs`
+  (privacy boundary lives in :mod:`app.services.budget_advisor_service`)
+  and hand it to the configured provider. With the default ``empty``
+  provider this returns ``advice=null`` cleanly so the UI can render
+  "no AI suggestion configured" without ambiguity.
 """
 
 from __future__ import annotations
@@ -13,8 +17,20 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
+from app.config import get_settings
 from app.database import get_db
-from app.schemas import DiscretionaryResponse
+from app.schemas import (
+    BudgetAdviceDto,
+    BudgetAdviseRequest,
+    BudgetAdviseResponse,
+    BudgetSuggestionDto,
+    DiscretionaryResponse,
+)
+from app.services.budget_advisor_service import (
+    BudgetAdvice,
+    build_budget_inputs,
+    get_budget_advisor,
+)
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
     total_active_recurring_monthly_cents,
@@ -47,4 +63,50 @@ def get_discretionary(
         savings_target_cents=breakdown.savings_target_cents,
         reserved_buffer_cents=breakdown.reserved_buffer_cents,
         discretionary_cents=breakdown.discretionary_cents,
+    )
+
+
+@router.post("/advise", response_model=BudgetAdviseResponse)
+def post_advise(
+    payload: BudgetAdviseRequest,
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> BudgetAdviseResponse:
+    """Build anonymised BudgetInputs → advisor → BudgetAdvice.
+
+    ADR-0036: payload going out only includes the allowed-field surface
+    (enforced inside the provider by ``to_outbound_dict`` /
+    ``validate_outbound_payload``). The de-anonymisation is the UI's
+    job, using the alias resolver on the way back.
+    """
+
+    inputs = build_budget_inputs(
+        db,
+        tenant_id=auth.tenant_id,
+        month=payload.month,
+        timezone_name=payload.timezone or "Asia/Shanghai",
+    )
+    advisor = get_budget_advisor()
+    advice = advisor.advise(inputs)
+    provider_name = get_settings().budget_advisor_provider or "empty"
+    return BudgetAdviseResponse(
+        advice=_advice_to_dto(advice),
+        provider_name=provider_name,
+    )
+
+
+def _advice_to_dto(advice: BudgetAdvice | None) -> BudgetAdviceDto | None:
+    if advice is None:
+        return None
+    return BudgetAdviceDto(
+        summary=advice.summary,
+        suggestions=[
+            BudgetSuggestionDto(
+                category=s.category,
+                suggested_amount_cents=s.suggested_amount_cents,
+                rationale=s.rationale,
+            )
+            for s in advice.suggestions
+        ],
+        confidence=advice.confidence,
     )

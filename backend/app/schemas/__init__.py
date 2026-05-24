@@ -46,6 +46,10 @@ from app.schemas._bill_split import (
     BillSplitStatus,
 )
 from app.schemas._budget_advisor import (
+    BudgetAdviceDto,
+    BudgetAdviseRequest,
+    BudgetAdviseResponse,
+    BudgetSuggestionDto,
     DiscretionaryResponse,
 )
 from app.schemas._budgets import (
@@ -205,7 +209,11 @@ __all__ = [
     "BillSplitStatus",
     "BootstrapOwnerRequest",
     "BootstrapOwnerResponse",
+    "BudgetAdviceDto",
+    "BudgetAdviseRequest",
+    "BudgetAdviseResponse",
     "BudgetCategoryRequest",
+    "BudgetSuggestionDto",
     "BudgetCategoryResponse",
     "BudgetExcludedCategoryResponse",
     "BudgetMonthlyResponse",

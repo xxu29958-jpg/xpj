@@ -7,8 +7,15 @@ private sub-modules carry the implementation:
 - ``_models``: ``BudgetInputs`` / ``BudgetAdvice`` dataclasses (the
   allowed-fields contract — see ADR-0036) + ``BudgetAdvisorProvider``
   Protocol.
-- ``_providers``: ``EmptyBudgetAdvisor`` (default) + ``get_budget_advisor``
-  factory. The OpenAI-compat provider lands in a follow-up PR.
+- ``_aliases``: tenant-scoped real → opaque maps backed by the three
+  ``ai_*_anon_map`` tables.
+- ``_outbound_guard``: schema check that runs immediately before the
+  HTTP body is built. Fail-closed on any drift.
+- ``_providers``: ``EmptyBudgetAdvisor`` (default) / ``MockBudgetAdvisor``
+  (dev) / ``OpenAiCompatBudgetAdvisor`` (production) + factory.
+- ``_inputs_builder``: turns live DB state into a ready-to-send
+  ``BudgetInputs`` — the trust boundary between raw data and the
+  outbound payload.
 
 The advisor is **suggestion only** — it never writes budgets directly.
 All budget changes go through the existing budget_service mutation paths
@@ -25,6 +32,9 @@ from app.services.budget_advisor_service._aliases import (
     resolve_member_anon,
     resolve_merchant_anon,
     resolve_transaction_temp_id,
+)
+from app.services.budget_advisor_service._inputs_builder import (
+    build_budget_inputs,
 )
 from app.services.budget_advisor_service._models import (
     BudgetAdvice,
@@ -66,6 +76,7 @@ __all__ = [
     "MockBudgetAdvisor",
     "OpenAiCompatBudgetAdvisor",
     "assign_transaction_temp_id",
+    "build_budget_inputs",
     "cleanup_session",
     "get_budget_advisor",
     "get_or_create_member_anon",
