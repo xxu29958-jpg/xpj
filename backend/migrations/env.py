@@ -17,21 +17,19 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config, pool
-
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Make the backend root importable when alembic is invoked from any cwd.
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
-from app.config import get_settings  # noqa: E402
-from app.database._core import Base  # noqa: E402
-
 # Force app.models import so every table is attached to Base.metadata
 # before Alembic compares against the database.
 from app import models  # noqa: E402, F401
+from app.config import get_settings  # noqa: E402
+from app.database._core import Base  # noqa: E402
 
 config = context.config
 if config.config_file_name is not None:
