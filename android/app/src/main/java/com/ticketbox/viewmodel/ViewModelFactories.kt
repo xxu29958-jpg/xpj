@@ -110,10 +110,11 @@ fun joinFamilyLedgerViewModelFactory(
 
 @Suppress("UNCHECKED_CAST")
 fun billSplitViewModelFactory(
-    repository: ExpenseRepository,
+    expenseRepository: ExpenseRepository,
+    ledgerRepository: LedgerRepository,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return BillSplitViewModel(repository) as T
+        return BillSplitViewModel(expenseRepository, ledgerRepository) as T
     }
 }
 

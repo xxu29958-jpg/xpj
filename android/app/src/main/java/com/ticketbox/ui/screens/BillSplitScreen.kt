@@ -17,6 +17,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,10 +38,13 @@ import com.ticketbox.viewmodel.BillSplitViewModel
 fun BillSplitScreen(
     viewModel: BillSplitViewModel,
     onBack: () -> Unit,
-    candidateTargetLedgerIds: List<String>,
 ) {
     val state by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
 
     Scaffold(
         topBar = {
@@ -77,7 +81,7 @@ fun BillSplitScreen(
                     inbox = state.inbox,
                     onAccept = viewModel::accept,
                     onReject = viewModel::reject,
-                    candidateTargetLedgerIds = candidateTargetLedgerIds,
+                    candidateTargetLedgerIds = state.candidateTargetLedgerIds,
                 )
             } else {
                 SentList(sent = state.sent, onCancel = viewModel::cancel)

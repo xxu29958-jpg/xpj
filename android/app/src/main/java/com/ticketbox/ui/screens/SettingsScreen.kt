@@ -357,18 +357,11 @@ fun SettingsScreen(
             if (expRepo != null && ledgerRepo != null) {
                 val vm: BillSplitViewModel = viewModel(
                     key = "bill-splits",
-                    factory = billSplitViewModelFactory(expRepo),
+                    factory = billSplitViewModelFactory(expRepo, ledgerRepo),
                 )
-                // Writable target ledgers — receiver picks which of their
-                // own ledgers to accept the invitation into. Server still
-                // re-validates write permission, this is just UX.
-                val candidateTargetLedgerIds = ledgerRepo.cachedLedgers()
-                    .filter { ledgerRoleCanModify(it.role) }
-                    .map { it.ledgerId }
                 BillSplitScreen(
                     viewModel = vm,
                     onBack = { route = SettingsRoute.Root },
-                    candidateTargetLedgerIds = candidateTargetLedgerIds,
                 )
             } else {
                 route = SettingsRoute.Root
