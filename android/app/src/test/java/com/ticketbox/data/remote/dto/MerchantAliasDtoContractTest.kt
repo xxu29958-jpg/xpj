@@ -1,0 +1,45 @@
+package com.ticketbox.data.remote.dto
+
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class MerchantAliasDtoContractTest {
+    private val moshi = Moshi.Builder()
+        .add(KotlinJsonAdapterFactory())
+        .build()
+
+    @Test
+    fun merchantAliasListParsesCurrentServerShapeAndSerializesPatch() {
+        val dto = requireNotNull(
+            moshi.adapter(MerchantAliasListDto::class.java).fromJson(
+                """
+                {
+                  "items": [
+                    {
+                      "public_id": "alias-1",
+                      "canonical_merchant": "星巴克",
+                      "canonical_key": "星巴克",
+                      "alias": "Starbucks",
+                      "alias_key": "starbucks",
+                      "enabled": true,
+                      "created_at": "2026-05-13T00:00:00Z",
+                      "updated_at": "2026-05-13T00:05:00Z"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val patchJson = moshi.adapter(MerchantAliasRequest::class.java).toJson(
+            MerchantAliasRequest(enabled = false),
+        )
+
+        val item = dto.items.single()
+        assertEquals("alias-1", item.publicId)
+        assertEquals("星巴克", item.canonicalMerchant)
+        assertEquals("starbucks", item.aliasKey)
+        assertEquals("""{"enabled":false}""", patchJson)
+    }
+}

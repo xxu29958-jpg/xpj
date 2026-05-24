@@ -10,7 +10,7 @@ This is the minimal version of S-010: it catches *any* backend schema
 shift (added route, removed field, changed required-ness, type change)
 before it reaches the Android client. The Android side still hand-rolls
 DTOs; pairing this script with the existing
-``android/app/src/test/.../ApiDtoContractTest.kt`` gives two-sided
+``android/app/src/test/java/com/ticketbox/data/remote/dto/*ContractTest.kt`` gives two-sided
 coverage.
 
 Usage:
