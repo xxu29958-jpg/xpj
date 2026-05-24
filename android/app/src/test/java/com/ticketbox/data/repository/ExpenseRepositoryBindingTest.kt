@@ -1543,6 +1543,13 @@ private class FakeApiService(
         request: BudgetMonthlyUpdateRequestDto,
         timezone: String?,
     ): BudgetMonthlyDto = unsupported()
+    override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = unsupported()
+    override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
+    override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
+    override suspend fun archiveIncomePlan(publicId: String): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
+    override suspend fun restoreIncomePlan(publicId: String): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
+    override suspend fun budgetDiscretionary(savingsTargetCents: Long, reservedBufferCents: Long): com.ticketbox.data.remote.dto.DiscretionaryResponseDto = unsupported()
+    override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
     override suspend fun recurringItems(
         status: String?,

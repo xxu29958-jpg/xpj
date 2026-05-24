@@ -347,6 +347,44 @@ interface ApiService {
         @Query("timezone") timezone: String? = null,
     ): BudgetMonthlyDto
 
+    // v1.1 income plans (PR-7 routes) + budget advisor (PR-7 + PR-8)
+    @GET("api/income-plans")
+    suspend fun listIncomePlans(
+        @Query("status") status: String = "active",
+    ): com.ticketbox.data.remote.dto.IncomePlanListResponseDto
+
+    @POST("api/income-plans")
+    suspend fun createIncomePlan(
+        @Body request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto,
+    ): com.ticketbox.data.remote.dto.IncomePlanDto
+
+    @PATCH("api/income-plans/{publicId}")
+    suspend fun updateIncomePlan(
+        @Path("publicId") publicId: String,
+        @Body request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto,
+    ): com.ticketbox.data.remote.dto.IncomePlanDto
+
+    @DELETE("api/income-plans/{publicId}")
+    suspend fun archiveIncomePlan(
+        @Path("publicId") publicId: String,
+    ): com.ticketbox.data.remote.dto.IncomePlanDto
+
+    @POST("api/income-plans/{publicId}/restore")
+    suspend fun restoreIncomePlan(
+        @Path("publicId") publicId: String,
+    ): com.ticketbox.data.remote.dto.IncomePlanDto
+
+    @GET("api/budget/discretionary")
+    suspend fun budgetDiscretionary(
+        @Query("savings_target_cents") savingsTargetCents: Long = 0L,
+        @Query("reserved_buffer_cents") reservedBufferCents: Long = 0L,
+    ): com.ticketbox.data.remote.dto.DiscretionaryResponseDto
+
+    @POST("api/budget/advise")
+    suspend fun budgetAdvise(
+        @Body request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto,
+    ): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto
+
     @GET("api/insights/recurring-candidates")
     suspend fun recurringCandidates(
         @Query("timezone") timezone: String? = null,
