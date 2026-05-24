@@ -1,56 +1,87 @@
-"""In-process pairing-code rate limiting.
+"""DB-backed pairing-code rate limiting (v1.1 Batch 1).
 
-Module-level ``_pairing_failures_by_remote`` is the single instance — Python
-caches the module on first import so multiple call sites share the same
-dict (intentional; this is process-scoped state, not per-import).
+Previously this module held failures in a process-local dict — restart
+the backend, throttle resets; spawn multiple workers, each one has its
+own counter. v1.1 moves the state into ``pairing_attempt_failures`` so
+the limit survives both.
+
+Public surface is unchanged from the pre-v1.1 module:
+``_check_pairing_attempt_limit`` / ``_record_pairing_failure`` /
+``_clear_pairing_failures`` / ``_reject_pairing`` all take an optional
+``remote_id`` (now also a DB session). Callers pass the session through;
+``_pair.py`` already had a session in hand.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
 from app.errors import AppError
+from app.models import PairingAttemptFailure
 from app.services.identity_service._models import (
     PAIRING_ATTEMPT_WINDOW,
     PAIRING_MAX_FAILED_ATTEMPTS,
 )
 from app.services.time_service import now_utc
 
-_pairing_failures_by_remote: dict[str, list[datetime]] = {}
-
 
 def _remote_attempt_key(remote_id: str | None) -> str:
     return (remote_id or "unknown").strip() or "unknown"
 
 
-def _active_pairing_failures(remote_id: str | None, now: datetime) -> list[datetime]:
-    key = _remote_attempt_key(remote_id)
+def _active_failure_count(db: Session, remote_key: str, now: datetime) -> int:
     cutoff = now - PAIRING_ATTEMPT_WINDOW
-    failures = [failed_at for failed_at in _pairing_failures_by_remote.get(key, []) if failed_at > cutoff]
-    if failures:
-        _pairing_failures_by_remote[key] = failures
-    else:
-        _pairing_failures_by_remote.pop(key, None)
-    return failures
+    # Prune anything older than the window — keeps the table tiny even
+    # under sustained probing because failed_at < cutoff rows are
+    # dropped on every check.
+    db.execute(
+        delete(PairingAttemptFailure)
+        .where(PairingAttemptFailure.remote_key == remote_key)
+        .where(PairingAttemptFailure.failed_at < cutoff)
+    )
+    rows = db.scalars(
+        select(PairingAttemptFailure.id)
+        .where(PairingAttemptFailure.remote_key == remote_key)
+        .where(PairingAttemptFailure.failed_at >= cutoff)
+    ).all()
+    return len(rows)
 
 
-def _check_pairing_attempt_limit(remote_id: str | None) -> None:
-    if len(_active_pairing_failures(remote_id, now_utc())) >= PAIRING_MAX_FAILED_ATTEMPTS:
-        raise AppError("invalid_pairing_code", "绑定码尝试次数过多，请稍后再试。", status_code=429)
-
-
-def _record_pairing_failure(remote_id: str | None) -> None:
-    now = now_utc()
+def _check_pairing_attempt_limit(db: Session, remote_id: str | None) -> None:
     key = _remote_attempt_key(remote_id)
-    failures = _active_pairing_failures(remote_id, now)
-    failures.append(now)
-    _pairing_failures_by_remote[key] = failures
+    count = _active_failure_count(db, key, now_utc())
+    if count >= PAIRING_MAX_FAILED_ATTEMPTS:
+        raise AppError(
+            "invalid_pairing_code",
+            "绑定码尝试次数过多，请稍后再试。",
+            status_code=429,
+        )
 
 
-def _clear_pairing_failures(remote_id: str | None) -> None:
-    _pairing_failures_by_remote.pop(_remote_attempt_key(remote_id), None)
+def _record_pairing_failure(db: Session, remote_id: str | None) -> None:
+    key = _remote_attempt_key(remote_id)
+    db.add(PairingAttemptFailure(remote_key=key, failed_at=now_utc()))
+    db.commit()
 
 
-def _reject_pairing(remote_id: str | None, error: str, status_code: int) -> None:
-    _record_pairing_failure(remote_id)
+def _clear_pairing_failures(db: Session, remote_id: str | None) -> None:
+    key = _remote_attempt_key(remote_id)
+    db.execute(
+        delete(PairingAttemptFailure).where(
+            PairingAttemptFailure.remote_key == key
+        )
+    )
+    db.commit()
+
+
+def _reject_pairing(
+    db: Session,
+    remote_id: str | None,
+    error: str,
+    status_code: int,
+) -> None:
+    _record_pairing_failure(db, remote_id)
     raise AppError(error, status_code=status_code)

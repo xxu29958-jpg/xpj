@@ -13,23 +13,32 @@ Two endpoints:
 
 from __future__ import annotations
 
+from time import perf_counter
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context
 from app.config import get_settings
 from app.database import get_db
+from app.errors import AppError
 from app.schemas import (
     BudgetAdviceDto,
     BudgetAdviseRequest,
     BudgetAdviseResponse,
+    BudgetAdvisorStatusResponse,
     BudgetSuggestionDto,
     DiscretionaryResponse,
 )
 from app.services.budget_advisor_service import (
     BudgetAdvice,
+    advisor_status_for_tenant,
     build_budget_inputs,
+    compute_input_hash,
     get_budget_advisor,
+    is_live_provider,
+    record_audit_row,
+    to_outbound_dict,
 )
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
@@ -78,7 +87,22 @@ def post_advise(
     (enforced inside the provider by ``to_outbound_dict`` /
     ``validate_outbound_payload``). The de-anonymisation is the UI's
     job, using the alias resolver on the way back.
+
+    Batch 2: when a live (outbound) provider is configured, the route
+    refuses to call unless ``BUDGET_ADVISOR_OWNER_CONFIRMED=true``. Every
+    invocation against a live provider also writes one audit row
+    capturing provider/model + input hash + success.
     """
+
+    cfg = get_settings()
+    provider_name = (cfg.budget_advisor_provider or "empty").strip().lower()
+    provider_is_live = is_live_provider(provider_name)
+    if provider_is_live and not cfg.budget_advisor_owner_confirmed:
+        raise AppError(
+            "ai_advisor_not_confirmed",
+            "AI 预算助手未经过 owner 显式确认，已禁用。",
+            status_code=403,
+        )
 
     inputs = build_budget_inputs(
         db,
@@ -86,12 +110,64 @@ def post_advise(
         month=payload.month,
         timezone_name=payload.timezone or "Asia/Shanghai",
     )
+
     advisor = get_budget_advisor()
-    advice = advisor.advise(inputs)
-    provider_name = get_settings().budget_advisor_provider or "empty"
+    started = perf_counter()
+    advice: BudgetAdvice | None = None
+    error_code: str | None = None
+    try:
+        advice = advisor.advise(inputs)
+    except AppError as exc:  # pragma: no cover — providers swallow internally
+        error_code = exc.error
+        raise
+    finally:
+        if provider_is_live:
+            duration_ms = int((perf_counter() - started) * 1000)
+            try:
+                outbound = to_outbound_dict(inputs)
+                input_hash = compute_input_hash(outbound)
+            except Exception:  # noqa: BLE001 — never let audit failure abort
+                input_hash = "unknown"
+            record_audit_row(
+                db,
+                tenant_id=auth.tenant_id,
+                actor_account_id=auth.account_id,
+                provider=provider_name,
+                model=cfg.budget_advisor_model or None,
+                base_url=cfg.budget_advisor_base_url or None,
+                month=payload.month,
+                input_hash=input_hash,
+                success=advice is not None and error_code is None,
+                error_code=error_code,
+                suggestion_count=(
+                    len(advice.suggestions) if advice is not None else 0
+                ),
+                duration_ms=duration_ms,
+            )
     return BudgetAdviseResponse(
         advice=_advice_to_dto(advice),
         provider_name=provider_name,
+    )
+
+
+@router.get("/advisor/status", response_model=BudgetAdvisorStatusResponse)
+def get_advisor_status(
+    auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db),
+) -> BudgetAdvisorStatusResponse:
+    status = advisor_status_for_tenant(db, tenant_id=auth.tenant_id)
+    return BudgetAdvisorStatusResponse(
+        provider=status.provider,
+        model=status.model,
+        base_url=status.base_url,
+        owner_confirmed=status.owner_confirmed,
+        is_live=status.is_live,
+        needs_confirmation=status.needs_confirmation,
+        last_called_at=status.last_called_at,
+        last_success=status.last_success,
+        last_error_code=status.last_error_code,
+        last_suggestion_count=status.last_suggestion_count,
+        last_duration_ms=status.last_duration_ms,
     )
 
 

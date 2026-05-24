@@ -100,6 +100,59 @@ class AiMemberAnonMap(Base):
     )
 
 
+class BudgetAdvisorAuditLog(Base):
+    """v1.1 Batch 2: persistent audit row per AI budget advisor call.
+
+    Records who called, which provider/model handled it, success vs.
+    failure, an input-payload hash (so identical-input replays can be
+    grouped without storing the payload itself), and how many
+    suggestions came back. Used by the Owner Console "AI 状态" panel to
+    show recent activity without re-running the call.
+    """
+
+    __tablename__ = "budget_advisor_audit_logs"
+    __table_args__ = (
+        Index(
+            "ix_budget_advisor_audit_tenant_called_at",
+            "tenant_id",
+            "called_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey(
+            "ledgers.ledger_id", name="fk_budget_advisor_audit_tenant"
+        ),
+        nullable=False,
+        index=True,
+    )
+    actor_account_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("accounts.id", name="fk_budget_advisor_audit_actor"),
+        nullable=True,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    month: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    success: Mapped[bool] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    suggestion_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    called_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
+
 class AiTransactionTempIdMap(Base):
     """Per-AI-call transaction placeholder. ``session_id`` lets one advisor
     call refer to a specific subset of expenses without leaking the real

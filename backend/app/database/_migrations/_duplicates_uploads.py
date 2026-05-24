@@ -37,10 +37,23 @@ def _migrate_duplicate_ignores(connection) -> None:
 
 def _migrate_upload_links(connection) -> None:
     """v0.3.1-alpha2: backfill upload_links.public_id for rows created
-    before the column existed."""
+    before the column existed.
+
+    v1.1 (Batch 1 hardening): additive columns ``daily_byte_budget`` /
+    ``per_remote_min_interval_seconds`` for per-link quota + throttle.
+    """
     columns = {column["name"] for column in inspect(connection).get_columns("upload_links")}
     if "public_id" not in columns:
         connection.execute(text("ALTER TABLE upload_links ADD COLUMN public_id VARCHAR(36)"))
+    if "daily_byte_budget" not in columns:
+        connection.execute(text(
+            "ALTER TABLE upload_links ADD COLUMN daily_byte_budget INTEGER"
+        ))
+    if "per_remote_min_interval_seconds" not in columns:
+        connection.execute(text(
+            "ALTER TABLE upload_links ADD COLUMN per_remote_min_interval_seconds "
+            "INTEGER NOT NULL DEFAULT 0"
+        ))
     empty_rows = connection.execute(
         text("SELECT id FROM upload_links WHERE public_id IS NULL OR public_id = ''")
     ).mappings()

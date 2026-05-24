@@ -134,6 +134,12 @@ def pairing_rate_limit_key(request: Request) -> str:
     return f"peer:{peer}"
 
 
+# Public upload-link routes share the same remote-key derivation as the
+# pairing throttle; expose it under a name that documents the intent at
+# the upload call site.
+upload_link_remote_key = pairing_rate_limit_key
+
+
 def require_owner_console_local(request: Request) -> None:
     """Owner Console gate. Rejects any request that does not look local on
     both the TCP peer and the HTTP Host header. Public Host headers (e.g.

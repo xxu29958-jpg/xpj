@@ -20,12 +20,18 @@ def _requires_cloudflare_access(request: Request) -> bool:
     if is_loopback_request(request):
         return False
     path = request.url.path
-    return (
+    if (
         path == "/web"
         or path.startswith("/web/")
         or path.startswith("/static/web/")
         or path.startswith("/static/shared/")
-    )
+    ):
+        return True
+    # Batch 1 hardening: when the owner exposes /api/admin/* publicly we
+    # require a second factor — the admin token alone is not enough for
+    # the open internet, so Cloudflare Access JWT is mandatory on those
+    # routes. Local-loopback requests are already short-circuited above.
+    return path.startswith("/api/admin/") and get_settings().allow_public_admin_api
 
 
 async def cloudflare_access_guard(

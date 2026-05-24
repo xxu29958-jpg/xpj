@@ -12,9 +12,17 @@ from app.models.ai_advisor import (
     AiMemberAnonMap,
     AiMerchantAnonMap,
     AiTransactionTempIdMap,
+    BudgetAdvisorAuditLog,
 )
 from app.models.app_meta import AppMeta
-from app.models.auth import Invitation, PairingCode, UploadLink
+from app.models.auth import (
+    Invitation,
+    PairingAttemptFailure,
+    PairingCode,
+    UploadLink,
+    UploadLinkDailyUsage,
+    UploadLinkRemoteAttempt,
+)
 from app.models.background_task import BackgroundTask
 from app.models.bill_split import BillSplitInvitation
 from app.models.budget import Budget, BudgetCategory, DashboardCardPreference, Goal
@@ -50,6 +58,7 @@ __all__ = [
     "BillSplitInvitation",
     "BootstrapSecretConsumption",
     "Budget",
+    "BudgetAdvisorAuditLog",
     "BudgetCategory",
     "CategoryRule",
     "CsvImportBatch",
@@ -70,6 +79,7 @@ __all__ = [
     "LedgerMember",
     "MerchantAlias",
     "MonthlyIncomePlan",
+    "PairingAttemptFailure",
     "PairingCode",
     "RecurringItem",
     "RuleApplicationBatch",
@@ -77,5 +87,7 @@ __all__ = [
     "SchemaMigration",
     "Tag",
     "UploadLink",
+    "UploadLinkDailyUsage",
+    "UploadLinkRemoteAttempt",
     "UserUiPreference",
 ]

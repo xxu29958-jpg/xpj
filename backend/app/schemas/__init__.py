@@ -49,6 +49,7 @@ from app.schemas._budget_advisor import (
     BudgetAdviceDto,
     BudgetAdviseRequest,
     BudgetAdviseResponse,
+    BudgetAdvisorStatusResponse,
     BudgetSuggestionDto,
     DiscretionaryResponse,
 )
@@ -139,6 +140,7 @@ from app.schemas._identity import (
     PairingCodeResponse,
     PairRequest,
     PairResponse,
+    RefreshSessionResponse,
 )
 from app.schemas._income_plan import (
     IncomePlanCreateRequest,
@@ -212,6 +214,7 @@ __all__ = [
     "BudgetAdviceDto",
     "BudgetAdviseRequest",
     "BudgetAdviseResponse",
+    "BudgetAdvisorStatusResponse",
     "BudgetCategoryRequest",
     "BudgetSuggestionDto",
     "BudgetCategoryResponse",
@@ -293,6 +296,7 @@ __all__ = [
     "PaginatedExpensesResponse",
     "PairRequest",
     "PairResponse",
+    "RefreshSessionResponse",
     "PairingCodeCreateRequest",
     "PairingCodeResponse",
     "RecurringCandidateConfirmRequest",

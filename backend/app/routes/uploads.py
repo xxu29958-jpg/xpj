@@ -5,6 +5,7 @@ import logging
 from time import perf_counter
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -13,7 +14,8 @@ from app.auth import get_current_writer_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense
+from app.models import Expense, UploadLink
+from app.network_boundary import is_loopback_request, upload_link_remote_key
 from app.schemas import UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
 from app.services.file_service import SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
@@ -23,6 +25,13 @@ from app.services.identity_service import (
     upload_link_default_timezone,
 )
 from app.services.permission_service import require_create_pending_expense
+from app.services.session_lifecycle_service import hash_secret
+from app.services.upload_link_throttle_service import (
+    assert_daily_budget_available,
+    enforce_remote_interval,
+    record_upload_bytes,
+    resolve_limits,
+)
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api", tags=["uploads"])
@@ -216,6 +225,29 @@ async def app_upload_screenshot(
     )
 
 
+def _load_upload_link(db: Session, upload_key: str) -> UploadLink:
+    link = db.scalar(
+        select(UploadLink)
+        .where(UploadLink.token_hash == hash_secret(upload_key))
+        .where(UploadLink.revoked_at.is_(None))
+        .limit(1)
+    )
+    if link is None:
+        raise AppError("invalid_token", status_code=401)
+    return link
+
+
+def _declared_content_length(request: Request) -> int | None:
+    raw = request.headers.get("content-length")
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
 @upload_link_router.post(
     "/u/{upload_key}",
     response_model=UploadResponse,
@@ -230,13 +262,31 @@ async def upload_link_screenshot(
 ) -> UploadResponse:
     auth = authenticate_upload_link(db, upload_key)
     require_create_pending_expense(auth)
+    link = _load_upload_link(db, upload_key)
+    limits = resolve_limits(link)
+    is_loopback = is_loopback_request(request)
+    # Per-remote interval and daily budget apply to public traffic only.
+    # Loopback callers are the local owner / their own automation; we
+    # already trust them via the surrounding network gate. The daily
+    # budget would also block legitimate bulk imports from the owner.
+    if not is_loopback:
+        remote_key = upload_link_remote_key(request)
+        enforce_remote_interval(
+            db, link=link, remote_key=remote_key, limits=limits
+        )
+        assert_daily_budget_available(
+            db,
+            link=link,
+            declared_content_length=_declared_content_length(request),
+            limits=limits,
+        )
     resolved_timezone = (
         (timezone or "").strip()
         or (tz or "").strip()
         or (upload_link_default_timezone(db, upload_key) or "").strip()
         or get_settings().ocr_default_timezone
     )
-    return await _handle_upload(
+    response = await _handle_upload(
         request=request,
         background_tasks=background_tasks,
         auth=auth,
@@ -245,3 +295,8 @@ async def upload_link_screenshot(
         endpoint="ios_upload_link",
         timezone_name=resolved_timezone,
     )
+    if not is_loopback:
+        record_upload_bytes(
+            db, link=link, bytes_used=int(response.upload_size_bytes or 0)
+        )
+    return response

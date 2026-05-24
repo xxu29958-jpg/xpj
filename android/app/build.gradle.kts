@@ -2,7 +2,7 @@ import java.util.Properties
 
 val ticketboxVersionCode = 10000000
 val ticketboxVersionName = "1.0.0"
-val ticketboxRequireLocalUnlock = false
+
 val ticketboxLocalProperties: Properties = Properties().also { props ->
     val propsFile = rootProject.file("local.properties")
     if (propsFile.exists()) {
@@ -15,6 +15,21 @@ fun ticketboxLocalProperty(name: String): String? =
 
 fun ticketboxEnvOrLocal(envName: String, propertyName: String): String? =
     System.getenv(envName)?.trim()?.takeIf { it.isNotBlank() } ?: ticketboxLocalProperty(propertyName)
+
+// v1.1 Batch 2: local unlock is the safer default for release.
+// Owner can opt out per build (debug, internal flavor) via env var
+// TICKETBOX_REQUIRE_LOCAL_UNLOCK=true|false or local.properties
+// ticketbox.requireLocalUnlock=...
+val ticketboxRequireLocalUnlockDebug: Boolean =
+    ticketboxEnvOrLocal(
+        "TICKETBOX_REQUIRE_LOCAL_UNLOCK",
+        "ticketbox.requireLocalUnlock",
+    )?.lowercase()?.let { it == "1" || it == "true" || it == "yes" } ?: false
+val ticketboxRequireLocalUnlockRelease: Boolean =
+    ticketboxEnvOrLocal(
+        "TICKETBOX_REQUIRE_LOCAL_UNLOCK",
+        "ticketbox.requireLocalUnlock",
+    )?.lowercase()?.let { it == "1" || it == "true" || it == "yes" } ?: true
 
 fun ticketboxBooleanEnvOrLocal(envName: String, propertyName: String): Boolean {
     val raw = ticketboxEnvOrLocal(envName, propertyName)?.lowercase() ?: return false
@@ -162,15 +177,30 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("Boolean", "REQUIRE_LOCAL_UNLOCK", ticketboxRequireLocalUnlock.toString())
+            buildConfigField(
+                "Boolean",
+                "REQUIRE_LOCAL_UNLOCK",
+                ticketboxRequireLocalUnlockDebug.toString(),
+            )
             signingConfigs.findByName("stableDebug")?.let { stableDebugSigning ->
                 signingConfig = stableDebugSigning
             }
         }
         release {
             isDebuggable = false
-            isMinifyEnabled = false
-            buildConfigField("Boolean", "REQUIRE_LOCAL_UNLOCK", ticketboxRequireLocalUnlock.toString())
+            // v1.1 Batch 2: R8 minify + resource shrinking on release.
+            // Keep rules are in proguard-rules.pro alongside this file.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            buildConfigField(
+                "Boolean",
+                "REQUIRE_LOCAL_UNLOCK",
+                ticketboxRequireLocalUnlockRelease.toString(),
+            )
             signingConfigs.findByName("release")?.let { releaseSigning ->
                 signingConfig = releaseSigning
             }

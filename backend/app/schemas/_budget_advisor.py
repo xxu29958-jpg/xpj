@@ -8,6 +8,7 @@ __all__ = [
     "BudgetAdviceDto",
     "BudgetAdviseRequest",
     "BudgetAdviseResponse",
+    "BudgetAdvisorStatusResponse",
     "BudgetSuggestionDto",
     "DiscretionaryResponse",
 ]
@@ -54,3 +55,25 @@ class BudgetAdviseResponse(BaseModel):
 
     advice: BudgetAdviceDto | None
     provider_name: str
+
+
+class BudgetAdvisorStatusResponse(BaseModel):
+    """v1.1 Batch 2 owner-facing visibility surface.
+
+    Surfaces the configured AI provider, the explicit owner-confirmation
+    flag, and the most recent audit row so the Owner Console panel can
+    answer "is this thing on?" / "did the last call succeed?" without
+    running a fresh call.
+    """
+
+    provider: str
+    model: str | None
+    base_url: str | None
+    owner_confirmed: bool
+    is_live: bool
+    needs_confirmation: bool
+    last_called_at: str | None
+    last_success: bool | None
+    last_error_code: str | None
+    last_suggestion_count: int | None
+    last_duration_ms: int | None

@@ -40,6 +40,7 @@ __all__ = [
     "PairResponse",
     "PairingCodeCreateRequest",
     "PairingCodeResponse",
+    "RefreshSessionResponse",
 ]
 
 
@@ -56,6 +57,19 @@ class PairResponse(BaseModel):
     ledger_name: str
     device_name: str
     role: str
+    # v1.1 Batch 2: app tokens now carry an expiry. ``expires_at`` is
+    # ISO-8601 UTC; ``None`` means the token never expires (env opted out).
+    # Clients should silently rotate via ``/api/auth/refresh`` once the
+    # remaining lifetime drops below ``soft_refresh_after``.
+    expires_at: str | None = None
+    soft_refresh_after: str | None = None
+
+
+class RefreshSessionResponse(BaseModel):
+    session_token: str
+    expires_at: str | None = None
+    soft_refresh_after: str | None = None
+    rotated: bool
 
 
 class LedgerResponse(BaseModel):

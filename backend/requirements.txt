@@ -9,3 +9,8 @@ pillow-heif==1.3.0
 tzdata==2026.2
 jinja2==3.1.6
 PyJWT[crypto]==2.13.0
+# v1.1 Batch 3: Alembic adopted for forward-only schema changes. The
+# legacy idempotent migrator in app/database/_migrations stays in
+# place to backfill existing DBs; new tables/columns ship as Alembic
+# revisions instead.
+alembic==1.16.4

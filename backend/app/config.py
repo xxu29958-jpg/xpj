@@ -76,6 +76,21 @@ class Settings:
     cloudflare_access_required: bool
     cloudflare_access_team_domain: str
     cloudflare_access_aud: str
+    # Public surface hardening (Batch 1).
+    upload_link_default_daily_byte_budget: int
+    upload_link_default_per_remote_interval_seconds: int
+    csv_import_max_bytes: int
+    csv_import_max_lines: int
+    csv_import_max_cell_bytes: int
+    # Batch 2: app session token TTL. ``0`` keeps the legacy never-expires
+    # behavior (web session tokens are still always TTL-capped). Anything
+    # > 0 gives Android tokens a hard expiry; clients should silently
+    # rotate via ``/api/auth/refresh`` once inside the soft window.
+    app_token_ttl_days: int
+    app_token_refresh_window_days: int
+    # Batch 2: AI budget advisor live calls require explicit opt-in.
+    # ``empty`` / ``mock`` providers do not need this flag.
+    budget_advisor_owner_confirmed: bool
     fx_home_currency_code: str
     fx_supported_currency_codes: str
     fx_rate_auto_sync_enabled: bool
@@ -229,6 +244,28 @@ def get_settings() -> Settings:
             os.getenv("CLOUDFLARE_ACCESS_TEAM_DOMAIN")
         ),
         cloudflare_access_aud=os.getenv("CLOUDFLARE_ACCESS_AUD", "").strip(),
+        # Batch 1: default daily budget 200 MiB / link, default 2-second
+        # gap per remote_key. 0 = unlimited (kept for tests / loopback).
+        upload_link_default_daily_byte_budget=int(
+            os.getenv("UPLOAD_LINK_DEFAULT_DAILY_BYTE_BUDGET", str(200 * 1024 * 1024))
+        ),
+        upload_link_default_per_remote_interval_seconds=int(
+            os.getenv("UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS", "2")
+        ),
+        csv_import_max_bytes=int(
+            os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))
+        ),
+        csv_import_max_lines=int(os.getenv("CSV_IMPORT_MAX_LINES", "25000")),
+        csv_import_max_cell_bytes=int(
+            os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")
+        ),
+        app_token_ttl_days=int(os.getenv("APP_TOKEN_TTL_DAYS", "90")),
+        app_token_refresh_window_days=int(
+            os.getenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "14")
+        ),
+        budget_advisor_owner_confirmed=_bool_env(
+            "BUDGET_ADVISOR_OWNER_CONFIRMED", False
+        ),
         fx_home_currency_code=os.getenv("FX_HOME_CURRENCY_CODE", DEFAULT_HOME_CURRENCY_CODE).strip().upper()
         or DEFAULT_HOME_CURRENCY_CODE,
         fx_supported_currency_codes=os.getenv(

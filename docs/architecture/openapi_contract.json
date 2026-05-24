@@ -2106,6 +2106,119 @@
         "title": "BudgetAdviseResponse",
         "type": "object"
       },
+      "BudgetAdvisorStatusResponse": {
+        "description": "v1.1 Batch 2 owner-facing visibility surface.\n\nSurfaces the configured AI provider, the explicit owner-confirmation\nflag, and the most recent audit row so the Owner Console panel can\nanswer \"is this thing on?\" / \"did the last call succeed?\" without\nrunning a fresh call.",
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "is_live": {
+            "title": "Is Live",
+            "type": "boolean"
+          },
+          "last_called_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Called At"
+          },
+          "last_duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Duration Ms"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "last_success": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success"
+          },
+          "last_suggestion_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Suggestion Count"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "needs_confirmation": {
+            "title": "Needs Confirmation",
+            "type": "boolean"
+          },
+          "owner_confirmed": {
+            "title": "Owner Confirmed",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "base_url",
+          "owner_confirmed",
+          "is_live",
+          "needs_confirmation",
+          "last_called_at",
+          "last_success",
+          "last_error_code",
+          "last_suggestion_count",
+          "last_duration_ms"
+        ],
+        "title": "BudgetAdvisorStatusResponse",
+        "type": "object"
+      },
       "BudgetCategoryRequest": {
         "properties": {
           "amount_cents": {
@@ -6351,6 +6464,17 @@
             "title": "Device Name",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "ledger_id": {
             "title": "Ledger Id",
             "type": "string"
@@ -6366,6 +6490,17 @@
           "session_token": {
             "title": "Session Token",
             "type": "string"
+          },
+          "soft_refresh_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soft Refresh After"
           }
         },
         "required": [
@@ -6746,6 +6881,46 @@
           "updated_at"
         ],
         "title": "RecurringItemResponse",
+        "type": "object"
+      },
+      "RefreshSessionResponse": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "rotated": {
+            "title": "Rotated",
+            "type": "boolean"
+          },
+          "session_token": {
+            "title": "Session Token",
+            "type": "string"
+          },
+          "soft_refresh_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soft Refresh After"
+          }
+        },
+        "required": [
+          "session_token",
+          "rotated"
+        ],
+        "title": "RefreshSessionResponse",
         "type": "object"
       },
       "ReportCategoryComparisonResponse": {
@@ -8274,6 +8449,56 @@
         ]
       }
     },
+    "/api/auth/refresh": {
+      "post": {
+        "description": "v1.1 Batch 2: silently rotate the caller's app session token.\n\nReturns a fresh token (with a new ``expires_at``) and revokes the\nprevious one. Clients call this from the background once their\n``soft_refresh_after`` has passed, so the user never sees a forced\nre-pair. Web cookie sessions keep their own short TTL contract; only\nthe ``app`` scope rotates here.",
+        "operationId": "refresh_session_api_auth_refresh_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/bill-splits/inbox": {
       "get": {
         "operationId": "list_my_inbox_api_bill_splits_inbox_get",
@@ -8658,7 +8883,7 @@
     },
     "/api/budget/advise": {
       "post": {
-        "description": "Build anonymised BudgetInputs → advisor → BudgetAdvice.\n\nADR-0036: payload going out only includes the allowed-field surface\n(enforced inside the provider by ``to_outbound_dict`` /\n``validate_outbound_payload``). The de-anonymisation is the UI's\njob, using the alias resolver on the way back.",
+        "description": "Build anonymised BudgetInputs → advisor → BudgetAdvice.\n\nADR-0036: payload going out only includes the allowed-field surface\n(enforced inside the provider by ``to_outbound_dict`` /\n``validate_outbound_payload``). The de-anonymisation is the UI's\njob, using the alias resolver on the way back.\n\nBatch 2: when a live (outbound) provider is configured, the route\nrefuses to call unless ``BUDGET_ADVISOR_OWNER_CONFIRMED=true``. Every\ninvocation against a live provider also writes one audit row\ncapturing provider/model + input hash + success.",
         "operationId": "post_advise_api_budget_advise_post",
         "parameters": [
           {
@@ -8711,6 +8936,55 @@
           }
         },
         "summary": "Post Advise",
+        "tags": [
+          "budget-advisor"
+        ]
+      }
+    },
+    "/api/budget/advisor/status": {
+      "get": {
+        "operationId": "get_advisor_status_api_budget_advisor_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetAdvisorStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Advisor Status",
         "tags": [
           "budget-advisor"
         ]

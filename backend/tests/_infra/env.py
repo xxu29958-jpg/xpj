@@ -48,6 +48,12 @@ os.environ.update(
         "GENERATE_THUMBNAIL": "true",
         "DELETE_IMAGE_AFTER_DAYS": "0",
         "OCR_PROVIDER": "empty",
+        # Batch 1 public surface hardening defaults disabled in tests
+        # (default lane fires multiple uploads through the same upload
+        # link in quick succession). Dedicated throttle / quota tests
+        # opt back in via monkeypatch.
+        "UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS": "0",
+        "UPLOAD_LINK_DEFAULT_DAILY_BYTE_BUDGET": "0",
         "TENANTS_JSON": json.dumps(
             [
                 {

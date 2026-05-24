@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -35,23 +35,23 @@ def pair_device(
     platform: str,
     remote_id: str | None = None,
 ) -> PairingResult:
-    _check_pairing_attempt_limit(remote_id)
+    _check_pairing_attempt_limit(db, remote_id)
     code_hash = hash_pairing_code(pairing_code.strip())
     pairing = db.scalar(select(PairingCode).where(PairingCode.code_hash == code_hash).limit(1))
     if pairing is None:
-        _reject_pairing(remote_id, "invalid_pairing_code", 401)
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     if pairing.used_at is not None:
-        _reject_pairing(remote_id, "pairing_code_used", 409)
+        _reject_pairing(db, remote_id, "pairing_code_used", 409)
     if (ensure_utc(pairing.expires_at) or pairing.expires_at) <= now_utc():
-        _reject_pairing(remote_id, "pairing_code_expired", 410)
+        _reject_pairing(db, remote_id, "pairing_code_expired", 410)
 
     ledger = _ledger_by_id(db, pairing.ledger_id)
     if ledger is None or ledger.archived_at is not None:
-        _reject_pairing(remote_id, "invalid_pairing_code", 401)
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     account_id = pairing.account_id or ledger.owner_account_id
     account = db.get(Account, account_id)
     if account is None or account.disabled_at is not None:
-        _reject_pairing(remote_id, "invalid_pairing_code", 401)
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     role = _role_for(db, ledger.ledger_id, account.id)
 
     used_at = now_utc()
@@ -59,15 +59,26 @@ def pair_device(
     if consume_result != "consumed":
         db.rollback()
         if consume_result == "used":
-            _reject_pairing(remote_id, "pairing_code_used", 409)
-        _reject_pairing(remote_id, "pairing_code_expired", 410)
+            _reject_pairing(db, remote_id, "pairing_code_used", 409)
+        _reject_pairing(db, remote_id, "pairing_code_expired", 410)
 
     device = _ensure_device(db, account.id, device_name, platform)
-    token_expires_at = (
-        used_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS)
-        if (platform or "").strip().lower() == "web"
-        else None
-    )
+    # Web cookie sessions stay capped at WEB_SESSION_TTL_SECONDS (existing
+    # contract). Non-web app tokens honor APP_TOKEN_TTL_DAYS so v1.1
+    # clients can silently rotate before expiry; 0 keeps the historical
+    # "never expires" semantics for environments that opt out.
+    platform_lower = (platform or "").strip().lower()
+    if platform_lower == "web":
+        token_expires_at: datetime | None = (
+            used_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS)
+        )
+    else:
+        from app.config import get_settings as _get_settings
+
+        ttl_days = _get_settings().app_token_ttl_days
+        token_expires_at = (
+            used_at + timedelta(days=ttl_days) if ttl_days > 0 else None
+        )
     token = _create_auth_token(
         db,
         account_id=account.id,
@@ -77,7 +88,15 @@ def pair_device(
         expires_at=token_expires_at,
     )
     db.commit()
-    _clear_pairing_failures(remote_id)
+    _clear_pairing_failures(db, remote_id)
+    from app.config import get_settings as _get_settings
+
+    refresh_window_days = _get_settings().app_token_refresh_window_days
+    soft_refresh_after = (
+        token_expires_at - timedelta(days=max(refresh_window_days, 0))
+        if token_expires_at is not None and refresh_window_days > 0
+        else None
+    )
     return PairingResult(
         session_token=token,
         account_name=account.display_name,
@@ -85,4 +104,6 @@ def pair_device(
         ledger_name=ledger.name,
         device_name=device.device_name,
         role=role,
+        expires_at=token_expires_at,
+        soft_refresh_after=soft_refresh_after,
     )

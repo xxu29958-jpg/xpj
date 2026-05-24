@@ -183,8 +183,19 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
     """Parse ``content`` into a preview structure.
 
     Caller is responsible for applying any size/encoding limits before
-    calling this — we only enforce :data:`MAX_PREVIEW_ROWS`.
+    calling this — we enforce :data:`MAX_PREVIEW_ROWS` and a defensive
+    per-cell byte cap (``CSV_IMPORT_MAX_CELL_BYTES``). Total bytes / line
+    counts must be enforced upstream (see ``create_csv_import_batch``).
     """
+    max_cell_bytes = max(get_settings().csv_import_max_cell_bytes, 1)
+
+    def _assert_cell(cell: str) -> None:
+        if len(cell.encode("utf-8")) > max_cell_bytes:
+            raise AppError(
+                "invalid_request",
+                f"CSV 单元格超过 {max_cell_bytes} 字节上限。",
+                status_code=400,
+            )
     text = content.lstrip("\ufeff")
     if not text.strip():
         raise AppError("invalid_request", "CSV 内容为空。", status_code=400)
@@ -195,6 +206,8 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
         raise AppError("invalid_request", "CSV 缺少表头。", status_code=400) from exc
     except csv.Error as exc:
         raise AppError("invalid_request", f"CSV 格式无效：{exc}", status_code=400) from exc
+    for cell in header_row:
+        _assert_cell(cell)
     headers = [h.strip().lstrip("\ufeff").lower() for h in header_row]
     if not any(h in {"amount_yuan", "amount_cents"} for h in headers):
         raise AppError(
@@ -210,6 +223,8 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
                 break
             if not any(cell.strip() for cell in row):
                 continue
+            for cell in row:
+                _assert_cell(cell)
             preview.rows.append(
                 parse_csv_row(
                     headers,

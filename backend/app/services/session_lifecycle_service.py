@@ -179,6 +179,7 @@ def rotate_app_token_for_ledger(
     device_id: int,
     target_ledger_id: str,
     rotated_at: datetime | None = None,
+    expires_at: datetime | None = None,
 ) -> tuple[str, datetime]:
     rotated_at = rotated_at or now_utc()
     current_hash = hash_secret(current_token_value)
@@ -202,5 +203,6 @@ def rotate_app_token_for_ledger(
         device_id=device_id,
         ledger_id=target_ledger_id,
         scope="app",
+        expires_at=expires_at,
     )
     return new_token, rotated_at

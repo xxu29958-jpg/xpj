@@ -7,7 +7,7 @@ Module-level state (e.g. pairing rate-limit failures) lives in
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from app.tenants import AuthContext
 
@@ -40,6 +40,8 @@ class PairingResult:
     ledger_name: str
     device_name: str
     role: str
+    expires_at: datetime | None = None
+    soft_refresh_after: datetime | None = None
 
 
 @dataclass(frozen=True)

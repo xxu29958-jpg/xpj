@@ -1,0 +1,247 @@
+"""Per-link upload-link quota + per-remote throttle (v1.1 Batch 1).
+
+Public ``/u/{upload_key}`` is the largest attack surface on the public
+hostname: knowing the upload_key (a credential) lets anyone POST images
+that we then OCR and store. Three independent limits live here, all
+DB-backed so they survive restarts and apply across workers:
+
+* ``per_remote_min_interval_seconds`` — minimum gap between two requests
+  from the same remote key (CF-Connecting-IP behind tunnel, peer host
+  otherwise). Defeats trivial burst floods.
+* ``daily_byte_budget`` — hard cap on bytes accepted per UTC day per
+  link. Once reached, additional uploads are rejected with 429 until
+  midnight UTC.
+* (implicit) ``MAX_UPLOAD_SIZE_BYTES`` — already enforced upstream when
+  the body is streamed in.
+
+Loopback / fixture traffic typically has the default budget set high and
+interval set to 0 (see ``app.config``), so existing tests that hammer
+the endpoint synchronously keep working.
+
+This module never raises during cleanup of old rows; it only raises
+``AppError`` when the configured limit is reached.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.errors import AppError
+from app.models import UploadLink, UploadLinkDailyUsage, UploadLinkRemoteAttempt
+from app.services.time_service import ensure_utc, now_utc
+
+# Keep the daily usage table small: rows older than 30 days are dropped
+# on next quota check for the same link. The current day is always kept.
+_DAILY_USAGE_RETENTION_DAYS = 30
+# Remote-attempt rows older than this are pruned — they would never
+# satisfy the interval check anyway. Independent from the value above.
+_REMOTE_ATTEMPT_RETENTION = timedelta(days=1)
+
+
+@dataclass(frozen=True)
+class UploadLinkLimits:
+    daily_byte_budget: int
+    per_remote_min_interval_seconds: int
+
+    @property
+    def has_byte_budget(self) -> bool:
+        return self.daily_byte_budget > 0
+
+    @property
+    def has_interval(self) -> bool:
+        return self.per_remote_min_interval_seconds > 0
+
+
+def _ymd(now: datetime) -> str:
+    return now.strftime("%Y-%m-%d")
+
+
+def resolve_limits(link: UploadLink) -> UploadLinkLimits:
+    """Merge link-level overrides with server defaults.
+
+    A link-level value of NULL means "follow the server default";
+    interval defaults to 0 (no throttle). The server-default daily
+    budget is generous (200 MiB) but applies to every link unless the
+    owner raises it explicitly.
+    """
+
+    cfg = get_settings()
+    budget_default = max(cfg.upload_link_default_daily_byte_budget, 0)
+    interval_default = max(cfg.upload_link_default_per_remote_interval_seconds, 0)
+    budget = link.daily_byte_budget if link.daily_byte_budget is not None else budget_default
+    interval = link.per_remote_min_interval_seconds or interval_default
+    return UploadLinkLimits(
+        daily_byte_budget=max(int(budget), 0),
+        per_remote_min_interval_seconds=max(int(interval), 0),
+    )
+
+
+def _prune_remote_attempts(db: Session, link_id: int, *, now: datetime) -> None:
+    cutoff = now - _REMOTE_ATTEMPT_RETENTION
+    db.execute(
+        delete(UploadLinkRemoteAttempt)
+        .where(UploadLinkRemoteAttempt.upload_link_id == link_id)
+        .where(UploadLinkRemoteAttempt.last_attempt_at < cutoff)
+    )
+
+
+def _prune_daily_usage(db: Session, link_id: int, *, now: datetime) -> None:
+    keep_after = (now - timedelta(days=_DAILY_USAGE_RETENTION_DAYS)).strftime(
+        "%Y-%m-%d"
+    )
+    db.execute(
+        delete(UploadLinkDailyUsage)
+        .where(UploadLinkDailyUsage.upload_link_id == link_id)
+        .where(UploadLinkDailyUsage.ymd < keep_after)
+    )
+
+
+def enforce_remote_interval(
+    db: Session,
+    *,
+    link: UploadLink,
+    remote_key: str,
+    limits: UploadLinkLimits | None = None,
+) -> None:
+    """Reject a request that arrived within the per-remote min interval.
+
+    Always records the new attempt timestamp on the way through, so a
+    rejected caller is forced to back off rather than re-trying
+    immediately and re-triggering the same window.
+    """
+
+    limits = limits or resolve_limits(link)
+    now = now_utc()
+    _prune_remote_attempts(db, link.id, now=now)
+    row = db.scalar(
+        select(UploadLinkRemoteAttempt)
+        .where(UploadLinkRemoteAttempt.upload_link_id == link.id)
+        .where(UploadLinkRemoteAttempt.remote_key == remote_key)
+        .limit(1)
+    )
+    if row is None:
+        db.add(
+            UploadLinkRemoteAttempt(
+                upload_link_id=link.id,
+                remote_key=remote_key,
+                last_attempt_at=now,
+            )
+        )
+        db.flush()
+        return
+    last_attempt_at = ensure_utc(row.last_attempt_at) or row.last_attempt_at
+    if limits.has_interval:
+        elapsed = (now - last_attempt_at).total_seconds()
+        if elapsed < limits.per_remote_min_interval_seconds:
+            # Bump the timestamp before rejecting so the offender can't
+            # spam the endpoint to keep its window open.
+            row.last_attempt_at = now
+            db.commit()
+            retry_after = max(
+                int(limits.per_remote_min_interval_seconds - elapsed), 1
+            )
+            raise AppError(
+                "upload_throttled",
+                f"上传过于频繁，请 {retry_after} 秒后再试。",
+                status_code=429,
+            )
+    row.last_attempt_at = now
+    db.flush()
+
+
+def _daily_usage(
+    db: Session, *, link_id: int, ymd: str
+) -> UploadLinkDailyUsage | None:
+    return db.scalar(
+        select(UploadLinkDailyUsage)
+        .where(UploadLinkDailyUsage.upload_link_id == link_id)
+        .where(UploadLinkDailyUsage.ymd == ymd)
+        .limit(1)
+    )
+
+
+def assert_daily_budget_available(
+    db: Session,
+    *,
+    link: UploadLink,
+    declared_content_length: int | None = None,
+    limits: UploadLinkLimits | None = None,
+) -> int:
+    """Refuse the request if today's link budget is already exhausted.
+
+    Called *before* the body is streamed, so a giant upload that would
+    blow the budget is rejected without taking the bytes. We use
+    ``Content-Length`` when the client provides one; otherwise we only
+    reject the trivial "budget already at zero" case here and rely on
+    :func:`record_upload_bytes` to finalise the count.
+
+    Returns the bytes-remaining-in-budget so the caller can clamp the
+    streaming body limit. ``-1`` means "no budget configured".
+    """
+
+    limits = limits or resolve_limits(link)
+    if not limits.has_byte_budget:
+        return -1
+    now = now_utc()
+    _prune_daily_usage(db, link.id, now=now)
+    ymd = _ymd(now)
+    usage = _daily_usage(db, link_id=link.id, ymd=ymd)
+    used = usage.bytes_total if usage is not None else 0
+    remaining = limits.daily_byte_budget - used
+    if remaining <= 0:
+        raise AppError(
+            "upload_daily_quota_exhausted",
+            "今日该上传链接配额已用尽，请明天再试。",
+            status_code=429,
+        )
+    if declared_content_length is not None and declared_content_length > remaining:
+        raise AppError(
+            "upload_daily_quota_exhausted",
+            "此次上传将超过今日配额。",
+            status_code=429,
+        )
+    return remaining
+
+
+def record_upload_bytes(db: Session, *, link: UploadLink, bytes_used: int) -> None:
+    """Commit ``bytes_used`` against today's link counter.
+
+    Idempotent at the row level: the (link, ymd) row is created on first
+    use. ``bytes_used`` may be ``0`` for a metadata-only success — we
+    still bump request_count.
+    """
+
+    if bytes_used < 0:
+        bytes_used = 0
+    now = now_utc()
+    ymd = _ymd(now)
+    usage = _daily_usage(db, link_id=link.id, ymd=ymd)
+    if usage is None:
+        usage = UploadLinkDailyUsage(
+            upload_link_id=link.id,
+            ymd=ymd,
+            bytes_total=bytes_used,
+            request_count=1,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(usage)
+    else:
+        usage.bytes_total = (usage.bytes_total or 0) + bytes_used
+        usage.request_count = (usage.request_count or 0) + 1
+        usage.updated_at = now
+    db.commit()
+
+
+__all__ = [
+    "UploadLinkLimits",
+    "assert_daily_budget_available",
+    "enforce_remote_interval",
+    "record_upload_bytes",
+    "resolve_limits",
+]

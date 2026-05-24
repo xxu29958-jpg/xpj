@@ -93,6 +93,15 @@ jobs:
       - name: Smoke test
         run: python scripts\smoke_test.py
 
+      - name: Dependency vulnerability scan (pip-audit)
+        # v1.1 Batch 3: fail the PR on any known-vulnerable Python
+        # dependency. ``--strict`` makes warnings (yanked package, etc.)
+        # also fail; ``--vulnerability-service osv`` uses the public OSV
+        # database (no auth, no GHSA-token gymnastics).
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt
+
   android:
     name: Android
     runs-on: ubuntu-latest
@@ -160,6 +169,17 @@ jobs:
 
       - name: Lint
         run: ./gradlew --no-daemon :app:lintGrayDebug
+
+      - name: Dependency vulnerability scan (gradle dependency check)
+        # v1.1 Batch 3: Android dependency vulnerability gate.
+        # ``dependencyCheckAnalyze`` is wired through the OWASP plugin
+        # (see android/build.gradle.kts). Any CVSS score >= 7.0 fails
+        # the build — anything lower is reported but tolerated so a
+        # transitive low-severity finding doesn't block a hotfix.
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: ./gradlew --no-daemon dependencyCheckAnalyze
+        continue-on-error: false
 
       - name: Upload gray debug APK
         uses: actions/upload-artifact@v7

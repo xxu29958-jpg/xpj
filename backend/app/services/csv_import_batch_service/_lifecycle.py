@@ -8,7 +8,7 @@ rows to ``Expense`` rows in :mod:`._apply`.
 from __future__ import annotations
 
 import csv
-from io import TextIOWrapper
+from io import BytesIO, TextIOWrapper
 from typing import BinaryIO
 
 from sqlalchemy import func, select
@@ -31,6 +31,41 @@ from app.services.time_service import now_utc
 _ = get_csv_import_batch  # quiet F401: re-exported through this module's surface
 
 
+def _read_csv_bounded(file_obj: BinaryIO, *, max_bytes: int) -> bytes:
+    """Read at most ``max_bytes`` from ``file_obj``; reject larger inputs.
+
+    Defends against ``UploadFile`` payloads that lie about Content-Length
+    or chunk-encode to bypass it. Returns the raw bytes so the caller
+    can wrap them in a ``TextIOWrapper`` afterward.
+    """
+
+    chunks: list[bytes] = []
+    remaining = max_bytes
+    while True:
+        chunk = file_obj.read(min(remaining + 1, 64 * 1024))
+        if not chunk:
+            break
+        remaining -= len(chunk)
+        if remaining < 0:
+            raise AppError(
+                "invalid_request",
+                f"CSV 文件超过 {max_bytes} 字节上限。",
+                status_code=413,
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _assert_cells_bounded(row: list[str], *, max_cell_bytes: int) -> None:
+    for cell in row:
+        if len(cell.encode("utf-8")) > max_cell_bytes:
+            raise AppError(
+                "invalid_request",
+                f"CSV 单元格超过 {max_cell_bytes} 字节上限。",
+                status_code=400,
+            )
+
+
 def create_csv_import_batch(
     db: Session,
     *,
@@ -38,12 +73,24 @@ def create_csv_import_batch(
     file_name: str | None,
     file_obj: BinaryIO,
 ) -> CsvImportBatch:
+    cfg = get_settings()
+    max_bytes = max(cfg.csv_import_max_bytes, 1)
+    max_lines = max(cfg.csv_import_max_lines, 1)
+    max_cell_bytes = max(cfg.csv_import_max_cell_bytes, 1)
+    # Tighter of the two per-row caps wins. The model-level constant is
+    # the long-standing limit, csv_import_max_lines lets owners lower it
+    # further when running on a constrained host.
+    max_data_rows = min(MAX_CSV_IMPORT_ROWS, max_lines)
     try:
-        text_stream = TextIOWrapper(file_obj, encoding="utf-8-sig", newline="")
+        raw_bytes = _read_csv_bounded(file_obj, max_bytes=max_bytes)
+        text_stream = TextIOWrapper(
+            BytesIO(raw_bytes), encoding="utf-8-sig", newline=""
+        )
         reader = csv.reader(text_stream)
         header_row = next(reader, None)
         if header_row is None:
             raise AppError("invalid_request", "CSV 缺少表头。", status_code=400)
+        _assert_cells_bounded(header_row, max_cell_bytes=max_cell_bytes)
         headers = [header.strip().lstrip("﻿").lower() for header in header_row]
         if not any(header in {"amount_yuan", "amount_cents"} for header in headers):
             raise AppError(
@@ -66,17 +113,18 @@ def create_csv_import_batch(
         total_rows = 0
         valid_rows = 0
         error_rows = 0
-        timezone_name = get_settings().ocr_default_timezone
+        timezone_name = cfg.ocr_default_timezone
         for line_number, row in enumerate(reader, start=2):
             if not any(cell.strip() for cell in row):
                 continue
             total_rows += 1
-            if total_rows > MAX_CSV_IMPORT_ROWS:
+            if total_rows > max_data_rows:
                 raise AppError(
                     "invalid_request",
-                    f"CSV 一次最多导入 {MAX_CSV_IMPORT_ROWS} 行。",
+                    f"CSV 一次最多导入 {max_data_rows} 行。",
                     status_code=400,
                 )
+            _assert_cells_bounded(row, max_cell_bytes=max_cell_bytes)
             parsed = parse_csv_row(
                 headers,
                 row,

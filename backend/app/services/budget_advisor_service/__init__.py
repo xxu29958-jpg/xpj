@@ -33,6 +33,16 @@ from app.services.budget_advisor_service._aliases import (
     resolve_merchant_anon,
     resolve_transaction_temp_id,
 )
+from app.services.budget_advisor_service._audit import (
+    LIVE_PROVIDER_NAMES,
+    AdvisorStatus,
+    advisor_status_for_tenant,
+    compute_input_hash,
+    is_live_provider,
+    latest_audit_row,
+    mask_base_url,
+    record_audit_row,
+)
 from app.services.budget_advisor_service._inputs_builder import (
     build_budget_inputs,
 )
@@ -62,6 +72,7 @@ from app.services.budget_advisor_service._providers import (
 
 __all__ = [
     "ALLOWED_TOP_LEVEL_KEYS",
+    "AdvisorStatus",
     "BudgetAdvice",
     "BudgetAdvisorProvider",
     "BudgetInputs",
@@ -71,16 +82,23 @@ __all__ = [
     "FixedExpense",
     "HistoricalBaseline",
     "IncomePlan",
+    "LIVE_PROVIDER_NAMES",
     "MemberRef",
     "MerchantSummary",
     "MockBudgetAdvisor",
     "OpenAiCompatBudgetAdvisor",
+    "advisor_status_for_tenant",
     "assign_transaction_temp_id",
     "build_budget_inputs",
     "cleanup_session",
+    "compute_input_hash",
     "get_budget_advisor",
     "get_or_create_member_anon",
     "get_or_create_merchant_anon",
+    "is_live_provider",
+    "latest_audit_row",
+    "mask_base_url",
+    "record_audit_row",
     "resolve_member_anon",
     "resolve_merchant_anon",
     "resolve_transaction_temp_id",

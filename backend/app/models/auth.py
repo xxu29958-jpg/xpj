@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,6 +32,87 @@ class UploadLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Per-link daily byte budget. NULL = follow server default.
+    daily_byte_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Per-remote min interval seconds between requests. 0 = no throttle.
+    per_remote_min_interval_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+
+class UploadLinkDailyUsage(Base):
+    """Daily byte counter per upload link.
+
+    Single row per (upload_link_id, ymd). Updated atomically inside the
+    same transaction that accepts the upload, so any reject path leaves
+    the counter untouched.
+    """
+
+    __tablename__ = "upload_link_daily_usage"
+    __table_args__ = (
+        UniqueConstraint(
+            "upload_link_id", "ymd", name="uq_upload_link_daily_usage_link_ymd"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    upload_link_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("upload_links.id"), nullable=False, index=True
+    )
+    ymd: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    bytes_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
+
+class UploadLinkRemoteAttempt(Base):
+    """Last-attempt timestamp per (upload_link_id, remote_key).
+
+    Backs the per-remote min-interval throttle without holding any
+    process-local state. ``remote_key`` is the same hash/string the
+    pairing rate-limit code derives (peer or CF-Connecting-IP).
+    """
+
+    __tablename__ = "upload_link_remote_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "upload_link_id",
+            "remote_key",
+            name="uq_upload_link_remote_attempts_link_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    upload_link_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("upload_links.id"), nullable=False, index=True
+    )
+    remote_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    last_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
+
+class PairingAttemptFailure(Base):
+    """DB-backed pairing-attempt failure log.
+
+    Replaces the previous in-process ``_pairing_failures_by_remote`` dict
+    so the throttle survives backend restarts and is correct when running
+    behind multiple workers. Cleaner ad-hoc: every check prunes rows older
+    than ``PAIRING_ATTEMPT_WINDOW``.
+    """
+
+    __tablename__ = "pairing_attempt_failures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    remote_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    failed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False, index=True
+    )
 
 
 class PairingCode(Base):
