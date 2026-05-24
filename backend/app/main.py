@@ -55,6 +55,8 @@ from app.routes import (
     web_data_quality,
     web_duplicates,
     web_expense_edit,
+    web_expense_items,
+    web_expense_splits,
     web_goals,
     web_import_export,
     web_income_plans,
@@ -166,6 +168,8 @@ app.include_router(web_bill_split.router)
 app.include_router(web_tasks.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_edit.router)
+app.include_router(web_expense_items.router)
+app.include_router(web_expense_splits.router)
 app.include_router(web_media.router)
 app.include_router(web_pending.router)
 app.include_router(web_rules_routes.router)

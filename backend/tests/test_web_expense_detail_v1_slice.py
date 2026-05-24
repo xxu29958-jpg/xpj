@@ -75,24 +75,25 @@ def _demote_owner_ledger_to_viewer() -> None:
 
 def test_web_expense_edit_routes_have_single_owner() -> None:
     expected = {
-        ("GET", "/web/expenses/{expense_id}/edit"),
-        ("POST", "/web/expenses/{expense_id}/save"),
-        ("POST", "/web/expenses/{expense_id}/confirm"),
-        ("POST", "/web/expenses/{expense_id}/items/save"),
-        ("POST", "/web/expenses/{expense_id}/splits/save"),
-        ("POST", "/web/expenses/{expense_id}/reject"),
+        ("GET", "/web/expenses/{expense_id}/edit"): "app.routes.web_expense_edit",
+        ("POST", "/web/expenses/{expense_id}/save"): "app.routes.web_expense_edit",
+        ("POST", "/web/expenses/{expense_id}/confirm"): "app.routes.web_expense_edit",
+        ("POST", "/web/expenses/{expense_id}/reject"): "app.routes.web_expense_edit",
+        ("POST", "/web/expenses/{expense_id}/items/save"): "app.routes.web_expense_items",
+        ("POST", "/web/expenses/{expense_id}/splits/save"): "app.routes.web_expense_splits",
     }
     seen: dict[tuple[str, str], list[str]] = {key: [] for key in expected}
     for route in app.routes:
         path = getattr(route, "path", "")
         methods = getattr(route, "methods", set()) or set()
         endpoint = getattr(route, "endpoint", None)
-        for method, target_path in expected:
+        for key in expected:
+            method, target_path = key
             if path == target_path and method in methods:
-                seen[(method, target_path)].append(getattr(endpoint, "__module__", ""))
+                seen[key].append(getattr(endpoint, "__module__", ""))
 
     for key, modules in seen.items():
-        assert modules == ["app.routes.web_expense_edit"], f"{key} resolved to {modules}"
+        assert modules == [expected[key]], f"{key} resolved to {modules}"
 
 
 def _seed_detail_rows(expense_id: int) -> None:
