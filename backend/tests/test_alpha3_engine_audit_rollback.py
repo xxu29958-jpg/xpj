@@ -1,10 +1,7 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timedelta
-
-from api_contract_helpers import insert_confirmed_expense, upload_png
+from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 

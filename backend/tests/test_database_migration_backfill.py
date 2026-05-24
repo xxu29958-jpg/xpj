@@ -6,8 +6,8 @@ from uuid import UUID
 import pytest
 from sqlalchemy import text
 
-from app.database import BACKEND_ROOT, engine, init_db
 import app.database as database
+from app.database import BACKEND_ROOT, engine, init_db
 from tests._infra.env import TEST_DB_PATH
 from tests._infra.migration_helpers import (
     create_v01_expenses_table,

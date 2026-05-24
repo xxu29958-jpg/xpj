@@ -138,8 +138,18 @@ def audit_directory_density():
 # B. STRUCTURE & COUPLING
 # -----------------------------------------------------------------------------
 
-def audit_import_graph_and_cycles():  # noqa: C901 - one-shot read-only audit script; depth of cycle-detection logic isn't worth refactoring
-    # Build module-to-module import graph (only app.*)
+def audit_import_graph_and_cycles():
+    graph, rev = _build_app_import_graph()
+    _print_most_imported_modules(rev)
+    sccs = _find_import_sccs(graph)
+    print(f"== B2. Import cycles ({len(sccs)} SCC with >1 member) ==")
+    for s in sccs:
+        print(f"  {' <-> '.join(sorted(s))}")
+    print()
+
+
+def _build_app_import_graph() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    # Module-to-module import graph (only app.*)
     graph: dict[str, set[str]] = defaultdict(set)
     rev: dict[str, set[str]] = defaultdict(set)
     for p in walk(APP):
@@ -154,14 +164,19 @@ def audit_import_graph_and_cycles():  # noqa: C901 - one-shot read-only audit sc
             if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("app."):
                 graph[me].add(node.module)
                 rev[node.module].add(me)
+    return graph, rev
 
+
+def _print_most_imported_modules(rev: dict[str, set[str]]) -> None:
     print("== B1. Most-imported app modules (>= 8 importers) ==")
     for m, imps in sorted(rev.items(), key=lambda x: -len(x[1])):
         if len(imps) >= 8:
             print(f"  {len(imps):3d}  {m}")
     print()
 
-    # Find SCCs (Tarjan) for cycle detection
+
+def _find_import_sccs(graph: dict[str, set[str]]) -> list[list[str]]:
+    # Tarjan SCC cycle detection.
     index_counter = [0]
     stack: list[str] = []
     on_stack: set[str] = set()
@@ -196,11 +211,7 @@ def audit_import_graph_and_cycles():  # noqa: C901 - one-shot read-only audit sc
     for node in list(graph.keys()):
         if node not in index:
             strongconnect(node)
-
-    print(f"== B2. Import cycles ({len(sccs)} SCC with >1 member) ==")
-    for s in sccs:
-        print(f"  {' <-> '.join(sorted(s))}")
-    print()
+    return sccs
 
 
 def audit_layer_violations():

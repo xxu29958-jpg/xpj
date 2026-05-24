@@ -36,49 +36,71 @@ def _extract_amount_cents(text: str) -> int | None:
     return candidate.amount_cents if candidate else None
 
 
-def _amount_candidates(text: str) -> list[_AmountCandidate]:  # noqa: C901 - receipt-amount scoring heuristic; splitting the keyword/pattern matchers off would just spread the same branching across helpers
+def _amount_candidates(text: str) -> list[_AmountCandidate]:
     lines = text.splitlines()
+    candidates = [
+        *_primary_line_amount_candidates(lines),
+        *_labeled_amount_candidates(text, lines),
+        *_inline_amount_candidates(text, lines),
+    ]
+    return _apply_amount_cross_evidence(candidates)
+
+
+def _primary_line_amount_candidates(lines: list[str]) -> list[_AmountCandidate]:
     candidates: list[_AmountCandidate] = []
-
     for index, line in enumerate(lines):
-        line_text = line.strip()
-        match = PRIMARY_AMOUNT_LINE_PATTERN.match(line_text)
-        if match:
-            cents = _money_to_cents(match.group("amount"))
-            if cents is not None and 0 < cents < 10_000_000_00:
-                has_money_marker = _has_money_marker(line_text)
-                has_nearby_success = _has_nearby_success(lines, index)
-                if not (has_money_marker or has_nearby_success or match.group("sign")):
-                    continue
-                evidence = [f"line:{line_text}"]
-                if has_money_marker:
-                    evidence.append("money_marker")
-                if match.group("sign"):
-                    evidence.append("signed_primary_amount")
-                has_discount_context = _has_discount_context(lines, index)
-                if has_discount_context:
-                    evidence.append("discount_context:-50")
-                dimensions = _ScoreDimensions(
-                    source=28 if has_money_marker else 24,
-                    context=62 if has_nearby_success else 0,
-                    label=12 if match.group("sign") else 0,
-                    consistency=_amount_plausibility_score(cents),
-                    noise=-50 if has_discount_context else 0,
-                    evidence=tuple(evidence),
-                )
-                score = dimensions.total
-                if score > 0:
-                    candidates.append(
-                        _AmountCandidate(
-                            amount_cents=cents,
-                            score=score,
-                            line_index=index,
-                            source="line",
-                            evidence=dimensions.evidence,
-                            dimensions=dimensions,
-                        )
-                    )
+        candidate = _primary_line_amount_candidate(lines, index, line.strip())
+        if candidate is not None:
+            candidates.append(candidate)
+    return candidates
 
+
+def _primary_line_amount_candidate(
+    lines: list[str], index: int, line_text: str
+) -> _AmountCandidate | None:
+    match = PRIMARY_AMOUNT_LINE_PATTERN.match(line_text)
+    if not match:
+        return None
+    cents = _money_to_cents(match.group("amount"))
+    if cents is None or not 0 < cents < 10_000_000_00:
+        return None
+
+    has_money_marker = _has_money_marker(line_text)
+    has_nearby_success = _has_nearby_success(lines, index)
+    has_sign = bool(match.group("sign"))
+    if not (has_money_marker or has_nearby_success or has_sign):
+        return None
+
+    evidence = [f"line:{line_text}"]
+    if has_money_marker:
+        evidence.append("money_marker")
+    if has_sign:
+        evidence.append("signed_primary_amount")
+    has_discount_context = _has_discount_context(lines, index)
+    if has_discount_context:
+        evidence.append("discount_context:-50")
+    dimensions = _ScoreDimensions(
+        source=28 if has_money_marker else 24,
+        context=62 if has_nearby_success else 0,
+        label=12 if has_sign else 0,
+        consistency=_amount_plausibility_score(cents),
+        noise=-50 if has_discount_context else 0,
+        evidence=tuple(evidence),
+    )
+    if dimensions.total <= 0:
+        return None
+    return _AmountCandidate(
+        amount_cents=cents,
+        score=dimensions.total,
+        line_index=index,
+        source="line",
+        evidence=dimensions.evidence,
+        dimensions=dimensions,
+    )
+
+
+def _labeled_amount_candidates(text: str, lines: list[str]) -> list[_AmountCandidate]:
+    candidates: list[_AmountCandidate] = []
     for match in LABELED_AMOUNT_PATTERN.finditer(text):
         cents = _money_to_cents(match.group("amount"))
         if cents is None or not 0 < cents < 10_000_000_00:
@@ -109,7 +131,11 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:  # noqa: C901 - rec
                 dimensions=dimensions,
             )
         )
+    return candidates
 
+
+def _inline_amount_candidates(text: str, lines: list[str]) -> list[_AmountCandidate]:
+    candidates: list[_AmountCandidate] = []
     for pattern, source, base_score in INLINE_AMOUNT_PATTERNS:
         for match in pattern.finditer(text):
             cents = _money_to_cents(match.group("amount"))
@@ -138,11 +164,10 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:  # noqa: C901 - rec
                         cents, score, index, source, dimensions.evidence, dimensions
                     )
                 )
+    return candidates
 
-    return _apply_amount_cross_evidence(candidates)
 
-
-def _calibrate_amount_candidates(  # noqa: C901 - per-candidate score adjuster; branches encode the receipt-parsing heuristics one-to-one
+def _calibrate_amount_candidates(
     candidates: list[_AmountCandidate], context: _ReceiptContext
 ) -> list[_AmountCandidate]:
     has_signed_primary_near_success = any(
@@ -162,45 +187,14 @@ def _calibrate_amount_candidates(  # noqa: C901 - per-candidate score adjuster; 
         noise = 0
         evidence: list[str] = []
 
-        if context.profile == "alipay_bill_detail":
-            if candidate.source == "line" and any(
-                "signed_primary_amount" in item for item in candidate.evidence
-            ):
-                profile += 14
-                evidence.append("profile_alipay_detail_primary:+14")
-            if candidate.source == "label:订单金额" and has_signed_primary_near_success:
-                noise -= 28
-                evidence.append("profile_alipay_detail_order_amount:-28")
-        elif context.profile == "alipay_success_page":
-            if candidate.source in {"line", "currency"} and any(
-                "near_transaction_success" in item for item in candidate.evidence
-            ):
-                profile += 10
-                evidence.append("profile_alipay_success_amount:+10")
-        elif context.profile == "bank_reminder":
-            nearby_text = _nearby_text(
-                context.lines, candidate.line_index, before=1, after=1
-            )
-            if candidate.source.startswith("label:交易金额") or any(
-                marker in nearby_text for marker in ["支出人民币", "动账提醒"]
-            ):
-                profile += 12
-                evidence.append("profile_bank_transaction_amount:+12")
-                if "支出人民币" in nearby_text:
-                    context_score += 18
-                    evidence.append("bank_spend_sentence:+18")
-        elif context.profile == "taobao_flash_payment":
-            if _is_payment_sheet_amount(context, candidate):
-                profile += 18
-                structure += 58
-                evidence.append("payment_sheet_primary_amount:+76")
-            elif _is_before_payment_sheet(context, candidate.line_index):
-                noise -= 18
-                evidence.append("payment_sheet_product_area_amount:-18")
-        elif context.profile == "mobility_payment":
-            if candidate.source in {"yuan", "currency"}:
-                structure += 8
-                evidence.append("profile_mobility_inline_amount:+8")
+        profile_delta, context_delta, structure_delta, noise_delta, profile_evidence = (
+            _amount_profile_adjustments(candidate, context, has_signed_primary_near_success)
+        )
+        profile += profile_delta
+        context_score += context_delta
+        structure += structure_delta
+        noise += noise_delta
+        evidence.extend(profile_evidence)
 
         if _looks_like_status_bar_numeric_amount(context, candidate):
             noise -= 90
@@ -229,6 +223,99 @@ def _calibrate_amount_candidates(  # noqa: C901 - per-candidate score adjuster; 
             )
         )
     return calibrated
+
+
+def _amount_profile_adjustments(
+    candidate: _AmountCandidate,
+    context: _ReceiptContext,
+    has_signed_primary_near_success: bool,
+) -> tuple[int, int, int, int, list[str]]:
+    scorer = _AMOUNT_PROFILE_SCORERS.get(context.profile)
+    if scorer is None:
+        return 0, 0, 0, 0, []
+    return scorer(candidate, context, has_signed_primary_near_success)
+
+
+def _score_alipay_bill_detail_amount(
+    candidate: _AmountCandidate,
+    _context: _ReceiptContext,
+    has_signed_primary_near_success: bool,
+) -> tuple[int, int, int, int, list[str]]:
+    profile = 0
+    noise = 0
+    evidence: list[str] = []
+    if candidate.source == "line" and any(
+        "signed_primary_amount" in item for item in candidate.evidence
+    ):
+        profile += 14
+        evidence.append("profile_alipay_detail_primary:+14")
+    if candidate.source == "label:订单金额" and has_signed_primary_near_success:
+        noise -= 28
+        evidence.append("profile_alipay_detail_order_amount:-28")
+    return profile, 0, 0, noise, evidence
+
+
+def _score_alipay_success_page_amount(
+    candidate: _AmountCandidate,
+    _context: _ReceiptContext,
+    _has_signed_primary_near_success: bool,
+) -> tuple[int, int, int, int, list[str]]:
+    if candidate.source in {"line", "currency"} and any(
+        "near_transaction_success" in item for item in candidate.evidence
+    ):
+        return 10, 0, 0, 0, ["profile_alipay_success_amount:+10"]
+    return 0, 0, 0, 0, []
+
+
+def _score_bank_reminder_amount(
+    candidate: _AmountCandidate,
+    context: _ReceiptContext,
+    _has_signed_primary_near_success: bool,
+) -> tuple[int, int, int, int, list[str]]:
+    nearby_text = _nearby_text(context.lines, candidate.line_index, before=1, after=1)
+    if not (
+        candidate.source.startswith("label:交易金额")
+        or any(marker in nearby_text for marker in ["支出人民币", "动账提醒"])
+    ):
+        return 0, 0, 0, 0, []
+
+    context_score = 0
+    evidence = ["profile_bank_transaction_amount:+12"]
+    if "支出人民币" in nearby_text:
+        context_score += 18
+        evidence.append("bank_spend_sentence:+18")
+    return 12, context_score, 0, 0, evidence
+
+
+def _score_taobao_flash_payment_amount(
+    candidate: _AmountCandidate,
+    context: _ReceiptContext,
+    _has_signed_primary_near_success: bool,
+) -> tuple[int, int, int, int, list[str]]:
+    if _is_payment_sheet_amount(context, candidate):
+        return 18, 0, 58, 0, ["payment_sheet_primary_amount:+76"]
+    if _is_before_payment_sheet(context, candidate.line_index):
+        return 0, 0, 0, -18, ["payment_sheet_product_area_amount:-18"]
+    return 0, 0, 0, 0, []
+
+
+def _score_mobility_payment_amount(
+    candidate: _AmountCandidate,
+    _context: _ReceiptContext,
+    _has_signed_primary_near_success: bool,
+) -> tuple[int, int, int, int, list[str]]:
+    if candidate.source in {"yuan", "currency"}:
+        return 0, 0, 8, 0, ["profile_mobility_inline_amount:+8"]
+    return 0, 0, 0, 0, []
+
+
+_AMOUNT_PROFILE_SCORERS = {
+    "alipay_bill_detail": _score_alipay_bill_detail_amount,
+    "alipay_success_page": _score_alipay_success_page_amount,
+    "bank_reminder": _score_bank_reminder_amount,
+    "taobao_flash_payment": _score_taobao_flash_payment_amount,
+    "mobility_payment": _score_mobility_payment_amount,
+}
 
 
 def _amount_plausibility_score(cents: int) -> int:

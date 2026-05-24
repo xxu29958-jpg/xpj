@@ -5,8 +5,8 @@ target-version = "py311"
 [tool.ruff.lint]
 # Industry-recommended subset (see docs/rules/CODE_QUALITY_STANDARDS.md).
 # C901 (McCabe cyclomatic complexity) gates new code at the documented
-# "≤15 容忍" threshold; legacy functions above 15 carry per-line
-# ``# noqa: C901`` with a comment, queued for v1.0-era responsibility-split.
+# "≤15 容忍" threshold; historical per-line C901 suppressions have been
+# retired through responsibility-split refactors.
 select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "C901"]
 ignore = [
     # FastAPI Depends() / Query() / Path() in default arguments is the

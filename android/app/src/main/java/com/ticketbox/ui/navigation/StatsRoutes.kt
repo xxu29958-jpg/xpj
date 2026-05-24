@@ -9,9 +9,12 @@ import com.ticketbox.ui.screens.BudgetScreen
 import com.ticketbox.ui.screens.RecurringScreen
 import com.ticketbox.ui.screens.StatsScreen
 import com.ticketbox.viewmodel.BudgetViewModel
+import com.ticketbox.viewmodel.MonthlyStatsViewModel
 import com.ticketbox.viewmodel.RecurringViewModel
-import com.ticketbox.viewmodel.StatsViewModel
+import com.ticketbox.viewmodel.StatsBudgetViewModel
+import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.budgetViewModelFactory
+import com.ticketbox.viewmodel.mergeStatsUiState
 import com.ticketbox.viewmodel.recurringViewModelFactory
 
 @Composable
@@ -65,20 +68,59 @@ internal fun StatsRoute(
     shellState: MainShellState,
     screenFactory: MainScreenFactory,
 ) {
-    val statsViewModel: StatsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
-    val state by statsViewModel.uiState.collectAsStateWithLifecycle()
+    val monthlyStatsViewModel: MonthlyStatsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
+    val budgetViewModel: StatsBudgetViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
+    val reportsViewModel: StatsReportsViewModel = viewModel(factory = screenFactory.repositoryViewModelFactory)
+    val monthlyState by monthlyStatsViewModel.uiState.collectAsStateWithLifecycle()
+    val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
+    val reportsState by reportsViewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(shellState.dashboardCardsRevision) {
-        if (shellState.dashboardCardsRevision > 0) {
-            statsViewModel.refresh()
+    LaunchedEffect(shellState.dashboardCardsRevision, monthlyState.ledgerReady) {
+        if (shellState.dashboardCardsRevision > 0 && monthlyState.ledgerReady) {
+            monthlyStatsViewModel.refresh()
+            budgetViewModel.refresh(monthlyState.month, monthlyState.stats, force = true)
+            reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
         }
     }
 
+    LaunchedEffect(
+        monthlyState.ledgerReady,
+        monthlyState.activeLedgerId,
+        monthlyState.month,
+        monthlyState.selectedTag,
+    ) {
+        if (monthlyState.ledgerReady) {
+            reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
+        }
+    }
+
+    LaunchedEffect(
+        monthlyState.ledgerReady,
+        monthlyState.activeLedgerId,
+        monthlyState.month,
+        monthlyState.selectedTag,
+        monthlyState.stats,
+    ) {
+        if (monthlyState.ledgerReady) {
+            budgetViewModel.refresh(monthlyState.month, monthlyState.stats)
+        }
+    }
+
+    val state = mergeStatsUiState(
+        monthly = monthlyState,
+        budget = budgetState,
+        reports = reportsState,
+    )
+
     StatsScreen(
         state = state,
-        onMonthChange = statsViewModel::setMonth,
-        onTagChange = statsViewModel::setTag,
-        onRefresh = statsViewModel::refresh,
+        onMonthChange = monthlyStatsViewModel::setMonth,
+        onTagChange = monthlyStatsViewModel::setTag,
+        onRefresh = {
+            monthlyStatsViewModel.refresh()
+            budgetViewModel.refresh(monthlyState.month, monthlyState.stats, force = true)
+            reportsViewModel.refresh(monthlyState.month, monthlyState.selectedTag)
+        },
         onOpenBudget = shellState::openBudget,
         onOpenRecurring = shellState::openRecurring,
     )

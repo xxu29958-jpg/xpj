@@ -36,7 +36,9 @@ fun repositoryViewModelFactory(
             PendingViewModel::class.java -> PendingViewModel(repository)
             LedgerViewModel::class.java -> LedgerViewModel(repository)
             GlobalSearchViewModel::class.java -> GlobalSearchViewModel(repository)
-            StatsViewModel::class.java -> StatsViewModel(repository, recurringRepository, budgetRepository, reportsRepository)
+            MonthlyStatsViewModel::class.java -> MonthlyStatsViewModel(repository, recurringRepository)
+            StatsBudgetViewModel::class.java -> StatsBudgetViewModel(repository, budgetRepository)
+            StatsReportsViewModel::class.java -> StatsReportsViewModel(reportsRepository)
             else -> error("Unsupported ViewModel: ${modelClass.name}")
         } as T
     }

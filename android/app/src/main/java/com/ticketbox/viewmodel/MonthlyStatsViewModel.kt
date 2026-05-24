@@ -1,0 +1,306 @@
+package com.ticketbox.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.repository.RecurringActions
+import com.ticketbox.data.repository.StatsActions
+import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.domain.model.filterConfirmedExpenses
+import com.ticketbox.domain.model.monthlyCategoryInsight
+import com.ticketbox.domain.model.monthlyStatsFromConfirmedExpenses
+import com.ticketbox.domain.model.monthlySpendingComparison
+import com.ticketbox.domain.model.recentDailySpending
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.time.YearMonth
+
+private data class MonthlyStatsRefreshSnapshot(
+    val generation: Long,
+    val ledgerId: String?,
+    val month: String,
+    val selectedTag: String,
+)
+
+class MonthlyStatsViewModel(
+    private val repository: StatsActions,
+    private val recurringRepository: RecurringActions,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(MonthlyStatsUiState())
+    val uiState: StateFlow<MonthlyStatsUiState> = _uiState.asStateFlow()
+    private var confirmedCache: List<Expense> = emptyList()
+    private var activeLedgerId: String? = null
+    private var refreshGeneration = 0L
+    private var observedLedgerOnce = false
+
+    init {
+        observeLedgerChanges()
+        observeDailyTrend()
+    }
+
+    private fun observeLedgerChanges() {
+        viewModelScope.launch {
+            repository.observeActiveLedgerId()
+                .distinctUntilChanged()
+                .collect { ledgerId ->
+                    val normalizedLedgerId = ledgerId?.takeIf { it.isNotBlank() }
+                    if (observedLedgerOnce && activeLedgerId == normalizedLedgerId) {
+                        return@collect
+                    }
+                    observedLedgerOnce = true
+                    activeLedgerId = normalizedLedgerId
+                    refreshGeneration += 1
+                    confirmedCache = emptyList()
+                    _uiState.update {
+                        it.copy(
+                            stats = null,
+                            statsSource = StatsSource.None,
+                            lifestyleStats = null,
+                            dailyTrend = emptyList(),
+                            monthComparison = null,
+                            categoryInsight = null,
+                            recurringItems = emptyList(),
+                            recurringCandidates = emptyList(),
+                            dataQuality = null,
+                            loading = false,
+                            message = null,
+                            ledgerReady = true,
+                            activeLedgerId = normalizedLedgerId,
+                        )
+                    }
+                    loadMonths()
+                    loadTags()
+                    refresh()
+                }
+        }
+    }
+
+    private fun loadMonths() {
+        viewModelScope.launch {
+            repository.months()
+                .onSuccess { months -> _uiState.update { it.copy(months = months) } }
+        }
+    }
+
+    private fun loadTags() {
+        viewModelScope.launch {
+            repository.tags()
+                .onSuccess { tags -> _uiState.update { it.copy(tags = tags) } }
+        }
+    }
+
+    private fun observeDailyTrend() {
+        viewModelScope.launch {
+            repository.observeConfirmed().collect { expenses ->
+                confirmedCache = expenses
+                _uiState.update {
+                    val visibleExpenses = filterConfirmedExpenses(
+                        expenses = expenses,
+                        month = "",
+                        category = "",
+                        tag = it.selectedTag,
+                    )
+                    val localStats = monthlyStatsFromConfirmedExpenses(expenses, it.month, it.selectedTag)
+                    val visibleStats = it.stats ?: localStats
+                    val nextSource = when {
+                        it.stats != null -> it.statsSource
+                        visibleStats != null -> StatsSource.LocalFallback
+                        else -> StatsSource.None
+                    }
+                    it.copy(
+                        stats = visibleStats,
+                        statsSource = nextSource,
+                        dailyTrend = recentDailySpending(visibleExpenses),
+                        monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
+                        categoryInsight = monthlyCategoryInsight(visibleStats),
+                    )
+                }
+            }
+        }
+    }
+
+    fun setMonth(value: String) {
+        _uiState.update {
+            val visibleExpenses = filterConfirmedExpenses(
+                expenses = confirmedCache,
+                month = "",
+                category = "",
+                tag = it.selectedTag,
+            )
+            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, value, it.selectedTag)
+            it.copy(
+                month = value,
+                stats = localStats,
+                statsSource = if (localStats != null) StatsSource.LocalFallback else StatsSource.None,
+                dailyTrend = recentDailySpending(visibleExpenses),
+                monthComparison = monthlySpendingComparison(visibleExpenses, value),
+                categoryInsight = monthlyCategoryInsight(localStats),
+            )
+        }
+        refresh()
+    }
+
+    fun setTag(value: String) {
+        val cleanTag = value.trim()
+        _uiState.update {
+            val visibleExpenses = filterConfirmedExpenses(
+                expenses = confirmedCache,
+                month = "",
+                category = "",
+                tag = cleanTag,
+            )
+            val localStats = monthlyStatsFromConfirmedExpenses(confirmedCache, it.month, cleanTag)
+            it.copy(
+                selectedTag = cleanTag,
+                stats = localStats,
+                dailyTrend = recentDailySpending(visibleExpenses),
+                monthComparison = monthlySpendingComparison(visibleExpenses, it.month),
+                categoryInsight = monthlyCategoryInsight(localStats),
+            )
+        }
+        refresh()
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            val snapshot = beginRefreshSnapshot()
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    message = null,
+                    lastUploadAt = repository.lastUploadAt(),
+                )
+            }
+            val month = snapshot.month.trim().ifBlank { null }
+            val tag = snapshot.selectedTag.trim().ifBlank { null }
+            loadRecurring(month, snapshot)
+            loadRecurringCandidates(snapshot)
+            loadDataQuality(snapshot)
+            val statsResult = repository.monthlyStats(month = month, tag = tag)
+            if (!snapshot.isCurrent()) return@launch
+            statsResult
+                .onSuccess { stats -> handleStatsSuccess(stats, month, tag, snapshot) }
+                .onFailure { error -> handleStatsFailure(error, month, tag, snapshot) }
+        }
+    }
+
+    private fun loadRecurring(month: String?, snapshot: MonthlyStatsRefreshSnapshot) {
+        viewModelScope.launch {
+            val result = recurringRepository.items(status = null, includeArchived = false, month = month)
+            if (!snapshot.isCurrent()) return@launch
+            result.onSuccess { items ->
+                _uiState.update { it.copy(recurringItems = items) }
+            }
+        }
+    }
+
+    private fun loadRecurringCandidates(snapshot: MonthlyStatsRefreshSnapshot) {
+        viewModelScope.launch {
+            val result = recurringRepository.candidates()
+            if (!snapshot.isCurrent()) return@launch
+            result.onSuccess { items ->
+                _uiState.update { it.copy(recurringCandidates = items) }
+            }
+        }
+    }
+
+    private fun loadDataQuality(snapshot: MonthlyStatsRefreshSnapshot) {
+        viewModelScope.launch {
+            val result = repository.dataQualitySummary()
+            if (!snapshot.isCurrent()) return@launch
+            result.onSuccess { summary ->
+                _uiState.update { it.copy(dataQuality = summary) }
+            }
+        }
+    }
+
+    private suspend fun handleStatsSuccess(
+        stats: MonthlyStats,
+        month: String?,
+        tag: String?,
+        snapshot: MonthlyStatsRefreshSnapshot,
+    ) {
+        val lifestyleResult = repository.lifestyleStats(month)
+        if (!snapshot.isCurrent()) return
+        lifestyleResult
+            .onSuccess { lifestyle ->
+                repository.syncConfirmed(month = month, category = null, tag = tag)
+                if (!snapshot.isCurrent()) return
+                _uiState.update {
+                    it.copy(
+                        stats = stats,
+                        statsSource = StatsSource.Backend,
+                        lifestyleStats = lifestyle,
+                        categoryInsight = monthlyCategoryInsight(stats),
+                        loading = false,
+                    )
+                }
+            }
+            .onFailure { error ->
+                if (!snapshot.isCurrent()) return
+                _uiState.update {
+                    it.copy(
+                        stats = stats,
+                        statsSource = StatsSource.Backend,
+                        categoryInsight = monthlyCategoryInsight(stats),
+                        loading = false,
+                        message = error.message ?: "生活统计暂时打不开，请稍后再试。",
+                    )
+                }
+            }
+    }
+
+    private fun handleStatsFailure(
+        error: Throwable,
+        month: String?,
+        tag: String?,
+        snapshot: MonthlyStatsRefreshSnapshot,
+    ) {
+        if (!snapshot.isCurrent()) return
+        _uiState.update {
+            val fallbackStats = month?.let { value ->
+                monthlyStatsFromConfirmedExpenses(confirmedCache, value, tag.orEmpty())
+            }
+            val visibleStats = fallbackStats ?: it.stats
+            val nextSource = when {
+                fallbackStats != null -> StatsSource.LocalFallback
+                visibleStats != null -> it.statsSource
+                else -> StatsSource.None
+            }
+            it.copy(
+                stats = visibleStats,
+                statsSource = nextSource,
+                categoryInsight = monthlyCategoryInsight(visibleStats),
+                loading = false,
+                message = if (fallbackStats != null) {
+                    "已显示本机账本统计，联网后会自动更新。"
+                } else {
+                    error.message ?: "统计暂时打不开，请稍后再试。"
+                },
+            )
+        }
+    }
+
+    private fun beginRefreshSnapshot(): MonthlyStatsRefreshSnapshot {
+        val state = _uiState.value
+        refreshGeneration += 1
+        return MonthlyStatsRefreshSnapshot(
+            generation = refreshGeneration,
+            ledgerId = activeLedgerId,
+            month = state.month.ifBlank { YearMonth.now().toString() },
+            selectedTag = state.selectedTag.trim(),
+        )
+    }
+
+    private fun MonthlyStatsRefreshSnapshot.isCurrent(): Boolean {
+        val state = _uiState.value
+        return generation == refreshGeneration &&
+            ledgerId == activeLedgerId &&
+            month == state.month &&
+            selectedTag == state.selectedTag.trim()
+    }
+}

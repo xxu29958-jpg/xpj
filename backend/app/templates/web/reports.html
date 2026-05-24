@@ -18,7 +18,12 @@
 {% set _cur = six_month_trend[-1].amount_cents if six_month_trend else 0 %}
 {% set _prev = six_month_trend[-2].amount_cents if six_month_trend and (six_month_trend | length) > 1 else 0 %}
 {% set _avg6 = (six_month_trend | map(attribute='amount_cents') | list | sum) / (six_month_trend | length) if six_month_trend else 0 %}
-{% set _over_months = six_month_trend | selectattr('budget_cents', 'gt', 0) | selectattr('amount_cents', 'gt', 'budget_cents') | list if six_month_trend else [] %}
+{% set _over = namespace(count=0) %}
+{% for item in six_month_trend or [] %}
+  {% if item.budget_cents > 0 and item.amount_cents > item.budget_cents %}
+    {% set _over.count = _over.count + 1 %}
+  {% endif %}
+{% endfor %}
 <div class="kpi-strip">
   <div class="kpi-cell">
     <div class="label">本月支出</div>
@@ -45,7 +50,7 @@
   </div>
   <div class="kpi-cell">
     <div class="label">超支月份</div>
-    <div class="val">{{ _over_months | length }} <span class="yuan" style="font-size:12px">个月</span></div>
+    <div class="val">{{ _over.count }} <span class="yuan" style="font-size:12px">个月</span></div>
     <div class="foot">最近 6 个月内</div>
   </div>
 </div>

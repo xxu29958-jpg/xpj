@@ -2,15 +2,7 @@
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
-
-from app.database import SessionLocal
-from app.models import Expense
 
 
 def test_web_merchants_local_returns_200(web_client: TestClient) -> None:

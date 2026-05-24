@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv as csv_module
 from datetime import timedelta
 from io import BytesIO
 
@@ -18,7 +17,6 @@ from app.services.csv_import_batch_service import (
     _resolve_csv_import_idempotency_conflict,
     apply_csv_import_batch,
     create_csv_import_batch,
-    list_csv_import_rows,
 )
 from app.services.time_service import now_utc
 

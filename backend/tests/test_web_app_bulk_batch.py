@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -127,7 +125,7 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     assert 'name="category"' in resp.text
     assert 'name="merchant"' in resp.text
 
-    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop.js"
+    js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
     js = js_path.read_text(encoding="utf-8")
     assert 'h.name = "expense_ids";' in js
 

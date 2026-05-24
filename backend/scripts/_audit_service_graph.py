@@ -32,8 +32,16 @@ from collections import defaultdict
 KNOWN_CYCLES: set[frozenset[str]] = set()
 
 
-def main() -> int:  # noqa: C901 - one-shot read-only audit script; flat top-level driver, splitting wouldn't reduce branching
-    base = pathlib.Path("app/services")
+def main() -> int:
+    graph, rev_graph, module_graph = _build_service_graphs(pathlib.Path("app/services"))
+    _print_fanout(graph, rev_graph)
+    found_all = _print_cycles(graph, module_graph)
+    return _status_for_cycles(found_all)
+
+
+def _build_service_graphs(
+    base: pathlib.Path,
+) -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, set[str]]]:
     # Cross-package graph: src/target collapsed to ``app.services.X``
     # for "is service A's import surface coupled to service B's?"
     graph: dict[str, set[str]] = defaultdict(set)
@@ -64,7 +72,10 @@ def main() -> int:  # noqa: C901 - one-shot read-only audit script; flat top-lev
                 if target.split(".")[2] != me.split(".")[2]:
                     graph[me].add(target)
                     rev_graph[target].add(me)
+    return graph, rev_graph, module_graph
 
+
+def _print_fanout(graph: dict[str, set[str]], rev_graph: dict[str, set[str]]) -> None:
     print("=== Service-to-service fanout (top 15 outgoing) ===")
     for src, deps in sorted(graph.items(), key=lambda x: -len(x[1]))[:15]:
         print(f"  {len(deps):2d}  {src}")
@@ -76,43 +87,16 @@ def main() -> int:  # noqa: C901 - one-shot read-only audit script; flat top-lev
     for tgt, importers in sorted(rev_graph.items(), key=lambda x: -len(x[1]))[:12]:
         print(f"  {len(importers):2d}  {tgt}")
 
+
+def _print_cycles(graph: dict[str, set[str]], module_graph: dict[str, set[str]]) -> set[frozenset[str]]:
     print()
     print("=== Cycle detection (package + module level) ===")
-
-    def detect_cycles(g: dict[str, set[str]]) -> set[frozenset[str]]:
-        seen: dict[str, int] = {}
-        in_stack: set[str] = set()
-        stack_list: list[str] = []
-        found: list[list[str]] = []
-
-        def dfs(node: str) -> None:
-            if node in in_stack:
-                cycle_start = stack_list.index(node)
-                found.append(stack_list[cycle_start:] + [node])
-                return
-            if node in seen:
-                return
-            seen[node] = 1
-            in_stack.add(node)
-            stack_list.append(node)
-            for nxt in g.get(node, ()):
-                dfs(nxt)
-            in_stack.discard(node)
-            stack_list.pop()
-
-        for n in list(g.keys()):
-            dfs(n)
-        return {frozenset(c) for c in found}
-
-    package_cycles = detect_cycles(graph)
-    module_cycles = detect_cycles(module_graph)
+    package_cycles = _detect_cycles(graph)
+    module_cycles = _detect_cycles(module_graph)
     # Module cycles whose every node collapses to a single package are
     # intra-package; package-level cycles are everything else. We
     # report both but the failure mode is the same.
     found_all = package_cycles | module_cycles
-
-    new_cycles = found_all - KNOWN_CYCLES
-    stale_allowlist = KNOWN_CYCLES - found_all
 
     # NOTE: don't return early on "no cycles found" — that path used to
     # bypass the stale_allowlist check, letting KNOWN_CYCLES rot
@@ -126,6 +110,38 @@ def main() -> int:  # noqa: C901 - one-shot read-only audit script; flat top-lev
             kind = "known" if c in KNOWN_CYCLES else "NEW"
             print(f"  cycle ({kind}):", " <-> ".join(sorted(c)))
         print()
+    return found_all
+
+
+def _detect_cycles(graph: dict[str, set[str]]) -> set[frozenset[str]]:
+    seen: dict[str, int] = {}
+    in_stack: set[str] = set()
+    stack_list: list[str] = []
+    found: list[list[str]] = []
+
+    def dfs(node: str) -> None:
+        if node in in_stack:
+            cycle_start = stack_list.index(node)
+            found.append(stack_list[cycle_start:] + [node])
+            return
+        if node in seen:
+            return
+        seen[node] = 1
+        in_stack.add(node)
+        stack_list.append(node)
+        for nxt in graph.get(node, ()):
+            dfs(nxt)
+        in_stack.discard(node)
+        stack_list.pop()
+
+    for node in list(graph.keys()):
+        dfs(node)
+    return {frozenset(cycle) for cycle in found}
+
+
+def _status_for_cycles(found_all: set[frozenset[str]]) -> int:
+    new_cycles = found_all - KNOWN_CYCLES
+    stale_allowlist = KNOWN_CYCLES - found_all
 
     if stale_allowlist:
         print("=== Stale allowlist entries (cycle no longer present) ===")

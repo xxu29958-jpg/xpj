@@ -24,7 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class StatsViewModelTest {
+class MonthlyStatsViewModelTest {
     private fun statsTest(block: suspend TestScope.() -> Unit) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
@@ -47,7 +47,7 @@ class StatsViewModelTest {
                 mayResponse.await()
             }
         }
-        val viewModel = StatsViewModel(
+        val viewModel = MonthlyStatsViewModel(
             repository = stats,
             recurringRepository = FakeStatsRecurringActions(),
         )
@@ -73,7 +73,7 @@ class StatsViewModelTest {
     @Test
     fun statsSourceMarksBackendOnSuccess() = statsTest {
         val stats = FakeStatsActions()
-        val viewModel = StatsViewModel(
+        val viewModel = MonthlyStatsViewModel(
             repository = stats,
             recurringRepository = FakeStatsRecurringActions(),
         )
@@ -86,7 +86,7 @@ class StatsViewModelTest {
     fun statsSourceMarksLocalFallbackOnBackendFailure() = statsTest {
         val stats = FakeStatsActions()
         stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
-        val viewModel = StatsViewModel(
+        val viewModel = MonthlyStatsViewModel(
             repository = stats,
             recurringRepository = FakeStatsRecurringActions(),
         )

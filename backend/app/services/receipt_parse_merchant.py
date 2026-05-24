@@ -37,43 +37,77 @@ def _extract_merchant(text: str) -> str | None:
     return candidate.value if candidate else None
 
 
-def _merchant_candidates(text: str) -> list[_MerchantCandidate]:  # noqa: C901 - merchant-name scoring heuristic; branches enumerate domain signals (length, position, blacklist), splitting flattens not simplifies
+def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
     lines = text.splitlines()
-    candidates: list[_MerchantCandidate] = []
+    return [
+        *_success_merchant_candidates(text, lines),
+        *_payment_method_merchant_candidates(text, lines),
+        *_payment_sheet_merchant_candidates(text, lines),
+        *_labeled_merchant_candidates(text),
+        *_keyword_merchant_candidates(text),
+        *_first_line_merchant_candidates(text, lines),
+    ]
 
+
+def _success_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:
+    candidates: list[_MerchantCandidate] = []
     for index, line in enumerate(lines):
         if not any(keyword in line for keyword in TRANSACTION_SUCCESS_KEYWORDS):
             continue
 
-        for candidate_index in range(index - 1, max(-1, index - 6), -1):
-            cleaned = _clean_merchant(lines[candidate_index])
-            distance = index - candidate_index
-            candidate = _score_merchant_candidate(
-                text=text,
-                value=cleaned,
-                base_score=104 - distance * 4,
-                line_index=candidate_index,
-                source="success_title",
-                require_no_digits=False,
-            )
-            if candidate:
-                candidates.append(candidate)
+        candidates.extend(
+            _nearby_success_title_candidates(text, lines, success_index=index)
+        )
 
         if line.strip() == "支付成功":
-            for candidate_index in range(index + 1, min(len(lines), index + 10)):
-                cleaned = _clean_merchant(lines[candidate_index])
-                distance = candidate_index - index
-                candidate = _score_merchant_candidate(
-                    text=text,
-                    value=cleaned,
-                    base_score=94 - distance * 3,
-                    line_index=candidate_index,
-                    source="success_body",
-                    require_no_digits=True,
-                )
-                if candidate:
-                    candidates.append(candidate)
+            candidates.extend(
+                _nearby_success_body_candidates(text, lines, success_index=index)
+            )
+    return candidates
 
+
+def _nearby_success_title_candidates(
+    text: str, lines: list[str], *, success_index: int
+) -> list[_MerchantCandidate]:
+    candidates: list[_MerchantCandidate] = []
+    for candidate_index in range(success_index - 1, max(-1, success_index - 6), -1):
+        cleaned = _clean_merchant(lines[candidate_index])
+        distance = success_index - candidate_index
+        candidate = _score_merchant_candidate(
+            text=text,
+            value=cleaned,
+            base_score=104 - distance * 4,
+            line_index=candidate_index,
+            source="success_title",
+            require_no_digits=False,
+        )
+        if candidate:
+            candidates.append(candidate)
+    return candidates
+
+
+def _nearby_success_body_candidates(
+    text: str, lines: list[str], *, success_index: int
+) -> list[_MerchantCandidate]:
+    candidates: list[_MerchantCandidate] = []
+    for candidate_index in range(success_index + 1, min(len(lines), success_index + 10)):
+        cleaned = _clean_merchant(lines[candidate_index])
+        distance = candidate_index - success_index
+        candidate = _score_merchant_candidate(
+            text=text,
+            value=cleaned,
+            base_score=94 - distance * 3,
+            line_index=candidate_index,
+            source="success_body",
+            require_no_digits=True,
+        )
+        if candidate:
+            candidates.append(candidate)
+    return candidates
+
+
+def _payment_method_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:
+    candidates: list[_MerchantCandidate] = []
     for index, line in enumerate(lines):
         if not PAYMENT_METHOD_LINE_PATTERN.match(line.strip()):
             continue
@@ -90,7 +124,11 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:  # noqa: C901 -
             )
             if candidate:
                 candidates.append(candidate)
+    return candidates
 
+
+def _payment_sheet_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:
+    candidates: list[_MerchantCandidate] = []
     for index, line in enumerate(lines):
         if not any(marker in line for marker in PAYMENT_SHEET_MERCHANT_MARKERS):
             continue
@@ -104,7 +142,11 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:  # noqa: C901 -
         )
         if candidate:
             candidates.append(candidate)
+    return candidates
 
+
+def _labeled_merchant_candidates(text: str) -> list[_MerchantCandidate]:
+    candidates: list[_MerchantCandidate] = []
     for match in MERCHANT_LABEL_PATTERN.finditer(text):
         cleaned = _clean_merchant(match.group("value"))
         label = match.group("label")
@@ -120,7 +162,11 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:  # noqa: C901 -
         )
         if candidate:
             candidates.append(candidate)
+    return candidates
 
+
+def _keyword_merchant_candidates(text: str) -> list[_MerchantCandidate]:
+    candidates: list[_MerchantCandidate] = []
     lower_text = text.lower()
     for keyword in MERCHANT_KEYWORDS:
         if keyword.lower() not in lower_text:
@@ -138,8 +184,13 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:  # noqa: C901 -
         )
         if candidate:
             candidates.append(candidate)
+    return candidates
 
-    first_line = text.splitlines()[0].strip()
+
+def _first_line_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:
+    if not lines:
+        return []
+    first_line = lines[0].strip()
     candidate = _score_merchant_candidate(
         text=text,
         value=_clean_merchant(first_line),
@@ -149,9 +200,8 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:  # noqa: C901 -
         require_no_digits=True,
     )
     if candidate:
-        candidates.append(candidate)
-
-    return candidates
+        return [candidate]
+    return []
 
 
 _INSTITUTION_LABEL_KEYWORDS: tuple[str, ...] = ("收单机构", "清算机构", "收款方全称")

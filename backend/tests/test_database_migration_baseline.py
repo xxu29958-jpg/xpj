@@ -1,7 +1,6 @@
 """Empty-database init + schema migration version tracking + identity seed."""
 from __future__ import annotations
 
-import pytest
 from sqlalchemy import inspect, text
 
 import app.database as database
