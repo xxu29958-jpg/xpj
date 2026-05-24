@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}收入计划 · 小票夹{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">收入计划</h1>
+  <div class="page-sub">声明每月的收入来源、金额、发薪日。用于计算"本月可自由支配"。</div>
+</div>
+
+{% if message %}<div class="callout-info">{{ message }}</div>{% endif %}
+{% if error %}<div class="callout-info callout-info--danger">{{ error }}</div>{% endif %}
+{% if not can_write %}
+<div class="callout-info">只读角色可以查看收入计划，但不能添加或修改。</div>
+{% endif %}
+
+<div class="dt-card">
+  <div class="dt-eyebrow">月度收入总额</div>
+  <div class="kpi-amount">
+    <span class="yuan">{{ home_currency_symbol }}</span>{{ total_yuan }}
+  </div>
+  <div class="dt-meta">来自下方所有"在用"状态的收入计划。</div>
+</div>
+
+{% if can_write %}
+<div class="dt-card">
+  <div class="dt-eyebrow">添加收入</div>
+  <form method="post" action="/web/income-plans/create" class="dt-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="dt-form-row">
+      <label class="dt-label">名称</label>
+      <input class="dt-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资">
+    </div>
+    <div class="dt-form-row">
+      <label class="dt-label">类型</label>
+      <select class="dt-input" name="source_type">
+        <option value="salary">工资</option>
+        <option value="bonus">奖金</option>
+        <option value="freelance">副业 / 接单</option>
+        <option value="rental">租金</option>
+        <option value="other">其它</option>
+      </select>
+    </div>
+    <div class="dt-form-row">
+      <label class="dt-label">金额（元 / 月）</label>
+      <input class="dt-input" type="number" name="amount_yuan" step="0.01" min="0" required>
+    </div>
+    <div class="dt-form-row">
+      <label class="dt-label">发薪日（1-31）</label>
+      <input class="dt-input" type="number" name="pay_day" min="1" max="31" required value="10">
+    </div>
+    <div class="dt-form-actions">
+      <button class="dt-btn dt-btn--primary" type="submit">添加</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="dt-card">
+  <div class="dt-eyebrow">在用</div>
+  {% if plans_active %}
+  <table class="dt-table">
+    <thead>
+      <tr>
+        <th>名称</th>
+        <th>类型</th>
+        <th class="dt-num">金额</th>
+        <th>发薪日</th>
+        {% if can_write %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for plan in plans_active %}
+      <tr>
+        <td>{{ plan.label }}</td>
+        <td>{{ plan.source_type }}</td>
+        <td class="dt-num">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
+        <td>{{ plan.pay_day }} 号</td>
+        {% if can_write %}
+        <td>
+          <form method="post" action="/web/income-plans/{{ plan.public_id }}/archive" class="dt-inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="dt-btn dt-btn--ghost" type="submit">归档</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="dt-meta">还没有收入计划。添加第一笔后，"本月可自由支配"才能算出来。</div>
+  {% endif %}
+</div>
+
+{% if plans_archived %}
+<div class="dt-card">
+  <div class="dt-eyebrow">已归档</div>
+  <table class="dt-table">
+    <thead>
+      <tr>
+        <th>名称</th>
+        <th>类型</th>
+        <th class="dt-num">原金额</th>
+        {% if can_write %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for plan in plans_archived %}
+      <tr>
+        <td class="dt-text-muted">{{ plan.label }}</td>
+        <td class="dt-text-muted">{{ plan.source_type }}</td>
+        <td class="dt-num dt-text-muted">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
+        {% if can_write %}
+        <td>
+          <form method="post" action="/web/income-plans/{{ plan.public_id }}/restore" class="dt-inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="dt-btn dt-btn--ghost" type="submit">恢复</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

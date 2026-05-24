@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # income_plans CRUD
 # ---------------------------------------------------------------------------

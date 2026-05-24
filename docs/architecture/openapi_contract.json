@@ -993,6 +993,60 @@
         "title": "Body_owner_settings_set_public_base_url_owner_settings_public_base_url_post",
         "type": "object"
       },
+      "Body_post_archive_web_income_plans__public_id__archive_post": {
+        "properties": {
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
+          }
+        },
+        "title": "Body_post_archive_web_income_plans__public_id__archive_post",
+        "type": "object"
+      },
+      "Body_post_create_web_income_plans_create_post": {
+        "properties": {
+          "amount_yuan": {
+            "default": "",
+            "title": "Amount Yuan",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
+          },
+          "pay_day": {
+            "default": "",
+            "title": "Pay Day",
+            "type": "string"
+          },
+          "source_type": {
+            "default": "salary",
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "title": "Body_post_create_web_income_plans_create_post",
+        "type": "object"
+      },
       "Body_post_csv_import_batch_api_imports_csv_post": {
         "properties": {
           "csv_file": {
@@ -1005,6 +1059,23 @@
           "csv_file"
         ],
         "title": "Body_post_csv_import_batch_api_imports_csv_post",
+        "type": "object"
+      },
+      "Body_post_restore_web_income_plans__public_id__restore_post": {
+        "properties": {
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
+          }
+        },
+        "title": "Body_post_restore_web_income_plans__public_id__restore_post",
         "type": "object"
       },
       "Body_web_budgets_save_web_budgets_save_post": {
@@ -16483,6 +16554,103 @@
         ]
       }
     },
+    "/web/budget-advise": {
+      "get": {
+        "operationId": "page_budget_advise_web_budget_advise_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "in": "query",
+            "name": "savings_target_yuan",
+            "required": false,
+            "schema": {
+              "default": 0.0,
+              "minimum": 0,
+              "title": "Savings Target Yuan",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reserved_buffer_yuan",
+            "required": false,
+            "schema": {
+              "default": 0.0,
+              "minimum": 0,
+              "title": "Reserved Buffer Yuan",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_advise",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Run Advise",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Page Budget Advise",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/budgets": {
       "get": {
         "operationId": "web_budgets_web_budgets_get",
@@ -18382,6 +18550,223 @@
           }
         },
         "summary": "Web Import Batch Errors Csv",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/income-plans": {
+      "get": {
+        "operationId": "page_income_plans_web_income_plans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ledger Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "message",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Page Income Plans",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/income-plans/create": {
+      "post": {
+        "operationId": "post_create_web_income_plans_create_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_create_web_income_plans_create_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Create",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/income-plans/{public_id}/archive": {
+      "post": {
+        "operationId": "post_archive_web_income_plans__public_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_archive_web_income_plans__public_id__archive_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Archive",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/income-plans/{public_id}/restore": {
+      "post": {
+        "operationId": "post_restore_web_income_plans__public_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_restore_web_income_plans__public_id__restore_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Restore",
         "tags": [
           "web"
         ]

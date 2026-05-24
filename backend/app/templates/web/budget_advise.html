@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}AI 预算建议 · 小票夹{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">AI 预算建议</h1>
+  <div class="page-sub">{{ month }} · 本月可自由支配 + 可选的 AI 建议（默认不调用 AI）。</div>
+</div>
+
+<div class="dt-card">
+  <div class="dt-eyebrow">本月可自由支配</div>
+  <div class="kpi-amount">
+    <span class="yuan">{{ home_currency_symbol }}</span>{{ discretionary_yuan }}
+  </div>
+  <div class="dt-meta">
+    {{ home_currency_symbol }}{{ income_yuan }} 收入
+    − {{ home_currency_symbol }}{{ fixed_yuan }} 固定支出
+    − {{ home_currency_symbol }}{{ savings_yuan }} 储蓄目标
+    − {{ home_currency_symbol }}{{ reserved_yuan }} 备用金
+  </div>
+</div>
+
+<form method="get" action="/web/budget-advise" class="dt-card">
+  <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <div class="dt-eyebrow">参数</div>
+  <div class="dt-form-row">
+    <label class="dt-label">月份</label>
+    <input class="dt-input" type="month" name="month" value="{{ month }}">
+  </div>
+  <div class="dt-form-row">
+    <label class="dt-label">储蓄目标（元）</label>
+    <input class="dt-input" type="number" name="savings_target_yuan" min="0" step="0.01" value="{{ savings_target_yuan }}">
+  </div>
+  <div class="dt-form-row">
+    <label class="dt-label">备用金（元）</label>
+    <input class="dt-input" type="number" name="reserved_buffer_yuan" min="0" step="0.01" value="{{ reserved_buffer_yuan }}">
+  </div>
+  <div class="dt-form-actions">
+    <button class="dt-btn" type="submit">重新计算</button>
+    {% if provider_enabled %}
+    <button class="dt-btn dt-btn--primary" type="submit" name="run_advise" value="true">
+      调用 AI 建议
+    </button>
+    {% endif %}
+  </div>
+</form>
+
+<div class="dt-card">
+  <div class="dt-eyebrow">AI 建议</div>
+  {% if not provider_enabled %}
+  <div class="dt-meta">
+    AI 建议未启用 (BUDGET_ADVISOR_PROVIDER=empty)。当前 provider：<code>{{ provider_name }}</code>。
+    要启用本地或云端 AI，参考 ADR-0036 设置 <code>BUDGET_ADVISOR_BASE_URL</code> / <code>BUDGET_ADVISOR_MODEL</code>。
+  </div>
+  {% elif advise_error %}
+  <div class="callout-info callout-info--danger">{{ advise_error }}</div>
+  {% elif not run_advise %}
+  <div class="dt-meta">点击上方"调用 AI 建议"按钮获取建议。AI 只看到匿名化的分类聚合，不会看到真实商户名 / 真实姓名 / 图片。</div>
+  {% elif advice is none %}
+  <div class="dt-meta">本次 AI 调用没有返回建议（可能 provider 暂时不可用，或数据不足）。本地预算计算仍按上方数据正常工作。</div>
+  {% else %}
+  <div class="dt-h4">{{ advice.summary }}</div>
+  {% if advice.confidence is not none %}
+  <div class="dt-meta">置信度：{{ '%.0f' % (advice.confidence * 100) }}%</div>
+  {% endif %}
+  {% if advice.suggestions %}
+  <table class="dt-table">
+    <thead>
+      <tr>
+        <th>分类</th>
+        <th class="dt-num">建议金额</th>
+        <th>理由</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in advice.suggestions %}
+      <tr>
+        <td>{{ s.category if s.category is not none else '（整体）' }}</td>
+        <td class="dt-num">{{ home_currency_symbol }}{{ '%.2f' % (s.suggested_amount_cents / 100) }}</td>
+        <td>{{ s.rationale }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="dt-meta">⚠ AI 给的是建议，不是预算。要采纳请到"月度预算"页面手动设置。</div>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}

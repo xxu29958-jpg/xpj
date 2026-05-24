@@ -48,6 +48,7 @@ from app.routes import (
     web_app,
     web_auth,
     web_bill_split,
+    web_budget_advise,
     web_budgets,
     web_categories,
     web_dashboard,
@@ -56,6 +57,7 @@ from app.routes import (
     web_expense_edit,
     web_goals,
     web_import_export,
+    web_income_plans,
     web_media,
     web_merchants,
     web_pending,
@@ -169,6 +171,8 @@ app.include_router(web_pending.router)
 app.include_router(web_rules_routes.router)
 app.include_router(web_stats.router)
 app.include_router(web_budgets.router)
+app.include_router(web_budget_advise.router)
+app.include_router(web_income_plans.router)
 app.include_router(web_reports.router)
 app.include_router(web_goals.router)
 app.include_router(web_search.router)
