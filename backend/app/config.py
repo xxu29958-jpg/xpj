@@ -62,6 +62,7 @@ class Settings:
     local_llm_base_url: str
     local_llm_model: str
     local_llm_timeout_seconds: int
+    budget_advisor_provider: str
     tenants_json: str
     enable_http_bootstrap: bool
     http_bootstrap_secret: str
@@ -202,6 +203,10 @@ def get_settings() -> Settings:
         local_llm_base_url=_resolve_local_llm_base_url(os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
+        # ADR-0036: v1.1 AI budget advisor provider. Default 'empty' = no AI
+        # call, local rules only. 'openai_compat' is wired but raises until
+        # the outbound payload guard ships in PR-2.
+        budget_advisor_provider=os.getenv("BUDGET_ADVISOR_PROVIDER", "empty").strip().lower(),
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
         enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
