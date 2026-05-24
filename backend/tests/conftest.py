@@ -17,6 +17,8 @@ from __future__ import annotations
 import pytest
 
 # Importing tests._infra.env sets os.environ before any app.* import.
+from fastapi.testclient import TestClient
+
 from tests._infra import env  # noqa: F401
 from tests._infra.client import make_test_client
 from tests._infra.db import cleanup_runtime, reset_db_state
@@ -33,6 +35,17 @@ def identity() -> TestIdentity:
 def client(identity: TestIdentity):
     with make_test_client() as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def web_client(client: TestClient) -> TestClient:
+    """Bypass the /web loopback gate for tests (peer is 'testclient')."""
+    from app.main import app
+    from app.routes.web_app import _require_local as _web_require_local
+
+    app.dependency_overrides[_web_require_local] = lambda: None
+    yield client
+    app.dependency_overrides.pop(_web_require_local, None)
 
 
 @pytest.fixture()
