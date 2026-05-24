@@ -32,6 +32,7 @@ from app.routes.web_auth import (
     SESSION_COOKIE_NAME,
     _safe_next_url,
 )
+from app.routes.web_common import _safe_same_site_redirect_path, _with_ledger
 from app.services.identity_service import hash_secret
 from app.services.time_service import ensure_utc, now_utc
 
@@ -302,3 +303,13 @@ def test_safe_next_url_helper() -> None:
     assert _safe_next_url("/api/admin/devices") == ""
     assert _safe_next_url("/web\nLocation: evil") == ""
     assert _safe_next_url("/web:8000") == ""
+    assert _safe_next_url("https:/evil.example.com") == ""
+    assert _safe_next_url("/web/%5c%5cevil.example.com") == ""
+
+
+def test_web_redirect_helpers_keep_locations_same_site() -> None:
+    target = _with_ledger("/web/pending", "owner", msg="已保存。")
+    assert target == "/web/pending?ledger_id=owner&msg=%E5%B7%B2%E4%BF%9D%E5%AD%98%E3%80%82"
+    assert _safe_same_site_redirect_path("//evil.example.com", fallback="/web") == "/web"
+    assert _safe_same_site_redirect_path("https:/evil.example.com", fallback="/web") == "/web"
+    assert _safe_same_site_redirect_path("/web/%5c%5cevil.example.com", fallback="/web") == "/web"

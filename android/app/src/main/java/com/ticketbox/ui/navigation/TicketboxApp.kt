@@ -132,7 +132,7 @@ private fun TicketboxContent(
                 message = appState.authMessage,
                 onUnlock = {
                     if (!biometricAuthManager.canAuthenticate()) {
-                        appViewModel.unlockFailed("请先在系统中设置指纹、面容或锁屏密码。")
+                        appViewModel.unlockFailed("请先在系统中设置指纹或面容。")
                         return@LoginScreen
                     }
                     biometricAuthManager.authenticate(

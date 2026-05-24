@@ -18,7 +18,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.schemas import GoalCreateRequest
@@ -151,10 +151,7 @@ def web_goals_create(
             include_archived=False,
             error=exc.message,
         )
-    return RedirectResponse(
-        url=_with_ledger("/web/goals", selected_id, month=target_month, msg="目标已保存。"),
-        status_code=303,
-    )
+    return _web_redirect("/web/goals", selected_id, month=target_month, msg="目标已保存。")
 
 
 @router.post("/{public_id}/archive")
@@ -172,13 +169,10 @@ def web_goals_archive(
     timezone_name = get_settings().ocr_default_timezone
     archive_goal(db, tenant_id=selected_id, public_id=public_id, timezone_name=timezone_name)
     target_month = (month or "").strip() or current_month(timezone_name)
-    return RedirectResponse(
-        url=_with_ledger(
-            "/web/goals",
-            selected_id,
-            month=target_month,
-            include_archived="true",
-            msg="目标已归档。",
-        ),
-        status_code=303,
+    return _web_redirect(
+        "/web/goals",
+        selected_id,
+        month=target_month,
+        include_archived="true",
+        msg="目标已归档。",
     )

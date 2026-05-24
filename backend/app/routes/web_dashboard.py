@@ -16,7 +16,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _trend14_amounts,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
@@ -139,10 +139,7 @@ def web_dashboard_cards_save(
         visible_key=visible_key,
     )
     update_dashboard_cards(db, tenant_id=selected_id, surface="web", payload=payload)
-    return RedirectResponse(
-        url=_with_ledger("/web/dashboard/cards", selected_id, msg="Dashboard 卡片已保存。"),
-        status_code=303,
-    )
+    return _web_redirect("/web/dashboard/cards", selected_id, msg="Dashboard 卡片已保存。")
 
 
 @router.post("/dashboard/cards/reset", response_class=HTMLResponse)
@@ -161,7 +158,4 @@ def web_dashboard_cards_reset(
         surface="web",
         payload=DashboardCardsUpdateRequest(cards=[]),
     )
-    return RedirectResponse(
-        url=_with_ledger("/web/dashboard/cards", selected_id, msg="已恢复默认卡片。"),
-        status_code=303,
-    )
+    return _web_redirect("/web/dashboard/cards", selected_id, msg="已恢复默认卡片。")

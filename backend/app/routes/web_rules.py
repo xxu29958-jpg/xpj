@@ -21,7 +21,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.services.classify_service import (
@@ -153,10 +153,7 @@ def web_rules_create(
         msg = f"已新增规则：{keyword.strip()} → {category.strip()}"
     except AppError as exc:
         msg = "新增失败：" + (exc.message or "请检查关键词与分类。")
-    return RedirectResponse(
-        url=_with_ledger("/web/rules", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
 @router.post("/rules/applications/{public_id}/rollback", response_class=HTMLResponse)
@@ -179,10 +176,7 @@ def web_rules_application_rollback(
         msg = f"已回滚规则应用：恢复 {changed} 条，跳过 {skipped} 条。"
     except AppError as exc:
         msg = "回滚失败：" + (exc.message or "规则应用批次不存在。")
-    return RedirectResponse(
-        url=_with_ledger("/web/rules", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
 def _get_rule(db: Session, rule_id: int, tenant_id: str) -> CategoryRule | None:
@@ -210,10 +204,7 @@ def web_rules_toggle(
     else:
         update_rule(db, rule, enabled=not rule.enabled)
         msg = f"规则 [{rule.keyword}] {'已启用' if rule.enabled else '已停用'}。"
-    return RedirectResponse(
-        url=_with_ledger("/web/rules", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
 @router.post("/rules/{rule_id}/delete", response_class=HTMLResponse)
@@ -234,10 +225,7 @@ def web_rules_delete(
         keyword = rule.keyword
         delete_rule(db, rule)
         msg = f"规则 [{keyword}] 已删除。"
-    return RedirectResponse(
-        url=_with_ledger("/web/rules", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
 @router.post("/rules/apply-pending", response_class=HTMLResponse)
@@ -254,10 +242,7 @@ def web_rules_apply_pending(
     _require_selected_ledger_write(options, selected_id)
     if preview_confirmed != "yes":
         msg = "请先预览影响范围，再确认应用规则。"
-        return RedirectResponse(
-            url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
-            status_code=303,
-        )
+        return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=msg)
     try:
         current_preview = validate_rule_application_preview(
             db,
@@ -269,17 +254,11 @@ def web_rules_apply_pending(
         current_preview = None
     if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "待确认账单预览已过期，请重新预览后再确认应用。"
-        return RedirectResponse(
-            url=_with_ledger("/web/rules", selected_id, apply_preview="1", msg=msg),
-            status_code=303,
-        )
+        return _web_redirect("/web/rules", selected_id, apply_preview="1", msg=msg)
     pending_scanned, changed_count, limited = apply_rules_to_pending(db, tenant_id=selected_id)
     suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
     msg = f"扫描了 {pending_scanned} 条待确认；改写了 {changed_count} 条分类。{suffix}"
-    return RedirectResponse(
-        url=_with_ledger("/web/rules", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
 @router.post("/rules/apply-confirmed", response_class=HTMLResponse)
@@ -296,10 +275,7 @@ def web_rules_apply_confirmed(
     _require_selected_ledger_write(options, selected_id)
     if preview_confirmed != "yes":
         msg = "历史账单修改必须先预览影响范围，再确认应用。"
-        return RedirectResponse(
-            url=_with_ledger("/web/rules", selected_id, confirmed_preview="1", msg=msg),
-            status_code=303,
-        )
+        return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=msg)
     try:
         current_preview = validate_rule_application_preview(
             db,
@@ -311,14 +287,8 @@ def web_rules_apply_confirmed(
         current_preview = None
     if not preview_token or not current_preview or current_preview["preview_token"] != preview_token:
         msg = "历史账单预览已过期，请重新预览后再确认应用。"
-        return RedirectResponse(
-            url=_with_ledger("/web/rules", selected_id, confirmed_preview="1", msg=msg),
-            status_code=303,
-        )
+        return _web_redirect("/web/rules", selected_id, confirmed_preview="1", msg=msg)
     confirmed_scanned, changed_count, limited = apply_rules_to_confirmed(db, tenant_id=selected_id)
     suffix = " 还有未扫描账单，可再次预览并应用。" if limited else ""
     msg = f"扫描了 {confirmed_scanned} 条已确认；改写了 {changed_count} 条分类。{suffix}"
-    return RedirectResponse(
-        url=_with_ledger("/web/rules", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/rules", selected_id, msg=msg)

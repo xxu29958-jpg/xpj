@@ -20,6 +20,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _web_redirect,
     _with_ledger,
     templates,
 )
@@ -106,8 +107,7 @@ async def web_import_preview(
         file_obj=csv_file.file,
     )
     msg = f"已解析 {batch.total_rows} 行，{batch.valid_rows} 行可导入。"
-    target = _with_ledger(f"/web/import/{batch.public_id}", selected_id, msg=msg)
-    return RedirectResponse(url=target, status_code=303)
+    return _web_redirect(f"/web/import/{batch.public_id}", selected_id, msg=msg)
 
 
 @router.get("/import/{public_id}", response_class=HTMLResponse)
@@ -174,8 +174,7 @@ def web_import_batch_apply(
         batch_size=safe_batch_size,
     )
     msg = f"本次导入 {applied.inserted_count} 条，剩余 {applied.remaining_valid_rows} 条可导入。"
-    target = _with_ledger(f"/web/import/{public_id}", selected_id, msg=msg)
-    return RedirectResponse(url=target, status_code=303)
+    return _web_redirect(f"/web/import/{public_id}", selected_id, msg=msg)
 
 
 @router.get("/import/{public_id}/errors.csv")
@@ -212,9 +211,8 @@ def web_import_confirm(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     del payload
-    target = _with_ledger(
+    return _web_redirect(
         "/web/import",
         selected_id,
         msg="CSV 导入已升级为服务端批次流程，请重新上传 CSV。",
     )
-    return RedirectResponse(url=target, status_code=303)

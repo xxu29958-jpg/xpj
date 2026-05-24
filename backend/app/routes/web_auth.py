@@ -28,7 +28,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.models import AuthToken, Device
 from app.network_boundary import pairing_rate_limit_key
-from app.routes.web_common import templates
+from app.routes.web_common import _safe_same_site_redirect_path, templates
 from app.services.identity_service import (
     WEB_SESSION_TTL_SECONDS,
     authenticate_web_session_token,
@@ -205,16 +205,7 @@ def _redirect_login(*, next: str, error: str) -> RedirectResponse:  # noqa: A002
 def _safe_next_url(raw: str | None) -> str:
     """Only allow same-site /web/... redirects after login. Reject anything
     that could redirect off-site (open-redirect class vulnerability)."""
-    if not raw:
-        return ""
-    candidate = raw.strip()
-    if not candidate.startswith("/web") or candidate.startswith("//") or candidate.startswith("/web//"):
-        return ""
-    # Disallow embedded scheme / line break
-    for bad in (":", "\n", "\r"):
-        if bad in candidate:
-            return ""
-    return candidate
+    return _safe_same_site_redirect_path(raw, allowed_roots=("/web",), fallback="")
 
 
 def _clean_device_name(raw: str, request: Request) -> str:

@@ -10,7 +10,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.routes.web_common import (
     _base_ctx,
     _list_ledger_options,
     _resolve_selected_ledger_id,
+    _web_redirect,
     templates,
 )
 from app.services import background_task_service as bgtasks
@@ -116,7 +117,4 @@ def web_task_cancel(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     account_id = _resolve_account_id(db, request, selected_id)
     bgtasks.request_cancellation(db, public_id, account_id=account_id)
-    return RedirectResponse(
-        url=f"/web/tasks?ledger_id={selected_id}&msg=已请求取消任务。",
-        status_code=303,
-    )
+    return _web_redirect("/web/tasks", selected_id, msg="已请求取消任务。")

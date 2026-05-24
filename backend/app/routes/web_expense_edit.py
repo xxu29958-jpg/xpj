@@ -14,7 +14,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.schemas import ExpenseUpdateRequest
@@ -84,10 +84,7 @@ def web_save(
         ctx["error"] = error
         return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
 
-    return RedirectResponse(
-        url=_with_ledger(f"/web/expenses/{expense_id}/edit", selected_id),
-        status_code=303,
-    )
+    return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id)
 
 
 @router.post("/expenses/{expense_id}/confirm", response_class=HTMLResponse)
@@ -107,7 +104,7 @@ def web_confirm(
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["error"] = exc.message
         return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
-    return RedirectResponse(url=_with_ledger("/web/pending", selected_id), status_code=303)
+    return _web_redirect("/web/pending", selected_id)
 
 
 @router.post("/expenses/{expense_id}/reject", response_class=HTMLResponse)
@@ -122,4 +119,4 @@ def web_reject(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     reject_expense(db, expense_id, selected_id)
-    return RedirectResponse(url=_with_ledger("/web/pending", selected_id), status_code=303)
+    return _web_redirect("/web/pending", selected_id)

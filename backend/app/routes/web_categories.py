@@ -21,7 +21,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.services.category_service import (
@@ -132,10 +132,9 @@ def web_uncategorized_bulk_set(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     if not expense_ids:
-        target = _with_ledger(
+        return _web_redirect(
             "/web/categories/uncategorized", selected_id, msg="请勾选要修改的账单。"
         )
-        return RedirectResponse(url=target, status_code=303)
     try:
         changed = bulk_set_category(
             db, tenant_id=selected_id, expense_ids=expense_ids, category=category
@@ -143,5 +142,4 @@ def web_uncategorized_bulk_set(
         msg = f"已将 {changed} 条账单设置为「{category.strip()}」。"
     except AppError as exc:
         msg = exc.message
-    target = _with_ledger("/web/categories/uncategorized", selected_id, msg=msg)
-    return RedirectResponse(url=target, status_code=303)
+    return _web_redirect("/web/categories/uncategorized", selected_id, msg=msg)

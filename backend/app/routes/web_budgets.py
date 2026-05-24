@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,7 +17,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
@@ -233,7 +233,4 @@ def web_budgets_save(
             month=_safe_month(target_month, timezone_name),
             error=exc.message,
         )
-    return RedirectResponse(
-        url=_with_ledger("/web/budgets", selected_id, month=target_month, msg="预算已保存。"),
-        status_code=303,
-    )
+    return _web_redirect("/web/budgets", selected_id, month=target_month, msg="预算已保存。")

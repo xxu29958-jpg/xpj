@@ -17,7 +17,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.services.income_plan_service import (
@@ -117,10 +117,7 @@ def post_create(
         amount_cents=amount_cents,
         pay_day=day,
     )
-    return RedirectResponse(
-        _with_ledger("/web/income-plans", selected, message="已添加收入计划"),
-        status_code=303,
-    )
+    return _web_redirect("/web/income-plans", selected, message="已添加收入计划")
 
 
 @router.post("/{public_id}/archive")
@@ -135,10 +132,7 @@ def post_archive(
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
     archive_income_plan(db, tenant_id=selected, public_id=public_id)
-    return RedirectResponse(
-        _with_ledger("/web/income-plans", selected, message="已归档收入计划"),
-        status_code=303,
-    )
+    return _web_redirect("/web/income-plans", selected, message="已归档收入计划")
 
 
 @router.post("/{public_id}/restore")
@@ -153,7 +147,4 @@ def post_restore(
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
     restore_income_plan(db, tenant_id=selected, public_id=public_id)
-    return RedirectResponse(
-        _with_ledger("/web/income-plans", selected, message="已恢复收入计划"),
-        status_code=303,
-    )
+    return _web_redirect("/web/income-plans", selected, message="已恢复收入计划")

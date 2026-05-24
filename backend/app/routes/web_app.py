@@ -32,6 +32,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _sidebar_counts,
     _trend14_amounts,
+    _web_redirect,
     _with_ledger,
     templates,
 )
@@ -103,10 +104,9 @@ def web_root_slash(
     ledger_id: str | None = None,
     _local: None = LocalOnly,
 ) -> RedirectResponse:
-    target = "/web"
     if ledger_id:
-        target = _with_ledger(target, ledger_id)
-    return RedirectResponse(url=target, status_code=303)
+        return _web_redirect("/web", ledger_id)
+    return RedirectResponse(url="/web", status_code=303)
 
 
 def _confirmed_redirect(
@@ -118,9 +118,13 @@ def _confirmed_redirect(
     msg: str = "",
 ) -> RedirectResponse:
     page_value = str(page) if page > 1 else ""
-    return RedirectResponse(
-        url=_with_ledger("/web/confirmed", selected_id, month=month, tag=tag, page=page_value, msg=msg),
-        status_code=303,
+    return _web_redirect(
+        "/web/confirmed",
+        selected_id,
+        month=month,
+        tag=tag,
+        page=page_value,
+        msg=msg,
     )
 
 

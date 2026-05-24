@@ -32,7 +32,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _sidebar_counts,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.services.expense_service import (
@@ -145,10 +145,7 @@ def web_duplicate_keep(
         msg = "已标记为「不是重复」。"
     except AppError as exc:
         msg = exc.message
-    return RedirectResponse(
-        url=_with_ledger("/web/duplicates", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/duplicates", selected_id, msg=msg)
 
 
 @router.post("/duplicates/{expense_id}/reject-current")
@@ -167,10 +164,7 @@ def web_duplicate_reject_current(
         msg = "已删除当前账单。"
     except AppError as exc:
         msg = exc.message
-    return RedirectResponse(
-        url=_with_ledger("/web/duplicates", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/duplicates", selected_id, msg=msg)
 
 
 @router.post("/duplicates/{expense_id}/reject-original")
@@ -194,7 +188,4 @@ def web_duplicate_reject_original(
         mark_expense_not_duplicate(db, current.id, selected_id)
     except AppError as exc:
         msg = exc.message
-    return RedirectResponse(
-        url=_with_ledger("/web/duplicates", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/duplicates", selected_id, msg=msg)

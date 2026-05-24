@@ -15,6 +15,7 @@ Endpoints:
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -98,6 +99,10 @@ def owner_ledgers_post(
             request=request, name="ledgers.html", context=ctx
         )
     return RedirectResponse(url="/owner/ledgers", status_code=303)
+
+
+def _owner_ledger_members_url(ledger_id: str) -> str:
+    return "/owner/ledgers/" + quote(ledger_id, safe="") + "/members"
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +210,7 @@ def owner_ledger_invite_revoke_post(
     except AppError:
         # Idempotent UI: ignore unknown/already-revoked.
         pass
-    return RedirectResponse(url=f"/owner/ledgers/{ledger_id}/members", status_code=303)
+    return RedirectResponse(url=_owner_ledger_members_url(ledger_id), status_code=303)
 
 
 @router.post(
@@ -241,7 +246,7 @@ def owner_ledger_member_role_post(
         return templates.TemplateResponse(
             request=request, name="ledger_members.html", context=ctx
         )
-    return RedirectResponse(url=f"/owner/ledgers/{ledger_id}/members", status_code=303)
+    return RedirectResponse(url=_owner_ledger_members_url(ledger_id), status_code=303)
 
 
 @router.post(
@@ -275,7 +280,7 @@ def owner_ledger_member_transfer_owner_post(
         return templates.TemplateResponse(
             request=request, name="ledger_members.html", context=ctx
         )
-    return RedirectResponse(url=f"/owner/ledgers/{ledger_id}/members", status_code=303)
+    return RedirectResponse(url=_owner_ledger_members_url(ledger_id), status_code=303)
 
 
 @router.post(
@@ -309,7 +314,7 @@ def owner_ledger_member_disable_post(
         return templates.TemplateResponse(
             request=request, name="ledger_members.html", context=ctx
         )
-    return RedirectResponse(url=f"/owner/ledgers/{ledger_id}/members", status_code=303)
+    return RedirectResponse(url=_owner_ledger_members_url(ledger_id), status_code=303)
 
 
 def _ledger_name(db: Session, ledger_id: str) -> str | None:

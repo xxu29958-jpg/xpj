@@ -18,7 +18,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.services.merchant_alias_service import (
@@ -76,10 +76,7 @@ def web_merchant_alias_create(
         msg = f"已新增别名：{item.alias} → {item.canonical_merchant}"
     except AppError as exc:
         msg = "新增失败：" + exc.message
-    return RedirectResponse(
-        url=_with_ledger("/web/merchants", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/merchants", selected_id, msg=msg)
 
 
 @router.post("/merchants/aliases/{public_id}/toggle", response_class=HTMLResponse)
@@ -99,10 +96,7 @@ def web_merchant_alias_toggle(
         msg = f"别名 [{item.alias}] {'已启用' if item.enabled else '已停用'}。"
     except AppError as exc:
         msg = exc.message
-    return RedirectResponse(
-        url=_with_ledger("/web/merchants", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/merchants", selected_id, msg=msg)
 
 
 @router.post("/merchants/aliases/{public_id}/delete", response_class=HTMLResponse)
@@ -123,7 +117,4 @@ def web_merchant_alias_delete(
         msg = f"别名 [{alias}] 已删除。"
     except AppError as exc:
         msg = exc.message
-    return RedirectResponse(
-        url=_with_ledger("/web/merchants", selected_id, msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/merchants", selected_id, msg=msg)

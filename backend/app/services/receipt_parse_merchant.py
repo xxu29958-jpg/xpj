@@ -16,16 +16,17 @@ from app.services.receipt_parse_rules import (
     CLOCK_LINE_PATTERN,
     MERCHANT_IGNORED_LINES,
     MERCHANT_KEYWORDS,
-    MERCHANT_LABEL_PATTERN,
     MERCHANT_LABEL_SCORES,
+    MERCHANT_LABELS,
     MERCHANT_NOISE_SUBSTRINGS,
     MERCHANT_REJECT_SUBSTRINGS,
     PAYMENT_METHOD_LINE_PATTERN,
     PAYMENT_SHEET_MERCHANT_MARKERS,
-    PRIMARY_AMOUNT_LINE_PATTERN,
     SUCCESS_PAGE_AD_KEYWORDS,
     SUCCESS_PAGE_SKIP_LINES,
     TRANSACTION_SUCCESS_KEYWORDS,
+    is_primary_amount_line,
+    iter_labeled_merchant_matches,
 )
 
 
@@ -43,7 +44,7 @@ def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
         *_success_merchant_candidates(text, lines),
         *_payment_method_merchant_candidates(text, lines),
         *_payment_sheet_merchant_candidates(text, lines),
-        *_labeled_merchant_candidates(text),
+        *_labeled_merchant_candidates(text, lines),
         *_keyword_merchant_candidates(text),
         *_first_line_merchant_candidates(text, lines),
     ]
@@ -145,12 +146,12 @@ def _payment_sheet_merchant_candidates(text: str, lines: list[str]) -> list[_Mer
     return candidates
 
 
-def _labeled_merchant_candidates(text: str) -> list[_MerchantCandidate]:
+def _labeled_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:
     candidates: list[_MerchantCandidate] = []
-    for match in MERCHANT_LABEL_PATTERN.finditer(text):
-        cleaned = _clean_merchant(match.group("value"))
-        label = match.group("label")
-        index = _line_index_for_offset(text, match.start())
+    for match in iter_labeled_merchant_matches(lines):
+        cleaned = _clean_merchant(match.value)
+        label = match.label
+        index = match.line_index
         base_score = MERCHANT_LABEL_SCORES.get(label, 50)
         candidate = _score_merchant_candidate(
             text=text,
@@ -443,7 +444,7 @@ def _is_title_merchant_candidate(value: str | None) -> bool:
         return False
     if value in MERCHANT_IGNORED_LINES:
         return False
-    if PRIMARY_AMOUNT_LINE_PATTERN.match(value):
+    if is_primary_amount_line(value):
         return False
     if len(value) < 2 or len(value) > 30:
         return False
@@ -498,4 +499,8 @@ def _has_more_specific_nearby_merchant_alias(
 
 def _clean_merchant(value: str) -> str | None:
     cleaned = re.sub(r"\s+", " ", value).strip(" ：:，,。；;")
+    for label in sorted(MERCHANT_LABELS, key=len, reverse=True):
+        if cleaned.startswith(label):
+            cleaned = cleaned[len(label) :].strip(" ：:，,。；;")
+            break
     return cleaned or None

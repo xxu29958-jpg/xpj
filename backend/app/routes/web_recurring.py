@@ -15,7 +15,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.schemas import RecurringCandidateConfirmRequest
@@ -167,10 +167,7 @@ def web_recurring_confirm_candidate(
             options=options,
             flash_message=exc.message,
         )
-    return RedirectResponse(
-        url=_with_ledger("/web/recurring", selected_id, flash="固定支出已确认。"),
-        status_code=303,
-    )
+    return _web_redirect("/web/recurring", selected_id, flash="固定支出已确认。")
 
 
 @router.post("/{public_id}/pause", response_class=HTMLResponse)
@@ -185,7 +182,7 @@ def web_recurring_pause(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     pause_recurring_item(db, tenant_id=selected_id, public_id=public_id)
-    return RedirectResponse(url=_with_ledger("/web/recurring", selected_id), status_code=303)
+    return _web_redirect("/web/recurring", selected_id)
 
 
 @router.post("/{public_id}/resume", response_class=HTMLResponse)
@@ -200,7 +197,7 @@ def web_recurring_resume(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     resume_recurring_item(db, tenant_id=selected_id, public_id=public_id)
-    return RedirectResponse(url=_with_ledger("/web/recurring", selected_id), status_code=303)
+    return _web_redirect("/web/recurring", selected_id)
 
 
 @router.post("/{public_id}/archive", response_class=HTMLResponse)
@@ -215,4 +212,4 @@ def web_recurring_archive(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
     archive_recurring_item(db, tenant_id=selected_id, public_id=public_id)
-    return RedirectResponse(url=_with_ledger("/web/recurring", selected_id), status_code=303)
+    return _web_redirect("/web/recurring", selected_id)

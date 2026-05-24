@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -14,7 +14,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.schemas import ExpenseSplitReplaceRequest
@@ -62,7 +62,4 @@ def web_splits_save(
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["splits_error"] = error
         return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
-    return RedirectResponse(
-        url=_with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, msg="拆账已保存。"),
-        status_code=303,
-    )
+    return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id, msg="拆账已保存。")

@@ -12,9 +12,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends, Request
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -159,7 +160,51 @@ def _with_ledger(path: str, ledger_id: str, **extra: str) -> str:
     for key, value in extra.items():
         if value:
             params[key] = value
-    return f"{path}?{urlencode(params)}"
+    return _safe_same_site_redirect_path(f"{path}?{urlencode(params)}", fallback="/web")
+
+
+def _web_redirect(path: str, ledger_id: str, **extra: str) -> RedirectResponse:
+    return RedirectResponse(url=_with_ledger(path, ledger_id, **extra), status_code=303)
+
+
+def _safe_same_site_redirect_path(
+    raw: str | None,
+    *,
+    allowed_roots: tuple[str, ...] = ("/web",),
+    fallback: str = "",
+) -> str:
+    """Normalize server-side redirects to same-site paths only.
+
+    Browsers treat several malformed URL forms more liberally than
+    ``urlsplit``. Rejecting backslashes, schemes, hosts, and decoded path
+    escapes keeps user-controlled form/query values out of open redirects.
+    """
+    if not raw:
+        return fallback
+    candidate = raw.strip()
+    if not candidate or any(ch in candidate for ch in ("\\", "\n", "\r", "\t")):
+        return fallback
+    if candidate.startswith("//"):
+        return fallback
+
+    parsed = urlsplit(candidate)
+    if parsed.scheme or parsed.netloc:
+        return fallback
+
+    path = parsed.path or ""
+    decoded_path = unquote(path)
+    if (
+        not path.startswith("/")
+        or decoded_path.startswith("//")
+        or "\\" in decoded_path
+        or ":" in decoded_path
+    ):
+        return fallback
+    if any(decoded_path.startswith(root + "//") for root in allowed_roots):
+        return fallback
+    if not any(decoded_path == root or decoded_path.startswith(root + "/") for root in allowed_roots):
+        return fallback
+    return urlunsplit(("", "", path, parsed.query, ""))
 
 
 _VALID_UI_THEMES = {"paper", "mono", "midnight"}

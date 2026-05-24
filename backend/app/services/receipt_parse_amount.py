@@ -20,11 +20,11 @@ from app.services.receipt_parse_rules import (
     CLOCK_LINE_PATTERN,
     DISCOUNT_AMOUNT_LABELS,
     INLINE_AMOUNT_PATTERNS,
-    LABELED_AMOUNT_PATTERN,
     MONEY_MARKERS,
-    PRIMARY_AMOUNT_LINE_PATTERN,
     TRANSACTION_SUCCESS_KEYWORDS,
     UPPER_MONEY_MARKERS,
+    iter_labeled_amount_matches,
+    parse_primary_amount_line,
 )
 
 
@@ -40,7 +40,7 @@ def _amount_candidates(text: str) -> list[_AmountCandidate]:
     lines = text.splitlines()
     candidates = [
         *_primary_line_amount_candidates(lines),
-        *_labeled_amount_candidates(text, lines),
+        *_labeled_amount_candidates(lines),
         *_inline_amount_candidates(text, lines),
     ]
     return _apply_amount_cross_evidence(candidates)
@@ -58,16 +58,17 @@ def _primary_line_amount_candidates(lines: list[str]) -> list[_AmountCandidate]:
 def _primary_line_amount_candidate(
     lines: list[str], index: int, line_text: str
 ) -> _AmountCandidate | None:
-    match = PRIMARY_AMOUNT_LINE_PATTERN.match(line_text)
-    if not match:
+    parsed = parse_primary_amount_line(line_text)
+    if parsed is None:
         return None
-    cents = _money_to_cents(match.group("amount"))
+    sign, amount = parsed
+    cents = _money_to_cents(amount)
     if cents is None or not 0 < cents < 10_000_000_00:
         return None
 
     has_money_marker = _has_money_marker(line_text)
     has_nearby_success = _has_nearby_success(lines, index)
-    has_sign = bool(match.group("sign"))
+    has_sign = bool(sign)
     if not (has_money_marker or has_nearby_success or has_sign):
         return None
 
@@ -99,14 +100,14 @@ def _primary_line_amount_candidate(
     )
 
 
-def _labeled_amount_candidates(text: str, lines: list[str]) -> list[_AmountCandidate]:
+def _labeled_amount_candidates(lines: list[str]) -> list[_AmountCandidate]:
     candidates: list[_AmountCandidate] = []
-    for match in LABELED_AMOUNT_PATTERN.finditer(text):
-        cents = _money_to_cents(match.group("amount"))
+    for match in iter_labeled_amount_matches(lines):
+        cents = _money_to_cents(match.amount)
         if cents is None or not 0 < cents < 10_000_000_00:
             continue
-        label = match.group("label")
-        index = _line_index_for_offset(text, match.start())
+        label = match.label
+        index = match.line_index
         evidence = [f"label:{label}"]
         has_discount_context = _has_discount_context(lines, index)
         has_nearby_success = _has_nearby_success(lines, index)

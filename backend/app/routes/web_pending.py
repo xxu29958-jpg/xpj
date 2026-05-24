@@ -20,7 +20,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
-    _with_ledger,
+    _web_redirect,
     templates,
 )
 from app.services.expense_service import (
@@ -122,10 +122,7 @@ def web_pending(
 
 
 def _pending_redirect(selected_id: str, *, filter: str, msg: str) -> RedirectResponse:
-    return RedirectResponse(
-        url=_with_ledger("/web/pending", selected_id, filter=filter or "all", msg=msg),
-        status_code=303,
-    )
+    return _web_redirect("/web/pending", selected_id, filter=filter or "all", msg=msg)
 
 
 _SUCCESS_VERBS = {

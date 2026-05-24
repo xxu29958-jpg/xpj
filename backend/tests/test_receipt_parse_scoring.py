@@ -174,6 +174,21 @@ def test_scoring_prefers_business_time_over_generic_time() -> None:
     assert _utc_iso(parsed.expense_time) == "2026-05-04T08:23:25Z"
 
 
+def test_labeled_amount_and_merchant_parse_with_long_spacing() -> None:
+    raw_text = "\n".join(
+        [
+            "商家：罗森便利店",
+            "金额：" + (" " * 120) + "12.34",
+            "交易成功",
+        ]
+    )
+
+    parsed = parse_receipt_text(raw_text)
+
+    assert parsed.amount_cents == 1234
+    assert parsed.merchant == "罗森便利店"
+
+
 def test_profile_calibration_keeps_mobility_provider_over_destination_text() -> None:
     raw_text = "\n".join(
         [

@@ -22,7 +22,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,7 @@ from app.routes.web_common import (
     _list_ledger_options,
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
+    _web_redirect,
     templates,
 )
 from app.services import bill_split_service as bsplit
@@ -207,10 +208,7 @@ def web_split_invite(
         receiver_account_id=receiver_account_id,
         amount_cents=amount_cents,
     )
-    return RedirectResponse(
-        url=f"/web/bill-splits/sent?ledger_id={selected_id}&msg=已发起拆账邀请。",
-        status_code=303,
-    )
+    return _web_redirect("/web/bill-splits/sent", selected_id, msg="已发起拆账邀请。")
 
 
 @router.post(
@@ -234,10 +232,7 @@ def web_split_accept(
         accepting_account_id=account_id,
         target_ledger_id=target_ledger_id,
     )
-    return RedirectResponse(
-        url=f"/web/bill-splits/inbox?ledger_id={selected_id}&msg=已接受拆账邀请。",
-        status_code=303,
-    )
+    return _web_redirect("/web/bill-splits/inbox", selected_id, msg="已接受拆账邀请。")
 
 
 @router.post(
@@ -255,10 +250,7 @@ def web_split_reject(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
     bsplit.reject_invitation(db, public_id=public_id, rejecting_account_id=account_id)
-    return RedirectResponse(
-        url=f"/web/bill-splits/inbox?ledger_id={selected_id}&msg=已拒绝拆账邀请。",
-        status_code=303,
-    )
+    return _web_redirect("/web/bill-splits/inbox", selected_id, msg="已拒绝拆账邀请。")
 
 
 @router.post(
@@ -277,10 +269,7 @@ def web_split_cancel(
     _require_selected_ledger_write(options, selected_id)
     account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
     bsplit.cancel_invitation(db, public_id=public_id, sender_account_id=account_id)
-    return RedirectResponse(
-        url=f"/web/bill-splits/sent?ledger_id={selected_id}&msg=已撤回拆账邀请。",
-        status_code=303,
-    )
+    return _web_redirect("/web/bill-splits/sent", selected_id, msg="已撤回拆账邀请。")
 
 
 # -------------------------------------------------------------------------

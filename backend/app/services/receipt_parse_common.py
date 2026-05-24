@@ -16,13 +16,13 @@ from typing import Protocol, TypeVar
 from app.services.receipt_parse_rules import (
     BANK_KEYWORDS,
     DISCOUNT_AMOUNT_LABELS,
-    LABELED_AMOUNT_PATTERN,
-    MERCHANT_LABEL_PATTERN,
     PAYMENT_SHEET_ACTION_MARKERS,
     PAYMENT_SHEET_MERCHANT_MARKERS,
     PAYMENT_SHEET_PAYMENT_METHOD_MARKERS,
     TIME_PATTERNS,
     TRANSACTION_SUCCESS_KEYWORDS,
+    iter_labeled_amount_matches,
+    iter_labeled_merchant_matches,
 )
 
 
@@ -182,8 +182,8 @@ def _build_receipt_signals(text: str, lines: tuple[str, ...]) -> _ReceiptSignals
         transaction_success_count=sum(
             1 for keyword in TRANSACTION_SUCCESS_KEYWORDS if keyword in text
         ),
-        amount_label_count=len(LABELED_AMOUNT_PATTERN.findall(text)),
-        merchant_label_count=len(MERCHANT_LABEL_PATTERN.findall(text)),
+        amount_label_count=len(iter_labeled_amount_matches(lines)),
+        merchant_label_count=len(iter_labeled_merchant_matches(lines)),
         time_label_count=sum(len(pattern.findall(text)) for pattern in TIME_PATTERNS),
         discount_marker_count=sum(
             1 for marker in DISCOUNT_AMOUNT_LABELS if marker in text
