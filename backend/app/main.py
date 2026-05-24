@@ -21,6 +21,7 @@ from app.routes import (
     auth,
     bill_split,
     bootstrap,
+    budget_advisor,
     budgets,
     dashboard,
     duplicates,
@@ -28,6 +29,7 @@ from app.routes import (
     expenses,
     goals,
     imports,
+    income_plans,
     insights,
     invitations,
     ledgers,
@@ -135,6 +137,8 @@ app.include_router(ledgers.router)
 app.include_router(invitations.router)
 app.include_router(recurring.router)
 app.include_router(budgets.router)
+app.include_router(budget_advisor.router)
+app.include_router(income_plans.router)
 app.include_router(goals.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)

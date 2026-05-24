@@ -3062,6 +3062,45 @@
         "title": "DataQualitySummaryResponse",
         "type": "object"
       },
+      "DiscretionaryResponse": {
+        "description": "Inspectable breakdown of \"本月可自由支配\".\n\nMirrors :class:`DiscretionaryBreakdown` so the UI can render the\nsubtraction step by step.",
+        "properties": {
+          "discretionary_cents": {
+            "minimum": 0.0,
+            "title": "Discretionary Cents",
+            "type": "integer"
+          },
+          "fixed_expenses_cents": {
+            "minimum": 0.0,
+            "title": "Fixed Expenses Cents",
+            "type": "integer"
+          },
+          "monthly_income_cents": {
+            "minimum": 0.0,
+            "title": "Monthly Income Cents",
+            "type": "integer"
+          },
+          "reserved_buffer_cents": {
+            "minimum": 0.0,
+            "title": "Reserved Buffer Cents",
+            "type": "integer"
+          },
+          "savings_target_cents": {
+            "minimum": 0.0,
+            "title": "Savings Target Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "monthly_income_cents",
+          "fixed_expenses_cents",
+          "savings_target_cents",
+          "reserved_buffer_cents",
+          "discretionary_cents"
+        ],
+        "title": "DiscretionaryResponse",
+        "type": "object"
+      },
       "ExchangeRateListResponse": {
         "properties": {
           "items": {
@@ -4751,6 +4790,197 @@
           }
         },
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IncomePlanCreateRequest": {
+        "properties": {
+          "amount_cents": {
+            "minimum": 0.0,
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "label": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "pay_day": {
+            "maximum": 31.0,
+            "minimum": 1.0,
+            "title": "Pay Day",
+            "type": "integer"
+          },
+          "source_type": {
+            "default": "salary",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "amount_cents",
+          "pay_day"
+        ],
+        "title": "IncomePlanCreateRequest",
+        "type": "object"
+      },
+      "IncomePlanListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IncomePlanResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total_active_amount_cents": {
+            "title": "Total Active Amount Cents",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_active_amount_cents"
+        ],
+        "title": "IncomePlanListResponse",
+        "type": "object"
+      },
+      "IncomePlanResponse": {
+        "properties": {
+          "amount_cents": {
+            "title": "Amount Cents",
+            "type": "integer"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pay_day": {
+            "title": "Pay Day",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "public_id",
+          "label",
+          "source_type",
+          "amount_cents",
+          "pay_day",
+          "status",
+          "created_at",
+          "updated_at",
+          "archived_at"
+        ],
+        "title": "IncomePlanResponse",
+        "type": "object"
+      },
+      "IncomePlanUpdateRequest": {
+        "properties": {
+          "amount_cents": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "pay_day": {
+            "anyOf": [
+              {
+                "maximum": 31.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay Day"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          }
+        },
+        "title": "IncomePlanUpdateRequest",
         "type": "object"
       },
       "InvitationAcceptRequest": {
@@ -8241,6 +8471,78 @@
         ]
       }
     },
+    "/api/budget/discretionary": {
+      "get": {
+        "description": "本月可自由支配 = income - fixed - savings - reserved (floored at 0).",
+        "operationId": "get_discretionary_api_budget_discretionary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "savings_target_cents",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Savings Target Cents",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reserved_buffer_cents",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Reserved Buffer Cents",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscretionaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Discretionary",
+        "tags": [
+          "budget-advisor"
+        ]
+      }
+    },
     "/api/budgets/monthly": {
       "get": {
         "operationId": "get_budget_monthly_api_budgets_monthly_get",
@@ -11040,6 +11342,305 @@
         "summary": "Get Csv Import Batch Rows",
         "tags": [
           "imports"
+        ]
+      }
+    },
+    "/api/income-plans": {
+      "get": {
+        "operationId": "list_plans_api_income_plans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "active",
+              "pattern": "^(active|archived|all)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomePlanListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Plans",
+        "tags": [
+          "income-plans"
+        ]
+      },
+      "post": {
+        "operationId": "create_plan_api_income_plans_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomePlanCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Plan",
+        "tags": [
+          "income-plans"
+        ]
+      }
+    },
+    "/api/income-plans/{public_id}": {
+      "delete": {
+        "operationId": "archive_plan_api_income_plans__public_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Plan",
+        "tags": [
+          "income-plans"
+        ]
+      },
+      "patch": {
+        "operationId": "update_plan_api_income_plans__public_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomePlanUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Plan",
+        "tags": [
+          "income-plans"
+        ]
+      }
+    },
+    "/api/income-plans/{public_id}/restore": {
+      "post": {
+        "operationId": "restore_plan_api_income_plans__public_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncomePlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Plan",
+        "tags": [
+          "income-plans"
         ]
       }
     },

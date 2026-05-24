@@ -35,6 +35,9 @@ from app.services.budget_baseline_service._discretionary import (
     DiscretionaryBreakdown,
     compute_monthly_discretionary,
 )
+from app.services.budget_baseline_service._fixed_expense_reader import (
+    total_active_recurring_monthly_cents,
+)
 from app.services.budget_baseline_service._models import (
     CategoryBaseline,
     DefaultBaseline,
@@ -61,4 +64,5 @@ __all__ = [
     "get_default_baseline",
     "personal_trust_weight",
     "quintile_for_monthly_income",
+    "total_active_recurring_monthly_cents",
 ]

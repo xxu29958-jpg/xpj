@@ -45,6 +45,9 @@ from app.schemas._bill_split import (
     BillSplitSentResponse,
     BillSplitStatus,
 )
+from app.schemas._budget_advisor import (
+    DiscretionaryResponse,
+)
 from app.schemas._budgets import (
     BudgetCategoryRequest,
     BudgetCategoryResponse,
@@ -133,6 +136,12 @@ from app.schemas._identity import (
     PairRequest,
     PairResponse,
 )
+from app.schemas._income_plan import (
+    IncomePlanCreateRequest,
+    IncomePlanListResponse,
+    IncomePlanResponse,
+    IncomePlanUpdateRequest,
+)
 from app.schemas._recurring import (
     RecurringCandidateConfirmRequest,
     RecurringCandidateItem,
@@ -218,6 +227,7 @@ __all__ = [
     "DashboardCardsResponse",
     "DashboardCardsUpdateRequest",
     "DataQualitySummaryResponse",
+    "DiscretionaryResponse",
     "ErrorResponse",
     "ExchangeRateListResponse",
     "ExchangeRateRequest",
@@ -239,6 +249,10 @@ __all__ = [
     "GoalResponse",
     "GoalUpdateRequest",
     "HealthResponse",
+    "IncomePlanCreateRequest",
+    "IncomePlanListResponse",
+    "IncomePlanResponse",
+    "IncomePlanUpdateRequest",
     "InvitationAcceptRequest",
     "InvitationAcceptResponse",
     "InvitationCreateRequest",
