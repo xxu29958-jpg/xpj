@@ -25,6 +25,10 @@ from app.services.learning_service import (
     score_duplicate_candidates,
     supersede_decision,
 )
+from app.services.learning_service._algorithm_registry import (
+    CATEGORY_SUGGESTION,
+    DUPLICATE_CANDIDATE,
+)
 
 
 @dataclass(frozen=True)
@@ -121,7 +125,7 @@ def _category_suggestion(
         db,
         tenant_id=tenant_id,
         expense=expense,
-        decision_type="category_suggestion",
+        decision_type=CATEGORY_SUGGESTION.decision_type,
         algorithm_version=suggestion.algorithm_version,
         payload=payload,
         score=suggestion.score,
@@ -167,7 +171,7 @@ def _duplicate_candidates(
             db,
             tenant_id=tenant_id,
             expense=expense,
-            decision_type="duplicate_candidate",
+            decision_type=DUPLICATE_CANDIDATE.decision_type,
             algorithm_version=item.algorithm_version,
             payload=payload,
             score=item.score,
@@ -242,9 +246,9 @@ def _loads(payload: str | None) -> dict[str, Any]:
 def _feedback_marker_payload(
     decision_type: str, payload: dict[str, Any]
 ) -> dict[str, Any]:
-    if decision_type == "category_suggestion":
+    if decision_type == CATEGORY_SUGGESTION.decision_type:
         return {"category": payload.get("category")}
-    if decision_type == "duplicate_candidate":
+    if decision_type == DUPLICATE_CANDIDATE.decision_type:
         return {
             "amount_cents": payload.get("amount_cents"),
             "merchant": payload.get("merchant"),

@@ -36,9 +36,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
+from app.services.learning_service._algorithm_registry import (
+    DUPLICATE_CANDIDATE,
+)
 from app.services.time_service import ensure_utc, now_utc
 
-ALGORITHM_VERSION = "duplicate-scoring-v1"
+# Source of truth lives in the algorithm registry.
+ALGORITHM_VERSION = DUPLICATE_CANDIDATE.current_version
 
 # Bucket weights — keep small enough that 2-3 matches comfortably stay
 # below the clamp, otherwise the ranking degenerates to "everything

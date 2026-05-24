@@ -37,6 +37,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense
+from app.services.learning_service._algorithm_registry import (
+    BUDGET_SUGGESTION,
+)
 from app.services.spending_contract_service import (
     accounting_timezone_key,
     month_bounds_utc,
@@ -47,7 +50,8 @@ from app.services.spending_contract_service import (
 )
 from app.services.time_service import ensure_utc, local_month_label, now_utc
 
-ALGORITHM_VERSION = "budget-quantile-v1"
+# Source of truth lives in the algorithm registry.
+ALGORITHM_VERSION = BUDGET_SUGGESTION.current_version
 DEFAULT_LOOK_BACK_MONTHS = 6
 DEFAULT_MIN_MONTHS = 3
 

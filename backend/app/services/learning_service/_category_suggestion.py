@@ -36,10 +36,16 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
+from app.services.learning_service._algorithm_registry import (
+    CATEGORY_SUGGESTION,
+)
 from app.services.spending_contract_service import stat_time_expr
 from app.services.time_service import now_utc
 
-ALGORITHM_VERSION = "category-history-v1"
+# Source of truth lives in the algorithm registry. Keep the
+# module-level constant as a shim so callers / tests that import
+# ``ALGORITHM_VERSION`` from this module don't have to change.
+ALGORITHM_VERSION = CATEGORY_SUGGESTION.current_version
 DEFAULT_MIN_SAMPLES = 3
 DEFAULT_LOOK_BACK_DAYS = 180
 DEFAULT_REJECT_THRESHOLD = 2

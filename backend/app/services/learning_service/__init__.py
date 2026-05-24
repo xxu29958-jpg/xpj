@@ -39,6 +39,16 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
+from app.services.learning_service._algorithm_registry import (
+    ALGORITHM_TYPES,
+    BUDGET_SUGGESTION,
+    CATEGORY_SUGGESTION,
+    DUPLICATE_CANDIDATE,
+    AlgorithmType,
+    decision_types,
+    get as get_algorithm_type,
+    is_registered as is_algorithm_type_registered,
+)
 from app.services.learning_service._budget_quantile import (
     ALGORITHM_VERSION as BUDGET_QUANTILE_VERSION,
 )
@@ -75,12 +85,17 @@ from app.services.learning_service._model_versions import (
 from app.services.time_service import now_utc
 
 __all__ = [
+    "ALGORITHM_TYPES",
+    "AlgorithmType",
     "AlgorithmVersionStats",
     "BUDGET_QUANTILE_VERSION",
+    "BUDGET_SUGGESTION",
     "BudgetQuantileSuggestion",
+    "CATEGORY_SUGGESTION",
     "CATEGORY_SUGGESTION_VERSION",
     "CategorySuggestion",
     "CleanupReport",
+    "DUPLICATE_CANDIDATE",
     "DUPLICATE_SCORING_VERSION",
     "DecisionDraft",
     "DuplicateCandidateScore",
@@ -93,6 +108,9 @@ __all__ = [
     "cleanup_expired_ocr_facts",
     "compute_budget_quantile_suggestion",
     "compute_category_suggestion",
+    "decision_types",
+    "get_algorithm_type",
+    "is_algorithm_type_registered",
     "list_algorithm_versions",
     "ocr_facts_for_expense",
     "record_decision",
