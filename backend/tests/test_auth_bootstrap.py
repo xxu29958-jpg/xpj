@@ -222,7 +222,9 @@ def test_bootstrap_owner_rolls_back_if_pairing_creation_fails(
     def fail_pairing_creation(*args, **kwargs):
         raise RuntimeError("pairing creation failed")
 
-    monkeypatch.setattr(identity_service, "_create_pairing_code", fail_pairing_creation)
+    # _bootstrap module imports _create_pairing_code from _device; patch the
+    # bind site that bootstrap_owner actually reads to make the monkey-patch land.
+    monkeypatch.setattr(identity_service._bootstrap, "_create_pairing_code", fail_pairing_creation)
 
     try:
         with TestClient(app) as fresh_client, pytest.raises(RuntimeError, match="pairing creation failed"):
