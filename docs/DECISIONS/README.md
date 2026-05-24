@@ -36,10 +36,15 @@
 | [0026](0026-v0.9-web-chart-library-echarts.md) | /web 图表库 ECharts 6.0.0 | 自托管 ECharts，禁 CDN | 0023 下落地 |
 | [0027](0027-backend-authoritative-fx.md) | Backend Authoritative FX | 后端唯一汇率权威；ECB 参考；缺率返 pending | — |
 | [0028](0028-public-web-session-gated.md) | Public Web Session-Gated Surface | `/web` 公网仅以后端 web session + Cloudflare allowlist 方式开放，`/owner` 仍 loopback | 公网边界 |
+| [0029](0029-household-bill-split-privacy.md) | Household Bill Split Privacy | 跨账本邀请双 DTO 分桶；账本可见性 + 幂等 UNIQUE | v1.0 拆账隐私边界 |
+| [0030](0030-long-task-execution-model.md) | Long Task Execution Model | 单进程 ThreadPoolExecutor + orphan recovery；SQLite 进度表 | csv_import / v1_migration / 通用长任务 |
+| [0031](0031-v1-data-migration-protocol.md) | v1.0 Data Migration Protocol | app_meta schema_version lock + pre-v1.0 backup snapshot + 30 天 rollback CLI | v1.0 cut-over 协议 |
+| [0035](0035-line-items-discount-tax-mismatch.md) | Line Items Discount/Tax Mismatch | line item kind enum + items_sum_status；items 不再要求总额等于 expense | 商品级小票 |
+| [0036](0036-v1.1-ai-budget-provider-privacy-boundary.md) | v1.1 AI Budget Provider Privacy | AI 只看最小结构化摘要 + 本地映射表；不上传原始账本 / 图片 / 真名 / 路径 | v1.1 AI 预算隐私边界 |
 
 ## 编写新 ADR
 
-下一编号 `0029`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0037`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

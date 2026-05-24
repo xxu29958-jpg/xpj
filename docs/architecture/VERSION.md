@@ -17,7 +17,7 @@
 
 - v0.9.0a1：Reports / Goals / Dashboard 卡片配置 + Vico 图表 + `/web` ECharts 收口。
 - v1.0.0：商品级小票 line items (ADR-0035) / 家庭拆账邀请 (ADR-0029) / 后台任务执行模型 (ADR-0030) / `/web` 公网 PWA shell (ADR-0028 + Issue #20) / v0.9 → v1.0 cut-over + 30 天 rollback CLI (ADR-0031)。`identity_schema=v0.3` 不变。
-- 下一里程碑：v1.1 真票 OCR fixture 回归 / 多账户 audit dashboard。
+- v1.1（规划中）：家庭现金流预算系统（收入计划 / 固定支出 / 跨月重复识别 / 本月预计消费 / 历史弹性基线 / 本地确定性预算公式 + 用户确认才落盘）+ 脱敏 AI provider（隐私边界 [[0036]]：最小结构化摘要 + 本地映射，不上传原始账本 / 图片 / 真名 / 路径，AI 不写预算）+ 自托管多端同步增强（Android/web 离线 ↔ 服务端冲突处理 / 重试 / 撤销，不接第三方云）。Migration framework / handwritten `_migrations.py` 重构视情况开 ADR。
 
 ## 版本号约束
 
