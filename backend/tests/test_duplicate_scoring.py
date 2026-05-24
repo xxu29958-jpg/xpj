@@ -114,6 +114,7 @@ def test_recent_user_reject_applies_penalty(*, identity) -> None:
     b = _make_expense(
         amount_cents=2000, merchant="Cafe", expense_time=base
     )
+    marker = {"amount_cents": 2000, "merchant": "cafe"}
     with SessionLocal() as db:
         record_event(
             db,
@@ -122,7 +123,9 @@ def test_recent_user_reject_applies_penalty(*, identity) -> None:
                 event_type="reject",
                 subject_kind="expense",
                 subject_id=a.id,
-                before_payload={"amount_cents": 2000, "merchant": "cafe"},
+                before_payload=marker,
+                signal_type="duplicate_candidate",
+                signal_marker=marker,
             ),
         )
         db.commit()
@@ -191,6 +194,7 @@ def test_score_clamped_to_unit_range(*, identity) -> None:
     base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     a = _make_expense(amount_cents=500, merchant="Other", expense_time=base)
     b = _make_expense(amount_cents=999, merchant="Mismatch", expense_time=base)
+    marker = {"amount_cents": 500, "merchant": "other"}
     with SessionLocal() as db:
         record_event(
             db,
@@ -199,7 +203,9 @@ def test_score_clamped_to_unit_range(*, identity) -> None:
                 event_type="reject",
                 subject_kind="expense",
                 subject_id=a.id,
-                before_payload={"amount_cents": 500, "merchant": "other"},
+                before_payload=marker,
+                signal_type="duplicate_candidate",
+                signal_marker=marker,
             ),
         )
         db.commit()

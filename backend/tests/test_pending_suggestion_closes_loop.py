@@ -186,27 +186,15 @@ def test_accept_writes_signal_marker_for_dedup(
         assert '"餐饮"' in event.signal_payload
 
 
-def test_accept_closes_active_decisions_for_subject(
+def test_accept_marks_decision_accepted(
     client: TestClient, *, identity,
 ) -> None:
-    """Accepting (or rejecting) a suggestion should close every
-    active decision attached to the expense — the user has spoken,
-    pending review on this expense is done. ``pending_suggestion_service``
-    closes them through the same lifecycle helper expense
-    confirm/reject use."""
+    """Accepting a suggestion flips the decision to ``status='accepted'``
+    so the UI stops showing it on this subject. The ledger row stays
+    untouched — accept is feedback, not a mutation."""
 
     expense_id = _seed_pending_expense()
     decision_public_id = _seed_category_decision(expense_id, category="餐饮")
-
-    # Sanity: there's an active decision before the accept.
-    with SessionLocal() as db:
-        active_before = (
-            db.query(AlgorithmDecision)
-            .filter(AlgorithmDecision.subject_id == expense_id)
-            .filter(AlgorithmDecision.status == "active")
-            .count()
-        )
-        assert active_before == 1
 
     response = client.post(
         f"/api/expenses/{expense_id}/suggestions/{decision_public_id}/accept",
@@ -214,30 +202,94 @@ def test_accept_closes_active_decisions_for_subject(
     )
     assert response.status_code == 200
 
-    # Note: today the accept endpoint only records the event; the
-    # ledger row is unchanged AND the decision stays active so the
-    # UI can show "you accepted" until the user confirms/rejects
-    # the expense itself. We assert the contract that *holds* today,
-    # not the aspirational "auto-close on accept" behaviour.
     with SessionLocal() as db:
         decision = (
             db.query(AlgorithmDecision)
             .filter(AlgorithmDecision.subject_id == expense_id)
             .one()
         )
-        assert decision.status == "active"
+        assert decision.status == "accepted"
 
-    # When the user then confirms the expense, the decision closes.
-    confirm_response = client.post(
+        # Confirm later does NOT revive the closed row.
+        client.post(
+            f"/api/expenses/{expense_id}/confirm",
+            headers=identity.app_headers,
+        )
+        db.refresh(decision)
+        # Still 'accepted' — confirm only closes `active` rows.
+        assert decision.status == "accepted"
+
+
+def test_reject_marks_decision_dismissed(
+    client: TestClient, *, identity,
+) -> None:
+    """Rejecting a suggestion flips the decision to ``status='dismissed'``.
+    Distinct from ``accepted`` so per-version inventory can tell apart
+    "user said yes" vs. "user said no"."""
+
+    expense_id = _seed_pending_expense()
+    decision_public_id = _seed_category_decision(expense_id, category="餐饮")
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/suggestions/{decision_public_id}/reject",
+        headers=identity.app_headers,
+    )
+    assert response.status_code == 200
+
+    with SessionLocal() as db:
+        decision = (
+            db.query(AlgorithmDecision)
+            .filter(AlgorithmDecision.subject_id == expense_id)
+            .one()
+        )
+        assert decision.status == "dismissed"
+
+
+def test_confirm_closes_remaining_active_subject_decisions(
+    client: TestClient, *, identity,
+) -> None:
+    """Expense confirm path catches ALL still-active decisions on the
+    subject, regardless of decision_type. This is the safety net for
+    the case where the UI surfaced multiple suggestions and the user
+    confirmed the expense without explicitly accepting/rejecting some
+    of them."""
+
+    expense_id = _seed_pending_expense()
+    # Two active decisions of different types on the same subject.
+    _seed_category_decision(expense_id, category="餐饮")
+    with SessionLocal() as db:
+        record_decision(
+            db,
+            DecisionDraft(
+                tenant_id="owner",
+                decision_type="duplicate_candidate",
+                algorithm_version="duplicate-scoring-v1",
+                subject_kind="expense",
+                subject_id=expense_id,
+                payload={"amount_cents": 1000, "merchant": "Cafe"},
+            ),
+        )
+        db.commit()
+        active_before = (
+            db.query(AlgorithmDecision)
+            .filter(AlgorithmDecision.subject_id == expense_id)
+            .filter(AlgorithmDecision.status == "active")
+            .count()
+        )
+        assert active_before == 2
+
+    response = client.post(
         f"/api/expenses/{expense_id}/confirm",
         headers=identity.app_headers,
     )
-    assert confirm_response.status_code == 200
+    assert response.status_code == 200
 
     with SessionLocal() as db:
-        decision = (
+        active_after = (
             db.query(AlgorithmDecision)
             .filter(AlgorithmDecision.subject_id == expense_id)
-            .one()
+            .filter(AlgorithmDecision.status == "active")
+            .count()
         )
-        assert decision.status == "withdrawn"
+        # Both rows must be closed; confirm closes the whole subject.
+        assert active_after == 0

@@ -89,7 +89,15 @@ def cleanup_expired_algorithm_decisions(
         db.scalars(
             select(AlgorithmDecision)
             .where(AlgorithmDecision.retention_days > 0)
-            .where(AlgorithmDecision.status.in_(("superseded", "withdrawn")))
+            # All terminal statuses are eligible — superseded (newer
+            # version replaced it), withdrawn (algo-version rollback),
+            # accepted (user said yes), dismissed (user said no /
+            # subject lifecycle closed). Active rows are never pruned.
+            .where(
+                AlgorithmDecision.status.in_(
+                    ("superseded", "withdrawn", "accepted", "dismissed")
+                )
+            )
             .order_by(AlgorithmDecision.created_at.asc())
             .limit(_clamp_batch(batch_size))
         )

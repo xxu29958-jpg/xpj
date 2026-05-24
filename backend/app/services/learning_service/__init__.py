@@ -80,7 +80,12 @@ from app.services.learning_service._duplicate_scoring import (
     score_duplicate_candidates,
 )
 from app.services.learning_service._lifecycle import (
+    DECISION_STATUSES,
+    TERMINAL_DECISION_STATUSES,
+    TERMINAL_EXPENSE_STATUSES,
     close_active_decisions_for_subject,
+    set_decision_status,
+    stale_active_count,
     sweep_stale_active_decisions,
 )
 from app.services.learning_service._maintenance import (
@@ -108,6 +113,7 @@ __all__ = [
     "CATEGORY_SUGGESTION_VERSION",
     "CategorySuggestion",
     "CleanupReport",
+    "DECISION_STATUSES",
     "DUPLICATE_CANDIDATE",
     "DUPLICATE_SCORING_VERSION",
     "DecisionDraft",
@@ -117,6 +123,8 @@ __all__ = [
     "LearningStatusOverview",
     "LearningTableSnapshot",
     "OcrFactDraft",
+    "TERMINAL_DECISION_STATUSES",
+    "TERMINAL_EXPENSE_STATUSES",
     "active_decision_for_subject",
     "build_feedback_marker",
     "canonical_marker_hash",
@@ -139,6 +147,8 @@ __all__ = [
     "recent_events_for_subject",
     "run_full_maintenance",
     "score_duplicate_candidates",
+    "set_decision_status",
+    "stale_active_count",
     "supersede_decision",
     "sweep_stale_active_decisions",
     "withdraw_algorithm_version",

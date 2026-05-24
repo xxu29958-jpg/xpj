@@ -32,21 +32,37 @@ from app.models import AlgorithmDecision
 
 @dataclass(frozen=True)
 class AlgorithmVersionStats:
-    """One row of the algorithm-version inventory."""
+    """One row of the algorithm-version inventory.
+
+    Owner Console reads ``withdrawn_count`` to find algorithm versions
+    the owner rolled back; ``accepted_count`` and ``dismissed_count``
+    show the per-version user-feedback split (high accept rate = the
+    algorithm is on the right track for this user)."""
 
     decision_type: str
     algorithm_version: str
     active_count: int
     superseded_count: int
     withdrawn_count: int
+    accepted_count: int = 0
+    dismissed_count: int = 0
+
+
+_STATUS_BUCKETS = (
+    "active",
+    "superseded",
+    "withdrawn",
+    "accepted",
+    "dismissed",
+)
 
 
 def list_algorithm_versions(
     db: Session, *, tenant_id: str
 ) -> list[AlgorithmVersionStats]:
-    """Return active / superseded / withdrawn counts grouped by
-    (decision_type, algorithm_version). Sorted by total descending so
-    the UI surfaces the heaviest-hitter version first."""
+    """Return per-status counts grouped by (decision_type,
+    algorithm_version). Sorted by total descending so the UI surfaces
+    the heaviest-hitter version first."""
 
     rows = db.execute(
         select(
@@ -66,10 +82,9 @@ def list_algorithm_versions(
     grouped: dict[tuple[str, str], dict[str, int]] = {}
     for decision_type, algorithm_version, status, n in rows:
         key = (decision_type, algorithm_version)
-        grouped.setdefault(
-            key, {"active": 0, "superseded": 0, "withdrawn": 0}
-        )
-        grouped[key][status] = int(n)
+        grouped.setdefault(key, {bucket: 0 for bucket in _STATUS_BUCKETS})
+        if status in grouped[key]:
+            grouped[key][status] = int(n)
 
     results = [
         AlgorithmVersionStats(
@@ -78,12 +93,14 @@ def list_algorithm_versions(
             active_count=counts.get("active", 0),
             superseded_count=counts.get("superseded", 0),
             withdrawn_count=counts.get("withdrawn", 0),
+            accepted_count=counts.get("accepted", 0),
+            dismissed_count=counts.get("dismissed", 0),
         )
         for (decision_type, algorithm_version), counts in grouped.items()
     ]
     results.sort(
-        key=lambda r: (
-            r.active_count + r.superseded_count + r.withdrawn_count
+        key=lambda r: sum(
+            getattr(r, f"{bucket}_count") for bucket in _STATUS_BUCKETS
         ),
         reverse=True,
     )

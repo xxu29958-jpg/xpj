@@ -173,9 +173,16 @@ def test_duplicate_reject_via_signal_hash(*, identity) -> None:
         )
 
 
-def test_legacy_rows_still_counted_via_payload_fallback(*, identity) -> None:
-    # Simulate a pre-migration row: write an event the old way, with
-    # the marker inside before_payload but no signal_hash column set.
+def test_legacy_rows_with_null_signal_hash_no_longer_counted(
+    *, identity,
+) -> None:
+    """Document the post-migration contract: the OR(indexed, LIKE)
+    fallback was removed in favour of a backfill migration. Rows
+    written before signal_hash existed AND not yet backfilled will
+    not feed the feedback loop. Production rollout depends on
+    ``c5b9a324c535`` running before this code path executes — the
+    backfill makes the fallback unnecessary."""
+
     for _ in range(4):
         _seed_confirmed("餐饮", merchant="legacy_path")
 
@@ -199,6 +206,48 @@ def test_legacy_rows_still_counted_via_payload_fallback(*, identity) -> None:
             merchant="legacy_path",
             reject_threshold=2,
         )
-        # Legacy rows still feed the feedback loop via the LIKE
-        # fallback inside the OR branch.
+        # Pre-backfill legacy rows are NOT picked up anymore; the
+        # suggestion fires normally.
+        assert result is not None
+        assert result.category == "餐饮"
+
+
+def test_backfilled_row_via_signal_hash_suppresses_suggestion(
+    *, identity,
+) -> None:
+    """After the backfill migration runs, rows that used to live with
+    NULL signal_hash get populated and the feedback loop works
+    through the index. We simulate that by populating signal_*
+    columns explicitly (matches what the migration does)."""
+
+    for _ in range(4):
+        _seed_confirmed("餐饮", merchant="backfilled_path")
+
+    marker = build_feedback_marker(
+        CATEGORY_SUGGESTION.decision_type, {"category": "餐饮"}
+    )
+    expected_hash = canonical_marker_hash(marker)
+
+    with SessionLocal() as db:
+        for _ in range(2):
+            backfilled = LedgerLearningEvent(
+                tenant_id="owner",
+                event_type="reject",
+                subject_kind="expense",
+                subject_id=1,
+                before_payload='{"category": "餐饮"}',
+                # These three are what the migration writes.
+                signal_type=CATEGORY_SUGGESTION.decision_type,
+                signal_hash=expected_hash,
+                signal_payload='{"category": "餐饮"}',
+            )
+            db.add(backfilled)
+        db.commit()
+
+        result = compute_category_suggestion(
+            db,
+            tenant_id="owner",
+            merchant="backfilled_path",
+            reject_threshold=2,
+        )
         assert result is None

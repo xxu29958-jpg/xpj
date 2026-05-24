@@ -69,7 +69,7 @@ def test_close_for_subject_flips_active_rows(*, identity) -> None:
         assert rowcount == 1
         decision = db.get(AlgorithmDecision, decision_id)
         assert decision is not None
-        assert decision.status == "withdrawn"
+        assert decision.status == "dismissed"
 
 
 def test_close_is_tenant_scoped(*, identity) -> None:
@@ -98,7 +98,7 @@ def test_confirm_expense_closes_active_decisions(
     with SessionLocal() as db:
         confirm_expense(db, expense_id, tenant_id="owner")
         decision = db.get(AlgorithmDecision, decision_id)
-        assert decision.status == "withdrawn"
+        assert decision.status == "dismissed"
 
 
 def test_reject_expense_closes_active_decisions(
@@ -110,7 +110,7 @@ def test_reject_expense_closes_active_decisions(
     with SessionLocal() as db:
         reject_expense(db, expense_id, tenant_id="owner")
         decision = db.get(AlgorithmDecision, decision_id)
-        assert decision.status == "withdrawn"
+        assert decision.status == "dismissed"
 
 
 def test_sweep_closes_decisions_whose_expense_is_confirmed(*, identity) -> None:
@@ -129,7 +129,7 @@ def test_sweep_closes_decisions_whose_expense_is_confirmed(*, identity) -> None:
         db.commit()
         assert swept == 1
         decision = db.get(AlgorithmDecision, decision_id)
-        assert decision.status == "withdrawn"
+        assert decision.status == "dismissed"
 
 
 def test_sweep_closes_decisions_whose_expense_was_deleted(*, identity) -> None:
@@ -144,7 +144,7 @@ def test_sweep_closes_decisions_whose_expense_was_deleted(*, identity) -> None:
         db.commit()
         assert swept == 1
         decision = db.get(AlgorithmDecision, decision_id)
-        assert decision.status == "withdrawn"
+        assert decision.status == "dismissed"
 
 
 def test_sweep_leaves_decisions_on_pending_expenses_alone(*, identity) -> None:

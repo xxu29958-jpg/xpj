@@ -33,6 +33,8 @@ from app.services.learning_service._cleanup import (
     cleanup_expired_learning_tables,
 )
 from app.services.learning_service._lifecycle import (
+    TERMINAL_DECISION_STATUSES,
+    stale_active_count,
     sweep_stale_active_decisions,
 )
 from app.services.time_service import ensure_utc, now_utc
@@ -67,34 +69,10 @@ class LearningMaintenanceResult:
     finished_at: str
 
 
-def _stale_active_count(db: Session) -> int:
-    """Cheap version of the sweep that counts but doesn't update — for
-    the status overview. Same definition of "stale" as the real sweep."""
-
-    from app.models import Expense
-
-    candidates = list(
-        db.scalars(
-            select(AlgorithmDecision)
-            .where(AlgorithmDecision.status == "active")
-            .where(AlgorithmDecision.subject_kind == "expense")
-            .where(AlgorithmDecision.subject_id.is_not(None))
-        )
-    )
-    if not candidates:
-        return 0
-    expense_ids = {c.subject_id for c in candidates if c.subject_id is not None}
-    live = dict(
-        db.execute(
-            select(Expense.id, Expense.status).where(Expense.id.in_(expense_ids))
-        ).all()
-    )
-    stale = 0
-    for c in candidates:
-        status = live.get(c.subject_id)
-        if status is None or status in ("confirmed", "rejected"):
-            stale += 1
-    return stale
+# ``_stale_active_count`` used to pull every active decision and join
+# in Python — fine for fixtures, brutal once a real ledger fills the
+# table. The replacement is a single SQL LEFT JOIN in
+# ``stale_active_count`` (lifecycle module), used directly here.
 
 
 def _expired_count(
@@ -146,7 +124,9 @@ def get_status_overview(db: Session) -> LearningStatusOverview:
         db,
         model=AlgorithmDecision,
         timestamp_column=lambda r: r.created_at,
-        status_filter=lambda r: r.status in ("superseded", "withdrawn"),
+        # Every terminal status is cleanup-eligible; active rows are
+        # never pruned regardless of age.
+        status_filter=lambda r: r.status in TERMINAL_DECISION_STATUSES,
     )
 
     ev_total = int(
@@ -166,7 +146,7 @@ def get_status_overview(db: Session) -> LearningStatusOverview:
     )
 
     last_cleanup = get_value(db, LEARNING_CLEANUP_LAST_RUN_KEY)
-    stale_active = _stale_active_count(db)
+    stale_active = stale_active_count(db)
 
     return LearningStatusOverview(
         algorithm_decisions=LearningTableSnapshot(

@@ -113,6 +113,8 @@ def test_suppressed_when_recently_rejected(*, identity) -> None:
                     subject_id=expense_id,
                     before_payload={"category": "餐饮"},
                     after_payload={"category": "购物"},
+                    signal_type="category_suggestion",
+                    signal_marker={"category": "餐饮"},
                 ),
             )
         db.commit()
@@ -143,6 +145,8 @@ def test_reject_suppression_is_merchant_scoped(*, identity) -> None:
                     subject_id=expense_id,
                     before_payload={"category": "餐饮"},
                     after_payload={"category": "购物"},
+                    signal_type="category_suggestion",
+                    signal_marker={"category": "餐饮"},
                 ),
             )
         db.commit()

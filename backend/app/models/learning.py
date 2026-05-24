@@ -56,6 +56,26 @@ class AlgorithmDecision(Base):
     * ``recurring_candidate`` — recurring pattern hypothesis
     * ``budget_suggestion`` — P50 / P75 derived monthly target
 
+    ``status`` transitions:
+
+    * ``active`` — initial state, suggestion will be shown by the UI
+    * ``superseded`` — same (decision_type, subject) got a newer
+      decision via :func:`supersede_decision`; ``superseded_by_id``
+      points at the replacement
+    * ``withdrawn`` — algorithm-governance action: owner used the
+      v1.2 "one-click rollback" to retire an entire algorithm version
+    * ``accepted`` — user explicitly accepted this suggestion via the
+      pending-suggestion accept endpoint; the UI will not show it
+      again on this subject
+    * ``dismissed`` — user explicitly rejected this suggestion, OR
+      the subject's lifecycle ended (expense confirmed / rejected /
+      deleted) so the suggestion is no longer relevant; same UI
+      effect as ``accepted`` but different reason
+
+    Only ``active`` rows are surfaced to the UI / cleanup leaves them
+    alone regardless of age. Every other status is eligible for
+    retention pruning.
+
     ``algorithm_version`` is the small free-form string identifying
     *which* version produced this row (``category-rules-v1`` vs.
     ``category-ml-v2``). The v1.2 versioning + one-shot rollback story

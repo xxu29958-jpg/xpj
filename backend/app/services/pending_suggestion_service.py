@@ -23,6 +23,7 @@ from app.services.learning_service import (
     record_decision,
     record_event,
     score_duplicate_candidates,
+    set_decision_status,
     supersede_decision,
 )
 from app.services.learning_service._algorithm_registry import (
@@ -105,6 +106,17 @@ def record_pending_suggestion_event(
             signal_type=decision.decision_type,
             signal_marker=marker,
         ),
+    )
+    # Close the decision row to match the user's verdict. accept ->
+    # 'accepted', reject -> 'dismissed'. The UI must not show the same
+    # suggestion again on this subject; the cleanup story (per-row
+    # retention) eventually harvests the closed row.
+    terminal = "accepted" if event_type == "accept" else "dismissed"
+    set_decision_status(
+        db,
+        tenant_id=tenant_id,
+        decision_id=decision.id,
+        new_status=terminal,
     )
 
 

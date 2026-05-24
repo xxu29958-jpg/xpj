@@ -27,12 +27,11 @@ remains the existing autoclassification path.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
@@ -84,19 +83,15 @@ def _count_recent_rejects(
     """Count user rejects of (merchant, category) in the recent past.
 
     v1.2 ops: filter on the indexed ``(signal_type, signal_hash)``
-    pair instead of LIKE-scanning ``before_payload``. The hash is
-    deterministic for "same advice given" via
-    ``CATEGORY_SUGGESTION.build_marker({"category": category})``.
-
-    Legacy rows written before signal_hash existed have NULL hashes;
-    a separate LIKE-on-before_payload fallback catches them so the
-    feedback loop doesn't temporarily degrade on the day this lands.
+    pair via ``CATEGORY_SUGGESTION.build_marker({"category": category})``.
+    Legacy rows are backfilled by migration ``c5b9a324c535`` so the
+    OR / LIKE fallback was removed — this query now goes through the
+    composite index unconditionally.
     """
 
     cutoff = now_utc() - timedelta(days=max(horizon_days, 0))
     marker = CATEGORY_SUGGESTION.build_marker({"category": category})
     indexed_hash = canonical_marker_hash(marker)
-    legacy_needle = json.dumps({"category": category}, ensure_ascii=False)
     count = db.scalar(
         select(func.count(LedgerLearningEvent.id))
         .join(Expense, Expense.id == LedgerLearningEvent.subject_id)
@@ -107,18 +102,10 @@ def _count_recent_rejects(
         .where(LedgerLearningEvent.event_type.in_(("reject", "edit")))
         .where(LedgerLearningEvent.created_at >= cutoff)
         .where(
-            or_(
-                and_(
-                    LedgerLearningEvent.signal_type
-                    == CATEGORY_SUGGESTION.decision_type,
-                    LedgerLearningEvent.signal_hash == indexed_hash,
-                ),
-                and_(
-                    LedgerLearningEvent.signal_hash.is_(None),
-                    LedgerLearningEvent.before_payload.contains(legacy_needle),
-                ),
-            )
+            LedgerLearningEvent.signal_type
+            == CATEGORY_SUGGESTION.decision_type
         )
+        .where(LedgerLearningEvent.signal_hash == indexed_hash)
         .where(func.lower(func.trim(Expense.merchant)) == merchant)
     )
     return int(count or 0)

@@ -27,12 +27,11 @@ the pending review UI.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
@@ -81,9 +80,10 @@ def _has_recent_reject(
     this (merchant, amount) pair.
 
     v1.2 ops: hits the indexed ``(signal_type, signal_hash)`` lookup
-    via ``DUPLICATE_CANDIDATE.build_marker(...)``. Legacy rows with
-    NULL signal_hash fall back to the JSON LIKE scan so we don't
-    silently lose history on the day this lands.
+    via ``DUPLICATE_CANDIDATE.build_marker(...)``. Legacy rows are
+    backfilled by migration ``c5b9a324c535`` so the OR / LIKE fallback
+    was removed — the query now goes through the composite index
+    unconditionally.
     """
 
     if not merchant or amount_cents is None:
@@ -93,11 +93,6 @@ def _has_recent_reject(
         {"amount_cents": amount_cents, "merchant": merchant}
     )
     indexed_hash = canonical_marker_hash(marker)
-    legacy_needle = json.dumps(
-        {"amount_cents": amount_cents, "merchant": merchant},
-        sort_keys=True,
-        ensure_ascii=False,
-    )
     found = db.scalar(
         select(LedgerLearningEvent.id)
         .where(LedgerLearningEvent.tenant_id == tenant_id)
@@ -105,18 +100,10 @@ def _has_recent_reject(
         .where(LedgerLearningEvent.event_type == "reject")
         .where(LedgerLearningEvent.created_at >= cutoff)
         .where(
-            or_(
-                and_(
-                    LedgerLearningEvent.signal_type
-                    == DUPLICATE_CANDIDATE.decision_type,
-                    LedgerLearningEvent.signal_hash == indexed_hash,
-                ),
-                and_(
-                    LedgerLearningEvent.signal_hash.is_(None),
-                    LedgerLearningEvent.before_payload.contains(legacy_needle),
-                ),
-            )
+            LedgerLearningEvent.signal_type
+            == DUPLICATE_CANDIDATE.decision_type
         )
+        .where(LedgerLearningEvent.signal_hash == indexed_hash)
         .limit(1)
     )
     return found is not None
