@@ -17,6 +17,9 @@ internal class MainScreenFactory(
     val reportsRepository: ReportsActions,
     val incomePlanRepository: IncomePlanActions,
     val settingsViewModelFactory: ViewModelProvider.Factory,
+    val categoryRulesViewModelFactory: ViewModelProvider.Factory,
+    val merchantAliasViewModelFactory: ViewModelProvider.Factory,
+    val appearanceViewModelFactory: ViewModelProvider.Factory,
 ) {
     val repositoryViewModelFactory: ViewModelProvider.Factory = createRepositoryViewModelFactory(
         repository = repository,

@@ -209,16 +209,6 @@ class ExpenseRepositoryAuthCheckTest {
                 tokenStore = tokenStore,
                 deviceNameProvider = { "Android Test Device" },
             )
-            val ruleRepository = RuleRepository(
-                apiClient = apiClient,
-                settingsStore = settingsStore,
-                tokenStore = tokenStore,
-            )
-            val merchantRepository = MerchantRepository(
-                apiClient = apiClient,
-                settingsStore = settingsStore,
-                tokenStore = tokenStore,
-            )
             val viewModel = ViewModelProvider(
                 viewModelStore,
                 object : ViewModelProvider.Factory {
@@ -226,8 +216,6 @@ class ExpenseRepositoryAuthCheckTest {
                     override fun <T : ViewModel> create(modelClass: Class<T>): T {
                         return SettingsViewModel(
                             repository,
-                            ruleRepository,
-                            merchantRepository,
                             settingsStore,
                         ) as T
                     }

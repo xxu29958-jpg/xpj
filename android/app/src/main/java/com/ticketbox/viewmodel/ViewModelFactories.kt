@@ -72,12 +72,39 @@ fun incomePlanViewModelFactory(
 @Suppress("UNCHECKED_CAST")
 fun settingsViewModelFactory(
     repository: ExpenseRepository,
-    ruleRepository: RuleRepository,
-    merchantRepository: MerchantRepository,
     settingsStore: LocalSettingsStore,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return SettingsViewModel(repository, ruleRepository, merchantRepository, settingsStore) as T
+        return SettingsViewModel(repository, settingsStore) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun categoryRulesViewModelFactory(
+    ruleRepository: RuleRepository,
+    repository: ExpenseRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return CategoryRulesViewModel(ruleRepository, repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun merchantAliasViewModelFactory(
+    merchantRepository: MerchantRepository,
+    repository: ExpenseRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return MerchantAliasViewModel(merchantRepository, repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun appearanceViewModelFactory(
+    settingsStore: LocalSettingsStore,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return AppearanceViewModel(settingsStore) as T
     }
 }
 

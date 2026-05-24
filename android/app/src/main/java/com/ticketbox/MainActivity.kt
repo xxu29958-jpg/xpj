@@ -7,6 +7,9 @@ import androidx.fragment.app.FragmentActivity
 import com.ticketbox.security.BiometricAuthManager
 import com.ticketbox.ui.navigation.TicketboxApp
 import com.ticketbox.viewmodel.appViewModelFactory
+import com.ticketbox.viewmodel.appearanceViewModelFactory
+import com.ticketbox.viewmodel.categoryRulesViewModelFactory
+import com.ticketbox.viewmodel.merchantAliasViewModelFactory
 import com.ticketbox.viewmodel.settingsViewModelFactory
 
 class MainActivity : FragmentActivity() {
@@ -31,8 +34,17 @@ class MainActivity : FragmentActivity() {
                 ),
                 settingsViewModelFactory = settingsViewModelFactory(
                     repository = container.expenseRepository,
+                    settingsStore = container.settingsStore,
+                ),
+                categoryRulesViewModelFactory = categoryRulesViewModelFactory(
                     ruleRepository = container.ruleRepository,
+                    repository = container.expenseRepository,
+                ),
+                merchantAliasViewModelFactory = merchantAliasViewModelFactory(
                     merchantRepository = container.merchantRepository,
+                    repository = container.expenseRepository,
+                ),
+                appearanceViewModelFactory = appearanceViewModelFactory(
                     settingsStore = container.settingsStore,
                 ),
                 biometricAuthManager = biometricAuthManager,

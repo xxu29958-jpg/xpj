@@ -8,6 +8,9 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.screens.SettingsScreen
+import com.ticketbox.viewmodel.AppearanceViewModel
+import com.ticketbox.viewmodel.CategoryRulesViewModel
+import com.ticketbox.viewmodel.MerchantAliasViewModel
 import com.ticketbox.viewmodel.SettingsViewModel
 
 @Composable
@@ -23,10 +26,36 @@ internal fun SettingsRoute(
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = screenFactory.settingsViewModelFactory,
     )
-    val state by settingsViewModel.uiState.collectAsStateWithLifecycle()
+    val categoryRulesViewModel: CategoryRulesViewModel = viewModel(
+        factory = screenFactory.categoryRulesViewModelFactory,
+    )
+    val merchantAliasViewModel: MerchantAliasViewModel = viewModel(
+        factory = screenFactory.merchantAliasViewModelFactory,
+    )
+    val appearanceViewModel: AppearanceViewModel = viewModel(
+        factory = screenFactory.appearanceViewModelFactory,
+    )
+
+    val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+    val rulesState by categoryRulesViewModel.uiState.collectAsStateWithLifecycle()
+    val merchantState by merchantAliasViewModel.uiState.collectAsStateWithLifecycle()
+    val appearanceState by appearanceViewModel.uiState.collectAsStateWithLifecycle()
+
+    val mergedState = settingsState.copy(
+        categoryRules = rulesState.categoryRules,
+        ruleApplications = rulesState.ruleApplications,
+        confirmedRulesPreview = rulesState.confirmedRulesPreview,
+        merchantAliases = merchantState.merchantAliases,
+        backgroundSettings = appearanceState.backgroundSettings,
+        busy = settingsState.busy || rulesState.busy || merchantState.busy,
+        message = settingsState.message
+            ?: rulesState.message
+            ?: merchantState.message
+            ?: appearanceState.message,
+    )
 
     SettingsScreen(
-        state = state,
+        state = mergedState,
         currentSkin = currentSkin,
         currentCurrency = currentCurrency,
         onTestConnection = settingsViewModel::testConnection,
@@ -35,24 +64,24 @@ internal fun SettingsRoute(
         onSync = settingsViewModel::sync,
         onClearCache = settingsViewModel::clearLocalCache,
         onSaveNotificationPreferences = settingsViewModel::saveNotificationPreferences,
-        onCreateRule = settingsViewModel::createCategoryRule,
-        onUpdateRule = settingsViewModel::updateCategoryRule,
-        onToggleRule = settingsViewModel::toggleCategoryRule,
-        onDeleteRule = settingsViewModel::deleteCategoryRule,
-        onCreateMerchantAlias = settingsViewModel::createMerchantAlias,
-        onToggleMerchantAlias = settingsViewModel::toggleMerchantAlias,
-        onDeleteMerchantAlias = settingsViewModel::deleteMerchantAlias,
-        onPreviewApplyConfirmedRules = settingsViewModel::previewApplyConfirmedRules,
-        onConfirmApplyConfirmedRules = settingsViewModel::confirmApplyConfirmedRules,
-        onRollbackRuleApplication = settingsViewModel::rollbackRuleApplication,
+        onCreateRule = categoryRulesViewModel::createCategoryRule,
+        onUpdateRule = categoryRulesViewModel::updateCategoryRule,
+        onToggleRule = categoryRulesViewModel::toggleCategoryRule,
+        onDeleteRule = categoryRulesViewModel::deleteCategoryRule,
+        onCreateMerchantAlias = merchantAliasViewModel::createMerchantAlias,
+        onToggleMerchantAlias = merchantAliasViewModel::toggleMerchantAlias,
+        onDeleteMerchantAlias = merchantAliasViewModel::deleteMerchantAlias,
+        onPreviewApplyConfirmedRules = categoryRulesViewModel::previewApplyConfirmedRules,
+        onConfirmApplyConfirmedRules = categoryRulesViewModel::confirmApplyConfirmedRules,
+        onRollbackRuleApplication = categoryRulesViewModel::rollbackRuleApplication,
         onSkinChange = onSkinChange,
         onCurrencyChange = onCurrencyChange,
-        onApplyBackgroundSettings = settingsViewModel::applyBackgroundSettings,
-        onClearBackgroundImage = settingsViewModel::clearBackgroundImage,
-        onBackgroundImageError = settingsViewModel::backgroundImageCopyFailed,
-        onImmersionModeChange = settingsViewModel::setImmersionMode,
-        onParallaxChange = settingsViewModel::setParallaxEnabled,
-        onReduceMotionChange = settingsViewModel::setReduceMotion,
+        onApplyBackgroundSettings = appearanceViewModel::applyBackgroundSettings,
+        onClearBackgroundImage = appearanceViewModel::clearBackgroundImage,
+        onBackgroundImageError = appearanceViewModel::backgroundImageCopyFailed,
+        onImmersionModeChange = appearanceViewModel::setImmersionMode,
+        onParallaxChange = appearanceViewModel::setParallaxEnabled,
+        onReduceMotionChange = appearanceViewModel::setReduceMotion,
         onBindingCleared = onBindingCleared,
         showAdvancedTools = BuildConfig.SHOW_ADVANCED_TOOLS,
         ledgerRepository = screenFactory.ledgerRepository,

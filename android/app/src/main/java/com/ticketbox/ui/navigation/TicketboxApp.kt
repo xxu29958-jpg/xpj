@@ -41,6 +41,9 @@ fun TicketboxApp(
     incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
     appViewModelFactory: ViewModelProvider.Factory,
     settingsViewModelFactory: ViewModelProvider.Factory,
+    categoryRulesViewModelFactory: ViewModelProvider.Factory,
+    merchantAliasViewModelFactory: ViewModelProvider.Factory,
+    appearanceViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
 ) {
     val appViewModel: AppViewModel = viewModel(
@@ -76,6 +79,9 @@ fun TicketboxApp(
             reportsRepository = reportsRepository,
             incomePlanRepository = incomePlanRepository,
             settingsViewModelFactory = settingsViewModelFactory,
+            categoryRulesViewModelFactory = categoryRulesViewModelFactory,
+            merchantAliasViewModelFactory = merchantAliasViewModelFactory,
+            appearanceViewModelFactory = appearanceViewModelFactory,
             biometricAuthManager = biometricAuthManager,
             onAuthMessageShown = appViewModel::consumeAuthMessage,
         )
@@ -93,6 +99,9 @@ private fun TicketboxContent(
     reportsRepository: ReportsActions,
     incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
     settingsViewModelFactory: ViewModelProvider.Factory,
+    categoryRulesViewModelFactory: ViewModelProvider.Factory,
+    merchantAliasViewModelFactory: ViewModelProvider.Factory,
+    appearanceViewModelFactory: ViewModelProvider.Factory,
     biometricAuthManager: BiometricAuthManager,
     onAuthMessageShown: () -> Unit,
 ) {
@@ -144,6 +153,9 @@ private fun TicketboxContent(
         reportsRepository = reportsRepository,
         incomePlanRepository = incomePlanRepository,
         settingsViewModelFactory = settingsViewModelFactory,
+        categoryRulesViewModelFactory = categoryRulesViewModelFactory,
+        merchantAliasViewModelFactory = merchantAliasViewModelFactory,
+        appearanceViewModelFactory = appearanceViewModelFactory,
         currentSkin = appState.skin,
         currentCurrency = appState.currency,
         backgroundSettings = appState.backgroundSettings,
@@ -164,6 +176,9 @@ private fun MainShell(
     reportsRepository: ReportsActions,
     incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
     settingsViewModelFactory: ViewModelProvider.Factory,
+    categoryRulesViewModelFactory: ViewModelProvider.Factory,
+    merchantAliasViewModelFactory: ViewModelProvider.Factory,
+    appearanceViewModelFactory: ViewModelProvider.Factory,
     currentSkin: AppSkin,
     currentCurrency: com.ticketbox.domain.model.CurrencyCode,
     backgroundSettings: BackgroundSettings,
@@ -185,6 +200,9 @@ private fun MainShell(
         reportsRepository,
         incomePlanRepository,
         settingsViewModelFactory,
+        categoryRulesViewModelFactory,
+        merchantAliasViewModelFactory,
+        appearanceViewModelFactory,
     ) {
         MainScreenFactory(
             repository = repository,
@@ -194,6 +212,9 @@ private fun MainShell(
             reportsRepository = reportsRepository,
             incomePlanRepository = incomePlanRepository,
             settingsViewModelFactory = settingsViewModelFactory,
+            categoryRulesViewModelFactory = categoryRulesViewModelFactory,
+            merchantAliasViewModelFactory = merchantAliasViewModelFactory,
+            appearanceViewModelFactory = appearanceViewModelFactory,
         )
     }
 
