@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}AI 顾问 - 小票夹 Owner Console{% endblock %}
+{% block content %}
+<h1>AI 顾问</h1>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div>
+      <h2>Provider 状态</h2>
+      <p class="text-meta">当前账本：<code>{{ tenant_id }}</code></p>
+    </div>
+    {% if status.needs_confirmation %}
+      <span class="badge badge-warn">需要 Owner 确认</span>
+    {% elif status.is_live %}
+      <span class="badge badge-ok">可调用外部 AI</span>
+    {% else %}
+      <span class="badge badge-off">本地 / 空 Provider</span>
+    {% endif %}
+  </div>
+  <div class="table-scroll" style="margin-top:12px">
+    <table>
+      <tbody>
+        <tr><th>Provider</th><td><code>{{ status.provider }}</code></td></tr>
+        <tr><th>Model</th><td>{{ status.model or "未配置" }}</td></tr>
+        <tr><th>Base URL</th><td>{{ status.base_url or "未配置" }}</td></tr>
+        <tr><th>Owner 确认</th><td>{{ "已确认" if status.owner_confirmed else "未确认" }}</td></tr>
+        <tr><th>最近调用</th><td>{{ status.last_called_at|owner_datetime }}</td></tr>
+        <tr><th>最近结果</th><td>
+          {% if status.last_success is none %}
+            无记录
+          {% elif status.last_success %}
+            成功，{{ status.last_suggestion_count or 0 }} 条建议，{{ status.last_duration_ms or 0 }} ms
+          {% else %}
+            失败：{{ status.last_error_code or "unknown" }}
+          {% endif %}
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="/owner/ai-advisor/confirmation" style="margin-top:16px">
+    <label style="display:flex;gap:8px;align-items:center">
+      <input type="checkbox" name="confirmed" value="on" {% if status.owner_confirmed %}checked{% endif %}>
+      <span>我确认允许当前配置的 AI Provider 接收已脱敏的预算顾问请求</span>
+    </label>
+    <div style="margin-top:12px">
+      <button type="submit" class="btn btn-primary">保存确认状态</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>最近 10 次审计</h2>
+  {% if audit_rows %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>Provider</th>
+          <th>月份</th>
+          <th>结果</th>
+          <th>建议</th>
+          <th>耗时</th>
+          <th>留存</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in audit_rows %}
+        <tr>
+          <td class="text-meta">{{ row.called_at|owner_datetime }}</td>
+          <td><code>{{ row.provider }}</code></td>
+          <td>{{ row.month or "-" }}</td>
+          <td>
+            {% if row.success %}
+              <span class="badge badge-ok">成功</span>
+            {% else %}
+              <span class="badge badge-err">{{ row.error_code or "失败" }}</span>
+            {% endif %}
+          </td>
+          <td>{{ row.suggestion_count }}</td>
+          <td>{{ row.duration_ms or 0 }} ms</td>
+          <td>{{ "永久" if row.retention_days == 0 else row.retention_days ~ " 天" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="empty-note">暂无 AI 顾问调用记录。</p>
+  {% endif %}
+</div>
+{% endblock %}

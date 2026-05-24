@@ -39,6 +39,10 @@ data class LedgerSwitchResponseDto(
     val accountName: String,
     @param:Json(name = "device_name")
     val deviceName: String,
+    @param:Json(name = "expires_at")
+    val expiresAt: String? = null,
+    @param:Json(name = "soft_refresh_after")
+    val softRefreshAfter: String? = null,
 )
 
 data class LedgerMemberDto(
@@ -151,4 +155,8 @@ data class InvitationAcceptResponseDto(
     @param:Json(name = "device_name")
     val deviceName: String,
     val role: String,
+    @param:Json(name = "expires_at")
+    val expiresAt: String? = null,
+    @param:Json(name = "soft_refresh_after")
+    val softRefreshAfter: String? = null,
 )

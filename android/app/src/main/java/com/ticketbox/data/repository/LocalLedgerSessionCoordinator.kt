@@ -56,6 +56,8 @@ class LocalLedgerSessionCoordinator(
         identity: LedgerSessionIdentity,
         serverUrl: String? = null,
         sessionToken: String? = null,
+        tokenExpiresAt: String? = null,
+        tokenSoftRefreshAfter: String? = null,
         cacheInvalidation: LedgerCacheInvalidation = LedgerCacheInvalidation.None,
         clearAvailableLedgers: Boolean = false,
         markUnlocked: Boolean = false,
@@ -65,6 +67,8 @@ class LocalLedgerSessionCoordinator(
                 identity = identity,
                 serverUrl = serverUrl,
                 sessionToken = sessionToken,
+                tokenExpiresAt = tokenExpiresAt,
+                tokenSoftRefreshAfter = tokenSoftRefreshAfter,
                 cacheInvalidation = cacheInvalidation,
                 clearAvailableLedgers = clearAvailableLedgers,
                 markUnlocked = markUnlocked,
@@ -77,6 +81,8 @@ class LocalLedgerSessionCoordinator(
         identity: LedgerSessionIdentity,
         serverUrl: String? = null,
         sessionToken: String? = null,
+        tokenExpiresAt: String? = null,
+        tokenSoftRefreshAfter: String? = null,
         cacheInvalidation: LedgerCacheInvalidation = LedgerCacheInvalidation.None,
         clearAvailableLedgers: Boolean = false,
         markUnlocked: Boolean = false,
@@ -87,6 +93,8 @@ class LocalLedgerSessionCoordinator(
                 identity = identity,
                 serverUrl = serverUrl,
                 sessionToken = sessionToken,
+                tokenExpiresAt = tokenExpiresAt,
+                tokenSoftRefreshAfter = tokenSoftRefreshAfter,
                 cacheInvalidation = cacheInvalidation,
                 clearAvailableLedgers = clearAvailableLedgers,
                 markUnlocked = markUnlocked,
@@ -99,12 +107,20 @@ class LocalLedgerSessionCoordinator(
         identity: LedgerSessionIdentity,
         serverUrl: String?,
         sessionToken: String?,
+        tokenExpiresAt: String?,
+        tokenSoftRefreshAfter: String?,
         cacheInvalidation: LedgerCacheInvalidation,
         clearAvailableLedgers: Boolean,
         markUnlocked: Boolean,
     ) {
         serverUrl?.let(settingsStore::saveServerUrl)
-        sessionToken?.let(tokenStore::saveToken)
+        sessionToken?.let { token ->
+            tokenStore.saveToken(
+                token = token,
+                expiresAt = tokenExpiresAt,
+                softRefreshAfter = tokenSoftRefreshAfter,
+            )
+        }
 
         if (clearAvailableLedgers) {
             settingsStore.saveAvailableLedgersJson(null)

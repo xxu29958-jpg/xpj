@@ -37,10 +37,12 @@ from app.services.budget_advisor_service._audit import (
     LIVE_PROVIDER_NAMES,
     AdvisorStatus,
     advisor_status_for_tenant,
+    cleanup_expired_audit_logs,
     compute_input_hash,
     is_live_provider,
     latest_audit_row,
     mask_base_url,
+    recent_audit_rows,
     record_audit_row,
 )
 from app.services.budget_advisor_service._inputs_builder import (
@@ -91,6 +93,7 @@ __all__ = [
     "assign_transaction_temp_id",
     "build_budget_inputs",
     "cleanup_session",
+    "cleanup_expired_audit_logs",
     "compute_input_hash",
     "get_budget_advisor",
     "get_or_create_member_anon",
@@ -98,6 +101,7 @@ __all__ = [
     "is_live_provider",
     "latest_audit_row",
     "mask_base_url",
+    "recent_audit_rows",
     "record_audit_row",
     "resolve_member_anon",
     "resolve_merchant_anon",

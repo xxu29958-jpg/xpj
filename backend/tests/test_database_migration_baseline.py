@@ -44,6 +44,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "dashboard_card_preferences" in inspector.get_table_names()
     assert "rule_application_batches" in inspector.get_table_names()
     assert "rule_application_changes" in inspector.get_table_names()
+    assert "budget_advisor_audit_logs" in inspector.get_table_names()
     assert "schema_migrations" in inspector.get_table_names()
     assert "bootstrap_secret_consumptions" in inspector.get_table_names()
     assert {
@@ -192,6 +193,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "fk_dashboard_cards_tenant_ledger" in dashboard_cards_sql
     assert "fk_expenses_tenant_ledger" in table_create_sql("expenses")
     assert "fk_csv_import_batches_tenant_ledger" in table_create_sql("csv_import_batches")
+    assert "retention_days" in table_columns("budget_advisor_audit_logs")
     with engine.begin() as connection:
         assert connection.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
         owner_rules = connection.execute(
@@ -208,6 +210,47 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
             {"name": BASELINE_MIGRATION_NAME},
         ).scalar_one()
     assert migration_count == 1
+    with engine.begin() as connection:
+        alembic_revision = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+    assert alembic_revision == "20260524_0002"
+
+
+def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
+    reset_empty_database()
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE budget_advisor_audit_logs (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    tenant_id VARCHAR(64) NOT NULL,
+                    actor_account_id INTEGER,
+                    provider VARCHAR(64) NOT NULL,
+                    model VARCHAR(120),
+                    base_url VARCHAR(255),
+                    month VARCHAR(7),
+                    input_hash VARCHAR(64) NOT NULL,
+                    success INTEGER DEFAULT '0' NOT NULL,
+                    error_code VARCHAR(64),
+                    suggestion_count INTEGER DEFAULT '0' NOT NULL,
+                    duration_ms INTEGER,
+                    called_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+
+    init_db()
+
+    assert "retention_days" in table_columns("budget_advisor_audit_logs")
+    with engine.begin() as connection:
+        alembic_revision = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+    assert alembic_revision == "20260524_0002"
 
 
 def test_exchange_rates_seed_identity_ledger_ids() -> None:

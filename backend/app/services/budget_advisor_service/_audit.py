@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -28,9 +28,7 @@ from app.config import get_settings
 from app.models import BudgetAdvisorAuditLog
 from app.services.time_service import ensure_utc, now_utc, to_iso
 
-LIVE_PROVIDER_NAMES = frozenset(
-    {"openai_compat", "openai-compat", "openai", "deepseek", "siliconflow"}
-)
+LIVE_PROVIDER_NAMES = frozenset({"openai_compat", "openai-compat", "openai", "deepseek", "siliconflow"})
 
 
 def is_live_provider(name: str | None) -> bool:
@@ -97,6 +95,7 @@ def record_audit_row(
     duration_ms: int | None = None,
     called_at: datetime | None = None,
 ) -> BudgetAdvisorAuditLog:
+    cfg = get_settings()
     row = BudgetAdvisorAuditLog(
         tenant_id=tenant_id,
         actor_account_id=actor_account_id,
@@ -109,6 +108,7 @@ def record_audit_row(
         error_code=error_code,
         suggestion_count=int(max(suggestion_count, 0)),
         duration_ms=duration_ms,
+        retention_days=max(int(cfg.budget_advisor_audit_retention_days), 0),
         called_at=called_at or now_utc(),
     )
     db.add(row)
@@ -116,15 +116,54 @@ def record_audit_row(
     return row
 
 
-def latest_audit_row(
-    db: Session, *, tenant_id: str
-) -> BudgetAdvisorAuditLog | None:
+def latest_audit_row(db: Session, *, tenant_id: str) -> BudgetAdvisorAuditLog | None:
     return db.scalar(
         select(BudgetAdvisorAuditLog)
         .where(BudgetAdvisorAuditLog.tenant_id == tenant_id)
         .order_by(BudgetAdvisorAuditLog.called_at.desc())
         .limit(1)
     )
+
+
+def recent_audit_rows(db: Session, *, tenant_id: str, limit: int = 10) -> list[BudgetAdvisorAuditLog]:
+    safe_limit = max(1, min(int(limit), 50))
+    return list(
+        db.scalars(
+            select(BudgetAdvisorAuditLog)
+            .where(BudgetAdvisorAuditLog.tenant_id == tenant_id)
+            .order_by(BudgetAdvisorAuditLog.called_at.desc())
+            .limit(safe_limit)
+        )
+    )
+
+
+def cleanup_expired_audit_logs(
+    db: Session,
+    *,
+    now: datetime | None = None,
+    batch_size: int = 500,
+) -> int:
+    """Delete audit rows whose per-row retention window has elapsed."""
+
+    threshold = now or now_utc()
+    rows = list(
+        db.scalars(
+            select(BudgetAdvisorAuditLog)
+            .where(BudgetAdvisorAuditLog.retention_days > 0)
+            .order_by(BudgetAdvisorAuditLog.called_at.asc())
+            .limit(max(1, min(int(batch_size), 5000)))
+        )
+    )
+    expired: list[BudgetAdvisorAuditLog] = []
+    for row in rows:
+        called_at = ensure_utc(row.called_at) or row.called_at
+        if called_at + timedelta(days=row.retention_days) <= threshold:
+            expired.append(row)
+    for row in expired:
+        db.delete(row)
+    if expired:
+        db.commit()
+    return len(expired)
 
 
 def advisor_status_for_tenant(db: Session, *, tenant_id: str) -> AdvisorStatus:
@@ -152,10 +191,12 @@ def advisor_status_for_tenant(db: Session, *, tenant_id: str) -> AdvisorStatus:
 __all__ = [
     "AdvisorStatus",
     "advisor_status_for_tenant",
+    "cleanup_expired_audit_logs",
     "compute_input_hash",
     "is_live_provider",
     "latest_audit_row",
     "mask_base_url",
+    "recent_audit_rows",
     "record_audit_row",
     "LIVE_PROVIDER_NAMES",
 ]

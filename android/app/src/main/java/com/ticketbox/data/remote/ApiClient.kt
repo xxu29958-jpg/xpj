@@ -8,6 +8,7 @@ import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
+import com.ticketbox.security.SessionTokenStore
 import okhttp3.Dns
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -20,9 +21,10 @@ import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.Proxy
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
-class ApiClient(context: Context? = null) : ApiServiceFactory {
+class ApiClient(context: Context? = null) : SessionAwareApiServiceFactory {
     private companion object {
         const val LOG_TAG = "TicketboxNetwork"
         const val USER_AGENT = "TicketBox/1.0 Android"
@@ -34,6 +36,36 @@ class ApiClient(context: Context? = null) : ApiServiceFactory {
     private val nonVpnNetworkProvider = context?.applicationContext?.let(::NonVpnNetworkProvider)
 
     override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService {
+        return createInternal(baseUrl = baseUrl, tokenProvider = tokenProvider, refreshController = null)
+    }
+
+    override fun create(baseUrl: String, tokenStore: SessionTokenStore): ApiService {
+        val normalized = normalizeBaseUrl(baseUrl)
+        val refreshController = SessionRefreshController(
+            baseUrl = normalized,
+            tokenStore = tokenStore,
+            serviceFactory = { serviceBaseUrl, provider ->
+                createInternal(
+                    baseUrl = serviceBaseUrl,
+                    tokenProvider = provider,
+                    refreshController = null,
+                )
+            },
+        )
+        return createInternal(
+            baseUrl = normalized,
+            tokenProvider = { tokenStore.getToken() },
+            refreshController = refreshController,
+            tokenStore = tokenStore,
+        )
+    }
+
+    private fun createInternal(
+        baseUrl: String,
+        tokenProvider: () -> String?,
+        refreshController: SessionRefreshController?,
+        tokenStore: SessionTokenStore? = null,
+    ): ApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
             // Never let bearer tokens or session cookies appear in logcat,
@@ -59,10 +91,22 @@ class ApiClient(context: Context? = null) : ApiServiceFactory {
             .addInterceptor { chain ->
                 val requestBuilder = chain.request().newBuilder()
                     .header("User-Agent", USER_AGENT)
-                tokenProvider()?.takeIf { it.isNotBlank() }?.let { token ->
+                val session = tokenStore?.getSessionToken()
+                if (session != null && !requestTargetsRefresh(chain)) {
+                    val now = Instant.now()
+                    if (!isExpired(session, now)) {
+                        refreshController?.refreshAsync(now)
+                    }
+                }
+                val token = session?.token ?: tokenProvider()
+                token?.takeIf { it.isNotBlank() }?.let {
                     requestBuilder.header("Authorization", "Bearer $token")
                 }
-                chain.proceed(requestBuilder.build())
+                val response = chain.proceed(requestBuilder.build())
+                if (response.code == 401 && session != null) {
+                    tokenStore.clear()
+                }
+                response
             }
             .addInterceptor(NonVpnGetFallbackInterceptor(nonVpnNetworkProvider))
             .addInterceptor(GetIoRetryInterceptor(GET_IO_RETRY_COUNT, GET_IO_RETRY_DELAY_MS))
@@ -98,6 +142,9 @@ class ApiClient(context: Context? = null) : ApiServiceFactory {
             .build()
             .create(ApiService::class.java)
     }
+
+    private fun requestTargetsRefresh(chain: Interceptor.Chain): Boolean =
+        chain.request().url.encodedPath == "/api/auth/refresh"
 
     private fun normalizeBaseUrl(baseUrl: String): String {
         val trimmed = baseUrl.trim()

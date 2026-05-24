@@ -27,6 +27,8 @@ def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
         account_name=account.display_name if account is not None else "",
         device_name=device.device_name if device is not None else "",
         default_timezone=link.default_timezone,
+        daily_byte_budget=link.daily_byte_budget,
+        per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
         # Lists / dashboards must NEVER show the full upload key — only the
         # public_id is safe to reveal repeatedly.
         masked_url_path="/u/***",
@@ -59,15 +61,10 @@ def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> lis
     device_ids = list({link.device_id for link in links})
 
     ledgers_by_id = {
-        ledger.ledger_id: ledger
-        for ledger in db.scalars(select(Ledger).where(Ledger.ledger_id.in_(ledger_id_set)))
+        ledger.ledger_id: ledger for ledger in db.scalars(select(Ledger).where(Ledger.ledger_id.in_(ledger_id_set)))
     }
-    accounts_by_id = {
-        a.id: a for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))
-    }
-    devices_by_id = {
-        d.id: d for d in db.scalars(select(Device).where(Device.id.in_(device_ids)))
-    }
+    accounts_by_id = {a.id: a for a in db.scalars(select(Account).where(Account.id.in_(account_ids)))}
+    devices_by_id = {d.id: d for d in db.scalars(select(Device).where(Device.id.in_(device_ids)))}
 
     summaries: list[UploadLinkSummary] = []
     for link in links:
@@ -82,6 +79,8 @@ def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> lis
                 account_name=account.display_name if account is not None else "",
                 device_name=device.device_name if device is not None else "",
                 default_timezone=link.default_timezone,
+                daily_byte_budget=link.daily_byte_budget,
+                per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
                 # Lists / dashboards must NEVER show the full upload key — only the
                 # public_id is safe to reveal repeatedly.
                 masked_url_path="/u/***",
@@ -162,6 +161,8 @@ def rotate_upload_link(
         device_id=link.device_id,
         ledger_id=link.ledger_id,
         default_timezone=link.default_timezone,
+        daily_byte_budget=link.daily_byte_budget,
+        per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
     )
     db.add(new_link)
     db.commit()
@@ -186,6 +187,40 @@ def revoke_upload_link(
         link.revoked_at = now_utc()
         db.commit()
         db.refresh(link)
+    return _upload_link_summary(db, link)
+
+
+def update_upload_link_limits(
+    db: Session,
+    *,
+    public_id: str,
+    daily_byte_budget: int | None,
+    per_remote_min_interval_seconds: int,
+    ledger_ids: set[str] | None = None,
+) -> UploadLinkSummary:
+    link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    if link.revoked_at is not None:
+        raise AppError(
+            "invalid_request",
+            "Cannot update a revoked upload link.",
+            status_code=409,
+        )
+    if daily_byte_budget is not None and daily_byte_budget < 0:
+        raise AppError(
+            "invalid_request",
+            "daily_byte_budget must be >= 0",
+            status_code=422,
+        )
+    if per_remote_min_interval_seconds < 0:
+        raise AppError(
+            "invalid_request",
+            "per_remote_min_interval_seconds must be >= 0",
+            status_code=422,
+        )
+    link.daily_byte_budget = daily_byte_budget
+    link.per_remote_min_interval_seconds = int(per_remote_min_interval_seconds)
+    db.commit()
+    db.refresh(link)
     return _upload_link_summary(db, link)
 
 
@@ -216,12 +251,7 @@ def _new_public_id(db: Session) -> str:
 
     while True:
         candidate = str(uuid4())
-        if (
-            db.scalar(
-                select(UploadLink.id).where(UploadLink.public_id == candidate).limit(1)
-            )
-            is None
-        ):
+        if db.scalar(select(UploadLink.id).where(UploadLink.public_id == candidate).limit(1)) is None:
             return candidate
 
 

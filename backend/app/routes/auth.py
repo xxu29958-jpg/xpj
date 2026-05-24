@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
@@ -17,7 +15,10 @@ from app.schemas import (
     RefreshSessionResponse,
 )
 from app.services.identity_service import pair_device
-from app.services.session_lifecycle_service import rotate_app_token_for_ledger
+from app.services.session_lifecycle_service import (
+    app_token_expiry_window,
+    rotate_app_token_for_ledger,
+)
 from app.services.time_service import to_iso
 from app.tenants import AuthContext
 
@@ -84,8 +85,7 @@ def refresh_session(
 
     if auth.scope != "app":
         raise AppError("invalid_token", status_code=401)
-    cfg = get_settings()
-    if cfg.app_token_ttl_days <= 0:
+    if get_settings().app_token_ttl_days <= 0:
         # When TTL is disabled, rotation is a no-op (still returns the
         # current token shape so clients can rely on the contract).
         return RefreshSessionResponse(
@@ -98,12 +98,7 @@ def refresh_session(
     from app.services.time_service import now_utc as _now_utc
 
     rotated_at = _now_utc()
-    expires_at = rotated_at + timedelta(days=cfg.app_token_ttl_days)
-    soft_refresh_after = (
-        expires_at - timedelta(days=max(cfg.app_token_refresh_window_days, 0))
-        if cfg.app_token_refresh_window_days > 0
-        else None
-    )
+    expiry = app_token_expiry_window(rotated_at)
     new_token, _ = rotate_app_token_for_ledger(
         db,
         current_token_value=current_token,
@@ -111,12 +106,12 @@ def refresh_session(
         device_id=auth.device_id,
         target_ledger_id=auth.ledger_id,
         rotated_at=rotated_at,
-        expires_at=expires_at,
+        expires_at=expiry.expires_at,
     )
     db.commit()
     return RefreshSessionResponse(
         session_token=new_token,
-        expires_at=to_iso(expires_at),
-        soft_refresh_after=to_iso(soft_refresh_after),
+        expires_at=to_iso(expiry.expires_at),
+        soft_refresh_after=to_iso(expiry.soft_refresh_after),
         rotated=True,
     )

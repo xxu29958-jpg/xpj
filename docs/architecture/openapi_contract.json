@@ -133,6 +133,17 @@
             ],
             "title": "Created At"
           },
+          "daily_byte_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Byte Budget"
+          },
           "default_timezone": {
             "anyOf": [
               {
@@ -170,6 +181,11 @@
           "masked_url_path": {
             "title": "Masked Url Path",
             "type": "string"
+          },
+          "per_remote_min_interval_seconds": {
+            "default": 0,
+            "title": "Per Remote Min Interval Seconds",
+            "type": "integer"
           },
           "public_id": {
             "title": "Public Id",
@@ -896,6 +912,23 @@
         "title": "BillSplitSentResponse",
         "type": "object"
       },
+      "Body_owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post": {
+        "properties": {
+          "confirmed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed"
+          }
+        },
+        "title": "Body_owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post",
+        "type": "object"
+      },
       "Body_owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post": {
         "properties": {
           "note": {
@@ -991,6 +1024,28 @@
           }
         },
         "title": "Body_owner_settings_set_public_base_url_owner_settings_public_base_url_post",
+        "type": "object"
+      },
+      "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post": {
+        "properties": {
+          "daily_byte_budget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Byte Budget"
+          },
+          "per_remote_min_interval_seconds": {
+            "default": 0,
+            "title": "Per Remote Min Interval Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post",
         "type": "object"
       },
       "Body_post_archive_web_income_plans__public_id__archive_post": {
@@ -5327,6 +5382,17 @@
             "title": "Device Name",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "ledger_id": {
             "title": "Ledger Id",
             "type": "string"
@@ -5342,6 +5408,17 @@
           "session_token": {
             "title": "Session Token",
             "type": "string"
+          },
+          "soft_refresh_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soft Refresh After"
           }
         },
         "required": [
@@ -5891,12 +5968,34 @@
             "title": "Device Name",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
           "ledger": {
             "$ref": "#/components/schemas/LedgerResponse"
           },
           "session_token": {
             "title": "Session Token",
             "type": "string"
+          },
+          "soft_refresh_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soft Refresh After"
           }
         },
         "required": [
@@ -5963,6 +6062,24 @@
           "frequent_merchants"
         ],
         "title": "LifestyleStatsResponse",
+        "type": "object"
+      },
+      "MaintenanceAuditCleanupResponse": {
+        "properties": {
+          "batch_size": {
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "deleted_rows": {
+            "title": "Deleted Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted_rows",
+          "batch_size"
+        ],
+        "title": "MaintenanceAuditCleanupResponse",
         "type": "object"
       },
       "MaintenanceCleanupResponse": {
@@ -13071,6 +13188,67 @@
         ]
       }
     },
+    "/api/maintenance/cleanup-ai-advisor-audit": {
+      "post": {
+        "operationId": "post_cleanup_ai_advisor_audit_api_maintenance_cleanup_ai_advisor_audit_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "batch_size",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Batch Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceAuditCleanupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Cleanup Ai Advisor Audit",
+        "tags": [
+          "maintenance"
+        ]
+      }
+    },
     "/api/maintenance/cleanup-images": {
       "post": {
         "operationId": "post_cleanup_images_api_maintenance_cleanup_images_post",
@@ -15401,6 +15579,67 @@
         ]
       }
     },
+    "/owner/ai-advisor": {
+      "get": {
+        "operationId": "owner_ai_advisor_get_owner_ai_advisor_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Ai Advisor Get",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/ai-advisor/confirmation": {
+      "post": {
+        "operationId": "owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_ai_advisor_confirmation_post_owner_ai_advisor_confirmation_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Ai Advisor Confirmation Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/backups": {
       "get": {
         "operationId": "owner_backups_get_owner_backups_get",
@@ -16381,6 +16620,57 @@
           }
         },
         "summary": "Owner Upload Links Delete",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/upload-links/{public_id}/limits": {
+      "post": {
+        "operationId": "owner_upload_links_limits_owner_upload_links__public_id__limits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Upload Links Limits",
         "tags": [
           "owner-console"
         ]

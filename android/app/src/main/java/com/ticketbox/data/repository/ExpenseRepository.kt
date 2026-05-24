@@ -181,6 +181,8 @@ class ExpenseRepository(
             sessionCoordinator.applyTransition(
                 serverUrl = normalized,
                 sessionToken = pairResponse.sessionToken,
+                tokenExpiresAt = pairResponse.expiresAt,
+                tokenSoftRefreshAfter = pairResponse.softRefreshAfter,
                 identity = LedgerSessionIdentity(
                     accountName = pairResponse.accountName,
                     ledgerId = pairResponse.ledgerId,
@@ -723,4 +725,3 @@ class ExpenseRepository(
         tokenStore.clear()
     }
 }
-

@@ -19,6 +19,7 @@ from app.services.admin_service import (
     list_upload_links,
     revoke_upload_link,
     rotate_upload_link,
+    update_upload_link_limits,
 )
 from app.services.owner_console_service._ledger_console import (
     _managed_console_ledger_ids,
@@ -32,6 +33,7 @@ __all__ = [
     "do_delete_upload_link",
     "do_revoke_upload_link",
     "do_rotate_upload_link",
+    "do_update_upload_link_limits",
     "get_upload_links",
 ]
 
@@ -67,6 +69,22 @@ def do_revoke_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
     return revoke_upload_link(
         db,
         public_id=public_id,
+        ledger_ids=_managed_console_ledger_ids(db),
+    )
+
+
+def do_update_upload_link_limits(
+    db: Session,
+    public_id: str,
+    *,
+    daily_byte_budget: int | None,
+    per_remote_min_interval_seconds: int,
+) -> UploadLinkSummary:
+    return update_upload_link_limits(
+        db,
+        public_id=public_id,
+        daily_byte_budget=daily_byte_budget,
+        per_remote_min_interval_seconds=per_remote_min_interval_seconds,
         ledger_ids=_managed_console_ledger_ids(db),
     )
 

@@ -60,6 +60,17 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    existing_connection = config.attributes.get("connection")
+    if existing_connection is not None:
+        context.configure(
+            connection=existing_connection,
+            target_metadata=target_metadata,
+            render_as_batch=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
     cfg = config.get_section(config.config_ini_section) or {}
     cfg["sqlalchemy.url"] = _database_url()
     connectable = engine_from_config(

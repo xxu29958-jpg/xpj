@@ -101,6 +101,8 @@ def switch_ledger_endpoint(
     )
     return LedgerSwitchResponse(
         session_token=result.session_token,
+        expires_at=result.expires_at,
+        soft_refresh_after=result.soft_refresh_after,
         ledger=LedgerResponse(
             ledger_id=result.ledger_id,
             name=result.ledger_name,

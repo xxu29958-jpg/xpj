@@ -37,24 +37,18 @@ def _pair(client: TestClient, *, code: str) -> dict:
     return response.json()
 
 
-def test_pair_response_carries_expiry_metadata(
-    client: TestClient, *, identity, ttl_env
-) -> None:
+def test_pair_response_carries_expiry_metadata(client: TestClient, *, identity, ttl_env) -> None:
     payload = _pair(client, code=identity.pairing_code)
     assert payload["expires_at"] is not None
     assert payload["soft_refresh_after"] is not None
     expires_at = datetime.fromisoformat(payload["expires_at"].replace("Z", "+00:00"))
-    soft_after = datetime.fromisoformat(
-        payload["soft_refresh_after"].replace("Z", "+00:00")
-    )
+    soft_after = datetime.fromisoformat(payload["soft_refresh_after"].replace("Z", "+00:00"))
     now = datetime.now(UTC)
     assert expires_at > now + timedelta(days=20)
     assert expires_at > soft_after
 
 
-def test_refresh_rotates_token_and_revokes_previous(
-    client: TestClient, *, identity, ttl_env
-) -> None:
+def test_refresh_rotates_token_and_revokes_previous(client: TestClient, *, identity, ttl_env) -> None:
     pair_payload = _pair(client, code=identity.pairing_code)
     old_token = pair_payload["session_token"]
 
@@ -70,24 +64,14 @@ def test_refresh_rotates_token_and_revokes_previous(
 
     # Old token must be revoked.
     with SessionLocal() as db:
-        old_row = (
-            db.query(AuthToken)
-            .filter(AuthToken.token_hash == hash_secret(old_token))
-            .one()
-        )
-        new_row = (
-            db.query(AuthToken)
-            .filter(AuthToken.token_hash == hash_secret(new_token))
-            .one()
-        )
+        old_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(old_token)).one()
+        new_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(new_token)).one()
         assert old_row.revoked_at is not None
         assert new_row.revoked_at is None
         assert new_row.expires_at is not None
 
 
-def test_refresh_with_ttl_disabled_is_noop(
-    client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_refresh_with_ttl_disabled_is_noop(client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_TOKEN_TTL_DAYS", "0")
     reset_settings_cache()
     try:
@@ -106,8 +90,22 @@ def test_refresh_with_ttl_disabled_is_noop(
         reset_settings_cache()
 
 
-def test_refresh_rejects_missing_bearer(
-    client: TestClient, *, identity, ttl_env
-) -> None:
+def test_refresh_rejects_missing_bearer(client: TestClient, *, identity, ttl_env) -> None:
     response = client.post("/api/auth/refresh")
     assert response.status_code == 401
+
+
+def test_expired_app_token_is_rejected_and_revoked(client: TestClient, *, identity, ttl_env) -> None:
+    pair_payload = _pair(client, code=identity.pairing_code)
+    token = pair_payload["session_token"]
+    with SessionLocal() as db:
+        row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token)).one()
+        row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+        db.commit()
+
+    response = client.get("/api/auth/check", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+
+    with SessionLocal() as db:
+        row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token)).one()
+        assert row.revoked_at is not None

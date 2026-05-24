@@ -21,9 +21,9 @@ internal class LedgerRequestGuard(
             throw RepositoryException(ledgerChangedMessage)
         }
         val serverUrl = requireNotNull(settingsStore.serverUrl()) { "账本地址未绑定" }
-        val token = requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) { "账本未绑定" }
+        requireNotNull(tokenStore.getToken()?.takeIf { it.isNotBlank() }) { "账本未绑定" }
         return BoundLedgerRequest(
-            service = apiProvider.temporary(serverUrl, token),
+            service = apiProvider.temporary(serverUrl),
             ledgerId = ledgerId,
             currentLedgerId = ::activeLedgerIdOrLegacy,
         )

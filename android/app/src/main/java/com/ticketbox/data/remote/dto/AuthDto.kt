@@ -36,6 +36,20 @@ data class PairResponseDto(
     @param:Json(name = "device_name")
     val deviceName: String,
     val role: String,
+    @param:Json(name = "expires_at")
+    val expiresAt: String? = null,
+    @param:Json(name = "soft_refresh_after")
+    val softRefreshAfter: String? = null,
+)
+
+data class RefreshSessionResponseDto(
+    @param:Json(name = "session_token")
+    val sessionToken: String,
+    @param:Json(name = "expires_at")
+    val expiresAt: String?,
+    @param:Json(name = "soft_refresh_after")
+    val softRefreshAfter: String?,
+    val rotated: Boolean,
 )
 
 data class StatusDto(

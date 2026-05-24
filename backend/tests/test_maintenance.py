@@ -19,6 +19,15 @@ def test_admin_maintenance_requires_admin_token(client: TestClient, *, identity)
     assert response.json()["enabled"] is False
 
 
+def test_admin_cleanup_ai_advisor_audit_runs(client: TestClient, *, identity) -> None:
+    response = client.post(
+        "/api/maintenance/cleanup-ai-advisor-audit",
+        headers=identity.admin_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["deleted_rows"] >= 0
+
+
 def test_maintenance_rejects_public_host_even_with_admin_token(client: TestClient, *, identity) -> None:
     app.dependency_overrides.pop(require_admin_network_boundary, None)
     try:
@@ -34,7 +43,9 @@ def test_maintenance_rejects_public_host_even_with_admin_token(client: TestClien
 
 
 def test_server_settings_snapshot_does_not_expose_paths_or_tokens(
-    client: TestClient, *, identity,
+    client: TestClient,
+    *,
+    identity,
 ) -> None:
     upload_png(client, identity=identity)
     response = client.get("/api/settings/server", headers=identity.app_headers)
@@ -60,7 +71,10 @@ def test_server_settings_snapshot_does_not_expose_paths_or_tokens(
 
 
 def test_server_settings_storage_metric_counts_external_upload_dir(
-    client: TestClient, external_upload_dir, *, identity,
+    client: TestClient,
+    external_upload_dir,
+    *,
+    identity,
 ) -> None:
     del external_upload_dir  # fixture side-effect: monkeypatched upload_dir
 

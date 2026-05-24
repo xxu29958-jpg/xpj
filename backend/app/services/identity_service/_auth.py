@@ -87,12 +87,15 @@ def _context_from_token(db: Session, token: AuthToken) -> AuthContext:
 def authenticate_session_token(db: Session, token_value: str, allowed_scopes: set[str]) -> AuthContext:
     token_hash = hash_secret(token_value)
     token = db.scalar(
-        select(AuthToken)
-        .where(AuthToken.token_hash == token_hash)
-        .where(AuthToken.revoked_at.is_(None))
-        .limit(1)
+        select(AuthToken).where(AuthToken.token_hash == token_hash).where(AuthToken.revoked_at.is_(None)).limit(1)
     )
     if token is None or token.scope not in allowed_scopes:
+        raise AppError("invalid_token", status_code=401)
+    now = now_utc()
+    expires_at = ensure_utc(token.expires_at)
+    if expires_at is not None and expires_at <= now:
+        token.revoked_at = now
+        db.commit()
         raise AppError("invalid_token", status_code=401)
     return _context_from_token(db, token)
 

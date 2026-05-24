@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 __all__ = [
     "DataQualitySummaryResponse",
+    "MaintenanceAuditCleanupResponse",
     "MaintenanceCleanupResponse",
     "MaintenanceOrphanCleanupResponse",
     "ServerSettingsResponse",
@@ -52,6 +53,11 @@ class MaintenanceOrphanCleanupResponse(BaseModel):
     deleted_files: int
     orphan_bytes: int
     deleted_bytes: int
+
+
+class MaintenanceAuditCleanupResponse(BaseModel):
+    deleted_rows: int
+    batch_size: int
 
 
 class ServerSettingsResponse(BaseModel):

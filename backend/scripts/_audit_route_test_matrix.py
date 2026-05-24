@@ -4,7 +4,9 @@ Every route registered under :data:`app.main.app` should have a test
 file that exercises it. Mutating routes (POST / PUT / PATCH / DELETE)
 should additionally have a no-auth rejection test (i.e. some test
 calls that exact path WITHOUT an ``Authorization`` header and expects
-401), so an auth regression can't ship silently.
+401), so an auth regression can't ship silently. The test corpus must
+also carry explicit security markers for cross-ledger, viewer-write,
+and existence-hiding coverage so those categories stay visible in CI.
 
 This is a heuristic — it cannot prove that a test really enforces
 cross-ledger isolation or 404-no-existence — but it catches the cheap
@@ -62,35 +64,14 @@ MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # v1.1 cut-over is unblocked while the gap is paid down incrementally.
 # A future ``XPJ_AUDIT_ROUTE_MATRIX_STRICT=1`` lane uses this set so
 # only NEW gaps fail.
-KNOWN_GAPS: frozenset[str] = frozenset({
-    "/api/bill-splits/{public_id}/cancel",
-    "/api/budgets/monthly/{month}",
-    "/api/exchange-rates/{currency_code}/{rate_date}",
-    "/api/expenses/confirmed/batch-update",
-    "/api/expenses/notification-drafts",
-    "/api/expenses/{expense_id}/items/acknowledge-mismatch",
-    "/api/expenses/{expense_id}/mark-not-duplicate",
-    "/api/expenses/{expense_id}/ocr/retry",
-    "/api/expenses/{expense_id}/recognize-text",
-    "/api/expenses/{expense_id}/split-invite",
-    "/api/goals/{public_id}/archive",
-    "/api/imports/csv",
-    "/api/imports/csv/{public_id}/apply",
-    "/api/maintenance/cleanup-orphans",
-    "/api/maintenance/cleanup-rejected",
-    "/api/merchants/aliases/{public_id}",
-    "/api/recurring/from-candidate",
-    "/api/recurring/items/{public_id}/archive",
-    "/api/recurring/items/{public_id}/pause",
-    "/api/recurring/items/{public_id}/resume",
-    "/api/rules/applications/{public_id}/rollback",
-    "/api/rules/apply-confirmed",
-    "/api/rules/apply-pending",
-    "/api/rules/apply-pending/preview",
-    "/api/rules/categories/{rule_id}",
-    "/api/rules/preview",
-    "/api/tasks/{public_id}/cancel",
-})
+KNOWN_GAPS: frozenset[str] = frozenset()
+
+SECURITY_MARKERS: dict[str, str] = {
+    "auth-401": "# coverage: auth-401",
+    "cross-ledger": "# coverage: cross-ledger",
+    "viewer-write": "# coverage: viewer-write",
+    "existence-404": "# coverage: existence-404",
+}
 
 
 def _route_index() -> list[tuple[str, str, str]]:
@@ -151,39 +132,59 @@ def _grep_no_auth_check(path: str, tests_root: pathlib.Path) -> bool:
     return False
 
 
-def main() -> int:
-    tests_root = pathlib.Path("tests")
-    if not tests_root.is_dir():
-        print("audit: tests/ directory not found — run from backend/", file=sys.stderr)
-        return 1
+def _grep_security_marker(marker: str, tests_root: pathlib.Path) -> bool:
+    for file in tests_root.rglob("test_*.py"):
+        try:
+            text = file.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if marker in text:
+            return True
+    return False
 
+
+def _missing_security_markers(tests_root: pathlib.Path) -> list[str]:
+    return [name for name, marker in SECURITY_MARKERS.items() if not _grep_security_marker(marker, tests_root)]
+
+
+def _strict_401_gate_enabled() -> bool:
+    import os
+
+    return os.environ.get("XPJ_AUDIT_ROUTE_MATRIX_STRICT", "1") == "1"
+
+
+def _new_401_gaps(missing_401: list[str]) -> list[str]:
+    return [line for line in missing_401 if line.split(" ", 1)[1] not in KNOWN_GAPS]
+
+
+def _collect_route_gaps(tests_root: pathlib.Path) -> tuple[list[str], list[str]]:
     missing_any: list[str] = []
     missing_401: list[str] = []
-
     seen_paths: set[str] = set()
     for method, path, handler in _route_index():
-        if path in ALLOWLIST:
-            continue
-        # Static mounts and websocket-style routes have no method-path
-        # surface; skip empty methods.
-        if not method:
+        if path in ALLOWLIST or not method:
             continue
         pattern = _path_pattern_for_grep(path)
         if not _grep_tests_for(pattern, tests_root):
             missing_any.append(f"{method} {path}  (handler: {handler})")
             continue
         if path not in seen_paths and method in MUTATING_METHODS:
-            # ``/web/*`` and ``/owner/*`` use cookie sessions /
-            # loopback boundary instead of bearer tokens, so a 401-on-
-            # no-Authorization-header check is the wrong shape for
-            # them. Only Bearer-token API routes are gated here.
             if path.startswith("/web/") or path.startswith("/owner/"):
                 seen_paths.add(path)
                 continue
             if not _grep_no_auth_check(path, tests_root):
                 missing_401.append(f"{method} {path}")
         seen_paths.add(path)
+    return missing_any, missing_401
 
+
+def main() -> int:
+    tests_root = pathlib.Path("tests")
+    if not tests_root.is_dir():
+        print("audit: tests/ directory not found — run from backend/", file=sys.stderr)
+        return 1
+
+    missing_any, missing_401 = _collect_route_gaps(tests_root)
     failed = False
     if missing_any:
         failed = True
@@ -191,22 +192,25 @@ def main() -> int:
         for line in sorted(missing_any):
             print(f"  - {line}")
 
-    new_401_gaps = [
-        line for line in missing_401 if line.split(" ", 1)[1] not in KNOWN_GAPS
-    ]
+    new_401_gaps = _new_401_gaps(missing_401)
     if new_401_gaps:
         # Emit as WARN by default — these are best-practice gaps, not
         # missing coverage outright. CI lanes that want a hard gate can
         # set XPJ_AUDIT_ROUTE_MATRIX_STRICT=1.
-        import os
-
-        strict = os.environ.get("XPJ_AUDIT_ROUTE_MATRIX_STRICT") == "1"
+        strict = _strict_401_gate_enabled()
         prefix = "FAIL" if strict else "WARN"
         print(f"{prefix}: mutating routes with no 401-rejection coverage:")
         for line in sorted(new_401_gaps):
             print(f"  - {line}")
         if strict:
             failed = True
+
+    missing_markers = _missing_security_markers(tests_root)
+    if missing_markers:
+        failed = True
+        print("FAIL: route security coverage markers missing:")
+        for name in sorted(missing_markers):
+            print(f"  - {name} ({SECURITY_MARKERS[name]})")
 
     if failed:
         print(

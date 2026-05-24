@@ -153,9 +153,35 @@ def test_owner_upload_links_list_masked(local_client: TestClient) -> None:
     assert raw_keys == [], f"raw upload key visible in list: {raw_keys[:1]}"
 
 
-def test_owner_upload_links_create_reveals_once(
-    local_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_owner_upload_link_limits_can_be_updated(local_client: TestClient) -> None:
+    import re
+
+    from app.database import SessionLocal
+    from app.models import UploadLink
+
+    create = local_client.post("/owner/upload-links")
+    assert create.status_code == 200
+    matches = re.findall(r"/owner/upload-links/([0-9a-f\-]{36})/limits", create.text)
+    assert matches, create.text
+    public_id = matches[0]
+
+    response = local_client.post(
+        f"/owner/upload-links/{public_id}/limits",
+        data={
+            "daily_byte_budget": "1048576",
+            "per_remote_min_interval_seconds": "9",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        assert link.daily_byte_budget == 1048576
+        assert link.per_remote_min_interval_seconds == 9
+
+
+def test_owner_upload_links_create_reveals_once(local_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import config as app_config
     from app.services import owner_console_service
 
@@ -239,6 +265,38 @@ def test_owner_settings_page_opens(local_client: TestClient) -> None:
     assert "/owner/settings/public-base-url" in resp.text
     assert "/owner/settings/security" in resp.text
     assert "/owner/settings/api" in resp.text
+
+
+def test_owner_ai_advisor_panel_opens(local_client: TestClient) -> None:
+    response = local_client.get("/owner/ai-advisor")
+    assert response.status_code == 200
+    assert "Provider" in response.text
+    assert "/owner/ai-advisor/confirmation" in response.text
+
+
+def test_owner_ai_advisor_confirmation_updates_runtime_env(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from app import config as app_config
+    from app.services import runtime_settings_service as rss
+
+    fake_env = tmp_path / ".env"
+    fake_env.write_text("", encoding="utf-8")
+    monkeypatch.setattr(rss, "_ENV_PATH", fake_env)
+    monkeypatch.delenv("BUDGET_ADVISOR_OWNER_CONFIRMED", raising=False)
+    app_config.get_settings.cache_clear()
+    try:
+        response = local_client.post(
+            "/owner/ai-advisor/confirmation",
+            data={"confirmed": "on"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert "BUDGET_ADVISOR_OWNER_CONFIRMED=true" in fake_env.read_text(encoding="utf-8")
+        assert app_config.get_settings().budget_advisor_owner_confirmed is True
+    finally:
+        monkeypatch.delenv("BUDGET_ADVISOR_OWNER_CONFIRMED", raising=False)
+        app_config.get_settings.cache_clear()
 
 
 def test_owner_settings_subpages_open(local_client: TestClient) -> None:
@@ -398,7 +456,9 @@ def test_owner_dashboard_renders_unconfigured_budget_status(local_client: TestCl
 
 
 def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
-    local_client: TestClient, *, identity,
+    local_client: TestClient,
+    *,
+    identity,
 ) -> None:
     from app.services.time_service import current_month
 
@@ -606,14 +666,10 @@ def test_owner_delete_upload_link_after_revoke(local_client: TestClient) -> None
     pid = pids[0]
     rev = local_client.post(f"/owner/upload-links/{pid}/revoke", follow_redirects=False)
     assert rev.status_code in (200, 303)
-    delete = local_client.post(
-        f"/owner/upload-links/{pid}/delete", follow_redirects=False
-    )
+    delete = local_client.post(f"/owner/upload-links/{pid}/delete", follow_redirects=False)
     assert delete.status_code in (200, 303)
     # Subsequent delete must 404 (link no longer exists).
-    again = local_client.post(
-        f"/owner/upload-links/{pid}/delete", follow_redirects=False
-    )
+    again = local_client.post(f"/owner/upload-links/{pid}/delete", follow_redirects=False)
     assert again.status_code == 404
 
 
@@ -625,6 +681,7 @@ def test_private_status_owner_console_status_not_unimplemented(client: TestClien
 
 
 # ── v0.3-rc1-preflight: Host-header hardening ───────────────────────────────
+
 
 class _FakeClient:
     def __init__(self, host: str) -> None:
@@ -687,9 +744,7 @@ def test_admin_boundary_public_host_rejected_by_default(monkeypatch: pytest.Monk
     network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
     try:
         with pytest.raises(AppError) as excinfo:
-            network_boundary.require_admin_network_boundary(
-                _FakeRequest("127.0.0.1", "api.zen70.cn")
-            )
+            network_boundary.require_admin_network_boundary(_FakeRequest("127.0.0.1", "api.zen70.cn"))
         assert excinfo.value.status_code == 403
     finally:
         network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
@@ -701,9 +756,7 @@ def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.M
     monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "true")
     network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
     try:
-        network_boundary.require_admin_network_boundary(
-            _FakeRequest("127.0.0.1", "api.zen70.cn")
-        )
+        network_boundary.require_admin_network_boundary(_FakeRequest("127.0.0.1", "api.zen70.cn"))
     finally:
         monkeypatch.setenv("ALLOW_PUBLIC_ADMIN_API", "false")
         network_boundary.get_settings.cache_clear()  # type: ignore[attr-defined]
@@ -711,13 +764,14 @@ def test_admin_boundary_public_host_allowed_when_flag_true(monkeypatch: pytest.M
 
 # ── PUBLIC_BASE_URL origin-only validation ───────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "bad_url,expect_fragment",
     [
-        ("https://api.example.com/foo",  "路径"),
+        ("https://api.example.com/foo", "路径"),
         ("https://api.example.com/foo/", "路径"),
-        ("https://api.example.com?x=1",  "查询"),
-        ("https://api.example.com#abc",  "片段"),
+        ("https://api.example.com?x=1", "查询"),
+        ("https://api.example.com#abc", "片段"),
         ("https://", "主机"),
         # http:// + public host: upload_key is a credential — refuse downgrade
         ("http://api.example.com", "https"),
@@ -744,9 +798,7 @@ def test_owner_settings_rejects_non_origin_url(
             data={"public_base_url": bad_url},
         )
         assert resp.status_code == 200, resp.text
-        assert expect_fragment in resp.text, (
-            f"Expected error hint '{expect_fragment}' not found for input {bad_url!r}"
-        )
+        assert expect_fragment in resp.text, f"Expected error hint '{expect_fragment}' not found for input {bad_url!r}"
         assert bad_url not in fake_env.read_text(encoding="utf-8"), (
             f"Bad URL should NOT have been written to .env for input {bad_url!r}"
         )
@@ -754,13 +806,12 @@ def test_owner_settings_rejects_non_origin_url(
         app_config.get_settings.cache_clear()
 
 
-def test_owner_settings_service_only_allows_public_base_url() -> None:
-    """_EDITABLE_KEYS must contain only PUBLIC_BASE_URL — any expansion is a
-    security change that requires explicit review."""
+def test_owner_settings_service_editable_keys_are_explicit() -> None:
+    """_EDITABLE_KEYS is the reviewed Owner Console runtime-edit surface."""
     from app.services.runtime_settings_service import _EDITABLE_KEYS
 
-    assert frozenset({"PUBLIC_BASE_URL"}) == _EDITABLE_KEYS, (
-        f"_EDITABLE_KEYS should only contain PUBLIC_BASE_URL, got: {_EDITABLE_KEYS}"
+    assert frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL"}) == _EDITABLE_KEYS, (
+        f"_EDITABLE_KEYS should contain only reviewed keys, got: {_EDITABLE_KEYS}"
     )
 
 
@@ -784,8 +835,7 @@ def test_owner_settings_trailing_slash_stripped(
         )
         assert resp.status_code == 200
         text = fake_env.read_text(encoding="utf-8")
-        assert "PUBLIC_BASE_URL=https://api.example.com\n" in text or \
-               "PUBLIC_BASE_URL=https://api.example.com" in text
+        assert "PUBLIC_BASE_URL=https://api.example.com\n" in text or "PUBLIC_BASE_URL=https://api.example.com" in text
     finally:
         monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
         app_config.get_settings.cache_clear()

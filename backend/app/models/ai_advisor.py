@@ -58,9 +58,7 @@ class AiMerchantAnonMap(Base):
     )
     merchant_canonical: Mapped[str] = mapped_column(String(255), nullable=False)
     anon_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
 class AiMemberAnonMap(Base):
@@ -95,9 +93,7 @@ class AiMemberAnonMap(Base):
         nullable=False,
     )
     anon_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
 class BudgetAdvisorAuditLog(Base):
@@ -119,14 +115,10 @@ class BudgetAdvisorAuditLog(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(
         String(64),
-        ForeignKey(
-            "ledgers.ledger_id", name="fk_budget_advisor_audit_tenant"
-        ),
+        ForeignKey("ledgers.ledger_id", name="fk_budget_advisor_audit_tenant"),
         nullable=False,
         index=True,
     )
@@ -140,17 +132,12 @@ class BudgetAdvisorAuditLog(Base):
     base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     month: Mapped[str | None] = mapped_column(String(7), nullable=True)
     input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    success: Mapped[bool] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    success: Mapped[bool] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    suggestion_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    suggestion_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    called_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+    retention_days: Mapped[int] = mapped_column(Integer, nullable=False, default=180, server_default="180")
+    called_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
 class AiTransactionTempIdMap(Base):
@@ -186,6 +173,4 @@ class AiTransactionTempIdMap(Base):
     session_id: Mapped[str] = mapped_column(String(64), nullable=False)
     expense_id: Mapped[int] = mapped_column(Integer, nullable=False)
     temp_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

@@ -41,6 +41,7 @@ import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
 import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
@@ -78,6 +79,9 @@ interface ApiService {
 
     @POST("api/auth/pair")
     suspend fun pairDevice(@Body request: PairRequestDto): PairResponseDto
+
+    @POST("api/auth/refresh")
+    suspend fun refreshSession(): RefreshSessionResponseDto
 
     @GET("api/expenses/pending")
     suspend fun pendingExpenses(): List<ExpenseDto>

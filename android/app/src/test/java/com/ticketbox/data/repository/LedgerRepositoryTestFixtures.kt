@@ -48,6 +48,7 @@ import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
@@ -180,6 +181,7 @@ internal class StubApi(
     }
 
     override suspend fun pairDevice(request: PairRequestDto): PairResponseDto = ledgerUnsupported()
+    override suspend fun refreshSession(): RefreshSessionResponseDto = ledgerUnsupported()
     override suspend fun checkAuth(): AuthCheckDto = ledgerUnsupported()
     override suspend fun pendingExpenses(): List<ExpenseDto> = ledgerUnsupported()
     override suspend fun confirmedExpenses(

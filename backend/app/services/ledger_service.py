@@ -30,7 +30,10 @@ from app.models import Account, AuthToken, Device, Ledger, LedgerMember
 from app.services.identity_service import (
     _ensure_membership,
 )
-from app.services.session_lifecycle_service import rotate_app_token_for_ledger
+from app.services.session_lifecycle_service import (
+    app_token_expiry_window,
+    rotate_app_token_for_ledger,
+)
 from app.services.time_service import to_iso
 from app.tenants import DEFAULT_TENANT_ID
 
@@ -52,6 +55,8 @@ class LedgerSummary:
 @dataclass(frozen=True)
 class SwitchLedgerResult:
     session_token: str
+    expires_at: str | None
+    soft_refresh_after: str | None
     ledger_id: str
     ledger_name: str
     role: str
@@ -121,23 +126,14 @@ def list_managed_ledgers_for_account(db: Session, *, account_id: int) -> list[Le
     codes, manage upload links, or revoke devices for it.
     """
 
-    return [
-        summary
-        for summary in list_ledgers_for_account(db, account_id=account_id)
-        if summary.role == "owner"
-    ]
+    return [summary for summary in list_ledgers_for_account(db, account_id=account_id) if summary.role == "owner"]
 
 
 def managed_ledger_ids_for_account(db: Session, *, account_id: int) -> set[str]:
-    return {
-        summary.ledger_id
-        for summary in list_managed_ledgers_for_account(db, account_id=account_id)
-    }
+    return {summary.ledger_id for summary in list_managed_ledgers_for_account(db, account_id=account_id)}
 
 
-def get_ledger_for_account(
-    db: Session, *, account_id: int, ledger_id: str
-) -> tuple[Ledger, str]:
+def get_ledger_for_account(db: Session, *, account_id: int, ledger_id: str) -> tuple[Ledger, str]:
     """Return ``(ledger, role)`` if the account has active membership.
 
     Raises ``AppError("ledger_forbidden", 403)`` when the ledger is archived,
@@ -204,26 +200,32 @@ def switch_ledger(
     4. Commit. If any step fails, the transaction rolls back and the caller
        keeps their original token.
     """
-    ledger, role = get_ledger_for_account(
-        db, account_id=account_id, ledger_id=target_ledger_id
-    )
+    ledger, role = get_ledger_for_account(db, account_id=account_id, ledger_id=target_ledger_id)
     account = db.get(Account, account_id)
     device = db.get(Device, device_id)
     if account is None or device is None:
         raise AppError("invalid_token", status_code=401)
 
+    from app.services.time_service import now_utc
+
+    switched_at = now_utc()
+    expiry = app_token_expiry_window(switched_at)
     new_token, switched_at = rotate_app_token_for_ledger(
         db,
         current_token_value=current_token_value,
         account_id=account.id,
         device_id=device.id,
         target_ledger_id=ledger.ledger_id,
+        rotated_at=switched_at,
+        expires_at=expiry.expires_at,
     )
     device.last_seen_at = switched_at
     db.commit()
 
     return SwitchLedgerResult(
         session_token=new_token,
+        expires_at=to_iso(expiry.expires_at),
+        soft_refresh_after=to_iso(expiry.soft_refresh_after),
         ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,
         role=role,

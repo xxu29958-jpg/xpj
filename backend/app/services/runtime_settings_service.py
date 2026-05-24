@@ -24,7 +24,7 @@ from app.version import BACKEND_VERSION
 
 _ENV_PATH = BACKEND_ROOT / ".env"
 
-_EDITABLE_KEYS: frozenset[str] = frozenset({"PUBLIC_BASE_URL"})
+_EDITABLE_KEYS: frozenset[str] = frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL"})
 
 
 @dataclass(frozen=True)
@@ -199,18 +199,32 @@ def _set_env_key(lines: list[str], key: str, value: str) -> list[str]:
     return out
 
 
+def _write_runtime_env_value(key: str, value: str) -> None:
+    if key not in _EDITABLE_KEYS:
+        raise AppError(
+            "invalid_request",
+            "This setting cannot be changed from Owner Console.",
+            status_code=403,
+        )
+    lines = _read_env_lines()
+    lines = _set_env_key(lines, key, value)
+    _write_env_lines(lines)
+
+    import os
+
+    os.environ[key] = value
+    get_settings.cache_clear()  # type: ignore[attr-defined]
+
+
 def update_public_base_url(raw: str) -> RuntimeSettingsView:
     if "PUBLIC_BASE_URL" not in _EDITABLE_KEYS:
         raise AppError("invalid_request", "该配置项不允许在 Owner Console 中修改。", status_code=403)
     value = _validate_public_base_url(raw)
-    lines = _read_env_lines()
-    lines = _set_env_key(lines, "PUBLIC_BASE_URL", value)
-    _write_env_lines(lines)
-
-    # Invalidate cached Settings and re-import os.environ so the change is
-    # visible to subsequent requests in the same process.
-    import os
-
-    os.environ["PUBLIC_BASE_URL"] = value
-    get_settings.cache_clear()  # type: ignore[attr-defined]
+    _write_runtime_env_value("PUBLIC_BASE_URL", value)
     return get_view()
+
+
+def update_budget_advisor_owner_confirmed(confirmed: bool) -> bool:
+    value = "true" if confirmed else "false"
+    _write_runtime_env_value("BUDGET_ADVISOR_OWNER_CONFIRMED", value)
+    return get_settings().budget_advisor_owner_confirmed

@@ -140,6 +140,12 @@ jobs:
       - name: Build gray and internal debug APKs
         run: ./gradlew --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
 
+      - name: Build gray and internal release APKs (R8)
+        # Release builds run minify + shrinkResources. This keeps R8 keep
+        # rules warm in CI instead of discovering Retrofit/Moshi issues only
+        # when someone manually assembles a release.
+        run: ./gradlew --no-daemon :app:assembleGrayRelease :app:assembleInternalRelease
+
       - name: Verify debug APK signing certificate
         run: |
           set -euo pipefail
@@ -174,11 +180,11 @@ jobs:
         # v1.1 Batch 3: Android dependency vulnerability gate.
         # ``dependencyCheckAnalyze`` is wired through the OWASP plugin
         # (see android/build.gradle.kts). Any CVSS score >= 7.0 fails
-        # the build — anything lower is reported but tolerated so a
+        # the build; anything lower is reported but tolerated so a
         # transitive low-severity finding doesn't block a hotfix.
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: ./gradlew --no-daemon dependencyCheckAnalyze
+        run: ./gradlew --no-daemon dependencyCheckAnalyze -PnvdApiKey="${NVD_API_KEY}"
         continue-on-error: false
 
       - name: Upload gray debug APK

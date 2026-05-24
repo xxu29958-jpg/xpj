@@ -76,6 +76,7 @@ from app.services.owner_console_service._upload_links import (
     do_delete_upload_link,
     do_revoke_upload_link,
     do_rotate_upload_link,
+    do_update_upload_link_limits,
     get_upload_links,
 )
 
@@ -102,6 +103,7 @@ __all__ = [
     "do_revoke_device",
     "do_revoke_upload_link",
     "do_rotate_upload_link",
+    "do_update_upload_link_limits",
     "get_default_ledger_id",
     "get_devices",
     "get_index_vm",

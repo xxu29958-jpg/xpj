@@ -38,6 +38,7 @@ from app.services.admin_service._upload_links import (
     list_upload_links,
     revoke_upload_link,
     rotate_upload_link,
+    update_upload_link_limits,
 )
 
 __all__ = [
@@ -53,4 +54,5 @@ __all__ = [
     "revoke_device",
     "revoke_upload_link",
     "rotate_upload_link",
+    "update_upload_link_limits",
 ]

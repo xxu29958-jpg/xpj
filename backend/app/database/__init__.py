@@ -74,20 +74,19 @@ def init_db() -> None:
 
 
 def _stamp_alembic_baseline_if_needed() -> None:
-    """Mark the DB as being at the v1.1 baseline revision when no
-    alembic_version row exists yet.
+    """Bring Alembic's version table in line with the runtime schema.
 
-    The legacy idempotent migrator already produced the v1.1 schema for
-    existing DBs; we stamp the baseline so future ``alembic upgrade
-    head`` calls don't try to replay revisions whose effects are already
-    in the schema. Doing this inside ``init_db`` keeps the dev / prod
-    flow identical: no separate ``alembic stamp`` step.
+    Fresh databases are created from current ``Base.metadata`` and can be
+    stamped directly to head. Existing v1.1 databases are first stamped to
+    the baseline revision, then upgraded to head so real Alembic revisions
+    (starting with 20260524_0002) actually run.
     """
     from pathlib import Path
 
     from sqlalchemy import inspect, text
 
     try:
+        from alembic import command
         from alembic.config import Config
         from alembic.script import ScriptDirectory
     except ImportError:
@@ -107,9 +106,23 @@ def _stamp_alembic_baseline_if_needed() -> None:
     if head is None:
         return
 
+    current_revision: str | None = None
     with engine.begin() as connection:
-        has_table = "alembic_version" in set(inspect(connection).get_table_names())
-        if not has_table:
+        inspector = inspect(connection)
+        table_names = set(inspector.get_table_names())
+        has_version_table = "alembic_version" in table_names
+        if has_version_table:
+            current_revision = connection.scalar(
+                text("SELECT version_num FROM alembic_version LIMIT 1")
+            )
+        else:
+            has_retention_column = False
+            if "budget_advisor_audit_logs" in table_names:
+                has_retention_column = any(
+                    column["name"] == "retention_days"
+                    for column in inspector.get_columns("budget_advisor_audit_logs")
+                )
+            current_revision = head if has_retention_column else "20260524_0001"
             connection.execute(
                 text(
                     "CREATE TABLE IF NOT EXISTS alembic_version "
@@ -118,5 +131,9 @@ def _stamp_alembic_baseline_if_needed() -> None:
             )
             connection.execute(
                 text("INSERT INTO alembic_version (version_num) VALUES (:v)"),
-                {"v": head},
+                {"v": current_revision},
             )
+    if current_revision != head:
+        with engine.begin() as connection:
+            cfg.attributes["connection"] = connection
+            command.upgrade(cfg, "head")

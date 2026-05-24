@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import update
@@ -23,6 +24,12 @@ PairingConsumeResult = Literal["consumed", "used", "expired"]
 PAIRING_CODE_DIGITS = 8
 PAIRING_CODE_HASH_ITERATIONS = 120_000
 PAIRING_CODE_HASH_SALT = b"ticketbox-pairing-code-v2"
+
+
+@dataclass(frozen=True)
+class AppTokenExpiryWindow:
+    expires_at: datetime | None
+    soft_refresh_after: datetime | None
 
 
 def hash_secret(secret: str) -> str:
@@ -39,7 +46,7 @@ def hash_pairing_code(code: str) -> str:
 
 
 def new_pairing_code() -> str:
-    return f"{secrets.randbelow(10 ** PAIRING_CODE_DIGITS):0{PAIRING_CODE_DIGITS}d}"
+    return f"{secrets.randbelow(10**PAIRING_CODE_DIGITS):0{PAIRING_CODE_DIGITS}d}"
 
 
 def new_session_token() -> str:
@@ -48,6 +55,26 @@ def new_session_token() -> str:
 
 def new_upload_key() -> str:
     return f"upl_{secrets.token_urlsafe(32)}"
+
+
+def app_token_expiry_window(issued_at: datetime) -> AppTokenExpiryWindow:
+    """Return the configured app-token expiry contract for a newly issued token."""
+
+    from app.config import get_settings
+
+    cfg = get_settings()
+    if cfg.app_token_ttl_days <= 0:
+        return AppTokenExpiryWindow(expires_at=None, soft_refresh_after=None)
+    expires_at = issued_at + timedelta(days=cfg.app_token_ttl_days)
+    soft_refresh_after = (
+        expires_at - timedelta(days=max(cfg.app_token_refresh_window_days, 0))
+        if cfg.app_token_refresh_window_days > 0
+        else None
+    )
+    return AppTokenExpiryWindow(
+        expires_at=expires_at,
+        soft_refresh_after=soft_refresh_after,
+    )
 
 
 def issue_auth_token(
@@ -144,9 +171,7 @@ def revoke_active_tokens(
         statement = statement.where(AuthToken.ledger_id == ledger_id)
     if scope is not None:
         statement = statement.where(AuthToken.scope == scope)
-    result = db.execute(
-        statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False)
-    )
+    result = db.execute(statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False))
     return int(result.rowcount or 0)
 
 
@@ -159,15 +184,11 @@ def revoke_token_value(
 ) -> int:
     revoked_at = revoked_at or now_utc()
     statement = (
-        update(AuthToken)
-        .where(AuthToken.token_hash == hash_secret(token_value))
-        .where(AuthToken.revoked_at.is_(None))
+        update(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)).where(AuthToken.revoked_at.is_(None))
     )
     if scope is not None:
         statement = statement.where(AuthToken.scope == scope)
-    result = db.execute(
-        statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False)
-    )
+    result = db.execute(statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False))
     return int(result.rowcount or 0)
 
 

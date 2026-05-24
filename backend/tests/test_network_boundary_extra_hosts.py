@@ -70,19 +70,26 @@ def test_empty_env_var_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_extra_loopback_hosts_rejects_public_dns_entry(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app import network_boundary
+
     # An operator who pastes the Cloudflare Tunnel hostname into this env var
     # by mistake must NOT silently widen /web / /owner. Only loopback-style
     # entries take effect; non-loopback entries are dropped with log.error.
+    captured_errors: list[tuple[str, tuple[object, ...]]] = []
+    monkeypatch.setattr(
+        network_boundary.logger,
+        "error",
+        lambda message, *args, **_kwargs: captured_errors.append((message, args)),
+    )
     monkeypatch.setenv("XPJ_EXTRA_LOOPBACK_HOSTS", "api.example.com, 127.0.0.1:8765")
-    with caplog.at_level("ERROR", logger="app.network_boundary"):
-        # The accepted port still works.
-        assert is_loopback_request(_make_request("127.0.0.1:8765"))
-        # The rejected DNS entry must NOT bypass the boundary just because
-        # someone configured it.
-        assert not is_loopback_request(_make_request("api.example.com"))
-    assert any("XPJ_EXTRA_LOOPBACK_HOSTS" in record.message for record in caplog.records)
+    # The accepted port still works.
+    assert is_loopback_request(_make_request("127.0.0.1:8765"))
+    # The rejected DNS entry must NOT bypass the boundary just because
+    # someone configured it.
+    assert not is_loopback_request(_make_request("api.example.com"))
+    assert any("XPJ_EXTRA_LOOPBACK_HOSTS" in message for message, _ in captured_errors)
     # Verify the dropped host literal appears in the logger.error args (logger
     # call is ``logger.error(..., rejected)`` with rejected being a list).
     # Written as ``any(item == EXPECTED)`` rather than ``EXPECTED in collection``
@@ -90,7 +97,7 @@ def test_extra_loopback_hosts_rejects_public_dns_entry(
     # matches the latter pattern as lax URL validation, which this is not —
     # it's a log-content assertion in a test.
     expected_rejected_host = "api.example.com"
-    rejected_args = [arg for record in caplog.records for arg in (record.args or ())]
+    rejected_args = [arg for _, args in captured_errors for arg in args]
     flat = [str(a) for nested in rejected_args for a in (nested if isinstance(nested, list) else [nested])]
     assert any(item == expected_rejected_host for item in flat), flat
 

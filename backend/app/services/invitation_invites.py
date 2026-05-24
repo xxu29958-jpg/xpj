@@ -33,7 +33,10 @@ from app.services.invitation_common import (
     new_invite_token,
     require_active_owner,
 )
-from app.services.session_lifecycle_service import revoke_token_value
+from app.services.session_lifecycle_service import (
+    app_token_expiry_window,
+    revoke_token_value,
+)
 from app.services.time_service import ensure_utc, now_utc, to_iso
 
 
@@ -59,6 +62,8 @@ class CreateInvitationResult:
 @dataclass(frozen=True)
 class AcceptInvitationResult:
     session_token: str
+    expires_at: str | None
+    soft_refresh_after: str | None
     account_name: str
     ledger_id: str
     ledger_name: str
@@ -74,9 +79,7 @@ class InvitationPreviewResult:
     expires_at: str | None
 
 
-def invitation_summary(
-    invitation: Invitation, used_by_name: str | None
-) -> InvitationSummary:
+def invitation_summary(invitation: Invitation, used_by_name: str | None) -> InvitationSummary:
     return InvitationSummary(
         public_id=invitation.public_id,
         ledger_id=invitation.ledger_id,
@@ -142,11 +145,7 @@ def create_invitation(
 
 def list_invitations(db: Session, *, ledger_id: str) -> list[InvitationSummary]:
     rows = list(
-        db.scalars(
-            select(Invitation)
-            .where(Invitation.ledger_id == ledger_id)
-            .order_by(Invitation.created_at.desc())
-        )
+        db.scalars(select(Invitation).where(Invitation.ledger_id == ledger_id).order_by(Invitation.created_at.desc()))
     )
     summaries: list[InvitationSummary] = []
     for inv in rows:
@@ -168,10 +167,7 @@ def revoke_invitation(
     if actor_account_id is not None:
         require_active_owner(db, ledger_id=ledger_id, account_id=actor_account_id)
     invitation = db.scalar(
-        select(Invitation)
-        .where(Invitation.ledger_id == ledger_id)
-        .where(Invitation.public_id == public_id)
-        .limit(1)
+        select(Invitation).where(Invitation.ledger_id == ledger_id).where(Invitation.public_id == public_id).limit(1)
     )
     if invitation is None:
         raise AppError("invitation_invalid", status_code=404)
@@ -196,9 +192,7 @@ def revoke_invitation(
 
 def resolve_active_invitation(db: Session, invite_token: str) -> Invitation:
     token_hash = hash_secret(invite_token.strip())
-    invitation = db.scalar(
-        select(Invitation).where(Invitation.token_hash == token_hash).limit(1)
-    )
+    invitation = db.scalar(select(Invitation).where(Invitation.token_hash == token_hash).limit(1))
     if invitation is None:
         raise AppError("invitation_invalid", status_code=400)
     if invitation.used_at is not None or invitation.revoked_at is not None:
@@ -273,12 +267,14 @@ def accept_invitation(
 
     _ensure_membership(db, ledger.ledger_id, account.id, invitation.role)
     device = _ensure_device(db, account.id, cleaned_device_name, cleaned_platform)
+    expiry = app_token_expiry_window(used_at)
     token = _create_auth_token(
         db,
         account_id=account.id,
         device_id=device.id,
         ledger_id=ledger.ledger_id,
         scope="app",
+        expires_at=expiry.expires_at,
     )
     if previous_session_token:
         revoke_token_value(
@@ -300,6 +296,8 @@ def accept_invitation(
 
     return AcceptInvitationResult(
         session_token=token,
+        expires_at=to_iso(expiry.expires_at),
+        soft_refresh_after=to_iso(expiry.soft_refresh_after),
         account_name=account.display_name,
         ledger_id=ledger.ledger_id,
         ledger_name=ledger.name,

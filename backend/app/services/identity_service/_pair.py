@@ -21,6 +21,7 @@ from app.services.identity_service._pairing_throttle import (
 )
 from app.services.identity_service._seed import _ledger_by_id
 from app.services.session_lifecycle_service import (
+    app_token_expiry_window,
     consume_pairing_code,
     hash_pairing_code,
 )
@@ -69,16 +70,10 @@ def pair_device(
     # "never expires" semantics for environments that opt out.
     platform_lower = (platform or "").strip().lower()
     if platform_lower == "web":
-        token_expires_at: datetime | None = (
-            used_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS)
-        )
+        token_expires_at: datetime | None = used_at + timedelta(seconds=WEB_SESSION_TTL_SECONDS)
     else:
-        from app.config import get_settings as _get_settings
-
-        ttl_days = _get_settings().app_token_ttl_days
-        token_expires_at = (
-            used_at + timedelta(days=ttl_days) if ttl_days > 0 else None
-        )
+        expiry = app_token_expiry_window(used_at)
+        token_expires_at = expiry.expires_at
     token = _create_auth_token(
         db,
         account_id=account.id,
@@ -89,14 +84,9 @@ def pair_device(
     )
     db.commit()
     _clear_pairing_failures(db, remote_id)
-    from app.config import get_settings as _get_settings
-
-    refresh_window_days = _get_settings().app_token_refresh_window_days
-    soft_refresh_after = (
-        token_expires_at - timedelta(days=max(refresh_window_days, 0))
-        if token_expires_at is not None and refresh_window_days > 0
-        else None
-    )
+    soft_refresh_after = None
+    if platform_lower != "web":
+        soft_refresh_after = app_token_expiry_window(used_at).soft_refresh_after
     return PairingResult(
         session_token=token,
         account_name=account.display_name,

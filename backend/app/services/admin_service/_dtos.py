@@ -26,6 +26,8 @@ class UploadLinkSummary:
     account_name: str
     device_name: str
     default_timezone: str | None
+    daily_byte_budget: int | None
+    per_remote_min_interval_seconds: int
     masked_url_path: str
     last_used_at: str | None
     revoked_at: str | None

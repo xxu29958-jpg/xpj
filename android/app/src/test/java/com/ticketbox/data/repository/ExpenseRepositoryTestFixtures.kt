@@ -38,6 +38,7 @@ import com.ticketbox.data.remote.dto.PairResponseDto
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
+import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
@@ -111,6 +112,8 @@ internal class FakeApiService(
             role = "owner",
         )
     }
+
+    override suspend fun refreshSession(): RefreshSessionResponseDto = unsupported()
 
     override suspend fun confirmedExpenses(
         page: Int,

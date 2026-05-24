@@ -145,9 +145,7 @@ def list_invitations_endpoint(
     db: Session = Depends(get_db),
 ) -> InvitationListResponse:
     summaries = list_invitations(db, ledger_id=ledger_id)
-    return InvitationListResponse(
-        invitations=[_to_invitation_response(s) for s in summaries]
-    )
+    return InvitationListResponse(invitations=[_to_invitation_response(s) for s in summaries])
 
 
 @router.post(
@@ -205,6 +203,8 @@ def accept_invitation_endpoint(
     )
     return InvitationAcceptResponse(
         session_token=result.session_token,
+        expires_at=result.expires_at,
+        soft_refresh_after=result.soft_refresh_after,
         account_name=result.account_name,
         ledger_id=result.ledger_id,
         ledger_name=result.ledger_name,
@@ -224,9 +224,7 @@ def list_members_endpoint(
 ) -> LedgerMemberListResponse:
     # Read access for any active member (owner/member/viewer).
     summaries = list_members(db, ledger_id=ledger_id, requester_account_id=auth.account_id)
-    return LedgerMemberListResponse(
-        members=[_to_member_response(s) for s in summaries]
-    )
+    return LedgerMemberListResponse(members=[_to_member_response(s) for s in summaries])
 
 
 @router.post(

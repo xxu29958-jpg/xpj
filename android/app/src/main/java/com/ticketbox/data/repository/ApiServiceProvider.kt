@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.SessionAwareApiServiceFactory
 import com.ticketbox.security.SessionTokenStore
 
 /**
@@ -32,7 +33,7 @@ class ApiServiceProvider(
             if (lockedCached != null && cachedServerUrl == serverUrl) {
                 lockedCached
             } else {
-                apiClient.create(serverUrl) { tokenStore.getToken() }
+                createBoundService(serverUrl)
                     .also { service ->
                         cachedServerUrl = serverUrl
                         cachedApi = service
@@ -43,6 +44,9 @@ class ApiServiceProvider(
 
     fun temporary(serverUrl: String, tokenOverride: String? = null): ApiService {
         val cleanServerUrl = requireServerUrl(serverUrl)
+        if (tokenOverride == null && apiClient is SessionAwareApiServiceFactory) {
+            return apiClient.create(cleanServerUrl, tokenStore)
+        }
         return apiClient.create(cleanServerUrl) { tokenOverride ?: tokenStore.getToken() }
     }
 
@@ -62,5 +66,12 @@ class ApiServiceProvider(
         val serverUrl = value?.trim()?.trimEnd('/')
         require(!serverUrl.isNullOrBlank()) { "账本地址未绑定" }
         return serverUrl
+    }
+
+    private fun createBoundService(serverUrl: String): ApiService {
+        if (apiClient is SessionAwareApiServiceFactory) {
+            return apiClient.create(serverUrl, tokenStore)
+        }
+        return apiClient.create(serverUrl) { tokenStore.getToken() }
     }
 }

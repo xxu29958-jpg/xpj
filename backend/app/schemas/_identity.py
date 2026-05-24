@@ -91,6 +91,8 @@ class LedgerCreateRequest(BaseModel):
 
 class LedgerSwitchResponse(BaseModel):
     session_token: str
+    expires_at: str | None = None
+    soft_refresh_after: str | None = None
     ledger: LedgerResponse
     account_name: str
     device_name: str
@@ -144,6 +146,8 @@ class InvitationPreviewResponse(BaseModel):
 
 class InvitationAcceptResponse(BaseModel):
     session_token: str
+    expires_at: str | None = None
+    soft_refresh_after: str | None = None
     account_name: str
     ledger_id: str
     ledger_name: str
@@ -249,6 +253,8 @@ class AdminUploadLinkResponse(BaseModel):
     account_name: str
     device_name: str
     default_timezone: str | None = None
+    daily_byte_budget: int | None = None
+    per_remote_min_interval_seconds: int = 0
     masked_url_path: str
     last_used_at: str | None = None
     revoked_at: str | None = None

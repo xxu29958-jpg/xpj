@@ -17,9 +17,7 @@ load_dotenv(BACKEND_ROOT / ".env", encoding="utf-8-sig")
 # vision LLM). Anything else makes the URL effectively "off" — see
 # _resolve_local_llm_base_url. Owner can extend via env if they really need to
 # tunnel a vision model from another host, but that's explicit, not implicit.
-_LOOPBACK_OUTBOUND_HOSTS: frozenset[str] = frozenset(
-    {"127.0.0.1", "::1", "localhost"}
-)
+_LOOPBACK_OUTBOUND_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "::1", "localhost"})
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -34,7 +32,7 @@ def _resolve_sqlite_url(raw: str) -> str:
     if not raw.startswith(prefix):
         return raw
 
-    db_path = Path(raw[len(prefix):])
+    db_path = Path(raw[len(prefix) :])
     if not db_path.is_absolute():
         db_path = BACKEND_ROOT / db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,6 +65,7 @@ class Settings:
     budget_advisor_api_key: str
     budget_advisor_model: str
     budget_advisor_timeout_seconds: int
+    budget_advisor_audit_retention_days: int
     tenants_json: str
     enable_http_bootstrap: bool
     http_bootstrap_secret: str
@@ -233,6 +232,7 @@ def get_settings() -> Settings:
         budget_advisor_api_key=os.getenv("BUDGET_ADVISOR_API_KEY", "").strip(),
         budget_advisor_model=os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
         budget_advisor_timeout_seconds=int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
+        budget_advisor_audit_retention_days=int(os.getenv("BUDGET_ADVISOR_AUDIT_RETENTION_DAYS", "180")),
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
         enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
@@ -252,20 +252,12 @@ def get_settings() -> Settings:
         upload_link_default_per_remote_interval_seconds=int(
             os.getenv("UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS", "2")
         ),
-        csv_import_max_bytes=int(
-            os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))
-        ),
+        csv_import_max_bytes=int(os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))),
         csv_import_max_lines=int(os.getenv("CSV_IMPORT_MAX_LINES", "25000")),
-        csv_import_max_cell_bytes=int(
-            os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")
-        ),
+        csv_import_max_cell_bytes=int(os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")),
         app_token_ttl_days=int(os.getenv("APP_TOKEN_TTL_DAYS", "90")),
-        app_token_refresh_window_days=int(
-            os.getenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "14")
-        ),
-        budget_advisor_owner_confirmed=_bool_env(
-            "BUDGET_ADVISOR_OWNER_CONFIRMED", False
-        ),
+        app_token_refresh_window_days=int(os.getenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "14")),
+        budget_advisor_owner_confirmed=_bool_env("BUDGET_ADVISOR_OWNER_CONFIRMED", False),
         fx_home_currency_code=os.getenv("FX_HOME_CURRENCY_CODE", DEFAULT_HOME_CURRENCY_CODE).strip().upper()
         or DEFAULT_HOME_CURRENCY_CODE,
         fx_supported_currency_codes=os.getenv(

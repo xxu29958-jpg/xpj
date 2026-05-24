@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xiaopiaojia-public-surface-rate-limit",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-24",
+  "workers_dev": false,
+  "ratelimits": [
+    {
+      "name": "PUBLIC_SURFACE_RATE_LIMITER",
+      "namespace_id": "2026052401",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    }
+  ]
+}

@@ -141,6 +141,8 @@ class LedgerRepository(
             val applied = sessionCoordinator.applyTransitionIfCurrent(
                 expectedSnapshot = session,
                 sessionToken = response.sessionToken,
+                tokenExpiresAt = response.expiresAt,
+                tokenSoftRefreshAfter = response.softRefreshAfter,
                 identity = LedgerSessionIdentity(
                     accountName = response.accountName,
                     ledgerId = response.ledger.ledgerId,
@@ -265,6 +267,8 @@ class LedgerRepository(
         val applied = sessionCoordinator.applyTransitionIfCurrent(
             expectedSnapshot = session,
             sessionToken = response.sessionToken,
+            tokenExpiresAt = response.expiresAt,
+            tokenSoftRefreshAfter = response.softRefreshAfter,
             identity = LedgerSessionIdentity(
                 accountName = response.accountName,
                 ledgerId = response.ledgerId,
