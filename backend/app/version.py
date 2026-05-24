@@ -7,7 +7,7 @@ from this constant rather than duplicating the literal string.
 
 from __future__ import annotations
 
-BACKEND_VERSION = "0.9.0a1"
+BACKEND_VERSION = "1.0.0"
 
 # Identity model schema version. Bumped when the Account / Ledger / Device /
 # AuthToken / UploadLink / PairingCode contract changes in a way clients must

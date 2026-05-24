@@ -30,7 +30,8 @@ def test_health_and_auth_contract(client: TestClient, *, identity) -> None:
     assert private_status.status_code == 200
     private_body = private_status.json()
     assert private_body["status"] == "ok"
-    assert private_body["backend_version"] == "0.9.0a1"
+    from app.version import BACKEND_VERSION
+    assert private_body["backend_version"] == BACKEND_VERSION
     assert private_body["identity_schema"] == "v0.3"
     assert private_body["database_status"] in {"ok", "missing"}
     assert private_body["upload_dir_status"] in {"ok", "missing"}

@@ -1,10 +1,10 @@
 # 小票夹
 
-**当前版本：v0.9.0a1**（阶段：**Reports / Goals / Chart UX 收口**；基线 = v0.8 Budget / 月度可花三端基线）
+**当前版本：v1.0.0**（阶段：**v1.0 数据能力 + 三端收口 + PWA 公网层**；基线 = v0.9 Reports / Goals / Dashboard 三端）
 
-> 🚩 **v0.9.0a1 当前进度**：后端已加入服务端 Reports、Goals 和 Dashboard 卡片配置 API；Android 统计页接入真实报表、Goals 和 Dashboard 卡片设置，并按 ADR 引入 Vico 图表展示层；`/web` Reports 接入自托管 ECharts 且保留无 JS 回退；`/owner` 跟随三端设计 token 做视觉收口。v0.9 不改变账本核心闭环、身份契约或后端统计口径。
+> 🚩 **v1.0.0 当前进度**：商品级小票 line items (ADR-0035)、家庭账本拆账邀请 (ADR-0029)、后台任务执行模型 + Android 任务 UI (ADR-0030)、`/web` 公网 PWA install shell (ADR-0028 + Issue #20)、v0.9 → v1.0 cut-over 协议含 30 天 rollback CLI (ADR-0031) 全部落地。Android 端 settings 三屏 ViewModel refactor + 服务图 cycle 清零 + release_audit 接 CI 门禁。`identity_schema=v0.3` 不变。
 
-下一里程碑：进入 v1.0 后端数据能力地基，优先处理商品级小票、家庭拆账、10k CSV 导入和 v0.x -> v1.0 迁移 / 回滚工具。
+下一里程碑：v1.1 真票 OCR fixture 回归 + 多账户 audit dashboard。
 
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 完成服务端预算和月度可花；v0.9 完成报表、Goals、Dashboard 卡片和图表 UX 收口。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 
