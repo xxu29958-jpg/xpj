@@ -1,0 +1,24 @@
+/* Cross-feature mobile breakpoint (≤720px).
+ * 每个 feature 文件自己的 @media 用 inline；这里收容跨多个 feature 的 mobile
+ * adjustments，避免散落到 5+ 个文件里。 */
+
+@media (max-width: 720px) {
+    .ledger-context-bar {
+        align-items: flex-start;
+        gap: var(--space-3);
+    }
+    .goal-row-head { align-items: flex-start; flex-direction: column; }
+    .reports-chart-canvas,
+    .reports-chart-canvas-large {
+        min-height: 240px;
+        height: 300px;
+        max-height: none;
+    }
+    .dashboard-card-grid { grid-template-columns: 1fr; }
+    .dashboard-card-settings-head { display: none; }
+    .dashboard-card-setting-row {
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+    }
+    .dashboard-card-position span { display: inline; }
+}

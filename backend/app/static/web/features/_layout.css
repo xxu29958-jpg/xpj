@@ -1,0 +1,55 @@
+/* /web layout：body, headings, ledger context bar / pill / role chip. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: var(--type-body-size);
+    background: var(--surface-app);
+    color: var(--text-default);
+    line-height: var(--type-body-line);
+}
+
+/* 旧顶栏 .nav (v0.4) 已退役 —— /web 全部页面 extends base.html 进入 desktop shell,
+ * sidebar / topbar 由 _shell.css 接管。owner 端的 .nav 是 owner.css 独立定义,
+ * 不依赖此处。 */
+
+.ledger-context-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.ledger-context-hint { font-size: 12px; color: var(--text-meta); }
+.ledger-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.ledger-pill.is-default { background: var(--state-info-bg); color: var(--state-info-fg); }
+.ledger-pill.is-secondary { background: var(--state-warn-bg); color: var(--state-warn-fg); }
+.ledger-role-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #e2e8f0;
+    color: #334155;
+}
+.ledger-role-chip.ledger-role-owner { background: #fde68a; color: #78350f; }
+.ledger-role-chip.ledger-role-member { background: #bfdbfe; color: #1e3a8a; }
+.ledger-role-chip.ledger-role-viewer { background: #e2e8f0; color: #475569; }
+
+/* .page 容器已由 _shell.css 的 .content 接管(shell 内自动管理宽度) */
+
+h1 { font-size: var(--type-headline-size); margin-bottom: var(--space-5); color: var(--text-default); }
+h1 .page-title-sub { font-size: 13px; color: var(--text-muted); font-weight: normal; margin-left: var(--space-3); }
+h2 { font-size: var(--type-subtitle-size); margin: var(--space-5) 0 var(--space-4); color: var(--text-muted); border-bottom: 1px solid var(--border-card); padding-bottom: var(--space-2); }
+
+/* .card 基础定义已退役 —— 所有 /web 模板已迁到 .dt-card (components/cards.css)。 */

@@ -1,0 +1,14 @@
+/* v0.4-alpha3 slice 2 - Data Quality dashboard */
+
+.summary-card.is-warning { background: #fffbeb; }
+.summary-card.is-warning .summary-card-num { color: #b45309; }
+.summary-card.is-danger { background: #fef2f2; }
+.summary-card.is-danger .summary-card-num { color: #b91c1c; }
+.summary-card.is-positive { background: #ecfdf5; }
+.summary-card.is-positive .summary-card-num { color: #047857; }
+.dq-action-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.dq-action-list li { padding: 8px 12px; background: var(--surface-card, #f8fafc); border-radius: 6px; border-left: 3px solid var(--brand-primary, #2563eb); font-size: 13px; }
+.dq-action-list li.dq-empty { border-left-color: #10b981; color: #047857; }
+.dq-action-list li .hint { color: var(--text-meta, #94a3b8); font-size: 12px; margin-left: 6px; }
+.page-hint { color: var(--text-muted, #475569); font-size: 13px; margin-top: -8px; margin-bottom: 16px; }
+.page-footer-hint { color: var(--text-meta, #94a3b8); font-size: 11px; margin-top: 12px; }

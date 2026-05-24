@@ -1,0 +1,180 @@
+/* v0.9 - Reports + Goals + Dashboard cards. */
+
+.page-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.dashboard-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.dashboard-card-tile {
+    --dashboard-card-accent: var(--brand-primary);
+    display: flex;
+    flex-direction: column;
+    min-height: 138px;
+    padding: 14px 16px;
+    border-radius: var(--radius-card);
+    background: var(--surface-card);
+    box-shadow: var(--shadow-card);
+    border-left: 4px solid var(--dashboard-card-accent);
+    color: inherit;
+    text-decoration: none;
+}
+.dashboard-card-tile:hover { transform: translateY(-1px); }
+.dashboard-card-tile.is-primary { --dashboard-card-accent: var(--brand-primary); }
+.dashboard-card-tile.is-warning { --dashboard-card-accent: var(--state-warn-fg); background: #fffbeb; }
+.dashboard-card-tile.is-danger { --dashboard-card-accent: var(--state-danger-fg); background: #fef2f2; }
+.dashboard-card-label { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.dashboard-card-num {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-default);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+.dashboard-card-hint {
+    margin-top: auto;
+    padding-top: 10px;
+    color: var(--text-meta);
+    font-size: 12px;
+}
+.empty-state-actions { justify-content: center; margin-top: 14px; }
+.dashboard-card-settings-card { padding-bottom: 12px; }
+.dashboard-card-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.dashboard-card-settings-head,
+.dashboard-card-setting-row {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) 120px 120px;
+    gap: 12px;
+    align-items: center;
+}
+.dashboard-card-settings-head {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 2px 4px;
+}
+.dashboard-card-setting-row {
+    border: 1px solid var(--border-card);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: #fff;
+}
+.dashboard-card-setting-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.dashboard-card-setting-title strong { font-size: 14px; color: var(--text-default); }
+.dashboard-card-setting-title span { font-size: 11px; color: var(--text-meta); }
+.dashboard-card-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.dashboard-card-switch input { width: 16px; height: 16px; }
+.dashboard-card-position {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.dashboard-card-position span { display: none; }
+.dashboard-card-position input {
+    width: 80px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    font-size: 13px;
+}
+.dashboard-card-actions { margin-top: 4px; }
+.dashboard-card-reset {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-card);
+}
+.filter-row select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+}
+.reports-panel h2 { margin-top: 0; }
+.reports-chart-canvas {
+    width: 100%;
+    min-height: 260px;
+    height: 34vh;
+    max-height: 360px;
+}
+.reports-chart-canvas-large {
+    min-height: 300px;
+    height: 38vh;
+    max-height: 420px;
+}
+.reports-panel.is-chart-rendered .reports-chart-fallback { display: none; }
+.reports-export-dialog {
+    width: min(920px, calc(100vw - 32px));
+    border: 0;
+    border-radius: var(--radius-card);
+    padding: 18px;
+    background: var(--surface-card);
+    color: var(--text-default);
+    box-shadow: var(--shadow-raised);
+}
+.reports-export-dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
+.reports-export-dialog h3 {
+    font-size: 16px;
+    margin-bottom: 6px;
+}
+.reports-export-dialog img {
+    display: block;
+    width: 100%;
+    max-height: 62vh;
+    object-fit: contain;
+    border: 1px solid var(--border-card);
+    border-radius: 8px;
+    background: var(--surface-card);
+    margin-top: 12px;
+}
+.reports-export-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+/* trend-chart / rank-list / category-compare / compare-bar 等 legacy 块已删除——
+ * 0 个模板引用,reports/stats 页改用 ECharts (reports.js) 和 dt-card 系统。 */
+
+.goal-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.goal-row {
+    padding: var(--space-3-5) 0;
+    border-bottom: 1px solid var(--border-card);
+}
+.goal-row:last-child { border-bottom: none; }
+.goal-row-head {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    align-items: center;
+    margin-bottom: var(--space-2);
+}
+.goal-row.is-archived { opacity: 0.72; }
