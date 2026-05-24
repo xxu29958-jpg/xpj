@@ -26,6 +26,7 @@ from app.models.classification import (
 )
 from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
+from app.models.financial_planning import MonthlyIncomePlan
 from app.models.identity import (
     Account,
     AuthToken,
@@ -68,6 +69,7 @@ __all__ = [
     "LedgerAuditLog",
     "LedgerMember",
     "MerchantAlias",
+    "MonthlyIncomePlan",
     "PairingCode",
     "RecurringItem",
     "RuleApplicationBatch",
