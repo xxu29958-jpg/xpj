@@ -214,7 +214,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "713c6ff2938d"
+    assert alembic_revision == "feea26ff79a4"
 
 
 def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
@@ -250,7 +250,7 @@ def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "713c6ff2938d"
+    assert alembic_revision == "feea26ff79a4"
 
 
 def test_exchange_rates_seed_identity_ledger_ids() -> None:

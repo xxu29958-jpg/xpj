@@ -32,12 +32,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
 from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
+    canonical_marker_hash,
 )
 from app.services.spending_contract_service import stat_time_expr
 from app.services.time_service import now_utc
@@ -82,21 +83,20 @@ def _count_recent_rejects(
 ) -> int:
     """Count user rejects of (merchant, category) in the recent past.
 
-    We filter at the row level on ``after_payload`` (where the user's
-    chosen replacement lives) using a JSON substring match — the
-    payloads are sort-key JSON so the substring is deterministic.
-    Slow on huge tables but the horizon is bounded; we'll move to an
-    indexed marker column if this ever shows up in slow-query logs.
+    v1.2 ops: filter on the indexed ``(signal_type, signal_hash)``
+    pair instead of LIKE-scanning ``before_payload``. The hash is
+    deterministic for "same advice given" via
+    ``CATEGORY_SUGGESTION.build_marker({"category": category})``.
+
+    Legacy rows written before signal_hash existed have NULL hashes;
+    a separate LIKE-on-before_payload fallback catches them so the
+    feedback loop doesn't temporarily degrade on the day this lands.
     """
 
     cutoff = now_utc() - timedelta(days=max(horizon_days, 0))
-    # Build the expected JSON substring for a rejected suggestion:
-    # the *before* payload contains the suggestion category, so look
-    # for it there. ``rejected`` is the event type used by callers
-    # that explicitly say "no, that's wrong" without picking a new
-    # category; the merchant lookup is approximate (substring) on
-    # purpose so capitalisation differences don't drop the signal.
-    needle = json.dumps({"category": category}, ensure_ascii=False)
+    marker = CATEGORY_SUGGESTION.build_marker({"category": category})
+    indexed_hash = canonical_marker_hash(marker)
+    legacy_needle = json.dumps({"category": category}, ensure_ascii=False)
     count = db.scalar(
         select(func.count(LedgerLearningEvent.id))
         .join(Expense, Expense.id == LedgerLearningEvent.subject_id)
@@ -106,7 +106,19 @@ def _count_recent_rejects(
         .where(LedgerLearningEvent.subject_id.is_not(None))
         .where(LedgerLearningEvent.event_type.in_(("reject", "edit")))
         .where(LedgerLearningEvent.created_at >= cutoff)
-        .where(LedgerLearningEvent.before_payload.contains(needle))
+        .where(
+            or_(
+                and_(
+                    LedgerLearningEvent.signal_type
+                    == CATEGORY_SUGGESTION.decision_type,
+                    LedgerLearningEvent.signal_hash == indexed_hash,
+                ),
+                and_(
+                    LedgerLearningEvent.signal_hash.is_(None),
+                    LedgerLearningEvent.before_payload.contains(legacy_needle),
+                ),
+            )
+        )
         .where(func.lower(func.trim(Expense.merchant)) == merchant)
     )
     return int(count or 0)

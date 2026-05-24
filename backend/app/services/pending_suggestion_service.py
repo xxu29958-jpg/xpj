@@ -28,6 +28,7 @@ from app.services.learning_service import (
 from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
+    build_feedback_marker,
 )
 
 
@@ -89,6 +90,7 @@ def record_pending_suggestion_event(
         raise ValueError("pending suggestion decision does not exist")
 
     payload = _loads(decision.output_payload)
+    marker = build_feedback_marker(decision.decision_type, payload)
     record_event(
         db,
         EventDraft(
@@ -100,6 +102,8 @@ def record_pending_suggestion_event(
             actor_account_id=actor_account_id,
             before_payload=_feedback_marker_payload(decision.decision_type, payload),
             after_payload=payload,
+            signal_type=decision.decision_type,
+            signal_marker=marker,
         ),
     )
 

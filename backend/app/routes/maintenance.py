@@ -7,12 +7,20 @@ from app.auth import verify_admin_token
 from app.database import get_db
 from app.network_boundary import require_admin_network_boundary
 from app.schemas import (
+    LearningCleanupReportResponse,
+    LearningMaintenanceRunResponse,
+    LearningStatusOverviewResponse,
+    LearningTableSnapshotResponse,
     MaintenanceAuditCleanupResponse,
     MaintenanceCleanupResponse,
     MaintenanceOrphanCleanupResponse,
 )
 from app.services.budget_advisor_service import cleanup_expired_audit_logs
 from app.services.cleanup_service import cleanup_confirmed_images, cleanup_orphan_uploads, cleanup_rejected_images
+from app.services.learning_service import (
+    get_status_overview,
+    run_full_maintenance,
+)
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -84,4 +92,61 @@ def post_cleanup_ai_advisor_audit(
     return MaintenanceAuditCleanupResponse(
         deleted_rows=deleted,
         batch_size=batch_size,
+    )
+
+
+@router.get(
+    "/learning-status",
+    response_model=LearningStatusOverviewResponse,
+)
+def get_learning_status(
+    auth: AuthContext = Depends(verify_admin_token),
+    db: Session = Depends(get_db),
+) -> LearningStatusOverviewResponse:
+    """v1.2 ops: per-table snapshot for the Owner Console panel."""
+
+    _ = auth
+    overview = get_status_overview(db)
+    return LearningStatusOverviewResponse(
+        algorithm_decisions=LearningTableSnapshotResponse(
+            total_rows=overview.algorithm_decisions.total_rows,
+            expired_candidate_rows=overview.algorithm_decisions.expired_candidate_rows,
+        ),
+        ledger_learning_events=LearningTableSnapshotResponse(
+            total_rows=overview.ledger_learning_events.total_rows,
+            expired_candidate_rows=overview.ledger_learning_events.expired_candidate_rows,
+        ),
+        ocr_facts=LearningTableSnapshotResponse(
+            total_rows=overview.ocr_facts.total_rows,
+            expired_candidate_rows=overview.ocr_facts.expired_candidate_rows,
+        ),
+        active_decisions=overview.active_decisions,
+        stale_active_candidates=overview.stale_active_candidates,
+        last_cleanup_at=overview.last_cleanup_at,
+    )
+
+
+@router.post(
+    "/cleanup-learning",
+    response_model=LearningMaintenanceRunResponse,
+)
+def post_cleanup_learning(
+    auth: AuthContext = Depends(verify_admin_token),
+    batch_size: int = Query(default=500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+) -> LearningMaintenanceRunResponse:
+    """v1.2 ops: sweep stale active decisions, prune expired rows,
+    stamp ``app_meta.learning_cleanup_last_run_at``."""
+
+    _ = auth
+    result = run_full_maintenance(db, batch_size=batch_size)
+    return LearningMaintenanceRunResponse(
+        swept_stale_active=result.swept_stale_active,
+        cleanup=LearningCleanupReportResponse(
+            algorithm_decisions=result.cleanup.algorithm_decisions,
+            ledger_learning_events=result.cleanup.ledger_learning_events,
+            ocr_facts=result.cleanup.ocr_facts,
+            total=result.cleanup.total,
+        ),
+        finished_at=result.finished_at,
     )

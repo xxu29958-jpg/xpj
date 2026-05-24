@@ -169,6 +169,18 @@ class LedgerLearningEvent(Base):
             "subject_kind",
             "subject_id",
         ),
+        # v1.2 ops: indexed canonical marker for "has the user rejected
+        # this exact advice before?" queries. Replaces the prior
+        # ``before_payload.contains('{"category":"X"}')`` LIKE scan
+        # with an O(index) equality lookup.
+        Index(
+            "ix_ledger_learning_events_signal_lookup",
+            "tenant_id",
+            "event_type",
+            "signal_type",
+            "signal_hash",
+            "created_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -203,6 +215,27 @@ class LedgerLearningEvent(Base):
     subject_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     before_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     after_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # v1.2 ops (signal_hash indexing): structured marker fields that
+    # back the "has the user rejected this exact advice?" lookup.
+    # JSON columns above remain for audit / human inspection; the
+    # query-path filters on these instead of LIKE-scanning JSON text.
+    #
+    # ``signal_type`` mirrors ``decision_type`` from the registry
+    # (``category_suggestion`` / ``duplicate_candidate`` / ...). The
+    # column is nullable because manual_override events without a
+    # corresponding decision don't always have a typed signal.
+    #
+    # ``signal_hash`` is the SHA-256 hex of the canonical JSON encoding
+    # of the marker dict (e.g. ``{"category": "餐饮"}`` for category
+    # suggestions). Equal hashes mean "logically the same advice".
+    #
+    # ``signal_payload`` is the same marker as a readable JSON string
+    # so Owner Console / debugging can show "what the user reacted to"
+    # without decoding ``before_payload`` and guessing which fields
+    # actually mattered.
+    signal_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signal_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signal_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
     )

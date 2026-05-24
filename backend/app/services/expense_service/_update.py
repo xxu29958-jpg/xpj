@@ -213,6 +213,16 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
     sync_expense_tags(db, expense)
+    # v1.2 ops: close any active algorithm_decisions attached to this
+    # expense — confirmation means no UI will surface them again.
+    from app.services.learning_service import close_active_decisions_for_subject
+
+    close_active_decisions_for_subject(
+        db,
+        tenant_id=tenant_id,
+        subject_kind="expense",
+        subject_id=expense.id,
+    )
     db.commit()
     db.refresh(expense)
     if cleanup_after_confirm(expense):
@@ -241,6 +251,16 @@ def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
     clear_duplicate_references_to(db, tenant_id=tenant_id, duplicate_of_id=expense.id)
+    # v1.2 ops: rejected → no UI shows suggestions for this expense
+    # again either; close them.
+    from app.services.learning_service import close_active_decisions_for_subject
+
+    close_active_decisions_for_subject(
+        db,
+        tenant_id=tenant_id,
+        subject_kind="expense",
+        subject_id=expense.id,
+    )
     db.commit()
     db.refresh(expense)
     return expense

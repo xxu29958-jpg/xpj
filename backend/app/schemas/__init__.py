@@ -25,6 +25,10 @@ from __future__ import annotations
 
 from app.schemas._admin import (
     DataQualitySummaryResponse,
+    LearningCleanupReportResponse,
+    LearningMaintenanceRunResponse,
+    LearningStatusOverviewResponse,
+    LearningTableSnapshotResponse,
     MaintenanceAuditCleanupResponse,
     MaintenanceCleanupResponse,
     MaintenanceOrphanCleanupResponse,
@@ -284,6 +288,10 @@ __all__ = [
     "LedgerMemberRoleUpdateRequest",
     "LedgerResponse",
     "LedgerSwitchResponse",
+    "LearningCleanupReportResponse",
+    "LearningMaintenanceRunResponse",
+    "LearningStatusOverviewResponse",
+    "LearningTableSnapshotResponse",
     "LifestyleStatsResponse",
     "MaintenanceAuditCleanupResponse",
     "MaintenanceCleanupResponse",

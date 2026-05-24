@@ -32,12 +32,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
 from app.services.learning_service._algorithm_registry import (
     DUPLICATE_CANDIDATE,
+    canonical_marker_hash,
 )
 from app.services.time_service import ensure_utc, now_utc
 
@@ -77,14 +78,22 @@ def _has_recent_reject(
     horizon_days: int,
 ) -> bool:
     """Look for prior user rejection of a duplicate candidate matching
-    this (merchant, amount) pair. Match is JSON substring on the
-    ``before_payload`` snapshot the duplicate-candidate decision wrote.
+    this (merchant, amount) pair.
+
+    v1.2 ops: hits the indexed ``(signal_type, signal_hash)`` lookup
+    via ``DUPLICATE_CANDIDATE.build_marker(...)``. Legacy rows with
+    NULL signal_hash fall back to the JSON LIKE scan so we don't
+    silently lose history on the day this lands.
     """
 
     if not merchant or amount_cents is None:
         return False
     cutoff = now_utc() - timedelta(days=max(horizon_days, 0))
-    needle = json.dumps(
+    marker = DUPLICATE_CANDIDATE.build_marker(
+        {"amount_cents": amount_cents, "merchant": merchant}
+    )
+    indexed_hash = canonical_marker_hash(marker)
+    legacy_needle = json.dumps(
         {"amount_cents": amount_cents, "merchant": merchant},
         sort_keys=True,
         ensure_ascii=False,
@@ -95,7 +104,19 @@ def _has_recent_reject(
         .where(LedgerLearningEvent.subject_kind == "expense")
         .where(LedgerLearningEvent.event_type == "reject")
         .where(LedgerLearningEvent.created_at >= cutoff)
-        .where(LedgerLearningEvent.before_payload.contains(needle))
+        .where(
+            or_(
+                and_(
+                    LedgerLearningEvent.signal_type
+                    == DUPLICATE_CANDIDATE.decision_type,
+                    LedgerLearningEvent.signal_hash == indexed_hash,
+                ),
+                and_(
+                    LedgerLearningEvent.signal_hash.is_(None),
+                    LedgerLearningEvent.before_payload.contains(legacy_needle),
+                ),
+            )
+        )
         .limit(1)
     )
     return found is not None

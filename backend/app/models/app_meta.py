@@ -43,3 +43,7 @@ SCHEMA_VERSION_KEY = "schema_version"
 SCHEMA_MIN_COMPATIBLE_KEY = "schema_min_compatible"
 MIGRATION_COMPLETED_AT_KEY = "migration_completed_at"
 IDENTITY_SCHEMA_VERSION_KEY = "identity_schema_version"
+# v1.2 ops: when the maintenance route last ran the learning-table
+# retention cleanup. Owner Console shows it; cleanup-scheduling logic
+# (future scheduled-task lane) reads it to decide whether to skip.
+LEARNING_CLEANUP_LAST_RUN_KEY = "learning_cleanup_last_run_at"

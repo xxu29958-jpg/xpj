@@ -45,6 +45,8 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
     AlgorithmType,
+    build_feedback_marker,
+    canonical_marker_hash,
     decision_types,
     get as get_algorithm_type,
     is_registered as is_algorithm_type_registered,
@@ -77,6 +79,17 @@ from app.services.learning_service._duplicate_scoring import (
     DuplicateCandidateScore,
     score_duplicate_candidates,
 )
+from app.services.learning_service._lifecycle import (
+    close_active_decisions_for_subject,
+    sweep_stale_active_decisions,
+)
+from app.services.learning_service._maintenance import (
+    LearningMaintenanceResult,
+    LearningStatusOverview,
+    LearningTableSnapshot,
+    get_status_overview,
+    run_full_maintenance,
+)
 from app.services.learning_service._model_versions import (
     AlgorithmVersionStats,
     list_algorithm_versions,
@@ -100,16 +113,23 @@ __all__ = [
     "DecisionDraft",
     "DuplicateCandidateScore",
     "EventDraft",
+    "LearningMaintenanceResult",
+    "LearningStatusOverview",
+    "LearningTableSnapshot",
     "OcrFactDraft",
     "active_decision_for_subject",
+    "build_feedback_marker",
+    "canonical_marker_hash",
     "cleanup_expired_algorithm_decisions",
     "cleanup_expired_learning_events",
     "cleanup_expired_learning_tables",
     "cleanup_expired_ocr_facts",
+    "close_active_decisions_for_subject",
     "compute_budget_quantile_suggestion",
     "compute_category_suggestion",
     "decision_types",
     "get_algorithm_type",
+    "get_status_overview",
     "is_algorithm_type_registered",
     "list_algorithm_versions",
     "ocr_facts_for_expense",
@@ -117,8 +137,10 @@ __all__ = [
     "record_event",
     "record_ocr_fact",
     "recent_events_for_subject",
+    "run_full_maintenance",
     "score_duplicate_candidates",
     "supersede_decision",
+    "sweep_stale_active_decisions",
     "withdraw_algorithm_version",
 ]
 
@@ -150,6 +172,15 @@ class EventDraft:
     ``decision_id`` is optional: a manual override that had no
     corresponding suggestion still produces an event, with
     ``event_type='manual_override'``.
+
+    ``signal_type`` + ``signal_marker`` populate the indexed feedback-
+    lookup columns. ``signal_type`` is the registry's
+    ``decision_type`` (``"category_suggestion"`` / etc.).
+    ``signal_marker`` is the small dict the registry builds via
+    ``build_feedback_marker(...)``. Both can be omitted — write paths
+    that don't fit the suggestion taxonomy (manual overrides without
+    a corresponding decision) leave them ``None`` and stay queryable
+    only through ``before_payload`` LIKE fallback.
     """
 
     tenant_id: str
@@ -160,6 +191,8 @@ class EventDraft:
     actor_account_id: int | None = None
     before_payload: dict[str, Any] | None = None
     after_payload: dict[str, Any] | None = None
+    signal_type: str | None = None
+    signal_marker: dict[str, Any] | None = None
 
 
 def _dumps(payload: dict[str, Any] | None) -> str | None:
@@ -220,6 +253,7 @@ def record_event(
         if decision.subject_id != draft.subject_id:
             raise ValueError("learning event subject id does not match decision")
 
+    signal_hash = canonical_marker_hash(draft.signal_marker)
     row = LedgerLearningEvent(
         tenant_id=draft.tenant_id,
         decision_id=draft.decision_id,
@@ -229,6 +263,9 @@ def record_event(
         subject_id=draft.subject_id,
         before_payload=_dumps(draft.before_payload),
         after_payload=_dumps(draft.after_payload),
+        signal_type=draft.signal_type,
+        signal_hash=signal_hash,
+        signal_payload=_dumps(draft.signal_marker),
         created_at=now or now_utc(),
     )
     db.add(row)

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}学习层维护 - 小票夹 Owner Console{% endblock %}
+{% block content %}
+<h1>学习层维护</h1>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div>
+      <h2>表体量与过期候选</h2>
+      <p class="text-meta">
+        过期候选 = 已超过自身 <code>retention_days</code>，下一次清理会被清掉的行。
+        active 决策永不清理；stale active 是"主体已 confirmed / rejected / 删除，但建议仍标 active"的行，靠 cleanup 前的 sweep 关闭。
+      </p>
+    </div>
+    <span class="badge badge-off">运维</span>
+  </div>
+
+  <div class="table-scroll" style="margin-top:12px">
+    <table>
+      <thead>
+        <tr>
+          <th>表</th>
+          <th class="num">总行数</th>
+          <th class="num">过期候选</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>algorithm_decisions</code></td>
+          <td class="num-cell">{{ overview.algorithm_decisions.total_rows }}</td>
+          <td class="num-cell">{{ overview.algorithm_decisions.expired_candidate_rows }}</td>
+        </tr>
+        <tr>
+          <td><code>ledger_learning_events</code></td>
+          <td class="num-cell">{{ overview.ledger_learning_events.total_rows }}</td>
+          <td class="num-cell">{{ overview.ledger_learning_events.expired_candidate_rows }}</td>
+        </tr>
+        <tr>
+          <td><code>ocr_facts</code></td>
+          <td class="num-cell">{{ overview.ocr_facts.total_rows }}</td>
+          <td class="num-cell">{{ overview.ocr_facts.expired_candidate_rows }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="display:flex;gap:24px;margin-top:16px;flex-wrap:wrap">
+    <div>
+      <div class="text-meta">Active 建议</div>
+      <div style="font-size:1.4rem">{{ overview.active_decisions }}</div>
+    </div>
+    <div>
+      <div class="text-meta">Stale active（等 sweep）</div>
+      <div style="font-size:1.4rem">{{ overview.stale_active_candidates }}</div>
+    </div>
+    <div>
+      <div class="text-meta">上次清理时间</div>
+      <div style="font-size:1.4rem">
+        {% if overview.last_cleanup_at %}<code>{{ overview.last_cleanup_at }}</code>{% else %}<span class="text-meta">从未运行</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <form method="post" action="/owner/learning-maintenance/run" style="margin-top:16px" data-confirm-message="立即跑学习层 cleanup？将 sweep stale active + prune 过期行 + 写入 last_run。">
+    <button type="submit" class="btn btn-primary">立即清理</button>
+  </form>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>算法类型登记表</h2>
+  <p class="text-meta">下面字符串来自 <code>learning_service._algorithm_registry</code>；新增算法需要先加这里一条。</p>
+  <div class="table-scroll" style="margin-top:12px">
+    <table>
+      <thead>
+        <tr>
+          <th>展示名</th>
+          <th>decision_type</th>
+          <th>当前版本</th>
+          <th class="num">默认 retention</th>
+          <th>支持的 subject_kinds</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for entry in algorithm_types %}
+        <tr>
+          <td>{{ entry.display_label }}</td>
+          <td><code>{{ entry.decision_type }}</code></td>
+          <td><code>{{ entry.current_version }}</code></td>
+          <td class="num-cell">{{ entry.default_retention_days }}</td>
+          <td>
+            {% for kind in entry.subject_kinds %}<code>{{ kind }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

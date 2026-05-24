@@ -60,6 +60,35 @@ class MaintenanceAuditCleanupResponse(BaseModel):
     batch_size: int
 
 
+class LearningTableSnapshotResponse(BaseModel):
+    total_rows: int
+    expired_candidate_rows: int
+
+
+class LearningStatusOverviewResponse(BaseModel):
+    """v1.2 ops — what Owner Console shows for the learning layer."""
+
+    algorithm_decisions: LearningTableSnapshotResponse
+    ledger_learning_events: LearningTableSnapshotResponse
+    ocr_facts: LearningTableSnapshotResponse
+    active_decisions: int
+    stale_active_candidates: int
+    last_cleanup_at: str | None
+
+
+class LearningCleanupReportResponse(BaseModel):
+    algorithm_decisions: int
+    ledger_learning_events: int
+    ocr_facts: int
+    total: int
+
+
+class LearningMaintenanceRunResponse(BaseModel):
+    swept_stale_active: int
+    cleanup: LearningCleanupReportResponse
+    finished_at: str
+
+
 class ServerSettingsResponse(BaseModel):
     account_name: str
     ledger_id: str
