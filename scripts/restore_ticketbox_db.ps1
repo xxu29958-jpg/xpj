@@ -210,7 +210,11 @@ try {
     Copy-Item -LiteralPath $source -Destination $restoreTemp -Force
     Test-SqliteBackup -Path $restoreTemp -ExpectedBackendVersion $BackendVersion
     if (Test-Path -LiteralPath $DbPath) {
-        [System.IO.File]::Replace($restoreTemp, $DbPath, $null, $true)
+        # PS 5.1 quirk: passing $null as a .NET string argument gets
+        # coerced to "", and File.Replace then rejects "" as "path is
+        # not of a legal form". Use [NullString]::Value for the
+        # destinationBackupFileName slot to forward a real null.
+        [System.IO.File]::Replace($restoreTemp, $DbPath, [NullString]::Value, $true)
     }
     else {
         Move-Item -LiteralPath $restoreTemp -Destination $DbPath -Force
