@@ -170,6 +170,48 @@ def update_member_role(
     return member_summary(member, acc, requester_account_id=requester_account_id)
 
 
+def _validate_owner_transfer(
+    db: Session,
+    *,
+    ledger_id: str,
+    member_id: int,
+    requester_account_id: int,
+) -> tuple[Ledger, LedgerMember, LedgerMember, Account]:
+    """Resolve and validate every actor a transfer touches.
+
+    Returns ``(ledger, current_owner, target, target_account)`` or
+    raises the matching ``AppError`` — ledger missing/archived,
+    requester not the active owner, target missing / self / already
+    owner / account disabled. Doing all five checks here keeps the
+    transaction body in :func:`transfer_ledger_owner` focused on the
+    actual mutation + commit.
+    """
+    ledger = db.scalar(
+        select(Ledger)
+        .where(Ledger.ledger_id == ledger_id)
+        .where(Ledger.archived_at.is_(None))
+        .limit(1)
+    )
+    if ledger is None:
+        raise AppError("ledger_not_found", status_code=404)
+    current_owner = require_active_owner(
+        db, ledger_id=ledger_id, account_id=requester_account_id
+    )
+    if ledger.owner_account_id != requester_account_id:
+        raise AppError("owner_transfer_requires_owner", status_code=409)
+    target = active_member_by_id(db, ledger_id=ledger_id, member_id=member_id)
+    if target is None:
+        raise AppError("member_not_found", status_code=404)
+    if target.account_id == requester_account_id:
+        raise AppError("owner_transfer_self", status_code=409)
+    if target.role == "owner":
+        raise AppError("owner_transfer_target_invalid", status_code=409)
+    target_account = db.get(Account, target.account_id)
+    if target_account is None or target_account.disabled_at is not None:
+        raise AppError("member_not_found", status_code=404)
+    return ledger, current_owner, target, target_account
+
+
 def transfer_ledger_owner(
     db: Session,
     *,
@@ -184,32 +226,12 @@ def transfer_ledger_owner(
     ``member`` in the same commit as the audit row and
     ``Ledger.owner_account_id`` update.
     """
-
-    ledger = db.scalar(
-        select(Ledger)
-        .where(Ledger.ledger_id == ledger_id)
-        .where(Ledger.archived_at.is_(None))
-        .limit(1)
+    ledger, current_owner, target, target_account = _validate_owner_transfer(
+        db,
+        ledger_id=ledger_id,
+        member_id=member_id,
+        requester_account_id=requester_account_id,
     )
-    if ledger is None:
-        raise AppError("ledger_not_found", status_code=404)
-
-    current_owner = require_active_owner(
-        db, ledger_id=ledger_id, account_id=requester_account_id
-    )
-    if ledger.owner_account_id != requester_account_id:
-        raise AppError("owner_transfer_requires_owner", status_code=409)
-
-    target = active_member_by_id(db, ledger_id=ledger_id, member_id=member_id)
-    if target is None:
-        raise AppError("member_not_found", status_code=404)
-    if target.account_id == requester_account_id:
-        raise AppError("owner_transfer_self", status_code=409)
-    if target.role == "owner":
-        raise AppError("owner_transfer_target_invalid", status_code=409)
-    target_account = db.get(Account, target.account_id)
-    if target_account is None or target_account.disabled_at is not None:
-        raise AppError("member_not_found", status_code=404)
 
     previous_target_role = target.role
     active_owners = list(

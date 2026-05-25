@@ -161,6 +161,57 @@ def _month_spend_by_category(
     return spend
 
 
+def _build_excluded_breakdown(
+    spend_by_category: dict[str, CategorySpend], excluded_set: set[str]
+) -> tuple[list[BudgetExcludedCategoryResponse], int]:
+    breakdown = [
+        BudgetExcludedCategoryResponse(
+            category=category,
+            amount_cents=spend.amount_cents,
+            count=spend.count,
+        )
+        for category, spend in sorted(spend_by_category.items())
+        if category in excluded_set
+    ]
+    return breakdown, sum(item.amount_cents for item in breakdown)
+
+
+def _budget_amount_breakdown(
+    budget,
+    *,
+    fixed_amount_cents: int,
+    spent_amount_cents: int,
+) -> tuple[int, int, int, int, int, int]:
+    total = int(budget.total_amount_cents if budget else 0)
+    rollover = int(budget.rollover_amount_cents if budget else 0)
+    non_monthly = int(budget.non_monthly_amount_cents if budget else 0)
+    available = total + rollover
+    flex = max(available - fixed_amount_cents - non_monthly, 0)
+    remaining = available - spent_amount_cents if budget is not None else 0
+    overspent = max(-remaining, 0) if budget is not None else 0
+    return total, rollover, non_monthly, flex, remaining, overspent
+
+
+def _build_category_budgets(
+    category_rows, spend_by_category: dict[str, CategorySpend]
+) -> list[BudgetCategoryResponse]:
+    out: list[BudgetCategoryResponse] = []
+    for category_budget in category_rows:
+        category = normalize_category(category_budget.category)
+        spent = spend_by_category.get(category, CategorySpend()).amount_cents
+        remaining = int(category_budget.amount_cents) - spent
+        out.append(
+            BudgetCategoryResponse(
+                category=category,
+                amount_cents=int(category_budget.amount_cents),
+                spent_amount_cents=spent,
+                remaining_amount_cents=remaining,
+                overspent_amount_cents=max(-remaining, 0),
+            )
+        )
+    return out
+
+
 def _budget_response(
     db: Session,
     *,
@@ -171,65 +222,35 @@ def _budget_response(
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
     category_rows = _list_category_budgets(db, tenant_id=tenant_id, month=month)
     spend_by_category = _month_spend_by_category(
-        db,
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
+        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
     )
-
-    excluded_categories = _parse_excluded_categories(budget.excluded_categories if budget else None)
+    excluded_categories = _parse_excluded_categories(
+        budget.excluded_categories if budget else None
+    )
     excluded_set = set(excluded_categories)
-    excluded_breakdown = [
-        BudgetExcludedCategoryResponse(
-            category=category,
-            amount_cents=spend.amount_cents,
-            count=spend.count,
-        )
-        for category, spend in sorted(spend_by_category.items())
-        if category in excluded_set
-    ]
-    excluded_amount_cents = sum(item.amount_cents for item in excluded_breakdown)
+    excluded_breakdown, excluded_amount_cents = _build_excluded_breakdown(
+        spend_by_category, excluded_set
+    )
     spent_amount_cents = sum(
         spend.amount_cents
         for category, spend in spend_by_category.items()
         if category not in excluded_set
     )
-
-    total_amount_cents = int(budget.total_amount_cents if budget else 0)
-    rollover_amount_cents = int(budget.rollover_amount_cents if budget else 0)
-    non_monthly_amount_cents = int(budget.non_monthly_amount_cents if budget else 0)
     fixed_amount_cents = _fixed_amount_cents_for_month(
-        db,
-        tenant_id=tenant_id,
-        month=month,
-        timezone_name=timezone_name,
+        db, tenant_id=tenant_id, month=month, timezone_name=timezone_name
     )
-    available_amount_cents = total_amount_cents + rollover_amount_cents
-    flex_budget_cents = max(
-        available_amount_cents - fixed_amount_cents - non_monthly_amount_cents,
-        0,
+    (
+        total_amount_cents,
+        rollover_amount_cents,
+        non_monthly_amount_cents,
+        flex_budget_cents,
+        remaining_amount_cents,
+        overspent_amount_cents,
+    ) = _budget_amount_breakdown(
+        budget,
+        fixed_amount_cents=fixed_amount_cents,
+        spent_amount_cents=spent_amount_cents,
     )
-    remaining_amount_cents = (
-        available_amount_cents - spent_amount_cents if budget is not None else 0
-    )
-    overspent_amount_cents = (
-        max(-remaining_amount_cents, 0) if budget is not None else 0
-    )
-
-    category_budgets = []
-    for category_budget in category_rows:
-        category = normalize_category(category_budget.category)
-        spent = spend_by_category.get(category, CategorySpend()).amount_cents
-        remaining = int(category_budget.amount_cents) - spent
-        category_budgets.append(
-            BudgetCategoryResponse(
-                category=category,
-                amount_cents=int(category_budget.amount_cents),
-                spent_amount_cents=spent,
-                remaining_amount_cents=remaining,
-                overspent_amount_cents=max(-remaining, 0),
-            )
-        )
 
     return BudgetMonthlyResponse(
         ledger_id=tenant_id,
@@ -250,7 +271,7 @@ def _budget_response(
             key=lambda item: item.amount_cents,
             reverse=True,
         ),
-        category_budgets=category_budgets,
+        category_budgets=_build_category_budgets(category_rows, spend_by_category),
         updated_at=budget.updated_at if budget else None,
     )
 
