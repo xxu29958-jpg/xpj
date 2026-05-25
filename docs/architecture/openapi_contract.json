@@ -947,6 +947,19 @@
         "title": "Body_owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post",
         "type": "object"
       },
+      "Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post": {
+        "properties": {
+          "decision_public_id": {
+            "title": "Decision Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_public_id"
+        ],
+        "title": "Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post",
+        "type": "object"
+      },
       "Body_owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post": {
         "properties": {
           "note": {
@@ -5670,6 +5683,134 @@
           "role"
         ],
         "title": "InvitationSummaryResponse",
+        "type": "object"
+      },
+      "LearningCleanupReportResponse": {
+        "properties": {
+          "algorithm_decisions": {
+            "title": "Algorithm Decisions",
+            "type": "integer"
+          },
+          "ledger_learning_events": {
+            "title": "Ledger Learning Events",
+            "type": "integer"
+          },
+          "ocr_facts": {
+            "title": "Ocr Facts",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "algorithm_decisions",
+          "ledger_learning_events",
+          "ocr_facts",
+          "total"
+        ],
+        "title": "LearningCleanupReportResponse",
+        "type": "object"
+      },
+      "LearningMaintenanceRunResponse": {
+        "properties": {
+          "cleanup": {
+            "$ref": "#/components/schemas/LearningCleanupReportResponse"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "finished_at": {
+            "title": "Finished At",
+            "type": "string"
+          },
+          "swept_stale_active": {
+            "title": "Swept Stale Active",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "swept_stale_active",
+          "cleanup",
+          "finished_at",
+          "elapsed_ms"
+        ],
+        "title": "LearningMaintenanceRunResponse",
+        "type": "object"
+      },
+      "LearningStatusOverviewResponse": {
+        "description": "v1.2 ops — what Owner Console shows for the learning layer.",
+        "properties": {
+          "active_decisions": {
+            "title": "Active Decisions",
+            "type": "integer"
+          },
+          "algorithm_decisions": {
+            "$ref": "#/components/schemas/LearningTableSnapshotResponse"
+          },
+          "last_cleanup_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Cleanup At"
+          },
+          "last_cleanup_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Cleanup Summary"
+          },
+          "ledger_learning_events": {
+            "$ref": "#/components/schemas/LearningTableSnapshotResponse"
+          },
+          "ocr_facts": {
+            "$ref": "#/components/schemas/LearningTableSnapshotResponse"
+          },
+          "stale_active_candidates": {
+            "title": "Stale Active Candidates",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "algorithm_decisions",
+          "ledger_learning_events",
+          "ocr_facts",
+          "active_decisions",
+          "stale_active_candidates",
+          "last_cleanup_at"
+        ],
+        "title": "LearningStatusOverviewResponse",
+        "type": "object"
+      },
+      "LearningTableSnapshotResponse": {
+        "properties": {
+          "expired_candidate_rows": {
+            "title": "Expired Candidate Rows",
+            "type": "integer"
+          },
+          "total_rows": {
+            "title": "Total Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_rows",
+          "expired_candidate_rows"
+        ],
+        "title": "LearningTableSnapshotResponse",
         "type": "object"
       },
       "LedgerAuditListResponse": {
@@ -13546,6 +13687,68 @@
         ]
       }
     },
+    "/api/maintenance/cleanup-learning": {
+      "post": {
+        "description": "v1.2 ops: sweep + prune scoped to the admin's tenant.\n\nEarlier revision dropped ``auth`` and ran globally, which let an\nadmin from one tenant withdraw / delete learning rows in others\n(PR #124 codex review). Pass ``auth.tenant_id`` so the cleanup\nonly touches the admin's own ledger.",
+        "operationId": "post_cleanup_learning_api_maintenance_cleanup_learning_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "batch_size",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Batch Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningMaintenanceRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Cleanup Learning",
+        "tags": [
+          "maintenance"
+        ]
+      }
+    },
     "/api/maintenance/cleanup-orphans": {
       "post": {
         "operationId": "post_cleanup_orphans_api_maintenance_cleanup_orphans_post",
@@ -13649,6 +13852,56 @@
           }
         },
         "summary": "Post Cleanup Rejected",
+        "tags": [
+          "maintenance"
+        ]
+      }
+    },
+    "/api/maintenance/learning-status": {
+      "get": {
+        "description": "v1.2 ops: per-table snapshot scoped to the admin's tenant.\n\nEarlier revision dropped ``auth`` and aggregated globally, which\nleaks other tenants' table volume + lifecycle metadata to any\nvalid admin token (PR #124 codex review). Pass ``auth.tenant_id``\nso the counts cover only the admin's ledger.",
+        "operationId": "get_learning_status_api_maintenance_learning_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningStatusOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Learning Status",
         "tags": [
           "maintenance"
         ]
@@ -16163,6 +16416,89 @@
           }
         },
         "summary": "Owner Diagnostics",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/learning-maintenance": {
+      "get": {
+        "operationId": "owner_learning_maintenance_get_owner_learning_maintenance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Learning Maintenance Get",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/learning-maintenance/dismiss-decision": {
+      "post": {
+        "operationId": "owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_learning_maintenance_dismiss_post_owner_learning_maintenance_dismiss_decision_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Learning Maintenance Dismiss Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/learning-maintenance/run": {
+      "post": {
+        "operationId": "owner_learning_maintenance_run_post_owner_learning_maintenance_run_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Learning Maintenance Run Post",
         "tags": [
           "owner-console"
         ]
