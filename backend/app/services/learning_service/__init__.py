@@ -143,8 +143,10 @@ __all__ = [
     "get_algorithm_type",
     "get_status_overview",
     "is_algorithm_type_registered",
+    "latest_ocr_fact_for_expense",
     "list_algorithm_versions",
     "ocr_facts_for_expense",
+    "read_ocr_text",
     "record_decision",
     "record_event",
     "record_ocr_fact",
@@ -471,3 +473,67 @@ def ocr_facts_for_expense(
         .limit(limit)
     )
     return list(db.scalars(stmt))
+
+
+def latest_ocr_fact_for_expense(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense_id: int,
+) -> OcrFact | None:
+    """Return the most recent ``ocr_facts`` row for ``expense_id``, or
+    ``None`` when the expense has never been OCR'd into the new table.
+
+    This is the canonical read API for the OCR single-source migration
+    (PR follow-up to v1.2 P0). Consumers that previously read
+    ``expenses.raw_text`` should call this first and only fall back to
+    the legacy column when the helper returns ``None`` — see
+    :func:`read_ocr_text` for the wrapped fallback.
+    """
+
+    return db.scalar(
+        select(OcrFact)
+        .where(OcrFact.tenant_id == tenant_id)
+        .where(OcrFact.expense_id == expense_id)
+        .order_by(OcrFact.extracted_at.desc())
+        .limit(1)
+    )
+
+
+def read_ocr_text(
+    db: Session,
+    *,
+    tenant_id: str,
+    expense_id: int,
+    legacy_raw_text: str | None,
+) -> str | None:
+    """Single-source read for "the raw OCR text we recorded for this
+    expense".
+
+    Priority:
+
+    1. Latest ``ocr_facts.raw_text`` for the expense (the new source
+       of truth).
+    2. ``legacy_raw_text`` — pass ``expense.raw_text`` here. This
+       branch fires on expenses written before the OCR enrichment
+       layer started double-writing into ``ocr_facts``, and on
+       expenses where OCR didn't produce a structured fact row for
+       some reason (provider error, manual recognition).
+
+    Returns ``None`` when neither source has text.
+
+    This wrapper is the migration scaffolding for getting consumers
+    off ``expenses.raw_text`` without a hard cutover. Once the
+    backfill step lands and every consumer has been moved, the
+    fallback parameter can be dropped (and eventually the
+    ``raw_text`` column).
+    """
+
+    fact = latest_ocr_fact_for_expense(
+        db, tenant_id=tenant_id, expense_id=expense_id
+    )
+    if fact is not None and fact.raw_text:
+        return fact.raw_text
+    if legacy_raw_text:
+        return legacy_raw_text
+    return None
