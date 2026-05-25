@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import CategoryRule, Expense
+from app.services.learning_service import OcrFactDraft, record_ocr_fact
 
 
 def _seed_pending_with_merchant(merchant: str) -> int:
@@ -38,6 +39,23 @@ def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
     )
 
 
+def _record_ocr_fact(expense_id: int, raw_text: str, *, tenant_id: str = "owner") -> None:
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.raw_text = "legacy text that should not win"
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id=tenant_id,
+                expense_id=expense_id,
+                ocr_provider="pytest",
+                raw_text=raw_text,
+            ),
+        )
+        db.commit()
+
+
 def test_rule_preview_does_not_modify(client: TestClient, *, identity) -> None:
     first_id = upload_png(client, identity=identity)
     _set_pending_merchant(client, first_id, "STARBUCKS COFFEE", identity=identity)
@@ -67,6 +85,78 @@ def test_rule_preview_does_not_modify(client: TestClient, *, identity) -> None:
         assert expense is not None
         # Original category remains "其他" because we never applied.
         assert expense.category == "其他"
+
+
+def test_rule_preview_raw_text_uses_latest_ocr_fact(
+    client: TestClient, *, identity
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    _record_ocr_fact(expense_id, "FactPreviewCafe 38.00")
+
+    response = client.post(
+        "/api/rules/preview",
+        headers=identity.app_headers,
+        json={
+            "keyword": "FactPreviewCafe",
+            "target_category": "Food",
+            "match_field": "raw_text",
+            "limit": 10,
+        },
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["matched_count"] == 1
+    assert body["items"][0]["id"] == expense_id
+
+
+def test_apply_pending_rules_uses_latest_ocr_fact(
+    client: TestClient, *, identity
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    _record_ocr_fact(expense_id, "FactApplyCafe 38.00")
+    created = client.post(
+        "/api/rules/categories",
+        headers=identity.app_headers,
+        json={
+            "keyword": "FactApplyCafe",
+            "category": "Food",
+            "enabled": True,
+            "priority": 1,
+        },
+    )
+    assert created.status_code == 200, created.json()
+
+    applied = _apply_pending_rules(client, identity=identity)
+
+    assert applied.status_code == 200, applied.json()
+    assert applied.json()["changed_count"] == 1
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        assert expense.category == "Food"
+
+
+def test_apply_pending_preview_token_tracks_latest_ocr_fact(
+    client: TestClient, *, identity
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    _record_ocr_fact(expense_id, "BeforePreview 38.00")
+    preview = client.post(
+        "/api/rules/apply-pending/preview?max_scan=10",
+        headers=identity.app_headers,
+    )
+    assert preview.status_code == 200, preview.json()
+
+    _record_ocr_fact(expense_id, "AfterPreview 38.00")
+    applied = client.post(
+        "/api/rules/apply-pending?max_scan=10",
+        headers=identity.app_headers,
+        json={"confirm": True, "preview_token": preview.json()["preview_token"]},
+    )
+
+    assert applied.status_code == 409
+    assert applied.json()["error"] == "preview_stale"
 
 
 def test_rule_preview_rejects_empty_keyword(client: TestClient, *, identity) -> None:

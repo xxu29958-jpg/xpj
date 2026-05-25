@@ -10,6 +10,7 @@ from app.services.category_service import normalize_category
 from app.services.merchant_alias_service import enabled_merchant_alias_map
 from app.services.rule_application_service._common import (
     _matching_rule_category,
+    _ocr_text_by_expense_id,
     _rule_application_candidates,
     _try_apply_rule_category,
 )
@@ -97,10 +98,18 @@ def _apply_rules_to_status(
         return len(expenses), 0, scan_limit_reached
 
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
+    ocr_text_by_id = _ocr_text_by_expense_id(
+        db, tenant_id=tenant_id, expenses=expenses
+    )
     changes: list[tuple[int, int, str, str, str]] = []
     now = now_utc()
     for expense in expenses:
-        match = _matching_rule_category(db, expense, rules, alias_map)
+        match = _matching_rule_category(
+            expense,
+            rules,
+            alias_map,
+            ocr_text=ocr_text_by_id.get(int(expense.id), ""),
+        )
         if match is None:
             continue
         rule, new_category = match

@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_filter, ledger_scoped_select
-from app.models import CategoryRule, Expense, RuleApplicationChange
+from app.models import CategoryRule, Expense, OcrFact, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.ocr_service import ocr_draft_fields_after_clearing
 from app.services.rule_service import (
@@ -71,27 +71,60 @@ def _iso_or_none(value: object) -> str | None:
     return str(value)
 
 
+def _ocr_text_by_expense_id(
+    db: Session,
+    *,
+    tenant_id: str,
+    expenses: list[Expense],
+) -> dict[int, str]:
+    """Bulk variant of read_ocr_text for rule preview/apply scans."""
+
+    result: dict[int, str] = {}
+    expense_ids: list[int] = []
+    for expense in expenses:
+        expense_id = expense.id
+        if expense_id is None:
+            continue
+        expense_id = int(expense_id)
+        if expense.tenant_id != tenant_id:
+            result[expense_id] = ""
+            continue
+        result[expense_id] = expense.raw_text or ""
+        expense_ids.append(expense_id)
+
+    if not expense_ids:
+        return result
+
+    rows = db.execute(
+        select(OcrFact.expense_id, OcrFact.raw_text)
+        .where(OcrFact.tenant_id == tenant_id)
+        .where(OcrFact.expense_id.in_(expense_ids))
+        .order_by(
+            OcrFact.expense_id.asc(),
+            OcrFact.extracted_at.desc(),
+            OcrFact.id.desc(),
+        )
+    )
+    seen: set[int] = set()
+    for expense_id, raw_text in rows:
+        expense_id = int(expense_id)
+        if expense_id in seen:
+            continue
+        seen.add(expense_id)
+        if raw_text:
+            result[expense_id] = raw_text
+    return result
+
+
 def _rule_application_preview_token(
     *,
-    db: Session,
-    tenant_id: str,
     status: str,
     max_scan: int | None,
     expenses: list[Expense],
     rules: list[CategoryRule],
     alias_map: dict[str, str],
+    ocr_text_by_id: dict[int, str],
 ) -> str:
-    # v1.2 OCR single-source migration (step 2): hash OCR text via
-    # the facts table so a new OCR pass invalidates the preview token
-    # the same way a manual edit does. ``read_ocr_text`` does
-    # tenant-scoped lookup + legacy fallback internally.
-    from app.services.learning_service import read_ocr_text
-
-    ocr_text_by_id = {
-        expense.id: read_ocr_text(db, tenant_id=tenant_id, expense=expense)
-        or ""
-        for expense in expenses
-    }
     payload = {
         "version": 1,
         "status": status,
@@ -131,22 +164,15 @@ def _rule_application_preview_token(
 
 
 def _haystack_for(
-    db: Session,
     expense: Expense,
     match_field: str,
     alias_map: dict[str, str],
+    *,
+    ocr_text: str = "",
 ) -> str:
-    # v1.2 OCR single-source migration (step 2): read OCR text via the
-    # facts table; ``expense.raw_text`` is the legacy fallback inside
-    # ``read_ocr_text``. The helper does tenant scoping itself.
-    from app.services.learning_service import read_ocr_text
-
     field = (match_field or "merchant").strip().lower()
     if field == "merchant":
         return _casefold_join(_merchant_context(expense, alias_map))
-    ocr_text = read_ocr_text(
-        db, tenant_id=expense.tenant_id, expense=expense
-    ) or ""
     if field in {"raw_text", "raw"}:
         return ocr_text.casefold()
     # "any" or unrecognized → match against merchant + ocr text + note
@@ -218,12 +244,13 @@ def _try_rollback_rule_change(
 
 
 def _matching_rule_category(
-    db: Session,
     expense: Expense,
     rules: list[CategoryRule],
     alias_map: dict[str, str],
+    *,
+    ocr_text: str = "",
 ) -> tuple[CategoryRule, str] | None:
-    haystack = _haystack_for(db, expense, "any", alias_map)
+    haystack = _haystack_for(expense, "any", alias_map, ocr_text=ocr_text)
     if not haystack:
         return None
     for rule in rules:
