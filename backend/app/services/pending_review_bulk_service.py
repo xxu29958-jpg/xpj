@@ -84,23 +84,42 @@ def apply_review_bulk(
     if cross_ledger:
         result.skipped_reasons[SKIP_REASON_CROSS_LEDGER] = cross_ledger
 
+    # Resolve action handler once outside the loop so the per-row body
+    # is a flat dispatcher (audit A5 used to flag this function at
+    # nesting depth 6 because the if/elif chain compiles to a nested
+    # ``If(orelse=[If(...)])`` tree).
+    handler = _resolve_bulk_action_handler(
+        action, category_clean=category_clean, merchant_clean=merchant_clean
+    )
     for row in rows:
-        if action == "set_category":
-            _apply_metadata_update(
-                db, row, tenant_id, ExpenseUpdateRequest(category=category_clean), result
-            )
-        elif action == "set_merchant":
-            _apply_metadata_update(
-                db, row, tenant_id, ExpenseUpdateRequest(merchant=merchant_clean), result
-            )
-        elif action == "reject":
-            _apply_reject(db, row, tenant_id, result)
-        elif action == "confirm_ready":
-            _apply_confirm_ready(db, row, tenant_id, result)
-        elif action == "keep_duplicate":
-            _apply_keep_duplicate(db, row, tenant_id, result)
-
+        handler(db, row, tenant_id, result)
     return result
+
+
+def _resolve_bulk_action_handler(
+    action: str, *, category_clean: str, merchant_clean: str
+):
+    """Return a ``(db, row, tenant_id, result) -> None`` callable.
+
+    ``action`` is trusted because the caller already enforced
+    ``ALLOWED_ACTIONS`` membership; cross-ledger / not-pending checks
+    happen inside the leaf handlers.
+    """
+    if action == "set_category":
+        payload = ExpenseUpdateRequest(category=category_clean)
+        return lambda db, row, tenant_id, result: _apply_metadata_update(
+            db, row, tenant_id, payload, result
+        )
+    if action == "set_merchant":
+        payload = ExpenseUpdateRequest(merchant=merchant_clean)
+        return lambda db, row, tenant_id, result: _apply_metadata_update(
+            db, row, tenant_id, payload, result
+        )
+    if action == "reject":
+        return _apply_reject
+    if action == "confirm_ready":
+        return _apply_confirm_ready
+    return _apply_keep_duplicate
 
 
 def _apply_metadata_update(

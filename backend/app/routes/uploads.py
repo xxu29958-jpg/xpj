@@ -59,6 +59,23 @@ def _elapsed_ms(started_at: float) -> int:
     return max(0, int((perf_counter() - started_at) * 1000))
 
 
+def _pick_first_upload_file(form) -> UploadFile | None:
+    """Return the first :class:`UploadFile` from a parsed multipart form.
+
+    Preference order: the iOS Shortcut file field names listed in
+    ``IOS_SHORTCUT_FILE_FIELDS`` first (matches the shortcut payload),
+    then any other field. ``None`` means the form had no UploadFile.
+    """
+    for field_name in IOS_SHORTCUT_FILE_FIELDS:
+        value = form.get(field_name)
+        if isinstance(value, UploadFile):
+            return value
+    for value in form.values():
+        if isinstance(value, UploadFile):
+            return value
+    return None
+
+
 async def _save_request_upload(request: Request, tenant_id: str) -> tuple[SavedUpload, dict[str, int]]:
     timing_ms: dict[str, int] = {}
     content_type = request.headers.get("content-type", "")
@@ -72,20 +89,12 @@ async def _save_request_upload(request: Request, tenant_id: str) -> tuple[SavedU
             form_started_at = perf_counter()
             async with form_context as form:
                 timing_ms["form_parse_ms"] = _elapsed_ms(form_started_at)
-                for field_name in IOS_SHORTCUT_FILE_FIELDS:
-                    value = form.get(field_name)
-                    if isinstance(value, UploadFile):
-                        save_started_at = perf_counter()
-                        saved_file = await save_upload(value, tenant_id)
-                        timing_ms["file_save_ms"] = _elapsed_ms(save_started_at)
-                        return saved_file, timing_ms
-
-                for value in form.values():
-                    if isinstance(value, UploadFile):
-                        save_started_at = perf_counter()
-                        saved_file = await save_upload(value, tenant_id)
-                        timing_ms["file_save_ms"] = _elapsed_ms(save_started_at)
-                        return saved_file, timing_ms
+                upload_file = _pick_first_upload_file(form)
+                if upload_file is not None:
+                    save_started_at = perf_counter()
+                    saved_file = await save_upload(upload_file, tenant_id)
+                    timing_ms["file_save_ms"] = _elapsed_ms(save_started_at)
+                    return saved_file, timing_ms
         except StarletteHTTPException as exc:
             detail = str(exc.detail).lower()
             if "maximum size" in detail or "too large" in detail:
