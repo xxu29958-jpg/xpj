@@ -78,10 +78,11 @@ def seed_default_rules(db: Session, tenant_id: str) -> None:
 
 def classify_expense(db: Session, expense: Expense) -> Expense:
     alias_map = enabled_merchant_alias_map(db, tenant_id=expense.tenant_id)
-    # v1.2 OCR single-source migration (step 2): read OCR text via the
-    # facts table when available; ``expense.raw_text`` is the legacy
-    # fallback. ``read_ocr_text`` does the tenant-scoped lookup +
-    # safe-fallback internally — caller doesn't pass raw_text directly.
+    # v1.2 OCR single-source migration: read OCR text via the facts
+    # table. ``read_ocr_text`` does the tenant-scoped lookup and
+    # returns ``None`` when no fact carries text — after step 4 the
+    # legacy ``expense.raw_text`` column is no longer consulted, so
+    # an empty haystack means OCR never produced text for this row.
     from app.services.learning_service import read_ocr_text
 
     ocr_text = read_ocr_text(

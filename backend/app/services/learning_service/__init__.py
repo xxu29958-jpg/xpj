@@ -485,10 +485,11 @@ def latest_ocr_fact_for_expense(
     ``None`` when the expense has never been OCR'd into the new table.
 
     This is the canonical read API for the OCR single-source migration
-    (PR follow-up to v1.2 P0). Consumers that previously read
-    ``expenses.raw_text`` should call this first and only fall back to
-    the legacy column when the helper returns ``None`` — see
-    :func:`read_ocr_text` for the wrapped fallback.
+    (v1.2 P0). Consumers that need just the text should call
+    :func:`read_ocr_text`, which wraps this lookup. After step 4
+    dropped the ``expenses.raw_text`` fallback, ``None`` here means
+    "no OCR text on record" — the legacy column is no longer
+    consulted by the helper, even when it still happens to be set.
     """
 
     return db.scalar(
