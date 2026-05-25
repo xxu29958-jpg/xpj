@@ -47,3 +47,4 @@ artifacts/
 
 # Ops logs (boundary-check etc. — see scripts\scheduled_public_boundary_check.ps1)
 logs/
+release_audit.log

@@ -24,7 +24,11 @@ from app.services.identity_service._auth import (
     authenticate_web_session_token,
     upload_link_default_timezone,
 )
-from app.services.identity_service._bootstrap import bootstrap_owner
+from app.services.identity_service._bootstrap import (
+    bootstrap_owner,
+    is_bootstrap_secret_consumed,
+    record_bootstrap_secret_consumption,
+)
 from app.services.identity_service._device import (
     _create_auth_token,
     _create_pairing_code,
@@ -84,6 +88,8 @@ __all__ = [
     "authenticate_web_session_token",
     "bootstrap_owner",
     "create_pairing_code",
+    "is_bootstrap_secret_consumed",
+    "record_bootstrap_secret_consumption",
     "ensure_identity_for_existing_ledger_ids",
     "ensure_identity_seed",
     "is_legacy_app_token",

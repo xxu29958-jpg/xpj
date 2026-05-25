@@ -21,21 +21,26 @@ counts.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AlgorithmDecision
 from app.routes.owner_console._ai_advisor import _owner_console_tenant_id
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services.learning_service import (
     ALGORITHM_TYPES,
+    find_decision_by_public_id,
     get_status_overview,
+    list_recent_active_decisions,
     run_full_maintenance,
     set_decision_status,
 )
+
+if TYPE_CHECKING:
+    from app.models import AlgorithmDecision
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -49,15 +54,7 @@ _ACTIVE_PEEK_LIMIT = 50
 def _recent_active_decisions(
     db: Session, *, tenant_id: str, limit: int = _ACTIVE_PEEK_LIMIT
 ) -> list[AlgorithmDecision]:
-    return list(
-        db.scalars(
-            select(AlgorithmDecision)
-            .where(AlgorithmDecision.tenant_id == tenant_id)
-            .where(AlgorithmDecision.status == "active")
-            .order_by(AlgorithmDecision.created_at.desc())
-            .limit(limit)
-        )
-    )
+    return list_recent_active_decisions(db, tenant_id=tenant_id, limit=limit)
 
 
 @router.get("/learning-maintenance", response_class=HTMLResponse)
@@ -113,11 +110,8 @@ def owner_learning_maintenance_dismiss_post(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     tenant_id = _owner_console_tenant_id(db)
-    decision = db.scalar(
-        select(AlgorithmDecision)
-        .where(AlgorithmDecision.tenant_id == tenant_id)
-        .where(AlgorithmDecision.public_id == decision_public_id)
-        .limit(1)
+    decision = find_decision_by_public_id(
+        db, tenant_id=tenant_id, public_id=decision_public_id
     )
     if decision is None:
         # No row → just redirect; the panel will show the up-to-date

@@ -361,6 +361,47 @@ def active_decision_for_subject(
     return db.scalar(stmt)
 
 
+def list_recent_active_decisions(
+    db: Session,
+    *,
+    tenant_id: str,
+    limit: int = 50,
+) -> list[AlgorithmDecision]:
+    """Owner Console learning-maintenance panel snapshot.
+
+    Recent ``status='active'`` decisions for a tenant, newest first. Used
+    by the manual-dismiss table on ``/owner/learning-maintenance``.
+    """
+    return list(
+        db.scalars(
+            select(AlgorithmDecision)
+            .where(AlgorithmDecision.tenant_id == tenant_id)
+            .where(AlgorithmDecision.status == "active")
+            .order_by(AlgorithmDecision.created_at.desc())
+            .limit(limit)
+        )
+    )
+
+
+def find_decision_by_public_id(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+) -> AlgorithmDecision | None:
+    """Look up a decision by tenant + public_id; ``None`` when absent.
+
+    Owner Console dismiss flow uses this; race losses (a concurrent
+    cleanup deleted the row) should silently no-op, not 404.
+    """
+    return db.scalar(
+        select(AlgorithmDecision)
+        .where(AlgorithmDecision.tenant_id == tenant_id)
+        .where(AlgorithmDecision.public_id == public_id)
+        .limit(1)
+    )
+
+
 def recent_events_for_subject(
     db: Session,
     *,

@@ -3,15 +3,12 @@ from __future__ import annotations
 import hmac
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
-from app.models import BootstrapSecretConsumption
 from app.network_boundary import require_admin_network_boundary
 from app.schemas import (
     BootstrapOwnerRequest,
@@ -20,7 +17,13 @@ from app.schemas import (
     PairingCodeResponse,
 )
 from app.services.admin_scope_service import require_admin_manages_current_ledger
-from app.services.identity_service import bootstrap_owner, create_pairing_code, hash_secret
+from app.services.identity_service import (
+    bootstrap_owner,
+    create_pairing_code,
+    hash_secret,
+    is_bootstrap_secret_consumed,
+    record_bootstrap_secret_consumption,
+)
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/bootstrap", tags=["bootstrap"])
@@ -60,12 +63,9 @@ def require_http_bootstrap_secret(
         )
 
     secret_hash = hash_secret(expected)
-    already_consumed = db.scalar(
-        select(BootstrapSecretConsumption.secret_hash)
-        .where(BootstrapSecretConsumption.secret_hash == secret_hash)
-        .limit(1)
-    )
-    if already_consumed is not None or not hmac.compare_digest(provided, expected):
+    if is_bootstrap_secret_consumed(
+        db, secret_hash=secret_hash
+    ) or not hmac.compare_digest(provided, expected):
         raise AppError(
             "invalid_bootstrap_secret",
             "Bootstrap secret 无效或已使用。",
@@ -88,23 +88,12 @@ def _consume_secret(db: Session, secret: str) -> None:
     if not secret:
         return
     secret_hash = hash_secret(secret)
-    try:
-        db.add(BootstrapSecretConsumption(secret_hash=secret_hash))
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        already_consumed = db.scalar(
-            select(BootstrapSecretConsumption.secret_hash)
-            .where(BootstrapSecretConsumption.secret_hash == secret_hash)
-            .limit(1)
+    if not record_bootstrap_secret_consumption(db, secret_hash=secret_hash):
+        raise AppError(
+            "invalid_bootstrap_secret",
+            "Bootstrap secret is invalid or already used.",
+            status_code=401,
         )
-        if already_consumed is not None:
-            raise AppError(
-                "invalid_bootstrap_secret",
-                "Bootstrap secret is invalid or already used.",
-                status_code=401,
-            ) from exc
-        raise
 
 
 def _mark_secret_consumed(db: Session, secret: str) -> None:
