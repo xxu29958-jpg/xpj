@@ -16,14 +16,14 @@ isolation via ``selected_id``.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -36,29 +36,27 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.expense_service import (
+    get_expense,
     list_duplicate_expenses,
+    list_expenses_by_ids,
     mark_expense_not_duplicate,
     reject_expense,
 )
+
+if TYPE_CHECKING:
+    from app.models import Expense
 
 router = APIRouter(prefix="/web", tags=["web"])
 
 
 def _load_pair(db: Session, *, tenant_id: str, expense_id: int) -> tuple[Expense, Expense | None]:
-    expense = db.scalar(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id == expense_id)
-    )
-    if expense is None:
-        raise AppError("expense_not_found", status_code=404)
-    other = None
+    expense = get_expense(db, expense_id, tenant_id)
+    other: Expense | None = None
     if expense.duplicate_of_id is not None:
-        other = db.scalar(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.id == expense.duplicate_of_id)
+        others = list_expenses_by_ids(
+            db, tenant_id=tenant_id, expense_ids=[expense.duplicate_of_id]
         )
+        other = others[0] if others else None
     return expense, other
 
 
@@ -73,15 +71,20 @@ def web_duplicates(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     rows = list_duplicate_expenses(db, selected_id)
+    # Single batched query for every referenced original; pair-build loop
+    # below does in-memory lookup. No N+1 over duplicate rows.
+    original_ids = sorted({row.duplicate_of_id for row in rows if row.duplicate_of_id is not None})
+    originals_by_id = {
+        e.id: e
+        for e in list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=original_ids)
+    }
     pairs = []
     for row in rows:
-        original = None
-        if row.duplicate_of_id is not None:
-            original = db.scalar(
-                select(Expense)
-                .where(Expense.tenant_id == selected_id)
-                .where(Expense.id == row.duplicate_of_id)
-            )
+        original = (
+            originals_by_id.get(row.duplicate_of_id)
+            if row.duplicate_of_id is not None
+            else None
+        )
         reason = row.duplicate_reason or ""
         # 把判定 reason 字符串映射成相似度 score（高/中置信度 pill 用）。
         # 后端目前没有持久化 score；规则简单透明，由 reason 关键词派生。
