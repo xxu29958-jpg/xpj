@@ -39,6 +39,44 @@ def parse(p: pathlib.Path) -> ast.Module | None:
         return None
 
 
+def _is_type_checking_test(test: ast.expr) -> bool:
+    if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
+        return True
+    return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+
+
+def _type_checking_import_lines(tree: ast.Module) -> set[int]:
+    """Line numbers of imports nested under an ``if TYPE_CHECKING:`` block.
+
+    These imports never execute at runtime, so they cannot violate
+    "routes 直连 models" — the import only exists for annotation lookup
+    by static type checkers.
+    """
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If) or not _is_type_checking_test(node.test):
+            continue
+        for inner in ast.walk(ast.Module(body=node.body, type_ignores=[])):
+            if isinstance(inner, (ast.ImportFrom, ast.Import)):
+                lines.add(inner.lineno)
+    return lines
+
+
+def _suppressed_lines(p: pathlib.Path, code: str) -> set[int]:
+    """Lines carrying ``# noqa: <code>`` (or ``noqa:<code>``)."""
+    out: set[int] = set()
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError:
+        return out
+    needle_a = f"noqa: {code}"
+    needle_b = f"noqa:{code}"
+    for i, line in enumerate(text.splitlines(), start=1):
+        if needle_a in line or needle_b in line:
+            out.add(i)
+    return out
+
+
 # -----------------------------------------------------------------------------
 # A. SIZE & DISTRIBUTION
 # -----------------------------------------------------------------------------
@@ -216,14 +254,22 @@ def _find_import_sccs(graph: dict[str, set[str]]) -> list[list[str]]:
 
 def audit_layer_violations():
     """Routes (presentation) directly importing models or SQLAlchemy session/engine
-    instead of going through a service. Inverted-layer hints."""
+    instead of going through a service. Inverted-layer hints.
+
+    Imports nested under ``if TYPE_CHECKING:`` are skipped — they exist
+    only for static type checking and never execute at runtime, so the
+    layer boundary is not actually crossed.
+    """
     items: list[tuple[pathlib.Path, int, str]] = []
     for p in walk(APP / "routes"):
         tree = parse(p)
         if not tree:
             continue
+        type_checking_lines = _type_checking_import_lines(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
+                if node.lineno in type_checking_lines:
+                    continue
                 m = node.module
                 if m == "app.models" or m.startswith("app.models.") or m == "app.database" or m.startswith("app.database."):
                     items.append((p, node.lineno, f"imports {m}"))
@@ -482,13 +528,17 @@ def audit_bare_except():
         tree = parse(p)
         if not tree:
             continue
+        # Lines carrying `# noqa: BLE001` are intentional broad catches
+        # (graceful degradation paths the linter accepts); skipping them
+        # here keeps the audit signal focused on accidental swallows.
+        ble001_lines = _suppressed_lines(p, "BLE001")
         for node in ast.walk(tree):
             if isinstance(node, ast.ExceptHandler):
                 if node.type is None:
                     bare.append((p, node.lineno))
                 else:
                     t = ast.unparse(node.type)
-                    if t in {"Exception", "BaseException"}:
+                    if t in {"Exception", "BaseException"} and node.lineno not in ble001_lines:
                         broad.append((p, node.lineno, t))
                 # Swallowed (body is `pass` or just `...`)
                 body = node.body
@@ -503,6 +553,7 @@ def audit_bare_except():
                             and body[0].value.value is ...
                         )
                     )
+                    and node.lineno not in ble001_lines
                 ):
                     swallow.append((p, node.lineno))
     print(f"== F1. Bare `except:` ({len(bare)}) ==")
@@ -620,6 +671,68 @@ def audit_credentials_risk():
     print()
 
 
+_DB_CALL_MARKERS = (
+    "db.query",
+    "db.scalar",
+    "db.scalars",
+    "db.execute",
+    "session.query",
+    "session.scalar",
+    "session.execute",
+)
+
+
+def _is_bounded_range_retry(n: ast.For) -> bool:
+    """``for _ in range(N): ...`` collision-retry idiom (bounded N)."""
+    target_is_discard = isinstance(n.target, ast.Name) and n.target.id == "_"
+    iter_is_range = (
+        isinstance(n.iter, ast.Call)
+        and isinstance(n.iter.func, ast.Name)
+        and n.iter.func.id == "range"
+    )
+    return target_is_discard and iter_is_range
+
+
+class _NPlusOneVisitor(ast.NodeVisitor):
+    def __init__(self, file_path: pathlib.Path, items: list):
+        self.loop_stack = 0
+        self._file_path = file_path
+        self._items = items
+
+    def _visit_loop(self, iter_expr, body, orelse):
+        # iter expression evaluates ONCE — stream consumer pattern.
+        if iter_expr is not None:
+            self.visit(iter_expr)
+        self.loop_stack += 1
+        for stmt in body:
+            self.visit(stmt)
+        self.loop_stack -= 1
+        for stmt in orelse:
+            self.visit(stmt)
+
+    def visit_For(self, n):
+        if _is_bounded_range_retry(n):
+            return
+        self._visit_loop(n.iter, n.body, n.orelse)
+
+    def visit_AsyncFor(self, n):
+        self._visit_loop(n.iter, n.body, n.orelse)
+
+    def visit_While(self, n):
+        # `while True:` is the project's collision-retry idiom.
+        if isinstance(n.test, ast.Constant) and n.test.value is True:
+            return
+        self._visit_loop(None, n.body, n.orelse)
+        self.visit(n.test)
+
+    def visit_Call(self, n):
+        if self.loop_stack > 0:
+            src = ast.unparse(n.func)
+            if any(m in src for m in _DB_CALL_MARKERS):
+                self._items.append((self._file_path, n.lineno, src))
+        self.generic_visit(n)
+
+
 def audit_n_plus_one():
     """db.query / db.scalar / select(...) calls inside a for-loop body."""
     items = []
@@ -627,29 +740,7 @@ def audit_n_plus_one():
         tree = parse(p)
         if not tree:
             continue
-        class V(ast.NodeVisitor):
-            def __init__(self, file_path):
-                self.loop_stack = 0
-                self._file_path = file_path
-            def visit_For(self, n):
-                self.loop_stack += 1
-                self.generic_visit(n)
-                self.loop_stack -= 1
-            def visit_AsyncFor(self, n):
-                self.loop_stack += 1
-                self.generic_visit(n)
-                self.loop_stack -= 1
-            def visit_While(self, n):
-                self.loop_stack += 1
-                self.generic_visit(n)
-                self.loop_stack -= 1
-            def visit_Call(self, n):
-                if self.loop_stack > 0:
-                    src = ast.unparse(n.func)
-                    if any(m in src for m in ("db.query", "db.scalar", "db.execute", "session.query", "session.scalar", "session.execute", "db.scalars")):
-                        items.append((self._file_path, n.lineno, src))
-                self.generic_visit(n)
-        V(p).visit(tree)
+        _NPlusOneVisitor(p, items).visit(tree)
     print(f"== G6. DB call inside a loop (N+1 risk) ({len(items)}) ==")
     by_file = defaultdict(list)
     for p, ln, src in items:
