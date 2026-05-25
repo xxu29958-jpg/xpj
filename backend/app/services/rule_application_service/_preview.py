@@ -54,7 +54,7 @@ def preview_rule_for_pending(
     matched_count = 0
     capped = max(1, min(int(limit or 10), 50))
     for expense in pending:
-        if needle not in _haystack_for(expense, match_field, alias_map):
+        if needle not in _haystack_for(db, expense, match_field, alias_map):
             continue
         matched_count += 1
         if len(matched) >= capped:
@@ -178,7 +178,7 @@ def _preview_apply_rules_to_status(
     items: list[dict] = []
     for expense in expenses:
         current_category = normalize_category(expense.category or "其他")
-        match = _matching_rule_category(expense, rules, alias_map)
+        match = _matching_rule_category(db, expense, rules, alias_map)
         if match is None:
             no_match_count += 1
             continue
@@ -213,6 +213,8 @@ def _preview_apply_rules_to_status(
         "scan_limit_reached": scan_limit_reached,
         "scan_limit": _clamp_rule_application_scan_limit(max_scan),
         "preview_token": _rule_application_preview_token(
+            db=db,
+            tenant_id=tenant_id,
             status=status,
             max_scan=max_scan,
             expenses=expenses,

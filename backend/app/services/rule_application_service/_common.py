@@ -73,12 +73,25 @@ def _iso_or_none(value: object) -> str | None:
 
 def _rule_application_preview_token(
     *,
+    db: Session,
+    tenant_id: str,
     status: str,
     max_scan: int | None,
     expenses: list[Expense],
     rules: list[CategoryRule],
     alias_map: dict[str, str],
 ) -> str:
+    # v1.2 OCR single-source migration (step 2): hash OCR text via
+    # the facts table so a new OCR pass invalidates the preview token
+    # the same way a manual edit does. ``read_ocr_text`` does
+    # tenant-scoped lookup + legacy fallback internally.
+    from app.services.learning_service import read_ocr_text
+
+    ocr_text_by_id = {
+        expense.id: read_ocr_text(db, tenant_id=tenant_id, expense=expense)
+        or ""
+        for expense in expenses
+    }
     payload = {
         "version": 1,
         "status": status,
@@ -90,7 +103,7 @@ def _rule_application_preview_token(
                 "category": normalize_category(expense.category or ""),
                 "amount_cents": expense.amount_cents,
                 "merchant": expense.merchant or "",
-                "raw_text": expense.raw_text or "",
+                "raw_text": ocr_text_by_id.get(expense.id, ""),
                 "note": expense.note or "",
                 "source": expense.source or "",
                 "tags": expense.tags or "",
@@ -117,15 +130,28 @@ def _rule_application_preview_token(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _haystack_for(expense: Expense, match_field: str, alias_map: dict[str, str]) -> str:
+def _haystack_for(
+    db: Session,
+    expense: Expense,
+    match_field: str,
+    alias_map: dict[str, str],
+) -> str:
+    # v1.2 OCR single-source migration (step 2): read OCR text via the
+    # facts table; ``expense.raw_text`` is the legacy fallback inside
+    # ``read_ocr_text``. The helper does tenant scoping itself.
+    from app.services.learning_service import read_ocr_text
+
     field = (match_field or "merchant").strip().lower()
     if field == "merchant":
         return _casefold_join(_merchant_context(expense, alias_map))
+    ocr_text = read_ocr_text(
+        db, tenant_id=expense.tenant_id, expense=expense
+    ) or ""
     if field in {"raw_text", "raw"}:
-        return (expense.raw_text or "").casefold()
-    # "any" or unrecognized → match against merchant + raw_text + note
+        return ocr_text.casefold()
+    # "any" or unrecognized → match against merchant + ocr text + note
     return _casefold_join(
-        [*_merchant_context(expense, alias_map), expense.raw_text or "", expense.note or ""]
+        [*_merchant_context(expense, alias_map), ocr_text, expense.note or ""]
     )
 
 
@@ -192,11 +218,12 @@ def _try_rollback_rule_change(
 
 
 def _matching_rule_category(
+    db: Session,
     expense: Expense,
     rules: list[CategoryRule],
     alias_map: dict[str, str],
 ) -> tuple[CategoryRule, str] | None:
-    haystack = _haystack_for(expense, "any", alias_map)
+    haystack = _haystack_for(db, expense, "any", alias_map)
     if not haystack:
         return None
     for rule in rules:

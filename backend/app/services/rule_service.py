@@ -78,8 +78,17 @@ def seed_default_rules(db: Session, tenant_id: str) -> None:
 
 def classify_expense(db: Session, expense: Expense) -> Expense:
     alias_map = enabled_merchant_alias_map(db, tenant_id=expense.tenant_id)
+    # v1.2 OCR single-source migration (step 2): read OCR text via the
+    # facts table when available; ``expense.raw_text`` is the legacy
+    # fallback. ``read_ocr_text`` does the tenant-scoped lookup +
+    # safe-fallback internally — caller doesn't pass raw_text directly.
+    from app.services.learning_service import read_ocr_text
+
+    ocr_text = read_ocr_text(
+        db, tenant_id=expense.tenant_id, expense=expense
+    ) or ""
     haystack = _casefold_join(
-        [*_merchant_context(expense, alias_map), expense.raw_text or "", expense.note or ""]
+        [*_merchant_context(expense, alias_map), ocr_text, expense.note or ""]
     )
     if not haystack:
         return expense

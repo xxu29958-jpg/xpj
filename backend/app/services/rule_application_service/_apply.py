@@ -100,7 +100,7 @@ def _apply_rules_to_status(
     changes: list[tuple[int, int, str, str, str]] = []
     now = now_utc()
     for expense in expenses:
-        match = _matching_rule_category(expense, rules, alias_map)
+        match = _matching_rule_category(db, expense, rules, alias_map)
         if match is None:
             continue
         rule, new_category = match
