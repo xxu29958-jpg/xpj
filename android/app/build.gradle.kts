@@ -1,7 +1,7 @@
 import java.util.Properties
 
-val ticketboxVersionCode = 10000000
-val ticketboxVersionName = "1.0.0"
+val ticketboxVersionCode = 10200000
+val ticketboxVersionName = "1.2.0"
 
 val ticketboxLocalProperties: Properties = Properties().also { props ->
     val propsFile = rootProject.file("local.properties")

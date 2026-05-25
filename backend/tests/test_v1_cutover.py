@@ -81,7 +81,7 @@ def test_binary_rejected_when_db_locked_to_v1_one_higher(
 ) -> None:
     """If a future cut-over recorded a higher schema_min than the running
     binary, the binary must refuse to mount the DB. Originally written
-    when BACKEND_VERSION was 0.9.0a1; since the binary is now 1.0.0,
+    when BACKEND_VERSION was 0.9.0a1; since the binary is now 1.2.0,
     simulate a pre-v1 binary by patching BACKEND_VERSION just for this
     test."""
     monkeypatch.setattr(app_meta_service, "BACKEND_VERSION", "0.9.0a1")
@@ -101,7 +101,7 @@ def test_v1_migration_handler_refuses_pre_v1_binary(
 ) -> None:
     """Cut-over from a 0.9.x binary would lock the DB out of its own
     process. Handler refuses; schema_version stays at 0.9.
-    With BACKEND_VERSION now at 1.0.0 the safety branch is dormant in
+    With BACKEND_VERSION now at 1.2.0 the safety branch is dormant in
     production; patch it back to 0.9.x to keep exercising the refuse path."""
     monkeypatch.setattr(v1_migration_service, "BACKEND_VERSION", "0.9.0a1")
     v1_migration_service.register()

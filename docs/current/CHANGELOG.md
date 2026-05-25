@@ -2,7 +2,30 @@
 
 所有版本都保持 `identity_schema=v0.3` 不变。
 
-## v1.0.0 — 数据能力 + 三端收口 + PWA 公网层（当前）
+## v1.2.0 — Learning Feedback Dual Tables + OCR facts 单源（当前）
+
+- Learning Feedback 三张 append-only 表（ADR-0037）：`algorithm_decisions`（决策事实 append-only，治理状态可流转 active/superseded/withdrawn）/ `ledger_learning_events`（用户反馈 append-only）/ `ocr_facts`（OCR 抽取事实 append-only，与 expenses 1:N）；tenant_id 强制隔离；retention_days + `cleanup_expired_learning_tables`
+- Learning service ops 收口：`signal_hash` 信号幂等键、cleanup 接调度入口、lifecycle closing、retention split（决策 / 反馈 / OCR 各自 retention）、scheduler、manual dismiss、accept 路径关单
+- `_count_recent_rejects` 反馈降权：分类建议 / 重复评分在 N 天内被 reject 后自动降权
+- 算法版本回滚：`withdraw_algorithm_version` 把整个 `(decision_type, algorithm_version)` 翻成 `withdrawn`；tenant 隔离
+- Algorithm registry：`CATEGORY_SUGGESTION` / `DUPLICATE_CANDIDATE` / `BUDGET_SUGGESTION` 三类决策收拢到 `learning_service._algorithm_registry`，service 端 `ALGORITHM_VERSION` 从 registry 取
+- OCR facts 单源迁移 5/5 步骤：
+  - Step 1: `latest_for_expense` + `read_ocr_text` 单源 helper
+  - Step 2: rule classifiers 改走 `read_ocr_text`
+  - Step 3: backfill `expense.raw_text` → `ocr_facts.raw_text`（兼容 pre-alembic）
+  - Step 4: read 路径 drop `expense.raw_text` fallback
+  - Step 5: 业务逻辑彻底不再读 `raw_text`
+- OCR retry 行为修复：空 OCR retry 不再覆盖已有有意义文本；`/api/expenses/{id}/recognize-text` 强制 fact-backed 响应
+- Maintenance scope 修复：`learning-status` / `cleanup-learning` 收到当前 admin 的 tenant
+- ADR-0037 PR 124 review edge cases 收紧
+- ADR-0037 append-only 措辞与 Bad list 在文档层更新
+
+## v1.1 — 跳号
+
+- 未发布。ADR-0036 (v1.1 AI Budget Provider Privacy Boundary) 已 codify——明示 AI provider 可见的字段子集 + 本地保留映射表 + `EmptyBudgetAdvisor` / `OpenAiCompatBudgetAdvisor` provider 抽象。但 v1.1 主线"家庭现金流预算"本体推迟到 v1.3。
+- 决定：版本号跳过 1.1.0，直接发 1.2.0（learning-feedback 是独立 track，与现金流预算无依赖）。
+
+## v1.0.0 — 数据能力 + 三端收口 + PWA 公网层
 
 - 商品级小票 line items：`ExpenseItem.kind` 枚举 + `items_sum_status`、OCR 折扣 / 税 / 服务费识别、`/web` 与 Android detail kind 分组与 mismatch banner（ADR-0035）
 - 家庭账本拆账邀请：跨账本邀请双 DTO 分桶、账本可见性 + 幂等 UNIQUE、`/web` 与 Android 收件箱 / 已发送 UI（ADR-0029）
