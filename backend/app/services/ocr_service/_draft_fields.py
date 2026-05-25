@@ -57,7 +57,15 @@ def clear_ocr_draft_fields(expense: Expense, fields: set[str] | list[str] | tupl
 def _legacy_pending_ocr_draft_fields(expense: Expense) -> set[str]:
     if expense.status != "pending":
         return set()
-    if not (expense.raw_text or "").strip() or expense.confidence is None:
+    # v1.2 OCR single-source migration (step 5): the legacy gate
+    # used to require non-empty ``expense.raw_text`` *and* a non-null
+    # confidence. Confidence alone is the more reliable "OCR ran"
+    # signal — ``apply_ocr_result`` sets it on every successful pass
+    # and was already the second half of the original AND. Dropping
+    # the raw_text check lets us stay off the deprecated column
+    # without losing legacy-row detection for any expense that has
+    # been OCR'd.
+    if expense.confidence is None:
         return set()
     created_at = ensure_utc(expense.created_at)
     updated_at = ensure_utc(expense.updated_at)

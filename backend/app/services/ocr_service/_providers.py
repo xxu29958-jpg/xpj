@@ -24,14 +24,24 @@ from app.services.receipt_parse_service import parse_receipt_text
 
 class EmptyOcrProvider:
     def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
-        return OcrResult(raw_text=expense.raw_text or "", confidence=expense.confidence)
+        # v1.2 OCR single-source migration (step 5): no longer reads
+        # ``expense.raw_text``. The "empty" provider is a placeholder
+        # used when no real OCR pipeline is configured — its job is
+        # to return a confidence-only result, not to surface stale
+        # column data as if it were a fresh OCR pass.
+        return OcrResult(raw_text="", confidence=expense.confidence)
 
 
 class MockOcrProvider:
     def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
+        # v1.2 OCR single-source migration (step 5): the canned
+        # mock-receipt body is the only input now. The previous
+        # ``expense.raw_text or <canned>`` branch let callers smuggle
+        # raw text in through the deprecated column; with that gone,
+        # the mock provider behaves the same regardless of any
+        # historical column value.
         raw_text = (
-            expense.raw_text
-            or "中国建设银行\n交易提醒\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
+            "中国建设银行\n交易提醒\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
         )
         parsed = parse_receipt_text(raw_text, timezone_name=timezone_name)
         return OcrResult(

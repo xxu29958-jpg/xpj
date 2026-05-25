@@ -121,6 +121,14 @@ def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | N
     draft_fields = ocr_draft_fields(expense)
     applied_fields: set[str] = set()
 
+    # v1.2 OCR single-source migration: ``ocr_facts`` is the source
+    # of truth for OCR text. ``apply_ocr_result`` still mirrors the
+    # latest text into ``expense.raw_text`` so the API response (a
+    # plain Pydantic ``from_attributes`` view of the row) keeps
+    # surfacing the recognised text to clients — same value the
+    # paired ``append_ocr_fact`` wrote into the facts row, so the
+    # mirror cannot diverge from canonical. No business-logic reader
+    # consults the column anymore (step 4 dropped the last one).
     expense.raw_text = merged.raw_text
     expense.confidence = _best_confidence(merged.confidence, parsed.confidence, expense.confidence)
     if (
