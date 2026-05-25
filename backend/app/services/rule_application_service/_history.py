@@ -52,6 +52,20 @@ def rollback_rule_application(
             .order_by(RuleApplicationChange.id.asc())
         )
     )
+    # Single batched fetch for every applied change's expense; the per-
+    # change loop below does in-memory lookup. Pre-fix this was one
+    # `db.scalar(... Expense.id == change.expense_id)` per applied change.
+    applied_expense_ids = [c.expense_id for c in changes if c.status == "applied"]
+    expenses_by_id: dict[int, Expense] = {}
+    if applied_expense_ids:
+        expenses_by_id = {
+            e.id: e
+            for e in db.scalars(
+                ledger_scoped_select(Expense, tenant_id).where(
+                    Expense.id.in_(applied_expense_ids)
+                )
+            )
+        }
     now = now_utc()
     changed = 0
     skipped = 0
@@ -59,9 +73,7 @@ def rollback_rule_application(
         if change.status != "applied":
             skipped += 1
             continue
-        expense = db.scalar(
-            ledger_scoped_select(Expense, tenant_id).where(Expense.id == change.expense_id)
-        )
+        expense = expenses_by_id.get(change.expense_id)
         if (
             expense is None
             or normalize_category(expense.category) != change.after_category
