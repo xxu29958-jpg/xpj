@@ -229,6 +229,14 @@ internal class StubApi(
     override suspend fun confirmExpense(id: Long): ExpenseDto = ledgerUnsupported()
     override suspend fun rejectExpense(id: Long): ExpenseDto = ledgerUnsupported()
     override suspend fun retryOcr(id: Long): ExpenseDto = ledgerUnsupported()
+    override suspend fun acceptPendingSuggestion(
+        id: Long,
+        decisionPublicId: String,
+    ): StatusDto = ledgerUnsupported()
+    override suspend fun rejectPendingSuggestion(
+        id: Long,
+        decisionPublicId: String,
+    ): StatusDto = ledgerUnsupported()
     override suspend fun markNotDuplicate(id: Long): ExpenseDto = ledgerUnsupported()
     override suspend fun expenseImage(id: Long): Response<ResponseBody> = ledgerUnsupported()
     override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = ledgerUnsupported()

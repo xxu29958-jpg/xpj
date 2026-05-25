@@ -293,6 +293,16 @@ internal class FakeApiService(
 
     override suspend fun retryOcr(id: Long): ExpenseDto = unsupported()
 
+    override suspend fun acceptPendingSuggestion(
+        id: Long,
+        decisionPublicId: String,
+    ): StatusDto = unsupported()
+
+    override suspend fun rejectPendingSuggestion(
+        id: Long,
+        decisionPublicId: String,
+    ): StatusDto = unsupported()
+
     override suspend fun markNotDuplicate(id: Long): ExpenseDto {
         markNotDuplicateIds += id
         return confirmedExpenseDto()

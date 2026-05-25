@@ -79,6 +79,7 @@ def _backfill_legacy_raw_text(bind: sa.engine.Connection) -> int:
                         SELECT MAX(f.extracted_at)
                         FROM ocr_facts f
                         WHERE f.expense_id = e.id
+                          AND f.tenant_id = e.tenant_id
                     ),
                     e.created_at
                 ) AS extracted_at
@@ -89,6 +90,7 @@ def _backfill_legacy_raw_text(bind: sa.engine.Connection) -> int:
                   SELECT 1
                   FROM ocr_facts f
                   WHERE f.expense_id = e.id
+                    AND f.tenant_id = e.tenant_id
                     AND f.raw_text IS NOT NULL
                     AND f.raw_text <> ''
               )

@@ -1,14 +1,16 @@
 """Empty-database init + schema migration version tracking + identity seed."""
 from __future__ import annotations
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 
 import app.database as database
 from app.database import (
     BASELINE_MIGRATION_NAME,
+    SessionLocal,
     engine,
     init_db,
 )
+from app.models import Expense, OcrFact
 from tests._infra.migration_helpers import (
     expense_columns,
     indexes,
@@ -246,6 +248,45 @@ def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
     init_db()
 
     assert "retention_days" in table_columns("budget_advisor_audit_logs")
+    with engine.begin() as connection:
+        alembic_revision = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
+    assert alembic_revision == "bb00c453bf29"
+
+
+def test_init_db_runs_data_migrations_for_pre_alembic_existing_data() -> None:
+    reset_empty_database()
+    # Simulate a pre-Alembic user database that already has current ORM
+    # tables from create_all() but no alembic_version row yet.
+    from app import models  # noqa: F401
+
+    database.Base.metadata.create_all(bind=engine)
+    database.seed_identity_data()
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            source="pytest",
+            raw_text="legacy receipt body",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        expense_id = expense.id
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+
+    init_db()
+
+    with SessionLocal() as db:
+        facts = list(
+            db.scalars(
+                select(OcrFact).where(OcrFact.expense_id == expense_id)
+            )
+        )
+    assert len(facts) == 1
+    assert facts[0].ocr_provider == "legacy_expense_column"
+    assert facts[0].raw_text == "legacy receipt body"
     with engine.begin() as connection:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")

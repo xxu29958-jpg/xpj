@@ -122,7 +122,12 @@ def _stamp_alembic_baseline_if_needed() -> None:
                     column["name"] == "retention_days"
                     for column in inspector.get_columns("budget_advisor_audit_logs")
                 )
-            current_revision = head if has_retention_column else "20260524_0001"
+            # Existing pre-Alembic databases may have this column because
+            # create_all() just created the current ORM table, but they still
+            # need later data migrations (for example OCR raw_text backfills).
+            current_revision = (
+                "20260524_0002" if has_retention_column else "20260524_0001"
+            )
             connection.execute(
                 text(
                     "CREATE TABLE IF NOT EXISTS alembic_version "
