@@ -6,8 +6,6 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
 from app.errors import AppError
-from app.ledger_scope import ledger_scoped_select
-from app.models import CategoryRule
 from app.schemas import (
     CategoryRuleCreateRequest,
     CategoryRuleResponse,
@@ -31,6 +29,7 @@ from app.services.classify_service import (
     apply_rules_to_pending,
     create_rule,
     delete_rule,
+    get_rule_for_tenant,
     list_rule_applications,
     list_rules,
     preview_apply_rules_to_confirmed,
@@ -84,13 +83,7 @@ def patch_category_rule(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
-    rule = db.scalar(
-        ledger_scoped_select(CategoryRule, auth.tenant_id).where(
-            CategoryRule.id == rule_id
-        )
-    )
-    if rule is None:
-        raise AppError("rule_not_found", status_code=404)
+    rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
     return update_rule(db, rule, **payload.model_dump(exclude_unset=True))
 
 
@@ -100,13 +93,7 @@ def delete_category_rule(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
-    rule = db.scalar(
-        ledger_scoped_select(CategoryRule, auth.tenant_id).where(
-            CategoryRule.id == rule_id
-        )
-    )
-    if rule is None:
-        raise AppError("rule_not_found", status_code=404)
+    rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
     delete_rule(db, rule)
     return StatusResponse()
 

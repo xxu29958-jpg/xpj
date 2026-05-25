@@ -6,15 +6,14 @@ Split from ``web_app.py`` in v0.4-alpha3 slice 2.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import CategoryRule
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -29,6 +28,7 @@ from app.services.classify_service import (
     apply_rules_to_pending,
     create_rule,
     delete_rule,
+    find_rule_for_tenant,
     list_rule_applications,
     list_rules,
     preview_apply_rules_to_confirmed,
@@ -38,6 +38,9 @@ from app.services.classify_service import (
     update_rule,
     validate_rule_application_preview,
 )
+
+if TYPE_CHECKING:
+    from app.models import CategoryRule
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -180,11 +183,7 @@ def web_rules_application_rollback(
 
 
 def _get_rule(db: Session, rule_id: int, tenant_id: str) -> CategoryRule | None:
-    return db.scalar(
-        select(CategoryRule)
-        .where(CategoryRule.id == rule_id)
-        .where(CategoryRule.tenant_id == tenant_id)
-    )
+    return find_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
 
 
 @router.post("/rules/{rule_id}/toggle", response_class=HTMLResponse)

@@ -28,6 +28,8 @@ from app.services.rule_service import (  # noqa: F401
     classify_expense,
     create_rule,
     delete_rule,
+    find_rule_for_tenant,
+    get_rule_for_tenant,
     list_rules,
     seed_default_rules,
     update_rule,

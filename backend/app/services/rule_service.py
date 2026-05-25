@@ -115,6 +115,33 @@ def list_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
     )
 
 
+def find_rule_for_tenant(
+    db: Session, *, tenant_id: str, rule_id: int
+) -> CategoryRule | None:
+    """Return a tenant-scoped ``CategoryRule`` row or ``None``.
+
+    Used by /web rule pages where a missing rule should redirect with a
+    friendly message rather than 404; the API path uses
+    :func:`get_rule_for_tenant`.
+    """
+    return db.scalar(
+        ledger_scoped_select(CategoryRule, tenant_id).where(CategoryRule.id == rule_id)
+    )
+
+
+def get_rule_for_tenant(db: Session, *, tenant_id: str, rule_id: int) -> CategoryRule:
+    """Return a tenant-scoped ``CategoryRule`` row or raise 404.
+
+    API-side variant: missing/cross-tenant ids must surface as
+    ``rule_not_found`` so the client can react. /web pages should
+    prefer :func:`find_rule_for_tenant`.
+    """
+    rule = find_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
+    if rule is None:
+        raise AppError("rule_not_found", status_code=404)
+    return rule
+
+
 def create_rule(
     db: Session,
     tenant_id: str,
