@@ -21,21 +21,18 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import AuthToken, Device
 from app.network_boundary import pairing_rate_limit_key
 from app.routes.web_common import _safe_same_site_redirect_path, templates
 from app.services.identity_service import (
     WEB_SESSION_TTL_SECONDS,
     authenticate_web_session_token,
-    hash_secret,
     pair_device,
 )
-from app.services.time_service import now_utc
+from app.services.session_lifecycle_service import revoke_web_session_token
 from app.version import BACKEND_VERSION
 
 router = APIRouter(prefix="/web/auth", tags=["web"])
@@ -129,21 +126,10 @@ def web_logout(
     token = read_session_token(request)
     redirect = RedirectResponse(url="/web/auth/login", status_code=303)
     if token:
-        # Revoke the underlying AuthToken so the cookie value, if ever
-        # leaked or replayed, is also dead server-side.
-        row = db.scalar(
-            select(AuthToken).where(AuthToken.token_hash == hash_secret(token)).limit(1)
-        )
-        device = db.get(Device, row.device_id) if row is not None else None
-        is_web_session = (
-            row is not None
-            and row.scope == "app"
-            and device is not None
-            and (device.platform or "").strip().lower() == "web"
-        )
-        if is_web_session and row.revoked_at is None:
-            row.revoked_at = now_utc()
-            db.commit()
+        # Revoke the backing AuthToken (only if it actually maps to a
+        # platform="web" scope="app" row) so the cookie value, if ever
+        # leaked or replayed, is dead server-side.
+        revoke_web_session_token(db, token_value=token)
     clear_session_cookie(redirect)
     return redirect
 

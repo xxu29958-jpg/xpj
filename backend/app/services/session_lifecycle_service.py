@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AuthToken, PairingCode, UploadLink
+from app.models import AuthToken, Device, PairingCode, UploadLink
 from app.services.time_service import now_utc
 
 PairingConsumeResult = Literal["consumed", "used", "expired"]
@@ -173,6 +173,33 @@ def revoke_active_tokens(
         statement = statement.where(AuthToken.scope == scope)
     result = db.execute(statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False))
     return int(result.rowcount or 0)
+
+
+def revoke_web_session_token(
+    db: Session, *, token_value: str, revoked_at: datetime | None = None
+) -> bool:
+    """Revoke a /web logout cookie if (and only if) it backs an active web session.
+
+    The /web ``__Host-session`` cookie is the only place a scope=app
+    token gets attached to a ``platform="web"`` device. Other tokens
+    (Android pairing, upload links) must never be silently revoked from
+    a /web cookie value, so the check is strict: scope=app + device
+    present + ``device.platform == "web"`` + token not already revoked.
+
+    Returns ``True`` when this call revoked the token, ``False`` when
+    nothing matched. Always commits.
+    """
+    row = db.scalar(
+        select(AuthToken).where(AuthToken.token_hash == hash_secret(token_value)).limit(1)
+    )
+    if row is None or row.revoked_at is not None or row.scope != "app":
+        return False
+    device = db.get(Device, row.device_id)
+    if device is None or (device.platform or "").strip().lower() != "web":
+        return False
+    row.revoked_at = revoked_at or now_utc()
+    db.commit()
+    return True
 
 
 def revoke_token_value(

@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 from time import perf_counter
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -14,18 +14,17 @@ from app.auth import get_current_writer_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense, UploadLink
 from app.network_boundary import is_loopback_request, upload_link_remote_key
 from app.schemas import UploadResponse
 from app.services.expense_service import create_pending_expense, enrich_pending_expense
 from app.services.file_service import SavedUpload, delete_saved_upload, save_upload, save_upload_bytes
 from app.services.identity_service import (
     authenticate_upload_link,
+    find_active_upload_link,
     is_legacy_upload_token,
     upload_link_default_timezone,
 )
 from app.services.permission_service import require_create_pending_expense
-from app.services.session_lifecycle_service import hash_secret
 from app.services.upload_link_throttle_service import (
     assert_daily_budget_available,
     enforce_remote_interval,
@@ -33,6 +32,9 @@ from app.services.upload_link_throttle_service import (
     resolve_limits,
 )
 from app.tenants import AuthContext
+
+if TYPE_CHECKING:
+    from app.models import Expense, UploadLink
 
 router = APIRouter(prefix="/api", tags=["uploads"])
 upload_link_router = APIRouter(tags=["uploads"])
@@ -226,12 +228,7 @@ async def app_upload_screenshot(
 
 
 def _load_upload_link(db: Session, upload_key: str) -> UploadLink:
-    link = db.scalar(
-        select(UploadLink)
-        .where(UploadLink.token_hash == hash_secret(upload_key))
-        .where(UploadLink.revoked_at.is_(None))
-        .limit(1)
-    )
+    link = find_active_upload_link(db, upload_key=upload_key)
     if link is None:
         raise AppError("invalid_token", status_code=401)
     return link

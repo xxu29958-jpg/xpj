@@ -136,13 +136,25 @@ def authenticate_web_session_token(
     )
 
 
-def authenticate_upload_link(db: Session, upload_key: str) -> AuthContext:
-    link = db.scalar(
+def find_active_upload_link(db: Session, *, upload_key: str) -> UploadLink | None:
+    """Raw active-link lookup keyed by ``upload_key`` hash.
+
+    Returns ``None`` for unknown/revoked keys so callers can decide the
+    failure surface (the public iOS Shortcut path responds 401; admin
+    flows might 404 instead). The full
+    :func:`authenticate_upload_link` builds on this and adds
+    account/device/ledger sanity checks.
+    """
+    return db.scalar(
         select(UploadLink)
         .where(UploadLink.token_hash == hash_secret(upload_key))
         .where(UploadLink.revoked_at.is_(None))
         .limit(1)
     )
+
+
+def authenticate_upload_link(db: Session, upload_key: str) -> AuthContext:
+    link = find_active_upload_link(db, upload_key=upload_key)
     if link is None:
         raise AppError("invalid_token", status_code=401)
     account = db.get(Account, link.account_id)

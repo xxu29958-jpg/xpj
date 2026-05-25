@@ -11,12 +11,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import LedgerMember
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -26,6 +24,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import background_task_service as bgtasks
+from app.services.ledger_service import find_owner_account_id_for_ledger
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -35,15 +34,10 @@ def _resolve_account_id(db: Session, request: Request, ledger_id: str) -> int:
     session_auth = getattr(request.state, "web_session_auth", None)
     if session_auth is not None:
         return session_auth.account_id
-    member = db.scalar(
-        select(LedgerMember)
-        .where(LedgerMember.ledger_id == ledger_id)
-        .where(LedgerMember.role == "owner")
-        .where(LedgerMember.disabled_at.is_(None))
-    )
-    if member is None:
+    account_id = find_owner_account_id_for_ledger(db, ledger_id=ledger_id)
+    if account_id is None:
         raise AppError("invalid_request", "未找到 owner 账号。", status_code=400)
-    return member.account_id
+    return account_id
 
 
 @router.get("/tasks", response_class=HTMLResponse)
