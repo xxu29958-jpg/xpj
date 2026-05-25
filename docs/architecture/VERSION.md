@@ -17,9 +17,13 @@
 
 - v0.9.0a1：Reports / Goals / Dashboard 卡片配置 + Vico 图表 + `/web` ECharts 收口。
 - v1.0.0：商品级小票 line items (ADR-0035) / 家庭拆账邀请 (ADR-0029) / 后台任务执行模型 (ADR-0030) / `/web` 公网 PWA shell (ADR-0028 + Issue #20) / v0.9 → v1.0 cut-over + 30 天 rollback CLI (ADR-0031)。`identity_schema=v0.3` 不变。
-- v1.1：未发布。ADR-0036 (AI Budget Provider Privacy Boundary) 已 codify——v1.1 主线"家庭现金流预算"的 AI 集成边界在引入 provider 前先 codify，但本体推迟到后续版本。版本号跳过 1.1.0。
-- v1.2.0：Learning Feedback Dual Tables (ADR-0037)——`algorithm_decisions` / `ledger_learning_events` / `ocr_facts` 三张 append-only 表 + learning service / ops 收口；OCR facts 单源迁移（`expense.raw_text` → `ocr_facts.raw_text`，5 步骤完成）。`identity_schema=v0.3` 不变。
-- v1.3（规划中）：v1.1 跳号后的家庭现金流预算主线（收入计划 / 固定支出 / 跨月重复识别 / 本月预计消费 / 历史弹性基线 / 本地确定性预算公式 + 用户确认才落盘）+ 脱敏 AI provider（按 ADR-0036 边界实现）+ 自托管多端同步增强。Migration framework / handwritten `_migrations.py` 重构视情况开 ADR。
+- v1.2.0：v1.1 现金流预算主线 + v1.2 learning-feedback + OCR facts 单源**合并发布**（无单独 v1.1.0 tag）。
+  - **v1.1 现金流预算 + 自托管 AI Provider (ADR-0036)**：BudgetAdvisor Protocol + EmptyBudgetAdvisor + OpenAiCompatBudgetAdvisor（OpenAI-compat 统一协议，local LLM + 云端 API 一套接口）、alias maps + outbound payload guard（脱敏边界）、冷启动基线 50/30/20 + BLS 2024 anchor、个人 P50/P75 + default-personal blend + discretionary 公式、`monthly_income_plan` model + service + CRUD routes、`/api/budget/advise` anonymising builder + provider integration、`/web` income-plans + budget-advise pages、Android income plan vertical slice + Settings 导航。
+  - **v1.2 Learning Feedback Dual Tables (ADR-0037)**：`algorithm_decisions` / `ledger_learning_events` / `ocr_facts` 三张 append-only 表 + tenant 隔离 + retention + cleanup；algorithm registry + version 回滚；learning facts 与 advisor governance 打通；monthly report / insight radar 骨架。
+  - **OCR facts 单源迁移 (5/5 步骤)**：`read_ocr_text` 单源 helper / backfill / drop fallback / column inert；fact-backed OCR enforce（`OCR_PROVIDER=empty` 下 retry 返回 503 `ocr_not_configured` contract）。
+  - **工程化 / 安全**：6 个 service + `_migrations.py` / `_validate.py` 拆 sub-packages、web_expense_edit / web.css / Android SettingsViewModel / ExpenseDto 按职责拆、6 个测试文件按 endpoint/flow/entity 拆、公网 + maintenance gates 加固、CodeQL Android 分析。
+  - `identity_schema=v0.3` 不变。
+- v1.3（规划中）：自托管多端同步增强（Android/web 离线 ↔ 服务端冲突处理 / 重试 / 撤销，不接第三方云）；现金流预算 UI 收口（三端一致 + AI 建议确认流）；Migration framework / handwritten `_migrations.py` 进一步重构视情况开 ADR。
 
 ## 版本号约束
 

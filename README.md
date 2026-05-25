@@ -1,10 +1,17 @@
 # 小票夹
 
-**当前版本：v1.2.0**（阶段：**Learning Feedback Dual Tables + OCR facts 单源**；基线 = v1.0 商品级 line items / 家庭拆账 / 后台任务模型 / PWA 公网层）
+**当前版本：v1.2.0**（阶段：**现金流预算 + Learning Feedback + OCR facts 单源**；基线 = v1.0 商品级 line items / 家庭拆账 / 后台任务模型 / PWA 公网层）
 
-> 🚩 **v1.2.0 当前进度**：Learning Feedback Dual Tables (ADR-0037)——`algorithm_decisions` / `ledger_learning_events` / `ocr_facts` 三张 append-only 表 + learning service + ops 收口（signal_hash / cleanup / lifecycle / retention split）；OCR facts 单源迁移 5/5 步骤完成（`expense.raw_text` → `ocr_facts.raw_text`，read 路径全部走 `read_ocr_text` 单源 helper）。v1.1 跳号——ADR-0036 (AI Budget Provider Privacy Boundary) 已 codify，主线"家庭现金流预算"推迟至 v1.3。`identity_schema=v0.3` 不变。
+> 🚩 **v1.2.0 当前进度**：v1.1 现金流预算主线（ADR-0036）与 v1.2 learning-feedback + OCR facts 单源**合并发布**，无单独 v1.1.0 tag。
+>
+> - **v1.1 现金流预算 + 自托管 AI Provider (ADR-0036)**：BudgetAdvisor 抽象（Empty / OpenAI-compat 统一 local LLM + 云端 API）、alias maps + outbound payload guard 脱敏边界、冷启动基线 50/30/20 + BLS 2024、个人 P50/P75 + discretionary 公式、`monthly_income_plan` model + CRUD + `/api/budget/advise`、三端 income plan UI。
+> - **v1.2 Learning Feedback Dual Tables (ADR-0037)**：`algorithm_decisions` / `ledger_learning_events` / `ocr_facts` 三张 append-only 表 + tenant 隔离 + retention + cleanup + algorithm registry + version 回滚；learning facts 与 advisor governance 打通。
+> - **OCR facts 单源迁移 5/5 步骤**：`expense.raw_text` → `ocr_facts.raw_text`，read 路径走 `read_ocr_text` 单源 helper；fact-backed OCR enforce（empty provider retry 抛 503 `ocr_not_configured`）。
+> - **工程化**：service / migration / 大模块 / 测试按职责拆 sub-package；CodeQL Android workflow；公网 + maintenance gates 加固。
+>
+> `identity_schema=v0.3` 不变。
 
-下一里程碑：v1.3 家庭现金流预算主线（按 ADR-0036 隐私边界接入 AI provider）。
+下一里程碑：v1.3 自托管多端同步增强（Android/web 离线 ↔ 服务端冲突 / 重试 / 撤销）+ 现金流预算 UI 收口。
 
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 完成服务端预算和月度可花；v0.9 完成报表、Goals、Dashboard 卡片和图表 UX 收口。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 
