@@ -1,10 +1,10 @@
 # 小票夹
 
-**当前版本：v1.0.0**（阶段：**v1.0 数据能力 + 三端收口 + PWA 公网层**；基线 = v0.9 Reports / Goals / Dashboard 三端）
+**当前版本：v1.2.0**（阶段：**Learning Feedback Dual Tables + OCR facts 单源**；基线 = v1.0 商品级 line items / 家庭拆账 / 后台任务模型 / PWA 公网层）
 
-> 🚩 **v1.0.0 当前进度**：商品级小票 line items (ADR-0035)、家庭账本拆账邀请 (ADR-0029)、后台任务执行模型 + Android 任务 UI (ADR-0030)、`/web` 公网 PWA install shell (ADR-0028 + Issue #20)、v0.9 → v1.0 cut-over 协议含 30 天 rollback CLI (ADR-0031) 全部落地。Android 端 settings 三屏 ViewModel refactor + 服务图 cycle 清零 + release_audit 接 CI 门禁。`identity_schema=v0.3` 不变。
+> 🚩 **v1.2.0 当前进度**：Learning Feedback Dual Tables (ADR-0037)——`algorithm_decisions` / `ledger_learning_events` / `ocr_facts` 三张 append-only 表 + learning service + ops 收口（signal_hash / cleanup / lifecycle / retention split）；OCR facts 单源迁移 5/5 步骤完成（`expense.raw_text` → `ocr_facts.raw_text`，read 路径全部走 `read_ocr_text` 单源 helper）。v1.1 跳号——ADR-0036 (AI Budget Provider Privacy Boundary) 已 codify，主线"家庭现金流预算"推迟至 v1.3。`identity_schema=v0.3` 不变。
 
-下一里程碑：v1.1 真票 OCR fixture 回归 + 多账户 audit dashboard。
+下一里程碑：v1.3 家庭现金流预算主线（按 ADR-0036 隐私边界接入 AI provider）。
 
 小票夹是一个本地优先的私人半自动记账系统。账单和图片仍保存在 Windows 后端，v0.3 把旧 token/tenant 切换为账号、账本、设备和可撤销凭证；v0.4 落地多账本、Smart Ledger Engine、`/web` 和家庭账本基础；v0.5 收紧 `owner/member/viewer` 权限、成员审计、owner 转让、viewer 只读 UX 和三端角色词；v0.6-v0.7 完成固定支出、通知草稿、规则、标签和商家治理；v0.8 完成服务端预算和月度可花；v0.9 完成报表、Goals、Dashboard 卡片和图表 UX 收口。**当前身份契约仍保持 `identity_schema=v0.3` 不变。**
 

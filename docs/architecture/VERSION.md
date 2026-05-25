@@ -6,10 +6,10 @@
 
 | 维度 | 版本 | 代码位置 |
 |------|------|----------|
-| 后端 `BACKEND_VERSION` | `1.0.0` | [backend/app/version.py](../../backend/app/version.py) |
+| 后端 `BACKEND_VERSION` | `1.2.0` | [backend/app/version.py](../../backend/app/version.py) |
 | 后端 `IDENTITY_SCHEMA_VERSION` | `v0.3` | [backend/app/version.py](../../backend/app/version.py) |
-| Android `versionName` | `1.0.0` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
-| Android `versionCode` | `10000000` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
+| Android `versionName` | `1.2.0` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
+| Android `versionCode` | `10200000` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
 
 > Android internal 构建会自动追加 `-internal` 后缀；正式发布请走 release 配置。
 
@@ -17,7 +17,9 @@
 
 - v0.9.0a1：Reports / Goals / Dashboard 卡片配置 + Vico 图表 + `/web` ECharts 收口。
 - v1.0.0：商品级小票 line items (ADR-0035) / 家庭拆账邀请 (ADR-0029) / 后台任务执行模型 (ADR-0030) / `/web` 公网 PWA shell (ADR-0028 + Issue #20) / v0.9 → v1.0 cut-over + 30 天 rollback CLI (ADR-0031)。`identity_schema=v0.3` 不变。
-- v1.1（规划中）：家庭现金流预算系统（收入计划 / 固定支出 / 跨月重复识别 / 本月预计消费 / 历史弹性基线 / 本地确定性预算公式 + 用户确认才落盘）+ 脱敏 AI provider（隐私边界 [[0036]]：最小结构化摘要 + 本地映射，不上传原始账本 / 图片 / 真名 / 路径，AI 不写预算）+ 自托管多端同步增强（Android/web 离线 ↔ 服务端冲突处理 / 重试 / 撤销，不接第三方云）。Migration framework / handwritten `_migrations.py` 重构视情况开 ADR。
+- v1.1：未发布。ADR-0036 (AI Budget Provider Privacy Boundary) 已 codify——v1.1 主线"家庭现金流预算"的 AI 集成边界在引入 provider 前先 codify，但本体推迟到后续版本。版本号跳过 1.1.0。
+- v1.2.0：Learning Feedback Dual Tables (ADR-0037)——`algorithm_decisions` / `ledger_learning_events` / `ocr_facts` 三张 append-only 表 + learning service / ops 收口；OCR facts 单源迁移（`expense.raw_text` → `ocr_facts.raw_text`，5 步骤完成）。`identity_schema=v0.3` 不变。
+- v1.3（规划中）：v1.1 跳号后的家庭现金流预算主线（收入计划 / 固定支出 / 跨月重复识别 / 本月预计消费 / 历史弹性基线 / 本地确定性预算公式 + 用户确认才落盘）+ 脱敏 AI provider（按 ADR-0036 边界实现）+ 自托管多端同步增强。Migration framework / handwritten `_migrations.py` 重构视情况开 ADR。
 
 ## 版本号约束
 
