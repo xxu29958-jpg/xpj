@@ -6,9 +6,9 @@ here:
 * ``latest_ocr_fact_for_expense`` — the indexed lookup that returns
   the newest ``ocr_facts`` row for a given expense (or ``None``).
 * ``read_ocr_text`` — wrapper that prefers the fact's ``raw_text``
-  and falls back to a caller-supplied ``legacy_raw_text`` (i.e.
-  ``expense.raw_text``) so consumers can be migrated gradually
-  without breaking expenses that pre-date the new table.
+  and falls back to the supplied ``Expense.raw_text`` so consumers can
+  be migrated gradually without breaking expenses that pre-date the
+  new table.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.database import SessionLocal
-from app.models import Expense, OcrFact
+from app.models import Expense
 from app.services.learning_service import (
     OcrFactDraft,
     latest_ocr_fact_for_expense,
@@ -25,12 +25,14 @@ from app.services.learning_service import (
 )
 
 
-def _make_expense(*, tenant_id: str = "owner") -> int:
+def _make_expense(
+    *, tenant_id: str = "owner", raw_text: str | None = ""
+) -> int:
     with SessionLocal() as db:
         expense = Expense(
             tenant_id=tenant_id,
             source="pytest",
-            raw_text="",
+            raw_text=raw_text,
             status="pending",
         )
         db.add(expense)
@@ -60,6 +62,40 @@ def test_latest_returns_newest_row(*, identity) -> None:
         )
         assert latest is not None
         assert latest.raw_text == "snapshot-5"
+
+
+def test_latest_breaks_same_timestamp_ties_by_append_order(
+    *, identity,
+) -> None:
+    expense_id = _make_expense()
+    timestamp = datetime(2026, 5, 1, tzinfo=UTC)
+    with SessionLocal() as db:
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="local_llm",
+                raw_text="first-row",
+            ),
+            now=timestamp,
+        )
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="local_llm",
+                raw_text="second-row",
+            ),
+            now=timestamp,
+        )
+        db.commit()
+        latest = latest_ocr_fact_for_expense(
+            db, tenant_id="owner", expense_id=expense_id
+        )
+        assert latest is not None
+        assert latest.raw_text == "second-row"
 
 
 def test_latest_returns_none_when_no_facts(*, identity) -> None:
@@ -121,8 +157,10 @@ def test_latest_is_tenant_scoped(*, identity) -> None:
 
 
 def test_read_ocr_text_prefers_fact_over_legacy(*, identity) -> None:
-    expense_id = _make_expense()
+    expense_id = _make_expense(raw_text="from-expense-column")
     with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
         record_ocr_fact(
             db,
             OcrFactDraft(
@@ -136,20 +174,20 @@ def test_read_ocr_text_prefers_fact_over_legacy(*, identity) -> None:
         text = read_ocr_text(
             db,
             tenant_id="owner",
-            expense_id=expense_id,
-            legacy_raw_text="from-expense-column",
+            expense=expense,
         )
         assert text == "from-facts"
 
 
 def test_read_ocr_text_falls_back_when_no_fact(*, identity) -> None:
-    expense_id = _make_expense()
+    expense_id = _make_expense(raw_text="from-expense-column")
     with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
         text = read_ocr_text(
             db,
             tenant_id="owner",
-            expense_id=expense_id,
-            legacy_raw_text="from-expense-column",
+            expense=expense,
         )
         assert text == "from-expense-column"
 
@@ -161,8 +199,10 @@ def test_read_ocr_text_falls_back_when_fact_has_empty_raw_text(
     (e.g. provider returned only parsed values) should still let the
     legacy column win, otherwise the consumer gets nothing."""
 
-    expense_id = _make_expense()
+    expense_id = _make_expense(raw_text="from-expense-column")
     with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
         record_ocr_fact(
             db,
             OcrFactDraft(
@@ -177,30 +217,30 @@ def test_read_ocr_text_falls_back_when_fact_has_empty_raw_text(
         text = read_ocr_text(
             db,
             tenant_id="owner",
-            expense_id=expense_id,
-            legacy_raw_text="from-expense-column",
+            expense=expense,
         )
         assert text == "from-expense-column"
 
 
 def test_read_ocr_text_returns_none_when_no_source(*, identity) -> None:
-    expense_id = _make_expense()
+    expense_id = _make_expense(raw_text=None)
     with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
         assert (
             read_ocr_text(
                 db,
                 tenant_id="owner",
-                expense_id=expense_id,
-                legacy_raw_text=None,
+                expense=expense,
             )
             is None
         )
+        expense.raw_text = ""
         assert (
             read_ocr_text(
                 db,
                 tenant_id="owner",
-                expense_id=expense_id,
-                legacy_raw_text="",
+                expense=expense,
             )
             is None
         )
@@ -210,7 +250,7 @@ def test_read_ocr_text_walks_to_newest_fact(*, identity) -> None:
     """Append-only facts table: when multiple OCR runs exist, the
     helper picks the newest one, not just any one."""
 
-    expense_id = _make_expense()
+    expense_id = _make_expense(raw_text="legacy-fallback")
     base = datetime(2026, 5, 1, tzinfo=UTC)
     with SessionLocal() as db:
         for offset_min, text in [
@@ -229,11 +269,12 @@ def test_read_ocr_text_walks_to_newest_fact(*, identity) -> None:
                 now=base + timedelta(minutes=offset_min),
             )
         db.commit()
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
         text = read_ocr_text(
             db,
             tenant_id="owner",
-            expense_id=expense_id,
-            legacy_raw_text="legacy-fallback",
+            expense=expense,
         )
         assert text == "third-run"
 
@@ -256,15 +297,16 @@ def test_read_ocr_text_does_not_revive_after_tenant_mismatch(
             ),
         )
         db.commit()
-        # tester_1 calling with owner's expense_id and a NULL fallback:
-        # the fact lookup misses (tenant filter), and there's no
-        # fallback to read → None.
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        # tester_1 calling with owner's expense object: the helper
+        # rejects the tenant mismatch before either fact or legacy
+        # fallback can return owner data.
         assert (
             read_ocr_text(
                 db,
                 tenant_id="tester_1",
-                expense_id=expense_id,
-                legacy_raw_text=None,
+                expense=expense,
             )
             is None
         )

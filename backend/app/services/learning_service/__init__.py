@@ -469,7 +469,7 @@ def ocr_facts_for_expense(
         select(OcrFact)
         .where(OcrFact.tenant_id == tenant_id)
         .where(OcrFact.expense_id == expense_id)
-        .order_by(OcrFact.extracted_at.desc())
+        .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
         .limit(limit)
     )
     return list(db.scalars(stmt))
@@ -495,7 +495,7 @@ def latest_ocr_fact_for_expense(
         select(OcrFact)
         .where(OcrFact.tenant_id == tenant_id)
         .where(OcrFact.expense_id == expense_id)
-        .order_by(OcrFact.extracted_at.desc())
+        .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
         .limit(1)
     )
 
@@ -504,8 +504,7 @@ def read_ocr_text(
     db: Session,
     *,
     tenant_id: str,
-    expense_id: int,
-    legacy_raw_text: str | None,
+    expense: Expense,
 ) -> str | None:
     """Single-source read for "the raw OCR text we recorded for this
     expense".
@@ -514,26 +513,28 @@ def read_ocr_text(
 
     1. Latest ``ocr_facts.raw_text`` for the expense (the new source
        of truth).
-    2. ``legacy_raw_text`` — pass ``expense.raw_text`` here. This
-       branch fires on expenses written before the OCR enrichment
-       layer started double-writing into ``ocr_facts``, and on
-       expenses where OCR didn't produce a structured fact row for
-       some reason (provider error, manual recognition).
+    2. ``expense.raw_text``. This branch fires on expenses written
+       before the OCR enrichment layer started double-writing into
+       ``ocr_facts``, and on expenses where OCR didn't produce a
+       structured fact row for some reason (provider error, manual
+       recognition).
 
     Returns ``None`` when neither source has text.
 
     This wrapper is the migration scaffolding for getting consumers
     off ``expenses.raw_text`` without a hard cutover. Once the
     backfill step lands and every consumer has been moved, the
-    fallback parameter can be dropped (and eventually the
-    ``raw_text`` column).
+    legacy fallback can be dropped (and eventually the ``raw_text``
+    column).
     """
 
+    if expense.tenant_id != tenant_id:
+        return None
     fact = latest_ocr_fact_for_expense(
-        db, tenant_id=tenant_id, expense_id=expense_id
+        db, tenant_id=tenant_id, expense_id=expense.id
     )
     if fact is not None and fact.raw_text:
         return fact.raw_text
-    if legacy_raw_text:
-        return legacy_raw_text
+    if expense.raw_text:
+        return expense.raw_text
     return None
