@@ -67,8 +67,12 @@ def owner_learning_maintenance_get(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    overview = get_status_overview(db)
     tenant_id = _owner_console_tenant_id(db)
+    # Scope counts + active list to the owner's tenant. Calling
+    # without tenant_id aggregates every tenant on the host, which
+    # is wrong for any multi-ledger deployment (PR #124 codex
+    # review fix).
+    overview = get_status_overview(db, tenant_id=tenant_id)
     ctx = _base(request, db)
     ctx["overview"] = overview
     ctx["tenant_id"] = tenant_id
@@ -92,7 +96,10 @@ def owner_learning_maintenance_run_post(
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    run_full_maintenance(db)
+    # Owner-driven manual cleanup is scoped to the owner's tenant —
+    # the cron path (scheduler) is the only legitimate global caller.
+    tenant_id = _owner_console_tenant_id(db)
+    run_full_maintenance(db, tenant_id=tenant_id)
     return RedirectResponse(
         url="/owner/learning-maintenance", status_code=303
     )

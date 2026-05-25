@@ -79,29 +79,37 @@ def _expired(
 def cleanup_expired_algorithm_decisions(
     db: Session,
     *,
+    tenant_id: str | None = None,
     now: datetime | None = None,
     batch_size: int = _DEFAULT_BATCH,
 ) -> int:
-    """Delete superseded / withdrawn decisions past their retention."""
+    """Delete superseded / withdrawn decisions past their retention.
+
+    ``tenant_id=None`` is the cron / scheduler default — walks every
+    tenant. Route handlers MUST pass the current admin's tenant to
+    avoid cross-tenant data mutation (PR #124 codex review found this
+    as a real leak in the v1.2 maintenance endpoints).
+    """
 
     threshold = now or now_utc()
-    rows = list(
-        db.scalars(
-            select(AlgorithmDecision)
-            .where(AlgorithmDecision.retention_days > 0)
-            # All terminal statuses are eligible — superseded (newer
-            # version replaced it), withdrawn (algo-version rollback),
-            # accepted (user said yes), dismissed (user said no /
-            # subject lifecycle closed). Active rows are never pruned.
-            .where(
-                AlgorithmDecision.status.in_(
-                    ("superseded", "withdrawn", "accepted", "dismissed")
-                )
+    stmt = (
+        select(AlgorithmDecision)
+        .where(AlgorithmDecision.retention_days > 0)
+        # All terminal statuses are eligible — superseded (newer
+        # version replaced it), withdrawn (algo-version rollback),
+        # accepted (user said yes), dismissed (user said no /
+        # subject lifecycle closed). Active rows are never pruned.
+        .where(
+            AlgorithmDecision.status.in_(
+                ("superseded", "withdrawn", "accepted", "dismissed")
             )
-            .order_by(AlgorithmDecision.created_at.asc())
-            .limit(_clamp_batch(batch_size))
         )
+        .order_by(AlgorithmDecision.created_at.asc())
+        .limit(_clamp_batch(batch_size))
     )
+    if tenant_id is not None:
+        stmt = stmt.where(AlgorithmDecision.tenant_id == tenant_id)
+    rows = list(db.scalars(stmt))
     expired = [
         row for row in rows
         if _expired(threshold, row.created_at, row.retention_days)
@@ -116,22 +124,28 @@ def cleanup_expired_algorithm_decisions(
 def cleanup_expired_learning_events(
     db: Session,
     *,
+    tenant_id: str | None = None,
     now: datetime | None = None,
     batch_size: int = _DEFAULT_BATCH,
 ) -> int:
     """Delete learning events past their retention. Events linked to an
     ``active`` decision are pruned with everything else — the decision
-    row keeps living, just without the historical reaction trail."""
+    row keeps living, just without the historical reaction trail.
+
+    See ``cleanup_expired_algorithm_decisions`` for the tenant_id
+    contract.
+    """
 
     threshold = now or now_utc()
-    rows = list(
-        db.scalars(
-            select(LedgerLearningEvent)
-            .where(LedgerLearningEvent.retention_days > 0)
-            .order_by(LedgerLearningEvent.created_at.asc())
-            .limit(_clamp_batch(batch_size))
-        )
+    stmt = (
+        select(LedgerLearningEvent)
+        .where(LedgerLearningEvent.retention_days > 0)
+        .order_by(LedgerLearningEvent.created_at.asc())
+        .limit(_clamp_batch(batch_size))
     )
+    if tenant_id is not None:
+        stmt = stmt.where(LedgerLearningEvent.tenant_id == tenant_id)
+    rows = list(db.scalars(stmt))
     expired = [
         row for row in rows
         if _expired(threshold, row.created_at, row.retention_days)
@@ -146,23 +160,29 @@ def cleanup_expired_learning_events(
 def cleanup_expired_ocr_facts(
     db: Session,
     *,
+    tenant_id: str | None = None,
     now: datetime | None = None,
     batch_size: int = _DEFAULT_BATCH,
 ) -> int:
     """Delete OCR facts past their retention. Anchors on
     ``extracted_at`` because that's the user-visible "when did OCR run"
     timestamp; ``created_at`` is identical for normal paths but the
-    distinction matters when a row is backfilled."""
+    distinction matters when a row is backfilled.
+
+    See ``cleanup_expired_algorithm_decisions`` for the tenant_id
+    contract.
+    """
 
     threshold = now or now_utc()
-    rows = list(
-        db.scalars(
-            select(OcrFact)
-            .where(OcrFact.retention_days > 0)
-            .order_by(OcrFact.extracted_at.asc())
-            .limit(_clamp_batch(batch_size))
-        )
+    stmt = (
+        select(OcrFact)
+        .where(OcrFact.retention_days > 0)
+        .order_by(OcrFact.extracted_at.asc())
+        .limit(_clamp_batch(batch_size))
     )
+    if tenant_id is not None:
+        stmt = stmt.where(OcrFact.tenant_id == tenant_id)
+    rows = list(db.scalars(stmt))
     expired = [
         row for row in rows
         if _expired(threshold, row.extracted_at, row.retention_days)
@@ -177,20 +197,26 @@ def cleanup_expired_ocr_facts(
 def cleanup_expired_learning_tables(
     db: Session,
     *,
+    tenant_id: str | None = None,
     now: datetime | None = None,
     batch_size: int = _DEFAULT_BATCH,
 ) -> CleanupReport:
-    """Run all three table cleanups in sequence and return totals."""
+    """Run all three table cleanups in sequence and return totals.
+
+    See ``cleanup_expired_algorithm_decisions`` for the tenant_id
+    contract — None = scheduler/cron (every tenant), value = scoped
+    to that tenant.
+    """
 
     return CleanupReport(
         algorithm_decisions=cleanup_expired_algorithm_decisions(
-            db, now=now, batch_size=batch_size
+            db, tenant_id=tenant_id, now=now, batch_size=batch_size
         ),
         ledger_learning_events=cleanup_expired_learning_events(
-            db, now=now, batch_size=batch_size
+            db, tenant_id=tenant_id, now=now, batch_size=batch_size
         ),
         ocr_facts=cleanup_expired_ocr_facts(
-            db, now=now, batch_size=batch_size
+            db, tenant_id=tenant_id, now=now, batch_size=batch_size
         ),
     )
 

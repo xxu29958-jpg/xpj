@@ -103,10 +103,15 @@ def get_learning_status(
     auth: AuthContext = Depends(verify_admin_token),
     db: Session = Depends(get_db),
 ) -> LearningStatusOverviewResponse:
-    """v1.2 ops: per-table snapshot for the Owner Console panel."""
+    """v1.2 ops: per-table snapshot scoped to the admin's tenant.
 
-    _ = auth
-    overview = get_status_overview(db)
+    Earlier revision dropped ``auth`` and aggregated globally, which
+    leaks other tenants' table volume + lifecycle metadata to any
+    valid admin token (PR #124 codex review). Pass ``auth.tenant_id``
+    so the counts cover only the admin's ledger.
+    """
+
+    overview = get_status_overview(db, tenant_id=auth.tenant_id)
     return LearningStatusOverviewResponse(
         algorithm_decisions=LearningTableSnapshotResponse(
             total_rows=overview.algorithm_decisions.total_rows,
@@ -136,11 +141,17 @@ def post_cleanup_learning(
     batch_size: int = Query(default=500, ge=1, le=5000),
     db: Session = Depends(get_db),
 ) -> LearningMaintenanceRunResponse:
-    """v1.2 ops: sweep stale active decisions, prune expired rows,
-    stamp ``app_meta.learning_cleanup_last_run_at``."""
+    """v1.2 ops: sweep + prune scoped to the admin's tenant.
 
-    _ = auth
-    result = run_full_maintenance(db, batch_size=batch_size)
+    Earlier revision dropped ``auth`` and ran globally, which let an
+    admin from one tenant withdraw / delete learning rows in others
+    (PR #124 codex review). Pass ``auth.tenant_id`` so the cleanup
+    only touches the admin's own ledger.
+    """
+
+    result = run_full_maintenance(
+        db, tenant_id=auth.tenant_id, batch_size=batch_size
+    )
     return LearningMaintenanceRunResponse(
         swept_stale_active=result.swept_stale_active,
         cleanup=LearningCleanupReportResponse(

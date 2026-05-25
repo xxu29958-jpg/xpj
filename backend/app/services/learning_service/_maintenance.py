@@ -93,6 +93,7 @@ def _expired_count(
     model,
     timestamp_column,
     status_filter=None,
+    tenant_id: str | None = None,
 ) -> int:
     """Count rows past their retention window.
 
@@ -101,12 +102,10 @@ def _expired_count(
     ``status='active'`` are never pruned.
     """
 
-    rows = list(
-        db.scalars(
-            select(model)
-            .where(model.retention_days > 0)
-        )
-    )
+    stmt = select(model).where(model.retention_days > 0)
+    if tenant_id is not None:
+        stmt = stmt.where(model.tenant_id == tenant_id)
+    rows = list(db.scalars(stmt))
     threshold = now_utc()
     expired = 0
     for row in rows:
@@ -120,18 +119,38 @@ def _expired_count(
     return expired
 
 
-def get_status_overview(db: Session) -> LearningStatusOverview:
-    """Compose the Owner Console snapshot."""
+def get_status_overview(
+    db: Session, *, tenant_id: str | None = None
+) -> LearningStatusOverview:
+    """Compose the Owner Console snapshot.
 
-    ad_total = int(db.scalar(select(func.count(AlgorithmDecision.id))) or 0)
-    ad_active = int(
-        db.scalar(
-            select(func.count(AlgorithmDecision.id)).where(
-                AlgorithmDecision.status == "active"
-            )
-        )
-        or 0
+    ``tenant_id=None`` aggregates across every tenant — that's wrong
+    for any caller that's identified to a single ledger and was the
+    cross-tenant leak codex flagged on PR #124. Routes MUST pass the
+    authenticated admin's tenant; only background cron-style callers
+    (none today) should keep the None default.
+    """
+
+    ad_stmt_total = select(func.count(AlgorithmDecision.id))
+    ad_stmt_active = select(func.count(AlgorithmDecision.id)).where(
+        AlgorithmDecision.status == "active"
     )
+    ev_stmt_total = select(func.count(LedgerLearningEvent.id))
+    oc_stmt_total = select(func.count(OcrFact.id))
+    if tenant_id is not None:
+        ad_stmt_total = ad_stmt_total.where(
+            AlgorithmDecision.tenant_id == tenant_id
+        )
+        ad_stmt_active = ad_stmt_active.where(
+            AlgorithmDecision.tenant_id == tenant_id
+        )
+        ev_stmt_total = ev_stmt_total.where(
+            LedgerLearningEvent.tenant_id == tenant_id
+        )
+        oc_stmt_total = oc_stmt_total.where(OcrFact.tenant_id == tenant_id)
+
+    ad_total = int(db.scalar(ad_stmt_total) or 0)
+    ad_active = int(db.scalar(ad_stmt_active) or 0)
     ad_expired = _expired_count(
         db,
         model=AlgorithmDecision,
@@ -139,22 +158,23 @@ def get_status_overview(db: Session) -> LearningStatusOverview:
         # Every terminal status is cleanup-eligible; active rows are
         # never pruned regardless of age.
         status_filter=lambda r: r.status in TERMINAL_DECISION_STATUSES,
+        tenant_id=tenant_id,
     )
 
-    ev_total = int(
-        db.scalar(select(func.count(LedgerLearningEvent.id))) or 0
-    )
+    ev_total = int(db.scalar(ev_stmt_total) or 0)
     ev_expired = _expired_count(
         db,
         model=LedgerLearningEvent,
         timestamp_column=lambda r: r.created_at,
+        tenant_id=tenant_id,
     )
 
-    oc_total = int(db.scalar(select(func.count(OcrFact.id))) or 0)
+    oc_total = int(db.scalar(oc_stmt_total) or 0)
     oc_expired = _expired_count(
         db,
         model=OcrFact,
         timestamp_column=lambda r: r.extracted_at,
+        tenant_id=tenant_id,
     )
 
     last_cleanup = get_value(db, LEARNING_CLEANUP_LAST_RUN_KEY)
@@ -167,7 +187,7 @@ def get_status_overview(db: Session) -> LearningStatusOverview:
                 last_summary = parsed
         except (json.JSONDecodeError, ValueError):
             last_summary = None
-    stale_active = stale_active_count(db)
+    stale_active = stale_active_count(db, tenant_id=tenant_id)
 
     return LearningStatusOverview(
         algorithm_decisions=LearningTableSnapshot(
@@ -189,6 +209,7 @@ def get_status_overview(db: Session) -> LearningStatusOverview:
 def run_full_maintenance(
     db: Session,
     *,
+    tenant_id: str | None = None,
     batch_size: int = 500,
     now: datetime | None = None,
 ) -> LearningMaintenanceResult:
@@ -202,14 +223,21 @@ def run_full_maintenance(
     Times the wall-clock duration and stamps a compact JSON summary
     (``elapsed_ms`` + counters) into ``app_meta`` so Owner Console can
     surface "last cleanup took N ms" without a separate audit table.
+
+    ``tenant_id=None`` (the cron / scheduler default) sweeps every
+    tenant. Route handlers MUST pass the authenticated tenant — the
+    earlier PR #124 review caught this as a real cross-tenant data
+    mutation when the admin endpoint operated globally.
     """
 
     started = perf_counter()
-    swept = sweep_stale_active_decisions(db, batch_size=batch_size)
+    swept = sweep_stale_active_decisions(
+        db, tenant_id=tenant_id, batch_size=batch_size
+    )
     if swept:
         db.commit()
     report = cleanup_expired_learning_tables(
-        db, batch_size=batch_size, now=now
+        db, tenant_id=tenant_id, batch_size=batch_size, now=now
     )
     elapsed_ms = max(0, int((perf_counter() - started) * 1000))
     finished = (now or now_utc()).isoformat()
