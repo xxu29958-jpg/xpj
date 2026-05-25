@@ -123,6 +123,7 @@ def get_learning_status(
         active_decisions=overview.active_decisions,
         stale_active_candidates=overview.stale_active_candidates,
         last_cleanup_at=overview.last_cleanup_at,
+        last_cleanup_summary=overview.last_cleanup_summary,
     )
 
 
@@ -149,4 +150,5 @@ def post_cleanup_learning(
             total=result.cleanup.total,
         ),
         finished_at=result.finished_at,
+        elapsed_ms=result.elapsed_ms,
     )

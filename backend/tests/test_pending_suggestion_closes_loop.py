@@ -245,6 +245,61 @@ def test_reject_marks_decision_dismissed(
         assert decision.status == "dismissed"
 
 
+def test_accept_uses_accepted_retention(
+    client: TestClient, *, identity,
+) -> None:
+    """Registry-driven retention split: accept lands a longer
+    retention than the active default, reject lands a shorter one."""
+
+    from app.services.learning_service import CATEGORY_SUGGESTION
+
+    expense_id = _seed_pending_expense()
+    decision_public_id = _seed_category_decision(expense_id, category="餐饮")
+
+    client.post(
+        f"/api/expenses/{expense_id}/suggestions/{decision_public_id}/accept",
+        headers=identity.app_headers,
+    )
+
+    with SessionLocal() as db:
+        decision = (
+            db.query(AlgorithmDecision)
+            .filter(AlgorithmDecision.subject_id == expense_id)
+            .one()
+        )
+        assert decision.status == "accepted"
+        assert decision.retention_days == CATEGORY_SUGGESTION.accepted_retention_days
+        assert (
+            decision.retention_days > CATEGORY_SUGGESTION.default_retention_days
+        )
+
+
+def test_reject_uses_dismissed_retention(
+    client: TestClient, *, identity,
+) -> None:
+    from app.services.learning_service import CATEGORY_SUGGESTION
+
+    expense_id = _seed_pending_expense()
+    decision_public_id = _seed_category_decision(expense_id, category="餐饮")
+
+    client.post(
+        f"/api/expenses/{expense_id}/suggestions/{decision_public_id}/reject",
+        headers=identity.app_headers,
+    )
+
+    with SessionLocal() as db:
+        decision = (
+            db.query(AlgorithmDecision)
+            .filter(AlgorithmDecision.subject_id == expense_id)
+            .one()
+        )
+        assert decision.status == "dismissed"
+        assert decision.retention_days == CATEGORY_SUGGESTION.dismissed_retention_days
+        assert (
+            decision.retention_days < CATEGORY_SUGGESTION.default_retention_days
+        )
+
+
 def test_confirm_closes_remaining_active_subject_decisions(
     client: TestClient, *, identity,
 ) -> None:

@@ -90,6 +90,12 @@ class Settings:
     # Batch 2: AI budget advisor live calls require explicit opt-in.
     # ``empty`` / ``mock`` providers do not need this flag.
     budget_advisor_owner_confirmed: bool
+    # v1.2 ops: scheduled learning-table cleanup. Disabled by default
+    # so existing deployments don't suddenly grow a background thread;
+    # enable via env when ready to retire manual cleanup.
+    learning_cleanup_auto_enabled: bool
+    learning_cleanup_daily_at: str
+    learning_cleanup_timezone: str
     fx_home_currency_code: str
     fx_supported_currency_codes: str
     fx_rate_auto_sync_enabled: bool
@@ -258,6 +264,15 @@ def get_settings() -> Settings:
         app_token_ttl_days=int(os.getenv("APP_TOKEN_TTL_DAYS", "90")),
         app_token_refresh_window_days=int(os.getenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "14")),
         budget_advisor_owner_confirmed=_bool_env("BUDGET_ADVISOR_OWNER_CONFIRMED", False),
+        learning_cleanup_auto_enabled=_bool_env(
+            "LEARNING_CLEANUP_AUTO_ENABLED", False
+        ),
+        learning_cleanup_daily_at=os.getenv(
+            "LEARNING_CLEANUP_DAILY_AT", "03:30"
+        ).strip() or "03:30",
+        learning_cleanup_timezone=os.getenv(
+            "LEARNING_CLEANUP_TIMEZONE", "Asia/Shanghai"
+        ).strip() or "Asia/Shanghai",
         fx_home_currency_code=os.getenv("FX_HOME_CURRENCY_CODE", DEFAULT_HOME_CURRENCY_CODE).strip().upper()
         or DEFAULT_HOME_CURRENCY_CODE,
         fx_supported_currency_codes=os.getenv(

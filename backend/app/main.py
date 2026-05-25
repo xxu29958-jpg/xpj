@@ -78,6 +78,9 @@ from app.services.background_task_service import (
     shutdown_executor,
 )
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
+from app.services.learning_cleanup_scheduler import (
+    start_learning_cleanup_scheduler,
+)
 from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
@@ -128,11 +131,16 @@ async def lifespan(_: FastAPI):
     # can enqueue it.
     v1_migration_service.register()
     fx_scheduler = start_fx_rate_scheduler()
+    # v1.2 ops: optional daily learning-table cleanup. Disabled by
+    # default; opt in via LEARNING_CLEANUP_AUTO_ENABLED=true.
+    learning_scheduler = start_learning_cleanup_scheduler()
     try:
         yield
     finally:
         if fx_scheduler is not None:
             fx_scheduler.stop()
+        if learning_scheduler is not None:
+            learning_scheduler.stop()
         shutdown_executor(wait=False)
 
 

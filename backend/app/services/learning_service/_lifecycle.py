@@ -103,24 +103,39 @@ def set_decision_status(
     tenant_id: str,
     decision_id: int,
     new_status: str,
+    new_retention_days: int | None = None,
 ) -> int:
     """Flip exactly one decision row's status. Tenant-scoped; the
     caller's tenant must match the row's tenant or the update is a
     no-op. ``new_status`` must be a terminal status; the
     ``active → terminal`` transition is the only legal one (we never
-    revive a closed decision from this helper)."""
+    revive a closed decision from this helper).
+
+    ``new_retention_days`` overrides the row's existing
+    ``retention_days`` in the same UPDATE — callers that know the
+    target retention for the new status (e.g. accept → longer,
+    dismissed → shorter) pass it here so the cleanup story uses the
+    right window from the moment the status flips.
+    """
 
     if new_status not in TERMINAL_DECISION_STATUSES:
         raise ValueError(
             f"set_decision_status: invalid status {new_status!r}; "
             f"expected one of {sorted(TERMINAL_DECISION_STATUSES)}"
         )
+    values: dict[str, object] = {"status": new_status}
+    if new_retention_days is not None:
+        if int(new_retention_days) < 0:
+            raise ValueError(
+                "set_decision_status: new_retention_days must be >= 0"
+            )
+        values["retention_days"] = int(new_retention_days)
     result = db.execute(
         update(AlgorithmDecision)
         .where(AlgorithmDecision.id == decision_id)
         .where(AlgorithmDecision.tenant_id == tenant_id)
         .where(AlgorithmDecision.status == "active")
-        .values(status=new_status)
+        .values(**values)
         .execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)

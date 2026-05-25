@@ -73,6 +73,19 @@ class AlgorithmType:
     suggestion. For ``duplicate_candidate`` it's
     ``("amount_cents", "merchant")`` — same money to same merchant is
     the same proposed dup, regardless of the time-bucket reason.
+
+    Retention defaults distinguish three lifecycle states:
+
+    * ``default_retention_days`` — the fresh ``active`` row's
+      retention; applies until the row hits a terminal status.
+    * ``accepted_retention_days`` — once the user accepts the
+      suggestion, the row stays around this long (typically *longer*
+      than the default — accept is a positive signal worth keeping
+      for the next algorithm version to learn from).
+    * ``dismissed_retention_days`` — once the user dismisses (or the
+      subject's lifecycle ends), the row stays around this long
+      (typically shorter — we don't need long history of "user said
+      no" once the next algorithm pass has settled).
     """
 
     decision_type: str
@@ -81,7 +94,22 @@ class AlgorithmType:
     description: str
     subject_kinds: tuple[str, ...]
     default_retention_days: int = 180
+    accepted_retention_days: int = 365
+    dismissed_retention_days: int = 90
     marker_keys: tuple[str, ...] = field(default_factory=tuple)
+
+    def retention_for_status(self, status: str) -> int:
+        """Return the retention window appropriate for ``status``.
+
+        ``active`` and any other / unknown status falls back to the
+        type's ``default_retention_days``.
+        """
+
+        if status == "accepted":
+            return self.accepted_retention_days
+        if status == "dismissed":
+            return self.dismissed_retention_days
+        return self.default_retention_days
 
     def build_marker(self, payload: Mapping[str, Any]) -> dict[str, Any] | None:
         """Reduce a decision payload to its canonical marker.

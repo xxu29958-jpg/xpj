@@ -30,6 +30,7 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
     build_feedback_marker,
+    get as get_algorithm_type,
 )
 
 
@@ -108,15 +109,24 @@ def record_pending_suggestion_event(
         ),
     )
     # Close the decision row to match the user's verdict. accept ->
-    # 'accepted', reject -> 'dismissed'. The UI must not show the same
-    # suggestion again on this subject; the cleanup story (per-row
-    # retention) eventually harvests the closed row.
+    # 'accepted' (longer retention — positive signal worth keeping
+    # for the next algorithm to learn from); reject -> 'dismissed'
+    # (shorter retention — once the algorithm refreshes the
+    # "user said no" trail is less useful). The per-status retention
+    # comes from the algorithm-type registry, not hardcoded here.
     terminal = "accepted" if event_type == "accept" else "dismissed"
+    try:
+        target_retention = get_algorithm_type(
+            decision.decision_type
+        ).retention_for_status(terminal)
+    except KeyError:
+        target_retention = None  # unknown type → keep current retention
     set_decision_status(
         db,
         tenant_id=tenant_id,
         decision_id=decision.id,
         new_status=terminal,
+        new_retention_days=target_retention,
     )
 
 

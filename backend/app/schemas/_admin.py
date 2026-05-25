@@ -74,6 +74,9 @@ class LearningStatusOverviewResponse(BaseModel):
     active_decisions: int
     stale_active_candidates: int
     last_cleanup_at: str | None
+    # Compact summary of the most recent cleanup run (elapsed_ms,
+    # per-table deleted counts). None until the first cleanup runs.
+    last_cleanup_summary: dict | None = None
 
 
 class LearningCleanupReportResponse(BaseModel):
@@ -87,6 +90,7 @@ class LearningMaintenanceRunResponse(BaseModel):
     swept_stale_active: int
     cleanup: LearningCleanupReportResponse
     finished_at: str
+    elapsed_ms: int
 
 
 class ServerSettingsResponse(BaseModel):

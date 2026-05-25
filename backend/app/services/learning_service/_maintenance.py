@@ -19,14 +19,19 @@ table names or the per-row retention math.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from time import perf_counter
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, LedgerLearningEvent, OcrFact
-from app.models.app_meta import LEARNING_CLEANUP_LAST_RUN_KEY
+from app.models.app_meta import (
+    LEARNING_CLEANUP_LAST_RUN_KEY,
+    LEARNING_CLEANUP_LAST_SUMMARY_KEY,
+)
 from app.services.app_meta_service import get_value, set_value
 from app.services.learning_service._cleanup import (
     CleanupReport,
@@ -58,15 +63,22 @@ class LearningStatusOverview:
     active_decisions: int
     stale_active_candidates: int
     last_cleanup_at: str | None
+    last_cleanup_summary: dict | None = None
 
 
 @dataclass(frozen=True)
 class LearningMaintenanceResult:
-    """What :func:`run_full_maintenance` actually did."""
+    """What :func:`run_full_maintenance` actually did.
+
+    ``elapsed_ms`` is the wall-clock time the whole sweep + prune
+    sequence took. Owner Console shows it so a "cleanup took 8
+    seconds" surfaces visibly instead of as a silent slowdown.
+    """
 
     swept_stale_active: int
     cleanup: CleanupReport
     finished_at: str
+    elapsed_ms: int
 
 
 # ``_stale_active_count`` used to pull every active decision and join
@@ -146,6 +158,15 @@ def get_status_overview(db: Session) -> LearningStatusOverview:
     )
 
     last_cleanup = get_value(db, LEARNING_CLEANUP_LAST_RUN_KEY)
+    last_summary_raw = get_value(db, LEARNING_CLEANUP_LAST_SUMMARY_KEY)
+    last_summary: dict | None = None
+    if last_summary_raw:
+        try:
+            parsed = json.loads(last_summary_raw)
+            if isinstance(parsed, dict):
+                last_summary = parsed
+        except (json.JSONDecodeError, ValueError):
+            last_summary = None
     stale_active = stale_active_count(db)
 
     return LearningStatusOverview(
@@ -161,6 +182,7 @@ def get_status_overview(db: Session) -> LearningStatusOverview:
         active_decisions=ad_active,
         stale_active_candidates=stale_active,
         last_cleanup_at=last_cleanup,
+        last_cleanup_summary=last_summary,
     )
 
 
@@ -173,26 +195,44 @@ def run_full_maintenance(
     """Sweep stale active rows, then prune expired ones, then stamp.
 
     The order matters: sweeping converts ``active`` rows attached to
-    confirmed/rejected/deleted expenses into ``withdrawn`` first, so
+    confirmed/rejected/deleted expenses into ``dismissed`` first, so
     the subsequent cleanup picks them up under "expired non-active"
     rather than leaving them around for the next pass.
 
-    Caller commits; this function uses ``db.commit()`` internally via
-    the sub-functions but returns after the meta stamp is written.
+    Times the wall-clock duration and stamps a compact JSON summary
+    (``elapsed_ms`` + counters) into ``app_meta`` so Owner Console can
+    surface "last cleanup took N ms" without a separate audit table.
     """
 
+    started = perf_counter()
     swept = sweep_stale_active_decisions(db, batch_size=batch_size)
     if swept:
         db.commit()
     report = cleanup_expired_learning_tables(
         db, batch_size=batch_size, now=now
     )
+    elapsed_ms = max(0, int((perf_counter() - started) * 1000))
     finished = (now or now_utc()).isoformat()
     set_value(db, LEARNING_CLEANUP_LAST_RUN_KEY, finished)
+    summary = {
+        "finished_at": finished,
+        "elapsed_ms": elapsed_ms,
+        "swept_stale_active": swept,
+        "algorithm_decisions_deleted": report.algorithm_decisions,
+        "ledger_learning_events_deleted": report.ledger_learning_events,
+        "ocr_facts_deleted": report.ocr_facts,
+        "total_deleted": report.total,
+    }
+    set_value(
+        db,
+        LEARNING_CLEANUP_LAST_SUMMARY_KEY,
+        json.dumps(summary, sort_keys=True, ensure_ascii=False),
+    )
     return LearningMaintenanceResult(
         swept_stale_active=swept,
         cleanup=report,
         finished_at=finished,
+        elapsed_ms=elapsed_ms,
     )
 
 

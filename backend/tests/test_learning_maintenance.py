@@ -123,6 +123,34 @@ def test_status_overview_counts_stale_active_candidates(*, identity) -> None:
         assert overview.stale_active_candidates == 1
 
 
+def test_run_full_maintenance_returns_elapsed_and_summary(
+    *, identity,
+) -> None:
+    """elapsed_ms is wall-clock; summary lands in app_meta so Owner
+    Console can show "last cleanup took N ms" without a separate
+    audit table."""
+
+    import json
+
+    from app.models.app_meta import LEARNING_CLEANUP_LAST_SUMMARY_KEY
+
+    with SessionLocal() as db:
+        result = run_full_maintenance(db)
+        assert result.elapsed_ms >= 0
+
+        raw = get_value(db, LEARNING_CLEANUP_LAST_SUMMARY_KEY)
+        assert raw is not None
+        summary = json.loads(raw)
+        assert summary["elapsed_ms"] == result.elapsed_ms
+        assert summary["total_deleted"] == 0
+        assert summary["finished_at"] == result.finished_at
+        # Owner Console reads the same summary off get_status_overview.
+        from app.services.learning_service import get_status_overview
+
+        overview = get_status_overview(db)
+        assert overview.last_cleanup_summary == summary
+
+
 def test_run_full_maintenance_sweeps_and_stamps(*, identity) -> None:
     expense_id = _seed_pending_expense()
     with SessionLocal() as db:
@@ -221,3 +249,64 @@ def test_owner_console_panel_run_redirects(
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/owner/learning-maintenance"
+
+
+def test_owner_console_lists_active_decisions(
+    local_client: TestClient, *, identity
+) -> None:
+    """Active rows show up in the dismiss table so the owner has
+    something concrete to click."""
+
+    _seed_active_decision(retention_days=180)
+
+    response = local_client.get("/owner/learning-maintenance")
+    assert response.status_code == 200
+    text = response.text
+    assert "active 决策" in text
+    assert "category_suggestion" in text
+    assert "Dismiss" in text
+
+
+def test_owner_console_dismiss_flips_active_row(
+    local_client: TestClient, *, identity
+) -> None:
+    from app.models import AlgorithmDecision
+
+    _seed_active_decision(retention_days=180)
+    with SessionLocal() as db:
+        decision = (
+            db.query(AlgorithmDecision)
+            .filter(AlgorithmDecision.status == "active")
+            .one()
+        )
+        public_id = decision.public_id
+
+    response = local_client.post(
+        "/owner/learning-maintenance/dismiss-decision",
+        data={"decision_public_id": public_id},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/owner/learning-maintenance"
+
+    with SessionLocal() as db:
+        row = (
+            db.query(AlgorithmDecision)
+            .filter(AlgorithmDecision.public_id == public_id)
+            .one()
+        )
+        assert row.status == "dismissed"
+
+
+def test_owner_console_dismiss_silently_ignores_unknown(
+    local_client: TestClient, *, identity
+) -> None:
+    """Race condition: cleanup pruned the row between page render
+    and click. Dismiss must redirect cleanly, not 404."""
+
+    response = local_client.post(
+        "/owner/learning-maintenance/dismiss-decision",
+        data={"decision_public_id": "00000000-0000-0000-0000-000000000000"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
