@@ -129,36 +129,35 @@ class LedgerConsoleVM:
 
 
 def _ledger_console_rows(db: Session, summaries: list[LedgerSummary]) -> list[LedgerConsoleVM]:
+    if not summaries:
+        return []
+    ledger_ids = [s.ledger_id for s in summaries]
+    # Single grouped query pulls pending + confirmed counts for every
+    # ledger at once; the per-summary loop just does in-memory lookup.
+    # Pre-fix this was 2 db.scalar queries per ledger (N+1 over summaries).
+    count_rows = db.execute(
+        select(Expense.tenant_id, Expense.status, func.count())
+        .where(Expense.tenant_id.in_(ledger_ids))
+        .where(Expense.status.in_(("pending", "confirmed")))
+        .group_by(Expense.tenant_id, Expense.status)
+    ).all()
+    counts_by_ledger: dict[str, dict[str, int]] = {}
+    for tenant_id, status, count in count_rows:
+        counts_by_ledger.setdefault(tenant_id, {})[status] = int(count)
+
     rows: list[LedgerConsoleVM] = []
     for summary in summaries:
-        pending = int(
-            db.scalar(
-                select(func.count())
-                .select_from(Expense)
-                .where(Expense.tenant_id == summary.ledger_id)
-                .where(Expense.status == "pending")
-            )
-            or 0
-        )
-        confirmed = int(
-            db.scalar(
-                select(func.count())
-                .select_from(Expense)
-                .where(Expense.tenant_id == summary.ledger_id)
-                .where(Expense.status == "confirmed")
-            )
-            or 0
-        )
-        counts = ledger_member_counts(db, ledger_id=summary.ledger_id)
+        ledger_counts = counts_by_ledger.get(summary.ledger_id, {})
+        members = ledger_member_counts(db, ledger_id=summary.ledger_id)
         rows.append(
             LedgerConsoleVM(
                 ledger_id=summary.ledger_id,
                 name=summary.name,
                 role=summary.role,
                 is_default=summary.is_default,
-                pending_count=pending,
-                confirmed_count=confirmed,
-                active_device_count=counts["active_devices"],
+                pending_count=ledger_counts.get("pending", 0),
+                confirmed_count=ledger_counts.get("confirmed", 0),
+                active_device_count=members["active_devices"],
             )
         )
     return rows
