@@ -10,7 +10,7 @@ keeps each layer in its own private sub-module:
 - ``_draft_fields``: ``ocr_draft_fields`` bookkeeping and legacy back-compat.
 - ``_providers``: 4 provider implementations + ``get_ocr_provider`` factory.
 - ``_apply``: ``extract_ocr_result``/``retry_ocr``/auto-OCR orchestration and
-  the canonical ``apply_ocr_result`` that mutates an Expense.
+  the transient-only ``apply_ocr_result`` used by draft simulations/tests.
 
 External callers keep importing from ``app.services.ocr_service``; the full
 public surface is re-exported below.

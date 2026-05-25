@@ -69,7 +69,7 @@ def test_notification_draft_is_pending_structured_and_idempotent(
     assert body["source"] == "通知草稿:微信"
     assert body["merchant"] == "星巴克"
     assert body["amount_cents"] == 2680
-    assert body["raw_text"] == ""
+    assert body["raw_text"] is None
     assert body["image_path"] is None
     assert body["thumbnail_path"] is None
     assert body["confirmed_at"] is None

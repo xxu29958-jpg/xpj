@@ -22,10 +22,10 @@ from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
     _updated_at_matches,
 )
-from app.services.expense_service._ocr_facts import append_ocr_fact
+from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.expense_service._query import get_expense
 from app.services.learning_service import read_ocr_text
-from app.services.ocr_service import OcrResult, apply_ocr_result, extract_ocr_result
+from app.services.ocr_service import OcrResult, extract_ocr_result
 from app.services.time_service import now_utc
 
 __all__ = ["recognize_expense_text", "retry_expense_ocr"]
@@ -68,6 +68,13 @@ def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
+    provider_name = _active_provider_name()
+    if provider_name == "empty":
+        raise AppError(
+            "ocr_not_configured",
+            "未配置 OCR，请在后端启用 OCR_PROVIDER 后再重试。",
+            status_code=503,
+        )
 
     expected_updated_at = expense.updated_at
     result = extract_ocr_result(expense)
@@ -81,9 +88,7 @@ def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
     )
     # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
     expense.updated_at = expected_updated_at
-    apply_ocr_result(expense, result)
-    provider_name = _active_provider_name()
-    append_ocr_fact(
+    apply_ocr_result_and_append_fact(
         db,
         expense=expense,
         result=result,
@@ -134,8 +139,7 @@ def recognize_expense_text(
     # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
     expense.updated_at = expected_updated_at
     result = OcrResult(raw_text=raw_text, confidence=None)
-    apply_ocr_result(expense, result)
-    append_ocr_fact(
+    apply_ocr_result_and_append_fact(
         db,
         expense=expense,
         result=result,

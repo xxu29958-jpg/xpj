@@ -10,15 +10,28 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Expense
+from app.models import Expense, OcrFact
 from app.services.expense_service import retry_expense_ocr
 from app.services.ocr_service import OcrResult
 
 
 def test_ocr_retry_and_recognize_text_only_update_pending_draft(
-    client: TestClient, *, identity,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
 ) -> None:
     expense_id = upload_png(client, identity=identity)
+    monkeypatch.setattr(
+        "app.services.expense_service._ocr._active_provider_name",
+        lambda: "mock",
+    )
+    monkeypatch.setattr(
+        "app.services.expense_service._ocr.extract_ocr_result",
+        lambda expense: OcrResult(
+            raw_text="中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25",
+            confidence=0.9,
+            amount_cents=1851,
+            merchant="中国建设银行",
+        ),
+    )
 
     retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers)
     assert retry.status_code == 200
@@ -43,6 +56,27 @@ def test_ocr_retry_and_recognize_text_only_update_pending_draft(
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["total"] == 0
+
+
+def test_retry_ocr_returns_503_when_ocr_provider_is_empty(
+    client: TestClient, *, identity,
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "ocr_not_configured"
+    with SessionLocal() as db:
+        assert (
+            db.query(OcrFact)
+            .filter(OcrFact.tenant_id == "owner")
+            .filter(OcrFact.expense_id == expense_id)
+            .count()
+            == 0
+        )
 
 
 def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient, *, identity) -> None:
@@ -74,7 +108,7 @@ def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient, *, ident
     assert payload["status"] == "confirmed"
     assert payload["amount_cents"] == 1234
     assert payload["merchant"] == "Stable Cafe"
-    assert payload["raw_text"] == ""
+    assert payload["raw_text"] is None
 
 
 def test_ocr_routes_do_not_modify_rejected_expense(client: TestClient, *, identity) -> None:
@@ -95,7 +129,7 @@ def test_ocr_routes_do_not_modify_rejected_expense(client: TestClient, *, identi
     assert detail.status_code == 200
     payload = detail.json()
     assert payload["status"] == "rejected"
-    assert payload["raw_text"] == ""
+    assert payload["raw_text"] is None
 
 
 def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient, *, identity) -> None:
@@ -145,6 +179,10 @@ def test_retry_ocr_rejects_stale_pending_snapshot(
         )
 
     monkeypatch.setattr("app.services.expense_service._ocr.extract_ocr_result", slow_ocr_result)
+    monkeypatch.setattr(
+        "app.services.expense_service._ocr._active_provider_name",
+        lambda: "mock",
+    )
 
     with SessionLocal() as db, pytest.raises(AppError) as exc_info:
         retry_expense_ocr(db, expense_id, "owner")

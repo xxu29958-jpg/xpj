@@ -10,12 +10,13 @@ from api_contract_helpers import upload_png
 
 from app.database import SessionLocal
 from app.models import Expense, OcrFact
+from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.learning_service import (
     OcrFactDraft,
     ocr_facts_for_expense,
     record_ocr_fact,
 )
-from app.services.ocr_service import OcrResult
+from app.services.ocr_service import OcrResult, apply_ocr_result
 from tests._infra.assets import PNG_BYTES
 
 
@@ -162,6 +163,44 @@ def test_record_ocr_fact_refuses_cross_tenant_expense(*, identity) -> None:
         db.rollback()
 
 
+def test_session_bound_apply_requires_fact_pairing(*, identity) -> None:
+    expense_id = _make_expense("owner")
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        with pytest.raises(RuntimeError, match="apply_ocr_result_and_append_fact"):
+            apply_ocr_result(
+                expense,
+                OcrResult(raw_text="unpaired mirror text\n12.00", confidence=0.8),
+            )
+
+
+def test_apply_with_fact_updates_mirror_and_appends_snapshot(*, identity) -> None:
+    expense_id = _make_expense("owner")
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        apply_ocr_result_and_append_fact(
+            db,
+            expense=expense,
+            result=OcrResult(
+                raw_text="paired mirror text\n交易金额：12.00",
+                confidence=0.8,
+            ),
+            provider_name="manual_text",
+        )
+        db.commit()
+
+        db.refresh(expense)
+        rows = ocr_facts_for_expense(
+            db, tenant_id="owner", expense_id=expense_id
+        )
+        assert expense.raw_text == "paired mirror text\n交易金额：12.00"
+        assert len(rows) == 1
+        assert rows[0].raw_text == expense.raw_text
+        assert rows[0].ocr_provider == "manual_text"
+
+
 def test_facts_table_is_append_only_no_unique_per_expense(*, identity) -> None:
     # Same expense, repeated runs (manual retry) must produce multiple
     # rows, never an upsert / replace.
@@ -268,6 +307,53 @@ def test_recognize_text_writes_manual_text_fact(client, *, identity) -> None:
     assert rows[0].raw_text.startswith("星巴克")
 
 
+def test_expense_response_does_not_fall_back_to_raw_text_column(
+    client, *, identity
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.raw_text = "column-only stale text"
+        db.commit()
+
+    response = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["raw_text"] is None
+
+
+def test_expense_response_reads_raw_text_from_ocr_facts(
+    client, *, identity
+) -> None:
+    expense_id = upload_png(client, identity=identity)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        expense.raw_text = "stale mirror text"
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="manual_text",
+                raw_text="canonical fact text",
+            ),
+        )
+        db.commit()
+
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
+
+    assert detail.status_code == 200, detail.json()
+    assert detail.json()["raw_text"] == "canonical fact text"
+    assert pending.status_code == 200, pending.json()
+    assert any(
+        item["id"] == expense_id and item["raw_text"] == "canonical fact text"
+        for item in pending.json()
+    )
+
+
 def test_retry_ocr_appends_fact_each_time(
     client, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:
@@ -282,6 +368,10 @@ def test_retry_ocr_appends_fact_each_time(
         "app.services.expense_service._ocr.extract_ocr_result",
         lambda expense: next(runs),
     )
+    monkeypatch.setattr(
+        "app.services.expense_service._ocr._active_provider_name",
+        lambda: "mock",
+    )
 
     first = client.post(
         f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers
@@ -294,4 +384,4 @@ def test_retry_ocr_appends_fact_each_time(
     assert second.status_code == 200, second.json()
     rows = _facts(expense_id)
     assert [row.raw_text for row in rows] == ["retry two\n13.00", "retry one\n12.00"]
-    assert all(row.ocr_provider == "empty" for row in rows)
+    assert all(row.ocr_provider == "mock" for row in rows)

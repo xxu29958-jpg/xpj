@@ -29,6 +29,11 @@ from app.schemas import (
     StatusResponse,
     TagsResponse,
 )
+from app.services.expense_response_service import (
+    expense_raw_text_by_id,
+    expense_to_response,
+    expenses_to_responses,
+)
 from app.services.expense_service import (
     batch_update_confirmed_expenses,
     confirm_expense,
@@ -73,11 +78,18 @@ def get_pending_expenses(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> list[ExpenseResponse]:
+    expenses = list_pending(db, auth.tenant_id)
+    raw_text_by_id = expense_raw_text_by_id(
+        db, tenant_id=auth.tenant_id, expenses=expenses
+    )
     items: list[ExpenseResponse] = []
-    for expense in list_pending(db, auth.tenant_id):
+    for expense in expenses:
         items.append(
             _expense_response_with_suggestions(
-                db, tenant_id=auth.tenant_id, expense=expense
+                db,
+                tenant_id=auth.tenant_id,
+                expense=expense,
+                raw_text_by_id=raw_text_by_id,
             )
         )
     db.commit()
@@ -90,7 +102,8 @@ def post_manual_expense(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return create_manual_expense(db, payload, auth.tenant_id)
+    expense = create_manual_expense(db, payload, auth.tenant_id)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.post("/notification-drafts", response_model=ExpenseResponse)
@@ -99,7 +112,8 @@ def post_notification_draft(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return create_notification_draft(db, payload, auth.tenant_id)
+    expense = create_notification_draft(db, payload, auth.tenant_id)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.get("/confirmed", response_model=PaginatedExpensesResponse)
@@ -123,7 +137,12 @@ def get_confirmed_expenses(
         tag=tag,
         timezone_name=timezone,
     )
-    return PaginatedExpensesResponse(items=items, page=page, page_size=page_size, total=total)
+    return PaginatedExpensesResponse(
+        items=expenses_to_responses(db, tenant_id=auth.tenant_id, expenses=items),
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 @router.post("/confirmed/batch-update", response_model=ConfirmedExpenseBatchUpdateResponse)
@@ -250,7 +269,8 @@ def get_expense_detail(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return get_expense(db, expense_id, auth.tenant_id)
+    expense = get_expense(db, expense_id, auth.tenant_id)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.get("/{expense_id}/image")
@@ -280,7 +300,8 @@ def patch_expense(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return update_expense(db, expense_id, auth.tenant_id, payload)
+    expense = update_expense(db, expense_id, auth.tenant_id, payload)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.post("/{expense_id}/confirm", response_model=ExpenseResponse)
@@ -289,7 +310,8 @@ def post_confirm_expense(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return confirm_expense(db, expense_id, auth.tenant_id)
+    expense = confirm_expense(db, expense_id, auth.tenant_id)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.post("/{expense_id}/reject", response_model=ExpenseResponse)
@@ -298,7 +320,8 @@ def post_reject_expense(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return reject_expense(db, expense_id, auth.tenant_id)
+    expense = reject_expense(db, expense_id, auth.tenant_id)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.post("/{expense_id}/ocr/retry", response_model=ExpenseResponse)
@@ -307,7 +330,8 @@ def post_retry_ocr(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return retry_expense_ocr(db, expense_id, auth.tenant_id)
+    expense = retry_expense_ocr(db, expense_id, auth.tenant_id)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.post("/{expense_id}/recognize-text", response_model=ExpenseResponse)
@@ -317,7 +341,8 @@ def post_recognize_text(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return recognize_expense_text(db, expense_id, auth.tenant_id, payload)
+    expense = recognize_expense_text(db, expense_id, auth.tenant_id, payload)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 @router.post(
@@ -378,16 +403,26 @@ def post_mark_not_duplicate(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    return mark_expense_not_duplicate(db, expense_id, auth.tenant_id)
+    expense = mark_expense_not_duplicate(db, expense_id, auth.tenant_id)
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
 def _expense_response_with_suggestions(
-    db: Session, *, tenant_id: str, expense: Expense
+    db: Session,
+    *,
+    tenant_id: str,
+    expense: Expense,
+    raw_text_by_id: dict[int, str] | None = None,
 ) -> ExpenseResponse:
     suggestions = suggestions_for_pending_expense(
         db, tenant_id=tenant_id, expense=expense
     )
-    dto = ExpenseResponse.model_validate(expense)
+    dto = expense_to_response(
+        db,
+        tenant_id=tenant_id,
+        expense=expense,
+        raw_text_by_id=raw_text_by_id,
+    )
     if suggestions.category_suggestion is not None:
         dto.category_suggestion = PendingCategorySuggestionResponse(
             decision_public_id=suggestions.category_suggestion.decision_public_id,

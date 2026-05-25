@@ -7,6 +7,34 @@ from sqlalchemy.orm import Session
 from app.models import Expense
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
 from app.services.ocr_service import OcrResult, ocr_fact_snapshot
+from app.services.ocr_service._apply import _apply_ocr_result_to_expense
+
+
+def apply_ocr_result_and_append_fact(
+    db: Session,
+    *,
+    expense: Expense,
+    result: OcrResult,
+    provider_name: str,
+    ocr_model: str | None = None,
+    timezone_name: str | None = None,
+) -> None:
+    if expense.status != "pending":
+        return
+    _apply_ocr_result_to_expense(
+        expense,
+        result,
+        timezone_name=timezone_name,
+        allow_session_bound=True,
+    )
+    append_ocr_fact(
+        db,
+        expense=expense,
+        result=result,
+        provider_name=provider_name,
+        ocr_model=ocr_model,
+        timezone_name=timezone_name,
+    )
 
 
 def append_ocr_fact(

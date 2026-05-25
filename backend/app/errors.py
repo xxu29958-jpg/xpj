@@ -31,6 +31,7 @@ ERROR_MESSAGES = {
     "exchange_rate_invalid": "汇率格式不正确。",
     "exchange_rate_base_currency": "人民币是基准币种，不需要维护汇率。",
     "image_not_found": "图片不存在或已被清理。",
+    "ocr_not_configured": "未配置 OCR，请在后端启用 OCR_PROVIDER 后再重试。",
     "rule_not_found": "分类规则不存在。",
     "rule_application_not_found": "规则应用批次不存在。",
     "rule_in_use": "分类规则仍在使用，不能删除。",

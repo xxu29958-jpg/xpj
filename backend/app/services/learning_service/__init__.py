@@ -147,6 +147,7 @@ __all__ = [
     "list_algorithm_versions",
     "ocr_facts_for_expense",
     "read_ocr_text",
+    "read_ocr_texts",
     "record_decision",
     "record_event",
     "record_ocr_fact",
@@ -537,3 +538,35 @@ def read_ocr_text(
         .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
         .limit(1)
     )
+
+
+def read_ocr_texts(
+    db: Session,
+    *,
+    tenant_id: str,
+    expenses: Iterable[Expense],
+) -> dict[int, str]:
+    """Bulk variant of :func:`read_ocr_text` for response assembly."""
+
+    expense_ids = [
+        int(expense.id)
+        for expense in expenses
+        if expense.id is not None and expense.tenant_id == tenant_id
+    ]
+    if not expense_ids:
+        return {}
+
+    rows = db.execute(
+        select(OcrFact.expense_id, OcrFact.raw_text)
+        .where(OcrFact.tenant_id == tenant_id)
+        .where(OcrFact.expense_id.in_(expense_ids))
+        .where(OcrFact.raw_text.is_not(None))
+        .where(OcrFact.raw_text != "")
+        .order_by(OcrFact.expense_id, OcrFact.extracted_at.desc(), OcrFact.id.desc())
+    )
+    by_expense_id: dict[int, str] = {}
+    for expense_id, raw_text in rows:
+        expense_id_int = int(expense_id)
+        if expense_id_int not in by_expense_id:
+            by_expense_id[expense_id_int] = raw_text
+    return by_expense_id

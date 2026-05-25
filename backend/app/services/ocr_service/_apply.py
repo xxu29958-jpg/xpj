@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
+from sqlalchemy import inspect as sa_inspect
+
 from app.config import get_settings
 from app.fx_constants import FX_SOURCE_BASE, FX_STATUS_READY
 from app.models import Expense
@@ -113,8 +115,34 @@ def run_auto_ocr(expense: Expense, timezone_name: str | None = None) -> None:
 
 
 def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | None = None) -> None:
+    """Apply OCR to a transient Expense draft.
+
+    Persistent expense rows must use
+    ``expense_service._ocr_facts.apply_ocr_result_and_append_fact`` so
+    the denormalized ``expenses.raw_text``/``confidence`` mirror cannot
+    be updated without an append-only ``ocr_facts`` row in the same unit
+    of work.
+    """
+
+    _apply_ocr_result_to_expense(
+        expense,
+        result,
+        timezone_name=timezone_name,
+        allow_session_bound=False,
+    )
+
+
+def _apply_ocr_result_to_expense(
+    expense: Expense,
+    result: OcrResult,
+    timezone_name: str | None = None,
+    *,
+    allow_session_bound: bool,
+) -> None:
     if expense.status != "pending":
         return
+    if not allow_session_bound:
+        _ensure_ocr_apply_is_not_session_bound(expense)
 
     parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
     merged = _merge_result_with_text_parse(result, parsed_confidence=parsed.confidence, timezone_name=timezone_name)
@@ -122,21 +150,18 @@ def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | N
     applied_fields: set[str] = set()
 
     # v1.2 OCR single-source migration: ``ocr_facts`` is the source
-    # of truth for OCR text. ``apply_ocr_result`` still mirrors the
-    # latest text into ``expense.raw_text`` so the API response (a
-    # plain Pydantic ``from_attributes`` view of the row) keeps
-    # surfacing the recognised text to clients — same value the
-    # paired ``append_ocr_fact`` wrote into the facts row, so the
-    # mirror cannot diverge from canonical. No business-logic reader
-    # consults the column anymore (step 4 dropped the last one).
+    # of truth for OCR text. The API response assembler now reads
+    # raw_text from facts; this column write remains a compatibility
+    # mirror only. No business-logic reader consults the column
+    # anymore (step 4 dropped the last one).
     #
     # Mirror is **only** updated when this OCR pass produced text.
     # An empty ``merged.raw_text`` means the provider couldn't read
     # anything this round (e.g. ``EmptyOcrProvider`` on an unconfigured
     # system, or a provider error that surfaced as a hollow result).
     # In that case the previous mirror value is the better answer for
-    # clients than ``""`` — ``read_ocr_text`` walks back to the latest
-    # non-empty fact and we want the response to track the same
+    # compatibility storage than ``""`` — ``read_ocr_text`` walks back
+    # to the latest non-empty fact and the response uses that canonical
     # logical "most recent meaningful OCR".
     if merged.raw_text:
         expense.raw_text = merged.raw_text
@@ -172,6 +197,16 @@ def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | N
         expense.fx_status = FX_STATUS_READY
     if applied_fields:
         _write_ocr_draft_fields(expense, draft_fields.union(applied_fields))
+
+
+def _ensure_ocr_apply_is_not_session_bound(expense: Expense) -> None:
+    state = sa_inspect(expense, raiseerr=False)
+    if state is not None and (state.persistent or state.pending):
+        raise RuntimeError(
+            "apply_ocr_result cannot mutate a Session-bound Expense; "
+            "use apply_ocr_result_and_append_fact so OCR facts stay paired "
+            "with the response mirror."
+        )
 
 
 def _can_apply_ocr_field(field: str, draft_fields: set[str], is_empty_or_default: bool) -> bool:

@@ -33,10 +33,9 @@ from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
     _try_generate_thumbnail,
 )
-from app.services.expense_service._ocr_facts import append_ocr_fact
+from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.file_service import SavedUpload, delete_relative_upload
 from app.services.ocr_service import (
-    apply_ocr_result,
     collect_auto_ocr_extractions,
 )
 from app.services.tag_service import normalize_tags, sync_expense_tags
@@ -59,8 +58,7 @@ def _apply_pending_enrichment(db: Session, expense: Expense) -> None:
             expense.image_path, expense.tenant_id
         )
     for extraction in collect_auto_ocr_extractions(expense):
-        apply_ocr_result(expense, extraction.result)
-        append_ocr_fact(
+        apply_ocr_result_and_append_fact(
             db,
             expense=expense,
             result=extraction.result,
@@ -155,10 +153,7 @@ def enrich_pending_expense(
                     expense.image_path, expense.tenant_id
                 )
             for extraction in ocr_extractions:
-                apply_ocr_result(
-                    expense, extraction.result, timezone_name=timezone_name
-                )
-                append_ocr_fact(
+                apply_ocr_result_and_append_fact(
                     db,
                     expense=expense,
                     result=extraction.result,

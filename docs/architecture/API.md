@@ -925,7 +925,9 @@ Content-Type: application/json
 Authorization: Bearer <session_token>
 ```
 
-返回单条账单详情，响应结构同 `ExpenseResponse`。找不到返回 `expense_not_found`。
+返回单条账单详情，响应结构同 `ExpenseResponse`。`raw_text` 从 `ocr_facts`
+读取最新非空 OCR 原文；不回退读取旧 `expenses.raw_text` 镜像列。找不到返回
+`expense_not_found`。
 
 ### GET /api/expenses/{id}/items
 
@@ -1130,11 +1132,11 @@ Authorization: Bearer <session_token>
 ```
 
 重新运行当前 `OCR_PROVIDER`。OCR 只写入待确认草稿，不会自动入账。
+如果当前为默认 `OCR_PROVIDER=empty`，返回 `503 ocr_not_configured`，不写入 `ocr_facts`，避免用户点“重试识别”后产生空识别记录但界面无变化。
 
 支持的 provider：
 
 ```text
-empty
 mock
 rapidocr
 local_llm

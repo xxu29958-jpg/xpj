@@ -11,19 +11,10 @@ After step 5 no **business-logic** code reads ``expenses.raw_text``:
   the mock returns its canned receipt regardless of column state.
 
 ``apply_ocr_result`` still mirrors ``merged.raw_text`` into the
-column, but **only when the OCR pass produced text**. An empty pass
-(e.g. ``EmptyOcrProvider`` on an unconfigured system, or a provider
-error that surfaced as a hollow result) leaves the mirror untouched
-so the response surface keeps tracking the most recent meaningful
-OCR — same logical view that ``read_ocr_text`` returns by walking
-back past empty facts. The mirror still cannot show text the facts
-table doesn't have: every non-empty mirror write is paired with an
-``append_ocr_fact`` call carrying the same ``merged.raw_text``.
-
-A future cleanup can swap the response layer to ``read_ocr_text``
-and drop the column outright; today's contract is "the column is a
-denormalised view of the latest non-empty OCR, not a source of
-truth."
+column, but **only when the OCR pass produced text**. The response
+surface now reads ``raw_text`` from ``ocr_facts`` via
+``read_ocr_text`` instead of from the mirror column, so the remaining
+column is compatibility storage rather than an API source.
 """
 
 from __future__ import annotations
@@ -90,6 +81,44 @@ def test_legacy_draft_gate_still_skips_when_confidence_missing() -> None:
         updated_at=now,
     )
     assert _legacy_pending_ocr_draft_fields(expense) == set()
+
+
+def test_empty_ocr_result_does_not_mark_legacy_draft_fields() -> None:
+    """A completely hollow OCR pass must not set confidence and must
+    not make the confidence-only legacy gate infer draft ownership."""
+
+    now = datetime(2026, 5, 1, tzinfo=UTC)
+    expense = Expense(
+        status="pending",
+        amount_cents=1900,
+        merchant="Cafe",
+        category="餐饮",
+        raw_text="",
+        confidence=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+    apply_ocr_result(expense, OcrResult(raw_text="", confidence=None))
+
+    assert expense.confidence is None
+    assert _legacy_pending_ocr_draft_fields(expense) == set()
+
+
+def test_text_ocr_sets_confidence_when_provider_omits_it() -> None:
+    """Manual text recognition enters with ``confidence=None`` from the
+    provider boundary; the parser confidence is still mirrored so the
+    legacy gate has a real OCR-ran signal for meaningful input."""
+
+    expense = Expense(status="pending", category="其他", raw_text="")
+
+    apply_ocr_result(
+        expense,
+        OcrResult(raw_text="星巴克\n交易金额：29.00\n交易时间：2026年5月4日 16:23:25", confidence=None),
+    )
+
+    assert expense.confidence is not None
+    assert expense.confidence > 0
 
 
 def test_empty_ocr_provider_returns_empty_raw_text() -> None:
