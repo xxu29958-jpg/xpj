@@ -19,6 +19,7 @@ table names or the per-row retention math.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -79,6 +80,13 @@ class LearningMaintenanceResult:
     cleanup: CleanupReport
     finished_at: str
     elapsed_ms: int
+
+
+def _scoped_meta_key(base_key: str, tenant_id: str | None) -> str:
+    if tenant_id is None:
+        return base_key
+    digest = hashlib.sha256(tenant_id.encode("utf-8")).hexdigest()[:16]
+    return f"{base_key}:t:{digest}"
 
 
 # ``_stale_active_count`` used to pull every active decision and join
@@ -177,8 +185,12 @@ def get_status_overview(
         tenant_id=tenant_id,
     )
 
-    last_cleanup = get_value(db, LEARNING_CLEANUP_LAST_RUN_KEY)
-    last_summary_raw = get_value(db, LEARNING_CLEANUP_LAST_SUMMARY_KEY)
+    last_cleanup = get_value(
+        db, _scoped_meta_key(LEARNING_CLEANUP_LAST_RUN_KEY, tenant_id)
+    )
+    last_summary_raw = get_value(
+        db, _scoped_meta_key(LEARNING_CLEANUP_LAST_SUMMARY_KEY, tenant_id)
+    )
     last_summary: dict | None = None
     if last_summary_raw:
         try:
@@ -241,7 +253,11 @@ def run_full_maintenance(
     )
     elapsed_ms = max(0, int((perf_counter() - started) * 1000))
     finished = (now or now_utc()).isoformat()
-    set_value(db, LEARNING_CLEANUP_LAST_RUN_KEY, finished)
+    run_key = _scoped_meta_key(LEARNING_CLEANUP_LAST_RUN_KEY, tenant_id)
+    summary_key = _scoped_meta_key(
+        LEARNING_CLEANUP_LAST_SUMMARY_KEY, tenant_id
+    )
+    set_value(db, run_key, finished)
     summary = {
         "finished_at": finished,
         "elapsed_ms": elapsed_ms,
@@ -253,7 +269,7 @@ def run_full_maintenance(
     }
     set_value(
         db,
-        LEARNING_CLEANUP_LAST_SUMMARY_KEY,
+        summary_key,
         json.dumps(summary, sort_keys=True, ensure_ascii=False),
     )
     return LearningMaintenanceResult(

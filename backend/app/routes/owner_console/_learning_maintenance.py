@@ -27,7 +27,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import AppError
 from app.models import AlgorithmDecision
 from app.routes.owner_console._ai_advisor import _owner_console_tenant_id
 from app.routes.owner_console._shared import LocalOnly, _base, templates

@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
-from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
+from app.models import AlgorithmDecision, Expense
 from app.services.learning_service import (
     DecisionDraft,
     EventDraft,
@@ -172,6 +172,19 @@ def test_run_full_maintenance_only_sweeps_named_tenant(*, identity) -> None:
         )
         assert len(active_remaining) == 1
         assert active_remaining[0].tenant_id == "tester_1"
+
+
+def test_last_cleanup_metadata_is_scoped_by_tenant(*, identity) -> None:
+    with SessionLocal() as db:
+        result = run_full_maintenance(db, tenant_id="owner")
+        owner = get_status_overview(db, tenant_id="owner")
+        tester = get_status_overview(db, tenant_id="tester_1")
+
+        assert owner.last_cleanup_at == result.finished_at
+        assert owner.last_cleanup_summary is not None
+        assert owner.last_cleanup_summary["finished_at"] == result.finished_at
+        assert tester.last_cleanup_at is None
+        assert tester.last_cleanup_summary is None
 
 
 def test_scheduler_path_still_runs_globally(*, identity) -> None:

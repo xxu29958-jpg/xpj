@@ -245,6 +245,35 @@ def test_reject_marks_decision_dismissed(
         assert decision.status == "dismissed"
 
 
+def test_repeated_accept_is_idempotent_after_decision_closes(
+    client: TestClient, *, identity,
+) -> None:
+    expense_id = _seed_pending_expense()
+    decision_public_id = _seed_category_decision(expense_id, category="food")
+
+    for _ in range(2):
+        response = client.post(
+            f"/api/expenses/{expense_id}/suggestions/{decision_public_id}/accept",
+            headers=identity.app_headers,
+        )
+        assert response.status_code == 200
+
+    with SessionLocal() as db:
+        decision = (
+            db.query(AlgorithmDecision)
+            .filter(AlgorithmDecision.subject_id == expense_id)
+            .one()
+        )
+        events = (
+            db.query(LedgerLearningEvent)
+            .filter(LedgerLearningEvent.subject_id == expense_id)
+            .filter(LedgerLearningEvent.event_type == "accept")
+            .all()
+        )
+        assert decision.status == "accepted"
+        assert len(events) == 1
+
+
 def test_accept_uses_accepted_retention(
     client: TestClient, *, identity,
 ) -> None:

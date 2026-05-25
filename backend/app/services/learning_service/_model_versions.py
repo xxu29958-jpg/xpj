@@ -82,7 +82,7 @@ def list_algorithm_versions(
     grouped: dict[tuple[str, str], dict[str, int]] = {}
     for decision_type, algorithm_version, status, n in rows:
         key = (decision_type, algorithm_version)
-        grouped.setdefault(key, {bucket: 0 for bucket in _STATUS_BUCKETS})
+        grouped.setdefault(key, dict.fromkeys(_STATUS_BUCKETS, 0))
         if status in grouped[key]:
             grouped[key][status] = int(n)
 

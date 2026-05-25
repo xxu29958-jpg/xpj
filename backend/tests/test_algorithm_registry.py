@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from app.services.learning_service import (
@@ -55,15 +57,15 @@ def test_service_modules_pull_version_from_registry() -> None:
     # entry's ``current_version``. If someone bumps the version in the
     # service module without updating the registry (or vice versa),
     # this test catches the drift before it ships.
-    assert CATEGORY_SUGGESTION_VERSION == CATEGORY_SUGGESTION.current_version
-    assert DUPLICATE_SCORING_VERSION == DUPLICATE_CANDIDATE.current_version
-    assert BUDGET_QUANTILE_VERSION == BUDGET_SUGGESTION.current_version
+    assert CATEGORY_SUGGESTION.current_version == CATEGORY_SUGGESTION_VERSION
+    assert DUPLICATE_CANDIDATE.current_version == DUPLICATE_SCORING_VERSION
+    assert BUDGET_SUGGESTION.current_version == BUDGET_QUANTILE_VERSION
 
 
 def test_registry_entries_are_frozen() -> None:
     # AlgorithmType is a frozen dataclass — mutating it at runtime
     # would let one consumer poison another's view.
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         CATEGORY_SUGGESTION.current_version = "hacked"  # type: ignore[misc]
 
 

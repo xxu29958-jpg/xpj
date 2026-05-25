@@ -48,18 +48,15 @@ from app.services.learning_service._algorithm_registry import (
     build_feedback_marker,
     canonical_marker_hash,
     decision_types,
+)
+from app.services.learning_service._algorithm_registry import (
     get as get_algorithm_type,
+)
+from app.services.learning_service._algorithm_registry import (
     is_registered as is_algorithm_type_registered,
 )
 from app.services.learning_service._budget_quantile import (
     ALGORITHM_VERSION as BUDGET_QUANTILE_VERSION,
-)
-from app.services.learning_service._cleanup import (
-    CleanupReport,
-    cleanup_expired_algorithm_decisions,
-    cleanup_expired_learning_events,
-    cleanup_expired_learning_tables,
-    cleanup_expired_ocr_facts,
 )
 from app.services.learning_service._budget_quantile import (
     BudgetQuantileSuggestion,
@@ -71,6 +68,13 @@ from app.services.learning_service._category_suggestion import (
 from app.services.learning_service._category_suggestion import (
     CategorySuggestion,
     compute_category_suggestion,
+)
+from app.services.learning_service._cleanup import (
+    CleanupReport,
+    cleanup_expired_algorithm_decisions,
+    cleanup_expired_learning_events,
+    cleanup_expired_learning_tables,
+    cleanup_expired_ocr_facts,
 )
 from app.services.learning_service._duplicate_scoring import (
     ALGORITHM_VERSION as DUPLICATE_SCORING_VERSION,
@@ -187,10 +191,10 @@ class EventDraft:
     lookup columns. ``signal_type`` is the registry's
     ``decision_type`` (``"category_suggestion"`` / etc.).
     ``signal_marker`` is the small dict the registry builds via
-    ``build_feedback_marker(...)``. Both can be omitted — write paths
+    ``build_feedback_marker(...)``. Both can be omitted; write paths
     that don't fit the suggestion taxonomy (manual overrides without
-    a corresponding decision) leave them ``None`` and stay queryable
-    only through ``before_payload`` LIKE fallback.
+    a corresponding decision) leave them ``None`` and are intentionally
+    excluded from indexed feedback-dedup lookups.
     """
 
     tenant_id: str
@@ -222,6 +226,7 @@ def record_decision(
     auto-confirmed by the user — that path is rare but supported.
     """
 
+    algorithm_type = get_algorithm_type(draft.decision_type)
     row = AlgorithmDecision(
         tenant_id=draft.tenant_id,
         decision_type=draft.decision_type,
@@ -234,6 +239,7 @@ def record_decision(
             draft.payload, sort_keys=True, ensure_ascii=False
         ),
         status="active",
+        retention_days=algorithm_type.default_retention_days,
         created_at=now or now_utc(),
     )
     db.add(row)

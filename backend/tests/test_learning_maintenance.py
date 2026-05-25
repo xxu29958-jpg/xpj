@@ -99,7 +99,7 @@ def test_status_overview_counts_stale_active_candidates(*, identity) -> None:
     # and gets surfaced separately so Owner Console can flag it.
     expense_id = _seed_pending_expense()
     with SessionLocal() as db:
-        row = record_decision(
+        record_decision(
             db,
             DecisionDraft(
                 tenant_id="owner",
@@ -271,6 +271,7 @@ def test_owner_console_dismiss_flips_active_row(
     local_client: TestClient, *, identity
 ) -> None:
     from app.models import AlgorithmDecision
+    from app.services.learning_service import CATEGORY_SUGGESTION
 
     _seed_active_decision(retention_days=180)
     with SessionLocal() as db:
@@ -296,6 +297,7 @@ def test_owner_console_dismiss_flips_active_row(
             .one()
         )
         assert row.status == "dismissed"
+        assert row.retention_days == CATEGORY_SUGGESTION.dismissed_retention_days
 
 
 def test_owner_console_dismiss_silently_ignores_unknown(

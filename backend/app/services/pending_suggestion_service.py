@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AlgorithmDecision, Expense
+from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
 from app.services.learning_service import (
     DecisionDraft,
     EventDraft,
@@ -30,6 +30,8 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
     build_feedback_marker,
+)
+from app.services.learning_service._algorithm_registry import (
     get as get_algorithm_type,
 )
 
@@ -90,6 +92,15 @@ def record_pending_suggestion_event(
     )
     if decision is None:
         raise ValueError("pending suggestion decision does not exist")
+    if _already_recorded_event(
+        db,
+        tenant_id=tenant_id,
+        decision_id=decision.id,
+        subject_kind="expense",
+        subject_id=expense_id,
+        event_type=event_type,
+    ):
+        return
 
     payload = _loads(decision.output_payload)
     marker = build_feedback_marker(decision.decision_type, payload)
@@ -128,6 +139,27 @@ def record_pending_suggestion_event(
         new_status=terminal,
         new_retention_days=target_retention,
     )
+
+
+def _already_recorded_event(
+    db: Session,
+    *,
+    tenant_id: str,
+    decision_id: int,
+    subject_kind: str,
+    subject_id: int,
+    event_type: str,
+) -> bool:
+    existing_id = db.scalar(
+        select(LedgerLearningEvent.id)
+        .where(LedgerLearningEvent.tenant_id == tenant_id)
+        .where(LedgerLearningEvent.decision_id == decision_id)
+        .where(LedgerLearningEvent.subject_kind == subject_kind)
+        .where(LedgerLearningEvent.subject_id == subject_id)
+        .where(LedgerLearningEvent.event_type == event_type)
+        .limit(1)
+    )
+    return existing_id is not None
 
 
 def _category_suggestion(

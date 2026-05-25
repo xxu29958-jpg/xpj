@@ -13,6 +13,7 @@ from app.services.expense_service._update import (
     reject_expense,
 )
 from app.services.learning_service import (
+    CATEGORY_SUGGESTION,
     DecisionDraft,
     close_active_decisions_for_subject,
     record_decision,
@@ -70,6 +71,7 @@ def test_close_for_subject_flips_active_rows(*, identity) -> None:
         decision = db.get(AlgorithmDecision, decision_id)
         assert decision is not None
         assert decision.status == "dismissed"
+        assert decision.retention_days == CATEGORY_SUGGESTION.dismissed_retention_days
 
 
 def test_close_is_tenant_scoped(*, identity) -> None:
@@ -130,6 +132,7 @@ def test_sweep_closes_decisions_whose_expense_is_confirmed(*, identity) -> None:
         assert swept == 1
         decision = db.get(AlgorithmDecision, decision_id)
         assert decision.status == "dismissed"
+        assert decision.retention_days == CATEGORY_SUGGESTION.dismissed_retention_days
 
 
 def test_sweep_closes_decisions_whose_expense_was_deleted(*, identity) -> None:

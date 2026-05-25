@@ -40,6 +40,7 @@ from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense
+from app.services.learning_service._algorithm_registry import ALGORITHM_TYPES
 
 # Statuses on the parent subject that mean "no UI will ever ask us to
 # surface this suggestion again". The sweep transitions any active
@@ -61,6 +62,36 @@ DECISION_STATUSES = frozenset(
 TERMINAL_DECISION_STATUSES = frozenset(
     {"superseded", "withdrawn", "accepted", "dismissed"}
 )
+
+
+def _retention_case_for_status(new_status: str):
+    """SQL expression mapping decision_type to registry retention."""
+
+    return case(
+        *[
+            (
+                AlgorithmDecision.decision_type == decision_type,
+                algorithm_type.retention_for_status(new_status),
+            )
+            for decision_type, algorithm_type in ALGORITHM_TYPES.items()
+        ],
+        else_=AlgorithmDecision.retention_days,
+    )
+
+
+def _status_values(
+    new_status: str, *, new_retention_days: int | None = None
+) -> dict[str, object]:
+    values: dict[str, object] = {"status": new_status}
+    if new_retention_days is not None:
+        if int(new_retention_days) < 0:
+            raise ValueError(
+                "set_decision_status: new_retention_days must be >= 0"
+            )
+        values["retention_days"] = int(new_retention_days)
+    elif new_status in {"accepted", "dismissed"}:
+        values["retention_days"] = _retention_case_for_status(new_status)
+    return values
 
 
 def close_active_decisions_for_subject(
@@ -91,7 +122,7 @@ def close_active_decisions_for_subject(
         .where(AlgorithmDecision.subject_kind == subject_kind)
         .where(AlgorithmDecision.subject_id == subject_id)
         .where(AlgorithmDecision.status == "active")
-        .values(status=new_status)
+        .values(**_status_values(new_status))
         .execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)
@@ -123,13 +154,9 @@ def set_decision_status(
             f"set_decision_status: invalid status {new_status!r}; "
             f"expected one of {sorted(TERMINAL_DECISION_STATUSES)}"
         )
-    values: dict[str, object] = {"status": new_status}
-    if new_retention_days is not None:
-        if int(new_retention_days) < 0:
-            raise ValueError(
-                "set_decision_status: new_retention_days must be >= 0"
-            )
-        values["retention_days"] = int(new_retention_days)
+    values = _status_values(
+        new_status, new_retention_days=new_retention_days
+    )
     result = db.execute(
         update(AlgorithmDecision)
         .where(AlgorithmDecision.id == decision_id)
@@ -214,7 +241,7 @@ def sweep_stale_active_decisions(
         update(AlgorithmDecision)
         .where(AlgorithmDecision.id.in_(stale_ids))
         .where(AlgorithmDecision.status == "active")
-        .values(status="dismissed")
+        .values(**_status_values("dismissed"))
         .execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)

@@ -21,6 +21,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import AlgorithmDecision, LedgerLearningEvent
 from app.services.learning_service import (
+    BUDGET_SUGGESTION,
     DecisionDraft,
     EventDraft,
     active_decision_for_subject,
@@ -52,6 +53,23 @@ def test_record_decision_persists_serialised_payload(*, identity) -> None:
             "category": "餐饮",
             "confidence": 0.85,
         }
+
+
+def test_record_decision_uses_registry_default_retention(*, identity) -> None:
+    with SessionLocal() as db:
+        row = record_decision(
+            db,
+            DecisionDraft(
+                tenant_id="owner",
+                decision_type=BUDGET_SUGGESTION.decision_type,
+                algorithm_version=BUDGET_SUGGESTION.current_version,
+                subject_kind="month",
+                subject_id=None,
+                payload={"month": "2026-05", "category": "food"},
+            ),
+        )
+        db.commit()
+        assert row.retention_days == BUDGET_SUGGESTION.default_retention_days
 
 
 def test_record_event_links_to_decision_without_mutating_it(
