@@ -11,13 +11,19 @@ After step 5 no **business-logic** code reads ``expenses.raw_text``:
   the mock returns its canned receipt regardless of column state.
 
 ``apply_ocr_result`` still mirrors ``merged.raw_text`` into the
-column on every OCR pass. The mirror lets the Pydantic
-``ExpenseResponse`` (``from_attributes=True``) keep surfacing
-``raw_text`` to clients — the value matches what ``append_ocr_fact``
-just wrote into ``ocr_facts``, so the mirror cannot diverge from the
-canonical store. A future cleanup can swap the response layer to
-``read_ocr_text`` and drop the column outright; today's contract is
-"the column is a denormalised view, not a source of truth."
+column, but **only when the OCR pass produced text**. An empty pass
+(e.g. ``EmptyOcrProvider`` on an unconfigured system, or a provider
+error that surfaced as a hollow result) leaves the mirror untouched
+so the response surface keeps tracking the most recent meaningful
+OCR — same logical view that ``read_ocr_text`` returns by walking
+back past empty facts. The mirror still cannot show text the facts
+table doesn't have: every non-empty mirror write is paired with an
+``append_ocr_fact`` call carrying the same ``merged.raw_text``.
+
+A future cleanup can swap the response layer to ``read_ocr_text``
+and drop the column outright; today's contract is "the column is a
+denormalised view of the latest non-empty OCR, not a source of
+truth."
 """
 
 from __future__ import annotations
