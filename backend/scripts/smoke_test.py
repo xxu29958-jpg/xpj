@@ -426,10 +426,11 @@ def run_smoke(base_url: str) -> None:
     assert_true(patched["expense_time"].endswith("Z"), "expense time should be ISO UTC")
     print("OK patch expense")
 
+    # OCR_PROVIDER=empty 下 retry 必须 503 ocr_not_configured（fact-backed contract，
+    # 见 backend/app/services/expense_service/_ocr.py:retry_expense_ocr 与 ADR-0021）。
     result = request("POST", f"{base_url}/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
-    assert_equal(result.status, 200, "ocr retry status")
-    assert_equal(result.json()["id"], expense_id, "ocr retry id")
-    print("OK ocr retry")
+    assert_error(result, 503, "ocr_not_configured")
+    print("OK ocr retry refuses empty provider")
 
     recognize_body = json.dumps(
         {
