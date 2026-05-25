@@ -133,6 +133,41 @@ def managed_ledger_ids_for_account(db: Session, *, account_id: int) -> set[str]:
     return {summary.ledger_id for summary in list_managed_ledgers_for_account(db, account_id=account_id)}
 
 
+def find_owner_account_id_for_ledger(db: Session, *, ledger_id: str) -> int | None:
+    """Return the active owner's ``account_id`` for ``ledger_id``, or ``None``.
+
+    Loopback fallbacks (``/web`` and ``/owner`` running on the home server
+    without a public-host session cookie) need this when the request itself
+    cannot identify the acting account. ``None`` means no active owner row
+    exists; callers must decide how to surface that (typically 400/500).
+    """
+    return db.scalar(
+        select(LedgerMember.account_id)
+        .where(LedgerMember.ledger_id == ledger_id)
+        .where(LedgerMember.role == "owner")
+        .where(LedgerMember.disabled_at.is_(None))
+        .limit(1)
+    )
+
+
+def list_writer_ledger_ids_for_account(db: Session, *, account_id: int) -> list[str]:
+    """Return active ``(owner|member)`` ledger IDs for ``account_id``.
+
+    Bill-split accept needs the writer-side ledger choice list without
+    leaking the full ``LedgerMember`` model to the HTTP layer; route
+    handlers do an in-memory exclude (e.g. sender's own ledger) on top
+    of this list. ``viewer`` rows are excluded because they cannot host
+    a received split expense.
+    """
+    rows = db.scalars(
+        select(LedgerMember.ledger_id)
+        .where(LedgerMember.account_id == account_id)
+        .where(LedgerMember.role.in_(("owner", "member")))
+        .where(LedgerMember.disabled_at.is_(None))
+    )
+    return list(rows)
+
+
 def get_ledger_for_account(db: Session, *, account_id: int, ledger_id: str) -> tuple[Ledger, str]:
     """Return ``(ledger, role)`` if the account has active membership.
 
@@ -269,10 +304,12 @@ __all__ = [
     "LedgerSummary",
     "SwitchLedgerResult",
     "create_ledger",
+    "find_owner_account_id_for_ledger",
     "get_ledger_for_account",
     "ledger_member_counts",
     "list_ledgers_for_account",
     "list_managed_ledgers_for_account",
+    "list_writer_ledger_ids_for_account",
     "managed_ledger_ids_for_account",
     "switch_ledger",
 ]

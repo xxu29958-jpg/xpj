@@ -23,12 +23,10 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import LedgerMember
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -39,6 +37,10 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import bill_split_service as bsplit
+from app.services.ledger_service import (
+    find_owner_account_id_for_ledger,
+    list_writer_ledger_ids_for_account,
+)
 from app.services.time_service import ensure_utc, now_utc
 
 router = APIRouter(prefix="/web", tags=["web"])
@@ -56,19 +58,16 @@ def _resolve_request_account_id(
     if session_auth is not None:
         return session_auth.account_id
     # Loopback owner console: use the owner of the selected ledger.
-    member = db.scalar(
-        select(LedgerMember)
-        .where(LedgerMember.ledger_id == selected_ledger_id)
-        .where(LedgerMember.role == "owner")
-        .where(LedgerMember.disabled_at.is_(None))
+    account_id = find_owner_account_id_for_ledger(
+        db, ledger_id=selected_ledger_id
     )
-    if member is None:
+    if account_id is None:
         raise AppError(
             "invalid_request",
             "未找到 owner 账号；请检查 LedgerMember 配置。",
             status_code=400,
         )
-    return member.account_id
+    return account_id
 
 
 # -------------------------------------------------------------------------
@@ -89,22 +88,20 @@ def web_bill_split_inbox(
 
     invitations = bsplit.list_inbox(db, receiver_account_id=account_id)
 
-    # For each invited row, pre-compute the writer-ledger choices for an
-    # accept form select. Excluded: sender_ledger_id (same-ledger blocked).
+    # Single query pulls every writer ledger the receiver belongs to; per
+    # invited row we just in-memory exclude the sender's ledger (same-ledger
+    # accept is blocked at the service layer too). No N+1 over invitations.
+    writer_ledger_ids = list_writer_ledger_ids_for_account(
+        db, account_id=account_id
+    )
     rows = []
     for inv in invitations:
         choices: list[dict] = []
         if inv.status == "invited":
-            members = db.scalars(
-                select(LedgerMember)
-                .where(LedgerMember.account_id == account_id)
-                .where(LedgerMember.role.in_(("owner", "member")))
-                .where(LedgerMember.disabled_at.is_(None))
-            )
-            for m in members:
-                if m.ledger_id == inv.sender_ledger_id:
+            for ledger_id_choice in writer_ledger_ids:
+                if ledger_id_choice == inv.sender_ledger_id:
                     continue
-                choices.append({"ledger_id": m.ledger_id})
+                choices.append({"ledger_id": ledger_id_choice})
         rows.append({
             "public_id": inv.public_id,
             "status": inv.status,
