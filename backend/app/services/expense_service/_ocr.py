@@ -24,6 +24,7 @@ from app.services.expense_service._helpers import (
 )
 from app.services.expense_service._ocr_facts import append_ocr_fact
 from app.services.expense_service._query import get_expense
+from app.services.learning_service import read_ocr_text
 from app.services.ocr_service import OcrResult, apply_ocr_result, extract_ocr_result
 from app.services.time_service import now_utc
 
@@ -89,7 +90,16 @@ def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
         provider_name=provider_name,
         ocr_model=_active_provider_model(provider_name),
     )
-    _replace_ocr_draft_items_from_text(db, expense, expense.raw_text or "")
+    # v1.2 OCR single-source migration (step 4): pull the canonical
+    # OCR text via ``read_ocr_text`` instead of the deprecated
+    # ``expense.raw_text`` column. ``append_ocr_fact`` above already
+    # wrote the latest fact, so this is a single fact lookup against
+    # the row we just inserted (no N+1, no stale-read risk).
+    _replace_ocr_draft_items_from_text(
+        db,
+        expense,
+        read_ocr_text(db, tenant_id=expense.tenant_id, expense=expense) or "",
+    )
     if expense.category == "其他":
         classify_expense(db, expense)
     if (

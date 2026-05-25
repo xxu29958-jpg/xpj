@@ -77,7 +77,15 @@ def _ocr_text_by_expense_id(
     tenant_id: str,
     expenses: list[Expense],
 ) -> dict[int, str]:
-    """Bulk variant of read_ocr_text for rule preview/apply scans."""
+    """Bulk variant of read_ocr_text for rule preview/apply scans.
+
+    Mirrors the single-expense ``read_ocr_text`` contract: the latest
+    fact's ``raw_text`` is the only source. After v1.2 step 4 the
+    legacy ``expense.raw_text`` column is **not** consulted, so an
+    expense with no fact (or whose latest fact carries empty
+    ``raw_text``) maps to ``""``. Step 3's backfill guarantees this
+    matches what the single-expense path returns for the same row.
+    """
 
     result: dict[int, str] = {}
     expense_ids: list[int] = []
@@ -86,10 +94,9 @@ def _ocr_text_by_expense_id(
         if expense_id is None:
             continue
         expense_id = int(expense_id)
+        result[expense_id] = ""
         if expense.tenant_id != tenant_id:
-            result[expense_id] = ""
             continue
-        result[expense_id] = expense.raw_text or ""
         expense_ids.append(expense_id)
 
     if not expense_ids:

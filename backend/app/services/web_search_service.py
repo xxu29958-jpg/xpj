@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import CategoryRule, Expense, Goal
+from app.models import CategoryRule, Expense, Goal, OcrFact
 from app.services.spending_contract_service import (
     category_search_terms,
     merchant_search_terms,
@@ -98,6 +98,21 @@ def _merchant_search_terms(db: Session, tenant_id: str, term: str) -> list[str]:
 def _matches_expense_search(db: Session, tenant_id: str, term: str) -> object:
     merchant_terms = _merchant_search_terms(db, tenant_id, term)
     category_terms = category_search_terms(term)
+    # v1.2 OCR single-source migration (step 4): the raw_text needle
+    # is now searched against ``ocr_facts.raw_text`` via an EXISTS
+    # subquery. Matching ANY fact (not just the latest) is intentional
+    # — users looking up an expense by OCR'd text may remember earlier
+    # snapshots. The subquery is tenant-scoped (defence-in-depth even
+    # though Expense.tenant_id already constrains the outer row) and
+    # uses the existing ``ix_ocr_facts_lookup`` index.
+    pattern = _like_pattern(term)
+    ocr_fact_match = exists().where(
+        OcrFact.tenant_id == Expense.tenant_id,
+        OcrFact.expense_id == Expense.id,
+        func.lower(func.coalesce(OcrFact.raw_text, "")).like(
+            pattern, escape="\\"
+        ),
+    )
     return or_(
         _matches_any_text(merchant_terms, Expense.merchant),
         _matches_any_text(category_terms, Expense.category),
@@ -106,8 +121,8 @@ def _matches_expense_search(db: Session, tenant_id: str, term: str) -> object:
             Expense.note,
             Expense.source,
             Expense.tags,
-            Expense.raw_text,
         ),
+        ocr_fact_match,
     )
 
 

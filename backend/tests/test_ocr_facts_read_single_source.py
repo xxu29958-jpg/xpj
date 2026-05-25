@@ -1,14 +1,15 @@
-"""v1.2 follow-up — OCR single-source read helpers.
+"""v1.2 — OCR single-source read helpers.
 
-Step 1 of the migration off ``expenses.raw_text``. Two helpers tested
-here:
+Two helpers tested here:
 
 * ``latest_ocr_fact_for_expense`` — the indexed lookup that returns
   the newest ``ocr_facts`` row for a given expense (or ``None``).
-* ``read_ocr_text`` — wrapper that prefers the fact's ``raw_text``
-  and falls back to the supplied ``Expense.raw_text`` so consumers can
-  be migrated gradually without breaking expenses that pre-date the
-  new table.
+* ``read_ocr_text`` — returns the latest fact's ``raw_text`` and
+  **does not** fall back to ``expense.raw_text``. The fallback existed
+  in steps 1–3 of the migration while consumers were ported; step 4
+  dropped it now that the backfill (``bb00c453bf29``) guarantees every
+  expense with non-empty ``raw_text`` also has a fact carrying that
+  text. The tests below pin the post-step-4 contract.
 """
 
 from __future__ import annotations
@@ -156,7 +157,13 @@ def test_latest_is_tenant_scoped(*, identity) -> None:
         )
 
 
-def test_read_ocr_text_prefers_fact_over_legacy(*, identity) -> None:
+def test_read_ocr_text_returns_latest_fact_text(*, identity) -> None:
+    """The canonical happy path — a fact carries the OCR text and the
+    helper returns it. The legacy column is left populated to make
+    sure the assertion isn't accidentally satisfied by fallback (the
+    column says ``from-expense-column``, the fact says ``from-facts``;
+    a fallback would surface the column value)."""
+
     expense_id = _make_expense(raw_text="from-expense-column")
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
@@ -179,25 +186,39 @@ def test_read_ocr_text_prefers_fact_over_legacy(*, identity) -> None:
         assert text == "from-facts"
 
 
-def test_read_ocr_text_falls_back_when_no_fact(*, identity) -> None:
+def test_read_ocr_text_returns_none_when_no_fact_even_if_column_set(
+    *, identity,
+) -> None:
+    """Post-step-4 contract: when no fact exists the helper returns
+    ``None`` instead of reading ``expense.raw_text``. After the step-3
+    backfill ran, this state should not occur in real deployments —
+    every expense with non-empty ``raw_text`` got a backfill fact. The
+    test pins the contract so a regression that re-introduces the
+    fallback fails loudly."""
+
     expense_id = _make_expense(raw_text="from-expense-column")
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
+        # Sanity check: the column is non-empty so a fallback would
+        # have returned it.
+        assert expense.raw_text == "from-expense-column"
         text = read_ocr_text(
             db,
             tenant_id="owner",
             expense=expense,
         )
-        assert text == "from-expense-column"
+        assert text is None
 
 
-def test_read_ocr_text_falls_back_when_fact_has_empty_raw_text(
+def test_read_ocr_text_returns_none_when_only_fact_has_empty_raw_text(
     *, identity,
 ) -> None:
     """An OCR pass that produced structured fields but no raw_text
-    (e.g. provider returned only parsed values) should still let the
-    legacy column win, otherwise the consumer gets nothing."""
+    (e.g. provider returned only parsed values) leaves the expense
+    text-less from the helper's point of view. We do **not** revive
+    the legacy column to fill the gap — that fallback was the entire
+    thing step 4 dropped. Consumers must handle ``None``."""
 
     expense_id = _make_expense(raw_text="from-expense-column")
     with SessionLocal() as db:
@@ -219,7 +240,7 @@ def test_read_ocr_text_falls_back_when_fact_has_empty_raw_text(
             tenant_id="owner",
             expense=expense,
         )
-        assert text == "from-expense-column"
+        assert text is None
 
 
 def test_read_ocr_text_returns_none_when_no_source(*, identity) -> None:

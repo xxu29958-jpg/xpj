@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.database import SessionLocal
 from app.models import Expense
+from app.services.learning_service import OcrFactDraft, record_ocr_fact
 
 
 def _create_pending(client: TestClient, *, identity) -> int:
@@ -104,6 +105,70 @@ def test_web_search_uses_enabled_merchant_aliases(web_client: TestClient, *, ide
     page = web_client.get("/web/search?ledger_id=owner&q=星巴克")
     assert page.status_code == 200
     assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
+
+
+def test_web_search_matches_ocr_facts_raw_text(
+    web_client: TestClient, *, identity,
+) -> None:
+    """v1.2 OCR single-source migration (step 4): the raw_text needle
+    is now resolved against ``ocr_facts``, not ``expenses.raw_text``.
+    An expense whose OCR fact carries the search term must be found
+    even when the expense's own ``raw_text`` column is empty."""
+
+    expense_id = _seed_pending_with_amount(
+        web_client, "12.34", "FactSearch Cafe", identity=identity,
+    )
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == expense_id))
+        assert expense is not None
+        # Strip the column so the only place "UniqueOcrToken" can live
+        # is the fact row we're about to write.
+        expense.raw_text = ""
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="local_llm",
+                raw_text="receipt body with UniqueOcrToken inside",
+            ),
+        )
+        db.commit()
+
+    page = web_client.get("/web/search?ledger_id=owner&q=UniqueOcrToken")
+    assert page.status_code == 200
+    assert f"/web/expenses/{expense_id}/edit?ledger_id=owner" in page.text
+
+
+def test_web_search_ignores_legacy_expense_raw_text_column(
+    web_client: TestClient, *, identity,
+) -> None:
+    """The legacy ``expenses.raw_text`` column is no longer a search
+    surface — the step-3 backfill mirrored every populated row into
+    ``ocr_facts``, so a raw needle that lives **only** in the column
+    (and not in any fact) is by definition a row the backfill missed.
+    We don't want search to keep papering over that gap."""
+
+    expense_id = _seed_pending_with_amount(
+        web_client, "21.00", "ColumnOnly Cafe", identity=identity,
+    )
+    with SessionLocal() as db:
+        expense = db.scalar(select(Expense).where(Expense.id == expense_id))
+        assert expense is not None
+        # Plant the needle in the deprecated column with no matching
+        # fact. (The upload path's mock OCR would create a fact with
+        # different content; clearing all facts for this expense keeps
+        # the test scoped to the column-only case.)
+        expense.raw_text = "needle ColumnOnlyToken needle"
+        db.execute(
+            text("DELETE FROM ocr_facts WHERE expense_id = :id"),
+            {"id": expense_id},
+        )
+        db.commit()
+
+    page = web_client.get("/web/search?ledger_id=owner&q=ColumnOnlyToken")
+    assert page.status_code == 200
+    assert f"/web/expenses/{expense_id}/edit" not in page.text
 
 
 def test_web_search_uses_category_alias_terms(web_client: TestClient, *, identity) -> None:

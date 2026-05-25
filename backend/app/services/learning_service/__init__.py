@@ -509,23 +509,20 @@ def read_ocr_text(
     """Single-source read for "the raw OCR text we recorded for this
     expense".
 
-    Priority:
+    The latest ``ocr_facts.raw_text`` for the expense is the single
+    source of truth. Returns ``None`` when no fact carries text — the
+    legacy ``expense.raw_text`` column is **not** consulted, even
+    when it still happens to be populated.
 
-    1. Latest ``ocr_facts.raw_text`` for the expense (the new source
-       of truth).
-    2. ``expense.raw_text``. This branch fires on expenses written
-       before the OCR enrichment layer started double-writing into
-       ``ocr_facts``, and on expenses where OCR didn't produce a
-       structured fact row for some reason (provider error, manual
-       recognition).
-
-    Returns ``None`` when neither source has text.
-
-    This wrapper is the migration scaffolding for getting consumers
-    off ``expenses.raw_text`` without a hard cutover. Once the
-    backfill step lands and every consumer has been moved, the
-    legacy fallback can be dropped (and eventually the ``raw_text``
-    column).
+    The pre-step-4 wrapper used to fall back to ``expense.raw_text``
+    while consumers were migrated. That branch was dropped after the
+    step-3 backfill (``bb00c453bf29``) guaranteed every expense with
+    non-empty ``raw_text`` also has a fact carrying that text — and
+    on every database, because ``init_db()`` runs the data migration
+    on pre-Alembic libraries too. New OCR passes write into
+    ``ocr_facts`` alongside the column via ``apply_ocr_result`` +
+    ``append_ocr_fact``, so a fact is present immediately after any
+    code path that mutates the expense's OCR text.
     """
 
     if expense.tenant_id != tenant_id:
@@ -535,6 +532,4 @@ def read_ocr_text(
     )
     if fact is not None and fact.raw_text:
         return fact.raw_text
-    if expense.raw_text:
-        return expense.raw_text
     return None
