@@ -129,7 +129,17 @@ def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | N
     # paired ``append_ocr_fact`` wrote into the facts row, so the
     # mirror cannot diverge from canonical. No business-logic reader
     # consults the column anymore (step 4 dropped the last one).
-    expense.raw_text = merged.raw_text
+    #
+    # Mirror is **only** updated when this OCR pass produced text.
+    # An empty ``merged.raw_text`` means the provider couldn't read
+    # anything this round (e.g. ``EmptyOcrProvider`` on an unconfigured
+    # system, or a provider error that surfaced as a hollow result).
+    # In that case the previous mirror value is the better answer for
+    # clients than ``""`` — ``read_ocr_text`` walks back to the latest
+    # non-empty fact and we want the response to track the same
+    # logical "most recent meaningful OCR".
+    if merged.raw_text:
+        expense.raw_text = merged.raw_text
     expense.confidence = _best_confidence(merged.confidence, parsed.confidence, expense.confidence)
     if (
         _can_apply_ocr_field("amount_cents", draft_fields, expense.amount_cents is None)

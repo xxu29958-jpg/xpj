@@ -510,27 +510,30 @@ def read_ocr_text(
     """Single-source read for "the raw OCR text we recorded for this
     expense".
 
-    The latest ``ocr_facts.raw_text`` for the expense is the single
-    source of truth. Returns ``None`` when no fact carries text — the
-    legacy ``expense.raw_text`` column is **not** consulted, even
-    when it still happens to be populated.
+    The newest ``ocr_facts.raw_text`` that actually carries text is
+    the canonical answer. The query intentionally **filters out empty
+    rows** instead of taking the absolute latest fact and falling
+    back to ``None`` when that one happens to be hollow — otherwise
+    an empty OCR pass (``EmptyOcrProvider`` on systems with no OCR
+    configured, a provider error that returned only confidence, …)
+    would clobber the previously-recorded meaningful text just by
+    appending a row. The mirror column ``expense.raw_text`` is **not**
+    consulted regardless of column state.
 
-    The pre-step-4 wrapper used to fall back to ``expense.raw_text``
-    while consumers were migrated. That branch was dropped after the
-    step-3 backfill (``bb00c453bf29``) guaranteed every expense with
-    non-empty ``raw_text`` also has a fact carrying that text — and
-    on every database, because ``init_db()`` runs the data migration
-    on pre-Alembic libraries too. New OCR passes write into
-    ``ocr_facts`` alongside the column via ``apply_ocr_result`` +
-    ``append_ocr_fact``, so a fact is present immediately after any
-    code path that mutates the expense's OCR text.
+    Returns ``None`` when no fact for this expense carries non-empty
+    text. The pre-step-4 wrapper used to fall back to the legacy
+    column here; that branch was dropped after the step-3 backfill
+    (``bb00c453bf29``).
     """
 
     if expense.tenant_id != tenant_id:
         return None
-    fact = latest_ocr_fact_for_expense(
-        db, tenant_id=tenant_id, expense_id=expense.id
+    return db.scalar(
+        select(OcrFact.raw_text)
+        .where(OcrFact.tenant_id == tenant_id)
+        .where(OcrFact.expense_id == expense.id)
+        .where(OcrFact.raw_text.is_not(None))
+        .where(OcrFact.raw_text != "")
+        .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
+        .limit(1)
     )
-    if fact is not None and fact.raw_text:
-        return fact.raw_text
-    return None

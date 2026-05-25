@@ -24,8 +24,19 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.database import SessionLocal
 from app.models import Expense
-from app.services.ocr_service import EmptyOcrProvider, MockOcrProvider
+from app.services.learning_service import (
+    OcrFactDraft,
+    read_ocr_text,
+    record_ocr_fact,
+)
+from app.services.ocr_service import (
+    EmptyOcrProvider,
+    MockOcrProvider,
+    OcrResult,
+    apply_ocr_result,
+)
 from app.services.ocr_service._draft_fields import (
     _legacy_pending_ocr_draft_fields,
 )
@@ -92,6 +103,140 @@ def test_empty_ocr_provider_returns_empty_raw_text() -> None:
     # Confidence is still surfaced — it lives on the expense, not in
     # the ``raw_text`` deprecation tree.
     assert result.confidence == 0.7
+
+
+def test_read_ocr_text_walks_back_past_empty_facts(*, identity) -> None:
+    """Regression for a P1 found in PR #129 review: an empty OCR pass
+    (e.g. ``EmptyOcrProvider`` on a system with no OCR configured)
+    used to clobber the canonical read. ``apply_ocr_result`` +
+    ``append_ocr_fact`` would write a new empty fact, and
+    ``read_ocr_text``'s "latest fact only" rule would then return
+    ``None`` — losing the previously-recorded ``manual_text`` /
+    ``local_llm`` text.
+
+    The fix: ``read_ocr_text`` walks back past empty facts to the
+    newest one that actually carries text. The append-only ledger
+    still records the empty attempt; the read just skips it."""
+
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            source="pytest",
+            raw_text="",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        expense_id = expense.id
+
+        # First: a meaningful OCR pass lands a fact with real text.
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="manual_text",
+                raw_text="actual receipt body",
+            ),
+        )
+        # Then: an empty retry (EmptyOcrProvider) lands an empty fact
+        # on top. Without the fix, this row's empty raw_text would
+        # become the "latest" answer.
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="empty",
+                raw_text="",
+            ),
+        )
+        db.commit()
+
+        # The canonical answer is still "actual receipt body".
+        expense = db.get(Expense, expense_id)
+        assert read_ocr_text(db, tenant_id="owner", expense=expense) == (
+            "actual receipt body"
+        )
+
+
+def test_read_ocr_text_walks_back_past_null_raw_text_facts(
+    *, identity,
+) -> None:
+    """Same regression path, but the empty fact has ``raw_text=None``
+    (provider returned only parsed fields). The walk-back must skip
+    those too — otherwise a structured-fields-only OCR pass would
+    hide previous meaningful text."""
+
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            source="pytest",
+            raw_text="",
+            status="pending",
+        )
+        db.add(expense)
+        db.commit()
+        expense_id = expense.id
+
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="manual_text",
+                raw_text="real text from manual recognition",
+            ),
+        )
+        record_ocr_fact(
+            db,
+            OcrFactDraft(
+                tenant_id="owner",
+                expense_id=expense_id,
+                ocr_provider="local_llm",
+                raw_text=None,
+                parsed_amount_cents=4500,
+            ),
+        )
+        db.commit()
+
+        expense = db.get(Expense, expense_id)
+        assert read_ocr_text(db, tenant_id="owner", expense=expense) == (
+            "real text from manual recognition"
+        )
+
+
+def test_apply_ocr_result_does_not_clobber_mirror_with_empty_text() -> None:
+    """``apply_ocr_result`` mirrors ``merged.raw_text`` into the column
+    so the API response surface keeps showing recognised text. An
+    empty result must **not** wipe the mirror — otherwise an empty
+    retry would clear the column even when previous OCR text exists,
+    desyncing the response from what ``read_ocr_text`` (which walks
+    back) returns."""
+
+    expense = Expense(
+        status="pending",
+        category="其他",
+        raw_text="previously mirrored OCR text",
+        confidence=0.85,
+    )
+    apply_ocr_result(
+        expense,
+        OcrResult(raw_text="", confidence=None),
+    )
+    assert expense.raw_text == "previously mirrored OCR text"
+
+
+def test_apply_ocr_result_still_mirrors_when_text_is_present() -> None:
+    """The mirror behaviour for non-empty results is unchanged — a
+    fresh OCR pass with text still updates ``expense.raw_text``."""
+
+    expense = Expense(status="pending", category="其他", raw_text="old")
+    apply_ocr_result(
+        expense,
+        OcrResult(raw_text="brand new OCR body", confidence=0.9),
+    )
+    assert expense.raw_text == "brand new OCR body"
 
 
 def test_mock_ocr_provider_uses_canned_text_regardless_of_column() -> None:
