@@ -56,5 +56,7 @@ data class ExpenseItemRequestDto(
 )
 
 data class ExpenseItemReplaceRequestDto(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
     val items: List<ExpenseItemRequestDto> = emptyList(),
 )

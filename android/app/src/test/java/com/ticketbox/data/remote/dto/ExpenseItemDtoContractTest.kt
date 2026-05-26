@@ -42,6 +42,7 @@ class ExpenseItemDtoContractTest {
         )
         val requestJson = moshi.adapter(ExpenseItemReplaceRequestDto::class.java).toJson(
             ExpenseItemReplaceRequestDto(
+                expectedUpdatedAt = "2026-05-03T04:20:00Z",
                 items = listOf(
                     ExpenseItemRequestDto(
                         name = "拿铁",
@@ -64,7 +65,7 @@ class ExpenseItemDtoContractTest {
         assertEquals("product", item.kind)
         assertEquals("no_items", dto.itemsSumStatus)
         assertEquals(
-            """{"items":[{"name":"拿铁","kind":"product","quantity_text":"1杯","unit_price_cents":500,"amount_cents":500,"category":"餐饮","raw_text":"拿铁 1杯 5.00","confidence":0.92}]}""",
+            """{"expected_updated_at":"2026-05-03T04:20:00Z","items":[{"name":"拿铁","kind":"product","quantity_text":"1杯","unit_price_cents":500,"amount_cents":500,"category":"餐饮","raw_text":"拿铁 1杯 5.00","confidence":0.92}]}""",
             requestJson,
         )
     }

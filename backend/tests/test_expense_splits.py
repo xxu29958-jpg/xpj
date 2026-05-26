@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from api_contract_helpers import confirm_expense_api, reject_expense_api
+from api_contract_helpers import confirm_expense_api, expense_updated_at, reject_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -136,10 +136,14 @@ def _replace_splits(
     owner_amount_cents: int = 6000,
     member_amount_cents: int = 3000,
 ) -> dict[str, object]:
+    headers = _bearer(token)
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    assert snapshot.status_code == 200, snapshot.json()
     response = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=_bearer(token),
+        headers=headers,
         json={
+            "expected_updated_at": snapshot.json()["updated_at"],
             "splits": [
                 {
                     "member_id": owner_member_id,
@@ -326,7 +330,12 @@ def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
     viewer_write = client.put(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(viewer_token),
-        json={"splits": [{"member_id": owner_member_id, "amount_cents": 10000}]},
+        json={
+            "expected_updated_at": expense_updated_at(
+                client, expense_id, headers=_bearer(viewer_token)
+            ),
+            "splits": [{"member_id": owner_member_id, "amount_cents": 10000}],
+        },
     )
     assert viewer_write.status_code == 403
     assert viewer_write.json()["error"] == "permission_denied"
@@ -372,6 +381,9 @@ def test_expense_splits_preserve_disabled_member_attribution(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
         json={
+            "expected_updated_at": expense_updated_at(
+                client, expense_id, headers=_bearer(owner_token)
+            ),
             "splits": [
                 {"member_id": owner_member_id, "amount_cents": 5000},
                 {"member_id": member_member_id, "amount_cents": 5000},
@@ -399,6 +411,9 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
         json={
+            "expected_updated_at": expense_updated_at(
+                client, expense_id, headers=_bearer(owner_token)
+            ),
             "splits": [
                 {"member_id": owner_member_id, "amount_cents": 5000},
                 {"member_id": owner_member_id, "amount_cents": 5000},
@@ -412,6 +427,9 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
         json={
+            "expected_updated_at": expense_updated_at(
+                client, expense_id, headers=_bearer(owner_token)
+            ),
             "splits": [
                 {"member_id": _personal_owner_member_id(), "amount_cents": 10000}
             ]
@@ -438,7 +456,10 @@ def test_rejected_expense_splits_cannot_be_replaced(client: TestClient, *, ident
     response = client.put(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
-        json={"splits": [{"member_id": owner_member_id, "amount_cents": 10000}]},
+        json={
+            "expected_updated_at": rejected.json()["updated_at"],
+            "splits": [{"member_id": owner_member_id, "amount_cents": 10000}],
+        },
     )
 
     assert response.status_code == 404

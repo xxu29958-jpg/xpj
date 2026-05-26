@@ -16,6 +16,7 @@ from app.schemas import (
     ExpenseSplitsResponse,
 )
 from app.services.expense_service import EDITABLE_STATUSES, get_expense
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
 AUDIT_EXPENSE_SPLITS_REPLACED = "expense_splits_replaced"
@@ -66,10 +67,6 @@ def replace_expense_splits(
     *,
     actor_account_id: int | None,
 ) -> ExpenseSplitsResponse:
-    expense = get_expense(db, expense_id, tenant_id)
-    if expense.status not in EDITABLE_STATUSES:
-        raise AppError("expense_not_found", status_code=404)
-
     member_ids = [item.member_id for item in payload.splits]
     if len(member_ids) != len(set(member_ids)):
         raise AppError("invalid_request", "同一个家庭成员不能重复拆账。", status_code=422)
@@ -82,6 +79,28 @@ def replace_expense_splits(
     missing_member_ids = sorted(set(member_ids) - set(members))
     if missing_member_ids:
         raise AppError("member_not_found", status_code=404)
+
+    now = now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=payload.expected_updated_at,
+        set_values={"updated_at": now},
+        extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.expire_all()
+        current = db.scalar(
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
+        )
+        if current is None or current.status not in EDITABLE_STATUSES:
+            raise AppError("expense_not_found", status_code=404)
+        raise AppError("state_conflict", status_code=409)
+    db.expire_all()
+    expense = get_expense(db, expense_id, tenant_id)
 
     existing = list(
         db.scalars(
@@ -101,7 +120,6 @@ def replace_expense_splits(
         db.delete(split)
     db.flush()
 
-    now = now_utc()
     new_splits: list[ExpenseSplit] = []
     for position, request_split in enumerate(payload.splits):
         split = ExpenseSplit(
@@ -116,7 +134,6 @@ def replace_expense_splits(
         )
         new_splits.append(split)
         db.add(split)
-    expense.updated_at = now
     _add_split_audit(
         db,
         expense=expense,

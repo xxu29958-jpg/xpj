@@ -981,6 +981,7 @@ Content-Type: application/json
 
 ```json
 {
+  "expected_updated_at": "2026-05-04T08:00:00Z",
   "items": [
     {
       "name": "拿铁",
@@ -999,6 +1000,7 @@ Content-Type: application/json
 
 - 只能整体替换同一账单的明细行，最多 200 行。
 - 只允许修改 `pending` 或 `confirmed` 账单；`rejected` 返回 `expense_not_found`。
+- `expected_updated_at` 是客户端最后一次读取该账单时看到的 `updated_at`；账单已被其它端修改时返回 `409 state_conflict`。
 - `position` 由服务端按请求顺序生成。
 - `items_total_amount_cents` 只汇总带 `amount_cents` 的明细；`mismatch_cents = parent_amount_cents - items_total_amount_cents`。
 - viewer 返回 `permission_denied`。
@@ -1051,6 +1053,7 @@ Content-Type: application/json
 
 ```json
 {
+  "expected_updated_at": "2026-05-04T08:00:00Z",
   "splits": [
     {
       "member_id": 12,
@@ -1073,6 +1076,7 @@ Content-Type: application/json
 - 已有拆账行在成员停用后仍保留原成员姓名、角色和 `disabled_at`，但不能再把停用成员写入新的拆账替换请求。
 - 同一个成员不能在同一账单内重复出现，重复返回 `invalid_request`。
 - 只允许修改 `pending` 或 `confirmed` 账单；`rejected` 返回 `expense_not_found`。
+- `expected_updated_at` 是客户端最后一次读取该账单时看到的 `updated_at`；账单已被其它端修改时返回 `409 state_conflict`。
 - `position` 由服务端按请求顺序生成。
 - `splits_total_amount_cents` 汇总拆账金额；`mismatch_cents = parent_amount_cents - splits_total_amount_cents`。
 - 成功替换会写入成员审计日志 `expense_splits_replaced`，`detail` 包含 `expense_public_id` 以及 before/after 的成员分配摘要。

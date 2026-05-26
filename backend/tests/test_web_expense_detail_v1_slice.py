@@ -100,11 +100,16 @@ def test_web_expense_edit_routes_have_single_owner() -> None:
 def _seed_detail_rows(expense_id: int) -> None:
     member_id = _owner_member_id()
     with SessionLocal() as db:
+        expected_updated_at = db.scalar(
+            select(Expense.updated_at).where(Expense.id == expense_id)
+        )
+        assert expected_updated_at is not None
         replace_expense_items(
             db,
             expense_id,
             "owner",
             ExpenseItemReplaceRequest(
+                expected_updated_at=expected_updated_at,
                 items=[
                     ExpenseItemRequest(
                         name="牛奶",
@@ -116,11 +121,16 @@ def _seed_detail_rows(expense_id: int) -> None:
             ),
         )
     with SessionLocal() as db:
+        expected_updated_at = db.scalar(
+            select(Expense.updated_at).where(Expense.id == expense_id)
+        )
+        assert expected_updated_at is not None
         replace_expense_splits(
             db,
             expense_id,
             "owner",
             ExpenseSplitReplaceRequest(
+                expected_updated_at=expected_updated_at,
                 splits=[ExpenseSplitRequest(member_id=member_id, amount_cents=1234, note="我先记")]
             ),
             actor_account_id=None,
@@ -130,11 +140,16 @@ def _seed_detail_rows(expense_id: int) -> None:
 def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_expense()
     member_id = _owner_member_id()
+    item_snapshot = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert item_snapshot.status_code == 200, item_snapshot.json()
 
     items = web_client.post(
         f"/web/expenses/{expense_id}/items/save",
         data={
             "ledger_id": "owner",
+            "expected_updated_at": item_snapshot.json()["updated_at"],
             "item_name": ["牛奶", "面包", ""],
             "item_quantity": ["1盒", "2个", ""],
             "item_unit_price_yuan": ["", "3.25", ""],
@@ -145,10 +160,15 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
     )
     assert items.status_code in {303, 307}, items.text
 
+    split_snapshot = web_client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert split_snapshot.status_code == 200, split_snapshot.json()
     splits = web_client.post(
         f"/web/expenses/{expense_id}/splits/save",
         data={
             "ledger_id": "owner",
+            "expected_updated_at": split_snapshot.json()["updated_at"],
             "split_member_id": [str(member_id), ""],
             "split_amount_yuan": ["12.34", ""],
             "split_note": ["我先记", ""],

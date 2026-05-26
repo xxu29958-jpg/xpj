@@ -13,6 +13,7 @@ from app.schemas import (
 )
 from app.services.category_service import normalize_category
 from app.services.expense_query import EDITABLE_STATUSES, get_expense
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_parse_service import ParsedReceiptItem
 from app.services.time_service import now_utc
 
@@ -32,9 +33,27 @@ def replace_expense_items(
     tenant_id: str,
     payload: ExpenseItemReplaceRequest,
 ) -> ExpenseItemsResponse:
+    now = now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=payload.expected_updated_at,
+        set_values={"updated_at": now},
+        extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.expire_all()
+        current = db.scalar(
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
+        )
+        if current is None or current.status not in EDITABLE_STATUSES:
+            raise AppError("expense_not_found", status_code=404)
+        raise AppError("state_conflict", status_code=409)
+    db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
-    if expense.status not in EDITABLE_STATUSES:
-        raise AppError("expense_not_found", status_code=404)
 
     existing = list(
         db.scalars(
@@ -47,10 +66,8 @@ def replace_expense_items(
         db.delete(item)
     db.flush()
 
-    now = now_utc()
     for position, request_item in enumerate(payload.items):
         db.add(_new_item(expense, position, request_item, now=now))
-    expense.updated_at = now
     db.flush()
     recompute_items_sum_status(db, expense)
     db.commit()

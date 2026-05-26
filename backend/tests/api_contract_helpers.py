@@ -108,6 +108,51 @@ def retry_ocr_api(
     )
 
 
+def expense_updated_at(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+) -> str:
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    assert snapshot.status_code == 200, snapshot.text
+    return str(snapshot.json()["updated_at"])
+
+
+def replace_items_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+    items: list[dict[str, Any]],
+) -> httpx.Response:
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.put(
+        f"/api/expenses/{expense_id}/items",
+        headers=headers,
+        json={"expected_updated_at": snapshot.json()["updated_at"], "items": items},
+    )
+
+
+def replace_splits_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+    splits: list[dict[str, Any]],
+) -> httpx.Response:
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.put(
+        f"/api/expenses/{expense_id}/splits",
+        headers=headers,
+        json={"expected_updated_at": snapshot.json()["updated_at"], "splits": splits},
+    )
+
+
 def web_confirm_expense(
     client: TestClient,
     expense_id: int,

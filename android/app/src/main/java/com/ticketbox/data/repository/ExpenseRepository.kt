@@ -109,8 +109,12 @@ class ExpenseRepository(
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> =
         detailRepository.fetchExpenseItems(id)
 
-    suspend fun replaceExpenseItems(id: Long, items: List<ExpenseItemDraft>): Result<ExpenseItems> =
-        detailRepository.replaceExpenseItems(id, items)
+    suspend fun replaceExpenseItems(
+        id: Long,
+        items: List<ExpenseItemDraft>,
+        expectedUpdatedAt: String,
+    ): Result<ExpenseItems> =
+        detailRepository.replaceExpenseItems(id, items, expectedUpdatedAt)
 
     suspend fun acknowledgeExpenseItemsMismatch(id: Long): Result<ExpenseItems> =
         detailRepository.acknowledgeExpenseItemsMismatch(id)
@@ -151,8 +155,12 @@ class ExpenseRepository(
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> =
         detailRepository.fetchExpenseSplits(id)
 
-    suspend fun replaceExpenseSplits(id: Long, splits: List<ExpenseSplitDraft>): Result<ExpenseSplits> =
-        detailRepository.replaceExpenseSplits(id, splits)
+    suspend fun replaceExpenseSplits(
+        id: Long,
+        splits: List<ExpenseSplitDraft>,
+        expectedUpdatedAt: String,
+    ): Result<ExpenseSplits> =
+        detailRepository.replaceExpenseSplits(id, splits, expectedUpdatedAt)
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> =
         ledgerRepository.createManualExpense(draft)

@@ -2,13 +2,14 @@
 
 Used by every endpoint that mutates a row gated by ``expected_updated_at``:
 
-- expense PATCH / confirm / reject / mark-not-duplicate / OCR retry
+- expense PATCH / confirm / reject / mark-not-duplicate / OCR retry /
+  items replace / splits replace
   (ADR-0038 PR-2a~2c)
 - category_rule PATCH / DELETE (ADR-0038 PR-1)
 - rule_application apply / rollback (Alpha3 engine — pre-dates ADR-0038
   but follows the same atomic ``UPDATE WHERE updated_at = expected``
   shape; latent tz-handling bug fixed by this refactor)
-- ...followups: items / splits / merchant alias / recognize-text
+- ...followups: merchant alias / recognize-text
 
 Two layers:
 

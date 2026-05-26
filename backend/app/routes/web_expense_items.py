@@ -15,6 +15,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_updated_at_token,
     templates,
 )
 from app.schemas import ExpenseItemReplaceRequest
@@ -36,6 +37,7 @@ def web_items_save(
     item_unit_price_yuan: list[str] = Form(default=[]),
     item_amount_yuan: list[str] = Form(default=[]),
     item_category: list[str] = Form(default=[]),
+    expected_updated_at: str = Form(default=""),
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -45,15 +47,20 @@ def web_items_save(
     _require_selected_ledger_write(options, selected_id)
     error: str | None = None
     payload: ExpenseItemReplaceRequest | None = None
+    parsed_updated_at = parse_form_updated_at_token(expected_updated_at)
+    if parsed_updated_at is None:
+        error = "页面已过期，请刷新后重新保存明细。"
     try:
-        payload = item_replace_payload(
-            item_name=item_name,
-            item_kind=item_kind,
-            item_quantity=item_quantity,
-            item_unit_price_yuan=item_unit_price_yuan,
-            item_amount_yuan=item_amount_yuan,
-            item_category=item_category,
-        )
+        if error is None:
+            payload = item_replace_payload(
+                expected_updated_at=parsed_updated_at,
+                item_name=item_name,
+                item_kind=item_kind,
+                item_quantity=item_quantity,
+                item_unit_price_yuan=item_unit_price_yuan,
+                item_amount_yuan=item_amount_yuan,
+                item_category=item_category,
+            )
     except AppError as exc:
         error = exc.message
     if error is None and payload is not None:

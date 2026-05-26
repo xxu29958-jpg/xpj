@@ -15,6 +15,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_updated_at_token,
     templates,
 )
 from app.schemas import ExpenseSplitReplaceRequest
@@ -30,6 +31,7 @@ def web_splits_save(
     split_member_id: list[str] = Form(default=[]),
     split_amount_yuan: list[str] = Form(default=[]),
     split_note: list[str] = Form(default=[]),
+    expected_updated_at: str = Form(default=""),
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -39,12 +41,17 @@ def web_splits_save(
     _require_selected_ledger_write(options, selected_id)
     error: str | None = None
     payload: ExpenseSplitReplaceRequest | None = None
+    parsed_updated_at = parse_form_updated_at_token(expected_updated_at)
+    if parsed_updated_at is None:
+        error = "页面已过期，请刷新后重新保存拆账。"
     try:
-        payload = split_replace_payload(
-            split_member_id=split_member_id,
-            split_amount_yuan=split_amount_yuan,
-            split_note=split_note,
-        )
+        if error is None:
+            payload = split_replace_payload(
+                expected_updated_at=parsed_updated_at,
+                split_member_id=split_member_id,
+                split_amount_yuan=split_amount_yuan,
+                split_note=split_note,
+            )
     except AppError as exc:
         error = exc.message
     if error is None and payload is not None:

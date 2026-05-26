@@ -25,7 +25,11 @@ internal class ExpenseDetailRepository(
         bound.call { it.expenseItems(id) }.toDomain()
     }
 
-    suspend fun replaceExpenseItems(id: Long, items: List<ExpenseItemDraft>): Result<ExpenseItems> = core.errorHandler.safeCall {
+    suspend fun replaceExpenseItems(
+        id: Long,
+        items: List<ExpenseItemDraft>,
+        expectedUpdatedAt: String,
+    ): Result<ExpenseItems> = core.errorHandler.safeCall {
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
@@ -33,7 +37,10 @@ internal class ExpenseDetailRepository(
         val updated = bound.call {
             it.replaceExpenseItems(
                 id,
-                ExpenseItemReplaceRequestDto(items = items.map { item -> item.toRequest() }),
+                ExpenseItemReplaceRequestDto(
+                    expectedUpdatedAt = expectedUpdatedAt,
+                    items = items.map { item -> item.toRequest() },
+                ),
             )
         }
         updated.toDomain()
@@ -52,7 +59,11 @@ internal class ExpenseDetailRepository(
         bound.call { it.expenseSplits(id) }.toDomain()
     }
 
-    suspend fun replaceExpenseSplits(id: Long, splits: List<ExpenseSplitDraft>): Result<ExpenseSplits> = core.errorHandler.safeCall {
+    suspend fun replaceExpenseSplits(
+        id: Long,
+        splits: List<ExpenseSplitDraft>,
+        expectedUpdatedAt: String,
+    ): Result<ExpenseSplits> = core.errorHandler.safeCall {
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
@@ -60,7 +71,10 @@ internal class ExpenseDetailRepository(
         val updated = bound.call {
             it.replaceExpenseSplits(
                 id,
-                ExpenseSplitReplaceRequestDto(splits = splits.map { split -> split.toRequest() }),
+                ExpenseSplitReplaceRequestDto(
+                    expectedUpdatedAt = expectedUpdatedAt,
+                    splits = splits.map { split -> split.toRequest() },
+                ),
             )
         }
         updated.toDomain()

@@ -1488,6 +1488,11 @@
       },
       "Body_web_items_save_web_expenses__expense_id__items_save_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "item_amount_yuan": {
             "default": [],
             "items": {
@@ -1967,6 +1972,11 @@
       },
       "Body_web_splits_save_web_expenses__expense_id__splits_save_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -3677,7 +3687,13 @@
         "type": "object"
       },
       "ExpenseItemReplaceRequest": {
+        "additionalProperties": false,
         "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/ExpenseItemRequest"
@@ -3687,6 +3703,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "ExpenseItemReplaceRequest",
         "type": "object"
       },
@@ -4640,7 +4659,13 @@
         "type": "object"
       },
       "ExpenseSplitReplaceRequest": {
+        "additionalProperties": false,
         "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "splits": {
             "items": {
               "$ref": "#/components/schemas/ExpenseSplitRequest"
@@ -4650,6 +4675,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "ExpenseSplitReplaceRequest",
         "type": "object"
       },

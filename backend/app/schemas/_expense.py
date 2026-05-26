@@ -276,6 +276,9 @@ class ExpenseItemRequest(BaseModel):
 
 
 class ExpenseItemReplaceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
     items: list[ExpenseItemRequest] = Field(default_factory=list, max_length=200)
 
 
@@ -317,6 +320,9 @@ class ExpenseSplitRequest(BaseModel):
 
 
 class ExpenseSplitReplaceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
     splits: list[ExpenseSplitRequest] = Field(default_factory=list, max_length=100)
 
 

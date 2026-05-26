@@ -27,10 +27,12 @@ def _create_manual_expense(
 
 
 def _put_items(client: TestClient, *, identity, expense_id: int, items: list[dict]):
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert snapshot.status_code == 200, snapshot.json()
     return client.put(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
-        json={"items": items},
+        json={"expected_updated_at": snapshot.json()["updated_at"], "items": items},
     )
 
 

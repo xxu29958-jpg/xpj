@@ -46,22 +46,26 @@ class ExpenseRepositoryExpenseDetailTest {
                     confidence = null,
                 ),
             ),
+            expectedUpdatedAt = "2026-05-03T04:20:00Z",
         ).getOrThrow()
         val splits = repository.fetchExpenseSplits(9).getOrThrow()
         val replacedSplits = repository.replaceExpenseSplits(
             9,
             listOf(ExpenseSplitDraft(memberId = 12, amountCents = 6000, note = " 一起吃饭 ")),
+            expectedUpdatedAt = "2026-05-03T04:20:00Z",
         ).getOrThrow()
 
         assertEquals(9L, apiService.itemFetchIds.single())
         assertEquals(9L, apiService.itemReplaceIds.single())
         assertEquals("拿铁", apiService.itemReplaceRequests.single().items.single().name)
         assertEquals("餐饮", apiService.itemReplaceRequests.single().items.single().category)
+        assertEquals("2026-05-03T04:20:00Z", apiService.itemReplaceRequests.single().expectedUpdatedAt)
         assertEquals("item-1", items.items.single().publicId)
         assertEquals("item-1", replacedItems.items.single().publicId)
         assertEquals(9L, apiService.splitFetchIds.single())
         assertEquals(9L, apiService.splitReplaceIds.single())
         assertEquals("一起吃饭", apiService.splitReplaceRequests.single().splits.single().note)
+        assertEquals("2026-05-03T04:20:00Z", apiService.splitReplaceRequests.single().expectedUpdatedAt)
         assertEquals("split-1", splits.splits.single().publicId)
         assertEquals("split-1", replacedSplits.splits.single().publicId)
     }
@@ -228,10 +232,12 @@ class ExpenseRepositoryExpenseDetailTest {
         val itemResult = repository.replaceExpenseItems(
             9,
             listOf(ExpenseItemDraft("拿铁", null, null, 500, "餐饮", null, null)),
+            expectedUpdatedAt = "2026-05-03T04:20:00Z",
         )
         val splitResult = repository.replaceExpenseSplits(
             9,
             listOf(ExpenseSplitDraft(memberId = 12, amountCents = 500, note = null)),
+            expectedUpdatedAt = "2026-05-03T04:20:00Z",
         )
 
         assertEquals("当前角色为只读，无法修改账本。", itemResult.exceptionOrNull()?.message)

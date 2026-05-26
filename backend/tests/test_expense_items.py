@@ -35,10 +35,14 @@ def _replace_items(
     *, identity,
     headers: dict[str, str] | None = None,
 ) -> dict[str, object]:
+    request_headers = headers or identity.app_headers
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=request_headers)
+    assert snapshot.status_code == 200, snapshot.json()
     response = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=headers or identity.app_headers,
+        headers=request_headers,
         json={
+            "expected_updated_at": snapshot.json()["updated_at"],
             "items": [
                 {
                     "name": "拿铁",
@@ -124,7 +128,10 @@ def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: Tes
     second_replace = client.put(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
-        json={"items": [{"name": "咖啡豆", "amount_cents": 1500, "category": "购物"}]},
+        json={
+            "expected_updated_at": detail.json()["updated_at"],
+            "items": [{"name": "咖啡豆", "amount_cents": 1500, "category": "购物"}],
+        },
     )
     assert second_replace.status_code == 200, second_replace.json()
     payload = second_replace.json()
@@ -226,7 +233,12 @@ def test_recognize_text_does_not_overwrite_manual_items(client: TestClient, *, i
     manual = client.put(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
-        json={"items": [{"name": "用户确认明细", "amount_cents": 1250, "category": "餐饮"}]},
+        json={
+            "expected_updated_at": client.get(
+                f"/api/expenses/{expense_id}", headers=identity.app_headers
+            ).json()["updated_at"],
+            "items": [{"name": "用户确认明细", "amount_cents": 1250, "category": "餐饮"}],
+        },
     )
     assert manual.status_code == 200, manual.json()
     assert manual.json()["items"][0]["is_ocr_draft"] is False
@@ -270,11 +282,18 @@ def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: Test
     viewer_read = client.get(f"/api/expenses/{owner_expense_id}/items", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert [item["name"] for item in viewer_read.json()["items"]] == ["拿铁", "三明治", "优惠"]
+    viewer_snapshot = client.get(
+        f"/api/expenses/{owner_expense_id}", headers=identity.app_headers
+    )
+    assert viewer_snapshot.status_code == 200, viewer_snapshot.json()
 
     viewer_write = client.put(
         f"/api/expenses/{owner_expense_id}/items",
         headers=identity.app_headers,
-        json={"items": [{"name": "不该写入", "amount_cents": 1}]},
+        json={
+            "expected_updated_at": viewer_snapshot.json()["updated_at"],
+            "items": [{"name": "不该写入", "amount_cents": 1}],
+        },
     )
     assert viewer_write.status_code == 403
     assert viewer_write.json()["error"] == "permission_denied"
@@ -288,7 +307,10 @@ def test_rejected_expense_items_cannot_be_replaced(client: TestClient, *, identi
     response = client.put(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
-        json={"items": [{"name": "作废明细", "amount_cents": 100}]},
+        json={
+            "expected_updated_at": rejected.json()["updated_at"],
+            "items": [{"name": "作废明细", "amount_cents": 100}],
+        },
     )
 
     assert response.status_code == 404

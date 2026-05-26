@@ -43,5 +43,7 @@ data class ExpenseSplitRequestDto(
 )
 
 data class ExpenseSplitReplaceRequestDto(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
     val splits: List<ExpenseSplitRequestDto> = emptyList(),
 )
