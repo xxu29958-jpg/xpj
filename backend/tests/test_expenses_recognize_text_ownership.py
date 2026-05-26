@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from api_contract_helpers import (
+    confirm_expense_api,
     patch_expense,
     upload_png,
 )
@@ -54,7 +55,7 @@ def test_recognize_text_then_confirm_enters_stats_and_export(
     assert pending_export.status_code == 200, pending_export.text
     assert "好想来零食乐园" not in pending_export.text
 
-    confirmed = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
+    confirmed = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert confirmed.status_code == 200, confirmed.json()
     assert confirmed.json()["status"] == "confirmed"
 

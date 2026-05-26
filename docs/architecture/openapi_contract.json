@@ -1218,6 +1218,11 @@
       },
       "Body_web_confirm_web_expenses__expense_id__confirm_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1326,6 +1331,11 @@
       },
       "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1337,6 +1347,11 @@
       },
       "Body_web_duplicate_reject_current_web_duplicates__expense_id__reject_current_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1348,6 +1363,11 @@
       },
       "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1665,6 +1685,11 @@
       },
       "Body_web_reject_web_expenses__expense_id__reject_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -3635,6 +3660,22 @@
         "title": "ExchangeRateResponse",
         "type": "object"
       },
+      "ExpenseConfirmRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.\n\n``expected_updated_at`` is the optimistic-concurrency token client\nlast saw on the expense; service-layer ``confirm_expense`` atomic\n``UPDATE WHERE updated_at = expected_updated_at`` rejects stale\nwrites with 409. Confirming an already-confirmed row remains\nidempotent (200) regardless of the token — confirmed is terminal.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "ExpenseConfirmRequest",
+        "type": "object"
+      },
       "ExpenseItemReplaceRequest": {
         "properties": {
           "items": {
@@ -4110,6 +4151,22 @@
         "title": "ExpenseManualCreateRequest",
         "type": "object"
       },
+      "ExpenseMarkNotDuplicateRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/mark-not-duplicate``.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "ExpenseMarkNotDuplicateRequest",
+        "type": "object"
+      },
       "ExpenseRecognizeTextRequest": {
         "properties": {
           "raw_text": {
@@ -4123,6 +4180,22 @@
           "raw_text"
         ],
         "title": "ExpenseRecognizeTextRequest",
+        "type": "object"
+      },
+      "ExpenseRejectRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/reject`` body — same\ncontract as ExpenseConfirmRequest; ``rejected`` is also terminal.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "ExpenseRejectRequest",
         "type": "object"
       },
       "ExpenseResponse": {
@@ -10756,6 +10829,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -11052,6 +11135,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseMarkNotDuplicateRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -11236,6 +11329,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseRejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

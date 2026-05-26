@@ -16,6 +16,7 @@ isolation via ``selected_id``.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -132,22 +133,41 @@ def web_duplicates(
     )
 
 
+def _parse_form_updated_at(value: str) -> datetime | None:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return None
+    try:
+        return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+_STALE_DUPLICATE_MSG = "账单已在其它端被修改，请刷新后重新操作。"
+
+
 @router.post("/duplicates/{expense_id}/keep")
 def web_duplicate_keep(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
+    expected_updated_at: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    parsed = _parse_form_updated_at(expected_updated_at)
+    if parsed is None:
+        return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
-        mark_expense_not_duplicate(db, expense_id, selected_id)
+        mark_expense_not_duplicate(
+            db, expense_id, selected_id, expected_updated_at=parsed
+        )
         msg = "已标记为「不是重复」。"
     except AppError as exc:
-        msg = exc.message
+        msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/duplicates", selected_id, msg=msg)
 
 
@@ -156,17 +176,21 @@ def web_duplicate_reject_current(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
+    expected_updated_at: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    parsed = _parse_form_updated_at(expected_updated_at)
+    if parsed is None:
+        return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
-        reject_expense(db, expense_id, selected_id)
+        reject_expense(db, expense_id, selected_id, expected_updated_at=parsed)
         msg = "已删除当前账单。"
     except AppError as exc:
-        msg = exc.message
+        msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/duplicates", selected_id, msg=msg)
 
 
@@ -175,20 +199,33 @@ def web_duplicate_reject_original(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
+    expected_updated_at: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    parsed = _parse_form_updated_at(expected_updated_at)
+    if parsed is None:
+        return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     msg = "已删除被复制的那条，并保留当前账单。"
     try:
         current, original = _load_pair(db, tenant_id=selected_id, expense_id=expense_id)
         if original is None:
             raise AppError("invalid_request", "找不到被复制的账单。", status_code=404)
-        reject_expense(db, original.id, selected_id)
-        # Clear the suspected flag on the kept row so it doesn't block review.
-        mark_expense_not_duplicate(db, current.id, selected_id)
+        # ADR-0038 PR-2b: client only owns the *current* row's token
+        # (which is the row the duplicates UI surfaces); the linked
+        # ``original`` row is server-internal — we use its own
+        # ``updated_at`` as the internal token for the cascaded reject.
+        reject_expense(
+            db, original.id, selected_id, expected_updated_at=original.updated_at
+        )
+        # Clear the suspected flag on the kept row using the
+        # client-provided token (matches the row the UI displayed).
+        mark_expense_not_duplicate(
+            db, current.id, selected_id, expected_updated_at=parsed
+        )
     except AppError as exc:
-        msg = exc.message
+        msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
     return _web_redirect("/web/duplicates", selected_id, msg=msg)

@@ -189,10 +189,16 @@ interface ApiService {
     ): ExpenseSplitsResponseDto
 
     @POST("api/expenses/{id}/confirm")
-    suspend fun confirmExpense(@Path("id") id: Long): ExpenseDto
+    suspend fun confirmExpense(
+        @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto
 
     @POST("api/expenses/{id}/reject")
-    suspend fun rejectExpense(@Path("id") id: Long): ExpenseDto
+    suspend fun rejectExpense(
+        @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto
 
     @POST("api/expenses/{id}/ocr/retry")
     suspend fun retryOcr(@Path("id") id: Long): ExpenseDto
@@ -210,7 +216,10 @@ interface ApiService {
     ): StatusDto
 
     @POST("api/expenses/{id}/mark-not-duplicate")
-    suspend fun markNotDuplicate(@Path("id") id: Long): ExpenseDto
+    suspend fun markNotDuplicate(
+        @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto
 
     @GET("api/expenses/{id}/image")
     @Streaming

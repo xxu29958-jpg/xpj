@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from api_contract_helpers import (
+    confirm_expense_api,
+    mark_not_duplicate_api,
     patch_expense,
+    reject_expense_api,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -147,17 +150,15 @@ def test_expense_mutation_routes_are_tenant_scoped(client: TestClient, *, identi
             headers=identity.gray_app_headers,
             fields={"amount_cents": 1000, "merchant": "跨租户"},
         ),
-        client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.gray_app_headers),
-        client.post(f"/api/expenses/{owner_id}/reject", headers=identity.gray_app_headers),
+        confirm_expense_api(client, owner_id, headers=identity.gray_app_headers),
+        reject_expense_api(client, owner_id, headers=identity.gray_app_headers),
         client.post(f"/api/expenses/{owner_id}/ocr/retry", headers=identity.gray_app_headers),
         client.post(
             f"/api/expenses/{owner_id}/recognize-text",
             headers=identity.gray_app_headers,
             json={"raw_text": "交易金额：18.51"},
         ),
-        client.post(
-            f"/api/expenses/{owner_id}/mark-not-duplicate", headers=identity.gray_app_headers
-        ),
+        mark_not_duplicate_api(client, owner_id, headers=identity.gray_app_headers),
     ]
     for response in scoped_operations:
         assert response.status_code == 404
@@ -275,8 +276,8 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
     )
     assert owner_patch.status_code == 200
     assert (
-        client.post(
-            f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers
+        confirm_expense_api(
+            client, owner_id, headers=identity.app_headers
         ).status_code
         == 200
     )
@@ -366,16 +367,16 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
             headers=identity.app_headers,
             fields={"amount_cents": 1, "merchant": "owner不该改tester"},
         ),
-        client.post(f"/api/expenses/{tester_id}/confirm", headers=identity.app_headers),
-        client.post(f"/api/expenses/{tester_id}/reject", headers=identity.app_headers),
+        confirm_expense_api(client, tester_id, headers=identity.app_headers),
+        reject_expense_api(client, tester_id, headers=identity.app_headers),
         patch_expense(
             client,
             owner_id,
             headers=identity.gray_app_headers,
             fields={"amount_cents": 1, "merchant": "tester不该改owner"},
         ),
-        client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.gray_app_headers),
-        client.post(f"/api/expenses/{owner_id}/reject", headers=identity.gray_app_headers),
+        confirm_expense_api(client, owner_id, headers=identity.gray_app_headers),
+        reject_expense_api(client, owner_id, headers=identity.gray_app_headers),
     ]
     for response in cross_mutations:
         assert response.status_code == 404
@@ -419,14 +420,14 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert owner_patch.status_code == 200
     assert tester_patch.status_code == 200
     assert (
-        client.post(
-            f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers
+        confirm_expense_api(
+            client, owner_id, headers=identity.app_headers
         ).status_code
         == 200
     )
     assert (
-        client.post(
-            f"/api/expenses/{tester_id}/confirm", headers=identity.gray_app_headers
+        confirm_expense_api(
+            client, tester_id, headers=identity.gray_app_headers
         ).status_code
         == 200
     )

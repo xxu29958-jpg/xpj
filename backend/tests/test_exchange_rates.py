@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from api_contract_helpers import patch_expense
+from api_contract_helpers import confirm_expense_api, patch_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -213,9 +213,8 @@ def test_jpy_expense_uses_zero_fraction_minor_units_and_missing_rate_stays_pendi
         )
         db.commit()
 
-    confirmed_pending = client.post(
-        f"/api/expenses/{pending_id}/confirm",
-        headers=identity.app_headers,
+    confirmed_pending = confirm_expense_api(
+        client, pending_id, headers=identity.app_headers
     )
     assert confirmed_pending.status_code == 200, confirmed_pending.json()
     assert confirmed_pending.json()["status"] == "confirmed"

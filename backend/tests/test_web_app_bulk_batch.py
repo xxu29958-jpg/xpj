@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from api_contract_helpers import web_save_expense
+from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -44,10 +44,8 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
 
 def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_with_amount(web_client, "21.00", "Confirmed Bulk Cafe", identity=identity)
-    confirmed = web_client.post(
-        f"/web/expenses/{expense_id}/confirm",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    confirmed = web_confirm_expense(
+        web_client, expense_id, identity=identity, follow_redirects=False
     )
     assert confirmed.status_code in {303, 307}
 

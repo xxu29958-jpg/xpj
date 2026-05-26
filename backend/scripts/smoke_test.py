@@ -398,7 +398,22 @@ def run_smoke(base_url: str) -> None:
     assert_true(result.body.startswith(b"\xff\xd8"), "thumbnail should be jpeg")
     print("OK protected thumbnail")
 
-    result = request("POST", f"{base_url}/api/expenses/{expense_id}/confirm", headers=app_headers())
+    pre_confirm_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{expense_id}",
+        headers=app_headers(),
+    )
+    assert_equal(pre_confirm_snapshot.status, 200, "pre-confirm snapshot status")
+    confirm_no_amount_body = json.dumps(
+        {"expected_updated_at": pre_confirm_snapshot.json()["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{expense_id}/confirm",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=confirm_no_amount_body,
+    )
     assert_error(result, 400, "amount_required")
     print("OK amount required")
 
@@ -468,7 +483,22 @@ def run_smoke(base_url: str) -> None:
     assert_equal(recognized["expense_time"], "2026-05-04T08:23:25Z", "recognized time")
     print("OK recognize text")
 
-    result = request("POST", f"{base_url}/api/expenses/{expense_id}/confirm", headers=app_headers())
+    confirm_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{expense_id}",
+        headers=app_headers(),
+    )
+    assert_equal(confirm_snapshot.status, 200, "confirm snapshot status")
+    confirm_body = json.dumps(
+        {"expected_updated_at": confirm_snapshot.json()["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{expense_id}/confirm",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=confirm_body,
+    )
     assert_equal(result.status, 200, "confirm status")
     confirmed = result.json()
     assert_equal(confirmed["status"], "confirmed", "confirmed status")
@@ -597,7 +627,22 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["category"], "AI订阅", "auto classified category")
     print("OK auto classification")
 
-    result = request("POST", f"{base_url}/api/expenses/{second_id}/mark-not-duplicate", headers=app_headers())
+    second_mnd_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{second_id}",
+        headers=app_headers(),
+    )
+    assert_equal(second_mnd_snapshot.status, 200, "mark-not-duplicate snapshot status")
+    second_mnd_body = json.dumps(
+        {"expected_updated_at": second_mnd_snapshot.json()["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{second_id}/mark-not-duplicate",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=second_mnd_body,
+    )
     assert_equal(result.status, 200, "mark not duplicate status")
     assert_equal(result.json()["duplicate_status"], "none", "duplicate cleared")
     print("OK mark not duplicate")
@@ -605,7 +650,22 @@ def run_smoke(base_url: str) -> None:
     similar_upload = upload(base_url, "ticket4.png", "image/png", PNG_BYTES)
     assert_equal(similar_upload.status, 200, "similar upload status")
     similar_id = int(similar_upload.json()["id"])
-    result = request("POST", f"{base_url}/api/expenses/{similar_id}/mark-not-duplicate", headers=app_headers())
+    similar_mnd_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{similar_id}",
+        headers=app_headers(),
+    )
+    assert_equal(similar_mnd_snapshot.status, 200, "similar mark-not-duplicate snapshot status")
+    similar_mnd_body = json.dumps(
+        {"expected_updated_at": similar_mnd_snapshot.json()["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{similar_id}/mark-not-duplicate",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=similar_mnd_body,
+    )
     assert_equal(result.status, 200, "similar clear hash duplicate")
     similar_snapshot = request(
         "GET",
@@ -632,12 +692,42 @@ def run_smoke(base_url: str) -> None:
     assert_equal(result.json()["duplicate_status"], "suspected", "similar duplicate suspected")
     print("OK similar duplicate detection")
 
-    result = request("POST", f"{base_url}/api/expenses/{similar_id}/reject", headers=app_headers())
+    reject_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{similar_id}",
+        headers=app_headers(),
+    )
+    assert_equal(reject_snapshot.status, 200, "reject snapshot status")
+    reject_body = json.dumps(
+        {"expected_updated_at": reject_snapshot.json()["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{similar_id}/reject",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=reject_body,
+    )
     assert_equal(result.status, 200, "reject status")
     assert_equal(result.json()["status"], "rejected", "rejected status")
     print("OK reject expense")
 
-    result = request("POST", f"{base_url}/api/expenses/{second_id}/confirm", headers=app_headers())
+    second_confirm_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{second_id}",
+        headers=app_headers(),
+    )
+    assert_equal(second_confirm_snapshot.status, 200, "second confirm snapshot status")
+    second_confirm_body = json.dumps(
+        {"expected_updated_at": second_confirm_snapshot.json()["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{second_id}/confirm",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=second_confirm_body,
+    )
     assert_equal(result.status, 200, "second confirm status")
     print("OK second confirm")
 

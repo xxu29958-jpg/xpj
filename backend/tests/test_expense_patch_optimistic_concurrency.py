@@ -204,7 +204,12 @@ def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
         # Writer A moves the row out of EDITABLE_STATUSES.
         from app.services.expense_service import reject_expense
 
-        reject_expense(session_a, expense_id, tenant_id)
+        reject_expense(
+            session_a,
+            expense_id,
+            tenant_id,
+            expected_updated_at=shared_version,
+        )
 
         with pytest.raises(AppError) as exc_info:
             update_expense(

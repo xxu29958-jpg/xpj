@@ -41,6 +41,127 @@ def web_save_expense(
     )
 
 
+def confirm_expense_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+) -> httpx.Response:
+    """ADR-0038 PR-2b helper: POST /api/expenses/{id}/confirm with
+    fresh ``expected_updated_at`` from a GET snapshot. Returns the GET
+    response unchanged on non-200 (so callers can assert on 404/403)."""
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.post(
+        f"/api/expenses/{expense_id}/confirm",
+        headers=headers,
+        json={"expected_updated_at": snapshot.json()["updated_at"]},
+    )
+
+
+def reject_expense_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+) -> httpx.Response:
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.post(
+        f"/api/expenses/{expense_id}/reject",
+        headers=headers,
+        json={"expected_updated_at": snapshot.json()["updated_at"]},
+    )
+
+
+def mark_not_duplicate_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+) -> httpx.Response:
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.post(
+        f"/api/expenses/{expense_id}/mark-not-duplicate",
+        headers=headers,
+        json={"expected_updated_at": snapshot.json()["updated_at"]},
+    )
+
+
+def web_confirm_expense(
+    client: TestClient,
+    expense_id: int,
+    *,
+    identity: TestIdentity,
+    ledger_id: str = "owner",
+    follow_redirects: bool = False,
+) -> httpx.Response:
+    """ADR-0038 PR-2b: /web confirm form POST with fresh token."""
+    snapshot = client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert snapshot.status_code == 200, snapshot.text
+    return client.post(
+        f"/web/expenses/{expense_id}/confirm",
+        data={
+            "ledger_id": ledger_id,
+            "expected_updated_at": snapshot.json()["updated_at"],
+        },
+        follow_redirects=follow_redirects,
+    )
+
+
+def web_reject_expense(
+    client: TestClient,
+    expense_id: int,
+    *,
+    identity: TestIdentity,
+    ledger_id: str = "owner",
+    follow_redirects: bool = False,
+) -> httpx.Response:
+    snapshot = client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert snapshot.status_code == 200, snapshot.text
+    return client.post(
+        f"/web/expenses/{expense_id}/reject",
+        data={
+            "ledger_id": ledger_id,
+            "expected_updated_at": snapshot.json()["updated_at"],
+        },
+        follow_redirects=follow_redirects,
+    )
+
+
+def web_duplicates_action(
+    client: TestClient,
+    expense_id: int,
+    *,
+    identity: TestIdentity,
+    action: str,
+    ledger_id: str = "owner",
+    follow_redirects: bool = False,
+) -> httpx.Response:
+    """ADR-0038 PR-2b: /web/duplicates/{id}/{action} where action ∈
+    {keep, reject-current, reject-original}; carries client's token."""
+    snapshot = client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    )
+    assert snapshot.status_code == 200, snapshot.text
+    return client.post(
+        f"/web/duplicates/{expense_id}/{action}",
+        data={
+            "ledger_id": ledger_id,
+            "expected_updated_at": snapshot.json()["updated_at"],
+        },
+        follow_redirects=follow_redirects,
+    )
+
+
 def patch_expense(
     client: TestClient,
     expense_id: int,

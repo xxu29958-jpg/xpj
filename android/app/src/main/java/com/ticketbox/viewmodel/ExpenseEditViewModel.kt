@@ -216,8 +216,10 @@ class ExpenseEditViewModel(
             val baseline = _uiState.value.expense
             _uiState.update { it.copy(saving = true, message = null) }
             repository.updateExpense(expenseId, draft, baseline)
-                .onSuccess {
-                    repository.confirmExpense(expenseId)
+                .onSuccess { saved ->
+                    // ADR-0038 PR-2b: post-PATCH ``saved.updatedAt`` is the
+                    // fresh optimistic-concurrency token confirm must use.
+                    repository.confirmExpense(expenseId, saved.updatedAt)
                         .onSuccess { confirmed ->
                             _uiState.update { state -> state.copy(expense = confirmed, saving = false, done = true) }
                         }
@@ -231,9 +233,14 @@ class ExpenseEditViewModel(
 
     fun reject() {
         if (blockReadOnlyWrite()) return
+        val expense = _uiState.value.expense
+        if (expense == null) {
+            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, message = null) }
-            repository.rejectExpense(expenseId)
+            repository.rejectExpense(expenseId, expense.updatedAt)
                 .onSuccess { _uiState.update { it.copy(saving = false, done = true) } }
                 .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有删除成功，请稍后再试。") } }
         }
@@ -255,10 +262,15 @@ class ExpenseEditViewModel(
 
     fun markNotDuplicate() {
         if (blockReadOnlyWrite()) return
+        val expense = _uiState.value.expense
+        if (expense == null) {
+            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            return
+        }
         viewModelScope.launch {
-            repository.markNotDuplicate(expenseId)
-                .onSuccess { expense ->
-                    _uiState.update { it.copy(expense = expense, message = "已保留这条账单") }
+            repository.markNotDuplicate(expenseId, expense.updatedAt)
+                .onSuccess { updated ->
+                    _uiState.update { it.copy(expense = updated, message = "已保留这条账单") }
                 }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "暂时没处理成功，请稍后再试。") } }
         }

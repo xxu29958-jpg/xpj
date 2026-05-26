@@ -98,7 +98,14 @@ def test_confirm_expense_closes_active_decisions(
     decision_id = _seed_active_decision(expense_id)
 
     with SessionLocal() as db:
-        confirm_expense(db, expense_id, tenant_id="owner")
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        confirm_expense(
+            db,
+            expense_id,
+            tenant_id="owner",
+            expected_updated_at=expense.updated_at,
+        )
         decision = db.get(AlgorithmDecision, decision_id)
         assert decision.status == "dismissed"
 
@@ -110,7 +117,14 @@ def test_reject_expense_closes_active_decisions(
     decision_id = _seed_active_decision(expense_id)
 
     with SessionLocal() as db:
-        reject_expense(db, expense_id, tenant_id="owner")
+        expense = db.get(Expense, expense_id)
+        assert expense is not None
+        reject_expense(
+            db,
+            expense_id,
+            tenant_id="owner",
+            expected_updated_at=expense.updated_at,
+        )
         decision = db.get(AlgorithmDecision, decision_id)
         assert decision.status == "dismissed"
 

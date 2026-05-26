@@ -4,6 +4,7 @@ import csv
 from decimal import Decimal
 from io import StringIO
 
+from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
 
 
@@ -166,7 +167,7 @@ def test_missing_foreign_rate_stays_pending_without_fake_home_amount(
     assert stats.json()["total_amount_cents"] == 0
     assert stats.json()["count"] == 0
 
-    confirm = client.post(f"/api/expenses/{payload['id']}/confirm", headers=identity.app_headers)
+    confirm = confirm_expense_api(client, payload["id"], headers=identity.app_headers)
     assert confirm.status_code == 409
     assert confirm.json()["error"] == "exchange_rate_pending"
 

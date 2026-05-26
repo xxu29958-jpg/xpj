@@ -5,6 +5,7 @@ from dataclasses import replace
 from api_contract_helpers import (
     _stored_upload_files,
     make_heic_bytes,
+    reject_expense_api,
     upload_png_as_raw_body,
 )
 from fastapi.testclient import TestClient
@@ -422,7 +423,7 @@ def test_rejecting_duplicate_original_clears_other_pending_reference(
     second_id = second.json()["id"]
     assert second.json()["duplicate_of_id"] == first_id
 
-    rejected = client.post(f"/api/expenses/{first_id}/reject", headers=identity.app_headers)
+    rejected = reject_expense_api(client, first_id, headers=identity.app_headers)
     assert rejected.status_code == 200
 
     pending = client.get("/api/expenses/pending", headers=identity.app_headers)

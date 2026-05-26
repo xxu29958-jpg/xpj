@@ -162,17 +162,17 @@ class ExpenseRepository(
         expectedLedgerId: String? = null,
     ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedLedgerId)
 
-    override suspend fun confirmExpense(id: Long): Result<Expense> =
-        pendingRepository.confirmExpense(id)
+    override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
+        pendingRepository.confirmExpense(id, expectedUpdatedAt)
 
-    override suspend fun rejectExpense(id: Long): Result<Expense> =
-        pendingRepository.rejectExpense(id)
+    override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
+        pendingRepository.rejectExpense(id, expectedUpdatedAt)
 
     suspend fun retryOcr(id: Long): Result<Expense> =
         detailRepository.retryOcr(id)
 
-    override suspend fun markNotDuplicate(id: Long): Result<Expense> =
-        pendingRepository.markNotDuplicate(id)
+    override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
+        pendingRepository.markNotDuplicate(id, expectedUpdatedAt)
 
     suspend fun fetchDuplicates(): Result<List<Expense>> =
         detailRepository.fetchDuplicates()

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from api_contract_helpers import patch_expense
+from api_contract_helpers import confirm_expense_api, patch_expense
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -364,10 +364,7 @@ def test_confirm_closes_remaining_active_subject_decisions(
         )
         assert active_before == 2
 
-    response = client.post(
-        f"/api/expenses/{expense_id}/confirm",
-        headers=identity.app_headers,
-    )
+    response = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 200
 
     with SessionLocal() as db:

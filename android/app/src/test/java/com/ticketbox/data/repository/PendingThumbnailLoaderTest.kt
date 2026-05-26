@@ -88,13 +88,13 @@ private class ThumbnailFakeReviewActions(
     override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun confirmExpense(id: Long): Result<Expense> =
+    override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun rejectExpense(id: Long): Result<Expense> =
+    override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun markNotDuplicate(id: Long): Result<Expense> =
+    override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())

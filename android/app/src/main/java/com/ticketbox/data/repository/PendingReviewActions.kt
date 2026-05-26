@@ -27,9 +27,12 @@ interface PendingReviewActions {
         draft: ExpenseDraft,
         baseline: Expense? = null,
     ): Result<Expense>
-    suspend fun confirmExpense(id: Long): Result<Expense>
-    suspend fun rejectExpense(id: Long): Result<Expense>
-    suspend fun markNotDuplicate(id: Long): Result<Expense>
+    // ADR-0038 PR-2b: 状态机 POST 必须带 expected_updated_at（client
+    // 上次看到的 baseline.updatedAt）。Stale 写入 → 409，由 errorHandler
+    // 映射到 RepositoryException 让 UI 提示刷新。
+    suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
+    suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
+    suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense>
     suspend fun categories(): Result<List<String>>
     suspend fun uploadScreenshot(
         fileName: String,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from api_contract_helpers import web_save_expense
+from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 
 
@@ -112,10 +112,8 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity
 
 def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/confirm",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    resp = web_confirm_expense(
+        web_client, expense_id, identity=identity, follow_redirects=False
     )
     assert resp.status_code == 200
     assert "请先填写金额" in resp.text

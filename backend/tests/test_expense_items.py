@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from api_contract_helpers import upload_png
+from api_contract_helpers import reject_expense_api, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -282,7 +282,7 @@ def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: Test
 
 def test_rejected_expense_items_cannot_be_replaced(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
+    rejected = reject_expense_api(client, expense_id, headers=identity.app_headers)
     assert rejected.status_code == 200, rejected.json()
 
     response = client.put(

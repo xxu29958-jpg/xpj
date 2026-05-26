@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import android.util.Log
 import com.ticketbox.BuildConfig
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -89,21 +90,42 @@ internal class ExpensePendingRepository(
         updated.toDomain()
     }
 
-    override suspend fun confirmExpense(id: Long): Result<Expense> = core.errorHandler.safeCall {
+    override suspend fun confirmExpense(
+        id: Long,
+        expectedUpdatedAt: String,
+    ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        val confirmed = core.cacheIfConfirmed(bound.call { it.confirmExpense(id) }, bound.ledgerId)
+        val confirmed = core.cacheIfConfirmed(
+            bound.call {
+                it.confirmExpense(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+            },
+            bound.ledgerId,
+        )
         confirmed.toDomain()
     }
 
-    override suspend fun rejectExpense(id: Long): Result<Expense> = core.errorHandler.safeCall {
+    override suspend fun rejectExpense(
+        id: Long,
+        expectedUpdatedAt: String,
+    ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        val rejected = bound.call { it.rejectExpense(id) }
+        val rejected = bound.call {
+            it.rejectExpense(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+        }
         rejected.toDomain()
     }
 
-    override suspend fun markNotDuplicate(id: Long): Result<Expense> = core.errorHandler.safeCall {
+    override suspend fun markNotDuplicate(
+        id: Long,
+        expectedUpdatedAt: String,
+    ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        val updated = core.cacheIfConfirmed(bound.call { it.markNotDuplicate(id) }, bound.ledgerId)
+        val updated = core.cacheIfConfirmed(
+            bound.call {
+                it.markNotDuplicate(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+            },
+            bound.ledgerId,
+        )
         updated.toDomain()
     }
 

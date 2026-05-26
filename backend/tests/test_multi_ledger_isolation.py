@@ -11,7 +11,12 @@ v0.4-specific token-rotation path.
 from __future__ import annotations
 
 import pytest
-from api_contract_helpers import patch_expense, upload_png
+from api_contract_helpers import (
+    confirm_expense_api,
+    patch_expense,
+    reject_expense_api,
+    upload_png,
+)
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -216,19 +221,13 @@ def test_owner_cannot_patch_tester_expense(client: TestClient, *, identity) -> N
 
 def test_owner_cannot_confirm_tester_expense(client: TestClient, *, identity) -> None:
     tester_id = _gray_pending_id(client, identity=identity)
-    response = client.post(
-        f"/api/expenses/{tester_id}/confirm",
-        headers=identity.app_headers,
-    )
+    response = confirm_expense_api(client, tester_id, headers=identity.app_headers)
     assert response.status_code == 404
 
 
 def test_owner_cannot_reject_tester_expense(client: TestClient, *, identity) -> None:
     tester_id = _gray_pending_id(client, identity=identity)
-    response = client.post(
-        f"/api/expenses/{tester_id}/reject",
-        headers=identity.app_headers,
-    )
+    response = reject_expense_api(client, tester_id, headers=identity.app_headers)
     assert response.status_code == 404
 
 
@@ -254,9 +253,9 @@ def test_csv_export_is_ledger_scoped(client: TestClient, *, identity) -> None:
         client, tester_id, headers=identity.gray_app_headers,
         fields={"amount_cents": 5678, "category": "餐饮"},
     ).status_code == 200
-    assert client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers).status_code == 200
-    assert client.post(
-        f"/api/expenses/{tester_id}/confirm", headers=identity.gray_app_headers
+    assert confirm_expense_api(client, owner_id, headers=identity.app_headers).status_code == 200
+    assert confirm_expense_api(
+        client, tester_id, headers=identity.gray_app_headers
     ).status_code == 200
 
     owner_csv = client.get("/api/expenses/export.csv", headers=identity.app_headers)
@@ -282,9 +281,9 @@ def test_monthly_stats_is_ledger_scoped(client: TestClient, *, identity) -> None
         client, tester_id, headers=identity.gray_app_headers,
         fields={"amount_cents": 5678, "category": "餐饮"},
     ).status_code == 200
-    assert client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers).status_code == 200
-    assert client.post(
-        f"/api/expenses/{tester_id}/confirm", headers=identity.gray_app_headers
+    assert confirm_expense_api(client, owner_id, headers=identity.app_headers).status_code == 200
+    assert confirm_expense_api(
+        client, tester_id, headers=identity.gray_app_headers
     ).status_code == 200
 
     owner_stats = client.get("/api/stats/monthly", headers=identity.app_headers)

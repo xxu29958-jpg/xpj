@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
+from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -117,9 +118,8 @@ def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(
     assert target["source"] == "支付宝账单"
     assert target["expense_time"] == "2026-05-06T00:30:00Z"
 
-    confirmed = client.post(
-        f"/api/expenses/{target['id']}/confirm",
-        headers=identity.app_headers,
+    confirmed = confirm_expense_api(
+        client, target["id"], headers=identity.app_headers
     )
     assert confirmed.status_code == 200, confirmed.json()
     assert confirmed.json()["status"] == "confirmed"

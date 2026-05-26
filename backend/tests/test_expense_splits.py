@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from api_contract_helpers import confirm_expense_api, reject_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -277,7 +278,7 @@ def test_expense_splits_do_not_change_stats_or_export(client: TestClient, *, ide
     )
     assert replaced["splits_total_amount_cents"] == 9999
 
-    confirmed = client.post(f"/api/expenses/{expense_id}/confirm", headers=_bearer(owner_token))
+    confirmed = confirm_expense_api(client, expense_id, headers=_bearer(owner_token))
     assert confirmed.status_code == 200, confirmed.json()
 
     stats = client.get("/api/stats/monthly?month=2026-05", headers=_bearer(owner_token))
@@ -431,7 +432,7 @@ def test_rejected_expense_splits_cannot_be_replaced(client: TestClient, *, ident
         _member_member_id,
     ) = _family_split_fixture(client, identity=identity)
     expense_id = _upload_expense(client, owner_token)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=_bearer(owner_token))
+    rejected = reject_expense_api(client, expense_id, headers=_bearer(owner_token))
     assert rejected.status_code == 200, rejected.json()
 
     response = client.put(

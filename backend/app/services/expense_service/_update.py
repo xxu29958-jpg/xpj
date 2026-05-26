@@ -239,7 +239,20 @@ def update_expense(
     return expense
 
 
-def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
+def confirm_expense(
+    db: Session,
+    expense_id: int,
+    tenant_id: str,
+    *,
+    expected_updated_at: datetime,
+) -> Expense:
+    """ADR-0038 PR-2b: confirm with optimistic concurrency.
+
+    Idempotency on terminal states is preserved: confirming an already
+    ``confirmed`` row returns 200 without inspecting the token. Stale
+    snapshot against a still-``pending`` row → 409 ``state_conflict``
+    via DB-level ``updated_at = expected`` predicate.
+    """
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "confirmed":
         return expense
@@ -251,12 +264,14 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     db.flush()
 
     now = now_utc()
+    expected_predicate = ensure_utc(expected_updated_at).replace(tzinfo=None)
     result = db.execute(
         update(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.id == expense_id)
         .where(Expense.status == "pending")
         .where(Expense.amount_cents.is_not(None))
+        .where(Expense.updated_at == expected_predicate)
         .values(status="confirmed", confirmed_at=now, updated_at=now)
         .execution_options(synchronize_session=False)
     )
@@ -266,7 +281,11 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
         if expense.status == "confirmed":
             return expense
         if expense.status == "pending":
+            # row is still pending; either amount_cents missing (terminal
+            # validation error) or updated_at mismatched. Validation
+            # raises its own error; otherwise stale → 409.
             _ensure_expense_can_confirm(expense)
+            raise AppError("state_conflict", status_code=409)
         raise AppError("expense_not_found", status_code=404)
 
     db.expire_all()
@@ -290,13 +309,26 @@ def confirm_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
     return expense
 
 
-def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
+def reject_expense(
+    db: Session,
+    expense_id: int,
+    tenant_id: str,
+    *,
+    expected_updated_at: datetime,
+) -> Expense:
+    """ADR-0038 PR-2b: reject with optimistic concurrency.
+
+    Like ``confirm_expense``, idempotent on ``rejected`` (terminal) and
+    409 on stale ``pending`` rows.
+    """
     now = now_utc()
+    expected_predicate = ensure_utc(expected_updated_at).replace(tzinfo=None)
     result = db.execute(
         update(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.id == expense_id)
         .where(Expense.status == "pending")
+        .where(Expense.updated_at == expected_predicate)
         .values(status="rejected", rejected_at=now, updated_at=now)
         .execution_options(synchronize_session=False)
     )
@@ -305,6 +337,8 @@ def reject_expense(db: Session, expense_id: int, tenant_id: str) -> Expense:
         existing = get_expense(db, expense_id, tenant_id)
         if existing.status == "rejected":
             return existing
+        if existing.status == "pending":
+            raise AppError("state_conflict", status_code=409)
         raise AppError("expense_not_found", status_code=404)
 
     db.expire_all()

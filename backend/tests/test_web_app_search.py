@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from api_contract_helpers import web_save_expense
+from api_contract_helpers import web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
@@ -44,10 +44,8 @@ def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00"
 def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, identity) -> None:
     pending_id = _seed_pending_with_amount(web_client, "9.00", "SearchCafe Pending", identity=identity)
     confirmed_id = _seed_pending_with_amount(web_client, "11.00", "SearchCafe Confirmed", identity=identity)
-    confirmed = web_client.post(
-        f"/web/expenses/{confirmed_id}/confirm",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    confirmed = web_confirm_expense(
+        web_client, confirmed_id, identity=identity, follow_redirects=False
     )
     assert confirmed.status_code in {303, 307}
     rule = web_client.post(

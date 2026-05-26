@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 from api_contract_helpers import (
+    confirm_expense_api,
     patch_expense,
     upload_png,
 )
@@ -48,7 +49,7 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     assert thumbnail.status_code == 200
     assert thumbnail.content.startswith(b"\xff\xd8")
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
+    response = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 400
     assert response.json()["error"] == "amount_required"
 
@@ -67,7 +68,7 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     assert response.status_code == 200
     assert response.json()["amount_cents"] == 3680
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
+    response = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json()["status"] == "confirmed"
 
@@ -140,7 +141,7 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     )
     assert response.status_code == 200
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
+    response = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 200
     assert response.json()["status"] == "confirmed"
 
@@ -197,7 +198,7 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     )
     assert response.status_code == 200
 
-    response = client.post(f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers)
+    response = confirm_expense_api(client, expense_id, headers=identity.app_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "confirmed"
@@ -236,8 +237,8 @@ def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient, 
     )
     assert response.status_code == 200
     assert (
-        client.post(
-            f"/api/expenses/{expense_id}/confirm", headers=identity.app_headers
+        confirm_expense_api(
+            client, expense_id, headers=identity.app_headers
         ).status_code
         == 200
     )

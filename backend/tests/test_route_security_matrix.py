@@ -49,8 +49,24 @@ from fastapi.testclient import TestClient
             "/api/expenses/notification-drafts",
             {"json": {"source": "android-notification", "amount_cents": 1200}},
         ),
+        # ADR-0038 PR-2b: confirm/reject now require an `expected_updated_at`
+        # body, but auth runs first — 401 fires before payload validation.
+        (
+            "POST",
+            "/api/expenses/1/confirm",
+            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+        ),
+        (
+            "POST",
+            "/api/expenses/1/reject",
+            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+        ),
         ("POST", "/api/expenses/1/items/acknowledge-mismatch", {}),
-        ("POST", "/api/expenses/1/mark-not-duplicate", {}),
+        (
+            "POST",
+            "/api/expenses/1/mark-not-duplicate",
+            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+        ),
         ("POST", "/api/expenses/1/ocr/retry", {}),
         ("POST", "/api/expenses/1/recognize-text", {"json": {"raw_text": "merchant 12.00"}}),
         (

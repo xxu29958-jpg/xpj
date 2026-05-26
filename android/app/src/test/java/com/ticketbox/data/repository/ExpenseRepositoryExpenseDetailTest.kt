@@ -176,7 +176,7 @@ class ExpenseRepositoryExpenseDetailTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val failure = repository.confirmExpense(9).exceptionOrNull()
+        val failure = repository.confirmExpense(9, "2026-05-04T04:30:00Z").exceptionOrNull()
 
         assertEquals("账本已切换，请重新操作。", failure?.message)
         assertEquals(listOf(9L), apiService.confirmExpenseIds)
@@ -196,7 +196,7 @@ class ExpenseRepositoryExpenseDetailTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val result = repository.markNotDuplicate(9).getOrThrow()
+        val result = repository.markNotDuplicate(9, "2026-05-04T04:30:00Z").getOrThrow()
 
         assertEquals(9L, result.id)
         assertEquals(listOf(9L), dao.getConfirmed("owner").map { it.serverId })

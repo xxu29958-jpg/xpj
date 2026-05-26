@@ -283,13 +283,19 @@ internal class FakeApiService(
         return expenseSplitsResponse()
     }
 
-    override suspend fun confirmExpense(id: Long): ExpenseDto {
+    override suspend fun confirmExpense(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto {
         confirmExpenseIds += id
         onConfirmExpense?.invoke()
         return confirmedExpenseDto()
     }
 
-    override suspend fun rejectExpense(id: Long): ExpenseDto = unsupported()
+    override suspend fun rejectExpense(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto = unsupported()
 
     override suspend fun retryOcr(id: Long): ExpenseDto = unsupported()
 
@@ -303,7 +309,10 @@ internal class FakeApiService(
         decisionPublicId: String,
     ): StatusDto = unsupported()
 
-    override suspend fun markNotDuplicate(id: Long): ExpenseDto {
+    override suspend fun markNotDuplicate(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto {
         markNotDuplicateIds += id
         return confirmedExpenseDto()
     }

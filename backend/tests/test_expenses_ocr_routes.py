@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from api_contract_helpers import (
     patch_expense,
+    reject_expense_api,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -114,7 +115,7 @@ def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient, *, ident
 
 def test_ocr_routes_do_not_modify_rejected_expense(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
+    rejected = reject_expense_api(client, expense_id, headers=identity.app_headers)
     assert rejected.status_code == 200
 
     retry = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers)

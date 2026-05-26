@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from api_contract_helpers import web_confirm_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -177,10 +178,8 @@ def test_web_detail_rows_do_not_change_confirm_stats_or_export(web_client: TestC
     expense_id = _seed_pending_expense(amount_cents=1234)
     _seed_detail_rows(expense_id)
 
-    confirmed = web_client.post(
-        f"/web/expenses/{expense_id}/confirm",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    confirmed = web_confirm_expense(
+        web_client, expense_id, identity=identity, follow_redirects=False
     )
     assert confirmed.status_code in {303, 307}, confirmed.text
 

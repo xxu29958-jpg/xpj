@@ -222,7 +222,7 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            repository.confirmExpense(expense.id)
+            repository.confirmExpense(expense.id, expense.updatedAt)
                 .onSuccess { confirmed ->
                     if (requestGeneration != generation) return@onSuccess
                     _uiState.update { state ->
@@ -247,7 +247,7 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            repository.rejectExpense(expense.id)
+            repository.rejectExpense(expense.id, expense.updatedAt)
                 .onSuccess { rejected ->
                     if (requestGeneration != generation) return@onSuccess
                     _uiState.update { state ->
@@ -272,7 +272,7 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            repository.markNotDuplicate(expense.id)
+            repository.markNotDuplicate(expense.id, expense.updatedAt)
                 .onSuccess { updated ->
                     if (requestGeneration != generation) return@onSuccess
                     _uiState.update { state ->

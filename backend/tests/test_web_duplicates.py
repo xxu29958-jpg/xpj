@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from api_contract_helpers import web_duplicates_action
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -89,10 +90,8 @@ def test_web_duplicates_no_secret_leak(web_client: TestClient, *, identity) -> N
 
 def test_web_duplicates_keep_both_clears_flag(web_client: TestClient, *, identity) -> None:
     _, second = _seed_duplicate_pair(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/duplicates/{second}/keep",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    resp = web_duplicates_action(
+        web_client, second, identity=identity, action="keep"
     )
     assert resp.status_code == 303
     with SessionLocal() as db:
@@ -107,10 +106,8 @@ def test_web_duplicates_keep_both_clears_flag(web_client: TestClient, *, identit
 
 def test_web_duplicates_reject_current_marks_rejected(web_client: TestClient, *, identity) -> None:
     first, second = _seed_duplicate_pair(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/duplicates/{second}/reject-current",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    resp = web_duplicates_action(
+        web_client, second, identity=identity, action="reject-current"
     )
     assert resp.status_code == 303
     with SessionLocal() as db:
@@ -128,10 +125,8 @@ def test_web_duplicates_reject_current_marks_rejected(web_client: TestClient, *,
 
 def test_web_duplicates_reject_original_keeps_current(web_client: TestClient, *, identity) -> None:
     first, second = _seed_duplicate_pair(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/duplicates/{second}/reject-original",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    resp = web_duplicates_action(
+        web_client, second, identity=identity, action="reject-original"
     )
     assert resp.status_code == 303
     with SessionLocal() as db:

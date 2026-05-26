@@ -649,19 +649,19 @@ private class FakeReviewActions(
             ?: error("updateResponder not set; got id=$id draft=$draft baseline=$baseline")
     }
 
-    override suspend fun confirmExpense(id: Long): Result<Expense> {
+    override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> {
         confirmCalls += 1
         confirmedIds += id
         return confirmResponder?.invoke(id)
-            ?: error("confirmResponder not set; got id=$id")
+            ?: error("confirmResponder not set; got id=$id token=$expectedUpdatedAt")
     }
 
-    override suspend fun rejectExpense(id: Long): Result<Expense> {
+    override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> {
         rejectCalls += 1
         return rejectResponder?.invoke(id) ?: error("rejectResponder not set")
     }
 
-    override suspend fun markNotDuplicate(id: Long): Result<Expense> {
+    override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> {
         markNotDuplicateCalls += 1
         return markNotDuplicateResponder?.invoke(id) ?: error("markNotDuplicateResponder not set")
     }

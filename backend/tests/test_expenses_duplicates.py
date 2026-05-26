@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from api_contract_helpers import (
+    mark_not_duplicate_api,
     patch_expense,
+    reject_expense_api,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -32,8 +34,8 @@ def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
     first_id = upload_png(client, identity=identity)
     second_id = upload_png(client, identity=identity)
 
-    response = client.post(
-        f"/api/expenses/{second_id}/mark-not-duplicate", headers=identity.app_headers
+    response = mark_not_duplicate_api(
+        client, second_id, headers=identity.app_headers
     )
     assert response.status_code == 200
     assert response.json()["duplicate_status"] == "none"
@@ -90,7 +92,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
     assert duplicates.status_code == 200
     assert any(item["id"] == second_id for item in duplicates.json())
 
-    response = client.post(f"/api/expenses/{second_id}/reject", headers=identity.app_headers)
+    response = reject_expense_api(client, second_id, headers=identity.app_headers)
     assert response.status_code == 200
     duplicates = client.get("/api/duplicates", headers=identity.app_headers)
     assert duplicates.status_code == 200
@@ -101,8 +103,8 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
     assert duplicates.status_code == 200
     assert any(item["id"] == second_id for item in duplicates.json())
 
-    response = client.post(
-        f"/api/expenses/{second_id}/mark-not-duplicate", headers=identity.app_headers
+    response = mark_not_duplicate_api(
+        client, second_id, headers=identity.app_headers
     )
     assert response.status_code == 200
     assert response.json()["duplicate_status"] == "none"
@@ -143,7 +145,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
-    reject = client.post(f"/api/expenses/{first_id}/reject", headers=identity.app_headers)
+    reject = reject_expense_api(client, first_id, headers=identity.app_headers)
     assert reject.status_code == 200
     assert reject.json()["status"] == "rejected"
 
@@ -151,7 +153,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
 def test_similar_expense_duplicate_ignore_survives_after_edit(client: TestClient, *, identity) -> None:
     first_id = upload_png(client, identity=identity)
     second_id = upload_png(client, identity=identity)
-    client.post(f"/api/expenses/{second_id}/mark-not-duplicate", headers=identity.app_headers)
+    mark_not_duplicate_api(client, second_id, headers=identity.app_headers)
 
     for expense_id, timestamp in [
         (first_id, "2026-05-03T04:20:00Z"),

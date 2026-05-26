@@ -20,12 +20,15 @@ ItemsSumStatus = Literal["matched", "mismatch_known", "mismatch_acknowledged", "
 __all__ = [
     "ConfirmedExpenseBatchUpdateRequest",
     "ConfirmedExpenseBatchUpdateResponse",
+    "ExpenseConfirmRequest",
     "ExpenseItemRequest",
     "ExpenseItemReplaceRequest",
     "ExpenseItemResponse",
     "ExpenseItemsResponse",
     "ExpenseManualCreateRequest",
+    "ExpenseMarkNotDuplicateRequest",
     "ExpenseRecognizeTextRequest",
+    "ExpenseRejectRequest",
     "ExpenseResponse",
     "PendingCategorySuggestionResponse",
     "PendingDuplicateCandidateResponse",
@@ -105,6 +108,38 @@ class ExpenseUpdateRequest(BaseModel):
     tags: str | None = None
     value_score: int | None = Field(default=None, ge=1, le=5)
     regret_score: int | None = Field(default=None, ge=1, le=5)
+
+
+class ExpenseConfirmRequest(BaseModel):
+    """ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.
+
+    ``expected_updated_at`` is the optimistic-concurrency token client
+    last saw on the expense; service-layer ``confirm_expense`` atomic
+    ``UPDATE WHERE updated_at = expected_updated_at`` rejects stale
+    writes with 409. Confirming an already-confirmed row remains
+    idempotent (200) regardless of the token — confirmed is terminal.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
+
+
+class ExpenseRejectRequest(BaseModel):
+    """ADR-0038 PR-2b: ``POST /api/expenses/{id}/reject`` body — same
+    contract as ExpenseConfirmRequest; ``rejected`` is also terminal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
+
+
+class ExpenseMarkNotDuplicateRequest(BaseModel):
+    """ADR-0038 PR-2b: ``POST /api/expenses/{id}/mark-not-duplicate``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
 
 
 class ConfirmedExpenseBatchUpdateRequest(BaseModel):

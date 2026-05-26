@@ -138,6 +138,19 @@ data class ExpenseUpdateRequest(
     val regretScore: Int?,
 )
 
+/**
+ * ADR-0038 PR-2b: optimistic-concurrency token shared by the
+ * confirm / reject / mark-not-duplicate state-machine POSTs.
+ *
+ * Client passes the ``updatedAt`` of the last ``Expense`` snapshot it
+ * saw. Backend ``UPDATE WHERE updated_at = expected_updated_at``
+ * rejects stale writes with HTTP 409.
+ */
+data class ExpenseStateTokenRequest(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
+)
+
 data class NotificationDraftRequestDto(
     val source: String,
     @param:Json(name = "original_currency")

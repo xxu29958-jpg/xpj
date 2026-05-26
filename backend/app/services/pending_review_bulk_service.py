@@ -158,7 +158,9 @@ def _apply_reject(db: Session, row, tenant_id: str, result: BulkResult) -> None:
         result.bump(SKIP_REASON_NOT_PENDING)
         return
     try:
-        reject_expense(db, row.id, tenant_id)
+        # ADR-0038 PR-2b: 服务端 bulk handler 已经读到 row.updated_at，
+        # 直接喂给 reject_expense；不让外层管线携带 token。
+        reject_expense(db, row.id, tenant_id, expected_updated_at=row.updated_at)
         result.success_count += 1
     except AppError:
         result.bump("忽略失败")
@@ -172,7 +174,7 @@ def _apply_confirm_ready(db: Session, row, tenant_id: str, result: BulkResult) -
         result.bump(SKIP_REASON_MISSING_AMOUNT)
         return
     try:
-        confirm_expense(db, row.id, tenant_id)
+        confirm_expense(db, row.id, tenant_id, expected_updated_at=row.updated_at)
         result.success_count += 1
     except AppError:
         result.bump("确认失败")
@@ -183,7 +185,9 @@ def _apply_keep_duplicate(db: Session, row, tenant_id: str, result: BulkResult) 
         result.bump(SKIP_REASON_NOT_SUSPECTED_DUPLICATE)
         return
     try:
-        mark_expense_not_duplicate(db, row.id, tenant_id)
+        mark_expense_not_duplicate(
+            db, row.id, tenant_id, expected_updated_at=row.updated_at
+        )
         result.success_count += 1
     except AppError:
         result.bump("更新失败")

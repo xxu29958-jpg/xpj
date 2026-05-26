@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import re
 
-from api_contract_helpers import web_save_expense
+from api_contract_helpers import (
+    web_confirm_expense,
+    web_reject_expense,
+    web_save_expense,
+)
 from fastapi.testclient import TestClient
 
 
@@ -64,10 +68,8 @@ def test_web_selected_ledger_confirmed_isolated(web_client: TestClient, *, ident
         data={"amount_yuan": "9.99", "merchant": "X", "category": "", "note": "",
               "ledger_id": "owner"},
     )
-    confirm_resp = web_client.post(
-        f"/web/expenses/{expense_id}/confirm",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    confirm_resp = web_confirm_expense(
+        web_client, expense_id, identity=identity, follow_redirects=False
     )
     assert confirm_resp.status_code in {303, 307}
     owner_confirmed = web_client.get("/web/confirmed?ledger_id=owner")
@@ -88,10 +90,8 @@ def test_web_selected_ledger_stats_isolated(web_client: TestClient) -> None:
 
 def test_web_reject_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/reject",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    resp = web_reject_expense(
+        web_client, expense_id, identity=identity, follow_redirects=False
     )
     assert resp.status_code in {303, 307}
     assert "ledger_id=owner" in resp.headers.get("location", "")
@@ -106,10 +106,8 @@ def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient, *, i
         data={"amount_yuan": "1.50", "merchant": "M", "category": "", "note": "",
               "ledger_id": "owner"},
     )
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/confirm",
-        data={"ledger_id": "owner"},
-        follow_redirects=False,
+    resp = web_confirm_expense(
+        web_client, expense_id, identity=identity, follow_redirects=False
     )
     assert resp.status_code in {303, 307}
     assert "ledger_id=owner" in resp.headers.get("location", "")

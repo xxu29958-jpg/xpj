@@ -4,6 +4,7 @@ import os
 from dataclasses import replace
 from datetime import timedelta
 
+from api_contract_helpers import reject_expense_api
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -39,7 +40,7 @@ def test_cleanup_rejected_images_keeps_row_and_removes_old_files(client: TestCli
     from app.services import cleanup_service
 
     expense_id = _upload_png(client, identity=identity)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
+    rejected = reject_expense_api(client, expense_id, headers=identity.app_headers)
     assert rejected.status_code == 200
 
     with SessionLocal() as db:
@@ -82,7 +83,7 @@ def test_cleanup_rejected_images_keeps_db_retryable_when_unlink_fails(
     from app.services import cleanup_service
 
     expense_id = _upload_png(client, identity=identity)
-    rejected = client.post(f"/api/expenses/{expense_id}/reject", headers=identity.app_headers)
+    rejected = reject_expense_api(client, expense_id, headers=identity.app_headers)
     assert rejected.status_code == 200
 
     with SessionLocal() as db:
