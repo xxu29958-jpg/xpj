@@ -155,6 +155,7 @@ class ConfirmedExpenseBatchUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expense_ids: list[int] = Field(min_length=1, max_length=200)
+    expected_updated_at_by_id: dict[int, datetime] = Field(min_length=1, max_length=200)
     category: str | None = Field(default=None, max_length=64)
     tags: str | None = Field(default=None, max_length=500)
 

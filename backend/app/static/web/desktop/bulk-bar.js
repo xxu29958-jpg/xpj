@@ -11,18 +11,21 @@
     const all = document.getElementById("check-all");
     const checks = Array.from(document.querySelectorAll(".row-check"));
 
-    function selectedIds() {
-      const ids = [];
+    function selectedEntries() {
+      const entries = [];
       document.querySelectorAll(".row-check.checked").forEach(function (el) {
-        ids.push(el.getAttribute("data-id"));
+        entries.push({
+          id: el.getAttribute("data-id"),
+          updatedAt: el.getAttribute("data-updated-at") || ""
+        });
       });
-      return ids;
+      return entries;
     }
 
     function refresh() {
-      const ids = selectedIds();
-      counter.textContent = String(ids.length);
-      form.classList.toggle("on", ids.length > 0);
+      const entries = selectedEntries();
+      counter.textContent = String(entries.length);
+      form.classList.toggle("on", entries.length > 0);
       checks.forEach(function (cb) {
         const checked = cb.classList.contains("checked");
         const row = cb.closest(".exp-row, .timeline-row");
@@ -34,17 +37,26 @@
       });
       // 同步隐藏 input
       form.querySelectorAll('input[name="expense_ids"]').forEach(function (n) { n.remove(); });
-      ids.forEach(function (id) {
+      form.querySelectorAll('input[name="expected_updated_at"]').forEach(function (n) { n.remove(); });
+      entries.forEach(function (entry) {
         const h = document.createElement("input");
         h.type = "hidden";
         h.name = "expense_ids";
-        h.value = id;
+        h.value = entry.id;
         form.appendChild(h);
+
+        if (entry.updatedAt) {
+          const token = document.createElement("input");
+          token.type = "hidden";
+          token.name = "expected_updated_at";
+          token.value = entry.updatedAt;
+          form.appendChild(token);
+        }
       });
       if (all) {
-        const allChecked = checks.length > 0 && ids.length === checks.length;
+        const allChecked = checks.length > 0 && entries.length === checks.length;
         all.classList.toggle("checked", allChecked);
-        all.setAttribute("aria-checked", allChecked ? "true" : (ids.length > 0 ? "mixed" : "false"));
+        all.setAttribute("aria-checked", allChecked ? "true" : (entries.length > 0 ? "mixed" : "false"));
       }
     }
 

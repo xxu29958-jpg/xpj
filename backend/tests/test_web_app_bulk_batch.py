@@ -53,7 +53,11 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     assert page.status_code == 200
     assert 'action="/web/confirmed/batch-update"' in page.text
     assert f'data-id="{expense_id}"' in page.text
+    assert 'data-updated-at="' in page.text
     assert 'id="check-all"' in page.text
+    token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()[
+        "updated_at"
+    ]
 
     category_resp = web_client.post(
         "/web/confirmed/batch-update",
@@ -61,6 +65,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "action": "set_category",
             "ledger_id": "owner",
             "expense_ids": [str(expense_id)],
+            "expected_updated_at": [token],
             "category": "Batch Web Cat",
             "page": "2",
         },
@@ -70,6 +75,9 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     assert "page=2" in category_resp.headers["location"]
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "Batch Web Cat" in detail.text
+    token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()[
+        "updated_at"
+    ]
 
     tags_resp = web_client.post(
         "/web/confirmed/batch-update",
@@ -77,6 +85,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "action": "set_tags",
             "ledger_id": "owner",
             "expense_ids": [str(expense_id)],
+            "expected_updated_at": [token],
             "tags": "web, family, web",
         },
         follow_redirects=False,
@@ -85,6 +94,47 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     api_detail = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert api_detail.status_code == 200
     assert api_detail.json()["tags"] == "web, family"
+
+
+def test_web_confirmed_batch_stale_token_redirects_without_partial_update(
+    web_client: TestClient, *, identity
+) -> None:
+    first_id = _seed_pending_with_amount(web_client, "21.00", "Bulk Stale A", identity=identity)
+    second_id = _seed_pending_with_amount(web_client, "22.00", "Bulk Stale B", identity=identity)
+    for expense_id in (first_id, second_id):
+        confirmed = web_confirm_expense(
+            web_client, expense_id, identity=identity, follow_redirects=False
+        )
+        assert confirmed.status_code in {303, 307}
+
+    first_before = web_client.get(f"/api/expenses/{first_id}", headers=identity.app_headers).json()
+    second_before = web_client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
+    changed = web_save_expense(
+        web_client,
+        first_id,
+        identity=identity,
+        data={"amount_yuan": "21.00", "merchant": "Bulk Stale A", "category": "Intervening"},
+    )
+    assert changed.status_code in {303, 307}, changed.text
+
+    response = web_client.post(
+        "/web/confirmed/batch-update",
+        data={
+            "action": "set_category",
+            "ledger_id": "owner",
+            "expense_ids": [str(first_id), str(second_id)],
+            "expected_updated_at": [first_before["updated_at"], second_before["updated_at"]],
+            "category": "Should Not Land",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code in {303, 307}
+    assert "msg=" in response.headers["location"]
+
+    first_after = web_client.get(f"/api/expenses/{first_id}", headers=identity.app_headers).json()
+    second_after = web_client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
+    assert first_after["category"] == "Intervening"
+    assert second_after["category"] == second_before["category"]
 
 
 def test_web_pending_filter_missing_amount(web_client: TestClient, *, identity) -> None:
@@ -128,6 +178,8 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
     js = js_path.read_text(encoding="utf-8")
     assert 'h.name = "expense_ids";' in js
+    assert "if (entry.updatedAt)" in js
+    assert 'token.name = "expected_updated_at";' in js
 
 
 def test_web_bulk_set_category_updates_pending(web_client: TestClient, *, identity) -> None:

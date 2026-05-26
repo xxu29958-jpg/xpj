@@ -129,7 +129,7 @@
         <a class="timeline-row{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}">
           {% if can_write %}
           <div data-stop="true">
-            <div class="checkbox row-check" data-id="{{ e.id }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
+            <div class="checkbox row-check" data-id="{{ e.id }}" data-updated-at="{{ e.updated_at_iso }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
           </div>
           {% endif %}
           <div class="timeline-time">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '' }}</div>

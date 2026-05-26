@@ -129,7 +129,7 @@ Authorization: Bearer <admin_token>
 | `/api/app/upload-screenshot` | POST | `backend/app/routes/uploads.py` | `uploadScreenshot(file, timezone)` | multipart `file`；header `X-Timezone` | `UploadResponseDto` | Session Token | `backend/tests/test_uploads.py`, `ExpenseDtoContractTest` | Android 上传 |
 | `/api/expenses/pending` | GET | `backend/app/routes/expenses.py` | `pendingExpenses()` | 无 | `List<ExpenseDto>` | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
 | `/api/expenses/confirmed` | GET | `backend/app/routes/expenses.py` | `confirmedExpenses(page,pageSize,month,category,timezone)` | query `page/page_size/month/category/tag/timezone` | `PaginatedExpensesDto` | Session Token | `backend/tests/test_stats_filters.py`, `backend/tests/test_tags.py`, Android domain tests | gray/internal |
-| `/api/expenses/confirmed/batch-update` | POST | `backend/app/routes/expenses.py` | 无 | `ConfirmedExpenseBatchUpdateRequest` | `ConfirmedExpenseBatchUpdateResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expenses.py` | 已入账账单分类/标签批处理 |
+| `/api/expenses/confirmed/batch-update` | POST | `backend/app/routes/expenses.py` | 无 | `ConfirmedExpenseBatchUpdateRequest` | `ConfirmedExpenseBatchUpdateResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expenses_manual_update.py`, `backend/tests/test_confirmed_batch_update_optimistic_concurrency.py` | 已入账账单分类/标签批处理 |
 | `/api/expenses/categories` | GET | `backend/app/routes/expenses.py` | `categories()` | 无 | `CategoriesDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
 | `/api/expenses/tags` | GET | `backend/app/routes/expenses.py` | 无 | 无 | `TagsResponse` | Session Token | `backend/tests/test_tags.py` | v0.7 标签列表 |
 | `/api/expenses/months` | GET | `backend/app/routes/expenses.py` | `months(timezone)` | query `timezone` | `MonthsDto` | Session Token | `backend/tests/test_stats_filters.py` | gray/internal |
@@ -708,6 +708,37 @@ timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传
   "total": 0
 }
 ```
+
+### POST /api/expenses/confirmed/batch-update
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+Content-Type: application/json
+```
+
+请求体：
+
+```json
+{
+  "expense_ids": [101, 102],
+  "expected_updated_at_by_id": {
+    "101": "2026-05-04T08:00:00Z",
+    "102": "2026-05-04T08:01:00Z"
+  },
+  "category": "餐饮",
+  "tags": "家庭, 周末"
+}
+```
+
+规则：
+
+- `expense_ids` 最多 200 个，服务端按 id 去重；`expected_updated_at_by_id` 必须覆盖每个目标 id，不能缺 token。
+- `category` / `tags` 至少传一个；空分类返回 `invalid_request`。
+- 只修改当前账本内 `confirmed` 账单；跨账本 id 计入 `skipped_not_found`，非 confirmed 计入 `skipped_not_confirmed`。
+- 任一当前账本内 confirmed 目标行的 `updated_at` 与 token 不匹配时，整个批处理回滚并返回 `409 state_conflict`；客户端需刷新列表后重试。
+- 标签按普通账单标签规则规范化和去重。
 
 ### GET /api/expenses/categories
 

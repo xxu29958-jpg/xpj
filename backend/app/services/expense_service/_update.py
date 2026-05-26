@@ -54,6 +54,10 @@ def batch_update_confirmed_expenses(
     payload: ConfirmedExpenseBatchUpdateRequest,
 ) -> ConfirmedExpenseBatchUpdateResponse:
     expense_ids = list(dict.fromkeys(payload.expense_ids))
+    expected_by_id = payload.expected_updated_at_by_id
+    if set(expected_by_id) != set(expense_ids):
+        raise AppError("invalid_request", status_code=422)
+
     category_provided = payload.category is not None
     tags_provided = payload.tags is not None
     if not category_provided and not tags_provided:
@@ -85,6 +89,19 @@ def batch_update_confirmed_expenses(
         if expense.status != "confirmed":
             skipped_not_confirmed += 1
             continue
+        rowcount = claim_row_with_token(
+            db,
+            Expense,
+            pk_id=expense_id,
+            tenant_id=tenant_id,
+            expected_updated_at=expected_by_id[expense_id],
+            set_values={"updated_at": now},
+            extra_where=(Expense.status == "confirmed",),
+            synchronize_session=False,
+        )
+        if rowcount != 1:
+            db.rollback()
+            raise AppError("state_conflict", status_code=409)
         if category_provided:
             expense.category = _clean_category(category)
         if tags_provided:

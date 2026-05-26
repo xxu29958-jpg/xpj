@@ -1243,6 +1243,14 @@
             "title": "Category",
             "type": "string"
           },
+          "expected_updated_at": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expected Updated At",
+            "type": "array"
+          },
           "expense_ids": {
             "default": [],
             "items": {
@@ -2942,6 +2950,16 @@
             ],
             "title": "Category"
           },
+          "expected_updated_at_by_id": {
+            "additionalProperties": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "maxProperties": 200,
+            "minProperties": 1,
+            "title": "Expected Updated At By Id",
+            "type": "object"
+          },
           "expense_ids": {
             "items": {
               "type": "integer"
@@ -2965,7 +2983,8 @@
           }
         },
         "required": [
-          "expense_ids"
+          "expense_ids",
+          "expected_updated_at_by_id"
         ],
         "title": "ConfirmedExpenseBatchUpdateRequest",
         "type": "object"

@@ -43,7 +43,11 @@ from fastapi.testclient import TestClient
                 }
             },
         ),
-        ("POST", "/api/expenses/confirmed/batch-update", {"json": {"expense_ids": [1]}}),
+        (
+            "POST",
+            "/api/expenses/confirmed/batch-update",
+            {"json": {"expense_ids": [1], "expected_updated_at_by_id": {"1": "2026-05-04T08:00:00Z"}}},
+        ),
         (
             "POST",
             "/api/expenses/notification-drafts",

@@ -160,7 +160,11 @@ def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient, *, iden
             client.post(
                 "/api/expenses/confirmed/batch-update",
                 headers=_bearer(viewer_token),
-                json={"expense_ids": [999], "category": "餐饮"},
+                json={
+                    "expense_ids": [999],
+                    "expected_updated_at_by_id": {"999": "2026-05-04T08:00:00Z"},
+                    "category": "餐饮",
+                },
             ),
         ),
     ]

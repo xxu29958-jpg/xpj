@@ -67,16 +67,28 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
         assert response.status_code == 200, response.json()
         return int(response.json()["id"])
 
+    def _updated_at(expense_id: int, headers: dict[str, str]) -> str:
+        response = client.get(f"/api/expenses/{expense_id}", headers=headers)
+        assert response.status_code == 200, response.text
+        return str(response.json()["updated_at"])
+
     first_id = _manual(identity.app_headers, "Batch Coffee A", "OldCat")
     second_id = _manual(identity.app_headers, "Batch Coffee B", "OldCat")
     other_ledger_id = _manual(identity.gray_app_headers, "Batch Other Ledger", "GrayCat")
     pending_id = upload_png(client, identity=identity)
+    expected_updated_at_by_id = {
+        first_id: _updated_at(first_id, identity.app_headers),
+        second_id: _updated_at(second_id, identity.app_headers),
+        other_ledger_id: _updated_at(other_ledger_id, identity.gray_app_headers),
+        pending_id: _updated_at(pending_id, identity.app_headers),
+    }
 
     response = client.post(
         "/api/expenses/confirmed/batch-update",
         headers=identity.app_headers,
         json={
             "expense_ids": [first_id, second_id, pending_id, other_ledger_id, first_id],
+            "expected_updated_at_by_id": expected_updated_at_by_id,
             "category": "Family Meals",
             "tags": "weekend, shared, weekend",
         },
@@ -103,6 +115,60 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
     other_detail = client.get(f"/api/expenses/{other_ledger_id}", headers=identity.gray_app_headers)
     assert other_detail.status_code == 200
     assert other_detail.json()["category"] == "GrayCat"
+
+
+def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(
+    client: TestClient, *, identity
+) -> None:
+    def _manual(merchant: str, category: str) -> int:
+        response = client.post(
+            "/api/expenses/manual",
+            headers=identity.app_headers,
+            json={
+                "amount_cents": 1200,
+                "merchant": merchant,
+                "category": category,
+                "expense_time": "2026-05-05T12:00:00Z",
+            },
+        )
+        assert response.status_code == 200, response.json()
+        return int(response.json()["id"])
+
+    def _detail(expense_id: int) -> dict:
+        response = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    first_id = _manual("Batch Stale A", "Initial A")
+    second_id = _manual("Batch Stale B", "Initial B")
+    first_snapshot = _detail(first_id)
+    second_snapshot = _detail(second_id)
+
+    intervening = patch_expense(
+        client,
+        first_id,
+        headers=identity.app_headers,
+        fields={"category": "Intervening"},
+    )
+    assert intervening.status_code == 200, intervening.text
+
+    response = client.post(
+        "/api/expenses/confirmed/batch-update",
+        headers=identity.app_headers,
+        json={
+            "expense_ids": [first_id, second_id],
+            "expected_updated_at_by_id": {
+                first_id: first_snapshot["updated_at"],
+                second_id: second_snapshot["updated_at"],
+            },
+            "category": "Should Not Land",
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["error"] == "state_conflict"
+
+    assert _detail(first_id)["category"] == "Intervening"
+    assert _detail(second_id)["category"] == "Initial B"
 
 
 def test_expense_update_normalizes_user_text(client: TestClient, *, identity) -> None:
