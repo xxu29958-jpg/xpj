@@ -86,6 +86,10 @@ internal class FakeApiService(
     val applyConfirmedRequests = mutableListOf<RuleApplyConfirmedRequestDto>()
     val rollbackPublicIds = mutableListOf<String>()
     val merchantAliasRequests = mutableListOf<MerchantAliasRequest>()
+    val merchantAliasUpdateRequests =
+        mutableListOf<com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest>()
+    val merchantAliasDeleteRequests =
+        mutableListOf<com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest>()
     val merchantAliasPatchTargets = mutableListOf<String>()
     val merchantAliasDeleteTargets = mutableListOf<String>()
     val itemFetchIds = mutableListOf<Long>()
@@ -215,7 +219,10 @@ internal class FakeApiService(
         return expenseItemsResponse()
     }
 
-    override suspend fun acknowledgeExpenseItemsMismatch(id: Long): ExpenseItemsResponseDto {
+    override suspend fun acknowledgeExpenseItemsMismatch(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseItemsResponseDto {
         return expenseItemsResponse()
     }
 
@@ -330,9 +337,15 @@ internal class FakeApiService(
 
     override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = unsupported()
 
-    override suspend fun updateCategoryRule(id: Long, request: CategoryRuleRequest): CategoryRuleDto = unsupported()
+    override suspend fun updateCategoryRule(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest,
+    ): CategoryRuleDto = unsupported()
 
-    override suspend fun deleteCategoryRule(id: Long): StatusDto = unsupported()
+    override suspend fun deleteCategoryRule(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+    ): StatusDto = unsupported()
 
     override suspend fun merchantAliases(): MerchantAliasListDto = MerchantAliasListDto(
         items = listOf(
@@ -361,10 +374,10 @@ internal class FakeApiService(
 
     override suspend fun updateMerchantAlias(
         publicId: String,
-        request: MerchantAliasRequest,
+        request: com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest,
     ): MerchantAliasDto {
         merchantAliasPatchTargets += publicId
-        merchantAliasRequests += request
+        merchantAliasUpdateRequests += request
         return merchantAliasDto(
             publicId = publicId,
             canonicalMerchant = request.canonicalMerchant ?: "星巴克",
@@ -375,8 +388,12 @@ internal class FakeApiService(
         )
     }
 
-    override suspend fun deleteMerchantAlias(publicId: String): StatusDto {
+    override suspend fun deleteMerchantAlias(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest,
+    ): StatusDto {
         merchantAliasDeleteTargets += publicId
+        merchantAliasDeleteRequests += request
         return StatusDto("ok")
     }
 

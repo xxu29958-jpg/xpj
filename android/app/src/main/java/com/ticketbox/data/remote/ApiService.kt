@@ -4,8 +4,10 @@ import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.CategoriesDto
+import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleDto
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
@@ -28,9 +30,11 @@ import com.ticketbox.data.remote.dto.InvitationPreviewResponseDto
 import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
+import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasListDto
 import com.ticketbox.data.remote.dto.MerchantAliasRequest
+import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
 import com.ticketbox.data.remote.dto.NotificationDraftRequestDto
@@ -63,6 +67,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
@@ -148,6 +153,7 @@ interface ApiService {
     @POST("api/expenses/{id}/items/acknowledge-mismatch")
     suspend fun acknowledgeExpenseItemsMismatch(
         @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
     ): ExpenseItemsResponseDto
 
     // ADR-0029 bill split workflow
@@ -244,11 +250,14 @@ interface ApiService {
     @PATCH("api/rules/categories/{id}")
     suspend fun updateCategoryRule(
         @Path("id") id: Long,
-        @Body request: CategoryRuleRequest,
+        @Body request: CategoryRuleUpdateRequest,
     ): CategoryRuleDto
 
-    @DELETE("api/rules/categories/{id}")
-    suspend fun deleteCategoryRule(@Path("id") id: Long): StatusDto
+    @HTTP(method = "DELETE", path = "api/rules/categories/{id}", hasBody = true)
+    suspend fun deleteCategoryRule(
+        @Path("id") id: Long,
+        @Body request: CategoryRuleDeleteRequest,
+    ): StatusDto
 
     @GET("api/merchants/aliases")
     suspend fun merchantAliases(): MerchantAliasListDto
@@ -259,11 +268,14 @@ interface ApiService {
     @PATCH("api/merchants/aliases/{publicId}")
     suspend fun updateMerchantAlias(
         @Path("publicId") publicId: String,
-        @Body request: MerchantAliasRequest,
+        @Body request: MerchantAliasUpdateRequest,
     ): MerchantAliasDto
 
-    @DELETE("api/merchants/aliases/{publicId}")
-    suspend fun deleteMerchantAlias(@Path("publicId") publicId: String): StatusDto
+    @HTTP(method = "DELETE", path = "api/merchants/aliases/{publicId}", hasBody = true)
+    suspend fun deleteMerchantAlias(
+        @Path("publicId") publicId: String,
+        @Body request: MerchantAliasDeleteRequest,
+    ): StatusDto
 
     @GET("api/rules/applications")
     suspend fun ruleApplications(

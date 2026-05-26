@@ -224,8 +224,16 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             "/web/rules/create",
             {"ledger_id": ledger_id, "keyword": "Kimi", "category": "AI订阅", "priority": "1"},
         ),
-        ("rules toggle", "/web/rules/999/toggle", {"ledger_id": ledger_id}),
-        ("rules delete", "/web/rules/999/delete", {"ledger_id": ledger_id}),
+        (
+            "rules toggle",
+            "/web/rules/999/toggle",
+            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+        ),
+        (
+            "rules delete",
+            "/web/rules/999/delete",
+            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+        ),
         ("rules apply pending", "/web/rules/apply-pending", {"ledger_id": ledger_id}),
         ("rules apply confirmed", "/web/rules/apply-confirmed", {"ledger_id": ledger_id, "preview_confirmed": "yes"}),
         (
@@ -238,8 +246,16 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
             "/web/merchants/aliases/create",
             {"ledger_id": ledger_id, "canonical_merchant": "星巴克", "alias": "STARBUCKS"},
         ),
-        ("merchant alias toggle", "/web/merchants/aliases/missing/toggle", {"ledger_id": ledger_id}),
-        ("merchant alias delete", "/web/merchants/aliases/missing/delete", {"ledger_id": ledger_id}),
+        (
+            "merchant alias toggle",
+            "/web/merchants/aliases/missing/toggle",
+            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+        ),
+        (
+            "merchant alias delete",
+            "/web/merchants/aliases/missing/delete",
+            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+        ),
         (
             "csv import confirm",
             "/web/import/confirm",

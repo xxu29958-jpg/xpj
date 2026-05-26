@@ -1206,16 +1206,46 @@ Authorization: Bearer <session_token>
 
 ```json
 {
+  "expected_updated_at": "2026-05-04T08:23:25Z",
   "raw_text": "中国建设银行\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
 }
 ```
 
 行为：
 
+- ADR-0038 PR-2e：`expected_updated_at` 必填；服务端 `UPDATE WHERE updated_at = expected, status='pending'` 原子 claim。
+  - 缺字段 → `422 invalid_request`
+  - token 与当前行不一致 → `409 state_conflict`
+  - 当前行不是 `pending` → `404 expense_not_found`
 - 从文本规则中提取 `amount_cents`、`merchant`、`expense_time`、`category` 和 `confidence`。
 - 保存 `raw_text`。
 - 对 `pending` 账单，如果文本中存在明确的商品行，会生成 OCR 草稿明细；已存在手工明细时不会覆盖。
 - 不自动确认入账。
+
+### POST /api/expenses/{id}/items/acknowledge-mismatch
+
+请求头：
+
+```http
+Authorization: Bearer <session_token>
+```
+
+请求体：
+
+```json
+{
+  "expected_updated_at": "2026-05-04T08:23:25Z"
+}
+```
+
+行为：
+
+- ADR-0038 PR-2e："原小票如此" 路径：把 `items_sum_status` 从 `mismatch_known` 迁移到 `mismatch_acknowledged`。
+- `expected_updated_at` 必填；服务端 `UPDATE WHERE updated_at = expected, items_sum_status='mismatch_known'` 原子 claim。
+  - 缺字段 → `422 invalid_request`
+  - 行不存在 → `404 expense_not_found`
+  - 当前行 `items_sum_status` 已不是 `mismatch_known`（如 `matched` / `mismatch_acknowledged`）→ `409 items_sum_not_in_mismatch`
+  - token 与当前行不一致（其它端改了 amount/items）→ `409 state_conflict`
 
 ### POST /api/expenses/{id}/mark-not-duplicate
 

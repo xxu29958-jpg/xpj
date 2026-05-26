@@ -463,8 +463,20 @@ def run_smoke(base_url: str) -> None:
     assert_error(result, 503, "ocr_not_configured")
     print("OK ocr retry refuses empty provider")
 
+    recognize_upload = upload(base_url, "recognize.png", "image/png", PNG_BYTES)
+    assert_equal(recognize_upload.status, 200, "recognize upload status")
+    recognize_id = int(recognize_upload.json()["id"])
+    # ADR-0038 PR-2e: recognize-text now requires ``expected_updated_at``;
+    # snapshot the freshly uploaded row's ``updated_at`` and ship it.
+    recognize_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{recognize_id}",
+        headers=app_headers(),
+    )
+    assert_equal(recognize_snapshot.status, 200, "recognize snapshot status")
     recognize_body = json.dumps(
         {
+            "expected_updated_at": recognize_snapshot.json()["updated_at"],
             "raw_text": "\n".join(
                 [
                     "中国建设银行",
@@ -472,13 +484,10 @@ def run_smoke(base_url: str) -> None:
                     "交易时间：2026年5月4日 16:23:25",
                     "交易金额：18.51（人民币）",
                 ]
-            )
+            ),
         },
         ensure_ascii=False,
     ).encode("utf-8")
-    recognize_upload = upload(base_url, "recognize.png", "image/png", PNG_BYTES)
-    assert_equal(recognize_upload.status, 200, "recognize upload status")
-    recognize_id = int(recognize_upload.json()["id"])
     result = request(
         "POST",
         f"{base_url}/api/expenses/{recognize_id}/recognize-text",

@@ -333,6 +333,7 @@
           {% if can_write %}
           <form method="post" action="/web/rules/{{ r.id }}/toggle" style="display:inline">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="expected_updated_at" value="{{ r.updated_at | to_iso }}">
             <button type="submit" class="dt-btn">
               {% if r.enabled %}停用{% else %}启用{% endif %}
             </button>
@@ -340,6 +341,7 @@
           <form method="post" action="/web/rules/{{ r.id }}/delete" style="display:inline"
                 data-confirm="删除规则 [{{ r.keyword }}]？">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="expected_updated_at" value="{{ r.updated_at | to_iso }}">
             <button type="submit" class="dt-btn danger">删除</button>
           </form>
           {% else %}<span class="readonly-inline">只读</span>{% endif %}

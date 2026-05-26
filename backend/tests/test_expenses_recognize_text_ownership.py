@@ -5,6 +5,7 @@ from datetime import timedelta
 from api_contract_helpers import (
     confirm_expense_api,
     patch_expense,
+    recognize_text_api,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -32,10 +33,8 @@ def test_recognize_text_then_confirm_enters_stats_and_export(
         ]
     )
 
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200, response.json()
     payload = response.json()
@@ -89,12 +88,11 @@ def test_recognize_text_does_not_overwrite_user_filled_fields(
     )
     assert response.status_code == 200
 
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    response = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
-            "raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"
-        },
+        raw_text="中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25",
     )
     assert response.status_code == 200
     payload = response.json()
@@ -120,10 +118,8 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
             "2026-05-05 21:38:13",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": first_raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=first_raw_text
     )
     assert response.status_code == 200
     assert response.json()["amount_cents"] == 7200
@@ -139,10 +135,8 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
             "2026-05-07 08:30:00",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": corrected_raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=corrected_raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -169,10 +163,8 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
             "2026-05-07 15:17:09",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": newer_raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=newer_raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -215,10 +207,8 @@ def test_legacy_recent_ocr_draft_can_be_corrected(client: TestClient, *, identit
             "2026-05-07 08:30:00",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": corrected_raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=corrected_raw_text
     )
 
     assert response.status_code == 200
@@ -265,10 +255,8 @@ def test_legacy_stale_or_manual_pending_fields_are_not_overwritten(
             "2026-05-07 08:30:00",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": corrected_raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=corrected_raw_text
     )
 
     assert response.status_code == 200

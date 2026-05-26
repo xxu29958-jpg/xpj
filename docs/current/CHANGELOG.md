@@ -2,6 +2,27 @@
 
 所有版本都保持 `identity_schema=v0.3` 不变。
 
+## v1.3 主线（开发中） — ADR-0038 多端同步：optimistic concurrency 普及
+
+进行中，未发布 tag。聚合 PR-1（category_rule）/ PR-2a-d（expense PATCH / 状态机 / items / splits / OCR retry / batch update）/ PR-2e（residual mutation）：
+
+- **PR-2e residual mutation**：
+  - `/api/expenses/{id}/recognize-text` 改为 client-supplied token：`ExpenseRecognizeTextRequest` 加必填 `expected_updated_at`；service 不再 self-claim，atomic claim 由 client snapshot 驱动；stale → `409 state_conflict`，非 pending → `404`。
+  - `/api/expenses/{id}/items/acknowledge-mismatch`：route 新增必填 body `ExpenseAcknowledgeItemsMismatchRequest`；service 改用 `claim_row_with_token` + `extra_where=(items_sum_status='mismatch_known',)`；rowcount=0 三分支 404 / `items_sum_not_in_mismatch` / `state_conflict`。
+  - `/api/merchants/aliases/{public_id}` PATCH/DELETE 接 `expected_updated_at`（DELETE 同 PR-1 category_rule 模式带 body）；`/web/merchants/aliases/{id}/toggle|delete` 模板加 hidden token + redirect "页面已过期/已在其它端修改"；Android `MerchantRepository` 强制 `expectedUpdatedAt` 参数。
+  - Android `ExpenseDetailRepository.acknowledgeExpenseItemsMismatch` 加 token；`ExpenseEditViewModel.acknowledgeItemsMismatch` 从 baseline expense.updatedAt 取。
+  - 测试：三套独立 contract test（`test_recognize_text_optimistic_concurrency.py` / `test_acknowledge_mismatch_optimistic_concurrency.py` / `test_merchant_alias_optimistic_concurrency.py`），每套覆盖 missing 422 / stale 409 / status-specific 409 / two-session race / unknown 404；现有 OCR / items / merchant_aliases tests 全部补 token。
+  - OpenAPI snapshot 同步；ADR-0038 段落把 recognize-text / acknowledge-mismatch / merchant_alias 纳入"所有 mutate"清单。
+
+- **PR-1 Android + /web/rules 适配补齐**：
+  - PR-1 (ADR-0038 category_rule) 落地后留下两条遗留，本 PR 一并修：
+    - Android `updateCategoryRule` / `deleteCategoryRule`：新增 `CategoryRuleUpdateRequest` / `CategoryRuleDeleteRequest` DTO；`ApiService.deleteCategoryRule` 用 `@HTTP(hasBody=true)` 携带 body；`RuleRepository` 强制 `expectedUpdatedAt` 参数；`CategoryRulesViewModel` 调用处从 `rule.updatedAt` 传入；fixtures + DTO contract test 同步。
+    - `/web/rules/{id}/toggle|delete` 模板加 hidden `expected_updated_at`；route 接 form-token + `parse_form_updated_at_token` + state_conflict redirect。原 "loopback only no race window" 假设已被 ADR-0028 PR-4 cookie session 打破，跨 window race 真实存在。
+
+- **PR-2e release_audit 新规则**：
+  - `backend/scripts/_audit_mutate_token_coverage.py`：走 in-process OpenAPI schema 扫所有 mutate route (POST/PUT/PATCH/DELETE)，验证每个都 carry `expected_updated_at` / `expected_updated_at_by_id`；ALLOWLIST 列豁免（create / terminal lifecycle / batch / admin / preview / single-writer maintenance）每条带 one-line reason；KNOWN_GAPS 标 6 个 v1.1 pre-ADR-0038 sediment route（goal PATCH / income-plan PATCH/DELETE / budget PUT / dashboard PUT / ui-preferences PUT）只 WARN 不 FAIL，未来 strict 模式可加 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1` 收紧。
+  - 已接入 `release_audit.py` 自动 discovery，跑过 138 个 mutate route 全分类（27 token / 105 ALLOWLIST / 6 KNOWN_GAPS）。
+
 ## v1.2.0 — 现金流预算 + Learning Feedback + OCR facts 单源（当前）
 
 v1.1 主线"家庭现金流预算"与 v1.2 主线"learning-feedback + OCR facts 单源"内容均合入此 release。v1.1.0 没有单独发布 tag；版本号一次到 1.2.0。

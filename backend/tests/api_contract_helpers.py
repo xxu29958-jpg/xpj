@@ -108,6 +108,51 @@ def retry_ocr_api(
     )
 
 
+def recognize_text_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+    raw_text: str,
+) -> httpx.Response:
+    """ADR-0038 PR-2e helper: POST /api/expenses/{id}/recognize-text with
+    a fresh ``expected_updated_at`` from a GET snapshot.
+
+    Returns the GET response unchanged on non-200 so callers can assert
+    on 404/403 against rejected/confirmed/cross-tenant rows without
+    paying a second roundtrip.
+    """
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.post(
+        f"/api/expenses/{expense_id}/recognize-text",
+        headers=headers,
+        json={
+            "expected_updated_at": snapshot.json()["updated_at"],
+            "raw_text": raw_text,
+        },
+    )
+
+
+def acknowledge_items_mismatch_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+) -> httpx.Response:
+    """ADR-0038 PR-2e helper: POST /api/expenses/{id}/items/acknowledge-mismatch
+    with a fresh ``expected_updated_at`` from a GET snapshot."""
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.post(
+        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
+        headers=headers,
+        json={"expected_updated_at": snapshot.json()["updated_at"]},
+    )
+
+
 def expense_updated_at(
     client: TestClient,
     expense_id: int,

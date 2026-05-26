@@ -28,6 +28,7 @@ __all__ = [
     "ExpenseManualCreateRequest",
     "ExpenseMarkNotDuplicateRequest",
     "ExpenseOcrRetryRequest",
+    "ExpenseAcknowledgeItemsMismatchRequest",
     "ExpenseRecognizeTextRequest",
     "ExpenseRejectRequest",
     "ExpenseResponse",
@@ -168,7 +169,42 @@ class ConfirmedExpenseBatchUpdateResponse(BaseModel):
 
 
 class ExpenseRecognizeTextRequest(BaseModel):
+    """ADR-0038 PR-2e: ``POST /api/expenses/{id}/recognize-text`` body.
+
+    Previously the service self-claimed using the row's current
+    ``updated_at``, which silently overwrote concurrent edits made
+    between the client's read and the recognize call. With
+    ``expected_updated_at`` the service issues an atomic ``UPDATE
+    WHERE updated_at = expected`` and returns 409 ``state_conflict``
+    on stale tokens. Same contract as the rest of the expense-mutate
+    surface (PATCH / confirm / reject / ocr retry / ...).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
     raw_text: str = Field(min_length=1, max_length=20000)
+
+
+class ExpenseAcknowledgeItemsMismatchRequest(BaseModel):
+    """ADR-0038 PR-2e: ``POST /api/expenses/{id}/items/acknowledge-mismatch``.
+
+    Acknowledging "原小票如此" flips ``items_sum_status`` from
+    ``mismatch_known`` to ``mismatch_acknowledged``. Without the token,
+    a stale page open before a peer edited amount/items would let the
+    user blindly accept a *new* mismatch as if it were the one they
+    saw. The service uses ``claim_row_with_token`` with the predicate
+    ``items_sum_status == "mismatch_known"`` so:
+
+    - row not visible / vanished → 404 ``expense_not_found``
+    - status != ``mismatch_known`` → 409 ``items_sum_not_in_mismatch``
+      (existing UX, preserved)
+    - else → 409 ``state_conflict``
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
 
 
 class PendingCategorySuggestionResponse(BaseModel):

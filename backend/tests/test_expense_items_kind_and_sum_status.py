@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from api_contract_helpers import acknowledge_items_mismatch_api
 from fastapi.testclient import TestClient
 
 
@@ -150,9 +151,8 @@ def test_acknowledge_mismatch_transition(client: TestClient, *, identity) -> Non
         expense_id=expense_id,
         items=[{"name": "苹果", "kind": "product", "amount_cents": 3800}],
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
-        headers=identity.app_headers,
+    response = acknowledge_items_mismatch_api(
+        client, expense_id, headers=identity.app_headers
     )
     assert response.status_code == 200, response.json()
     assert response.json()["items_sum_status"] == "mismatch_acknowledged"
@@ -166,9 +166,8 @@ def test_acknowledge_mismatch_rejects_when_matched(client: TestClient, *, identi
         expense_id=expense_id,
         items=[{"name": "苹果", "kind": "product", "amount_cents": 3500}],
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
-        headers=identity.app_headers,
+    response = acknowledge_items_mismatch_api(
+        client, expense_id, headers=identity.app_headers
     )
     assert response.status_code == 409
     assert response.json()["error"] == "items_sum_not_in_mismatch"
@@ -185,10 +184,7 @@ def test_acknowledge_persists_across_edit(client: TestClient, *, identity) -> No
         items=[{"name": "苹果", "kind": "product", "amount_cents": 3800}],
     )
     # acknowledge
-    client.post(
-        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
-        headers=identity.app_headers,
-    )
+    acknowledge_items_mismatch_api(client, expense_id, headers=identity.app_headers)
     # 再改 items 但仍然 mismatch
     response = _put_items(
         client,

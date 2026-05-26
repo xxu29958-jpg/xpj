@@ -68,7 +68,14 @@ class MerchantAliasViewModel(
             return
         }
         viewModelScope.launch {
-            merchantRepository.updateMerchantAlias(alias.publicId, enabled = !alias.enabled)
+            // ADR-0038 PR-2e: pass the alias's last-seen ``updatedAt`` as the
+            // optimistic-concurrency token. Server returns 409 if a peer edited
+            // the alias between this list-render and the toggle click.
+            merchantRepository.updateMerchantAlias(
+                publicId = alias.publicId,
+                expectedUpdatedAt = alias.updatedAt,
+                enabled = !alias.enabled,
+            )
                 .onSuccess { updated ->
                     _uiState.update { state ->
                         state.copy(
@@ -89,7 +96,11 @@ class MerchantAliasViewModel(
             return
         }
         viewModelScope.launch {
-            merchantRepository.deleteMerchantAlias(alias.publicId)
+            // ADR-0038 PR-2e: see toggleMerchantAlias above.
+            merchantRepository.deleteMerchantAlias(
+                publicId = alias.publicId,
+                expectedUpdatedAt = alias.updatedAt,
+            )
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(

@@ -99,6 +99,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
         f"/api/merchants/aliases/{public_id}",
         headers=identity.app_headers,
         json={
+            "expected_updated_at": created["updated_at"],
             "canonical_merchant": "星巴克咖啡",
             "alias": "STARBUCKS 北京店",
             "enabled": False,
@@ -110,7 +111,12 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
     assert payload["alias_key"] == "starbucks 北京店"
     assert payload["enabled"] is False
 
-    deleted = client.delete(f"/api/merchants/aliases/{public_id}", headers=identity.app_headers)
+    deleted = client.request(
+        "DELETE",
+        f"/api/merchants/aliases/{public_id}",
+        headers=identity.app_headers,
+        json={"expected_updated_at": payload["updated_at"]},
+    )
     assert deleted.status_code == 200
     assert deleted.json() == {"status": "ok"}
     assert (
@@ -147,7 +153,10 @@ def test_merchant_aliases_are_ledger_isolated(client: TestClient, *, identity) -
     cross_patch = client.patch(
         f"/api/merchants/aliases/{owner['public_id']}",
         headers=identity.gray_app_headers,
-        json={"canonical_merchant": "越权改名"},
+        json={
+            "expected_updated_at": owner["updated_at"],
+            "canonical_merchant": "越权改名",
+        },
     )
     assert cross_patch.status_code == 404
     assert cross_patch.json()["error"] == "merchant_alias_not_found"
@@ -166,11 +175,16 @@ def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) 
         client.patch(
             f"/api/merchants/aliases/{created['public_id']}",
             headers=identity.app_headers,
-            json={"enabled": False},
+            json={
+                "expected_updated_at": created["updated_at"],
+                "enabled": False,
+            },
         ),
-        client.delete(
+        client.request(
+            "DELETE",
             f"/api/merchants/aliases/{created['public_id']}",
             headers=identity.app_headers,
+            json={"expected_updated_at": created["updated_at"]},
         ),
     ]
     for response in checks:

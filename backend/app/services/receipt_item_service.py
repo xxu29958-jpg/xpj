@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -109,23 +111,51 @@ def acknowledge_items_sum_mismatch(
     db: Session,
     expense_id: int,
     tenant_id: str,
+    *,
+    expected_updated_at: datetime,
 ) -> ExpenseItemsResponse:
     """User-confirmed "原小票如此" path: mismatch_known → mismatch_acknowledged.
 
-    Reject from other states because UI never offers this path unless
-    items_sum_status is mismatch_known.
+    ADR-0038 PR-2e atomic optimistic-concurrency claim:
+    ``UPDATE expenses SET items_sum_status='mismatch_acknowledged',
+    updated_at=now WHERE id, tenant_id, items_sum_status='mismatch_known',
+    updated_at=expected``. ``rowcount == 0`` disambiguates:
+
+    - row not visible / vanished → 404 ``expense_not_found``
+    - status != ``mismatch_known`` → 409 ``items_sum_not_in_mismatch``
+      (existing UX preserved — UI never offers this button unless
+      ``mismatch_known``)
+    - else → 409 ``state_conflict`` (peer edited amount/items between
+      the user's read and this acknowledge)
     """
-    expense = get_expense(db, expense_id, tenant_id)
-    if expense.items_sum_status != "mismatch_known":
-        raise AppError(
-            "items_sum_not_in_mismatch",
-            "当前账单不存在可确认的金额差异。",
-            status_code=409,
+    now = now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={"items_sum_status": "mismatch_acknowledged", "updated_at": now},
+        extra_where=(Expense.items_sum_status == "mismatch_known",),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = db.scalar(
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
         )
-    expense.items_sum_status = "mismatch_acknowledged"
-    expense.updated_at = now_utc()
+        if current is None:
+            raise AppError("expense_not_found", status_code=404)
+        if current.items_sum_status != "mismatch_known":
+            raise AppError(
+                "items_sum_not_in_mismatch",
+                "当前账单不存在可确认的金额差异。",
+                status_code=409,
+            )
+        raise AppError("state_conflict", status_code=409)
     db.commit()
-    db.refresh(expense)
+    db.expire_all()
+    expense = get_expense(db, expense_id, tenant_id)
     return _build_response(db, expense)
 
 

@@ -208,7 +208,10 @@ internal class StubApi(
         id: Long,
         request: ExpenseItemReplaceRequestDto,
     ): ExpenseItemsResponseDto = ledgerUnsupported()
-    override suspend fun acknowledgeExpenseItemsMismatch(id: Long): ExpenseItemsResponseDto = ledgerUnsupported()
+    override suspend fun acknowledgeExpenseItemsMismatch(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseItemsResponseDto = ledgerUnsupported()
     override suspend fun createBillSplitInvitation(
         id: Long,
         request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
@@ -255,15 +258,24 @@ internal class StubApi(
     override suspend fun duplicates(): List<ExpenseDto> = ledgerUnsupported()
     override suspend fun categoryRules(): List<CategoryRuleDto> = ledgerUnsupported()
     override suspend fun createCategoryRule(request: CategoryRuleRequest): CategoryRuleDto = ledgerUnsupported()
-    override suspend fun updateCategoryRule(id: Long, request: CategoryRuleRequest): CategoryRuleDto = ledgerUnsupported()
-    override suspend fun deleteCategoryRule(id: Long): StatusDto = ledgerUnsupported()
+    override suspend fun updateCategoryRule(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest,
+    ): CategoryRuleDto = ledgerUnsupported()
+    override suspend fun deleteCategoryRule(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+    ): StatusDto = ledgerUnsupported()
     override suspend fun merchantAliases(): MerchantAliasListDto = ledgerUnsupported()
     override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto = ledgerUnsupported()
     override suspend fun updateMerchantAlias(
         publicId: String,
-        request: MerchantAliasRequest,
+        request: com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest,
     ): MerchantAliasDto = ledgerUnsupported()
-    override suspend fun deleteMerchantAlias(publicId: String): StatusDto = ledgerUnsupported()
+    override suspend fun deleteMerchantAlias(
+        publicId: String,
+        request: com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest,
+    ): StatusDto = ledgerUnsupported()
     override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = ledgerUnsupported()
     override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto = ledgerUnsupported()
     override suspend fun applyConfirmedRules(

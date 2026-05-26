@@ -86,8 +86,12 @@ class CategoryRulesViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
+            // ADR-0038 PR-1: pass the rule's last-seen ``updatedAt`` as the
+            // optimistic-concurrency token. Peer edits between the list
+            // render and this save bubble up as 409 via the repository.
             ruleRepository.updateCategoryRule(
                 id = rule.id,
+                expectedUpdatedAt = rule.updatedAt,
                 keyword = keyword.trim(),
                 category = category.trim(),
                 priority = priority,
@@ -111,7 +115,12 @@ class CategoryRulesViewModel(
             return
         }
         viewModelScope.launch {
-            ruleRepository.updateCategoryRule(rule.id, enabled = !rule.enabled)
+            // ADR-0038 PR-1: see updateCategoryRule above.
+            ruleRepository.updateCategoryRule(
+                id = rule.id,
+                expectedUpdatedAt = rule.updatedAt,
+                enabled = !rule.enabled,
+            )
                 .onSuccess { updated ->
                     _uiState.update { state ->
                         state.copy(
@@ -130,7 +139,8 @@ class CategoryRulesViewModel(
             return
         }
         viewModelScope.launch {
-            ruleRepository.deleteCategoryRule(rule.id)
+            // ADR-0038 PR-1: DELETE carries the token through its body.
+            ruleRepository.deleteCategoryRule(rule.id, rule.updatedAt)
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(

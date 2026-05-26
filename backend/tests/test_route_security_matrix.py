@@ -65,7 +65,11 @@ from fastapi.testclient import TestClient
             "/api/expenses/1/reject",
             {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
         ),
-        ("POST", "/api/expenses/1/items/acknowledge-mismatch", {}),
+        (
+            "POST",
+            "/api/expenses/1/items/acknowledge-mismatch",
+            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+        ),
         (
             "POST",
             "/api/expenses/1/mark-not-duplicate",
@@ -76,7 +80,16 @@ from fastapi.testclient import TestClient
             "/api/expenses/1/ocr/retry",
             {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
         ),
-        ("POST", "/api/expenses/1/recognize-text", {"json": {"raw_text": "merchant 12.00"}}),
+        (
+            "POST",
+            "/api/expenses/1/recognize-text",
+            {
+                "json": {
+                    "expected_updated_at": "2026-05-04T00:00:00Z",
+                    "raw_text": "merchant 12.00",
+                }
+            },
+        ),
         (
             "POST",
             "/api/expenses/1/split-invite",
@@ -100,8 +113,21 @@ from fastapi.testclient import TestClient
         ("POST", "/api/maintenance/cleanup-ai-advisor-audit", {}),
         ("POST", "/api/maintenance/cleanup-orphans", {}),
         ("POST", "/api/maintenance/cleanup-rejected", {}),
-        ("PATCH", "/api/merchants/aliases/alias_missing", {"json": {"enabled": False}}),
-        ("DELETE", "/api/merchants/aliases/alias_missing", {}),
+        (
+            "PATCH",
+            "/api/merchants/aliases/alias_missing",
+            {
+                "json": {
+                    "expected_updated_at": "2026-05-04T00:00:00Z",
+                    "enabled": False,
+                }
+            },
+        ),
+        (
+            "DELETE",
+            "/api/merchants/aliases/alias_missing",
+            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+        ),
         (
             "POST",
             "/api/recurring/from-candidate",

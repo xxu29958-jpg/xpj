@@ -37,6 +37,39 @@ data class CategoryRuleRequest(
     val tagContains: String? = null,
 )
 
+/**
+ * ADR-0038 PR-1: PATCH /api/rules/categories/{id} body carries the
+ * client's last-seen ``updated_at`` so a peer edit between the read
+ * and this PATCH surfaces as 409 ``state_conflict`` instead of a
+ * silent overwrite.
+ */
+data class CategoryRuleUpdateRequest(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
+    val keyword: String? = null,
+    val category: String? = null,
+    val enabled: Boolean? = null,
+    val priority: Int? = null,
+    @param:Json(name = "amount_min_cents")
+    val amountMinCents: Long? = null,
+    @param:Json(name = "amount_max_cents")
+    val amountMaxCents: Long? = null,
+    @param:Json(name = "source_contains")
+    val sourceContains: String? = null,
+    @param:Json(name = "tag_contains")
+    val tagContains: String? = null,
+)
+
+/**
+ * ADR-0038 PR-1: DELETE /api/rules/categories/{id} carries a body so
+ * the optimistic-concurrency token travels through the same channel as
+ * PATCH. Mirrors backend ``CategoryRuleDeleteRequest``.
+ */
+data class CategoryRuleDeleteRequest(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
+)
+
 data class RuleApplicationBatchDto(
     @param:Json(name = "public_id")
     val publicId: String,

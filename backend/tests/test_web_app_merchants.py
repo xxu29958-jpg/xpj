@@ -45,19 +45,38 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
     match = _re.search(r"/web/merchants/aliases/([^/]+)/delete", page.text)
     assert match, page.text[:500]
     public_id = match.group(1)
+    # ADR-0038 PR-2e: /web mutate forms render the row's updated_at as a
+    # hidden ``expected_updated_at`` token; the page already contains it
+    # so pull it out instead of fetching the API directly.
+    token_match = _re.search(
+        rf"/web/merchants/aliases/{public_id}/toggle.*?expected_updated_at\"\s*value=\"([^\"]+)\"",
+        page.text,
+        flags=_re.DOTALL,
+    )
+    assert token_match, page.text[:1000]
+    token = token_match.group(1)
 
     toggled = web_client.post(
         f"/web/merchants/aliases/{public_id}/toggle",
-        data={"ledger_id": "owner"},
+        data={"ledger_id": "owner", "expected_updated_at": token},
         follow_redirects=False,
     )
     assert toggled.status_code in {303, 307}
     page = web_client.get("/web/merchants?ledger_id=owner")
     assert "停用" in page.text
 
+    delete_token_match = _re.search(
+        rf"/web/merchants/aliases/{public_id}/delete.*?expected_updated_at\"\s*value=\"([^\"]+)\"",
+        page.text,
+        flags=_re.DOTALL,
+    )
+    assert delete_token_match, page.text[:1000]
     deleted = web_client.post(
         f"/web/merchants/aliases/{public_id}/delete",
-        data={"ledger_id": "owner"},
+        data={
+            "ledger_id": "owner",
+            "expected_updated_at": delete_token_match.group(1),
+        },
         follow_redirects=False,
     )
     assert deleted.status_code in {303, 307}

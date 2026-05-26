@@ -100,15 +100,26 @@ class ExpenseRepositoryRuleGovernanceTest {
 
         val listed = merchantRepository.merchantAliases().getOrThrow()
         val created = merchantRepository.createMerchantAlias(" 星巴克 ", " Starbucks ").getOrThrow()
-        val disabled = merchantRepository.updateMerchantAlias(created.publicId, enabled = false).getOrThrow()
-        merchantRepository.deleteMerchantAlias(" ${created.publicId} ").getOrThrow()
+        // ADR-0038 PR-2e: PATCH/DELETE require the token; pass the freshly
+        // created alias's updatedAt so the fixture sees a real token shape.
+        val disabled = merchantRepository.updateMerchantAlias(
+            publicId = created.publicId,
+            expectedUpdatedAt = created.updatedAt,
+            enabled = false,
+        ).getOrThrow()
+        merchantRepository.deleteMerchantAlias(
+            publicId = " ${created.publicId} ",
+            expectedUpdatedAt = disabled.updatedAt,
+        ).getOrThrow()
 
         assertEquals("alias-1", listed.single().publicId)
         assertEquals("星巴克", apiService.merchantAliasRequests.first().canonicalMerchant)
         assertEquals("Starbucks", apiService.merchantAliasRequests.first().alias)
         assertEquals("alias-created", apiService.merchantAliasPatchTargets.single())
-        assertEquals(false, apiService.merchantAliasRequests.last().enabled)
+        assertEquals(false, apiService.merchantAliasUpdateRequests.single().enabled)
+        assertEquals(created.updatedAt, apiService.merchantAliasUpdateRequests.single().expectedUpdatedAt)
         assertEquals(false, disabled.enabled)
         assertEquals(listOf("alias-created"), apiService.merchantAliasDeleteTargets)
+        assertEquals(disabled.updatedAt, apiService.merchantAliasDeleteRequests.single().expectedUpdatedAt)
     }
 }

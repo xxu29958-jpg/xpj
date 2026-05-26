@@ -29,3 +29,29 @@ data class MerchantAliasRequest(
     val alias: String? = null,
     val enabled: Boolean? = null,
 )
+
+/**
+ * ADR-0038 PR-2e: PATCH /api/merchants/aliases/{publicId} body.
+ *
+ * Carries the optimistic-concurrency token alongside the partial
+ * update payload — server requires it.
+ */
+data class MerchantAliasUpdateRequest(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
+    @param:Json(name = "canonical_merchant")
+    val canonicalMerchant: String? = null,
+    val alias: String? = null,
+    val enabled: Boolean? = null,
+)
+
+/**
+ * ADR-0038 PR-2e: DELETE /api/merchants/aliases/{publicId} body.
+ *
+ * Mirrors CategoryRuleDeleteRequest — DELETE carries a body so the
+ * token travels through the same channel as PATCH.
+ */
+data class MerchantAliasDeleteRequest(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
+)

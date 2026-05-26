@@ -116,8 +116,11 @@ class ExpenseRepository(
     ): Result<ExpenseItems> =
         detailRepository.replaceExpenseItems(id, items, expectedUpdatedAt)
 
-    suspend fun acknowledgeExpenseItemsMismatch(id: Long): Result<ExpenseItems> =
-        detailRepository.acknowledgeExpenseItemsMismatch(id)
+    suspend fun acknowledgeExpenseItemsMismatch(
+        id: Long,
+        expectedUpdatedAt: String,
+    ): Result<ExpenseItems> =
+        detailRepository.acknowledgeExpenseItemsMismatch(id, expectedUpdatedAt)
 
     suspend fun createBillSplitInvitation(
         expenseId: Long,

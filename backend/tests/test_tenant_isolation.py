@@ -4,6 +4,7 @@ from api_contract_helpers import (
     confirm_expense_api,
     mark_not_duplicate_api,
     patch_expense,
+    recognize_text_api,
     reject_expense_api,
     retry_ocr_api,
     upload_png,
@@ -154,10 +155,15 @@ def test_expense_mutation_routes_are_tenant_scoped(client: TestClient, *, identi
         confirm_expense_api(client, owner_id, headers=identity.gray_app_headers),
         reject_expense_api(client, owner_id, headers=identity.gray_app_headers),
         retry_ocr_api(client, owner_id, headers=identity.gray_app_headers),
-        client.post(
-            f"/api/expenses/{owner_id}/recognize-text",
+        # ADR-0038 PR-2e: recognize-text helper auto-fetches token; for
+        # cross-tenant the GET returns 404 (row not visible), so the
+        # helper short-circuits and returns that response — same shape
+        # the explicit POST would have returned via the 422 → 404 flow.
+        recognize_text_api(
+            client,
+            owner_id,
             headers=identity.gray_app_headers,
-            json={"raw_text": "交易金额：18.51"},
+            raw_text="交易金额：18.51",
         ),
         mark_not_duplicate_api(client, owner_id, headers=identity.gray_app_headers),
     ]

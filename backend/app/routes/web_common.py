@@ -39,6 +39,12 @@ from app.version import BACKEND_VERSION
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
+# ADR-0038 PR-2e: register ``to_iso`` so /web templates can render
+# ORM ``updated_at`` values (datetime) into the canonical ISO-Z form
+# the hidden ``expected_updated_at`` form fields use. Without this
+# filter the template would emit Python's ``str(datetime)`` (no T
+# separator, no Z), which ``parse_form_updated_at_token`` rejects.
+templates.env.filters["to_iso"] = _datetime_to_iso
 
 
 def parse_form_updated_at_token(value: str) -> datetime | None:

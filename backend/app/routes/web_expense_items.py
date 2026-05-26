@@ -83,17 +83,33 @@ def web_items_acknowledge_mismatch(
     expense_id: int,
     request: Request,
     ledger_id: str = Form(default=""),
+    expected_updated_at: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    # ADR-0038 PR-2e: stale-click ("原小票如此" on an outdated page
+    # after a peer edited amount/items) surfaces as ``state_conflict``
+    # 409 → "账单已在其它端被修改" UX instead of silently flipping a
+    # *new* mismatch into ``mismatch_acknowledged``.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_updated_at_token(expected_updated_at)
+    if parsed is None:
+        ctx = web_edit_context(db, request, options, selected_id, expense_id)
+        ctx["items_error"] = "页面已过期，请刷新后重新确认。"
+        return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
     error: str | None = None
     try:
-        acknowledge_items_sum_mismatch(db, expense_id, selected_id)
+        acknowledge_items_sum_mismatch(
+            db, expense_id, selected_id, expected_updated_at=parsed
+        )
     except AppError as exc:
-        error = exc.message
+        error = (
+            "账单已在其它端被修改，请刷新后重新确认。"
+            if exc.error == "state_conflict"
+            else exc.message
+        )
     if error is not None:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["items_error"] = error

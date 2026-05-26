@@ -5,11 +5,12 @@ Used by every endpoint that mutates a row gated by ``expected_updated_at``:
 - expense PATCH / confirm / reject / mark-not-duplicate / OCR retry /
   items replace / splits replace / confirmed batch update
   (ADR-0038 PR-2a~2d)
+- expense recognize-text / items acknowledge-mismatch (ADR-0038 PR-2e)
+- merchant_alias PATCH / DELETE (ADR-0038 PR-2e)
 - category_rule PATCH / DELETE (ADR-0038 PR-1)
 - rule_application apply / rollback (Alpha3 engine — pre-dates ADR-0038
   but follows the same atomic ``UPDATE WHERE updated_at = expected``
   shape; latent tz-handling bug fixed by this refactor)
-- ...followups: merchant alias / recognize-text
 
 Two layers:
 

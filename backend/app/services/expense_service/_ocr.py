@@ -123,12 +123,18 @@ def retry_expense_ocr(
 def recognize_expense_text(
     db: Session, expense_id: int, tenant_id: str, payload: ExpenseRecognizeTextRequest
 ) -> Expense:
+    # ADR-0038 PR-2e: client supplies ``expected_updated_at`` so the
+    # atomic claim rejects stale writes (peer edited amount/items
+    # between the client's read and this recognize call) as 409
+    # ``state_conflict``. Previously the service self-claimed using
+    # the row's current ``updated_at``, which silently overwrote
+    # concurrent edits.
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
 
     raw_text = payload.raw_text.strip()
-    expected_updated_at = expense.updated_at
+    expected_updated_at = payload.expected_updated_at
     now = now_utc()
     expense = _claim_pending_expense_for_ocr(
         db,
@@ -137,7 +143,9 @@ def recognize_expense_text(
         expected_updated_at=expected_updated_at,
         claimed_at=now,
     )
-    # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
+    # Keep legacy OCR draft-field detection anchored to the pre-claim
+    # snapshot — apply_ocr_result_and_append_fact reads expense.updated_at
+    # to decide which draft fields it owns and is allowed to overwrite.
     expense.updated_at = expected_updated_at
     result = OcrResult(raw_text=raw_text, confidence=None)
     apply_ocr_result_and_append_fact(

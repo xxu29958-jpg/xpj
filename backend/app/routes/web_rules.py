@@ -21,6 +21,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_updated_at_token,
     templates,
 )
 from app.services.classify_service import (
@@ -191,25 +192,39 @@ def web_rules_toggle(
     request: Request,
     rule_id: int,
     ledger_id: str = Form(""),
+    expected_updated_at: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    # ADR-0038 PR-1 (form-token follow-up): /web is no longer loopback-
+    # only — ADR-0028 PR-4 lets a public-host request with a valid
+    # ``__Host-session`` cookie reach /web too. The pre-PR-4 comment
+    # claimed "no race window under loopback" was sufficient; that
+    # assumption broke when /web went cookie-accessible. Carry a
+    # hidden ``expected_updated_at`` per row instead.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_updated_at_token(expected_updated_at)
+    if parsed is None:
+        return _web_redirect(
+            "/web/rules", selected_id, msg="页面已过期，请刷新后重试。"
+        )
     rule = _get_rule(db, rule_id, selected_id)
     if rule is None:
         msg = "规则不存在。"
     else:
-        # /web is loopback owner-console flow; same-request fetch-then-
-        # write has no race window under SQLite's single-writer guarantee,
-        # so we pass the rule's current updated_at as the expected value.
-        # PR-2 (expense PATCH) will wire a hidden form field for cross-
-        # request concurrency on user-facing /web pages.
-        updated_rule = update_rule(
-            db, rule, expected_updated_at=rule.updated_at, enabled=not rule.enabled
-        )
-        msg = f"规则 [{updated_rule.keyword}] {'已启用' if updated_rule.enabled else '已停用'}。"
+        try:
+            updated_rule = update_rule(
+                db, rule, expected_updated_at=parsed, enabled=not rule.enabled
+            )
+            msg = f"规则 [{updated_rule.keyword}] {'已启用' if updated_rule.enabled else '已停用'}。"
+        except AppError as exc:
+            msg = (
+                "规则已在其它端被修改，请刷新后重试。"
+                if exc.error == "state_conflict"
+                else exc.message
+            )
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
@@ -218,21 +233,33 @@ def web_rules_delete(
     request: Request,
     rule_id: int,
     ledger_id: str = Form(""),
+    expected_updated_at: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    # ADR-0038 PR-1 (form-token follow-up): see web_rules_toggle above.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_updated_at_token(expected_updated_at)
+    if parsed is None:
+        return _web_redirect(
+            "/web/rules", selected_id, msg="页面已过期，请刷新后重试。"
+        )
     rule = _get_rule(db, rule_id, selected_id)
     if rule is None:
         msg = "规则不存在。"
     else:
         keyword = rule.keyword
-        # See web_rules_toggle: loopback flow uses the rule's own
-        # updated_at as expected (no race window).
-        delete_rule(db, rule, expected_updated_at=rule.updated_at)
-        msg = f"规则 [{keyword}] 已删除。"
+        try:
+            delete_rule(db, rule, expected_updated_at=parsed)
+            msg = f"规则 [{keyword}] 已删除。"
+        except AppError as exc:
+            msg = (
+                "规则已在其它端被修改，请刷新后重试。"
+                if exc.error == "state_conflict"
+                else exc.message
+            )
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 

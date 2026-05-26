@@ -404,15 +404,21 @@ Invoke-RestMethod `
 
 ### 粘贴文本识别
 
-用于调试规则抽取，或以后从快捷指令/其他 OCR 把文本传给后端：
+用于调试规则抽取，或以后从快捷指令/其他 OCR 把文本传给后端。ADR-0038 PR-2e
+要求带上当前 expense 的 `updated_at` 作为 `expected_updated_at`，先 GET 拿
+快照再 POST：
 
 ```powershell
+$snapshot = Invoke-RestMethod -Uri http://127.0.0.1:8000/api/expenses/1 -Headers $appHeaders
 Invoke-RestMethod `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/expenses/1/recognize-text `
   -Headers $appHeaders `
   -ContentType application/json `
-  -Body '{"raw_text":"中国建设银行\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"}'
+  -Body (@{
+      expected_updated_at = $snapshot.updated_at
+      raw_text = "中国建设银行`n交易时间：2026年5月4日 16:23:25`n交易金额：18.51（人民币）"
+  } | ConvertTo-Json -Compress)
 ```
 
 ### 疑似重复账单

@@ -136,12 +136,37 @@ class ExpenseEditViewModel(
     }
 
     fun acknowledgeItemsMismatch() {
+        // ADR-0038 PR-2e: pass the expense's last-seen ``updatedAt`` as the
+        // optimistic-concurrency token. If the expense hasn't loaded yet (no
+        // baseline snapshot to compare against), bail with the same items
+        // message UX the network paths use.
+        val token = _uiState.value.expense?.updatedAt
+        if (token == null) {
+            _uiState.update {
+                it.copy(itemsMessage = "账单还在加载，请稍后再点。")
+            }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(itemsLoading = true, itemsMessage = null) }
-            repository.acknowledgeExpenseItemsMismatch(expenseId)
+            repository.acknowledgeExpenseItemsMismatch(expenseId, token)
                 .onSuccess { items ->
+                    // ADR-0038 PR-2e: ack bumps the parent expense's
+                    // ``updated_at`` server-side. Refresh ``_uiState.expense``
+                    // so subsequent same-page mutations (PATCH / confirm /
+                    // reject / OCR retry) pick up the new token instead of
+                    // racing themselves with a now-stale one.
+                    //
+                    // Refresh inline INSTEAD of calling ``loadExpense()``:
+                    // ``loadExpense`` flips ``message`` to ``null`` at the
+                    // start of its coroutine, which would erase the success
+                    // banner we set below. We only need the new
+                    // ``updatedAt`` here, so a surgical update keeps the
+                    // success message visible.
+                    val refreshedExpense = repository.fetchExpense(expenseId).getOrNull()
                     _uiState.update {
                         it.copy(
+                            expense = refreshedExpense ?: it.expense,
                             expenseItems = items,
                             itemsLoading = false,
                             message = "已确认原小票如此。",

@@ -75,6 +75,7 @@
           {% if can_write %}
           <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle" style="display:inline">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="expected_updated_at" value="{{ item.updated_at | to_iso }}">
             <button type="submit" class="dt-btn">
               {% if item.enabled %}停用{% else %}启用{% endif %}
             </button>
@@ -82,6 +83,7 @@
           <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete" style="display:inline"
                 data-confirm="删除商家别名 [{{ item.alias }}]？">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+            <input type="hidden" name="expected_updated_at" value="{{ item.updated_at | to_iso }}">
             <button type="submit" class="dt-btn danger">删除</button>
           </form>
           {% else %}

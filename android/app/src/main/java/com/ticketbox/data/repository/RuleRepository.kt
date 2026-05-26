@@ -2,7 +2,9 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.RuleApplicationBatch
@@ -64,8 +66,12 @@ class RuleRepository(
             }
         }
 
+    // ADR-0038 PR-1: PATCH/DELETE require an optimistic-concurrency token.
+    // Server returns 409 ``state_conflict`` on stale snapshots →
+    // NetworkErrorHandler surfaces it through the standard mapping.
     suspend fun updateCategoryRule(
         id: Long,
+        expectedUpdatedAt: String,
         keyword: String? = null,
         category: String? = null,
         enabled: Boolean? = null,
@@ -75,7 +81,8 @@ class RuleRepository(
             ledgerRequestGuard.guardedCall { api ->
                 api.updateCategoryRule(
                     id,
-                    CategoryRuleRequest(
+                    CategoryRuleUpdateRequest(
+                        expectedUpdatedAt = expectedUpdatedAt,
                         keyword = keyword,
                         category = category,
                         enabled = enabled,
@@ -85,10 +92,13 @@ class RuleRepository(
             }
         }
 
-    suspend fun deleteCategoryRule(id: Long): Result<Unit> =
+    suspend fun deleteCategoryRule(id: Long, expectedUpdatedAt: String): Result<Unit> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                api.deleteCategoryRule(id)
+                api.deleteCategoryRule(
+                    id,
+                    CategoryRuleDeleteRequest(expectedUpdatedAt = expectedUpdatedAt),
+                )
             }
             Unit
         }

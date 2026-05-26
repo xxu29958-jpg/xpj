@@ -58,6 +58,17 @@ def test_web_rules_local_returns_200(web_client: TestClient) -> None:
     assert "分类规则" in resp.text
 
 
+def _rule_token_for(page_html: str, rule_id: int, action: str) -> str:
+    # ADR-0038 PR-1 (form-token): toggle/delete forms render the row's
+    # current updated_at as a hidden ``expected_updated_at`` input.
+    pattern = (
+        rf"/web/rules/{rule_id}/{action}.*?expected_updated_at\"\s*value=\"([^\"]+)\""
+    )
+    match = re.search(pattern, page_html, flags=re.DOTALL)
+    assert match, page_html[:1000]
+    return match.group(1)
+
+
 def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     # Create
     resp = web_client.post(
@@ -70,18 +81,26 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     page = web_client.get("/web/rules?ledger_id=owner")
     assert "测试关键词A" in page.text
     rule_id = _rule_id_for_keyword(page.text, "测试关键词A")
-    # Toggle
+    # Toggle — ADR-0038 PR-1 form-token: pull the hidden value out of
+    # the rendered page and ship it back, mirroring what the JS would
+    # submit from the browser.
+    toggle_token = _rule_token_for(page.text, rule_id, "toggle")
     resp = web_client.post(
         f"/web/rules/{rule_id}/toggle",
-        data={"ledger_id": "owner"}, follow_redirects=False,
+        data={"ledger_id": "owner", "expected_updated_at": toggle_token},
+        follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
     msg = parse_qs(urlparse(resp.headers["location"]).query)["msg"][0]
     assert msg == "规则 [测试关键词A] 已停用。"
-    # Delete
+    # Delete — refresh the page so the delete form's hidden token is
+    # post-toggle and not stale.
+    page = web_client.get("/web/rules?ledger_id=owner")
+    delete_token = _rule_token_for(page.text, rule_id, "delete")
     resp = web_client.post(
         f"/web/rules/{rule_id}/delete",
-        data={"ledger_id": "owner"}, follow_redirects=False,
+        data={"ledger_id": "owner", "expected_updated_at": delete_token},
+        follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
 

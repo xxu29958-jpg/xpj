@@ -46,12 +46,25 @@ internal class ExpenseDetailRepository(
         updated.toDomain()
     }
 
-    suspend fun acknowledgeExpenseItemsMismatch(id: Long): Result<ExpenseItems> = core.errorHandler.safeCall {
+    suspend fun acknowledgeExpenseItemsMismatch(
+        id: Long,
+        expectedUpdatedAt: String,
+    ): Result<ExpenseItems> = core.errorHandler.safeCall {
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
         val bound = core.ledgerRequestGuard.bind()
-        bound.call { it.acknowledgeExpenseItemsMismatch(id) }.toDomain()
+        // ADR-0038 PR-2e: send the token so server's atomic UPDATE WHERE
+        // items_sum_status='mismatch_known', updated_at=expected rejects
+        // stale "原小票如此" clicks against a peer-edited row.
+        bound.call {
+            it.acknowledgeExpenseItemsMismatch(
+                id,
+                com.ticketbox.data.remote.dto.ExpenseStateTokenRequest(
+                    expectedUpdatedAt = expectedUpdatedAt,
+                ),
+            )
+        }.toDomain()
     }
 
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = core.errorHandler.safeCall {

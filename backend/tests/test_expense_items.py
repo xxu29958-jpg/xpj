@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from api_contract_helpers import reject_expense_api, upload_png
+from api_contract_helpers import recognize_text_api, reject_expense_api, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -85,10 +85,8 @@ def _recognize_receipt_items(
             "支付成功",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200, response.json()
     return response.json()
@@ -184,20 +182,19 @@ def test_recognize_text_replaces_existing_ocr_draft_items(client: TestClient, *,
     expense_id = upload_png(client, identity=identity)
     _recognize_receipt_items(client, expense_id, identity=identity)
 
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    response = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
-            "raw_text": "\n".join(
-                [
-                    "便利店",
-                    "矿泉水 1瓶 2.00",
-                    "饭团 1个 6.00",
-                    "订单金额 8.00",
-                    "支付成功",
-                ]
-            )
-        },
+        raw_text="\n".join(
+            [
+                "便利店",
+                "矿泉水 1瓶 2.00",
+                "饭团 1个 6.00",
+                "订单金额 8.00",
+                "支付成功",
+            ]
+        ),
     )
     assert response.status_code == 200, response.json()
 
@@ -214,10 +211,11 @@ def test_recognize_text_without_items_clears_existing_ocr_draft_items(client: Te
     expense_id = upload_png(client, identity=identity)
     _recognize_receipt_items(client, expense_id, identity=identity)
 
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    response = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"raw_text": "星巴克\n支付成功\n谢谢惠顾"},
+        raw_text="星巴克\n支付成功\n谢谢惠顾",
     )
     assert response.status_code == 200, response.json()
 

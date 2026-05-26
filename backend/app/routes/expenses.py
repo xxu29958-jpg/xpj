@@ -13,6 +13,7 @@ from app.schemas import (
     CategoriesResponse,
     ConfirmedExpenseBatchUpdateRequest,
     ConfirmedExpenseBatchUpdateResponse,
+    ExpenseAcknowledgeItemsMismatchRequest,
     ExpenseConfirmRequest,
     ExpenseItemReplaceRequest,
     ExpenseItemsResponse,
@@ -236,10 +237,20 @@ def put_expense_item_rows(
 )
 def acknowledge_expense_items_mismatch(
     expense_id: int,
+    payload: ExpenseAcknowledgeItemsMismatchRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseItemsResponse:
-    return acknowledge_items_sum_mismatch(db, expense_id, auth.tenant_id)
+    # ADR-0038 PR-2e: ``expected_updated_at`` token guards against a
+    # user clicking "原小票如此" on a stale page after a peer edited
+    # amount/items — without the token the service would flip a *new*
+    # mismatch into ``mismatch_acknowledged``.
+    return acknowledge_items_sum_mismatch(
+        db,
+        expense_id,
+        auth.tenant_id,
+        expected_updated_at=payload.expected_updated_at,
+    )
 
 
 @router.get("/{expense_id}/splits", response_model=ExpenseSplitsResponse)

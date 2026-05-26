@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from api_contract_helpers import (
+    recognize_text_api,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -17,10 +18,8 @@ def test_recognize_text_extracts_receipt_fields(client: TestClient, *, identity)
             "交易金额：18.51（人民币）",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -50,10 +49,8 @@ def test_recognize_text_prefers_transaction_time_over_other_times(
             "2026-05-04 06:49:50",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -90,10 +87,8 @@ def test_recognize_text_prefers_alipay_primary_amount_and_title_merchant(
             "巴南区财进宁食品经营部（个体工商户）",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -127,10 +122,8 @@ def test_recognize_text_ignores_alipay_success_page_ads_for_merchant(
             "券后￥0.01",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -162,10 +155,8 @@ def test_recognize_text_alipay_success_body_ignores_navigation_title(
             "本店特价限时抢购",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -199,10 +190,8 @@ def test_recognize_text_wechat_payment_line_merchant_candidate(
             "摇优惠",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200
     payload = response.json()
@@ -238,10 +227,8 @@ def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
             "确认支付",
         ]
     )
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
-        json={"raw_text": raw_text},
+    response = recognize_text_api(
+        client, expense_id, headers=identity.app_headers, raw_text=raw_text
     )
     assert response.status_code == 200
     payload = response.json()

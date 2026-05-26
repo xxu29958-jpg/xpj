@@ -65,6 +65,29 @@ class CategoryRuleDtoContractTest {
     }
 
     @Test
+    fun categoryRuleUpdateAndDeleteCarryExpectedUpdatedAt() {
+        // ADR-0038 PR-1: PATCH/DELETE bodies must carry expected_updated_at
+        // (and DELETE actually sends a body now).
+        val updateJson = moshi.adapter(CategoryRuleUpdateRequest::class.java).toJson(
+            CategoryRuleUpdateRequest(
+                expectedUpdatedAt = "2026-05-13T00:00:00Z",
+                enabled = false,
+            ),
+        )
+        val deleteJson = moshi.adapter(CategoryRuleDeleteRequest::class.java).toJson(
+            CategoryRuleDeleteRequest(expectedUpdatedAt = "2026-05-13T00:00:00Z"),
+        )
+        assertEquals(
+            """{"expected_updated_at":"2026-05-13T00:00:00Z","enabled":false}""",
+            updateJson,
+        )
+        assertEquals(
+            """{"expected_updated_at":"2026-05-13T00:00:00Z"}""",
+            deleteJson,
+        )
+    }
+
+    @Test
     fun applyConfirmedRulesUsesDryRunByDefaultAndParsesPreview() {
         val requestJson = moshi.adapter(RuleApplyConfirmedRequestDto::class.java).toJson(
             RuleApplyConfirmedRequestDto(),

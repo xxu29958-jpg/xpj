@@ -35,11 +35,29 @@ class MerchantAliasDtoContractTest {
         val patchJson = moshi.adapter(MerchantAliasRequest::class.java).toJson(
             MerchantAliasRequest(enabled = false),
         )
+        // ADR-0038 PR-2e: PATCH/DELETE bodies carry expected_updated_at.
+        val updateJson = moshi.adapter(MerchantAliasUpdateRequest::class.java).toJson(
+            MerchantAliasUpdateRequest(
+                expectedUpdatedAt = "2026-05-13T00:05:00Z",
+                enabled = false,
+            ),
+        )
+        val deleteJson = moshi.adapter(MerchantAliasDeleteRequest::class.java).toJson(
+            MerchantAliasDeleteRequest(expectedUpdatedAt = "2026-05-13T00:05:00Z"),
+        )
 
         val item = dto.items.single()
         assertEquals("alias-1", item.publicId)
         assertEquals("星巴克", item.canonicalMerchant)
         assertEquals("starbucks", item.aliasKey)
         assertEquals("""{"enabled":false}""", patchJson)
+        assertEquals(
+            """{"expected_updated_at":"2026-05-13T00:05:00Z","enabled":false}""",
+            updateJson,
+        )
+        assertEquals(
+            """{"expected_updated_at":"2026-05-13T00:05:00Z"}""",
+            deleteJson,
+        )
     }
 }

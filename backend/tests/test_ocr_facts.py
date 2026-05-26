@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from api_contract_helpers import retry_ocr_api, upload_png
+from api_contract_helpers import recognize_text_api, retry_ocr_api, upload_png
 
 from app.database import SessionLocal
 from app.models import Expense, OcrFact
@@ -293,10 +293,11 @@ def test_android_upload_auto_ocr_writes_fact(
 def test_recognize_text_writes_manual_text_fact(client, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
 
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    response = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"raw_text": "星巴克\n交易金额：29.00\n交易时间：2026年5月4日 16:23:25"},
+        raw_text="星巴克\n交易金额：29.00\n交易时间：2026年5月4日 16:23:25",
     )
 
     assert response.status_code == 200, response.json()

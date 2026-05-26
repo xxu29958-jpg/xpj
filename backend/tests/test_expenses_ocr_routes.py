@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from api_contract_helpers import (
     patch_expense,
+    recognize_text_api,
     reject_expense_api,
     retry_ocr_api,
     upload_png,
@@ -41,12 +42,11 @@ def test_ocr_retry_and_recognize_text_only_update_pending_draft(
     assert retry.json()["status"] == "pending"
     assert retry.json()["confirmed_at"] is None
 
-    response = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    response = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
-            "raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25"
-        },
+        raw_text="中国建设银行\n交易金额：18.51\n交易时间：2026年5月4日 16:23:25",
     )
     assert response.status_code == 200
     payload = response.json()
@@ -96,10 +96,11 @@ def test_ocr_routes_do_not_modify_confirmed_expense(client: TestClient, *, ident
 
     retry = retry_ocr_api(client, expense_id, headers=identity.app_headers)
     assert retry.status_code == 404
-    recognized = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    recognized = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"raw_text": "Changed Cafe\n99.99"},
+        raw_text="Changed Cafe\n99.99",
     )
     assert recognized.status_code == 404
 
@@ -119,10 +120,11 @@ def test_ocr_routes_do_not_modify_rejected_expense(client: TestClient, *, identi
 
     retry = retry_ocr_api(client, expense_id, headers=identity.app_headers)
     assert retry.status_code == 404
-    recognized = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    recognized = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"raw_text": "Changed Cafe\n99.99"},
+        raw_text="Changed Cafe\n99.99",
     )
     assert recognized.status_code == 404
 
@@ -150,10 +152,11 @@ def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient, *, identit
     )
     assert patched.status_code == 200, patched.json()
 
-    second = client.post(
-        f"/api/expenses/{expense_id}/recognize-text",
+    second = recognize_text_api(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"raw_text": "中国建设银行\n交易金额：18.51\n交易时间：2026年5月6日 23:00:00"},
+        raw_text="中国建设银行\n交易金额：18.51\n交易时间：2026年5月6日 23:00:00",
     )
     assert second.status_code == 200, second.json()
     assert second.json()["expense_time"] == "2026-05-04T05:00:00Z"

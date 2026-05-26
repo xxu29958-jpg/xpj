@@ -1485,6 +1485,11 @@
       },
       "Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1581,6 +1586,11 @@
       },
       "Body_web_merchant_alias_delete_web_merchants_aliases__public_id__delete_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1592,6 +1602,11 @@
       },
       "Body_web_merchant_alias_toggle_web_merchants_aliases__public_id__toggle_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1854,6 +1869,11 @@
       },
       "Body_web_rules_delete_web_rules__rule_id__delete_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1865,6 +1885,11 @@
       },
       "Body_web_rules_toggle_web_rules__rule_id__toggle_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -3689,6 +3714,22 @@
         "title": "ExchangeRateResponse",
         "type": "object"
       },
+      "ExpenseAcknowledgeItemsMismatchRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2e: ``POST /api/expenses/{id}/items/acknowledge-mismatch``.\n\nAcknowledging \"原小票如此\" flips ``items_sum_status`` from\n``mismatch_known`` to ``mismatch_acknowledged``. Without the token,\na stale page open before a peer edited amount/items would let the\nuser blindly accept a *new* mismatch as if it were the one they\nsaw. The service uses ``claim_row_with_token`` with the predicate\n``items_sum_status == \"mismatch_known\"`` so:\n\n- row not visible / vanished → 404 ``expense_not_found``\n- status != ``mismatch_known`` → 409 ``items_sum_not_in_mismatch``\n  (existing UX, preserved)\n- else → 409 ``state_conflict``",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "ExpenseAcknowledgeItemsMismatchRequest",
+        "type": "object"
+      },
       "ExpenseConfirmRequest": {
         "additionalProperties": false,
         "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.\n\n``expected_updated_at`` is the optimistic-concurrency token client\nlast saw on the expense; service-layer ``confirm_expense`` atomic\n``UPDATE WHERE updated_at = expected_updated_at`` rejects stale\nwrites with 409. Confirming an already-confirmed row remains\nidempotent (200) regardless of the token — confirmed is terminal.",
@@ -4222,7 +4263,14 @@
         "type": "object"
       },
       "ExpenseRecognizeTextRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2e: ``POST /api/expenses/{id}/recognize-text`` body.\n\nPreviously the service self-claimed using the row's current\n``updated_at``, which silently overwrote concurrent edits made\nbetween the client's read and the recognize call. With\n``expected_updated_at`` the service issues an atomic ``UPDATE\nWHERE updated_at = expected`` and returns 409 ``state_conflict``\non stale tokens. Same contract as the rest of the expense-mutate\nsurface (PATCH / confirm / reject / ocr retry / ...).",
         "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "raw_text": {
             "maxLength": 20000,
             "minLength": 1,
@@ -4231,6 +4279,7 @@
           }
         },
         "required": [
+          "expected_updated_at",
           "raw_text"
         ],
         "title": "ExpenseRecognizeTextRequest",
@@ -6533,6 +6582,22 @@
         "title": "MerchantAliasCreateRequest",
         "type": "object"
       },
+      "MerchantAliasDeleteRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2e: ``DELETE /api/merchants/aliases/{public_id}`` body.\n\nMirrors :class:`CategoryRuleDeleteRequest`: DELETE carries a body so\n``expected_updated_at`` travels the same channel as PATCH (Pydantic-\ntyped, FastAPI-parsed). No query-string fallback — clients must send\nbody. 409 ``state_conflict`` on stale token; 404 if the row vanished\nbetween the client's read and the delete.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "MerchantAliasDeleteRequest",
+        "type": "object"
+      },
       "MerchantAliasListResponse": {
         "properties": {
           "items": {
@@ -6612,6 +6677,8 @@
         "type": "object"
       },
       "MerchantAliasUpdateRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2e: ``PATCH /api/merchants/aliases/{public_id}`` body.\n\n``expected_updated_at`` is the optimistic-concurrency token the\nclient saw when it last read the alias. The service issues an\natomic ``UPDATE ... WHERE updated_at = expected`` and returns\n409 ``state_conflict`` if the row has been mutated by another\nwriter between the read and this PATCH.",
         "properties": {
           "alias": {
             "anyOf": [
@@ -6649,8 +6716,16 @@
               }
             ],
             "title": "Enabled"
+          },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "MerchantAliasUpdateRequest",
         "type": "object"
       },
@@ -11140,6 +11215,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseAcknowledgeItemsMismatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -14361,6 +14446,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantAliasDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
