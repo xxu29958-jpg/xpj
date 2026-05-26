@@ -248,9 +248,14 @@ class ExpenseEditViewModel(
 
     fun retryOcr() {
         if (blockReadOnlyWrite()) return
+        val expense = _uiState.value.expense
+        if (expense == null) {
+            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(ocrRunning = true, message = null) }
-            repository.retryOcr(expenseId)
+            repository.retryOcr(expenseId, expense.updatedAt)
                 .onSuccess { expense ->
                     _uiState.update { it.copy(expense = expense, ocrRunning = false, message = "识别已重试") }
                 }

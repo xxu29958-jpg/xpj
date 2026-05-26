@@ -4167,6 +4167,22 @@
         "title": "ExpenseMarkNotDuplicateRequest",
         "type": "object"
       },
+      "ExpenseOcrRetryRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2c: ``POST /api/expenses/{id}/ocr/retry`` body.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "ExpenseOcrRetryRequest",
+        "type": "object"
+      },
       "ExpenseRecognizeTextRequest": {
         "properties": {
           "raw_text": {
@@ -11203,6 +11219,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseOcrRetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

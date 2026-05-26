@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from api_contract_helpers import upload_png
+from api_contract_helpers import retry_ocr_api, upload_png
 
 from app.database import SessionLocal
 from app.models import Expense, OcrFact
@@ -373,12 +373,8 @@ def test_retry_ocr_appends_fact_each_time(
         lambda: "mock",
     )
 
-    first = client.post(
-        f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers
-    )
-    second = client.post(
-        f"/api/expenses/{expense_id}/ocr/retry", headers=identity.app_headers
-    )
+    first = retry_ocr_api(client, expense_id, headers=identity.app_headers)
+    second = retry_ocr_api(client, expense_id, headers=identity.app_headers)
 
     assert first.status_code == 200, first.json()
     assert second.status_code == 200, second.json()

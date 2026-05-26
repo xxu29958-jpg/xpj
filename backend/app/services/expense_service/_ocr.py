@@ -8,6 +8,8 @@ so legacy draft-field detection stays consistent.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
@@ -55,16 +57,18 @@ def _claim_pending_expense_for_ocr(
         )
         if current is None or current.status != "pending":
             raise AppError("expense_not_found", status_code=404)
-        raise AppError(
-            "expense_changed",
-            "账单已被修改，请重新打开后再识别。",
-            status_code=409,
-        )
+        raise AppError("state_conflict", status_code=409)
     db.expire_all()
     return get_expense(db, expense_id, tenant_id)
 
 
-def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
+def retry_expense_ocr(
+    db: Session,
+    expense_id: int,
+    tenant_id: str,
+    *,
+    expected_updated_at: datetime,
+) -> Expense:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
         raise AppError("expense_not_found", status_code=404)
@@ -76,7 +80,6 @@ def retry_expense_ocr(db: Session, expense_id: int, tenant_id: str) -> Expense:
             status_code=503,
         )
 
-    expected_updated_at = expense.updated_at
     result = extract_ocr_result(expense)
     now = now_utc()
     expense = _claim_pending_expense_for_ocr(

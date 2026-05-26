@@ -297,7 +297,10 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
     ): ExpenseDto = unsupported()
 
-    override suspend fun retryOcr(id: Long): ExpenseDto = unsupported()
+    override suspend fun retryOcr(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto = unsupported()
 
     override suspend fun acceptPendingSuggestion(
         id: Long,

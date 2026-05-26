@@ -151,7 +151,7 @@ Authorization: Bearer <admin_token>
 | `/api/expenses/{id}` | PATCH | `backend/app/routes/expenses.py` | `updateExpense(id,request)` | `ExpenseUpdateRequest` | `ExpenseDto` | Session Token, owner/member write permission | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/{id}/confirm` | POST | `backend/app/routes/expenses.py` | `confirmExpense(id)` | path `id` | `ExpenseDto` | Session Token, owner/member write permission | `backend/tests/test_expenses.py`, smoke | gray/internal |
 | `/api/expenses/{id}/reject` | POST | `backend/app/routes/expenses.py` | `rejectExpense(id)` | path `id` | `ExpenseDto` | Session Token, owner/member write permission | `backend/tests/test_expenses.py`, smoke | gray/internal |
-| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id)` | path `id` | `ExpenseDto` | Session Token, owner/member write permission | `backend/tests/test_expenses.py` | internal/高级入口 |
+| `/api/expenses/{id}/ocr/retry` | POST | `backend/app/routes/expenses.py` | `retryOcr(id, request)` | `ExpenseOcrRetryRequest` | `ExpenseDto` | Session Token, owner/member write permission | `backend/tests/test_expenses.py` | internal/高级入口 |
 | `/api/expenses/{id}/recognize-text` | POST | `backend/app/routes/expenses.py` | 无 | `RecognizeTextRequest` | `ExpenseDto` | Session Token, owner/member write permission | `backend/tests/test_expenses.py` | internal/shortcut text |
 | `/api/expenses/{id}/mark-not-duplicate` | POST | `backend/app/routes/expenses.py` | `markNotDuplicate(id)` | path `id` | `ExpenseDto` | Session Token, owner/member write permission | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/{id}/image` | GET | `backend/app/routes/expenses.py` | `expenseImage(id)` | path `id` | streaming image | Session Token | `backend/tests/test_expenses.py`, smoke | gray/internal |
@@ -1130,6 +1130,16 @@ Authorization: Bearer <session_token>
 ```http
 Authorization: Bearer <session_token>
 ```
+
+请求体：
+
+```json
+{
+  "expected_updated_at": "2026-05-04T08:00:00Z"
+}
+```
+
+`expected_updated_at` 是客户端最后一次读取该账单时看到的 `updated_at`。如果账单已经被其它端修改，返回 `409 state_conflict`，客户端需要重新读取最新账单后再决定是否重试识别。
 
 重新运行当前 `OCR_PROVIDER`。OCR 只写入待确认草稿，不会自动入账。
 如果当前为默认 `OCR_PROVIDER=empty`，返回 `503 ocr_not_configured`，不写入 `ocr_facts`，避免用户点“重试识别”后产生空识别记录但界面无变化。

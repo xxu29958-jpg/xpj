@@ -27,6 +27,7 @@ __all__ = [
     "ExpenseItemsResponse",
     "ExpenseManualCreateRequest",
     "ExpenseMarkNotDuplicateRequest",
+    "ExpenseOcrRetryRequest",
     "ExpenseRecognizeTextRequest",
     "ExpenseRejectRequest",
     "ExpenseResponse",
@@ -136,6 +137,14 @@ class ExpenseRejectRequest(BaseModel):
 
 class ExpenseMarkNotDuplicateRequest(BaseModel):
     """ADR-0038 PR-2b: ``POST /api/expenses/{id}/mark-not-duplicate``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
+
+
+class ExpenseOcrRetryRequest(BaseModel):
+    """ADR-0038 PR-2c: ``POST /api/expenses/{id}/ocr/retry`` body."""
 
     model_config = ConfigDict(extra="forbid")
 

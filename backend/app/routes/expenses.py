@@ -18,6 +18,7 @@ from app.schemas import (
     ExpenseItemsResponse,
     ExpenseManualCreateRequest,
     ExpenseMarkNotDuplicateRequest,
+    ExpenseOcrRetryRequest,
     ExpenseRecognizeTextRequest,
     ExpenseRejectRequest,
     ExpenseResponse,
@@ -342,10 +343,16 @@ def post_reject_expense(
 @router.post("/{expense_id}/ocr/retry", response_model=ExpenseResponse)
 def post_retry_ocr(
     expense_id: int,
+    payload: ExpenseOcrRetryRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    expense = retry_expense_ocr(db, expense_id, auth.tenant_id)
+    expense = retry_expense_ocr(
+        db,
+        expense_id,
+        auth.tenant_id,
+        expected_updated_at=payload.expected_updated_at,
+    )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

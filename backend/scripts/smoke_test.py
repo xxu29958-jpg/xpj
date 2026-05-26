@@ -450,7 +450,16 @@ def run_smoke(base_url: str) -> None:
 
     # OCR_PROVIDER=empty 下 retry 必须 503 ocr_not_configured（fact-backed contract，
     # 见 backend/app/services/expense_service/_ocr.py:retry_expense_ocr 与 ADR-0021）。
-    result = request("POST", f"{base_url}/api/expenses/{expense_id}/ocr/retry", headers=app_headers())
+    retry_body = json.dumps(
+        {"expected_updated_at": patched["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "POST",
+        f"{base_url}/api/expenses/{expense_id}/ocr/retry",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=retry_body,
+    )
     assert_error(result, 503, "ocr_not_configured")
     print("OK ocr retry refuses empty provider")
 

@@ -168,8 +168,8 @@ class ExpenseRepository(
     override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
         pendingRepository.rejectExpense(id, expectedUpdatedAt)
 
-    suspend fun retryOcr(id: Long): Result<Expense> =
-        detailRepository.retryOcr(id)
+    suspend fun retryOcr(id: Long, expectedUpdatedAt: String): Result<Expense> =
+        detailRepository.retryOcr(id, expectedUpdatedAt)
 
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
         pendingRepository.markNotDuplicate(id, expectedUpdatedAt)

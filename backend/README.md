@@ -397,7 +397,9 @@ OCR_FALLBACK_PROVIDER=local_llm
 Invoke-RestMethod `
   -Method Post `
   -Uri http://127.0.0.1:8000/api/expenses/1/ocr/retry `
-  -Headers $appHeaders
+  -Headers $appHeaders `
+  -ContentType application/json `
+  -Body '{"expected_updated_at":"2026-05-04T08:00:00Z"}'
 ```
 
 ### 粘贴文本识别

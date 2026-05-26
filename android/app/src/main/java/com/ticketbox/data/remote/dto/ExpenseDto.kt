@@ -140,7 +140,7 @@ data class ExpenseUpdateRequest(
 
 /**
  * ADR-0038 PR-2b: optimistic-concurrency token shared by the
- * confirm / reject / mark-not-duplicate state-machine POSTs.
+ * confirm / reject / mark-not-duplicate state-machine POSTs and OCR retry.
  *
  * Client passes the ``updatedAt`` of the last ``Expense`` snapshot it
  * saw. Backend ``UPDATE WHERE updated_at = expected_updated_at``

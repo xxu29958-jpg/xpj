@@ -5,6 +5,7 @@ from api_contract_helpers import (
     mark_not_duplicate_api,
     patch_expense,
     reject_expense_api,
+    retry_ocr_api,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -152,7 +153,7 @@ def test_expense_mutation_routes_are_tenant_scoped(client: TestClient, *, identi
         ),
         confirm_expense_api(client, owner_id, headers=identity.gray_app_headers),
         reject_expense_api(client, owner_id, headers=identity.gray_app_headers),
-        client.post(f"/api/expenses/{owner_id}/ocr/retry", headers=identity.gray_app_headers),
+        retry_ocr_api(client, owner_id, headers=identity.gray_app_headers),
         client.post(
             f"/api/expenses/{owner_id}/recognize-text",
             headers=identity.gray_app_headers,

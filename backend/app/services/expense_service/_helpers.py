@@ -189,7 +189,7 @@ def _expense_has_pending_fx(expense: Expense) -> bool:
 def _updated_at_matches(value):
     if value is None:
         return Expense.updated_at.is_(None)
-    return Expense.updated_at == value
+    return Expense.updated_at == ensure_utc(value).replace(tzinfo=None)
 
 
 def _ensure_expense_can_confirm(expense: Expense) -> None:

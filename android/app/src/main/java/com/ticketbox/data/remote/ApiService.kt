@@ -201,7 +201,10 @@ interface ApiService {
     ): ExpenseDto
 
     @POST("api/expenses/{id}/ocr/retry")
-    suspend fun retryOcr(@Path("id") id: Long): ExpenseDto
+    suspend fun retryOcr(
+        @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto
 
     @POST("api/expenses/{id}/suggestions/{decisionPublicId}/accept")
     suspend fun acceptPendingSuggestion(

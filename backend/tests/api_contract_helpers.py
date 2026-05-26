@@ -92,6 +92,22 @@ def mark_not_duplicate_api(
     )
 
 
+def retry_ocr_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+) -> httpx.Response:
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    if snapshot.status_code != 200:
+        return snapshot
+    return client.post(
+        f"/api/expenses/{expense_id}/ocr/retry",
+        headers=headers,
+        json={"expected_updated_at": snapshot.json()["updated_at"]},
+    )
+
+
 def web_confirm_expense(
     client: TestClient,
     expense_id: int,

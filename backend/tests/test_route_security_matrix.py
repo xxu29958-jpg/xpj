@@ -67,7 +67,11 @@ from fastapi.testclient import TestClient
             "/api/expenses/1/mark-not-duplicate",
             {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
         ),
-        ("POST", "/api/expenses/1/ocr/retry", {}),
+        (
+            "POST",
+            "/api/expenses/1/ocr/retry",
+            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+        ),
         ("POST", "/api/expenses/1/recognize-text", {"json": {"raw_text": "merchant 12.00"}}),
         (
             "POST",
