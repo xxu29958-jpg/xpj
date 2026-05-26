@@ -238,6 +238,58 @@ def parse_csv_preview(content: str, timezone_name: str | None = None) -> CsvPrev
     return preview
 
 
+def _parse_csv_currency_code(raw: str) -> tuple[str, str | None]:
+    """Resolve ``original_currency_code`` cell → (code, error)."""
+    cleaned = raw.strip()
+    if not cleaned:
+        return BASE_CURRENCY_CODE, None
+    try:
+        return normalize_currency_code(cleaned), None
+    except AppError:
+        return BASE_CURRENCY_CODE, "original_currency_code 暂不支持"
+
+
+def _apply_csv_amount_currency_swap(
+    *,
+    amount_cents: int | None,
+    amount_display: str,
+    amount_error: str | None,
+    original_amount_minor: int | None,
+    original_currency_code: str,
+    has_original_fields: bool,
+    explicit_amount_cents: bool,
+) -> tuple[int | None, str, str | None, int | None]:
+    """For rows declaring a foreign currency, route the user's amount
+    into ``original_amount_minor`` so the FX resolver later mints the
+    home amount; leave RMB rows untouched."""
+    if (
+        has_original_fields
+        and original_amount_minor is None
+        and original_currency_code != home_currency_code()
+        and amount_cents is not None
+    ):
+        original_amount_minor = amount_cents
+        amount_cents = None
+    if (
+        has_original_fields
+        and original_amount_minor is not None
+        and original_currency_code != home_currency_code()
+        and not explicit_amount_cents
+    ):
+        amount_cents = None
+        amount_display = ""
+        amount_error = None
+    return amount_cents, amount_display, amount_error, original_amount_minor
+
+
+def _authoritative_rate_for_currency(
+    code: str,
+) -> tuple[Decimal | None, str | None]:
+    if code == home_currency_code():
+        return Decimal("1"), "base"
+    return None, None
+
+
 def parse_csv_row(
     headers: list[str],
     row: list[str],
@@ -249,26 +301,20 @@ def parse_csv_row(
     amount_cents, amount_display, amount_error = _parse_amount(
         cells.get("amount_yuan", ""), cells.get("amount_cents", "")
     )
-    original_currency_raw = cells.get("original_currency_code", "").strip()
-    original_currency_code = BASE_CURRENCY_CODE
-    currency_error = None
-    if original_currency_raw:
-        try:
-            original_currency_code = normalize_currency_code(original_currency_raw)
-        except AppError:
-            currency_error = "original_currency_code 暂不支持"
+    original_currency_code, currency_error = _parse_csv_currency_code(
+        cells.get("original_currency_code", "")
+    )
     original_amount_minor, original_amount_error = _parse_optional_int(
-        cells.get("original_amount_minor", ""),
-        "original_amount_minor",
+        cells.get("original_amount_minor", ""), "original_amount_minor"
     )
     _, exchange_rate_error = _parse_optional_decimal(
-        cells.get("exchange_rate_to_cny", ""),
-        "exchange_rate_to_cny",
+        cells.get("exchange_rate_to_cny", ""), "exchange_rate_to_cny"
     )
-    exchange_rate_date, exchange_rate_date_error = _parse_optional_date(cells.get("exchange_rate_date", ""))
+    exchange_rate_date, exchange_rate_date_error = _parse_optional_date(
+        cells.get("exchange_rate_date", "")
+    )
     expense_time, etime_display, etime_error, expense_rate_date = _parse_expense_time(
-        cells.get("expense_time", ""),
-        timezone_name=timezone_name,
+        cells.get("expense_time", ""), timezone_name=timezone_name
     )
     if expense_rate_date is not None:
         exchange_rate_date = expense_rate_date
@@ -281,28 +327,20 @@ def parse_csv_row(
             "exchange_rate_date",
         )
     )
-    if (
-        has_original_currency_fields
-        and original_amount_minor is None
-        and original_currency_code != home_currency_code()
-        and amount_cents is not None
-    ):
-        original_amount_minor = amount_cents
-        amount_cents = None
-    if (
-        has_original_currency_fields
-        and original_amount_minor is not None
-        and original_currency_code != home_currency_code()
-        and not cells.get("amount_cents", "").strip()
-    ):
-        amount_cents = None
-        amount_display = ""
-        amount_error = None
-    category = normalize_category(cells.get("category", ""))
-    merchant = cells.get("merchant", "").strip()
-    note = cells.get("note", "").strip()
-    tags = cells.get("tags", "").strip()
-    source = cells.get("source", "").strip() or DEFAULT_SOURCE
+    amount_cents, amount_display, amount_error, original_amount_minor = (
+        _apply_csv_amount_currency_swap(
+            amount_cents=amount_cents,
+            amount_display=amount_display,
+            amount_error=amount_error,
+            original_amount_minor=original_amount_minor,
+            original_currency_code=original_currency_code,
+            has_original_fields=has_original_currency_fields,
+            explicit_amount_cents=bool(cells.get("amount_cents", "").strip()),
+        )
+    )
+    authoritative_rate, authoritative_rate_source = _authoritative_rate_for_currency(
+        original_currency_code
+    )
     error = (
         currency_error
         or original_amount_error
@@ -311,12 +349,6 @@ def parse_csv_row(
         or amount_error
         or etime_error
     )
-    if original_currency_code == home_currency_code():
-        authoritative_rate = Decimal("1")
-        authoritative_rate_source = "base"
-    else:
-        authoritative_rate = None
-        authoritative_rate_source = None
     return ParsedRow(
         line_number=line_number,
         amount_cents=amount_cents,
@@ -326,13 +358,13 @@ def parse_csv_row(
         exchange_rate_to_cny=authoritative_rate,
         exchange_rate_date=exchange_rate_date,
         exchange_rate_source=cells.get("exchange_rate_source", "").strip() or authoritative_rate_source,
-        merchant=merchant,
-        category=category,
-        note=note,
+        merchant=cells.get("merchant", "").strip(),
+        category=normalize_category(cells.get("category", "")),
+        note=cells.get("note", "").strip(),
         expense_time=expense_time,
         expense_time_display=etime_display,
-        tags=tags,
-        source=source,
+        tags=cells.get("tags", "").strip(),
+        source=cells.get("source", "").strip() or DEFAULT_SOURCE,
         error=error,
     )
 

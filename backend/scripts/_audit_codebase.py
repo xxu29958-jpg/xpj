@@ -535,15 +535,23 @@ def audit_bare_except():
         for node in ast.walk(tree):
             if isinstance(node, ast.ExceptHandler):
                 if node.type is None:
+                    is_broad_or_bare = True
                     bare.append((p, node.lineno))
                 else:
                     t = ast.unparse(node.type)
-                    if t in {"Exception", "BaseException"} and node.lineno not in ble001_lines:
+                    is_broad_or_bare = t in {"Exception", "BaseException"}
+                    if is_broad_or_bare and node.lineno not in ble001_lines:
                         broad.append((p, node.lineno, t))
-                # Swallowed (body is `pass` or just `...`)
+                # Swallowed (body is `pass` or just `...`). Only flag the
+                # broad/bare variants — `except ValueError: pass` and
+                # `except AppError: pass` are the project's idiomatic
+                # narrow-exception fallback (peer-IP parsing, idempotent
+                # revoke, path-traversal compat); audit shouldn't second-
+                # guess a deliberately narrow catch.
                 body = node.body
                 if (
-                    len(body) == 1
+                    is_broad_or_bare
+                    and len(body) == 1
                     and isinstance(body[0], (ast.Pass, ast.Expr))
                     and (
                         isinstance(body[0], ast.Pass)
