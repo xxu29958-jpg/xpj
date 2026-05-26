@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -34,6 +34,7 @@ from app.services.expense_service._helpers import (
 )
 from app.services.expense_service._query import get_expense
 from app.services.ocr_service import clear_ocr_draft_fields
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_item_service import recompute_items_sum_status
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
@@ -121,23 +122,19 @@ def _claim_expense_for_update(
     transaction the business-logic updates commit, so stale writes
     never reach the row.
 
-    ``expected_updated_at`` is normalised through ``ensure_utc(...)
-    .replace(tzinfo=None)`` because SQLite's ``DateTime(timezone=True)``
-    column reads back as naive datetime, and binding an aware client
-    value would be dialect-dependent (PR-1 hit the same wrinkle on
-    ``category_rule``).
+    tz normalisation lives in ``optimistic_concurrency.updated_at_predicate``.
     """
-    expected_predicate = ensure_utc(expected_updated_at).replace(tzinfo=None)
-    result = db.execute(
-        update(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id == expense_id)
-        .where(Expense.status.in_(EDITABLE_STATUSES))
-        .where(Expense.updated_at == expected_predicate)
-        .values(updated_at=claimed_at)
-        .execution_options(synchronize_session=False)
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={"updated_at": claimed_at},
+        extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
+        synchronize_session=False,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         db.expire_all()
         current = db.scalar(
             ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
@@ -264,18 +261,17 @@ def confirm_expense(
     db.flush()
 
     now = now_utc()
-    expected_predicate = ensure_utc(expected_updated_at).replace(tzinfo=None)
-    result = db.execute(
-        update(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id == expense_id)
-        .where(Expense.status == "pending")
-        .where(Expense.amount_cents.is_not(None))
-        .where(Expense.updated_at == expected_predicate)
-        .values(status="confirmed", confirmed_at=now, updated_at=now)
-        .execution_options(synchronize_session=False)
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={"status": "confirmed", "confirmed_at": now, "updated_at": now},
+        extra_where=(Expense.status == "pending", Expense.amount_cents.is_not(None)),
+        synchronize_session=False,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         db.expire_all()
         expense = get_expense(db, expense_id, tenant_id)
         if expense.status == "confirmed":
@@ -322,17 +318,17 @@ def reject_expense(
     409 on stale ``pending`` rows.
     """
     now = now_utc()
-    expected_predicate = ensure_utc(expected_updated_at).replace(tzinfo=None)
-    result = db.execute(
-        update(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id == expense_id)
-        .where(Expense.status == "pending")
-        .where(Expense.updated_at == expected_predicate)
-        .values(status="rejected", rejected_at=now, updated_at=now)
-        .execution_options(synchronize_session=False)
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={"status": "rejected", "rejected_at": now, "updated_at": now},
+        extra_where=(Expense.status == "pending",),
+        synchronize_session=False,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         db.expire_all()
         existing = get_expense(db, expense_id, tenant_id)
         if existing.status == "rejected":

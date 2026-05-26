@@ -3,9 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Final, cast
 
-from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
-from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
 
@@ -17,8 +15,12 @@ from app.services.merchant_alias_service import (
     canonical_merchant_for,
     enabled_merchant_alias_map,
 )
+from app.services.optimistic_concurrency import (
+    claim_row_with_token,
+    delete_row_with_token,
+)
 from app.services.tag_service import parse_tags, tag_key
-from app.services.time_service import ensure_utc, now_utc
+from app.services.time_service import now_utc
 
 DEFAULT_RULES = [
     ("美团", "餐饮", 10),
@@ -185,17 +187,9 @@ def create_rule(
     return rule
 
 
-def _expected_updated_at_for_db(value: datetime) -> datetime:
-    """Normalize ``expected_updated_at`` for use in a ``WHERE updated_at = ?``
-    predicate against ``DateTime(timezone=True)`` columns.
-
-    SQLite stores naive ISO strings even when SQLAlchemy declares the
-    column ``timezone=True``; reading back yields a naive datetime,
-    and the bound parameter must match that representation. Strip
-    tzinfo after normalising to UTC so the comparison is exact across
-    drivers and not subject to dialect-specific aware/naive coercion.
-    """
-    return ensure_utc(value).replace(tzinfo=None)
+# tz normalisation lives in ``app.services.optimistic_concurrency``
+# (``updated_at_predicate``) — used by ``claim_row_with_token`` /
+# ``delete_row_with_token`` below.
 
 
 def update_rule(
@@ -280,15 +274,15 @@ def update_rule(
         )
     update_values["updated_at"] = now_utc()
 
-    expected_predicate = _expected_updated_at_for_db(expected_updated_at)
-    result = db.execute(
-        sa_update(CategoryRule)
-        .where(CategoryRule.id == rule_id)
-        .where(CategoryRule.tenant_id == rule_tenant_id)
-        .where(CategoryRule.updated_at == expected_predicate)
-        .values(**update_values)
+    rowcount = claim_row_with_token(
+        db,
+        CategoryRule,
+        pk_id=rule_id,
+        tenant_id=rule_tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values=update_values,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         db.rollback()
         current = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
         if current is None:
@@ -322,14 +316,14 @@ def delete_rule(
     except ObjectDeletedError as exc:
         raise AppError("rule_not_found", status_code=404) from exc
 
-    expected_predicate = _expected_updated_at_for_db(expected_updated_at)
-    result = db.execute(
-        sa_delete(CategoryRule)
-        .where(CategoryRule.id == rule_id)
-        .where(CategoryRule.tenant_id == rule_tenant_id)
-        .where(CategoryRule.updated_at == expected_predicate)
+    rowcount = delete_row_with_token(
+        db,
+        CategoryRule,
+        pk_id=rule_id,
+        tenant_id=rule_tenant_id,
+        expected_updated_at=expected_updated_at,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         db.rollback()
         current = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
         if current is None:

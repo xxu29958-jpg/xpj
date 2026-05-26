@@ -10,7 +10,7 @@ formatting.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
@@ -39,6 +39,24 @@ from app.version import BACKEND_VERSION
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
+
+
+def parse_form_updated_at_token(value: str) -> datetime | None:
+    """ADR-0038: parse the hidden ``expected_updated_at`` form field.
+
+    Returns ``None`` when the field is blank or malformed; callers
+    surface the same "页面已过期/账单已在其它端被修改" UX as a stale-write
+    409. Centralised here to keep the parse rules (trim, ``Z`` → ``+00:00``)
+    in one place — PR-2b used two ad-hoc helpers (``_parse_form_updated_at``
+    vs ``_parse_expected_updated_at``) before this refactor.
+    """
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return None
+    try:
+        return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _require_local(request: Request) -> None:

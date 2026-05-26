@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -17,7 +16,8 @@ from app.services.duplicate_service import (
 )
 from app.services.expense_service._helpers import EDITABLE_STATUSES
 from app.services.expense_service._query import get_expense
-from app.services.time_service import ensure_utc, now_utc
+from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.time_service import now_utc
 
 __all__ = ["list_duplicate_expenses", "mark_expense_not_duplicate"]
 
@@ -51,23 +51,23 @@ def mark_expense_not_duplicate(
     )
     duplicate_of_id = pre_claim.duplicate_of_id if pre_claim is not None else None
 
-    expected_predicate = ensure_utc(expected_updated_at).replace(tzinfo=None)
     now = now_utc()
-    result = db.execute(
-        update(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id == expense_id)
-        .where(Expense.status.in_(EDITABLE_STATUSES))
-        .where(Expense.updated_at == expected_predicate)
-        .values(
-            duplicate_status="none",
-            duplicate_of_id=None,
-            duplicate_reason=None,
-            updated_at=now,
-        )
-        .execution_options(synchronize_session=False)
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={
+            "duplicate_status": "none",
+            "duplicate_of_id": None,
+            "duplicate_reason": None,
+            "updated_at": now,
+        },
+        extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
+        synchronize_session=False,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         db.expire_all()
         current = db.scalar(
             ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)

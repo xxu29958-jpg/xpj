@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -20,14 +19,12 @@ from app.models import Expense
 from app.schemas import ExpenseRecognizeTextRequest
 from app.services.classify_service import classify_expense
 from app.services.duplicate_service import mark_duplicate_status
-from app.services.expense_service._helpers import (
-    _replace_ocr_draft_items_from_text,
-    _updated_at_matches,
-)
+from app.services.expense_service._helpers import _replace_ocr_draft_items_from_text
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.expense_service._query import get_expense
 from app.services.learning_service import read_ocr_text
 from app.services.ocr_service import OcrResult, extract_ocr_result
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
 __all__ = ["recognize_expense_text", "retry_expense_ocr"]
@@ -41,16 +38,17 @@ def _claim_pending_expense_for_ocr(
     expected_updated_at,
     claimed_at,
 ) -> Expense:
-    result = db.execute(
-        update(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id == expense_id)
-        .where(Expense.status == "pending")
-        .where(_updated_at_matches(expected_updated_at))
-        .values(updated_at=claimed_at)
-        .execution_options(synchronize_session=False)
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={"updated_at": claimed_at},
+        extra_where=(Expense.status == "pending",),
+        synchronize_session=False,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         db.expire_all()
         current = db.scalar(
             ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)

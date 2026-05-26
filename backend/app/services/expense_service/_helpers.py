@@ -7,9 +7,10 @@ Symbol layout in this module is dictated by where it gets used:
 - ``_try_generate_thumbnail``, ``_replace_ocr_draft_items_from_text``,
   ``_begin_immediate_write_if_sqlite`` are infrastructure leaks shared between
   create / OCR / enrichment flows.
-- ``_expense_has_pending_fx`` / ``_ensure_expense_can_confirm`` /
-  ``_updated_at_matches`` keep the FX-gating and optimistic-locking rules in
-  one place so create / update / OCR claim use the same definition.
+- ``_expense_has_pending_fx`` / ``_ensure_expense_can_confirm`` keep the
+  FX-gating rules in one place so create / update / OCR confirm see the
+  same definition. Optimistic-concurrency / ``updated_at`` predicates
+  live in :mod:`app.services.optimistic_concurrency`.
 
 ``EDITABLE_STATUSES`` is re-exported through the package facade — both
 ``expense_split_service`` and ``receipt_item_service`` import it directly
@@ -56,7 +57,6 @@ __all__ = [
     "_replace_ocr_draft_items_from_text",
     "_record_background_failure",
     "_try_generate_thumbnail",
-    "_updated_at_matches",
 ]
 
 
@@ -184,12 +184,6 @@ def _expense_has_pending_fx(expense: Expense) -> bool:
     return expense.fx_status == FX_STATUS_PENDING or (
         expense.amount_cents is None and expense.original_amount_minor is not None
     )
-
-
-def _updated_at_matches(value):
-    if value is None:
-        return Expense.updated_at.is_(None)
-    return Expense.updated_at == ensure_utc(value).replace(tzinfo=None)
 
 
 def _ensure_expense_can_confirm(expense: Expense) -> None:

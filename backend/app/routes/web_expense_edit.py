@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -17,6 +15,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_updated_at_token,
     templates,
 )
 from app.schemas import ExpenseUpdateRequest
@@ -98,19 +97,6 @@ def web_save(
     return _web_redirect(f"/web/expenses/{expense_id}/edit", selected_id)
 
 
-def _parse_expected_updated_at(value: str) -> datetime | None:
-    """ADR-0038 PR-2b: parse the hidden form field; empty / unparseable
-    surfaces a Chinese error on the edit template (callers map to the
-    same UX as a stale-write 409)."""
-    cleaned = (value or "").strip()
-    if not cleaned:
-        return None
-    try:
-        return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
 @router.post("/expenses/{expense_id}/confirm", response_class=HTMLResponse)
 def web_confirm(
     expense_id: int,
@@ -123,7 +109,7 @@ def web_confirm(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = _parse_expected_updated_at(expected_updated_at)
+    parsed = parse_form_updated_at_token(expected_updated_at)
     if parsed is None:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["error"] = "页面已过期，请刷新后重新确认。"
@@ -154,7 +140,7 @@ def web_reject(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = _parse_expected_updated_at(expected_updated_at)
+    parsed = parse_form_updated_at_token(expected_updated_at)
     if parsed is None:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["error"] = "页面已过期，请刷新后重新操作。"

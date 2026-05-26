@@ -16,7 +16,6 @@ isolation via ``selected_id``.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -34,6 +33,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _sidebar_counts,
     _web_redirect,
+    parse_form_updated_at_token,
     templates,
 )
 from app.services.expense_service import (
@@ -133,16 +133,6 @@ def web_duplicates(
     )
 
 
-def _parse_form_updated_at(value: str) -> datetime | None:
-    cleaned = (value or "").strip()
-    if not cleaned:
-        return None
-    try:
-        return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
 _STALE_DUPLICATE_MSG = "账单已在其它端被修改，请刷新后重新操作。"
 
 
@@ -158,7 +148,7 @@ def web_duplicate_keep(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = _parse_form_updated_at(expected_updated_at)
+    parsed = parse_form_updated_at_token(expected_updated_at)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
@@ -183,7 +173,7 @@ def web_duplicate_reject_current(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = _parse_form_updated_at(expected_updated_at)
+    parsed = parse_form_updated_at_token(expected_updated_at)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
@@ -206,7 +196,7 @@ def web_duplicate_reject_original(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = _parse_form_updated_at(expected_updated_at)
+    parsed = parse_form_updated_at_token(expected_updated_at)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     msg = "已删除被复制的那条，并保留当前账单。"

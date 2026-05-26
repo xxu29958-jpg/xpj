@@ -5,13 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_filter, ledger_scoped_select
 from app.models import CategoryRule, Expense, OcrFact, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.ocr_service import ocr_draft_fields_after_clearing
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.rule_service import (
     _casefold_join,
     _merchant_context,
@@ -188,12 +189,6 @@ def _haystack_for(
     )
 
 
-def _updated_at_matches(value):
-    if value is None:
-        return Expense.updated_at.is_(None)
-    return Expense.updated_at == value
-
-
 def _changed_after_rule_application(expense: Expense, change: RuleApplicationChange) -> bool:
     if expense.updated_at is None or change.created_at is None:
         return False
@@ -211,21 +206,30 @@ def _try_apply_rule_category(
     after_category: str,
     now,
 ) -> tuple[int, int, str, str, str] | None:
-    result = db.execute(
-        update(Expense)
-        .where(ledger_filter(Expense, tenant_id))
-        .where(Expense.id == expense.id)
-        .where(Expense.status == status)
-        .where(_auto_fillable_category_filter())
-        .where(_updated_at_matches(expense.updated_at))
-        .values(
-            category=after_category,
-            ocr_draft_fields=ocr_draft_fields_after_clearing(expense, {"category"}),
-            updated_at=now,
-        )
-        .execution_options(synchronize_session=False)
+    # ADR-0038: same atomic UPDATE WHERE updated_at = expected pattern as
+    # the user-facing optimistic-concurrency endpoints. Previously had its
+    # own ``_updated_at_matches`` without tz normalisation — relied on
+    # ``expense.updated_at`` already being naive from an ORM read. The
+    # helper now goes through ``updated_at_predicate`` so the predicate
+    # is dialect-independent.
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=int(expense.id),
+        tenant_id=tenant_id,
+        expected_updated_at=expense.updated_at,
+        set_values={
+            "category": after_category,
+            "ocr_draft_fields": ocr_draft_fields_after_clearing(expense, {"category"}),
+            "updated_at": now,
+        },
+        extra_where=(
+            Expense.status == status,
+            _auto_fillable_category_filter(),
+        ),
+        synchronize_session=False,
     )
-    if result.rowcount != 1:
+    if rowcount != 1:
         return None
     return (int(expense.id), int(rule.id), rule.keyword, before_category, after_category)
 
@@ -238,16 +242,17 @@ def _try_rollback_rule_change(
     change: RuleApplicationChange,
     now,
 ) -> bool:
-    result = db.execute(
-        update(Expense)
-        .where(ledger_filter(Expense, tenant_id))
-        .where(Expense.id == change.expense_id)
-        .where(Expense.category == expense.category)
-        .where(_updated_at_matches(expense.updated_at))
-        .values(category=change.before_category, updated_at=now)
-        .execution_options(synchronize_session=False)
+    rowcount = claim_row_with_token(
+        db,
+        Expense,
+        pk_id=int(change.expense_id),
+        tenant_id=tenant_id,
+        expected_updated_at=expense.updated_at,
+        set_values={"category": change.before_category, "updated_at": now},
+        extra_where=(Expense.category == expense.category,),
+        synchronize_session=False,
     )
-    return result.rowcount == 1
+    return rowcount == 1
 
 
 def _matching_rule_category(
