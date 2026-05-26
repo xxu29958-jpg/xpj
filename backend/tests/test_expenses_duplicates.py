@@ -118,16 +118,26 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
     assert response.status_code == 200
     rule_id = int(response.json()["id"])
 
+    created_rule = response.json()
     response = client.patch(
         f"/api/rules/categories/{rule_id}",
         headers=identity.app_headers,
-        json={"priority": 2, "enabled": False},
+        json={
+            "priority": 2,
+            "enabled": False,
+            "expected_updated_at": created_rule["updated_at"],
+        },
     )
     assert response.status_code == 200
     assert response.json()["priority"] == 2
     assert response.json()["enabled"] is False
 
-    response = client.delete(f"/api/rules/categories/{rule_id}", headers=identity.app_headers)
+    response = client.request(
+        "DELETE",
+        f"/api/rules/categories/{rule_id}",
+        headers=identity.app_headers,
+        json={"expected_updated_at": response.json()["updated_at"]},
+    )
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.schemas import (
     CategoryRuleCreateRequest,
+    CategoryRuleDeleteRequest,
     CategoryRuleResponse,
     CategoryRuleUpdateRequest,
     RuleApplicationBatchResponse,
@@ -83,18 +84,34 @@ def patch_category_rule(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
+    # ADR-0038: client sends `expected_updated_at` (the value it saw
+    # when it read the rule). update_rule raises state_conflict 409
+    # if the server's current value differs.
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-    return update_rule(db, rule, **payload.model_dump(exclude_unset=True))
+    field_updates = payload.model_dump(
+        exclude={"expected_updated_at"}, exclude_unset=True
+    )
+    return update_rule(
+        db,
+        rule,
+        expected_updated_at=payload.expected_updated_at,
+        **field_updates,
+    )
 
 
 @router.delete("/categories/{rule_id}", response_model=StatusResponse)
 def delete_category_rule(
     rule_id: int,
+    payload: CategoryRuleDeleteRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
+    # ADR-0038: DELETE carries a body with `expected_updated_at` so
+    # stale clicks (rule edited by another window between list-render
+    # and delete-click) surface as state_conflict 409 instead of
+    # silently destroying the concurrent edit.
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-    delete_rule(db, rule)
+    delete_rule(db, rule, expected_updated_at=payload.expected_updated_at)
     return StatusResponse()
 
 

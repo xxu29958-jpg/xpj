@@ -154,7 +154,10 @@ def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient, *, 
     changed_rule = client.patch(
         f"/api/rules/categories/{rule_id}",
         headers=identity.app_headers,
-        json={"category": "Transport"},
+        json={
+            "category": "Transport",
+            "expected_updated_at": created.json()["updated_at"],
+        },
     )
     assert changed_rule.status_code == 200
     stale = client.post(

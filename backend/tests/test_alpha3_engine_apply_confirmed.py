@@ -201,7 +201,10 @@ def test_rule_apply_confirmed_rejects_stale_preview_token(client: TestClient, *,
     changed_rule = client.patch(
         f"/api/rules/categories/{rule_id}",
         headers=identity.app_headers,
-        json={"category": "交通"},
+        json={
+            "category": "交通",
+            "expected_updated_at": created.json()["updated_at"],
+        },
     )
     assert changed_rule.status_code == 200
 

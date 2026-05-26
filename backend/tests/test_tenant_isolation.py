@@ -561,16 +561,25 @@ def test_category_rule_mutations_are_tenant_scoped(client: TestClient, *, identi
     assert owner_rule.status_code == 200
     rule_id = int(owner_rule.json()["id"])
 
+    expected_updated_at = owner_rule.json()["updated_at"]
     patch = client.patch(
         f"/api/rules/categories/{rule_id}",
         headers=identity.gray_app_headers,
-        json={"keyword": "tester不该改", "category": "购物", "priority": 1},
+        json={
+            "keyword": "tester不该改",
+            "category": "购物",
+            "priority": 1,
+            "expected_updated_at": expected_updated_at,
+        },
     )
     assert patch.status_code == 404
     assert patch.json()["error"] == "rule_not_found"
 
-    delete = client.delete(
-        f"/api/rules/categories/{rule_id}", headers=identity.gray_app_headers
+    delete = client.request(
+        "DELETE",
+        f"/api/rules/categories/{rule_id}",
+        headers=identity.gray_app_headers,
+        json={"expected_updated_at": expected_updated_at},
     )
     assert delete.status_code == 404
     assert delete.json()["error"] == "rule_not_found"

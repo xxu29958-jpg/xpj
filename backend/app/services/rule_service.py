@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from typing import Final, cast
+from datetime import datetime
+from typing import Any, Final, cast
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import ObjectDeletedError
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
@@ -14,7 +18,7 @@ from app.services.merchant_alias_service import (
     enabled_merchant_alias_map,
 )
 from app.services.tag_service import parse_tags, tag_key
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc, now_utc
 
 DEFAULT_RULES = [
     ("美团", "餐饮", 10),
@@ -181,10 +185,24 @@ def create_rule(
     return rule
 
 
+def _expected_updated_at_for_db(value: datetime) -> datetime:
+    """Normalize ``expected_updated_at`` for use in a ``WHERE updated_at = ?``
+    predicate against ``DateTime(timezone=True)`` columns.
+
+    SQLite stores naive ISO strings even when SQLAlchemy declares the
+    column ``timezone=True``; reading back yields a naive datetime,
+    and the bound parameter must match that representation. Strip
+    tzinfo after normalising to UTC so the comparison is exact across
+    drivers and not subject to dialect-specific aware/naive coercion.
+    """
+    return ensure_utc(value).replace(tzinfo=None)
+
+
 def update_rule(
     db: Session,
     rule: CategoryRule,
     *,
+    expected_updated_at: datetime,
     keyword: str | None = None,
     category: str | None = None,
     enabled: bool | None = None,
@@ -194,44 +212,129 @@ def update_rule(
     source_contains: str | None | object = _UNSET,
     tag_contains: str | None | object = _UNSET,
 ) -> CategoryRule:
+    """Update a category rule with ADR-0038 atomic optimistic concurrency.
+
+    Runs ``UPDATE category_rules SET ..., updated_at = now
+    WHERE id = :id AND tenant_id = :tenant_id AND updated_at =
+    :expected`` and branches on ``rowcount``. ``rowcount == 0``
+    means either:
+
+    - the row was deleted concurrently → ``rule_not_found`` 404, or
+    - another writer mutated ``updated_at`` since the client's read →
+      ``state_conflict`` 409.
+
+    The DB predicate is the authoritative version check (not the
+    Python-side ``rule.updated_at != expected`` comparison), so two
+    sessions that both read the same ``updated_at`` and race into the
+    write path cannot both win — only the first ``UPDATE WHERE`` will
+    match a row.
+    """
+    # Snapshot identity + default-source fields up front. If a
+    # concurrent session deleted this row already, the ORM instance
+    # may be in the "deleted" state; surface that as 404 rather than
+    # an opaque SQLAlchemy error during the UPDATE WHERE build.
+    try:
+        rule_id = rule.id
+        rule_tenant_id = rule.tenant_id
+        existing_min = rule.amount_min_cents
+        existing_max = rule.amount_max_cents
+    except ObjectDeletedError as exc:
+        raise AppError("rule_not_found", status_code=404) from exc
+
+    update_values: dict[str, Any] = {}
     if keyword is not None:
-        keyword = keyword.strip()
-        if not keyword:
+        cleaned = keyword.strip()
+        if not cleaned:
             raise AppError("invalid_request", status_code=422)
-        rule.keyword = keyword
+        update_values["keyword"] = cleaned
     if category is not None:
-        category = normalize_category(category)
-        if not category:
+        normalised = normalize_category(category)
+        if not normalised:
             raise AppError("invalid_request", status_code=422)
-        rule.category = category
+        update_values["category"] = normalised
     if enabled is not None:
-        rule.enabled = enabled
+        update_values["enabled"] = enabled
     if priority is not None:
-        rule.priority = priority
+        update_values["priority"] = priority
     if amount_min_cents is not _UNSET or amount_max_cents is not _UNSET:
         min_value = (
-            rule.amount_min_cents
+            existing_min
             if amount_min_cents is _UNSET
             else cast(int | None, amount_min_cents)
         )
         max_value = (
-            rule.amount_max_cents
+            existing_max
             if amount_max_cents is _UNSET
             else cast(int | None, amount_max_cents)
         )
-        rule.amount_min_cents, rule.amount_max_cents = _clean_amount_range(min_value, max_value)
+        min_value, max_value = _clean_amount_range(min_value, max_value)
+        update_values["amount_min_cents"] = min_value
+        update_values["amount_max_cents"] = max_value
     if source_contains is not _UNSET:
-        rule.source_contains = _clean_optional_text(cast(str | None, source_contains))
+        update_values["source_contains"] = _clean_optional_text(
+            cast(str | None, source_contains)
+        )
     if tag_contains is not _UNSET:
-        rule.tag_contains = _clean_optional_text(cast(str | None, tag_contains))
-    rule.updated_at = now_utc()
+        update_values["tag_contains"] = _clean_optional_text(
+            cast(str | None, tag_contains)
+        )
+    update_values["updated_at"] = now_utc()
+
+    expected_predicate = _expected_updated_at_for_db(expected_updated_at)
+    result = db.execute(
+        sa_update(CategoryRule)
+        .where(CategoryRule.id == rule_id)
+        .where(CategoryRule.tenant_id == rule_tenant_id)
+        .where(CategoryRule.updated_at == expected_predicate)
+        .values(**update_values)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        current = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
+        if current is None:
+            raise AppError("rule_not_found", status_code=404)
+        raise AppError("state_conflict", status_code=409)
     db.commit()
-    db.refresh(rule)
-    return rule
+    refreshed = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
+    # rowcount == 1 means the row exists and was just updated; the
+    # follow-up find cannot return None unless something else deleted
+    # the row between our UPDATE and this SELECT, in which case the
+    # caller should also treat it as a server-side anomaly.
+    assert refreshed is not None
+    return refreshed
 
 
-def delete_rule(db: Session, rule: CategoryRule) -> None:
-    db.delete(rule)
+def delete_rule(
+    db: Session, rule: CategoryRule, *, expected_updated_at: datetime
+) -> None:
+    """Delete a category rule with ADR-0038 atomic optimistic concurrency.
+
+    Runs ``DELETE FROM category_rules WHERE id, tenant_id, updated_at
+    = expected`` and treats ``rowcount == 0`` the same way
+    :func:`update_rule` does — 404 if the row vanished, 409 if it was
+    mutated by a concurrent writer. The DB predicate is the
+    authoritative check; the caller's ORM instance does not need to
+    be fresh.
+    """
+    try:
+        rule_id = rule.id
+        rule_tenant_id = rule.tenant_id
+    except ObjectDeletedError as exc:
+        raise AppError("rule_not_found", status_code=404) from exc
+
+    expected_predicate = _expected_updated_at_for_db(expected_updated_at)
+    result = db.execute(
+        sa_delete(CategoryRule)
+        .where(CategoryRule.id == rule_id)
+        .where(CategoryRule.tenant_id == rule_tenant_id)
+        .where(CategoryRule.updated_at == expected_predicate)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        current = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
+        if current is None:
+            raise AppError("rule_not_found", status_code=404)
+        raise AppError("state_conflict", status_code=409)
     db.commit()
 
 

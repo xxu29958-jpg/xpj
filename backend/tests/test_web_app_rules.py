@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 
@@ -21,6 +22,19 @@ def _create_pending(client: TestClient, *, identity) -> int:
     )
     assert resp.status_code == 200, resp.text
     return int(resp.json()["id"])
+
+
+def _rule_id_for_keyword(page_html: str, keyword: str) -> int:
+    marker = f"<code>{keyword}</code>"
+    marker_at = page_html.find(marker)
+    assert marker_at >= 0, page_html[:1000]
+    row_start = page_html.rfind("<tr", 0, marker_at)
+    row_end = page_html.find("</tr>", marker_at)
+    assert row_start >= 0 and row_end >= 0, page_html[:1000]
+    row_html = page_html[row_start:row_end]
+    id_match = re.search(r'/web/rules/(\d+)/toggle', row_html)
+    assert id_match, row_html
+    return int(id_match.group(1))
 
 
 def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00", merchant: str = "测试", *, identity) -> int:
@@ -53,17 +67,15 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     assert resp.status_code in {303, 307}
     page = web_client.get("/web/rules?ledger_id=owner")
     assert "测试关键词A" in page.text
-    # Locate id from the page (form action contains /web/rules/{id}/delete)
-    import re as _re
-    m = _re.search(r"/web/rules/(\d+)/delete", page.text)
-    assert m, page.text[:500]
-    rule_id = int(m.group(1))
+    rule_id = _rule_id_for_keyword(page.text, "测试关键词A")
     # Toggle
     resp = web_client.post(
         f"/web/rules/{rule_id}/toggle",
         data={"ledger_id": "owner"}, follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
+    msg = parse_qs(urlparse(resp.headers["location"]).query)["msg"][0]
+    assert msg == "规则 [测试关键词A] 已停用。"
     # Delete
     resp = web_client.post(
         f"/web/rules/{rule_id}/delete",

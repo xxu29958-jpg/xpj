@@ -47,6 +47,7 @@ class CategoryRuleCreateRequest(BaseModel):
 
 
 class CategoryRuleUpdateRequest(BaseModel):
+    expected_updated_at: datetime
     keyword: str | None = None
     category: str | None = None
     enabled: bool | None = None
@@ -55,6 +56,18 @@ class CategoryRuleUpdateRequest(BaseModel):
     amount_max_cents: int | None = Field(default=None, ge=0)
     source_contains: str | None = None
     tag_contains: str | None = None
+
+
+class CategoryRuleDeleteRequest(BaseModel):
+    """DELETE body for ADR-0038 optimistic concurrency on category_rule.
+
+    DELETE carries a request body so the client's ``expected_updated_at``
+    can travel via the same channel as PATCH (Pydantic-typed, FastAPI-
+    parsed). No query-string fallback — open-dev contract; clients must
+    send body.
+    """
+
+    expected_updated_at: datetime
 
 
 class CategoryRuleResponse(BaseModel):

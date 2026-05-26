@@ -2644,6 +2644,21 @@
         "title": "CategoryRuleCreateRequest",
         "type": "object"
       },
+      "CategoryRuleDeleteRequest": {
+        "description": "DELETE body for ADR-0038 optimistic concurrency on category_rule.\n\nDELETE carries a request body so the client's ``expected_updated_at``\ncan travel via the same channel as PATCH (Pydantic-typed, FastAPI-\nparsed). No query-string fallback — open-dev contract; clients must\nsend body.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "CategoryRuleDeleteRequest",
+        "type": "object"
+      },
       "CategoryRuleResponse": {
         "properties": {
           "amount_max_cents": {
@@ -2793,6 +2808,11 @@
             ],
             "title": "Enabled"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "keyword": {
             "anyOf": [
               {
@@ -2838,6 +2858,9 @@
             "title": "Tag Contains"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "CategoryRuleUpdateRequest",
         "type": "object"
       },
@@ -15465,6 +15488,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryRuleDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

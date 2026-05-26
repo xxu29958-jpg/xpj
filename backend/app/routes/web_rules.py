@@ -201,8 +201,15 @@ def web_rules_toggle(
     if rule is None:
         msg = "规则不存在。"
     else:
-        update_rule(db, rule, enabled=not rule.enabled)
-        msg = f"规则 [{rule.keyword}] {'已启用' if rule.enabled else '已停用'}。"
+        # /web is loopback owner-console flow; same-request fetch-then-
+        # write has no race window under SQLite's single-writer guarantee,
+        # so we pass the rule's current updated_at as the expected value.
+        # PR-2 (expense PATCH) will wire a hidden form field for cross-
+        # request concurrency on user-facing /web pages.
+        updated_rule = update_rule(
+            db, rule, expected_updated_at=rule.updated_at, enabled=not rule.enabled
+        )
+        msg = f"规则 [{updated_rule.keyword}] {'已启用' if updated_rule.enabled else '已停用'}。"
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 
@@ -222,7 +229,9 @@ def web_rules_delete(
         msg = "规则不存在。"
     else:
         keyword = rule.keyword
-        delete_rule(db, rule)
+        # See web_rules_toggle: loopback flow uses the rule's own
+        # updated_at as expected (no race window).
+        delete_rule(db, rule, expected_updated_at=rule.updated_at)
         msg = f"规则 [{keyword}] 已删除。"
     return _web_redirect("/web/rules", selected_id, msg=msg)
 

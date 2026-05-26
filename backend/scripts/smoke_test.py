@@ -526,8 +526,12 @@ def run_smoke(base_url: str) -> None:
         body=rule_body,
     )
     assert_equal(result.status, 200, "rule create status")
-    rule_id = int(result.json()["id"])
-    patch_rule_body = json.dumps({"priority": 2}, ensure_ascii=False).encode("utf-8")
+    rule = result.json()
+    rule_id = int(rule["id"])
+    patch_rule_body = json.dumps(
+        {"priority": 2, "expected_updated_at": rule["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
     result = request(
         "PATCH",
         f"{base_url}/api/rules/categories/{rule_id}",
@@ -535,8 +539,18 @@ def run_smoke(base_url: str) -> None:
         body=patch_rule_body,
     )
     assert_equal(result.status, 200, "rule patch status")
-    assert_equal(result.json()["priority"], 2, "rule patched priority")
-    result = request("DELETE", f"{base_url}/api/rules/categories/{rule_id}", headers=app_headers())
+    patched_rule = result.json()
+    assert_equal(patched_rule["priority"], 2, "rule patched priority")
+    delete_rule_body = json.dumps(
+        {"expected_updated_at": patched_rule["updated_at"]},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = request(
+        "DELETE",
+        f"{base_url}/api/rules/categories/{rule_id}",
+        headers={**app_headers(), "Content-Type": "application/json"},
+        body=delete_rule_body,
+    )
     assert_equal(result.status, 200, "rule delete status")
     assert_equal(result.json()["status"], "ok", "rule delete response")
     print("OK category rule create patch delete")

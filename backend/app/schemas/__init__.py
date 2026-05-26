@@ -171,6 +171,7 @@ from app.schemas._reports import (
 )
 from app.schemas._rules import (
     CategoryRuleCreateRequest,
+    CategoryRuleDeleteRequest,
     CategoryRuleResponse,
     CategoryRuleUpdateRequest,
     MerchantAliasCreateRequest,
@@ -230,6 +231,7 @@ __all__ = [
     "BudgetMonthlyUpdateRequest",
     "CategoriesResponse",
     "CategoryRuleCreateRequest",
+    "CategoryRuleDeleteRequest",
     "CategoryRuleResponse",
     "CategoryRuleUpdateRequest",
     "CategoryStatsResponse",

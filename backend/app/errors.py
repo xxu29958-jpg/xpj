@@ -67,6 +67,7 @@ ERROR_MESSAGES = {
     "merchant_alias_not_found": "商家别名不存在。",
     "merchant_alias_conflict": "商家别名已指向其他商家。",
     "import_batch_not_found": "导入批次不存在。",
+    "state_conflict": "记录已被其它端修改，请刷新后再试。",
 }
 
 
