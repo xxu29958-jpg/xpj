@@ -402,6 +402,12 @@ def run_smoke(base_url: str) -> None:
     assert_error(result, 400, "amount_required")
     print("OK amount required")
 
+    snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{expense_id}",
+        headers=app_headers(),
+    )
+    assert_equal(snapshot.status, 200, "patch snapshot status")
     update_body = json.dumps(
         {
             "amount_cents": 3680,
@@ -409,6 +415,7 @@ def run_smoke(base_url: str) -> None:
             "category": "餐饮",
             "note": "午饭",
             "expense_time": "2026-05-03T04:20:00Z",
+            "expected_updated_at": snapshot.json()["updated_at"],
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -564,12 +571,19 @@ def run_smoke(base_url: str) -> None:
     assert_true(any(item["id"] == second_id for item in duplicates), "duplicate should be suspected")
     print("OK duplicate detection")
 
+    second_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{second_id}",
+        headers=app_headers(),
+    )
+    assert_equal(second_snapshot.status, 200, "second patch snapshot status")
     second_update_body = json.dumps(
         {
             "amount_cents": 2000,
             "merchant": "OpenAI",
             "note": "订阅",
             "expense_time": "2026-05-04T04:20:00Z",
+            "expected_updated_at": second_snapshot.json()["updated_at"],
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -593,11 +607,18 @@ def run_smoke(base_url: str) -> None:
     similar_id = int(similar_upload.json()["id"])
     result = request("POST", f"{base_url}/api/expenses/{similar_id}/mark-not-duplicate", headers=app_headers())
     assert_equal(result.status, 200, "similar clear hash duplicate")
+    similar_snapshot = request(
+        "GET",
+        f"{base_url}/api/expenses/{similar_id}",
+        headers=app_headers(),
+    )
+    assert_equal(similar_snapshot.status, 200, "similar patch snapshot status")
     similar_update_body = json.dumps(
         {
             "amount_cents": 2000,
             "merchant": "OpenAI",
             "expense_time": "2026-05-04T05:00:00Z",
+            "expected_updated_at": similar_snapshot.json()["updated_at"],
         },
         ensure_ascii=False,
     ).encode("utf-8")

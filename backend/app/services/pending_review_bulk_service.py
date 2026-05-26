@@ -106,14 +106,28 @@ def _resolve_bulk_action_handler(
     happen inside the leaf handlers.
     """
     if action == "set_category":
-        payload = ExpenseUpdateRequest(category=category_clean)
         return lambda db, row, tenant_id, result: _apply_metadata_update(
-            db, row, tenant_id, payload, result
+            db,
+            row,
+            tenant_id,
+            ExpenseUpdateRequest(
+                category=category_clean,
+                # ADR-0038 PR-2a: 服务端 bulk handler 已经读到 row.updated_at，
+                # 拿来当 expected_updated_at 用即可，无需让外层管线携带 token。
+                expected_updated_at=row.updated_at,
+            ),
+            result,
         )
     if action == "set_merchant":
-        payload = ExpenseUpdateRequest(merchant=merchant_clean)
         return lambda db, row, tenant_id, result: _apply_metadata_update(
-            db, row, tenant_id, payload, result
+            db,
+            row,
+            tenant_id,
+            ExpenseUpdateRequest(
+                merchant=merchant_clean,
+                expected_updated_at=row.updated_at,
+            ),
+            result,
         )
     if action == "reject":
         return _apply_reject

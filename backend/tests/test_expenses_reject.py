@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from api_contract_helpers import (
+    patch_expense,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -36,10 +37,11 @@ def test_reject_removes_expense_from_pending_without_confirming(
 
 def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"amount_cents": 3680, "merchant": "A", "category": "餐饮"},
+        fields={"amount_cents": 3680, "merchant": "A", "category": "餐饮"},
     )
     assert response.status_code == 200
 

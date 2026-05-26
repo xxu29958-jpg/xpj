@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 
 
@@ -31,11 +32,12 @@ def _row_id_set(html: str) -> set[str]:
 def _seed_pending_with_amount(web_client: TestClient, amount_yuan: str = "10.00", merchant: str = "测试", *, identity) -> int:
     """Upload a tiny PNG then patch amount+merchant via /web/expenses/{id}/save."""
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={"amount_yuan": amount_yuan, "merchant": merchant, "category": "其他",
               "note": "", "ledger_id": "owner"},
-        follow_redirects=False,
     )
     assert resp.status_code in {303, 307}, resp.text
     return expense_id

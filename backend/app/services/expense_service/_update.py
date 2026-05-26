@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import (
     ConfirmedExpenseBatchUpdateRequest,
@@ -100,14 +103,70 @@ def batch_update_confirmed_expenses(
     )
 
 
+def _claim_expense_for_update(
+    db: Session,
+    *,
+    expense_id: int,
+    tenant_id: str,
+    expected_updated_at: datetime,
+    claimed_at: datetime,
+) -> Expense:
+    """ADR-0038 atomic optimistic-concurrency claim for ``PATCH /api/expenses/{id}``.
+
+    Atomically sets ``updated_at = claimed_at`` only when the row's
+    ``(id, tenant_id, status ∈ EDITABLE_STATUSES, updated_at)``
+    matches the client's snapshot. ``rowcount == 0`` disambiguates:
+    missing / non-editable row → ``expense_not_found`` 404; else →
+    ``state_conflict`` 409. The claim becomes part of the same
+    transaction the business-logic updates commit, so stale writes
+    never reach the row.
+
+    ``expected_updated_at`` is normalised through ``ensure_utc(...)
+    .replace(tzinfo=None)`` because SQLite's ``DateTime(timezone=True)``
+    column reads back as naive datetime, and binding an aware client
+    value would be dialect-dependent (PR-1 hit the same wrinkle on
+    ``category_rule``).
+    """
+    expected_predicate = ensure_utc(expected_updated_at).replace(tzinfo=None)
+    result = db.execute(
+        update(Expense)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.id == expense_id)
+        .where(Expense.status.in_(EDITABLE_STATUSES))
+        .where(Expense.updated_at == expected_predicate)
+        .values(updated_at=claimed_at)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.expire_all()
+        current = db.scalar(
+            ledger_scoped_select(Expense, tenant_id).where(Expense.id == expense_id)
+        )
+        if current is None or current.status not in EDITABLE_STATUSES:
+            raise AppError("expense_not_found", status_code=404)
+        raise AppError("state_conflict", status_code=409)
+    db.expire_all()
+    return get_expense(db, expense_id, tenant_id)
+
+
 def update_expense(
     db: Session, expense_id: int, tenant_id: str, payload: ExpenseUpdateRequest
 ) -> Expense:
-    expense = get_expense(db, expense_id, tenant_id)
-    if expense.status not in EDITABLE_STATUSES:
-        raise AppError("expense_not_found", status_code=404)
+    # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
+    # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
+    # so two clients that both read the same updated_at can't both
+    # silently overwrite the row.
+    expense = _claim_expense_for_update(
+        db,
+        expense_id=expense_id,
+        tenant_id=tenant_id,
+        expected_updated_at=payload.expected_updated_at,
+        claimed_at=now_utc(),
+    )
 
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(
+        exclude_unset=True, exclude={"expected_updated_at"}
+    )
 
     # ADR-0029: received split expenses freeze their money / merchant /
     # time fields — those represent the agreed-upon debt with the sender

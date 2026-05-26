@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from api_contract_helpers import (
+    patch_expense,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -41,10 +42,11 @@ def test_mark_not_duplicate_suppresses_all_current_pair_detection_types(
         (first_id, "2026-05-03T04:20:00Z"),
         (second_id, "2026-05-03T05:20:00Z"),
     ]:
-        response = client.patch(
-            f"/api/expenses/{expense_id}",
+        response = patch_expense(
+            client,
+            expense_id,
             headers=identity.app_headers,
-            json={
+            fields={
                 "amount_cents": 5200,
                 "merchant": "同一家店",
                 "category": "生活",
@@ -155,10 +157,11 @@ def test_similar_expense_duplicate_ignore_survives_after_edit(client: TestClient
         (first_id, "2026-05-03T04:20:00Z"),
         (second_id, "2026-05-03T05:20:00Z"),
     ]:
-        response = client.patch(
-            f"/api/expenses/{expense_id}",
+        response = patch_expense(
+            client,
+            expense_id,
             headers=identity.app_headers,
-            json={
+            fields={
                 "amount_cents": 5200,
                 "merchant": "同一家店",
                 "category": "生活",
@@ -200,10 +203,11 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
     second_id = second.json()["id"]
     assert second.json()["duplicate_of_id"] == first_id
 
-    response = client.patch(
-        f"/api/expenses/{first_id}",
+    response = patch_expense(
+        client,
+        first_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 5200,
             "merchant": "Changed Original",
             "category": "生活",

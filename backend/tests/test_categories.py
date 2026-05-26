@@ -15,6 +15,7 @@ import re
 from datetime import UTC, datetime
 
 import pytest
+from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -54,12 +55,15 @@ def _save_pending(
     web_client: TestClient,
     expense_id: int,
     *,
+    identity,
     amount_yuan: str,
     merchant: str,
     category: str,
 ) -> None:
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={
             "amount_yuan": amount_yuan,
             "merchant": merchant,
@@ -67,7 +71,6 @@ def _save_pending(
             "note": "",
             "ledger_id": "owner",
         },
-        follow_redirects=False,
     )
     assert resp.status_code in {303, 307}, resp.text
 
@@ -197,7 +200,8 @@ def test_web_uncategorized_lists_only_uncategorized(web_client: TestClient, *, i
     eid_other = _create_pending(web_client, identity=identity)  # stays "其他"
     eid_food = _create_pending(web_client, identity=identity)
     _save_pending(
-        web_client, eid_food, amount_yuan="12.34", merchant="星巴克", category="餐饮"
+        web_client, eid_food, identity=identity,
+        amount_yuan="12.34", merchant="星巴克", category="餐饮",
     )
     resp = web_client.get("/web/categories/uncategorized?ledger_id=owner")
     assert resp.status_code == 200

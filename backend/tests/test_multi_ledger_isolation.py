@@ -11,7 +11,7 @@ v0.4-specific token-rotation path.
 from __future__ import annotations
 
 import pytest
-from api_contract_helpers import upload_png
+from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -204,10 +204,11 @@ def _gray_pending_id(client: TestClient, *, identity) -> int:
 
 def test_owner_cannot_patch_tester_expense(client: TestClient, *, identity) -> None:
     tester_id = _gray_pending_id(client, identity=identity)
-    response = client.patch(
-        f"/api/expenses/{tester_id}",
+    response = patch_expense(
+        client,
+        tester_id,
         headers=identity.app_headers,
-        json={"merchant": "owner-tries-to-overwrite"},
+        fields={"merchant": "owner-tries-to-overwrite"},
     )
     assert response.status_code == 404
     assert response.json()["error"] == "expense_not_found"
@@ -245,13 +246,13 @@ def test_csv_export_is_ledger_scoped(client: TestClient, *, identity) -> None:
     # Confirm one expense in each ledger so both have CSV-eligible rows.
     owner_id = upload_png(client, identity=identity)
     tester_id = _gray_pending_id(client, identity=identity)
-    assert client.patch(
-        f"/api/expenses/{owner_id}", headers=identity.app_headers,
-        json={"amount_cents": 1234, "category": "餐饮"},
+    assert patch_expense(
+        client, owner_id, headers=identity.app_headers,
+        fields={"amount_cents": 1234, "category": "餐饮"},
     ).status_code == 200
-    assert client.patch(
-        f"/api/expenses/{tester_id}", headers=identity.gray_app_headers,
-        json={"amount_cents": 5678, "category": "餐饮"},
+    assert patch_expense(
+        client, tester_id, headers=identity.gray_app_headers,
+        fields={"amount_cents": 5678, "category": "餐饮"},
     ).status_code == 200
     assert client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers).status_code == 200
     assert client.post(
@@ -273,13 +274,13 @@ def test_monthly_stats_is_ledger_scoped(client: TestClient, *, identity) -> None
     # Confirm one expense per ledger; the monthly total should differ by ledger.
     owner_id = upload_png(client, identity=identity)
     tester_id = _gray_pending_id(client, identity=identity)
-    assert client.patch(
-        f"/api/expenses/{owner_id}", headers=identity.app_headers,
-        json={"amount_cents": 1234, "category": "餐饮"},
+    assert patch_expense(
+        client, owner_id, headers=identity.app_headers,
+        fields={"amount_cents": 1234, "category": "餐饮"},
     ).status_code == 200
-    assert client.patch(
-        f"/api/expenses/{tester_id}", headers=identity.gray_app_headers,
-        json={"amount_cents": 5678, "category": "餐饮"},
+    assert patch_expense(
+        client, tester_id, headers=identity.gray_app_headers,
+        fields={"amount_cents": 5678, "category": "餐饮"},
     ).status_code == 200
     assert client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.app_headers).status_code == 200
     assert client.post(

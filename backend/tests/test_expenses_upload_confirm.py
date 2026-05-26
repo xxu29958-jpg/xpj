@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 from api_contract_helpers import (
+    patch_expense,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -51,10 +52,11 @@ def test_upload_pending_image_and_confirm_flow(client: TestClient, *, identity) 
     assert response.status_code == 400
     assert response.json()["error"] == "amount_required"
 
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 3680,
             "merchant": "美团外卖",
             "category": "餐饮",
@@ -125,10 +127,11 @@ def test_confirm_removes_expense_from_pending_and_adds_confirmed(
     client: TestClient, *, identity,
 ) -> None:
     expense_id = upload_png(client, identity=identity)
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 1851,
             "merchant": "中国建设银行",
             "category": "餐饮",
@@ -181,10 +184,11 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
     assert image_path.is_file()
     assert thumbnail_path.is_file()
 
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 1851,
             "merchant": "A",
             "category": "餐饮",
@@ -219,10 +223,11 @@ def test_confirm_delete_after_confirm_hides_image_and_thumbnail(
 
 def test_deleted_image_does_not_break_confirmed_ledger_data(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 3680,
             "merchant": "图片已清理商家",
             "category": "餐饮",

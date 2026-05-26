@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -272,10 +273,11 @@ def test_editing_spent_at_recomputes_fx_rate_date_when_caller_did_not_pin_it(cli
     assert initial["exchange_rate_date"] == "2026-05-04"
     assert initial["amount_cents"] == 70000
 
-    edited = client.patch(
-        f"/api/expenses/{int(initial['id'])}",
+    edited = patch_expense(
+        client,
+        int(initial["id"]),
         headers=identity.app_headers,
-        json={"spent_at": "2026-05-05T02:00:00Z"},
+        fields={"spent_at": "2026-05-05T02:00:00Z"},
     )
     assert edited.status_code == 200, edited.json()
     body = edited.json()

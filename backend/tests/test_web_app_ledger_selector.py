@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 
 
@@ -56,11 +57,12 @@ def test_web_selected_ledger_pending_isolated(web_client: TestClient, *, identit
 
 def test_web_selected_ledger_confirmed_isolated(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={"amount_yuan": "9.99", "merchant": "X", "category": "", "note": "",
               "ledger_id": "owner"},
-        follow_redirects=False,
     )
     confirm_resp = web_client.post(
         f"/web/expenses/{expense_id}/confirm",
@@ -97,11 +99,12 @@ def test_web_reject_keeps_selected_ledger(web_client: TestClient, *, identity) -
 
 def test_web_confirm_redirect_keeps_selected_ledger(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={"amount_yuan": "1.50", "merchant": "M", "category": "", "note": "",
               "ledger_id": "owner"},
-        follow_redirects=False,
     )
     resp = web_client.post(
         f"/web/expenses/{expense_id}/confirm",

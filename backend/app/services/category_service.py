@@ -217,9 +217,15 @@ def bulk_set_category(
         .where(Expense.id.in_(expense_ids))
         .where(Expense.status == "pending")
     ).scalars().all()
-    payload = ExpenseUpdateRequest(category=cleaned_category)
     changed = 0
+    # ADR-0038 PR-2a: 服务端 bulk 操作刚读到 row.updated_at，可以直接
+    # 当作 expected_updated_at 喂给 update_expense（保留 PATCH 路径的
+    # 原子 UPDATE WHERE 语义，但不要求外部调用方携带 token）。
     for row in rows:
+        payload = ExpenseUpdateRequest(
+            category=cleaned_category,
+            expected_updated_at=row.updated_at,
+        )
         update_expense(db, row.id, tenant_id, payload)
         changed += 1
     return changed

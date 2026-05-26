@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from api_contract_helpers import (
+    patch_expense,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -140,10 +141,11 @@ def test_expense_mutation_routes_are_tenant_scoped(client: TestClient, *, identi
     owner_id = upload_png(client, identity=identity, headers=identity.upload_headers)
 
     scoped_operations = [
-        client.patch(
-            f"/api/expenses/{owner_id}",
+        patch_expense(
+            client,
+            owner_id,
             headers=identity.gray_app_headers,
-            json={"amount_cents": 1000, "merchant": "跨租户"},
+            fields={"amount_cents": 1000, "merchant": "跨租户"},
         ),
         client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.gray_app_headers),
         client.post(f"/api/expenses/{owner_id}/reject", headers=identity.gray_app_headers),
@@ -260,10 +262,11 @@ def test_tenants_cannot_read_each_other_expenses_images_stats_rules_or_duplicate
         == 404
     )
 
-    owner_patch = client.patch(
-        f"/api/expenses/{owner_id}",
+    owner_patch = patch_expense(
+        client,
+        owner_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 1000,
             "merchant": "owner商家",
             "category": "生活",
@@ -357,17 +360,19 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     assert [item["id"] for item in tester_pending.json()] == [tester_id]
 
     cross_mutations = [
-        client.patch(
-            f"/api/expenses/{tester_id}",
+        patch_expense(
+            client,
+            tester_id,
             headers=identity.app_headers,
-            json={"amount_cents": 1, "merchant": "owner不该改tester"},
+            fields={"amount_cents": 1, "merchant": "owner不该改tester"},
         ),
         client.post(f"/api/expenses/{tester_id}/confirm", headers=identity.app_headers),
         client.post(f"/api/expenses/{tester_id}/reject", headers=identity.app_headers),
-        client.patch(
-            f"/api/expenses/{owner_id}",
+        patch_expense(
+            client,
+            owner_id,
             headers=identity.gray_app_headers,
-            json={"amount_cents": 1, "merchant": "tester不该改owner"},
+            fields={"amount_cents": 1, "merchant": "tester不该改owner"},
         ),
         client.post(f"/api/expenses/{owner_id}/confirm", headers=identity.gray_app_headers),
         client.post(f"/api/expenses/{owner_id}/reject", headers=identity.gray_app_headers),
@@ -389,20 +394,22 @@ def test_owner_and_tester_tokens_are_hard_isolated_across_acceptance_surface(
     ]:
         assert client.get(path, headers=identity.app_headers).status_code == 404
 
-    owner_patch = client.patch(
-        f"/api/expenses/{owner_id}",
+    owner_patch = patch_expense(
+        client,
+        owner_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 1111,
             "merchant": "owner隔离商家",
             "category": "Owner自定义类",
             "expense_time": "2026-05-04T01:00:00Z",
         },
     )
-    tester_patch = client.patch(
-        f"/api/expenses/{tester_id}",
+    tester_patch = patch_expense(
+        client,
+        tester_id,
         headers=identity.gray_app_headers,
-        json={
+        fields={
             "amount_cents": 2222,
             "merchant": "tester隔离商家",
             "category": "Tester自定义类",

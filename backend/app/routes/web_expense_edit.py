@@ -54,6 +54,7 @@ def web_save(
     category: str = Form(default=""),
     note: str = Form(default=""),
     ledger_id: str = Form(default=""),
+    expected_updated_at: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -63,7 +64,13 @@ def web_save(
     original_amount, error = parse_original_amount(amount_yuan)
 
     if error is None:
-        payload_args = {
+        # ADR-0038: the edit form renders a hidden `expected_updated_at`
+        # input pre-filled from ``expense.updated_at``. The handler simply
+        # passes it through; if the user submits a stale form (e.g. left
+        # the page open while another window mutated the row),
+        # ``update_expense``'s atomic claim returns 409 ``state_conflict``.
+        payload_args: dict[str, object] = {
+            "expected_updated_at": expected_updated_at,
             "merchant": merchant.strip() or None,
             "category": category.strip() or None,
             "note": note.strip() or None,
@@ -73,9 +80,11 @@ def web_save(
                 (original_currency or "").strip().upper() or None
             )
             payload_args["original_amount"] = original_amount
-        payload = ExpenseUpdateRequest(**payload_args)
         try:
+            payload = ExpenseUpdateRequest(**payload_args)
             update_expense(db, expense_id, selected_id, payload)
+        except ValueError as exc:
+            error = f"提交参数不正确：{exc}"
         except AppError as exc:
             error = exc.message
 

@@ -203,6 +203,9 @@ fun ExpenseDraft.toRequest(baseline: Expense? = null): ExpenseUpdateRequest {
     val timeChanged = baseline != null && expenseTime != baseline.expenseTime
 
     return ExpenseUpdateRequest(
+        // ADR-0038 PR-2a: PATCH 必须携带 baseline.updatedAt 作为乐观锁 token；
+        // /api/expenses/manual 创建路径 baseline 为 null，Moshi 序列化时省略此键。
+        expectedUpdatedAt = baseline?.updatedAt,
         originalCurrency = if (isCreate || currencyChanged) submittedCurrency?.storageKey else null,
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
         spentAt = if (isCreate || timeChanged) expenseTime else null,

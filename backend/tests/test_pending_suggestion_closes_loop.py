@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
@@ -128,10 +129,11 @@ def test_adopt_suggestion_two_step(client: TestClient, *, identity) -> None:
 
     # Step 1: PATCH the category through the normal ledger path. This
     # is the "user confirms" half — the only place a write happens.
-    patch_response = client.patch(
-        f"/api/expenses/{expense_id}",
+    patch_response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"category": "餐饮"},
+        fields={"category": "餐饮"},
     )
     assert patch_response.status_code == 200
     assert patch_response.json()["category"] == "餐饮"

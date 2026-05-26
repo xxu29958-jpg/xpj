@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from api_contract_helpers import insert_confirmed_expense, upload_png
+from api_contract_helpers import insert_confirmed_expense, patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -19,10 +19,11 @@ def _seed_pending_with_merchant(merchant: str) -> int:
 
 
 def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"merchant": merchant, "amount_cents": 3800},
+        fields={"merchant": merchant, "amount_cents": 3800},
     )
     assert response.status_code == 200
 
@@ -47,10 +48,11 @@ def test_rule_apply_pending_preview_does_not_modify_and_reports_scope(
     default_id = upload_png(client, identity=identity)
     _set_pending_merchant(client, default_id, "Starbucks 上海", identity=identity)
     custom_id = upload_png(client, identity=identity)
-    custom = client.patch(
-        f"/api/expenses/{custom_id}",
+    custom = patch_expense(
+        client,
+        custom_id,
         headers=identity.app_headers,
-        json={"merchant": "Starbucks 手动分类", "category": "交通", "amount_cents": 1000},
+        fields={"merchant": "Starbucks 手动分类", "category": "交通", "amount_cents": 1000},
     )
     assert custom.status_code == 200
 
@@ -219,10 +221,11 @@ def test_rule_apply_pending_does_not_auto_confirm(client: TestClient, *, identit
 def test_rule_apply_pending_skips_non_default_category(client: TestClient, *, identity) -> None:
     pending_id = upload_png(client, identity=identity)
     # Already classified as 交通 — apply-pending must respect user choice.
-    response = client.patch(
-        f"/api/expenses/{pending_id}",
+    response = patch_expense(
+        client,
+        pending_id,
         headers=identity.app_headers,
-        json={"merchant": "Starbucks", "category": "交通", "amount_cents": 1000},
+        fields={"merchant": "Starbucks", "category": "交通", "amount_cents": 1000},
     )
     assert response.status_code == 200
     client.post(

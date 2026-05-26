@@ -78,6 +78,9 @@ class ExpenseMappersTest {
         assertEquals("JPY", request.originalCurrency)
         assertEquals("1200", request.originalAmount)
         assertEquals("2026-05-04T04:00:00Z", request.spentAt)
+        // ADR-0038 PR-2a: create 路径不带 baseline，expectedUpdatedAt 必须为 null
+        // 让 Moshi 序列化时省略键名，避免 /api/expenses/manual 的 extra="forbid" 拒收。
+        assertEquals(null, request.expectedUpdatedAt)
     }
 
     @Test
@@ -160,6 +163,7 @@ class ExpenseMappersTest {
         assertEquals(null, request.spentAt)
         assertEquals(null, request.expenseTime)
         assertEquals("新加的备注", request.note)
+        assertEquals("2026-05-04T04:30:00Z", request.expectedUpdatedAt)
     }
 
     @Test
@@ -190,6 +194,7 @@ class ExpenseMappersTest {
         assertEquals(null, request.originalAmount)
         assertEquals("2026-05-05T04:20:00Z", request.spentAt)
         assertEquals("2026-05-05T04:20:00Z", request.expenseTime)
+        assertEquals("2026-05-04T04:30:00Z", request.expectedUpdatedAt)
     }
 
     @Test

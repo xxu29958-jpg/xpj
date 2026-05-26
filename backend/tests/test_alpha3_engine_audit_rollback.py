@@ -1,7 +1,7 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
-from api_contract_helpers import upload_png
+from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -18,10 +18,11 @@ def _seed_pending_with_merchant(merchant: str) -> int:
 
 
 def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"merchant": merchant, "amount_cents": 3800},
+        fields={"merchant": merchant, "amount_cents": 3800},
     )
     assert response.status_code == 200
 
@@ -115,10 +116,11 @@ def test_rule_application_rollback_safety_boundaries_integration(client: TestCli
     assert all(item["public_id"] != batch_id for item in gray_list.json()["items"])
     assert gray_rollback.status_code == 404
 
-    manual = client.patch(
-        f"/api/expenses/{pending_id}",
+    manual = patch_expense(
+        client,
+        pending_id,
         headers=identity.app_headers,
-        json={"category": "交通"},
+        fields={"category": "交通"},
     )
     assert manual.status_code == 200
     skipped = client.post(f"/api/rules/applications/{batch_id}/rollback", headers=identity.app_headers)
@@ -155,10 +157,11 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
     assert applied.status_code == 200
     batch_id = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]["public_id"]
 
-    manual = client.patch(
-        f"/api/expenses/{pending_id}",
+    manual = patch_expense(
+        client,
+        pending_id,
         headers=identity.app_headers,
-        json={"note": "用户后续手工编辑过备注"},
+        fields={"note": "用户后续手工编辑过备注"},
     )
     assert manual.status_code == 200, manual.json()
     assert manual.json()["category"] == "餐饮"

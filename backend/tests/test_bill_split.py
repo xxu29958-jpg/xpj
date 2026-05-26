@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Account, Expense, Ledger, LedgerMember
@@ -387,8 +388,13 @@ def test_received_expense_amount_cannot_be_patched(client: TestClient, *, identi
     from app.schemas import ExpenseUpdateRequest
     from app.services.expense_service._update import update_expense
 
-    payload = ExpenseUpdateRequest(amount_cents=9999)
     with SessionLocal() as db, pytest.raises(AppError) as exc:
+        row = db.scalar(select(Expense).where(Expense.id == received_id))
+        assert row is not None
+        payload = ExpenseUpdateRequest(
+            amount_cents=9999,
+            expected_updated_at=row.updated_at,
+        )
         update_expense(db, received_id, "receiver_imm", payload)
     assert exc.value.error == "split_received_field_immutable"
 

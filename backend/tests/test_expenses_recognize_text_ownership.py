@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from api_contract_helpers import (
+    patch_expense,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -74,10 +75,11 @@ def test_recognize_text_does_not_overwrite_user_filled_fields(
     client: TestClient, *, identity,
 ) -> None:
     expense_id = upload_png(client, identity=identity)
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 9900,
             "merchant": "用户填写商家",
             "category": "生活",
@@ -148,10 +150,11 @@ def test_recognize_text_can_correct_ocr_draft_but_not_user_edits(
     assert payload["amount_cents"] == 1900
     assert payload["merchant"] == "巴南区卢记牛肉面"
 
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"merchant": "用户手动确认商家"},
+        fields={"merchant": "用户手动确认商家"},
     )
     assert response.status_code == 200
 

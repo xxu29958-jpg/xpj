@@ -118,6 +118,8 @@ data class ExpenseDto(
 )
 
 data class ExpenseUpdateRequest(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String? = null,
     @param:Json(name = "original_currency")
     val originalCurrency: String? = null,
     @param:Json(name = "original_amount")

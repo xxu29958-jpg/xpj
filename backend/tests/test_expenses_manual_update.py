@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from api_contract_helpers import (
+    patch_expense,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -107,10 +108,11 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
 def test_expense_update_normalizes_user_text(client: TestClient, *, identity) -> None:
     expense_id = upload_png(client, identity=identity)
 
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 990,
             "merchant": "  便利店  ",
             "category": "  生活  ",
@@ -125,18 +127,20 @@ def test_expense_update_normalizes_user_text(client: TestClient, *, identity) ->
     assert payload["note"] == "夜宵"
     assert payload["tags"] == "真机联调"
 
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"category": "吃饭"},
+        fields={"category": "吃饭"},
     )
     assert response.status_code == 200
     assert response.json()["category"] == "餐饮"
 
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "merchant": "   ",
             "category": "   ",
             "note": None,

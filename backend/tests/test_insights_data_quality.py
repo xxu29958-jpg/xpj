@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from api_contract_helpers import insert_confirmed_expense, upload_png
+from api_contract_helpers import insert_confirmed_expense, patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -14,8 +14,8 @@ from app.services.time_service import now_utc
 
 
 def _patch(client: TestClient, expense_id: int, *, identity, **fields) -> None:
-    response = client.patch(
-        f"/api/expenses/{expense_id}", headers=identity.app_headers, json=fields
+    response = patch_expense(
+        client, expense_id, headers=identity.app_headers, fields=fields
     )
     assert response.status_code == 200, response.text
 

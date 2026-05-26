@@ -34,6 +34,7 @@ from app.services.insights_service import recurring_candidates
 from app.services.recurring_service import list_recurring_items
 from app.services.stats_service import monthly_stats
 from app.services.time_service import current_month, now_utc
+from app.services.time_service import to_iso as _datetime_to_iso
 from app.version import BACKEND_VERSION
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
@@ -378,6 +379,7 @@ def _expense_view(expense) -> dict:
         "note": expense.note or "",
         "status": expense.status,
         "expense_time": expense.expense_time.strftime("%Y-%m-%d %H:%M") if expense.expense_time else "",
+        "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
         "created_at": expense.created_at.strftime("%Y-%m-%d %H:%M") if expense.created_at else "",
         "has_image": has_image,
         "image_state": image_state,

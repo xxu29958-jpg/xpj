@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -52,10 +53,11 @@ def _upload_pending(client: TestClient, *, identity, merchant: str, category: st
     )
     assert uploaded.status_code == 200, uploaded.text
     expense_id = int(uploaded.json()["id"])
-    patched = client.patch(
-        f"/api/expenses/{expense_id}",
+    patched = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={
+        fields={
             "amount_cents": 3800,
             "merchant": merchant,
             "category": category,

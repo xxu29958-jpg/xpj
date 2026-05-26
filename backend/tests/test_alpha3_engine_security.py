@@ -1,7 +1,7 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
-from api_contract_helpers import upload_png
+from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 
 
@@ -12,10 +12,11 @@ def _seed_pending_with_merchant(merchant: str) -> int:
 
 
 def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"merchant": merchant, "amount_cents": 3800},
+        fields={"merchant": merchant, "amount_cents": 3800},
     )
     assert response.status_code == 200
 

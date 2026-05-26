@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from api_contract_helpers import web_save_expense
 from fastapi.testclient import TestClient
 
 
@@ -24,11 +25,12 @@ def _create_pending(client: TestClient, *, identity) -> int:
 
 def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={"amount_yuan": "12.34", "merchant": "测试商家", "category": "餐饮",
               "note": "", "ledger_id": "owner"},
-        follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
@@ -58,8 +60,10 @@ def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient,
     assert created.status_code == 200, created.json()
     expense_id = int(created.json()["id"])
 
-    saved = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    saved = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={
             "ledger_id": "owner",
             "original_currency": "USD",
@@ -68,7 +72,6 @@ def test_web_edit_save_preserves_foreign_currency_fields(web_client: TestClient,
             "category": "餐饮",
             "note": "kept as USD",
         },
-        follow_redirects=False,
     )
     assert saved.status_code in {303, 307}, saved.text
 
@@ -96,8 +99,10 @@ def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient, *, ide
 
 def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={"amount_yuan": "not-a-number", "merchant": "", "category": "", "note": "",
               "ledger_id": "owner"},
     )
@@ -132,8 +137,10 @@ def test_web_amount_decimal_precision(
     web_client: TestClient, input_str: str, expected_cents: int
 , *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={"amount_yuan": input_str, "merchant": "", "category": "", "note": "",
               "ledger_id": "owner"},
         follow_redirects=True,
@@ -147,8 +154,10 @@ def test_web_amount_decimal_precision(
 
 def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identity) -> None:
     expense_id = _create_pending(web_client, identity=identity)
-    resp = web_client.post(
-        f"/web/expenses/{expense_id}/save",
+    resp = web_save_expense(
+        web_client,
+        expense_id,
+        identity=identity,
         data={"amount_yuan": "-5.00", "merchant": "", "category": "", "note": "",
               "ledger_id": "owner"},
     )

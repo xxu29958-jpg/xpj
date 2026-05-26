@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from api_contract_helpers import (
+    patch_expense,
     upload_png,
 )
 from fastapi.testclient import TestClient
@@ -141,10 +142,11 @@ def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient, *, identit
         expense.ocr_draft_fields = '["expense_time"]'
         db.commit()
 
-    patched = client.patch(
-        f"/api/expenses/{expense_id}",
+    patched = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"spent_at": "2026-05-04T05:00:00Z"},
+        fields={"spent_at": "2026-05-04T05:00:00Z"},
     )
     assert patched.status_code == 200, patched.json()
 

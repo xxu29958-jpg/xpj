@@ -1848,6 +1848,11 @@
             "title": "Category",
             "type": "string"
           },
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -4760,6 +4765,11 @@
             ],
             "title": "Category"
           },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "expense_time": {
             "anyOf": [
               {
@@ -4898,6 +4908,9 @@
             "title": "Value Score"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "ExpenseUpdateRequest",
         "type": "object"
       },

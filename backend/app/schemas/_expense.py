@@ -91,6 +91,7 @@ class NotificationDraftCreateRequest(BaseModel):
 class ExpenseUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    expected_updated_at: datetime
     amount_cents: int | None = Field(default=None, ge=0)
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: Decimal | None = Field(default=None, ge=0)

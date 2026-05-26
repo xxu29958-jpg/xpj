@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -102,10 +103,11 @@ def test_updating_tags_to_blank_clears_filter_links(client: TestClient, *, ident
         tags="外卖, 冲动",
     )
 
-    update = client.patch(
-        f"/api/expenses/{item['id']}",
+    update = patch_expense(
+        client,
+        int(item["id"]),
         headers=identity.app_headers,
-        json={"tags": "   "},
+        fields={"tags": "   "},
     )
     assert update.status_code == 200
     assert update.json()["tags"] is None

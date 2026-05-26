@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from api_contract_helpers import insert_confirmed_expense
+from api_contract_helpers import insert_confirmed_expense, patch_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -18,10 +18,11 @@ def _seed_pending_with_merchant(merchant: str) -> int:
 
 
 def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = client.patch(
-        f"/api/expenses/{expense_id}",
+    response = patch_expense(
+        client,
+        expense_id,
         headers=identity.app_headers,
-        json={"merchant": merchant, "amount_cents": 3800},
+        fields={"merchant": merchant, "amount_cents": 3800},
     )
     assert response.status_code == 200
 
