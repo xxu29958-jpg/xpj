@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0038（0018 已撤回；0032–0034 未使用，编号跳过无 ADR）。
+**编号范围**：0001–0039（0018 已撤回；0032–0034 未使用，编号跳过无 ADR）。
 
 ## 索引
 
@@ -43,10 +43,11 @@
 | [0036](0036-v1.1-ai-budget-provider-privacy-boundary.md) | v1.1 AI Budget Provider Privacy | AI 只看最小结构化摘要 + 本地映射表；不上传原始账本 / 图片 / 真名 / 路径 | v1.1 AI 预算隐私边界 |
 | [0037](0037-v1.2-learning-feedback-dual-tables.md) | v1.2 Learning Feedback Dual Tables | algorithm_decisions / ledger_learning_events / ocr_facts 三表 append-only 建议层，不污染账本 | v1.2 学习反馈底层 |
 | [0038](0038-v1.3-multi-surface-sync.md) | v1.3 Multi-Surface Sync | mutate endpoint body `expected_updated_at` + 409 `state_conflict`；Android Room offline outbox + WorkManager drain；soft-delete + 5s undo window | v1.3 同步 invariant |
+| [0039](0039-adr-implementation-calibration.md) | ADR Implementation Calibration | 校准 0001–0038 的当前实现状态；区分仍绑定、文字漂移、真实待修和计划未完成 | ADR 审计校准 |
 
 ## 编写新 ADR
 
-下一编号 `0039`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0040`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题
