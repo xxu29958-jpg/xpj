@@ -96,8 +96,17 @@ class OutboxDrainEngine(
                     outbox.markRetryable(row.id, "drain cancelled mid-dispatch")
                 }
                 throw e
-            } catch (t: Throwable) {
-                DispatchResult.RetryableFailure(t.message ?: "dispatch threw")
+            } catch (e: Exception) {
+                // [codex round-5 P3] catch Exception, not Throwable —
+                // Error subclasses (OutOfMemoryError, LinkageError,
+                // StackOverflowError, VirtualMachineError) indicate
+                // JVM-level damage that the per-row retry policy
+                // can't recover from; let them propagate up to the
+                // worker so WorkManager's own restart semantics
+                // handle it. CancellationException is already taken
+                // by the catch above (it extends Exception, but the
+                // more-specific catch binds first).
+                DispatchResult.RetryableFailure(e.message ?: "dispatch threw")
             }
             when (result) {
                 is DispatchResult.Success -> {

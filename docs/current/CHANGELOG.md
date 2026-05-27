@@ -23,6 +23,9 @@
   - `backend/scripts/_audit_mutate_token_coverage.py`：走 in-process OpenAPI schema 扫所有 mutate route (POST/PUT/PATCH/DELETE)，验证每个都 carry `expected_updated_at` / `expected_updated_at_by_id`；ALLOWLIST 列豁免（create / terminal lifecycle / batch / admin / preview / single-writer maintenance）每条带 one-line reason；KNOWN_GAPS 标 6 个 v1.1 pre-ADR-0038 sediment route（goal PATCH / income-plan PATCH/DELETE / budget PUT / dashboard PUT / ui-preferences PUT）只 WARN 不 FAIL，未来 strict 模式可加 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1` 收紧。
   - 已接入 `release_audit.py` 自动 discovery，跑过 138 个 mutate route 全分类（27 token / 105 ALLOWLIST / 6 KNOWN_GAPS）。
 
+- **PR-2g.1 codex round-5 fix**（PR-2g.1 codex 五审 1 个 P3 收尾）：
+  - **[r5 P3] catch Exception 不 catch Throwable**：drain engine 把 `catch (t: Throwable)` 收窄为 `catch (e: Exception)`。`Throwable` 会吞 `OutOfMemoryError` / `LinkageError` / `StackOverflowError` 等 JVM 级 fatal Error，per-row retry 没意义；改成 Exception 让 Error 上抛到 WorkManager 由它自己的 restart 语义处理。`CancellationException` 在它之前已经有专门 catch + rethrow，保护未变。
+
 - **PR-2g.1 codex round-3 fix**（PR-2g.1 codex 三审 3 个 P2 + 1 个 P3 收尾）：
   - **[r3 P2#1] dequeue starvation → SQL NOT EXISTS**：新 DAO method `nextRunnableBatch(pending, in_flight, conflict, failed, limit)` 把 unresolved-target 过滤推到 SQL 层，`LIMIT` 在过滤之后才应用。原版"Kotlin 后过滤"在前 25 PENDING 都是 CONFLICT-blocked 同 target 的场景会饿死后续 target；新版直接 SQL 跳过。新增 contract test `blockedTargetsDoNotStarveOtherRunnableTargets`（构造 30 个 blocked + 1 个 runnable，断言 runnable 一次 drain 跑完）。
   - **[r3 P2#2] FAILED resolution surface**：FAILED 现在 block 同 target 后续 mutation（round-2 P1#1 副作用），所以必须有用户出口。新增 `FailedResolution` sealed type (`Retry(freshToken?)` / `Drop`)；`OutboxRepository.resolveFailed(id, resolution)` 对称 `resolveConflict`；`observeFailed()` Flow 给 UI；DAO `observeFailedRows`。3 个新 test：retry-without-token / retry-with-fresh-token / drop。
