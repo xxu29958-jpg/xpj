@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.repository.CategoryRuleSaveOutcome
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.domain.model.CategoryRule
@@ -86,22 +87,26 @@ class CategoryRulesViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busy = true, message = null) }
-            // ADR-0038 PR-1: pass the rule's last-seen ``updatedAt`` as the
-            // optimistic-concurrency token. Peer edits between the list
-            // render and this save bubble up as 409 via the repository.
-            ruleRepository.updateCategoryRule(
-                id = rule.id,
-                expectedUpdatedAt = rule.updatedAt,
+            // ADR-0038 PR-2g.4: offline-aware save. Network failure
+            // → enqueue + optimistic projection; user sees
+            // "已离线保存" message and continues. Other errors
+            // (4xx / 409 / 5xx) still surface as failure.
+            ruleRepository.updateCategoryRuleAllowingOffline(
+                baseline = rule,
                 keyword = keyword.trim(),
                 category = category.trim(),
                 priority = priority,
             )
-                .onSuccess { updated ->
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        is CategoryRuleSaveOutcome.Synced -> "分类规则已更新"
+                        is CategoryRuleSaveOutcome.Queued -> "已离线保存，联网后同步"
+                    }
                     _uiState.update { state ->
                         state.copy(
-                            categoryRules = state.categoryRules.map { if (it.id == updated.id) updated else it },
+                            categoryRules = state.categoryRules.map { if (it.id == outcome.rule.id) outcome.rule else it },
                             busy = false,
-                            message = "分类规则已更新",
+                            message = message,
                         )
                     }
                 }
@@ -115,17 +120,23 @@ class CategoryRulesViewModel(
             return
         }
         viewModelScope.launch {
-            // ADR-0038 PR-1: see updateCategoryRule above.
-            ruleRepository.updateCategoryRule(
-                id = rule.id,
-                expectedUpdatedAt = rule.updatedAt,
+            // ADR-0038 PR-2g.4: offline-aware toggle. See
+            // updateCategoryRule above for the rationale.
+            ruleRepository.updateCategoryRuleAllowingOffline(
+                baseline = rule,
                 enabled = !rule.enabled,
             )
-                .onSuccess { updated ->
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        is CategoryRuleSaveOutcome.Synced ->
+                            if (outcome.rule.enabled) "分类规则已启用" else "分类规则已停用"
+                        is CategoryRuleSaveOutcome.Queued ->
+                            if (outcome.rule.enabled) "已离线启用，联网后同步" else "已离线停用，联网后同步"
+                    }
                     _uiState.update { state ->
                         state.copy(
-                            categoryRules = state.categoryRules.map { if (it.id == updated.id) updated else it },
-                            message = if (updated.enabled) "分类规则已启用" else "分类规则已停用",
+                            categoryRules = state.categoryRules.map { if (it.id == outcome.rule.id) outcome.rule else it },
+                            message = message,
                         )
                     }
                 }

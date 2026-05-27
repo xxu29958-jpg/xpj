@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.JsonAdapter
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
@@ -12,6 +14,7 @@ import com.ticketbox.domain.model.RuleApplicationRollback
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
+import java.io.IOException
 
 /**
  * Category-rule CRUD and bulk rule application over confirmed expenses.
@@ -27,6 +30,15 @@ class RuleRepository(
     private val tokenStore: SessionTokenStore,
     private val apiProvider: ApiServiceProvider = ApiServiceProvider(apiClient, settingsStore, tokenStore),
     private val onConfirmedChanged: suspend () -> Unit = { },
+    /**
+     * ADR-0038 PR-2g.4: outbox surface for the offline-aware
+     * [updateCategoryRuleAllowingOffline] entrypoint. ``null``
+     * keeps every pre-PR-2g.4 test that didn't wire the outbox at
+     * the old behaviour — the new method falls back to the direct
+     * failure path when outbox/adapter aren't both supplied.
+     */
+    private val outbox: OutboxRepository? = null,
+    private val categoryRuleUpdateAdapter: JsonAdapter<CategoryRuleUpdateRequest>? = null,
 ) {
     private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
@@ -92,6 +104,91 @@ class RuleRepository(
             }
         }
 
+    /**
+     * ADR-0038 PR-2g.4: offline-aware version of [updateCategoryRule].
+     *
+     * Direct PATCH first; if it fails with IOException AND outbox
+     * wiring is present, enqueue the row and return
+     * [CategoryRuleSaveOutcome.Queued] with an optimistic projection
+     * (the rule with the user's edits applied over baseline). Any
+     * other failure mode (4xx / 409 / 5xx HttpException) propagates
+     * to safeCall and surfaces as Result.failure.
+     *
+     * Mirrors [ExpensePendingRepository.saveExpenseAllowingOffline]
+     * — see that KDoc + PR-2g.3 CHANGELOG for the rationale (sealed
+     * outcome so chained callers can't accidentally treat a queued
+     * row as a server-confirmed success).
+     *
+     * The three CategoryRulesViewModel call sites (full edit /
+     * toggle / [no chain]) don't hand the returned ``updatedAt`` to
+     * a follow-up POST, so they can all use this method.
+     * [deleteCategoryRule] is NOT routed through outbox in this PR
+     * — that's PR-2g.4 follow-up (DELETE has different shape and
+     * ``DeleteCategoryRuleDispatcher`` hasn't landed yet).
+     */
+    suspend fun updateCategoryRuleAllowingOffline(
+        baseline: CategoryRule,
+        keyword: String? = null,
+        category: String? = null,
+        enabled: Boolean? = null,
+        priority: Int? = null,
+    ): Result<CategoryRuleSaveOutcome> = errorHandler.safeCall {
+        val request = CategoryRuleUpdateRequest(
+            expectedUpdatedAt = baseline.updatedAt,
+            keyword = keyword,
+            category = category,
+            enabled = enabled,
+            priority = priority,
+        )
+        try {
+            val updated = ledgerRequestGuard.guardedCall { api ->
+                api.updateCategoryRule(baseline.id, request).toDomain()
+            }
+            CategoryRuleSaveOutcome.Synced(updated) as CategoryRuleSaveOutcome
+        } catch (networkError: IOException) {
+            val outboxRef = outbox
+            val adapter = categoryRuleUpdateAdapter
+            if (outboxRef == null || adapter == null) {
+                // Wiring missing — fall back to the original
+                // failure path so we don't pretend to have saved.
+                throw networkError
+            }
+            // [round-8 P3#5] strip token from payload — row's
+            // expectedUpdatedAt is the single source of truth.
+            // Dispatcher overwrites the request token from the row
+            // on replay (see UpdateCategoryRuleDispatcher).
+            outboxRef.enqueue(
+                type = PendingMutationType.UpdateCategoryRule,
+                targetId = "category_rule:${baseline.id}",
+                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
+                expectedUpdatedAt = baseline.updatedAt,
+            )
+            CategoryRuleSaveOutcome.Queued(
+                projectOptimisticRule(baseline, keyword, category, enabled, priority),
+            ) as CategoryRuleSaveOutcome
+        }
+    }
+
+    /**
+     * Build the optimistic projection that the UI shows while the
+     * queued PATCH waits for connectivity. The user's submitted
+     * fields overwrite the baseline; ``updatedAt`` stays at the
+     * pre-mutation value (it's NOT a server-confirmed token, and
+     * no chained POST reads it from this return path).
+     */
+    private fun projectOptimisticRule(
+        baseline: CategoryRule,
+        keyword: String?,
+        category: String?,
+        enabled: Boolean?,
+        priority: Int?,
+    ): CategoryRule = baseline.copy(
+        keyword = keyword ?: baseline.keyword,
+        category = category ?: baseline.category,
+        enabled = enabled ?: baseline.enabled,
+        priority = priority ?: baseline.priority,
+    )
+
     suspend fun deleteCategoryRule(id: Long, expectedUpdatedAt: String): Result<Unit> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
@@ -148,4 +245,26 @@ class RuleRepository(
                 result
             }
         }
+}
+
+/**
+ * ADR-0038 PR-2g.4 sealed result for
+ * [RuleRepository.updateCategoryRuleAllowingOffline]. Mirrors
+ * [SaveOutcome] for the expense path — parallel-defined here so
+ * neither type's surface accidentally widens to the other's
+ * payload. A future PR may generic-ify both into ``SaveOutcome<T>``.
+ */
+sealed interface CategoryRuleSaveOutcome {
+    val rule: CategoryRule
+
+    /** Server confirmed the PATCH; [rule] carries the canonical post-mutation token. */
+    data class Synced(override val rule: CategoryRule) : CategoryRuleSaveOutcome
+
+    /**
+     * Network failed; the mutation was persisted to the outbox and
+     * [rule] is the optimistic projection (baseline merged with the
+     * user's submitted fields). ``updatedAt`` is the pre-mutation
+     * token; chained POSTs must not consume it.
+     */
+    data class Queued(override val rule: CategoryRule) : CategoryRuleSaveOutcome
 }

@@ -6,6 +6,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
+import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
@@ -22,6 +23,7 @@ import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.security.SecureTokenStore
 
 class AppContainer(context: Context) {
@@ -51,6 +53,12 @@ class AppContainer(context: Context) {
     // built two independent adapters they'd be byte-compatible
     // today but could drift if Moshi options change in one place.
     private val patchExpenseAdapter = outboxMoshi.adapter(ExpenseUpdateRequest::class.java)
+
+    // PR-2g.4: shared between [UpdateCategoryRuleDispatcher]
+    // (deserialises on replay) and [RuleRepository.
+    // updateCategoryRuleAllowingOffline] (serialises before
+    // enqueue). Same roundtrip guarantee as patchExpenseAdapter.
+    private val categoryRuleUpdateAdapter = outboxMoshi.adapter(CategoryRuleUpdateRequest::class.java)
 
     val outboxRepository = OutboxRepository(
         dao = database.pendingMutationDao(),
@@ -91,11 +99,12 @@ class AppContainer(context: Context) {
 
     /**
      * Registered dispatchers. PR-2g.2 wired the first dispatcher
-     * [PatchExpenseDispatcher]; PR-2g.3 routes the matching call
-     * site (PATCH expense) through the outbox so the dispatcher
-     * actually has work to do. The remaining 15 ``PendingMutationType``s
-     * land one-per-PR in 2g.3 follow-ups; each follow-up appends a
-     * dispatcher here AND routes its matching call site through
+     * [PatchExpenseDispatcher]; PR-2g.3 routed the matching call
+     * site (PATCH expense) through the outbox. PR-2g.4 added
+     * [UpdateCategoryRuleDispatcher] + matching call site. The
+     * remaining 14 ``PendingMutationType``s land one-per-PR in
+     * PR-2g.4.N follow-ups; each follow-up appends a dispatcher
+     * here AND routes its matching call site through
      * [OutboxRepository.enqueue] in the appropriate Repository.
      * [OutboxDrainEngine] marks rows of types with no registered
      * dispatcher FAILED with ``no_dispatcher_registered:<wire>``
@@ -105,6 +114,11 @@ class AppContainer(context: Context) {
         PatchExpenseDispatcher(
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = patchExpenseAdapter,
+        ),
+        // PR-2g.4: PATCH /api/rules/categories/{id} via outbox.
+        UpdateCategoryRuleDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = categoryRuleUpdateAdapter,
         ),
     )
 
@@ -169,6 +183,10 @@ class AppContainer(context: Context) {
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
         onConfirmedChanged = { expenseRepository.syncConfirmed() },
+        // PR-2g.4: outbox + adapter for the offline-aware
+        // updateCategoryRuleAllowingOffline entrypoint.
+        outbox = outboxRepository,
+        categoryRuleUpdateAdapter = categoryRuleUpdateAdapter,
     )
 
     val merchantRepository = MerchantRepository(
