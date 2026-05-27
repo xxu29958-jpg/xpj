@@ -49,7 +49,10 @@ class GoalDtoContractTest {
             ),
         )
         val updateJson = moshi.adapter(GoalUpdateRequestDto::class.java).toJson(
-            GoalUpdateRequestDto(targetAmountCents = 90000),
+            GoalUpdateRequestDto(
+                expectedUpdatedAt = "2026-05-13T00:05:00Z",
+                targetAmountCents = 90000,
+            ),
         )
 
         val goal = dto.items.single()
@@ -61,6 +64,9 @@ class GoalDtoContractTest {
             """{"name":"本月餐饮","month":"2026-05","target_amount_cents":80000,"category":"餐饮","goal_type":"spending_limit","period":"monthly"}""",
             createJson,
         )
-        assertEquals("""{"target_amount_cents":90000}""", updateJson)
+        assertEquals(
+            """{"expected_updated_at":"2026-05-13T00:05:00Z","target_amount_cents":90000}""",
+            updateJson,
+        )
     }
 }
