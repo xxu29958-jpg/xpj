@@ -23,6 +23,14 @@
   - `backend/scripts/_audit_mutate_token_coverage.py`：走 in-process OpenAPI schema 扫所有 mutate route (POST/PUT/PATCH/DELETE)，验证每个都 carry `expected_updated_at` / `expected_updated_at_by_id`；ALLOWLIST 列豁免（create / terminal lifecycle / batch / admin / preview / single-writer maintenance）每条带 one-line reason；KNOWN_GAPS 标 6 个 v1.1 pre-ADR-0038 sediment route（goal PATCH / income-plan PATCH/DELETE / budget PUT / dashboard PUT / ui-preferences PUT）只 WARN 不 FAIL，未来 strict 模式可加 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1` 收紧。
   - 已接入 `release_audit.py` 自动 discovery，跑过 138 个 mutate route 全分类（27 token / 105 ALLOWLIST / 6 KNOWN_GAPS）。
 
+- **PR-2g.1 Android outbox drain engine + dispatcher contract**：
+  - `OutboxMutationDispatcher` interface：`val type: PendingMutationType` + `suspend dispatch(OutboxRow): DispatchResult`。每个 mutation 类型注册一个实现，drain engine 按 row.type 路由。
+  - `DispatchResult` sealed type：Success / Conflict(serverMessage) / Failure(message) / Discarded(reason)。ADR-0038 契约：409 `state_conflict` → Conflict（surface 给 user 选 keep/drop）；404 / 422 / 非-state_conflict 409 → Discarded（结构差异，沉默 markDone + cleanup gc）；2xx → Success；其它 4xx/5xx + network → Failure（user 可手动重试）。
+  - `OutboxDrainEngine.drainOnce()`：dequeue → mark in-flight → dispatch → status transition → 下一行。crash 安全（每行单独 commit）。无 dispatcher 注册的 row 留 PENDING（旧 Android build 拿到新 mutation type 时不丢数据）。
+  - `PatchExpenseDispatcher` 作为第一个示范实现：解析 `targetId = "expense:<id>"`、deserialise payload、按 row.expectedUpdatedAt 覆盖 token field、调 `api.updateExpense`、HTTP 异常映射到 DispatchResult。其余 15 个 dispatcher 同形态独立 PR 加。
+  - `OutboxDrainEngineTest`（6 tests）：success / conflict / failure / discarded / dispatcher 抛异常 → Failure / 无 dispatcher 注册的 type 跳过 PENDING 不动。
+  - **不在此 PR 范围**（独立 PR）：WorkManager 接入 / mutation call site 走 outbox / conflict-banner UI / 其它 15 个 dispatcher 实例。
+
 - **PR-2f Android offline outbox skeleton**：
   - Room 新增 `pending_mutations` 表（type / targetId / payload JSON / expectedUpdatedAt / status / retryCount / lastError / createdAt / attemptedAt / completedAt），AppDatabase v8 → v9 migration (new table only, 不动现有 entity)。
   - `PendingMutationEntity` / `PendingMutationStatus` (pending / in_flight / conflict / failed / done) / `PendingMutationType` (16 个 mutation 路由 wireValue mapping，对齐 backend v1.3 PR-2 mutate surface)。
