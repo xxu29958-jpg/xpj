@@ -96,7 +96,7 @@ def main() -> int:
         sys.stdout.flush()
         result = subprocess.run(
             [sys.executable, str(script)],
-            cwd=Path.cwd(),
+            cwd=scripts_dir.parent,
         )
         ok = result.returncode == 0
         summary.append((label, ok))

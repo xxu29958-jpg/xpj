@@ -11,7 +11,8 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-ROOT = pathlib.Path(".")
+from codebase_audit_gate import DebtCounts, evaluate_debt
+
 APP = pathlib.Path("app")
 TESTS = pathlib.Path("tests")
 SCRIPTS = pathlib.Path("scripts")
@@ -81,21 +82,22 @@ def _suppressed_lines(p: pathlib.Path, code: str) -> set[int]:
 # A. SIZE & DISTRIBUTION
 # -----------------------------------------------------------------------------
 
-def audit_file_loc():
+def audit_file_loc() -> DebtCounts:
     rows = [(p, line_count(p)) for p in walk(APP, SCRIPTS, TESTS)]
     rows.sort(key=lambda r: -r[1])
+    large_files = [(p, n) for p, n in rows if n > 500]
     print("== A1. File LOC (top 30) ==")
     for p, n in rows[:30]:
         print(f"  {n:5d}  {p}")
     print()
     print("== A2. Files > 500 LOC ==")
-    for p, n in rows:
-        if n > 500:
-            print(f"  {n:5d}  {p}")
+    for p, n in large_files:
+        print(f"  {n:5d}  {p}")
     print()
+    return {"files_over_500": len(large_files)}
 
 
-def audit_surface_area():
+def audit_surface_area() -> DebtCounts:
     rows: list[tuple[pathlib.Path, int, int]] = []
     for p in walk(APP):
         tree = parse(p)
@@ -109,9 +111,10 @@ def audit_surface_area():
     for p, d, c in rows[:30]:
         print(f"  {d+c:3d} ({d}def {c}cls)  {p}")
     print()
+    return {}
 
 
-def audit_long_functions():
+def audit_long_functions() -> DebtCounts:
     items: list[tuple[pathlib.Path, int, int, str]] = []
     for p in walk(APP, SCRIPTS, TESTS):
         tree = parse(p)
@@ -129,6 +132,7 @@ def audit_long_functions():
     for p, ln, length, name in items[:40]:
         print(f"  {length:4d}L  {p}:{ln}  {name}")
     print()
+    return {"long_functions": len(items)}
 
 
 def _max_depth(node, current=0):
@@ -144,7 +148,7 @@ def _max_depth(node, current=0):
     return depth
 
 
-def audit_nesting_depth():
+def audit_nesting_depth() -> DebtCounts:
     items: list[tuple[pathlib.Path, int, int, str]] = []
     for p in walk(APP, SCRIPTS, TESTS):
         tree = parse(p)
@@ -160,9 +164,10 @@ def audit_nesting_depth():
     for p, ln, d, name in items[:40]:
         print(f"  depth={d}  {p}:{ln}  {name}")
     print()
+    return {"deep_nesting_functions": len(items)}
 
 
-def audit_directory_density():
+def audit_directory_density() -> DebtCounts:
     counts: dict[pathlib.Path, int] = defaultdict(int)
     for p in walk(APP):
         counts[p.parent] += 1
@@ -170,13 +175,14 @@ def audit_directory_density():
     for d, c in sorted(counts.items(), key=lambda x: -x[1])[:15]:
         print(f"  {c:3d}  {d}")
     print()
+    return {}
 
 
 # -----------------------------------------------------------------------------
 # B. STRUCTURE & COUPLING
 # -----------------------------------------------------------------------------
 
-def audit_import_graph_and_cycles():
+def audit_import_graph_and_cycles() -> DebtCounts:
     graph, rev = _build_app_import_graph()
     _print_most_imported_modules(rev)
     sccs = _find_import_sccs(graph)
@@ -184,6 +190,7 @@ def audit_import_graph_and_cycles():
     for s in sccs:
         print(f"  {' <-> '.join(sorted(s))}")
     print()
+    return {"import_cycles": len(sccs)}
 
 
 def _build_app_import_graph() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
@@ -252,7 +259,7 @@ def _find_import_sccs(graph: dict[str, set[str]]) -> list[list[str]]:
     return sccs
 
 
-def audit_layer_violations():
+def audit_layer_violations() -> DebtCounts:
     """Routes (presentation) directly importing models or SQLAlchemy session/engine
     instead of going through a service. Inverted-layer hints.
 
@@ -282,9 +289,10 @@ def audit_layer_violations():
         for ln, msg in locs[:3]:
             print(f"          L{ln} {msg}")
     print()
+    return {"route_layer_imports": len(items)}
 
 
-def audit_sql_in_routes_or_services():
+def audit_sql_in_routes_or_services() -> DebtCounts:
     """Routes / non-database services that hand-craft SQL strings (abstraction
     leak — presentation/business should call repository, not SQL)."""
     rx_sql = re.compile(r"\b(SELECT |INSERT |UPDATE |DELETE FROM|CREATE INDEX|CREATE TABLE|ALTER TABLE|PRAGMA )", re.IGNORECASE)
@@ -308,9 +316,10 @@ def audit_sql_in_routes_or_services():
         for ln, line in locs[:2]:
             print(f"          L{ln} {line}")
     print()
+    return {"sql_outside_database": len(items)}
 
 
-def audit_import_star():
+def audit_import_star() -> DebtCounts:
     items = []
     for p in walk(APP, SCRIPTS, TESTS):
         try:
@@ -325,13 +334,14 @@ def audit_import_star():
     for p, ln, s in items:
         print(f"  {p}:{ln}  {s}")
     print()
+    return {"import_star": len(items)}
 
 
 # -----------------------------------------------------------------------------
 # C. RESPONSIBILITY & ABSTRACTION
 # -----------------------------------------------------------------------------
 
-def audit_naming_smells():
+def audit_naming_smells() -> DebtCounts:
     """Classes / functions whose name contains And/Or/Manager/Helper/Util."""
     rx = re.compile(r"\b(And|Or|Manager|Helper|Util|Misc)\b")
     items = []
@@ -349,9 +359,10 @@ def audit_naming_smells():
     for p, ln, name in items[:40]:
         print(f"  {p}:{ln}  {name}")
     print()
+    return {"smelly_names": len(items)}
 
 
-def audit_no_underscore_split():
+def audit_no_underscore_split() -> DebtCounts:
     """Modules where everything is public — no `_internal` symbols at all,
     despite > 8 module-level defs."""
     items = []
@@ -372,13 +383,14 @@ def audit_no_underscore_split():
     for p, n in items:
         print(f"  {n:3d}pub  {p}")
     print()
+    return {"service_public_no_private": len(items)}
 
 
 # -----------------------------------------------------------------------------
 # D. DATA FLOW & STATE
 # -----------------------------------------------------------------------------
 
-def audit_globals_and_module_state():
+def audit_globals_and_module_state() -> DebtCounts:
     g_writes = []
     mod_mutable = []
     for p in walk(APP):
@@ -410,9 +422,10 @@ def audit_globals_and_module_state():
             continue
         print(f"  {p}:{ln}  {name} ({kind})")
     print()
+    return {"global_usage": len(g_writes)}
 
 
-def audit_lru_cache_singletons():
+def audit_lru_cache_singletons() -> DebtCounts:
     items = []
     for p in walk(APP):
         tree = parse(p)
@@ -428,13 +441,14 @@ def audit_lru_cache_singletons():
     for p, ln, name, dec in items:
         print(f"  {p}:{ln}  @{dec}  {name}")
     print()
+    return {"cached_singletons": len(items)}
 
 
 # -----------------------------------------------------------------------------
 # E. CONTRACT
 # -----------------------------------------------------------------------------
 
-def audit_type_hint_coverage():
+def audit_type_hint_coverage() -> DebtCounts:
     total_fns = 0
     annotated = 0
     fully = 0
@@ -470,9 +484,10 @@ def audit_type_hint_coverage():
     for p, ln, length, name in sorted(unannotated_long, key=lambda r: -r[2])[:15]:
         print(f"    {length:3d}L  {p}:{ln}  {name}")
     print()
+    return {"unannotated_long_functions": len(unannotated_long)}
 
 
-def audit_deep_arg_dicts():
+def audit_deep_arg_dicts() -> DebtCounts:
     """Functions with `dict[str, dict[...]]` or `Dict[str, Dict[...]]` annotations,
     or signatures with `**kwargs` and `Any`."""
     rx = re.compile(r"(dict|Dict|Mapping)\s*\[\s*(?:str|Any)\s*,\s*(?:dict|Dict|Mapping|Any)")
@@ -489,9 +504,10 @@ def audit_deep_arg_dicts():
     for p, ln, line in items[:30]:
         print(f"  {p}:{ln}  {line}")
     print()
+    return {"nested_dict_args": len(items)}
 
 
-def audit_return_type_inconsistency():
+def audit_return_type_inconsistency() -> DebtCounts:
     """Functions that have both `return None` and `return <value>` paths."""
     items = []
     for p in walk(APP):
@@ -514,13 +530,14 @@ def audit_return_type_inconsistency():
     for p, ln, name in items[:40]:
         print(f"  {p}:{ln}  {name}")
     print()
+    return {"mixed_return_functions": len(items)}
 
 
 # -----------------------------------------------------------------------------
 # F. ERROR HANDLING
 # -----------------------------------------------------------------------------
 
-def audit_bare_except():
+def audit_bare_except() -> DebtCounts:
     bare = []
     broad = []
     swallow = []
@@ -528,7 +545,7 @@ def audit_bare_except():
         tree = parse(p)
         if not tree:
             continue
-        # Lines carrying `# noqa: BLE001` are intentional broad catches
+        # Lines carrying the BLE001 noqa marker are intentional broad catches
         # (graceful degradation paths the linter accepts); skipping them
         # here keeps the audit signal focused on accidental swallows.
         ble001_lines = _suppressed_lines(p, "BLE001")
@@ -576,9 +593,14 @@ def audit_bare_except():
     for p, ln in swallow:
         print(f"  {p}:{ln}")
     print()
+    return {
+        "bare_except": len(bare),
+        "broad_exception": len(broad),
+        "swallowed_exceptions": len(swallow),
+    }
 
 
-def audit_raise_generic():
+def audit_raise_generic() -> DebtCounts:
     items = []
     for p in walk(APP):
         tree = parse(p)
@@ -595,13 +617,14 @@ def audit_raise_generic():
     for k, v in by.most_common():
         print(f"  {v:3d}  {k}")
     print()
+    return {"generic_raises": len(items)}
 
 
 # -----------------------------------------------------------------------------
 # G. MAINTAINABILITY & RISK
 # -----------------------------------------------------------------------------
 
-def audit_todos():
+def audit_todos() -> DebtCounts:
     rx = re.compile(r"\b(TODO|FIXME|XXX|HACK|TEMP)\b", re.IGNORECASE)
     items = []
     for p in walk(APP, SCRIPTS, TESTS):
@@ -624,9 +647,10 @@ def audit_todos():
     for p, ln, line in items[:30]:
         print(f"  {p}:{ln}  {line}")
     print()
+    return {"todo_markers": len(items)}
 
 
-def audit_hardcoded_paths_urls():
+def audit_hardcoded_paths_urls() -> DebtCounts:
     rx_url = re.compile(r"https?://[\w./?=&#%-]+")
     rx_path = re.compile(r"[A-Z]:[\\/](?:[\w.-]+[\\/]){2,}|/(?:home|var|etc|tmp)/[\w./-]+")
     rx_magic = re.compile(r"(?:timeout|TIMEOUT|sleep|retry|MAX_|SIZE)=?\s*\(?\s*([0-9]{3,})")
@@ -656,9 +680,14 @@ def audit_hardcoded_paths_urls():
     for p, ln, line in magic[:30]:
         print(f"  {p}:{ln}  {line}")
     print()
+    return {
+        "hardcoded_urls": len(urls),
+        "hardcoded_paths": len(paths),
+        "magic_numbers": len(magic),
+    }
 
 
-def audit_credentials_risk():
+def audit_credentials_risk() -> DebtCounts:
     rx_secret = re.compile(r"(?i)(?:api[_-]?key|password|secret|token)\s*=\s*[\"']([^\"']{6,})[\"']")
     items = []
     for p in walk(APP, SCRIPTS):
@@ -677,6 +706,7 @@ def audit_credentials_risk():
     for p, ln, line in items[:30]:
         print(f"  {p}:{ln}  {line}")
     print()
+    return {"credentials_risk": len(items)}
 
 
 _DB_CALL_MARKERS = (
@@ -741,7 +771,7 @@ class _NPlusOneVisitor(ast.NodeVisitor):
         self.generic_visit(n)
 
 
-def audit_n_plus_one():
+def audit_n_plus_one() -> DebtCounts:
     """db.query / db.scalar / select(...) calls inside a for-loop body."""
     items = []
     for p in walk(APP):
@@ -758,9 +788,10 @@ def audit_n_plus_one():
         for ln, src in locs[:3]:
             print(f"          L{ln} {src}")
     print()
+    return {"n_plus_one": len(items)}
 
 
-def audit_test_coverage_by_module():
+def audit_test_coverage_by_module() -> DebtCounts:
     """Map each app/ module to whether a test file references it directly."""
     grep_targets: dict[str, int] = {}
     for p in walk(APP):
@@ -784,40 +815,28 @@ def audit_test_coverage_by_module():
     for m in unreferenced:
         print(f"  {m}")
     print()
+    return {"unreferenced_modules": len(unreferenced)}
 
 
 # -----------------------------------------------------------------------------
 # RUN
 # -----------------------------------------------------------------------------
 
-def main() -> None:
+AUDITS = tuple(
+    obj for name, obj in globals().items()
+    if name.startswith("audit_") and callable(obj)
+)
+
+
+def main() -> int:
     print("=" * 78)
     print("CODEBASE AUDIT — read-only")
     print("=" * 78)
-    audit_file_loc()
-    audit_surface_area()
-    audit_long_functions()
-    audit_nesting_depth()
-    audit_directory_density()
-    audit_import_graph_and_cycles()
-    audit_layer_violations()
-    audit_sql_in_routes_or_services()
-    audit_import_star()
-    audit_naming_smells()
-    audit_no_underscore_split()
-    audit_globals_and_module_state()
-    audit_lru_cache_singletons()
-    audit_type_hint_coverage()
-    audit_deep_arg_dicts()
-    audit_return_type_inconsistency()
-    audit_bare_except()
-    audit_raise_generic()
-    audit_todos()
-    audit_hardcoded_paths_urls()
-    audit_credentials_risk()
-    audit_n_plus_one()
-    audit_test_coverage_by_module()
+    counts: DebtCounts = {}
+    for audit in AUDITS:
+        counts.update(audit())
+    return evaluate_debt(counts)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

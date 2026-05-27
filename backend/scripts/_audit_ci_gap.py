@@ -31,9 +31,11 @@ REQUIRED_GRADLE_TASKS = [
     ":app:connectedGrayDebugAndroidTest",
 ]
 
-# Backend pytest invocations expected in CI. Substring match — keep
-# these short enough to survive minor flag reorderings.
-REQUIRED_PYTEST_LANES = [
+# Backend invocations expected in CI. Substring match — keep these
+# short enough to survive minor flag reorderings, but concrete enough
+# that deleting the release audit step fails this lane.
+REQUIRED_CI_INVOCATIONS = [
+    "scripts\\release_audit.py",
     "pytest --cov=app",
     "pytest -q -m file_backed_only",
 ]
@@ -68,9 +70,9 @@ def main() -> int:
     for task in REQUIRED_GRADLE_TASKS:
         if task not in combined:
             missing.append(f"gradle task: {task}")
-    for lane in REQUIRED_PYTEST_LANES:
-        if lane not in combined:
-            missing.append(f"pytest lane: {lane}")
+    for invocation in REQUIRED_CI_INVOCATIONS:
+        if invocation not in combined:
+            missing.append(f"ci invocation: {invocation}")
 
     if missing:
         print("=== CI gap audit: FAIL ===")
@@ -80,7 +82,7 @@ def main() -> int:
 
     print(
         f"=== CI gap audit: OK ({len(REQUIRED_GRADLE_TASKS)} gradle tasks + "
-        f"{len(REQUIRED_PYTEST_LANES)} pytest lanes verified across all "
+        f"{len(REQUIRED_CI_INVOCATIONS)} backend invocations verified across all "
         f".github/workflows/*.yml) ==="
     )
     return 0

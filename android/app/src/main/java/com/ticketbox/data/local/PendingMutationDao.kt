@@ -448,21 +448,20 @@ interface PendingMutationDao {
     suspend fun deleteById(id: Long): Int
 
     /**
-     * Prune terminal-state rows older than [cutoffIso] (ISO-Z).
-     * Called by the cleanup path on app start / on a scheduled
-     * background tick.
+     * Prune DONE rows older than [cutoffIso] (ISO-Z). FAILED rows are
+     * intentionally excluded: they still need explicit user retry/drop
+     * and must not disappear because a retention window elapsed.
      */
     @Query(
         """
         DELETE FROM pending_mutations
-        WHERE status IN (:doneStatus, :failedStatus)
+        WHERE status = :doneStatus
           AND completedAt IS NOT NULL
           AND completedAt < :cutoffIso
         """,
     )
     suspend fun deleteResolvedBefore(
         doneStatus: String,
-        failedStatus: String,
         cutoffIso: String,
     ): Int
 

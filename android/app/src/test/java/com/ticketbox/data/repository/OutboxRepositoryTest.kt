@@ -149,7 +149,7 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun gcCompletedDeletesTerminalRowsOlderThanRetention() = runTest {
+    fun gcCompletedDeletesDoneRowsOlderThanRetention() = runTest {
         val dao = FakePendingMutationDao()
         val now = "2026-05-04T12:00:00Z"
         val repo = OutboxRepository(dao = dao, clock = fixedClock(now))
@@ -171,6 +171,25 @@ class OutboxRepositoryTest {
         assertEquals(1, pruned)
         assertTrue(dao.rows[oldId] == null)
         assertTrue(dao.rows[recentId] != null)
+    }
+
+    @Test
+    fun failedRowsAreNotCompletedAndAreNotGarbageCollected() = runTest {
+        val dao = FakePendingMutationDao()
+        val repo = OutboxRepository(
+            dao = dao,
+            clock = fixedClock("2026-05-04T12:00:00Z"),
+        )
+        val failedId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+
+        repo.markFailed(failedId, "user must decide")
+        val pruned = repo.gcCompleted(retentionMillis = 0)
+
+        val row = dao.rows[failedId]
+        assertEquals(0, pruned)
+        assertNotNull(row)
+        assertEquals(PendingMutationStatus.Failed.wireValue, row.status)
+        assertNull(row.completedAt)
     }
 
     @Test

@@ -2,7 +2,11 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -505,6 +509,48 @@ class OutboxDrainEngineTest {
 
         assertEquals(0, dispatchCalls)
         assertEquals(0, summary.attempted)
+    }
+
+    @Test
+    fun clearAllBlocksUntilInFlightDispatchCompletes() = runTest {
+        // Round-10 dispatch lease contract: once drain has passed the
+        // post-claim epoch check and entered dispatcher.dispatch(row),
+        // clearAll must wait. Otherwise the session coordinator can
+        // rotate credentials while dispatch lazily reads the token.
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val dispatchEntered = CompletableDeferred<Unit>()
+        val releaseDispatch = CompletableDeferred<Unit>()
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                dispatchEntered.complete(Unit)
+                releaseDispatch.await()
+                return DispatchResult.Success()
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+
+        val drain = async { engine.drainOnce() }
+        dispatchEntered.await()
+        var clearAllReturned = false
+        val clearAll = launch {
+            outbox.clearAll()
+            clearAllReturned = true
+        }
+        yield()
+
+        assertEquals(false, clearAllReturned, "clearAll must wait for in-flight dispatch")
+
+        releaseDispatch.complete(Unit)
+        val summary = drain.await()
+        clearAll.join()
+
+        assertEquals(true, clearAllReturned)
+        assertEquals(1, summary.done)
+        assertEquals(0, dao.rows.size, "clearAll wipes the row only after dispatch finishes")
     }
 
     private fun withDispatcher(

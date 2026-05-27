@@ -249,12 +249,10 @@ class FakePendingMutationDao : PendingMutationDao {
 
     override suspend fun deleteResolvedBefore(
         doneStatus: String,
-        failedStatus: String,
         cutoffIso: String,
     ): Int {
-        val terminal = setOf(doneStatus, failedStatus)
         val victims = rows.values.filter {
-            it.status in terminal &&
+            it.status == doneStatus &&
                 it.completedAt != null &&
                 it.completedAt!! < cutoffIso
         }.map { it.id }

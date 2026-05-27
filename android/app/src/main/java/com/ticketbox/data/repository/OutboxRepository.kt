@@ -534,14 +534,17 @@ class OutboxRepository(
         ).map { it.toDomain() }
 
     /**
-     * Garbage-collect terminal rows older than [retentionMillis].
-     * Called from a cleanup tick (PR-2g wires it to WorkManager).
+     * Garbage-collect completed DONE rows older than [retentionMillis].
+     *
+     * FAILED rows are unresolved user-action rows, not retention
+     * artifacts. They stay until the user retries or drops them; this
+     * keeps a future DAO refactor from silently deleting failed local
+     * mutations after seven days.
      */
     suspend fun gcCompleted(retentionMillis: Long = DEFAULT_RETENTION_MS): Int {
         val cutoff = Instant.now(clock).minusMillis(retentionMillis)
         return dao.deleteResolvedBefore(
             doneStatus = PendingMutationStatus.Done.wireValue,
-            failedStatus = PendingMutationStatus.Failed.wireValue,
             cutoffIso = ISO.format(cutoff),
         )
     }
