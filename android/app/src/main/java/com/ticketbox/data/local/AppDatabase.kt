@@ -9,12 +9,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [ExpenseEntity::class],
-    version = 8,
+    entities = [ExpenseEntity::class, PendingMutationEntity::class],
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
+    abstract fun pendingMutationDao(): PendingMutationDao
 
     companion object {
         @Volatile
@@ -178,6 +179,42 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // ADR-0038 PR-2f: offline outbox skeleton. New table only —
+        // no ALTER on existing tables, no backfill needed. The
+        // skeleton is landable without PR-2g (WorkManager drain) so
+        // a partial roll-out leaves the queue empty rather than
+        // wedged.
+        private val Migration8To9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS pending_mutations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        type TEXT NOT NULL,
+                        targetId TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        expectedUpdatedAt TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        retryCount INTEGER NOT NULL DEFAULT 0,
+                        lastError TEXT,
+                        createdAt TEXT NOT NULL,
+                        attemptedAt TEXT,
+                        completedAt TEXT
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_createdAt ON pending_mutations (createdAt)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_targetId_status ON pending_mutations (targetId, status)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_status ON pending_mutations (status)",
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -193,6 +230,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration5To6,
                         Migration6To7,
                         Migration7To8,
+                        Migration8To9,
                     )
                     .build()
                     .also { instance = it }

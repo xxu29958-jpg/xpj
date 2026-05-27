@@ -23,6 +23,14 @@
   - `backend/scripts/_audit_mutate_token_coverage.py`：走 in-process OpenAPI schema 扫所有 mutate route (POST/PUT/PATCH/DELETE)，验证每个都 carry `expected_updated_at` / `expected_updated_at_by_id`；ALLOWLIST 列豁免（create / terminal lifecycle / batch / admin / preview / single-writer maintenance）每条带 one-line reason；KNOWN_GAPS 标 6 个 v1.1 pre-ADR-0038 sediment route（goal PATCH / income-plan PATCH/DELETE / budget PUT / dashboard PUT / ui-preferences PUT）只 WARN 不 FAIL，未来 strict 模式可加 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1` 收紧。
   - 已接入 `release_audit.py` 自动 discovery，跑过 138 个 mutate route 全分类（27 token / 105 ALLOWLIST / 6 KNOWN_GAPS）。
 
+- **PR-2f Android offline outbox skeleton**：
+  - Room 新增 `pending_mutations` 表（type / targetId / payload JSON / expectedUpdatedAt / status / retryCount / lastError / createdAt / attemptedAt / completedAt），AppDatabase v8 → v9 migration (new table only, 不动现有 entity)。
+  - `PendingMutationEntity` / `PendingMutationStatus` (pending / in_flight / conflict / failed / done) / `PendingMutationType` (16 个 mutation 路由 wireValue mapping，对齐 backend v1.3 PR-2 mutate surface)。
+  - `PendingMutationDao` 暴露 enqueue / status transitions / drain query (created_at ASC, 同 target_id 串行 via `isTargetBusy`) / live `observeQueueDepth` + `observeConflictRows` / cleanup `deleteResolvedBefore`。
+  - `OutboxRepository` 抽象 + `ConflictResolution` sealed type (KeepMine(freshToken) / DropMine)。enqueue 是 fire-and-forget；dequeueNextRunnable 实施同 target 串行；gcCompleted 默认 7 天保留。
+  - **不接入 mutation call sites** — PR-2g 接入。skeleton 单独 landable，便于 review schema migration 和 queue 语义。
+  - `OutboxRepositoryTest` (8 tests) 用纯 Kotlin Fake DAO 验证 enqueue 排序 / dequeue 跳过同 target IN_FLIGHT / status transitions / KeepMine refresh token / DropMine 删除 / gcCompleted 保留窗口 / activeForTarget 过滤终态。
+
 - **PR-2j v1.1 sediment 清账 + audit 收紧到 strict**：
   - `PATCH /api/goals/{public_id}` 加必填 `expected_updated_at`：`GoalUpdateRequest` 加字段（`extra="forbid"`）；`goal_service.update_goal` 改用 `claim_row_with_token` + `extra_where=(Goal.status=='active')`；rowcount=0 分支为 archived → 409 `invalid_request`，else → 409 `state_conflict`。Android `GoalUpdateRequestDto` / `GoalUpdate` domain model 加 `expectedUpdatedAt` 必传。
   - `PATCH /api/income-plans/{public_id}` 同款：`IncomePlanUpdateRequest` 加字段；service 用 `claim_row_with_token` + `extra_where=(MonthlyIncomePlan.status=='active')`；archived 仍走"请先恢复" 409 `state_conflict`。Android `IncomePlanUpdateRequestDto` / `IncomePlanPatch` mapper 加字段。
