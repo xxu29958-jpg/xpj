@@ -1,10 +1,13 @@
 package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonDataException
+import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
 /**
@@ -32,13 +35,30 @@ class PatchExpenseDispatcher(
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val expenseId = parseExpenseId(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
-        val storedPayload = payloadAdapter.fromJson(row.payloadJson)
-            ?: return DispatchResult.Discarded("payload could not be deserialised")
-        // The token on the row is the authoritative one; replace any
-        // older value embedded in the serialised payload (KeepMine
-        // refreshes ``row.expectedUpdatedAt`` but doesn't rewrite
-        // the serialised payload itself).
-        val request = storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+
+        // [codex round-2 P1#3] fix: payload deserialise errors are
+        // TERMINAL, not retryable. A corrupted / stale-shape JSON
+        // will keep failing on every drain tick if we route it
+        // through RetryableFailure; route it through Failure so
+        // the user sees the dead row and can drop it.
+        val request = try {
+            val storedPayload = payloadAdapter.fromJson(row.payloadJson)
+                ?: return DispatchResult.Failure("payload deserialised to null")
+            // The token on the row is the authoritative one; replace
+            // any older value embedded in the serialised payload
+            // (KeepMine refreshes ``row.expectedUpdatedAt`` but
+            // doesn't rewrite the serialised payload itself).
+            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+        } catch (e: JsonDataException) {
+            return DispatchResult.Failure(
+                "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
+            )
+        } catch (e: JsonEncodingException) {
+            return DispatchResult.Failure(
+                "payload JSON malformed: ${e.message ?: "JsonEncodingException"}",
+            )
+        }
+
         return try {
             val updated = api.updateExpense(expenseId, request)
             DispatchResult.Success(newUpdatedAt = updated.updatedAt)
@@ -49,6 +69,11 @@ class PatchExpenseDispatcher(
             // server probably never saw the request. Retry on the
             // next drain tick, don't push the user a "失败" banner.
             DispatchResult.RetryableFailure(e.message ?: "network IO failure")
+        } catch (e: CancellationException) {
+            // [codex round-2 P1#2] fix: never swallow cancellation;
+            // let the engine see it and roll the row back to
+            // PENDING in NonCancellable scope.
+            throw e
         } catch (e: Exception) {
             DispatchResult.Failure(e.message ?: "PATCH expense threw")
         }

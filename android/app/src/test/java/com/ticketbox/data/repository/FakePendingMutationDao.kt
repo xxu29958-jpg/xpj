@@ -123,6 +123,33 @@ class FakePendingMutationDao : PendingMutationDao {
     override suspend fun isTargetBusy(targetId: String, inFlightStatus: String): Boolean =
         rows.values.any { it.targetId == targetId && it.status == inFlightStatus }
 
+    override suspend fun hasUnresolvedRowForTarget(
+        targetId: String,
+        inFlightStatus: String,
+        conflictStatus: String,
+        failedStatus: String,
+    ): Boolean {
+        val unresolved = setOf(inFlightStatus, conflictStatus, failedStatus)
+        return rows.values.any { it.targetId == targetId && it.status in unresolved }
+    }
+
+    override suspend fun recoverStaleInFlight(
+        pendingStatus: String,
+        inFlightStatus: String,
+        staleCutoffIso: String,
+        recoveryMessage: String,
+    ): Int {
+        val victims = rows.values.filter {
+            it.status == inFlightStatus &&
+                (it.attemptedAt == null || it.attemptedAt!! < staleCutoffIso)
+        }
+        for (row in victims) {
+            rows[row.id] = row.copy(status = pendingStatus, lastError = recoveryMessage)
+        }
+        if (victims.isNotEmpty()) refreshObservables()
+        return victims.size
+    }
+
     override suspend fun activeForTarget(
         targetId: String,
         pendingStatus: String,

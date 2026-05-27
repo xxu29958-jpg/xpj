@@ -6,20 +6,21 @@ can see the schema diff next to the entity / migration changes.
 
 ## Hand-written snapshots
 
-Most `N.json` files are emitted unchanged by KSP. `9.json` is a
-hand-written starting point (`pending_mutations` table for ADR-0038
-PR-2f offline outbox) committed before a successful local Gradle run
-was available; the `identityHash` field is a placeholder
-(`"0000000000000000000000000000000000000000"`) and gets overwritten
-to the canonical content-derived hash the first time KSP runs in CI
-or on a developer machine that can start Gradle.
+Most `N.json` files are emitted unchanged by KSP. `9.json` was added by
+hand for ADR-0038 PR-2f (offline outbox `pending_mutations` table)
+because no Gradle daemon could start on the dev machine at the time;
+KSP overwrites it with the canonical hash + structure on the first
+successful run in CI.
 
-A schema JSON with a placeholder identityHash is safe at runtime as
-long as KSP runs at least once before instrumented tests open the
-database — KSP's output becomes the source of truth and overwrites
-the placeholder. The committed file's only job until then is to show
-the column / index diff to a code reviewer.
+The committed JSON must:
+- match the entity declarations exactly (column types / nullability /
+  `defaultValue` / index column list), or the next KSP run produces a
+  different output and CI surfaces an "uncommitted schema regen"
+  diff;
+- carry a strict-parseable shape — Room's `kotlinx.serialization` JSON
+  decoder rejects unknown keys, so no comment fields inside the JSON.
+  Document context in this README instead.
 
-If a follow-up review notices the placeholder still in git after the
-table has shipped, run `./gradlew :app:kspGrayDebugKotlin` once and
-commit the regenerated `9.json`.
+If a follow-up review notices the placeholder identityHash still in
+git after the table has shipped, run `./gradlew :app:kspGrayDebugKotlin`
+once and commit the regenerated `9.json`.

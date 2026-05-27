@@ -66,20 +66,23 @@ class OutboxRepository(
     }
 
     /**
-     * Return the next runnable batch in causal order. Two filters:
+     * Return the next runnable batch in causal order. Three filters:
      *
-     * 1. Skip rows whose target is currently IN_FLIGHT (another
-     *    drain pass already claimed the head of the queue for that
-     *    target).
+     * 1. Skip rows whose target has ANY unresolved sibling row —
+     *    IN_FLIGHT (another drain is running it), CONFLICT (user
+     *    hasn't picked keep/drop yet), or FAILED (waiting for
+     *    manual retry or dismissal). [codex round-2 P1#1] fix:
+     *    the old "only block on IN_FLIGHT" let a queued B sneak
+     *    past a CONFLICT A and either fake-conflict or apply on
+     *    top of an un-resolved state.
      * 2. Within the returned batch, keep only the OLDEST PENDING
-     *    row per target. This is the [codex finding P1#1] fix —
+     *    row per target. This is the [codex round-1 P1#1] fix —
      *    without per-target dedup, the same drain pass would
      *    return both A and B for ``expense:1`` and the engine
      *    would dispatch them in parallel even though
      *    ``markInFlightIfPending`` is per-row atomic.
-     *
-     * Returns the public [OutboxRow] view (not the raw Entity) so
-     * the drain engine doesn't depend on Room types.
+     * 3. Returns the public [OutboxRow] view (not the raw Entity)
+     *    so the drain engine doesn't depend on Room types.
      */
     suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH): List<OutboxRow> {
         val candidates = dao.nextPendingBatch(PendingMutationStatus.Pending.wireValue, limit)
@@ -87,7 +90,13 @@ class OutboxRepository(
         val seenTargets = mutableSetOf<String>()
         val runnable = mutableListOf<OutboxRow>()
         for (row in candidates) {
-            if (dao.isTargetBusy(row.targetId, PendingMutationStatus.InFlight.wireValue)) {
+            if (dao.hasUnresolvedRowForTarget(
+                    targetId = row.targetId,
+                    inFlightStatus = PendingMutationStatus.InFlight.wireValue,
+                    conflictStatus = PendingMutationStatus.Conflict.wireValue,
+                    failedStatus = PendingMutationStatus.Failed.wireValue,
+                )
+            ) {
                 continue
             }
             if (!seenTargets.add(row.targetId)) {
@@ -99,6 +108,26 @@ class OutboxRepository(
             runnable += row.toDomain()
         }
         return runnable
+    }
+
+    /**
+     * Recovery: push rows stuck in IN_FLIGHT past [staleAfterMillis]
+     * back to PENDING so the next drain can re-claim them. Called
+     * by the engine at the start of each drain.
+     *
+     * [codex round-2 P1#2] fix: a CancellationException after
+     * ``tryClaim`` succeeded leaves the row IN_FLIGHT; without
+     * this sweep ``hasUnresolvedRowForTarget`` then blocks every
+     * later sibling forever.
+     */
+    suspend fun recoverStaleInFlight(staleAfterMillis: Long = DEFAULT_STALE_IN_FLIGHT_MS): Int {
+        val cutoff = Instant.now(clock).minusMillis(staleAfterMillis)
+        return dao.recoverStaleInFlight(
+            pendingStatus = PendingMutationStatus.Pending.wireValue,
+            inFlightStatus = PendingMutationStatus.InFlight.wireValue,
+            staleCutoffIso = ISO.format(cutoff),
+            recoveryMessage = "recovered_from_stuck_in_flight",
+        )
     }
 
     /**
@@ -250,6 +279,10 @@ class OutboxRepository(
         /** 7 days — enough to power undo / audit and not enough to
          *  let the DB grow unbounded on a phone. */
         const val DEFAULT_RETENTION_MS: Long = 7L * 24L * 60L * 60L * 1000L
+        /** 5 minutes — any IN_FLIGHT older than this is presumed
+         *  abandoned by a cancelled / dead worker and is swept
+         *  back to PENDING at next drain start. */
+        const val DEFAULT_STALE_IN_FLIGHT_MS: Long = 5L * 60L * 1000L
     }
 }
 

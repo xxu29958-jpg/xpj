@@ -112,8 +112,14 @@ data class PendingMutationEntity(
      * Bumped each time the drain worker retries this row. Used to
      * back off retries and to surface a "tried 3 times, please
      * check" hint to the user.
+     *
+     * [codex round-2 P2#4] fix: ``defaultValue = "0"`` matches the
+     * ``DEFAULT 0`` in [AppDatabase.Migration8To9]'s CREATE TABLE.
+     * Room's migration validator otherwise fails on the schema
+     * mismatch between entity default (none → NOT NULL with no
+     * default) and DB default (``0``).
      */
-    @ColumnInfo(name = "retryCount")
+    @ColumnInfo(name = "retryCount", defaultValue = "0")
     val retryCount: Int = 0,
 
     /**

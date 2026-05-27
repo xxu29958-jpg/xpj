@@ -193,6 +193,11 @@ interface PendingMutationDao {
      * True if another row for the same target is currently
      * ``IN_FLIGHT``. PR-2g's drain worker calls this to enforce
      * "same target_id serial" without holding a global drain lock.
+     *
+     * Note: kept for backward compatibility; PR-2g.1 codex round-2
+     * found this is insufficient for serial guarantees (a CONFLICT
+     * or FAILED row also blocks same-target progress). Drain uses
+     * [hasUnresolvedRowForTarget] instead.
      */
     @Query(
         """
@@ -202,6 +207,63 @@ interface PendingMutationDao {
         """,
     )
     suspend fun isTargetBusy(targetId: String, inFlightStatus: String): Boolean
+
+    /**
+     * True if any non-terminal row for [targetId] exists — IN_FLIGHT
+     * (another drain already running it), CONFLICT (user hasn't
+     * picked "keep mine / drop mine" yet), or FAILED (terminal
+     * failure waiting for manual retry or dismissal).
+     *
+     * [codex round-2 finding P1#1] fix: dequeue must NOT advance
+     * past an unresolved row for the same target. Otherwise:
+     *
+     *   A (CONFLICT, user hasn't decided) → B (PENDING)
+     *
+     * the old logic ran B anyway because only ``IN_FLIGHT`` was
+     * checked. B then either fake-conflicts (if A's resolution
+     * was DropMine) or applies on top of a state the user hasn't
+     * confirmed (if KeepMine).
+     */
+    @Query(
+        """
+        SELECT COUNT(*) > 0 FROM pending_mutations
+        WHERE targetId = :targetId
+          AND status IN (:inFlightStatus, :conflictStatus, :failedStatus)
+        """,
+    )
+    suspend fun hasUnresolvedRowForTarget(
+        targetId: String,
+        inFlightStatus: String,
+        conflictStatus: String,
+        failedStatus: String,
+    ): Boolean
+
+    /**
+     * Recovery sweep: rows stuck in IN_FLIGHT past [staleCutoffIso]
+     * are pushed back to PENDING. Used at drain start to recover
+     * from worker cancellations / process death that left a row
+     * mid-claim.
+     *
+     * [codex round-2 finding P1#2] companion: a CancellationException
+     * that aborts a drain after the atomic claim succeeded would
+     * otherwise pin that row in IN_FLIGHT forever — same-target
+     * dedup then permanently blocks all later siblings.
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = :pendingStatus,
+            lastError = :recoveryMessage
+        WHERE status = :inFlightStatus
+          AND (attemptedAt IS NULL OR attemptedAt < :staleCutoffIso)
+        """,
+    )
+    suspend fun recoverStaleInFlight(
+        pendingStatus: String,
+        inFlightStatus: String,
+        staleCutoffIso: String,
+        recoveryMessage: String,
+    ): Int
 
     /**
      * Returns all non-terminal rows for a given target — useful for

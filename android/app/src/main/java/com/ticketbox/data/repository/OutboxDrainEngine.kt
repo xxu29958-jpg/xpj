@@ -1,6 +1,9 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * ADR-0038 PR-2g drain engine.
@@ -36,8 +39,14 @@ class OutboxDrainEngine(
      * Replay every currently-runnable row exactly once. Returns the
      * summary so the caller (worker / UI / tests) can decide whether
      * to re-enqueue itself.
+     *
+     * Sweeps stale IN_FLIGHT rows (left behind by a cancelled or
+     * crashed worker) back to PENDING before dequeueing so the
+     * same-target dedup doesn't permanently block siblings.
+     * [codex round-2 P1#2] companion.
      */
     suspend fun drainOnce(): DrainSummary {
+        outbox.recoverStaleInFlight()
         val batch = outbox.dequeueNextRunnable()
         if (batch.isEmpty()) return DrainSummary.IDLE
 
@@ -70,9 +79,24 @@ class OutboxDrainEngine(
                 raced++
                 continue
             }
-            when (val result = runCatching { dispatcher.dispatch(row) }.getOrElse {
-                DispatchResult.RetryableFailure(it.message ?: "dispatch threw")
-            }) {
+            // [codex round-2 P1#2] fix: do NOT let runCatching
+            // swallow CancellationException — that would let a
+            // structured-concurrency cancel mark the row as
+            // RetryableFailure mid-shutdown. Catch it explicitly
+            // and roll the row back to PENDING in a NonCancellable
+            // context so a fresh drain can re-claim it after the
+            // worker restarts.
+            val result = try {
+                dispatcher.dispatch(row)
+            } catch (e: CancellationException) {
+                withContext(NonCancellable) {
+                    outbox.markRetryable(row.id, "drain cancelled mid-dispatch")
+                }
+                throw e
+            } catch (t: Throwable) {
+                DispatchResult.RetryableFailure(t.message ?: "dispatch threw")
+            }
+            when (result) {
                 is DispatchResult.Success -> {
                     outbox.markDone(row.id)
                     // [codex finding P1#1] fix: cascade the server's

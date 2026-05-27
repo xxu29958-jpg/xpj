@@ -242,6 +242,128 @@ class OutboxDrainEngineTest {
     }
 
     @Test
+    fun conflictSiblingBlocksLaterPendingRow() = runTest {
+        // [codex round-2 P1#1] An unresolved CONFLICT for the same
+        // target must hold back later PENDING siblings — otherwise
+        // the user's keep/drop decision races with the auto-replay
+        // of B and the eventual state is non-deterministic.
+        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
+        val firstId = outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "",
+        )
+        outbox.markConflict(firstId, "stale")
+        outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "",
+        )
+
+        val summary = engine.drainOnce()
+        assertEquals(0, summary.attempted)
+        // CONFLICT row unchanged; PENDING sibling untouched.
+        val rows = outbox.activeForTarget("expense:1")
+        assertEquals(2, rows.size)
+        assertTrue(rows.any { it.status == PendingMutationStatus.Conflict })
+        assertTrue(rows.any { it.status == PendingMutationStatus.Pending })
+    }
+
+    @Test
+    fun failedSiblingBlocksLaterPendingRow() = runTest {
+        // [codex round-2 P1#1] Same logic for FAILED — user might
+        // manually retry or dismiss; until they do, later siblings
+        // must wait so the chain order is preserved.
+        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
+        val firstId = outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "",
+        )
+        outbox.markFailed(firstId, "bad payload")
+        outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "",
+        )
+
+        val summary = engine.drainOnce()
+        assertEquals(0, summary.attempted)
+        val rows = outbox.activeForTarget("expense:1")
+        assertTrue(rows.any { it.status == PendingMutationStatus.Failed })
+        assertTrue(rows.any { it.status == PendingMutationStatus.Pending })
+    }
+
+    @Test
+    fun cancellationDuringDispatchRollsRowBackToPending() = runTest {
+        // [codex round-2 P1#2] CancellationException must propagate
+        // to the caller (WorkManager), and the row must be put back
+        // to PENDING so the next drain after the worker restarts
+        // re-claims it instead of leaving it stuck IN_FLIGHT.
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                throw kotlinx.coroutines.CancellationException("worker cancelled")
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+
+        val thrown = runCatching { engine.drainOnce() }.exceptionOrNull()
+        assertTrue(
+            thrown is kotlinx.coroutines.CancellationException,
+            "CancellationException must propagate, got $thrown",
+        )
+
+        val row = outbox.activeForTarget("expense:1").single()
+        assertEquals(PendingMutationStatus.Pending, row.status)
+        assertEquals("drain cancelled mid-dispatch", row.lastError)
+    }
+
+    @Test
+    fun staleInFlightSweptBackToPendingAtDrainStart() = runTest {
+        // [codex round-2 P1#2 companion] A row left IN_FLIGHT by a
+        // dead worker would permanently block same-target siblings
+        // via the unresolved-row dedup. The drain engine sweeps
+        // IN_FLIGHT rows whose attemptedAt is older than the stale
+        // threshold back to PENDING before dequeueing.
+        val dao = FakePendingMutationDao()
+        val now = java.time.Instant.parse("2026-05-04T12:00:00Z")
+        val outbox = OutboxRepository(
+            dao = dao,
+            clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
+        )
+        // Direct-poke a row into IN_FLIGHT with attemptedAt ten
+        // minutes ago (older than the 5-minute stale threshold).
+        val id = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        dao.rows[id] = dao.rows[id]!!.copy(
+            status = PendingMutationStatus.InFlight.wireValue,
+            attemptedAt = "2026-05-04T11:50:00Z",
+        )
+
+        val engine = OutboxDrainEngine(
+            outbox,
+            listOf(StubDispatcher(result = DispatchResult.Success())),
+        )
+        val summary = engine.drainOnce()
+
+        // The sweep flips it back to PENDING; the same drainOnce
+        // pass then dequeues, claims, and dispatches it → DONE.
+        // What we're really asserting: it didn't stay IN_FLIGHT.
+        assertEquals(1, summary.done)
+        assertEquals(
+            PendingMutationStatus.Done.wireValue,
+            dao.rows[id]!!.status,
+        )
+    }
+
+    @Test
     fun preClaimedRowIsExcludedFromDispatch() = runTest {
         // [codex P1#2] Atomic claim. Simulate "another drain already
         // grabbed this row" by claiming it before drainOnce reads
