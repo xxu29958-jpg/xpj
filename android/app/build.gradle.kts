@@ -252,6 +252,13 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // ADR-0038 PR-2g.2: WorkManager drains the outbox on a
+    // connectivity-up-aware periodic schedule and on explicit
+    // enqueue triggers. CoroutineWorker comes from the main
+    // work-runtime jar (the -ktx artifact has been empty since
+    // 2.9.0).
+    implementation(libs.androidx.work.runtime)
+
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.retrofit)
@@ -268,6 +275,9 @@ dependencies {
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.coroutines.test)
+    // WorkManager TestDriver / TestListenableWorkerBuilder for the
+    // outbox drain worker unit tests (Robolectric-free).
+    testImplementation(libs.androidx.work.testing)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

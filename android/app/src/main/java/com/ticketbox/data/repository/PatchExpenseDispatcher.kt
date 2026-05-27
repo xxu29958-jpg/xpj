@@ -25,9 +25,16 @@ import retrofit2.HttpException
  * follow-up registers one — so a reviewer can extrapolate from
  * this one. Worker wiring + WorkManager scheduler + actual call-
  * site routing live in subsequent PRs.
+ *
+ * Why ``apiProvider: () -> ApiService`` instead of a captured
+ * [ApiService] (PR-2g.2 wiring): the bound ApiService is recreated
+ * when the user switches ledger / server. A captured instance would
+ * keep dispatching against the previous session and 401 forever
+ * after a switch. Resolving the provider at every dispatch call
+ * pins the worker to whatever ledger the user is currently on.
  */
 class PatchExpenseDispatcher(
-    private val api: ApiService,
+    private val apiProvider: () -> ApiService,
     private val payloadAdapter: JsonAdapter<ExpenseUpdateRequest>,
 ) : OutboxMutationDispatcher {
     override val type: PendingMutationType = PendingMutationType.PatchExpense
@@ -60,7 +67,7 @@ class PatchExpenseDispatcher(
         }
 
         return try {
-            val updated = api.updateExpense(expenseId, request)
+            val updated = apiProvider().updateExpense(expenseId, request)
             DispatchResult.Success(newUpdatedAt = updated.updatedAt)
         } catch (e: HttpException) {
             mapHttpException(e)
