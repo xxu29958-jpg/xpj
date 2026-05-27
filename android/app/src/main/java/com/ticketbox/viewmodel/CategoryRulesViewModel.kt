@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.CategoryRuleSaveOutcome
+import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.domain.model.CategoryRule
@@ -150,13 +151,19 @@ class CategoryRulesViewModel(
             return
         }
         viewModelScope.launch {
-            // ADR-0038 PR-1: DELETE carries the token through its body.
-            ruleRepository.deleteCategoryRule(rule.id, rule.updatedAt)
-                .onSuccess {
+            // ADR-0038 PR-2g.5: offline-aware DELETE. IOException →
+            // enqueue + DeleteOutcome.Queued; row removed from UI
+            // either way (synced vs queued only changes the message).
+            ruleRepository.deleteCategoryRuleAllowingOffline(rule)
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        DeleteOutcome.Synced -> "分类规则已删除"
+                        DeleteOutcome.Queued -> "已离线删除，联网后同步"
+                    }
                     _uiState.update { state ->
                         state.copy(
                             categoryRules = state.categoryRules.filterNot { it.id == rule.id },
-                            message = "分类规则已删除",
+                            message = message,
                         )
                     }
                 }

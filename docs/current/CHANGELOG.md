@@ -23,6 +23,17 @@
   - `backend/scripts/_audit_mutate_token_coverage.py`：走 in-process OpenAPI schema 扫所有 mutate route (POST/PUT/PATCH/DELETE)，验证每个都 carry `expected_updated_at` / `expected_updated_at_by_id`；ALLOWLIST 列豁免（create / terminal lifecycle / batch / admin / preview / single-writer maintenance）每条带 one-line reason；KNOWN_GAPS 标 6 个 v1.1 pre-ADR-0038 sediment route（goal PATCH / income-plan PATCH/DELETE / budget PUT / dashboard PUT / ui-preferences PUT）只 WARN 不 FAIL，未来 strict 模式可加 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1` 收紧。
   - 已接入 `release_audit.py` 自动 discovery，跑过 138 个 mutate route 全分类（27 token / 105 ALLOWLIST / 6 KNOWN_GAPS）。
 
+- **PR-2g.5 Android DELETE 两对：category_rule + merchant_alias 过 outbox**：
+  - 新增 `DeleteCategoryRuleDispatcher`（DELETE `/api/rules/categories/{id}`，target `category_rule:<id>`）和 `DeleteMerchantAliasDispatcher`（DELETE `/api/merchants/aliases/{publicId}`，target `merchant_alias:<publicId>`）。两个 dispatcher 同形态（token-only body），HttpException 映射与 PR-2g.4 PATCH 一致；DELETE 404 → `Discarded`（"已经没了"等于意图达成）。
+  - 新增 `DeleteOutcome` sealed type（共享给 Category 和 Merchant 两边 DELETE 路径）：`Synced` / `Queued`，无 payload —— DELETE 不返实体，只用来决定 UI 文案。放在 `RuleRepository.kt` top-level，`MerchantRepository.kt` 直接 import。
+  - `RuleRepository.deleteCategoryRuleAllowingOffline(rule)` + `MerchantRepository.deleteMerchantAliasAllowingOffline(alias)`：IOException → enqueue + `Queued`；HttpException 一律 fail。两个 Repository 都加可选 `outbox` + `xxxDeleteAdapter` 构造参（默认 null 兼容老测试）。
+  - `CategoryRulesViewModel.deleteCategoryRule` + `MerchantAliasViewModel.deleteMerchantAlias` 两个 call site 切到新方法：Synced → "已删除"；Queued → "已离线删除，联网后同步"。UI 列表本来就 filter 掉，message 是唯一差异。
+  - **Round-8 P3#5 一致**：`DeleteRequest` DTO 的 `expectedUpdatedAt` 是非空 String，enqueue 时用 `request.copy(expectedUpdatedAt = "")` 占位；dispatcher replay 时从 `row.expectedUpdatedAt` 覆盖填回。
+  - `AppContainer`：注册 2 个新 dispatcher 到 `outboxDispatchers`；新增 `categoryRuleDeleteAdapter` + `merchantAliasDeleteAdapter` 两个共享 adapter；分别传给对应 Repository。
+  - 9 个新 contract test：`RuleRepositoryOutboxFallbackTest` 加 4 个 DELETE case（direct 2xx / IOException / 409 / outbox 未接），`MerchantRepositoryOutboxFallbackTest` 新文件 5 case（direct 2xx / IOException / 409 / 500 / outbox 未接）。
+  - **Pre-flight checklist**（per `feedback_verify_fix_before_push`）：caller grep (3 个 MerchantRepository ctor 站点全部 backward compat) / fix-not-effective 对应到具体测试名 / KDoc-body 自洽 / bypass path grep 干净。
+  - **不在此 PR**：`UpdateMerchantAlias` PATCH 单独走 PR-2g.6（独立 PATCH 镜像 PR-2g.4，本 PR 专注 DELETE 形态）。
+
 - **PR-2g.4 Android PATCH category_rule 第二个 dispatcher + call site 路由**：
   - 新增 `UpdateCategoryRuleDispatcher`（target 编码 `category_rule:<id>`，对应 `PATCH /api/rules/categories/{id}`），镜像 `PatchExpenseDispatcher` 形态：HttpException 映射 (409 state_conflict → Conflict / 408+429+5xx → RetryableFailure / 404+422 → Discarded)、IOException → RetryableFailure、JsonDataException/EncodingException → terminal Failure、CancellationException 显式重抛、其它 Exception → Failure。
   - `RuleRepository`：构造器加可选 `outbox: OutboxRepository? = null` + `categoryRuleUpdateAdapter: JsonAdapter<CategoryRuleUpdateRequest>? = null`（默认 null 让 `ExpenseRepositoryRuleGovernanceTest` 等老测试零改动）；新增 `updateCategoryRuleAllowingOffline(baseline, keyword?, category?, enabled?, priority?)` 返 `Result<CategoryRuleSaveOutcome>`（sealed Synced/Queued，与 expense 路径并行定义不复用，避免 PR-2g.3 已落地的 `SaveOutcome` 改 surface）；direct `updateCategoryRule` 保留不动给现有调用方。

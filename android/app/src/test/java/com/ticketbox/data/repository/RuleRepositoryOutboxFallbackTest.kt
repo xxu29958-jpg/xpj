@@ -92,12 +92,14 @@ class RuleRepositoryOutboxFallbackTest {
         api: ApiService,
         outbox: OutboxRepository? = null,
         adapter: com.squareup.moshi.JsonAdapter<CategoryRuleUpdateRequest>? = null,
+        deleteAdapter: com.squareup.moshi.JsonAdapter<com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest>? = null,
     ): RuleRepository = RuleRepository(
         apiClient = TestApiServiceFactory(api),
         settingsStore = seededSettingsStore(),
         tokenStore = seededTokenStore(),
         outbox = outbox,
         categoryRuleUpdateAdapter = adapter,
+        categoryRuleDeleteAdapter = deleteAdapter,
     )
 
     // region — saveExpenseAllowingOffline mirror
@@ -254,13 +256,161 @@ class RuleRepositoryOutboxFallbackTest {
 
     // endregion
 
+    // region — deleteCategoryRuleAllowingOffline (PR-2g.5)
+
+    @Test
+    fun `delete direct 2xx returns Synced, no enqueue`() = runTest {
+        val baseline = baselineRule()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
+        // default deleteCategoryRuleException = null → success
+        val api = ApiServiceStub()
+
+        val repo = buildRepository(api, outbox = outbox, deleteAdapter = deleteAdapter)
+        val outcome = repo.deleteCategoryRuleAllowingOffline(baseline).getOrThrow()
+
+        assertTrue(outcome is DeleteOutcome.Synced)
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `delete IOException returns Queued + enqueues row without token in payload`() = runTest {
+        val baseline = baselineRule()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
+        val api = ApiServiceStub(deleteCategoryRuleException = IOException("net out"))
+
+        val repo = buildRepository(api, outbox = outbox, deleteAdapter = deleteAdapter)
+        val outcome = repo.deleteCategoryRuleAllowingOffline(baseline).getOrThrow()
+
+        assertTrue(outcome is DeleteOutcome.Queued)
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.DeleteCategoryRule.wireValue, row.type)
+        assertEquals("category_rule:${baseline.id}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        // codex round-8 P3#5: token must not be in payload.
+        assertTrue(
+            baseline.updatedAt !in row.payload,
+            "payload must NOT embed token: ${row.payload}",
+        )
+    }
+
+    @Test
+    fun `delete HttpException 409 surfaces as failure, no enqueue`() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
+        val api = ApiServiceStub(
+            deleteCategoryRuleException = httpException(
+                409,
+                """{"error":"state_conflict","message":"规则已修改"}""",
+            ),
+        )
+        val repo = buildRepository(api, outbox = outbox, deleteAdapter = deleteAdapter)
+
+        val result = repo.deleteCategoryRuleAllowingOffline(baselineRule())
+
+        assertTrue(result.isFailure)
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `delete IOException without outbox wired stays as failure`() = runTest {
+        val api = ApiServiceStub(deleteCategoryRuleException = IOException("net out"))
+        val repo = buildRepository(api, outbox = null, adapter = null, deleteAdapter = null)
+
+        val result = repo.deleteCategoryRuleAllowingOffline(baselineRule())
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `delete IOException after ledger switch mid-flight does NOT enqueue`() = runTest {
+        // [codex round-13 P1] Same session-race as the expense
+        // saveExpenseAllowingOffline path. Without the post-
+        // IOException ``requireStillActive`` check, a DELETE
+        // started under ledger A would queue into ledger B's
+        // outbox after a mid-flight switch.
+        val baseline = baselineRule()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val deleteAdapter = moshi().adapter(com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest::class.java)
+
+        val settings = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "ledger-a",
+                ledgerName = "账本 A",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokens = FakeSessionTokenStore().apply { saveToken("session-token") }
+
+        val api = object : ApiService by FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+        ) {
+            override suspend fun deleteCategoryRule(
+                id: Long,
+                request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+            ): com.ticketbox.data.remote.dto.StatusDto {
+                settings.saveIdentity(
+                    accountName = "我",
+                    ledgerId = "ledger-b",
+                    ledgerName = "账本 B",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-04T12:00:00Z",
+                )
+                throw IOException("net out")
+            }
+        }
+
+        val repo = RuleRepository(
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = settings,
+            tokenStore = tokens,
+            outbox = outbox,
+            categoryRuleDeleteAdapter = deleteAdapter,
+        )
+
+        val result = repo.deleteCategoryRuleAllowingOffline(baseline)
+
+        assertTrue(
+            result.isFailure,
+            "mid-flight ledger switch must surface, not silently queue under new session",
+        )
+        assertEquals(
+            0,
+            dao.rows.size,
+            "no row should be enqueued when session changed between bind and IOException",
+        )
+    }
+
+    // endregion
+
     private sealed interface ApiResult {
         data class Success(val dto: CategoryRuleDto) : ApiResult
         data class Throw(val exception: Throwable) : ApiResult
     }
 
     private class ApiServiceStub(
-        private val updateCategoryRuleResult: ApiResult,
+        // Update path: configured per test with Success(dto) or
+        // Throw(exception). Default success-with-stub-dto so a test
+        // that only exercises the delete path doesn't have to set
+        // both.
+        private val updateCategoryRuleResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("updateCategoryRule not configured"),
+        ),
+        // Delete path: ``null`` exception means the call succeeds
+        // (DELETE returns no body); a non-null exception is thrown.
+        private val deleteCategoryRuleException: Throwable? = null,
         private val delegate: ApiService = FakeApiService(
             events = mutableListOf(),
             confirmedFailuresRemaining = 0,
@@ -272,6 +422,17 @@ class RuleRepositoryOutboxFallbackTest {
         ): CategoryRuleDto = when (val r = updateCategoryRuleResult) {
             is ApiResult.Success -> r.dto
             is ApiResult.Throw -> throw r.exception
+        }
+
+        override suspend fun deleteCategoryRule(
+            id: Long,
+            request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+        ): com.ticketbox.data.remote.dto.StatusDto {
+            deleteCategoryRuleException?.let { throw it }
+            // Real ApiService returns StatusDto; production code
+            // ignores the value (deleteCategoryRuleAllowingOffline
+            // just maps success to DeleteOutcome.Synced).
+            return com.ticketbox.data.remote.dto.StatusDto(status = "ok")
         }
     }
 

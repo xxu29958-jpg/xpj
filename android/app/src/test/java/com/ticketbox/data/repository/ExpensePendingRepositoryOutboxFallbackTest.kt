@@ -269,6 +269,87 @@ class ExpensePendingRepositoryOutboxFallbackTest {
     }
 
     @Test
+    fun `IOException after ledger switch mid-flight does NOT enqueue`() = runTest {
+        // [codex round-13 P1] Race: user taps save under ledger A,
+        // request starts, user switches to ledger B (clearAll wipes
+        // OLD rows + bumps epoch), then the request throws
+        // IOException. Without the post-IOException
+        // ``requireStillActive`` check the catch would enqueue a NEW
+        // row keyed to ledger A's expenseId into ledger B's queue —
+        // worker drains it under B's session → wrong-session replay.
+        //
+        // The fix in [ExpensePendingRepository.saveExpenseAllowingOffline]
+        // calls ``bound.requireStillActive()`` in the IOException
+        // catch BEFORE enqueueing; mid-flight switch throws
+        // RepositoryException("账本已切换…") which safeCall maps to
+        // Result.failure.
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
+
+        // Shared settings so the ApiService stub can flip the
+        // active ledger from the same store the repository binds
+        // against.
+        val settings = FakeTicketboxSettingsStore().apply {
+            saveServerUrl("https://api.example.com")
+            saveIdentity(
+                accountName = "我",
+                ledgerId = "ledger-a",
+                ledgerName = "账本 A",
+                deviceName = "Pixel",
+                role = "owner",
+                boundAt = "2026-05-01T00:00:00Z",
+            )
+        }
+        val tokens = FakeSessionTokenStore().apply { saveToken("session-token") }
+
+        // Stub simulates "switch fired during the call": flip the
+        // settings store's active ledger BEFORE throwing IOException.
+        val api = object : ApiService by FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+        ) {
+            override suspend fun updateExpense(
+                id: Long,
+                request: ExpenseUpdateRequest,
+            ): ExpenseDto {
+                settings.saveIdentity(
+                    accountName = "我",
+                    ledgerId = "ledger-b",
+                    ledgerName = "账本 B",
+                    deviceName = "Pixel",
+                    role = "owner",
+                    boundAt = "2026-05-04T12:00:00Z",
+                )
+                throw IOException("net out")
+            }
+        }
+
+        val repo = ExpenseRepository(
+            expenseDao = FakeExpenseDao(),
+            apiClient = TestApiServiceFactory(api),
+            settingsStore = settings,
+            tokenStore = tokens,
+            deviceNameProvider = { "Android Test" },
+            outbox = outbox,
+            patchExpenseAdapter = adapter,
+        )
+
+        val result = repo.saveExpenseAllowingOffline(baseline.id, draft, baseline)
+
+        assertTrue(
+            result.isFailure,
+            "mid-flight ledger switch must surface as failure, not silently enqueue under new session",
+        )
+        assertEquals(
+            0,
+            dao.rows.size,
+            "no row should be enqueued when session changed between bind and IOException",
+        )
+    }
+
+    @Test
     fun `IOException without outbox wired stays as failure`() = runTest {
         // Pre-PR-2g.3 wiring shape — outbox null. IOException must
         // surface as Result.failure; we don't silently lose the

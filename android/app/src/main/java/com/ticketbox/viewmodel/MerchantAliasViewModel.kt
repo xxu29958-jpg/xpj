@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.domain.model.MerchantAlias
@@ -96,16 +97,19 @@ class MerchantAliasViewModel(
             return
         }
         viewModelScope.launch {
-            // ADR-0038 PR-2e: see toggleMerchantAlias above.
-            merchantRepository.deleteMerchantAlias(
-                publicId = alias.publicId,
-                expectedUpdatedAt = alias.updatedAt,
-            )
-                .onSuccess {
+            // ADR-0038 PR-2g.5: offline-aware DELETE. IOException →
+            // enqueue + DeleteOutcome.Queued; row removed from UI
+            // either way (synced vs queued only changes the message).
+            merchantRepository.deleteMerchantAliasAllowingOffline(alias)
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        DeleteOutcome.Synced -> "商家别名已删除"
+                        DeleteOutcome.Queued -> "已离线删除，联网后同步"
+                    }
                     _uiState.update { state ->
                         state.copy(
                             merchantAliases = state.merchantAliases.filterNot { it.publicId == alias.publicId },
-                            message = "商家别名已删除",
+                            message = message,
                         )
                     }
                 }

@@ -6,8 +6,10 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
+import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
@@ -22,6 +24,8 @@ import com.ticketbox.data.repository.OutboxScheduler
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
+import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
+import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.security.SecureTokenStore
@@ -59,6 +63,12 @@ class AppContainer(context: Context) {
     // updateCategoryRuleAllowingOffline] (serialises before
     // enqueue). Same roundtrip guarantee as patchExpenseAdapter.
     private val categoryRuleUpdateAdapter = outboxMoshi.adapter(CategoryRuleUpdateRequest::class.java)
+
+    // PR-2g.5: DELETE adapters. Token-only payload shape; the
+    // dispatcher rebuilds the token from row.expectedUpdatedAt on
+    // replay (single source of truth — round-8 P3#5).
+    private val categoryRuleDeleteAdapter = outboxMoshi.adapter(CategoryRuleDeleteRequest::class.java)
+    private val merchantAliasDeleteAdapter = outboxMoshi.adapter(MerchantAliasDeleteRequest::class.java)
 
     val outboxRepository = OutboxRepository(
         dao = database.pendingMutationDao(),
@@ -100,12 +110,16 @@ class AppContainer(context: Context) {
     /**
      * Registered dispatchers. PR-2g.2 wired the first dispatcher
      * [PatchExpenseDispatcher]; PR-2g.3 routed the matching call
-     * site (PATCH expense) through the outbox. PR-2g.4 added
-     * [UpdateCategoryRuleDispatcher] + matching call site. The
-     * remaining 14 ``PendingMutationType``s land one-per-PR in
-     * PR-2g.4.N follow-ups; each follow-up appends a dispatcher
-     * here AND routes its matching call site through
-     * [OutboxRepository.enqueue] in the appropriate Repository.
+     * site (PATCH expense). PR-2g.4 added
+     * [UpdateCategoryRuleDispatcher] + matching call site. PR-2g.5
+     * added [DeleteCategoryRuleDispatcher] +
+     * [DeleteMerchantAliasDispatcher] + matching call sites
+     * (2 DELETE shapes, shared [DeleteOutcome] sealed). The
+     * remaining 12 ``PendingMutationType``s land one-per-batch in
+     * PR-2g.6+ follow-ups grouped by mutation shape; each
+     * follow-up appends dispatchers here AND routes its matching
+     * call sites through [OutboxRepository.enqueue] in the
+     * appropriate Repository.
      * [OutboxDrainEngine] marks rows of types with no registered
      * dispatcher FAILED with ``no_dispatcher_registered:<wire>``
      * (codex round-1 P2#5).
@@ -119,6 +133,16 @@ class AppContainer(context: Context) {
         UpdateCategoryRuleDispatcher(
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = categoryRuleUpdateAdapter,
+        ),
+        // PR-2g.5: DELETE /api/rules/categories/{id} via outbox.
+        DeleteCategoryRuleDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = categoryRuleDeleteAdapter,
+        ),
+        // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
+        DeleteMerchantAliasDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = merchantAliasDeleteAdapter,
         ),
     )
 
@@ -183,10 +207,11 @@ class AppContainer(context: Context) {
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
         onConfirmedChanged = { expenseRepository.syncConfirmed() },
-        // PR-2g.4: outbox + adapter for the offline-aware
-        // updateCategoryRuleAllowingOffline entrypoint.
+        // PR-2g.4: outbox + adapter for updateCategoryRuleAllowingOffline.
+        // PR-2g.5: + deleteAdapter for deleteCategoryRuleAllowingOffline.
         outbox = outboxRepository,
         categoryRuleUpdateAdapter = categoryRuleUpdateAdapter,
+        categoryRuleDeleteAdapter = categoryRuleDeleteAdapter,
     )
 
     val merchantRepository = MerchantRepository(
@@ -194,5 +219,9 @@ class AppContainer(context: Context) {
         settingsStore = settingsStore,
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
+        // PR-2g.5: outbox + delete adapter for
+        // deleteMerchantAliasAllowingOffline.
+        outbox = outboxRepository,
+        merchantAliasDeleteAdapter = merchantAliasDeleteAdapter,
     )
 }

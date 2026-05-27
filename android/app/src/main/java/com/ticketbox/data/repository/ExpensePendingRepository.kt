@@ -132,6 +132,18 @@ internal class ExpensePendingRepository(
                 // we saved.
                 throw networkError
             }
+            // [codex round-13 P1] Session race guard. ``bound.call``
+            // only re-checks ``isStillActive`` when the API block
+            // returns normally; an IOException jumps straight here
+            // and would otherwise let a row queued under ledger A
+            // land in ledger B's outbox after a mid-flight switch
+            // (the OutboxRepository.clearAll that fires on switch
+            // already wiped the OLD queue; what this guard prevents
+            // is a NEW row being added AFTER the wipe with stale
+            // session context). Throws RepositoryException with
+            // "账本已切换…" if so; safeCall maps it to
+            // Result.failure.
+            bound.requireStillActive()
             // codex round-8 P3#5: strip the token from the payload
             // — outbox row's expectedUpdatedAt is the single source
             // of truth; replay (PatchExpenseDispatcher) already

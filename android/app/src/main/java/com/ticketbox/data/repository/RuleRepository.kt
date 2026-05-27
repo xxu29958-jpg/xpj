@@ -39,6 +39,14 @@ class RuleRepository(
      */
     private val outbox: OutboxRepository? = null,
     private val categoryRuleUpdateAdapter: JsonAdapter<CategoryRuleUpdateRequest>? = null,
+    /**
+     * ADR-0038 PR-2g.5: adapter for [CategoryRuleDeleteRequest].
+     * Same null-default contract as ``categoryRuleUpdateAdapter``
+     * — if either ``outbox`` or this adapter is missing,
+     * [deleteCategoryRuleAllowingOffline] falls back to the direct
+     * failure path.
+     */
+    private val categoryRuleDeleteAdapter: JsonAdapter<CategoryRuleDeleteRequest>? = null,
 ) {
     private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
@@ -140,8 +148,18 @@ class RuleRepository(
             enabled = enabled,
             priority = priority,
         )
+        // [codex round-13 P1] Bind explicitly so we can re-check
+        // session activity in the IOException catch. ``guardedCall``
+        // performs ``requireStillActive()`` only when the block
+        // returns normally; an IOException jumps straight to the
+        // catch and skips it, which would otherwise let a delete
+        // queued under ledger A land in the outbox after the user
+        // switched to ledger B (clearAll wipes the OLD rows; the
+        // NEW enqueue happens AFTER that wipe). Re-checking before
+        // enqueue closes the race.
+        val bound = ledgerRequestGuard.bind()
         try {
-            val updated = ledgerRequestGuard.guardedCall { api ->
+            val updated = bound.call { api ->
                 api.updateCategoryRule(baseline.id, request).toDomain()
             }
             CategoryRuleSaveOutcome.Synced(updated) as CategoryRuleSaveOutcome
@@ -153,6 +171,13 @@ class RuleRepository(
                 // failure path so we don't pretend to have saved.
                 throw networkError
             }
+            // [codex round-13 P1] Session-change race guard.
+            // Throws RepositoryException with "账本已切换…" if the
+            // active ledger differs from the one we bound to.
+            // Crucially, this runs BEFORE outbox.enqueue, so a
+            // mid-flight switch can't slip an old-session row into
+            // the now-current ledger's queue.
+            bound.requireStillActive()
             // [round-8 P3#5] strip token from payload — row's
             // expectedUpdatedAt is the single source of truth.
             // Dispatcher overwrites the request token from the row
@@ -199,6 +224,62 @@ class RuleRepository(
             }
             Unit
         }
+
+    /**
+     * ADR-0038 PR-2g.5: offline-aware version of [deleteCategoryRule].
+     *
+     * IOException → enqueue + return [DeleteOutcome.Queued] (UI
+     * removes the row locally; worker drains later). Any other
+     * failure surfaces as ``Result.failure`` (4xx / 409 / 5xx —
+     * the user should see the actual server problem).
+     *
+     * Direct [deleteCategoryRule] (above) preserved for any caller
+     * that doesn't want offline routing. The ViewModel
+     * [com.ticketbox.viewmodel.CategoryRulesViewModel.deleteCategoryRule]
+     * switches to this method.
+     */
+    suspend fun deleteCategoryRuleAllowingOffline(
+        rule: CategoryRule,
+    ): Result<DeleteOutcome> = errorHandler.safeCall {
+        val request = CategoryRuleDeleteRequest(expectedUpdatedAt = rule.updatedAt)
+        // [codex round-13 P1] Explicit bind so the IOException catch
+        // can re-verify session activity before enqueueing.
+        // ``guardedCall`` only checks ``isStillActive`` when the
+        // block returns normally; an IOException skips the
+        // post-check and would let an old-ledger DELETE slip into
+        // the now-current ledger's outbox after a switch.
+        val bound = ledgerRequestGuard.bind()
+        try {
+            bound.call { api ->
+                api.deleteCategoryRule(rule.id, request)
+            }
+            DeleteOutcome.Synced as DeleteOutcome
+        } catch (networkError: IOException) {
+            val outboxRef = outbox
+            val adapter = categoryRuleDeleteAdapter
+            if (outboxRef == null || adapter == null) {
+                throw networkError
+            }
+            // [codex round-13 P1] Session race guard: throws
+            // RepositoryException if the user switched ledger mid-
+            // flight, surfacing "账本已切换…" instead of stuffing an
+            // old-session row into the new session's queue.
+            bound.requireStillActive()
+            // [round-8 P3#5] strip token from payload — row's
+            // expectedUpdatedAt is the single source of truth.
+            // CategoryRuleDeleteRequest.expectedUpdatedAt is
+            // non-nullable String so we substitute an empty
+            // placeholder; dispatcher overwrites from
+            // row.expectedUpdatedAt on replay.
+            outboxRef.enqueue(
+                type = PendingMutationType.DeleteCategoryRule,
+                targetId = "category_rule:${rule.id}",
+                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
+                expectedUpdatedAt = rule.updatedAt,
+            )
+            DeleteOutcome.Queued as DeleteOutcome
+        }
+    }
 
     suspend fun ruleApplications(limit: Int = 8): Result<List<RuleApplicationBatch>> =
         errorHandler.safeCall {
@@ -267,4 +348,26 @@ sealed interface CategoryRuleSaveOutcome {
      * token; chained POSTs must not consume it.
      */
     data class Queued(override val rule: CategoryRule) : CategoryRuleSaveOutcome
+}
+
+/**
+ * ADR-0038 PR-2g.5 sealed result for offline-aware DELETE
+ * entrypoints. Shared between
+ * [RuleRepository.deleteCategoryRuleAllowingOffline] and
+ * [MerchantRepository.deleteMerchantAliasAllowingOffline] — both
+ * DELETE shapes return ``Unit`` (no payload), only the
+ * "synced vs queued" distinction matters for the UI message.
+ */
+sealed interface DeleteOutcome {
+    /** Server confirmed the DELETE; the row is gone server-side. */
+    data object Synced : DeleteOutcome
+
+    /**
+     * Network failed; the DELETE is queued in the outbox. The UI
+     * locally removes the row either way (the row is gone from the
+     * user's perspective). PR-2g.5 banner UI will surface
+     * "未同步" hints via OutboxRepository.observeConflicts /
+     * observeFailed.
+     */
+    data object Queued : DeleteOutcome
 }
