@@ -69,14 +69,17 @@ class OutboxRepository(
      * Return the next runnable batch in causal order. Rows whose
      * target is already IN_FLIGHT are filtered out so the drain
      * worker doesn't violate "same target_id serial".
+     *
+     * Returns the public [OutboxRow] view (not the raw Entity) so
+     * the drain engine doesn't depend on Room types.
      */
-    suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH): List<PendingMutationEntity> {
+    suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH): List<OutboxRow> {
         val candidates = dao.nextPendingBatch(PendingMutationStatus.Pending.wireValue, limit)
         if (candidates.isEmpty()) return emptyList()
-        val runnable = mutableListOf<PendingMutationEntity>()
+        val runnable = mutableListOf<OutboxRow>()
         for (row in candidates) {
             if (!dao.isTargetBusy(row.targetId, PendingMutationStatus.InFlight.wireValue)) {
-                runnable += row
+                runnable += row.toDomain()
             }
         }
         return runnable
