@@ -299,6 +299,5 @@
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
       "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0000000000000000000000000000000000000000')"
     ]
-  },
-  "_note": "identityHash is a placeholder — Room KSP regenerates this file at compile time with the canonical hash derived from the entity definitions. Committed here so reviewers can see the schema diff against 8.json; CI's kspGrayDebugKotlin task overwrites it."
+  }
 }
