@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import android.util.Log
 import com.ticketbox.BuildConfig
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.Expense
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
 import java.time.Instant
 import kotlin.system.measureTimeMillis
 
@@ -82,12 +84,96 @@ internal class ExpensePendingRepository(
         draft: ExpenseDraft,
         baseline: Expense?,
     ): Result<Expense> = core.errorHandler.safeCall {
+        // ADR-0038 PR-2g.3 round-8: this method is the DIRECT path
+        // only. Any error — IOException, HttpException, anything —
+        // surfaces as Result.failure. Chained callers (confirm /
+        // saveAndConfirm) rely on this: a silent offline-queue
+        // would let them dispatch a follow-up with a stale token.
+        //
+        // For offline-aware save use [saveExpenseAllowingOffline]
+        // which returns a sealed [SaveOutcome] the caller must
+        // branch on.
         val bound = core.ledgerRequestGuard.bind()
         val updated = core.cacheIfConfirmed(
             bound.call { it.updateExpense(id, draft.toRequest(baseline = baseline)) },
             bound.ledgerId,
         )
         updated.toDomain()
+    }
+
+    override suspend fun saveExpenseAllowingOffline(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense,
+    ): Result<SaveOutcome> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bind()
+        val request = draft.toRequest(baseline = baseline)
+        try {
+            // Direct PATCH first — fast path when online. Returns
+            // Synced with the server's canonical Expense.
+            val updated = core.cacheIfConfirmed(
+                bound.call { it.updateExpense(id, request) },
+                bound.ledgerId,
+            )
+            SaveOutcome.Synced(updated.toDomain()) as SaveOutcome
+        } catch (networkError: IOException) {
+            // Network failed. Enqueue for the worker to replay AND
+            // return an optimistic Expense so the UI reflects the
+            // user's edit (not the pre-edit baseline). Only
+            // IOException is the offline-fallback trigger —
+            // HttpException (409 / 4xx / 5xx) propagates out to
+            // safeCall and surfaces as Result.failure.
+            val outbox = core.outbox
+            val adapter = core.patchExpenseAdapter
+            val token = request.expectedUpdatedAt
+            if (outbox == null || adapter == null || token.isNullOrEmpty()) {
+                // Outbox wiring missing OR baseline lacked a token.
+                // Fall back to the failure path so we don't pretend
+                // we saved.
+                throw networkError
+            }
+            // codex round-8 P3#5: strip the token from the payload
+            // — outbox row's expectedUpdatedAt is the single source
+            // of truth; replay (PatchExpenseDispatcher) already
+            // overwrites the request token from the row before
+            // dispatching. Saving it in the payload too duplicates
+            // state and risks drift if KeepMine refreshes the row
+            // token without rewriting the serialised payload.
+            outbox.enqueue(
+                type = PendingMutationType.PatchExpense,
+                targetId = "expense:$id",
+                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = null)),
+                expectedUpdatedAt = token,
+            )
+            SaveOutcome.Queued(projectOptimisticExpense(baseline, draft)) as SaveOutcome
+        }
+    }
+
+    /**
+     * Build the optimistic projection of what the server WOULD
+     * return once the queued PATCH replays. Used as the [Expense]
+     * carried in [SaveOutcome.Queued] so the UI shows the user's
+     * edit (their new merchant / amount / note) rather than the
+     * pre-edit baseline. The ``updatedAt`` is intentionally
+     * unchanged — it's the pre-mutation token, NOT a server-
+     * confirmed one; chained callers shouldn't reach this branch
+     * (they use [updateExpense] which fails on IOException).
+     */
+    private fun projectOptimisticExpense(baseline: Expense, draft: ExpenseDraft): Expense {
+        // Only fields the draft can change get overwritten; the rest
+        // (timestamps, server-side derived state) stay at baseline.
+        return baseline.copy(
+            amountCents = draft.amountCents ?: baseline.amountCents,
+            originalCurrencyCode = draft.originalCurrencyCode ?: baseline.originalCurrencyCode,
+            originalAmountMinor = draft.originalAmountMinor ?: baseline.originalAmountMinor,
+            merchant = draft.merchant ?: baseline.merchant,
+            category = draft.category ?: baseline.category,
+            note = draft.note ?: baseline.note,
+            expenseTime = draft.expenseTime ?: baseline.expenseTime,
+            tags = draft.tags ?: baseline.tags,
+            valueScore = draft.valueScore ?: baseline.valueScore,
+            regretScore = draft.regretScore ?: baseline.regretScore,
+        )
     }
 
     override suspend fun confirmExpense(

@@ -5,6 +5,7 @@ import com.ticketbox.BuildConfig
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -223,9 +224,46 @@ class ExpenseEditViewModel(
         viewModelScope.launch {
             val baseline = _uiState.value.expense
             _uiState.update { it.copy(saving = true, message = null) }
-            repository.updateExpense(expenseId, draft, baseline)
-                .onSuccess { expense ->
-                    _uiState.update { it.copy(expense = expense, saving = false, message = "已保存", done = true) }
+            // ADR-0038 PR-2g.3 round-8 P2: this is the only call
+            // site that doesn't chain on ``saved.updatedAt``. The
+            // chained ``confirm()`` flow below uses ``updateExpense``
+            // (direct only — fails on IOException so the chain
+            // aborts safely). Here we use the offline-aware
+            // ``saveExpenseAllowingOffline`` and branch on the
+            // sealed result so the UI tells the user whether the
+            // save was confirmed or just queued.
+            if (baseline == null) {
+                // No baseline → no optimistic-concurrency token.
+                // saveExpenseAllowingOffline requires non-null
+                // baseline; fall back to the direct path which
+                // will surface whatever error appropriate.
+                repository.updateExpense(expenseId, draft, baseline = null)
+                    .onSuccess { expense ->
+                        _uiState.update { it.copy(expense = expense, saving = false, message = "已保存", done = true) }
+                    }
+                    .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
+                return@launch
+            }
+            repository.saveExpenseAllowingOffline(expenseId, draft, baseline)
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        is SaveOutcome.Synced -> "已保存"
+                        // codex round-8 P2: queued state is honestly
+                        // surfaced to the user — they typed an edit
+                        // while offline, the worker will sync when
+                        // network returns. PR-2g.5 banner adds the
+                        // "你有 N 笔待同步" pill globally; this
+                        // message is the per-save signal.
+                        is SaveOutcome.Queued -> "已离线保存，联网后同步"
+                    }
+                    _uiState.update {
+                        it.copy(
+                            expense = outcome.expense,
+                            saving = false,
+                            message = message,
+                            done = true,
+                        )
+                    }
                 }
                 .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有保存成功，请稍后再试。") } }
         }

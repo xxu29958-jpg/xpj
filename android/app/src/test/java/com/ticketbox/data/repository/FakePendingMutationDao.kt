@@ -263,6 +263,13 @@ class FakePendingMutationDao : PendingMutationDao {
         return victims.size
     }
 
+    override suspend fun clearAll(): Int {
+        val removed = rows.size
+        rows.clear()
+        refreshObservables()
+        return removed
+    }
+
     private fun refreshObservables() {
         queueDepth.value++
         conflictRows.value = conflictRows.value

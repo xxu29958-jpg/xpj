@@ -436,6 +436,77 @@ class OutboxDrainEngineTest {
         assertEquals(0, summary.attempted)
     }
 
+    @Test
+    fun sessionBoundaryMidBatchAbortsRemainingViaEpochGuard() = runTest {
+        // [codex round-9 P1] The race we're closing: drain dequeues
+        // + tryClaims row R under session A; a concurrent clearAll
+        // (session boundary — bind clear / ledger switch) bumps the
+        // epoch BEFORE row R's dispatch fires. Without the guard,
+        // dispatcher would send R under session B's ApiService.
+        //
+        // We use [OutboxRepository.bumpSessionEpochForTesting] to
+        // exercise EXACTLY this window: epoch advances mid-drain
+        // WITHOUT also wiping the DAO (which clearAll() does
+        // atomically in production; here we drive the partial
+        // state the guard exists to defend against).
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        var dispatchCalls = 0
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                dispatchCalls++
+                if (dispatchCalls == 1) {
+                    // After the FIRST row's dispatch lands, simulate
+                    // a session boundary by bumping the epoch. The
+                    // SECOND row's post-claim check inside
+                    // drainOnce sees the mismatch and aborts.
+                    outbox.bumpSessionEpochForTesting()
+                }
+                return DispatchResult.Success()
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        // Two rows, different targets so dedup doesn't intervene.
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "tok-2")
+
+        val summary = engine.drainOnce()
+
+        assertEquals(1, dispatchCalls, "second row must NOT be dispatched after the boundary")
+        assertEquals(1, summary.done, "first row completed before the boundary")
+        assertEquals(1, summary.aborted, "second row aborted by epoch check")
+        assertEquals(2, summary.attempted)
+    }
+
+    @Test
+    fun clearAllBeforeDrainProducesIdle() = runTest {
+        // Complement to the mid-batch test: when clearAll fires
+        // BEFORE drainOnce, the dequeue returns empty (DAO is
+        // wiped) and the drain is IDLE. The epoch is bumped but
+        // nobody's holding a pre-capture snapshot to compare
+        // against. Verifies the trivial path.
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        var dispatchCalls = 0
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                dispatchCalls++
+                return DispatchResult.Success()
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+
+        // Session boundary fires before the drain even starts.
+        outbox.clearAll()
+        val summary = engine.drainOnce()
+
+        assertEquals(0, dispatchCalls)
+        assertEquals(0, summary.attempted)
+    }
+
     private fun withDispatcher(
         dispatcher: OutboxMutationDispatcher,
     ): Pair<OutboxDrainEngine, OutboxRepository> {

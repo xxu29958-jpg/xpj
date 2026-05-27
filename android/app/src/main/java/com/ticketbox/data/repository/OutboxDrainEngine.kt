@@ -50,6 +50,12 @@ class OutboxDrainEngine(
      */
     suspend fun drainOnce(): DrainSummary {
         outbox.recoverStaleInFlight()
+        // [codex round-9 P1] session-boundary epoch — capture the
+        // counter BEFORE dequeue. A clearAll() between this snapshot
+        // and the dispatch loop will bump the counter; the post-claim
+        // check below will see it and abort the rest of the batch
+        // before any in-memory row is sent under the new session.
+        val capturedEpoch = outbox.currentSessionEpoch()
         val batch = outbox.dequeueNextRunnable()
         if (batch.isEmpty()) return DrainSummary.IDLE
 
@@ -60,6 +66,7 @@ class OutboxDrainEngine(
         var discarded = 0
         var unsupported = 0
         var raced = 0
+        var aborted = 0
         for (row in batch) {
             val dispatcher = registry[row.type]
             if (dispatcher == null || row.type == PendingMutationType.Unknown) {
@@ -82,68 +89,111 @@ class OutboxDrainEngine(
                 raced++
                 continue
             }
-            // [codex round-2 P1#2] fix: do NOT let runCatching
-            // swallow CancellationException — that would let a
-            // structured-concurrency cancel mark the row as
-            // RetryableFailure mid-shutdown. Catch it explicitly
-            // and roll the row back to PENDING in a NonCancellable
-            // context so a fresh drain can re-claim it after the
-            // worker restarts.
-            val result = try {
-                dispatcher.dispatch(row)
-            } catch (e: CancellationException) {
-                withContext(NonCancellable) {
-                    outbox.markRetryable(row.id, "drain cancelled mid-dispatch")
+            // [codex round-10 P1] Hold the dispatch lease across
+            // BOTH the epoch check AND the dispatcher.dispatch(row)
+            // call. Without the lease, a clearAll() that fires
+            // AFTER the epoch check but BEFORE dispatch resolves
+            // apiProvider() / OkHttp reads the token would let the
+            // old row be sent under the NEW session. With the
+            // lease:
+            //   - clearAll() blocks until our dispatch returns,
+            //   - credentials writes happen AFTER clearAll()
+            //     (round-10 ordering in coordinator + clearBinding),
+            //   - so dispatcher.dispatch(row) always sees the
+            //     credentials it was queued under.
+            //
+            // ``signalAbort = true`` returned from inside the
+            // lease means "epoch check failed, abort the remainder
+            // of the batch". We propagate that up after the lease
+            // releases so the abort accounting reads the same
+            // counters the dispatch result handlers updated.
+            val signalAbort = outbox.withDispatchLease {
+                // [codex round-9 P1] post-claim epoch check.
+                // clearAll() bumps the epoch BEFORE wiping the DAO;
+                // if the epoch changed between our snapshot and the
+                // moment we acquired the lease, the row's DAO entry
+                // has been deleted and dispatching it would send an
+                // orphan under whatever session the user just
+                // bound. Abort the rest of the batch — every
+                // sibling was queued under the now-discarded
+                // session.
+                if (outbox.currentSessionEpoch() != capturedEpoch) {
+                    return@withDispatchLease true
                 }
-                throw e
-            } catch (e: Exception) {
-                // [codex round-5 P3] catch Exception, not Throwable —
-                // Error subclasses (OutOfMemoryError, LinkageError,
-                // StackOverflowError, VirtualMachineError) indicate
-                // JVM-level damage that the per-row retry policy
-                // can't recover from; let them propagate up to the
-                // worker so WorkManager's own restart semantics
-                // handle it. CancellationException is already taken
-                // by the catch above (it extends Exception, but the
-                // more-specific catch binds first).
-                DispatchResult.RetryableFailure(e.message ?: "dispatch threw")
-            }
-            when (result) {
-                is DispatchResult.Success -> {
-                    outbox.markDone(row.id)
-                    // [codex finding P1#1] fix: cascade the server's
-                    // post-mutation token to same-target PENDING
-                    // rows so the next chained mutation against this
-                    // row doesn't replay with a now-stale snapshot.
-                    val newToken = result.newUpdatedAt
-                    if (!newToken.isNullOrEmpty()) {
-                        outbox.cascadeFreshToken(row.targetId, newToken)
+                // [codex round-2 P1#2] fix: do NOT let runCatching
+                // swallow CancellationException — that would let a
+                // structured-concurrency cancel mark the row as
+                // RetryableFailure mid-shutdown. Catch it
+                // explicitly and roll the row back to PENDING in a
+                // NonCancellable context so a fresh drain can
+                // re-claim it after the worker restarts.
+                val result = try {
+                    dispatcher.dispatch(row)
+                } catch (e: CancellationException) {
+                    withContext(NonCancellable) {
+                        outbox.markRetryable(row.id, "drain cancelled mid-dispatch")
                     }
-                    done++
+                    throw e
+                } catch (e: Exception) {
+                    // [codex round-5 P3] catch Exception, not
+                    // Throwable — Error subclasses (OOM, Linkage,
+                    // StackOverflow, VirtualMachineError) indicate
+                    // JVM-level damage that the per-row retry
+                    // policy can't recover from; let them propagate
+                    // up to the worker so WorkManager's own restart
+                    // semantics handle it. CancellationException is
+                    // already taken by the catch above (it extends
+                    // Exception, but the more-specific catch binds
+                    // first).
+                    DispatchResult.RetryableFailure(e.message ?: "dispatch threw")
                 }
-                is DispatchResult.Conflict -> {
-                    outbox.markConflict(row.id, result.serverMessage)
-                    conflicts++
+                when (result) {
+                    is DispatchResult.Success -> {
+                        outbox.markDone(row.id)
+                        // [codex finding P1#1] fix: cascade the
+                        // server's post-mutation token to same-
+                        // target PENDING rows so the next chained
+                        // mutation against this row doesn't replay
+                        // with a now-stale snapshot.
+                        val newToken = result.newUpdatedAt
+                        if (!newToken.isNullOrEmpty()) {
+                            outbox.cascadeFreshToken(row.targetId, newToken)
+                        }
+                        done++
+                    }
+                    is DispatchResult.Conflict -> {
+                        outbox.markConflict(row.id, result.serverMessage)
+                        conflicts++
+                    }
+                    is DispatchResult.RetryableFailure -> {
+                        // [codex finding P1#3] fix: keep the row
+                        // in PENDING so the next drain tick picks
+                        // it up. The retryCount was already bumped
+                        // by tryClaim; the scheduler can apply
+                        // back-off based on it.
+                        outbox.markRetryable(row.id, result.message)
+                        retryable++
+                    }
+                    is DispatchResult.Failure -> {
+                        outbox.markFailed(row.id, result.message)
+                        failures++
+                    }
+                    is DispatchResult.Discarded -> {
+                        // Discarded rows are gone from the user's
+                        // view — there's nothing for them to
+                        // resolve. Mark DONE and let cleanup
+                        // garbage-collect after retention.
+                        outbox.markDone(row.id)
+                        discarded++
+                    }
                 }
-                is DispatchResult.RetryableFailure -> {
-                    // [codex finding P1#3] fix: keep the row in
-                    // PENDING so the next drain tick picks it up.
-                    // The retryCount was already bumped by tryClaim;
-                    // the scheduler can apply back-off based on it.
-                    outbox.markRetryable(row.id, result.message)
-                    retryable++
-                }
-                is DispatchResult.Failure -> {
-                    outbox.markFailed(row.id, result.message)
-                    failures++
-                }
-                is DispatchResult.Discarded -> {
-                    // Discarded rows are gone from the user's view —
-                    // there's nothing for them to resolve. Mark DONE
-                    // and let cleanup garbage-collect after retention.
-                    outbox.markDone(row.id)
-                    discarded++
-                }
+                false  // not aborting
+            }
+            if (signalAbort) {
+                val processed = done + conflicts + failures + retryable +
+                    discarded + unsupported + raced
+                aborted = batch.size - processed
+                break
             }
         }
         return DrainSummary(
@@ -155,6 +205,7 @@ class OutboxDrainEngine(
             discarded = discarded,
             unsupported = unsupported,
             raced = raced,
+            aborted = aborted,
         )
     }
 }
@@ -171,6 +222,14 @@ data class DrainSummary(
     val unsupported: Int = 0,
     /** Atomic claim lost a race with a concurrent drain. */
     val raced: Int = 0,
+    /**
+     * [codex round-9 P1] rows in the batch that were skipped
+     * because a session boundary ([OutboxRepository.clearAll]) fired
+     * mid-drain. Their DAO entries were already deleted by clearAll;
+     * the in-memory copies would have been dispatched under the
+     * wrong session, so the drain aborted the remaining batch.
+     */
+    val aborted: Int = 0,
 ) {
     val anythingChanged: Boolean
         get() = done > 0 || conflicts > 0 || failures > 0 ||

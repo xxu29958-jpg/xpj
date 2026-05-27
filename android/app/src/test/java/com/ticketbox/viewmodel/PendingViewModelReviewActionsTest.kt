@@ -649,6 +649,13 @@ private class FakeReviewActions(
             ?: error("updateResponder not set; got id=$id draft=$draft baseline=$baseline")
     }
 
+    override suspend fun saveExpenseAllowingOffline(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense,
+    ): Result<com.ticketbox.data.repository.SaveOutcome> =
+        Result.failure(IllegalStateException("not exercised — PendingViewModel uses updateExpense"))
+
     override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> {
         confirmCalls += 1
         confirmedIds += id

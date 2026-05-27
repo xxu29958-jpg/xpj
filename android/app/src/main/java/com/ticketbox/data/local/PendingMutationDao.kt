@@ -465,4 +465,19 @@ interface PendingMutationDao {
         failedStatus: String,
         cutoffIso: String,
     ): Int
+
+    /**
+     * Drop every row in the outbox. Called from the session-boundary
+     * lifecycle hooks (clearBinding / ledger switch / accept
+     * invitation) — see [OutboxRepository.clearAll]. Rows in the
+     * outbox carry no ``ledger_id``/``server_url`` column today, so
+     * a row enqueued under ledger A cannot be safely replayed under
+     * ledger B; the only safe move at a session transition is to
+     * drop the queue entirely. A future Room v10 migration may add
+     * the binding columns and convert this to a per-binding filter.
+     *
+     * @return the number of rows removed.
+     */
+    @Query("DELETE FROM pending_mutations")
+    suspend fun clearAll(): Int
 }

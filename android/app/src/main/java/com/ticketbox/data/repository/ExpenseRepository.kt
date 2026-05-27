@@ -1,8 +1,10 @@
 package com.ticketbox.data.repository
 
+import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
@@ -43,6 +45,17 @@ class ExpenseRepository(
         tokenStore,
         expenseDao,
     ),
+    /**
+     * ADR-0038 PR-2g.3: optional outbox + adapter. When wired,
+     * mutations whose direct ApiService call fails with IOException
+     * fall back to enqueueing a PendingMutation row so the worker
+     * (PR-2g.2) replays once connectivity returns. AppContainer
+     * passes the real instances; existing tests that don't care
+     * about offline routing default to ``null`` and keep the
+     * pre-PR-2g.3 behaviour (IOException → safeCall failure).
+     */
+    outbox: OutboxRepository? = null,
+    patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
 ) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
@@ -51,6 +64,8 @@ class ExpenseRepository(
         deviceNameProvider = deviceNameProvider,
         apiProvider = apiProvider,
         sessionCoordinator = sessionCoordinator,
+        outbox = outbox,
+        patchExpenseAdapter = patchExpenseAdapter,
     )
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
@@ -105,6 +120,12 @@ class ExpenseRepository(
         draft: ExpenseDraft,
         baseline: Expense?,
     ): Result<Expense> = pendingRepository.updateExpense(id, draft, baseline)
+
+    override suspend fun saveExpenseAllowingOffline(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense,
+    ): Result<SaveOutcome> = pendingRepository.saveExpenseAllowingOffline(id, draft, baseline)
 
     suspend fun fetchExpenseItems(id: Long): Result<ExpenseItems> =
         detailRepository.fetchExpenseItems(id)

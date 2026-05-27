@@ -88,6 +88,12 @@ private class ThumbnailFakeReviewActions(
     override suspend fun updateExpense(id: Long, draft: ExpenseDraft, baseline: Expense?): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
+    override suspend fun saveExpenseAllowingOffline(
+        id: Long,
+        draft: ExpenseDraft,
+        baseline: Expense,
+    ): Result<SaveOutcome> = Result.failure(IllegalStateException("not exercised"))
+
     override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 

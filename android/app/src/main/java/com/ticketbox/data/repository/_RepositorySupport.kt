@@ -46,7 +46,19 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
 }
 
 internal fun logNetworkWarning(message: String, error: Throwable) {
-    runCatching { Log.w("TicketboxNetwork", message, error) }
+    // ADR-0038 PR-2g.3 round-8 / codex round-9 follow-up: catch
+    // Exception, NOT Throwable. android.util.Log is an unmocked
+    // stub in pure-JVM unit tests and throws ``Method w not
+    // mocked``; swallowing it here keeps tests honest (they can
+    // still assert on the Result the caller returns) while
+    // production behaviour is unchanged. JVM-level Errors (OOM /
+    // StackOverflow / LinkageError) propagate up by design —
+    // same principle as [OutboxDrainEngine]'s round-5 fix.
+    try {
+        Log.w("TicketboxNetwork", message, error)
+    } catch (_: Exception) {
+        // logging backend fault / JVM unit-test Android Log stub
+    }
 }
 
 internal fun defaultAndroidDeviceName(): String {

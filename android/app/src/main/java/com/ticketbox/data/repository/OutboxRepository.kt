@@ -6,10 +6,13 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * ADR-0038 PR-2f: offline outbox skeleton.
@@ -45,10 +48,149 @@ import java.time.format.DateTimeFormatter
 class OutboxRepository(
     private val dao: PendingMutationDao,
     private val clock: Clock = Clock.systemUTC(),
+    /**
+     * Fired immediately after a row is persisted by [enqueue]. Used
+     * by AppContainer to schedule a one-time [OutboxDrainWorker]
+     * tick — same pattern as the [OutboxDrainWorker]'s ``logWarning``
+     * injection (PR-2g.2): the side effect that needs Android
+     * primitives (WorkManager / Context) stays out of the
+     * repository, the repository stays a pure persistence layer.
+     *
+     * Defaulted to no-op so existing tests and any non-Android
+     * caller can construct ``OutboxRepository`` without wiring the
+     * scheduler.
+     */
+    private val onEnqueued: () -> Unit = {},
+    /**
+     * Fired immediately after [clearAll] drains the DAO. AppContainer
+     * wires this to [OutboxScheduler.cancel] FOLLOWED by
+     * [OutboxScheduler.ensurePeriodic] so an in-flight worker
+     * doesn't try to drain a now-empty queue under the new session
+     * AND the periodic heartbeat is re-armed for whatever queue the
+     * next session populates (codex round-9 P2 fix — without the
+     * re-arm, cold restart was the only path back to a periodic
+     * tick).
+     *
+     * Same best-effort semantics as [onEnqueued] (we catch
+     * [Exception] internally; JVM-level Errors propagate).
+     */
+    private val onClearAll: () -> Unit = {},
 ) {
+    /**
+     * ADR-0038 PR-2g.3 round-9 P1: session-boundary epoch.
+     *
+     * Incremented at the start of [clearAll]. A drain pass captures
+     * this value before dequeue and re-checks it after [tryClaim]
+     * but before dispatch. If the epoch changed, the drain knows a
+     * session boundary fired mid-pass — the row's DAO entry has
+     * been wiped by [clearAll]'s DELETE and the next dispatch would
+     * send the now-orphan in-memory payload under whatever session
+     * the user just bound. The drain skips the rest of the batch
+     * and exits.
+     *
+     * Why an in-memory counter and not a Room column: this is the
+     * minimal fix that closes the in-flight race within a single
+     * process. A more complete answer is a future Room v10 migration
+     * adding ``server_url / ledger_id / session_fingerprint`` columns
+     * so the drain can filter at SQL time AND survive process
+     * restarts that bridge a session boundary. For now the periodic
+     * worker plus [clearAll] semantics make the in-process counter
+     * sufficient.
+     */
+    private val sessionEpoch = AtomicLong(0L)
+
+    /**
+     * Snapshot of the session-boundary epoch — used by
+     * [OutboxDrainEngine.drainOnce] to detect whether a [clearAll]
+     * fired between dequeue and dispatch.
+     */
+    fun currentSessionEpoch(): Long = sessionEpoch.get()
+
+    /**
+     * Test-only hook: bump the epoch counter without wiping the
+     * DAO. Production code uses [clearAll] which does both
+     * atomically; this lets the OutboxDrainEngine post-claim guard
+     * be exercised in a unit test without the dao.clearAll() also
+     * deleting the row the test wants to keep claimed.
+     */
+    internal fun bumpSessionEpochForTesting() {
+        sessionEpoch.incrementAndGet()
+    }
+
+    /**
+     * ADR-0038 PR-2g.3 codex round-10 follow-up: dispatch lease.
+     *
+     * Closes the residual race after round-9's epoch guard:
+     *   1. drain captures epoch = N
+     *   2. drain tryClaim succeeds + post-claim epoch check passes
+     *      (still N)
+     *   3. coroutine suspends (scheduler yields)
+     *   4. clearAll() runs (bumps epoch to N+1, deletes DAO rows)
+     *   5. session coordinator writes new serverUrl + sessionToken
+     *   6. drain resumes, calls dispatcher.dispatch(row)
+     *   7. dispatch resolves apiProvider() lazily; OkHttp
+     *      interceptor lazily reads the (NEW) sessionToken
+     *   8. request goes out under NEW session for OLD row →
+     *      wrong-session replay
+     *
+     * The epoch guard alone can't close this because the credential
+     * read inside dispatch happens AFTER the check. The fix is a
+     * [Mutex] held by:
+     *   - [OutboxDrainEngine.drainOnce] across BOTH the epoch check
+     *     AND the entire ``dispatcher.dispatch(row)`` (so the
+     *     OkHttp token-read inside dispatch can't be interleaved
+     *     with a clearAll).
+     *   - [clearAll] across the epoch bump + DAO delete + onClearAll
+     *     callback.
+     *
+     * Because [LocalLedgerSessionCoordinator] and
+     * [ExpenseRepositoryCore.clearBinding] both place credential
+     * mutations AFTER ``outbox.clearAll()`` returns (round-10
+     * ordering), and clearAll only returns after acquiring the
+     * lease, credential mutations always happen AFTER any in-flight
+     * dispatch completes. Worst case is "old-session in-flight at
+     * boundary moment" — the in-flight request finishes under the
+     * old session, then the session changes. Acceptable until Room
+     * v10 adds binding columns.
+     *
+     * Cost: a session transition may block up to one outbox call
+     * timeout. We trade latency for correctness.
+     */
+    private val dispatchLease = Mutex()
+
+    /**
+     * Run [block] while holding the dispatch lease. Used by
+     * [OutboxDrainEngine.drainOnce] to serialise dispatch against
+     * [clearAll]. See [dispatchLease] KDoc for the race this closes.
+     */
+    suspend fun <T> withDispatchLease(block: suspend () -> T): T =
+        dispatchLease.withLock { block() }
 
     /**
      * Persist a mutation snapshot for later replay.
+     *
+     * [onEnqueued] fires after the row is committed so the caller's
+     * scheduler (WorkManager in production) can fire a one-time
+     * drain ASAP — the user doesn't wait up to 15 min for the
+     * periodic tick. The drain itself respects same-target serial
+     * (see [dequeueNextRunnable]) so a burst of enqueues collapses
+     * into one drain pass via the [OutboxScheduler]'s ``KEEP``
+     * policy.
+     *
+     * Note the callback is wrapped in a try/catch (Exception): it's
+     * a best-effort "wake the worker now" signal, not a precondition
+     * for the row being usable. If [OutboxScheduler.enqueueOnce]
+     * throws (WorkManager not initialised in a test / IPC failure /
+     * etc.) the row is still committed and the periodic worker will
+     * pick it up. Letting that exception escape would make a
+     * persisted mutation look like a failed insert to the caller.
+     *
+     * We catch [Exception], **not** [Throwable] — [codex round-8 P2]
+     * fix. The original ``runCatching`` formulation caught Throwable
+     * by definition (Kotlin's runCatching), which conflicts with
+     * the round-5 rule we enforce in [OutboxDrainEngine] (catch
+     * Exception, not Throwable, so OOM / LinkageError /
+     * StackOverflow propagate up to the OS-level worker restart).
      *
      * @return the row id of the freshly inserted outbox entry.
      */
@@ -66,7 +208,69 @@ class OutboxRepository(
             status = PendingMutationStatus.Pending.wireValue,
             createdAt = nowIso(),
         )
-        return dao.insert(row)
+        val id = dao.insert(row)
+        try {
+            onEnqueued()
+        } catch (_: Exception) {
+            // Best-effort scheduler kick; the row is already in the
+            // DAO and the periodic worker (15-min tick) will drain
+            // it. JVM-level Errors (OOM / StackOverflow / Linkage)
+            // propagate up by design.
+        }
+        return id
+    }
+
+    /**
+     * Drop every queued mutation. Called from session-boundary
+     * lifecycle hooks (`ExpenseRepositoryCore.clearBinding` /
+     * `LocalLedgerSessionCoordinator.applyTransitionLocked` on a
+     * non-None `cacheInvalidation`).
+     *
+     * Why this exists (codex round-8 P1): outbox rows today only
+     * carry `type/targetId/payload/expectedUpdatedAt/status` — no
+     * server URL or ledger id. A row enqueued under ledger A would
+     * otherwise be drained under ledger B's session after a switch,
+     * either 404'ing (target doesn't exist there) or worse mutating
+     * an unrelated row that happens to share the public id space.
+     * The minimal fix until a Room v10 migration adds binding
+     * columns is to wipe the queue at every session transition.
+     * Data loss is preferable to wrong-replay; the user gets a
+     * fresh start under the new binding.
+     *
+     * @return the number of rows dropped.
+     */
+    suspend fun clearAll(): Int = dispatchLease.withLock {
+        // Round-10 follow-up: take the dispatch lease BEFORE
+        // touching the epoch / DAO. This blocks until any in-flight
+        // OutboxDrainEngine dispatch finishes, so a dispatch that
+        // already passed the post-claim epoch check completes under
+        // the OLD session (credentials haven't been rewritten yet
+        // — coordinator's credential writes follow this clearAll
+        // return). Without the lease, the dispatch's lazy
+        // apiProvider() / OkHttp interceptor token-read could fire
+        // AFTER the credential write, replaying an old row under a
+        // new session.
+        //
+        // Bump the epoch BEFORE the DAO delete so any concurrent
+        // drain that captured the old epoch sees the change on its
+        // next ``currentSessionEpoch()`` check — even if the DAO
+        // delete itself races with the drain's tryClaim. The check
+        // sequence in [OutboxDrainEngine.drainOnce] is:
+        //   capturedEpoch = currentSessionEpoch()
+        //   ... dequeue ...
+        //   ... tryClaim ...
+        //   withDispatchLease { if (epoch differs) skip; else dispatch }
+        // So bumping the counter first guarantees the post-claim
+        // check catches us.
+        sessionEpoch.incrementAndGet()
+        val removed = dao.clearAll()
+        try {
+            onClearAll()
+        } catch (_: Exception) {
+            // Best-effort scheduler cancel — see [enqueue] for the
+            // same Exception-not-Throwable rationale.
+        }
+        removed
     }
 
     /**

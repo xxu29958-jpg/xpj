@@ -1,12 +1,14 @@
 package com.ticketbox.data.repository
 
 import android.util.Log
+import com.squareup.moshi.JsonAdapter
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
@@ -30,6 +32,16 @@ internal class ExpenseRepositoryCore(
     val deviceNameProvider: () -> String,
     val apiProvider: ApiServiceProvider,
     val sessionCoordinator: LocalLedgerSessionCoordinator,
+    /**
+     * ADR-0038 PR-2g.3: outbox surface for the call sites that
+     * route through it on network failure. ``null`` keeps every
+     * pre-existing test that didn't wire the outbox at the old
+     * behaviour — the IOException catch in
+     * [ExpensePendingRepository.updateExpense] no-ops when either
+     * the outbox OR the matching payload adapter is missing.
+     */
+    val outbox: OutboxRepository? = null,
+    val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
 ) {
     val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,
@@ -206,6 +218,24 @@ internal class ExpenseRepositoryCore(
     }
 
     suspend fun clearBinding() {
+        // ADR-0038 PR-2g.3 codex round-9 P1 (round-10 follow-up):
+        // outbox.clearAll() MUST run BEFORE clearing the apiProvider
+        // / settings / token. clearAll() bumps the
+        // [OutboxRepository] session-boundary epoch; the drain
+        // engine's post-claim check reads that epoch to decide
+        // whether to skip a dispatch. If we clear the API binding
+        // first, a concurrent drain that has already passed the
+        // epoch check (epoch still old) would resolve apiProvider()
+        // inside dispatch under whatever the user binds next →
+        // wrong-session replay. Order:
+        //   1) outbox.clearAll  (epoch bumps, queue wiped)
+        //   2) apiProvider/settings/token cleared
+        // After step 1, no new drain can pass the post-claim check
+        // for an old row. The drains in flight that already passed
+        // it dispatch under the still-old credentials (step 2 hasn't
+        // run yet) — old-session in-flight, not wrong-session
+        // replay. Acceptable until Room v10 binding columns.
+        outbox?.clearAll()
         apiProvider.clear()
         expenseDao.clear()
         settingsStore.clear()

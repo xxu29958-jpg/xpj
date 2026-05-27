@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import android.util.Log
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -45,16 +44,23 @@ internal class NetworkErrorHandler(
             Result.failure(error)
         } catch (error: IOException) {
             val serverUrl = serverUrlHint ?: settingsStore.serverUrl()
-            Log.w(LOG_TAG, networkDiagnosticMessage(error, serverUrl), error)
+            // codex round-9 follow-up: route through
+            // [logNetworkWarning] (catches the android.util.Log
+            // stub exception in pure-JVM unit tests). Letting Log.w
+            // throw here broke ExpensePendingRepositoryOutboxFallbackTest's
+            // ability to assert Result.failure on the IOException
+            // path — that's a real contract (chained confirm
+            // depends on it failing) we need to keep testable.
+            logNetworkWarning(networkDiagnosticMessage(error, serverUrl), error)
             Result.failure(RepositoryException(userNetworkMessage(error, serverUrl)))
         } catch (error: IllegalArgumentException) {
             if (BuildConfig.DEBUG) {
-                Log.w(LOG_TAG, "$context request argument error: ${error.message}", error)
+                logNetworkWarning("$context request argument error: ${error.message}", error)
             }
             Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
         } catch (error: Exception) {
             if (BuildConfig.DEBUG) {
-                Log.w(LOG_TAG, "$context request failed: ${error::class.java.name}: ${error.message}", error)
+                logNetworkWarning("$context request failed: ${error::class.java.name}: ${error.message}", error)
             }
             Result.failure(RepositoryException(error.message ?: "操作失败。"))
         }
@@ -77,7 +83,8 @@ internal class NetworkErrorHandler(
     }
 
     private companion object {
-        const val LOG_TAG = "TicketboxNetwork"
+        // LOG_TAG used to live here; codex round-9 moved Log.w
+        // calls into [logNetworkWarning] which owns the tag.
         val MOSHI: Moshi = Moshi.Builder()
             .add(KotlinJsonAdapterFactory())
             .build()
