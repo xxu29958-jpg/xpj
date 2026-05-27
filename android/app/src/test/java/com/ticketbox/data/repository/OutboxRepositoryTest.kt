@@ -74,7 +74,8 @@ class OutboxRepositoryTest {
             expectedUpdatedAt = "",
         )
 
-        repo.markInFlight(first)
+        // Atomic claim flips first PENDING → IN_FLIGHT.
+        assertTrue(repo.tryClaim(first))
         val runnable = repo.dequeueNextRunnable(limit = 10).map { it.id }
 
         // ``first`` is IN_FLIGHT so it's no longer PENDING and won't
@@ -90,6 +91,7 @@ class OutboxRepositoryTest {
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
         val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
 
+        repo.tryClaim(id)
         repo.markDone(id)
 
         val row = dao.rows[id]!!

@@ -66,9 +66,17 @@ class OutboxRepository(
     }
 
     /**
-     * Return the next runnable batch in causal order. Rows whose
-     * target is already IN_FLIGHT are filtered out so the drain
-     * worker doesn't violate "same target_id serial".
+     * Return the next runnable batch in causal order. Two filters:
+     *
+     * 1. Skip rows whose target is currently IN_FLIGHT (another
+     *    drain pass already claimed the head of the queue for that
+     *    target).
+     * 2. Within the returned batch, keep only the OLDEST PENDING
+     *    row per target. This is the [codex finding P1#1] fix —
+     *    without per-target dedup, the same drain pass would
+     *    return both A and B for ``expense:1`` and the engine
+     *    would dispatch them in parallel even though
+     *    ``markInFlightIfPending`` is per-row atomic.
      *
      * Returns the public [OutboxRow] view (not the raw Entity) so
      * the drain engine doesn't depend on Room types.
@@ -76,21 +84,37 @@ class OutboxRepository(
     suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH): List<OutboxRow> {
         val candidates = dao.nextPendingBatch(PendingMutationStatus.Pending.wireValue, limit)
         if (candidates.isEmpty()) return emptyList()
+        val seenTargets = mutableSetOf<String>()
         val runnable = mutableListOf<OutboxRow>()
         for (row in candidates) {
-            if (!dao.isTargetBusy(row.targetId, PendingMutationStatus.InFlight.wireValue)) {
-                runnable += row.toDomain()
+            if (dao.isTargetBusy(row.targetId, PendingMutationStatus.InFlight.wireValue)) {
+                continue
             }
+            if (!seenTargets.add(row.targetId)) {
+                // An older PENDING row for this target is already
+                // in the batch; the second one waits for the next
+                // drain pass to keep "same target serial".
+                continue
+            }
+            runnable += row.toDomain()
         }
         return runnable
     }
 
-    suspend fun markInFlight(id: Long) {
-        dao.markInFlight(
+    /**
+     * Atomic PENDING → IN_FLIGHT claim. Returns ``true`` if this
+     * caller won the race and is now responsible for dispatching;
+     * ``false`` means another drain pass already claimed it and
+     * the caller must NOT call the ApiService.
+     */
+    suspend fun tryClaim(id: Long): Boolean {
+        val rowcount = dao.markInFlightIfPending(
             id = id,
-            status = PendingMutationStatus.InFlight.wireValue,
+            fromStatus = PendingMutationStatus.Pending.wireValue,
+            inFlightStatus = PendingMutationStatus.InFlight.wireValue,
             attemptedAt = nowIso(),
         )
+        return rowcount > 0
     }
 
     suspend fun markDone(id: Long) {
@@ -98,6 +122,34 @@ class OutboxRepository(
             id = id,
             status = PendingMutationStatus.Done.wireValue,
             completedAt = nowIso(),
+        )
+    }
+
+    /**
+     * Cascade a freshly-server-returned token to every PENDING row
+     * targeting the same row. See
+     * [PendingMutationDao.cascadeFreshTokenForTarget] for the why.
+     *
+     * Returns the count of cascaded rows for tests / telemetry.
+     */
+    suspend fun cascadeFreshToken(targetId: String, newToken: String): Int =
+        dao.cascadeFreshTokenForTarget(
+            targetId = targetId,
+            pendingStatus = PendingMutationStatus.Pending.wireValue,
+            freshToken = newToken,
+        )
+
+    /**
+     * Transient failure: keep the row in PENDING so the next drain
+     * pass picks it up. ``retryCount`` was already bumped by
+     * [tryClaim]; the back-off / give-up policy belongs to the
+     * scheduler in PR-2g.2.
+     */
+    suspend fun markRetryable(id: Long, error: String) {
+        dao.markRetryable(
+            id = id,
+            pendingStatus = PendingMutationStatus.Pending.wireValue,
+            lastError = error,
         )
     }
 

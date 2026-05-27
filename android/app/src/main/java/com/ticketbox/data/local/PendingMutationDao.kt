@@ -47,16 +47,53 @@ interface PendingMutationDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(row: PendingMutationEntity): Long
 
+    /**
+     * Atomic claim: flip a row to IN_FLIGHT only when it's still
+     * PENDING. ``rowcount = 0`` means another drain pass already
+     * grabbed this row; the caller MUST not dispatch in that case.
+     *
+     * [codex finding P1#2] fix: without the ``status = :fromStatus``
+     * predicate, two concurrent drains (two WorkManager workers, a
+     * UI-triggered drain plus a periodic one, etc) both read the
+     * same PENDING row from ``nextPendingBatch`` and both call
+     * ``markInFlight``, then both fire the ApiService request.
+     */
     @Query(
         """
         UPDATE pending_mutations
-        SET status = :status,
+        SET status = :inFlightStatus,
             attemptedAt = :attemptedAt,
             retryCount = retryCount + 1
+        WHERE id = :id AND status = :fromStatus
+        """,
+    )
+    suspend fun markInFlightIfPending(
+        id: Long,
+        fromStatus: String,
+        inFlightStatus: String,
+        attemptedAt: String,
+    ): Int
+
+    /**
+     * Move a row back to PENDING after a transient failure
+     * ([DispatchResult.RetryableFailure]). Preserves the retry
+     * counter that ``markInFlightIfPending`` bumped (so callers
+     * can apply back-off based on it) and records the error so
+     * the UI can hint after repeated attempts.
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = :pendingStatus,
+            lastError = :lastError
         WHERE id = :id
         """,
     )
-    suspend fun markInFlight(id: Long, status: String, attemptedAt: String): Int
+    suspend fun markRetryable(
+        id: Long,
+        pendingStatus: String,
+        lastError: String,
+    ): Int
 
     @Query(
         """
@@ -99,6 +136,34 @@ interface PendingMutationDao {
         """,
     )
     suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: String): Int
+
+    /**
+     * Cascade a new ``expected_updated_at`` to every still-PENDING
+     * row that targets the same row as a just-succeeded mutation.
+     *
+     * Why: offline chain A → B against the same target. A is
+     * enqueued with token T0; client's only known token at the
+     * moment is still T0 so B is also enqueued with T0. After A
+     * lands, server is at T1. Without this cascade B replays with
+     * T0 and fakes a state_conflict against itself.
+     *
+     * Limited to PENDING rows so a CONFLICT / FAILED row whose
+     * user-pick is still pending doesn't get its snapshot silently
+     * overwritten.
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET expectedUpdatedAt = :freshToken
+        WHERE targetId = :targetId
+          AND status = :pendingStatus
+        """,
+    )
+    suspend fun cascadeFreshTokenForTarget(
+        targetId: String,
+        pendingStatus: String,
+        freshToken: String,
+    ): Int
 
     // ---------------------------------------------------------------
     // Reads (drain + UI)

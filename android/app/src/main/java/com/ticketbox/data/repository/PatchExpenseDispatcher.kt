@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import java.io.IOException
 import retrofit2.HttpException
 
 /**
@@ -39,10 +40,15 @@ class PatchExpenseDispatcher(
         // the serialised payload itself).
         val request = storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
         return try {
-            api.updateExpense(expenseId, request)
-            DispatchResult.Success
+            val updated = api.updateExpense(expenseId, request)
+            DispatchResult.Success(newUpdatedAt = updated.updatedAt)
         } catch (e: HttpException) {
             mapHttpException(e)
+        } catch (e: IOException) {
+            // Network blip / connection reset / read timeout — the
+            // server probably never saw the request. Retry on the
+            // next drain tick, don't push the user a "失败" banner.
+            DispatchResult.RetryableFailure(e.message ?: "network IO failure")
         } catch (e: Exception) {
             DispatchResult.Failure(e.message ?: "PATCH expense threw")
         }
@@ -60,6 +66,13 @@ class PatchExpenseDispatcher(
                 if ("state_conflict" in body) DispatchResult.Conflict(message)
                 else DispatchResult.Discarded(message)
             }
+            // [codex finding P1#3] fix: transient server errors are
+            // retryable, not terminal. The drain engine puts the
+            // row back to PENDING so the next tick gives it another
+            // chance.
+            in 500..599, 408, 429 -> DispatchResult.RetryableFailure(
+                message.ifEmpty { "server ${e.code()}" },
+            )
             404, 422 -> DispatchResult.Discarded(message)
             else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
         }

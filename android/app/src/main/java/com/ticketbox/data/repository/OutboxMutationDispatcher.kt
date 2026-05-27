@@ -44,8 +44,24 @@ interface OutboxMutationDispatcher {
 }
 
 sealed interface DispatchResult {
-    /** Server returned 2xx; outbox row transitions to DONE. */
-    data object Success : DispatchResult
+    /**
+     * Server returned 2xx; outbox row transitions to DONE.
+     *
+     * ``newUpdatedAt`` is the server-side ``updated_at`` from the
+     * response body when the route mutated a versioned row. The
+     * drain engine cascades this token onto same-target PENDING
+     * rows so a chain of offline mutations against the same row
+     * doesn't fake-conflict itself: A's outbox row carried the
+     * old token T0; after A lands the server is at T1; B's outbox
+     * row was enqueued with T0 (the only token the client knew at
+     * the time) — without the cascade, B replays with T0 and
+     * server says 409. With the cascade, B's row is rewritten to
+     * T1 before it dispatches.
+     *
+     * Routes that don't return a token (creates / terminal
+     * lifecycle that has its own state machine) pass ``null``.
+     */
+    data class Success(val newUpdatedAt: String? = null) : DispatchResult
 
     /**
      * Server returned 409 ``state_conflict``. The row goes to
@@ -55,11 +71,29 @@ sealed interface DispatchResult {
     data class Conflict(val serverMessage: String) : DispatchResult
 
     /**
-     * Non-conflict error (other 4xx / 5xx, network failure). Row
-     * goes to FAILED; the user can retry manually or the drain
-     * engine will back off and try again with the next tick.
+     * Permanent failure that needs user attention — typically a
+     * 4xx the user must resolve (e.g. validation error in the
+     * payload they typed) or a non-recoverable client-side bug
+     * (Moshi can't parse the row's payload). Row goes to FAILED;
+     * the drain engine will NOT auto-retry — the user has to
+     * fix the input or dismiss the row.
      */
     data class Failure(val message: String) : DispatchResult
+
+    /**
+     * Transient failure that the drain engine should retry on a
+     * later tick — network blip, server 5xx, timeout. Row stays
+     * PENDING; ``retryCount`` and ``lastError`` are recorded so
+     * the UI can warn after N attempts and the engine can apply
+     * back-off.
+     *
+     * Splitting Failure / RetryableFailure is the [codex finding
+     * P1#3] fix: previously a single transient network error
+     * would mark the row FAILED, and FAILED rows are not picked
+     * up by ``nextPendingBatch`` so the outbox effectively
+     * stopped auto-replaying after one server hiccup.
+     */
+    data class RetryableFailure(val message: String) : DispatchResult
 
     /**
      * Server returned a "row no longer exists / already in a

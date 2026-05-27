@@ -28,13 +28,30 @@ class FakePendingMutationDao : PendingMutationDao {
         return assigned
     }
 
-    override suspend fun markInFlight(id: Long, status: String, attemptedAt: String): Int {
+    override suspend fun markInFlightIfPending(
+        id: Long,
+        fromStatus: String,
+        inFlightStatus: String,
+        attemptedAt: String,
+    ): Int {
         val current = rows[id] ?: return 0
+        if (current.status != fromStatus) return 0
         rows[id] = current.copy(
-            status = status,
+            status = inFlightStatus,
             attemptedAt = attemptedAt,
             retryCount = current.retryCount + 1,
         )
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun markRetryable(
+        id: Long,
+        pendingStatus: String,
+        lastError: String,
+    ): Int {
+        val current = rows[id] ?: return 0
+        rows[id] = current.copy(status = pendingStatus, lastError = lastError)
         refreshObservables()
         return 1
     }
@@ -77,6 +94,21 @@ class FakePendingMutationDao : PendingMutationDao {
         )
         refreshObservables()
         return 1
+    }
+
+    override suspend fun cascadeFreshTokenForTarget(
+        targetId: String,
+        pendingStatus: String,
+        freshToken: String,
+    ): Int {
+        val matching = rows.values.filter {
+            it.targetId == targetId && it.status == pendingStatus
+        }
+        for (row in matching) {
+            rows[row.id] = row.copy(expectedUpdatedAt = freshToken)
+        }
+        if (matching.isNotEmpty()) refreshObservables()
+        return matching.size
     }
 
     override suspend fun nextPendingBatch(

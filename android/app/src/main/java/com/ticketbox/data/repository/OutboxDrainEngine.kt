@@ -44,25 +44,58 @@ class OutboxDrainEngine(
         var done = 0
         var conflicts = 0
         var failures = 0
+        var retryable = 0
         var discarded = 0
-        var skipped = 0
+        var unsupported = 0
+        var raced = 0
         for (row in batch) {
             val dispatcher = registry[row.type]
             if (dispatcher == null || row.type == PendingMutationType.Unknown) {
-                skipped++
+                // [codex finding P2#5] fix: rows with no registered
+                // dispatcher used to stay PENDING forever, blocking
+                // newer same-or-later rows behind them in the
+                // ``ORDER BY createdAt`` window. Move them to FAILED
+                // with a structured ``lastError`` so a UI affordance
+                // can offer "upgrade the app, then manual retry" or
+                // "drop". The user-visible behaviour is identical to
+                // a 4xx that needs human action.
+                outbox.markFailed(row.id, "no_dispatcher_registered:${row.type.wireValue}")
+                unsupported++
                 continue
             }
-            outbox.markInFlight(row.id)
+            // [codex finding P1#2] fix: atomic PENDING → IN_FLIGHT
+            // claim. If another drain pass beat us to it, the
+            // dispatcher MUST NOT be called.
+            if (!outbox.tryClaim(row.id)) {
+                raced++
+                continue
+            }
             when (val result = runCatching { dispatcher.dispatch(row) }.getOrElse {
-                DispatchResult.Failure(it.message ?: "dispatch threw")
+                DispatchResult.RetryableFailure(it.message ?: "dispatch threw")
             }) {
-                DispatchResult.Success -> {
+                is DispatchResult.Success -> {
                     outbox.markDone(row.id)
+                    // [codex finding P1#1] fix: cascade the server's
+                    // post-mutation token to same-target PENDING
+                    // rows so the next chained mutation against this
+                    // row doesn't replay with a now-stale snapshot.
+                    val newToken = result.newUpdatedAt
+                    if (!newToken.isNullOrEmpty()) {
+                        outbox.cascadeFreshToken(row.targetId, newToken)
+                    }
                     done++
                 }
                 is DispatchResult.Conflict -> {
                     outbox.markConflict(row.id, result.serverMessage)
                     conflicts++
+                }
+                is DispatchResult.RetryableFailure -> {
+                    // [codex finding P1#3] fix: keep the row in
+                    // PENDING so the next drain tick picks it up.
+                    // The retryCount was already bumped by tryClaim;
+                    // the scheduler can apply back-off based on it.
+                    outbox.markRetryable(row.id, result.message)
+                    retryable++
                 }
                 is DispatchResult.Failure -> {
                     outbox.markFailed(row.id, result.message)
@@ -82,8 +115,10 @@ class OutboxDrainEngine(
             done = done,
             conflicts = conflicts,
             failures = failures,
+            retryable = retryable,
             discarded = discarded,
-            skipped = skipped,
+            unsupported = unsupported,
+            raced = raced,
         )
     }
 }
@@ -93,13 +128,19 @@ data class DrainSummary(
     val done: Int,
     val conflicts: Int,
     val failures: Int,
-    val discarded: Int,
-    val skipped: Int,
+    /** Transient failure — row stayed PENDING for the next drain. */
+    val retryable: Int = 0,
+    val discarded: Int = 0,
+    /** No dispatcher registered for the row's type → markFailed. */
+    val unsupported: Int = 0,
+    /** Atomic claim lost a race with a concurrent drain. */
+    val raced: Int = 0,
 ) {
     val anythingChanged: Boolean
-        get() = done > 0 || conflicts > 0 || failures > 0 || discarded > 0
+        get() = done > 0 || conflicts > 0 || failures > 0 ||
+            retryable > 0 || discarded > 0 || unsupported > 0
 
     companion object {
-        val IDLE = DrainSummary(0, 0, 0, 0, 0, 0)
+        val IDLE = DrainSummary(0, 0, 0, 0)
     }
 }
