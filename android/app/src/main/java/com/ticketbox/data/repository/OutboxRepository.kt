@@ -28,8 +28,11 @@ import java.time.format.DateTimeFormatter
  *    of truth.
  * 2. Drain happens in [dequeueNextRunnable] which respects "same
  *    target_id serial": a row is skipped if another row for the
- *    same target is currently IN_FLIGHT. PR-2g's worker calls
- *    this in a loop.
+ *    same target is currently IN_FLIGHT / CONFLICT / FAILED. The
+ *    SQL filter ([PendingMutationDao.nextRunnableBatch]) excludes
+ *    blocked targets BEFORE applying ``LIMIT`` so a long PENDING
+ *    queue for a blocked target doesn't starve other runnable
+ *    targets. PR-2g's worker calls this in a loop.
  * 3. [resolveConflict] is the user-facing "keep mine / drop mine"
  *    branch. ``keepMine`` re-enqueues with a fresh token (caller
  *    fetched the row again); ``dropMine`` deletes the row.
@@ -85,20 +88,21 @@ class OutboxRepository(
      *    so the drain engine doesn't depend on Room types.
      */
     suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH): List<OutboxRow> {
-        val candidates = dao.nextPendingBatch(PendingMutationStatus.Pending.wireValue, limit)
+        // [codex round-3 P2#1 / round-4 P1] Use the SQL-side filter
+        // so LIMIT applies AFTER unresolved targets are excluded.
+        // Round-3 introduced ``nextRunnableBatch`` but a rebase wiped
+        // out the production caller; round-4 wires it back.
+        val candidates = dao.nextRunnableBatch(
+            pendingStatus = PendingMutationStatus.Pending.wireValue,
+            inFlightStatus = PendingMutationStatus.InFlight.wireValue,
+            conflictStatus = PendingMutationStatus.Conflict.wireValue,
+            failedStatus = PendingMutationStatus.Failed.wireValue,
+            limit = limit,
+        )
         if (candidates.isEmpty()) return emptyList()
         val seenTargets = mutableSetOf<String>()
         val runnable = mutableListOf<OutboxRow>()
         for (row in candidates) {
-            if (dao.hasUnresolvedRowForTarget(
-                    targetId = row.targetId,
-                    inFlightStatus = PendingMutationStatus.InFlight.wireValue,
-                    conflictStatus = PendingMutationStatus.Conflict.wireValue,
-                    failedStatus = PendingMutationStatus.Failed.wireValue,
-                )
-            ) {
-                continue
-            }
             if (!seenTargets.add(row.targetId)) {
                 // An older PENDING row for this target is already
                 // in the batch; the second one waits for the next
@@ -213,16 +217,25 @@ class OutboxRepository(
     suspend fun resolveConflict(
         id: Long,
         resolution: ConflictResolution,
-    ) {
-        when (resolution) {
+    ): Boolean {
+        // [codex round-4 P2] Atomic status-checked updates so a
+        // stale UI banner click can't flip a DONE / re-resolved row
+        // back to PENDING (or delete a row a parallel keep-mine
+        // just turned PENDING). Returns ``true`` only if THIS call
+        // actually changed the row.
+        return when (resolution) {
             is ConflictResolution.KeepMine ->
-                dao.refreshToken(
+                dao.refreshTokenIfStatus(
                     id = id,
-                    pendingStatus = PendingMutationStatus.Pending.wireValue,
+                    fromStatus = PendingMutationStatus.Conflict.wireValue,
+                    toStatus = PendingMutationStatus.Pending.wireValue,
                     freshToken = resolution.freshToken,
-                )
+                ) > 0
             ConflictResolution.DropMine ->
-                dao.deleteById(id)
+                dao.deleteIfStatus(
+                    id = id,
+                    expectedStatus = PendingMutationStatus.Conflict.wireValue,
+                ) > 0
         }
     }
 
@@ -244,26 +257,34 @@ class OutboxRepository(
     suspend fun resolveFailed(
         id: Long,
         resolution: FailedResolution,
-    ) {
-        when (resolution) {
+    ): Boolean {
+        // [codex round-4 P2] Same atomic-status guard as
+        // resolveConflict — stale banner click on a row that's
+        // already been retried + DONE elsewhere must be a no-op.
+        return when (resolution) {
             is FailedResolution.Retry -> {
                 val freshToken = resolution.freshToken
                 if (freshToken != null) {
-                    dao.refreshToken(
+                    dao.refreshTokenIfStatus(
                         id = id,
-                        pendingStatus = PendingMutationStatus.Pending.wireValue,
+                        fromStatus = PendingMutationStatus.Failed.wireValue,
+                        toStatus = PendingMutationStatus.Pending.wireValue,
                         freshToken = freshToken,
-                    )
+                    ) > 0
                 } else {
-                    dao.markRetryable(
+                    dao.markRetryableIfStatus(
                         id = id,
-                        pendingStatus = PendingMutationStatus.Pending.wireValue,
+                        fromStatus = PendingMutationStatus.Failed.wireValue,
+                        toStatus = PendingMutationStatus.Pending.wireValue,
                         lastError = "manual retry",
-                    )
+                    ) > 0
                 }
             }
             FailedResolution.Drop ->
-                dao.deleteById(id)
+                dao.deleteIfStatus(
+                    id = id,
+                    expectedStatus = PendingMutationStatus.Failed.wireValue,
+                ) > 0
         }
     }
 

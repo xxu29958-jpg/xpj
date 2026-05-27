@@ -10,27 +10,38 @@ import kotlinx.coroutines.flow.Flow
  * ADR-0038 PR-2f outbox DAO.
  *
  * Read-side responsibilities:
- *   - [nextPendingBatch] is the drain worker's queue: returns rows
- *     in ``createdAt`` ASC order so older mutations replay first,
- *     enforcing causality.
- *   - [isTargetBusy] / [activeForTarget] let the drain worker check
- *     "is another mutation for this target already IN_FLIGHT" before
- *     dequeuing a new one — same-target serial requirement from the
- *     ADR.
- *   - [observeQueueDepth] / [observeConflictRows] feed the conflict-
- *     banner UI in PR-2g; both are Flow so the UI re-renders without
- *     polling.
+ *   - [nextRunnableBatch] is the drain worker's queue: returns
+ *     PENDING rows in ``createdAt`` ASC order, excluding any row
+ *     whose target already has an unresolved sibling (IN_FLIGHT /
+ *     CONFLICT / FAILED). The exclusion is in SQL (``NOT EXISTS``)
+ *     so ``LIMIT`` applies AFTER blocked targets are skipped.
+ *   - [nextPendingBatch] is a simpler PENDING-only pull used by
+ *     tests and the stale-IN_FLIGHT recovery sweep, neither of
+ *     which needs the unresolved-target filter.
+ *   - [hasUnresolvedRowForTarget] / [activeForTarget] / [isTargetBusy]
+ *     let the repository check target state for cascade / banner
+ *     queries.
+ *   - [observeQueueDepth] / [observeConflictRows] / [observeFailedRows]
+ *     feed the queue-depth pill + the conflict and FAILED banners
+ *     in PR-2g; all Flow so the UI re-renders without polling.
  *
  * Write-side responsibilities:
- *   - [enqueue] is fire-and-forget from the mutation call sites.
- *   - [markInFlight] / [markDone] / [markConflict] / [markFailed]
- *     are the drain worker's status transitions.
- *   - [refreshToken] lets the "keep mine" branch re-enqueue with a
- *     freshly-fetched ``expected_updated_at`` without writing a new
- *     row, preserving the original ``createdAt`` so the queue order
- *     stays causal.
- *   - [deleteResolved] is the cleanup pruner — terminal rows older
- *     than the retention window go away.
+ *   - [insert] is fire-and-forget from the mutation call sites.
+ *   - [markInFlightIfPending] / [markDone] / [markConflict] /
+ *     [markFailed] / [markRetryable] are the drain worker's status
+ *     transitions. ``IfPending`` and the ``...IfStatus`` family
+ *     all carry a ``status = :fromStatus`` predicate so concurrent
+ *     drains / stale UI banners can't move a row out of the state
+ *     the caller thought it was in.
+ *   - [refreshTokenIfStatus] / [markRetryableIfStatus] /
+ *     [deleteIfStatus] are the user-facing resolveConflict /
+ *     resolveFailed building blocks; each is rowcount-checked so
+ *     a stale banner click is a no-op rather than a stomp.
+ *   - [cascadeFreshTokenForTarget] propagates a server-returned
+ *     ``updated_at`` to other PENDING rows of the same target
+ *     after a successful dispatch.
+ *   - [recoverStaleInFlight] / [deleteResolvedBefore] are the
+ *     periodic cleanup operations.
  *
  * Why a single DAO instead of a Repository: the outbox surface is
  * small and the Repository in PR-2g will compose DAO calls with
@@ -136,6 +147,67 @@ interface PendingMutationDao {
         """,
     )
     suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: String): Int
+
+    /**
+     * Atomic ``CONFLICT → PENDING`` token refresh used by
+     * [OutboxRepository.resolveConflict]. The ``status = fromStatus``
+     * predicate makes the call a no-op if the row already advanced
+     * (e.g. the user clicked "keep mine" twice on a stale banner
+     * after a different surface already resolved it). Returns the
+     * affected rowcount so the repository can branch on it.
+     *
+     * [codex round-4 P2] fix: prevents a stale UI banner from
+     * flipping a DONE / dropped row back to PENDING.
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = :toStatus,
+            expectedUpdatedAt = :freshToken,
+            lastError = NULL
+        WHERE id = :id AND status = :fromStatus
+        """,
+    )
+    suspend fun refreshTokenIfStatus(
+        id: Long,
+        fromStatus: String,
+        toStatus: String,
+        freshToken: String,
+    ): Int
+
+    /**
+     * Atomic ``FAILED → PENDING`` manual retry (no token refresh).
+     * Same race-protection rationale as
+     * [refreshTokenIfStatus] / [markInFlightIfPending].
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = :toStatus,
+            lastError = :lastError
+        WHERE id = :id AND status = :fromStatus
+        """,
+    )
+    suspend fun markRetryableIfStatus(
+        id: Long,
+        fromStatus: String,
+        toStatus: String,
+        lastError: String,
+    ): Int
+
+    /**
+     * Atomic delete-if-status. Caller passes the status they think
+     * the row is in (CONFLICT or FAILED depending on which surface
+     * is calling); rowcount = 0 means another surface already moved
+     * the row out of that state.
+     */
+    @Query(
+        """
+        DELETE FROM pending_mutations
+        WHERE id = :id AND status = :expectedStatus
+        """,
+    )
+    suspend fun deleteIfStatus(id: Long, expectedStatus: String): Int
 
     /**
      * Cascade a new ``expected_updated_at`` to every still-PENDING

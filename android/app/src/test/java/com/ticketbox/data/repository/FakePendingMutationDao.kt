@@ -120,6 +120,44 @@ class FakePendingMutationDao : PendingMutationDao {
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
             .take(limit)
 
+    override suspend fun refreshTokenIfStatus(
+        id: Long,
+        fromStatus: String,
+        toStatus: String,
+        freshToken: String,
+    ): Int {
+        val current = rows[id] ?: return 0
+        if (current.status != fromStatus) return 0
+        rows[id] = current.copy(
+            status = toStatus,
+            expectedUpdatedAt = freshToken,
+            lastError = null,
+        )
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun markRetryableIfStatus(
+        id: Long,
+        fromStatus: String,
+        toStatus: String,
+        lastError: String,
+    ): Int {
+        val current = rows[id] ?: return 0
+        if (current.status != fromStatus) return 0
+        rows[id] = current.copy(status = toStatus, lastError = lastError)
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun deleteIfStatus(id: Long, expectedStatus: String): Int {
+        val current = rows[id] ?: return 0
+        if (current.status != expectedStatus) return 0
+        rows.remove(id)
+        refreshObservables()
+        return 1
+    }
+
     override suspend fun nextRunnableBatch(
         pendingStatus: String,
         inFlightStatus: String,
