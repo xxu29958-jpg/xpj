@@ -120,6 +120,24 @@ class FakePendingMutationDao : PendingMutationDao {
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
             .take(limit)
 
+    override suspend fun nextRunnableBatch(
+        pendingStatus: String,
+        inFlightStatus: String,
+        conflictStatus: String,
+        failedStatus: String,
+        limit: Int,
+    ): List<PendingMutationEntity> {
+        val unresolved = setOf(inFlightStatus, conflictStatus, failedStatus)
+        val unresolvedTargets = rows.values
+            .filter { it.status in unresolved }
+            .map { it.targetId }
+            .toSet()
+        return rows.values
+            .filter { it.status == pendingStatus && it.targetId !in unresolvedTargets }
+            .sortedWith(compareBy({ it.createdAt }, { it.id }))
+            .take(limit)
+    }
+
     override suspend fun isTargetBusy(targetId: String, inFlightStatus: String): Boolean =
         rows.values.any { it.targetId == targetId && it.status == inFlightStatus }
 
@@ -175,6 +193,13 @@ class FakePendingMutationDao : PendingMutationDao {
         conflictRows.map { _ ->
             rows.values
                 .filter { it.status == conflictStatus }
+                .sortedWith(compareBy({ it.createdAt }, { it.id }))
+        }
+
+    override fun observeFailedRows(failedStatus: String): Flow<List<PendingMutationEntity>> =
+        conflictRows.map { _ ->
+            rows.values
+                .filter { it.status == failedStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
 

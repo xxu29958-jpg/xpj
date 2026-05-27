@@ -227,6 +227,47 @@ class OutboxRepository(
     }
 
     /**
+     * User picked an action on a FAILED-state row.
+     *
+     * [codex round-3 P2#2] fix: FAILED rows block same-target later
+     * mutations (see [dequeueNextRunnable]); without a user-facing
+     * clear path a payload-parse fail or an unsupported-dispatcher
+     * row would deadlock the rest of the queue for that target.
+     *
+     * - [FailedResolution.Retry] flips the row back to PENDING so
+     *   the next drain re-claims it. If ``freshToken`` is supplied
+     *   the row's ``expected_updated_at`` is also refreshed.
+     * - [FailedResolution.Drop] permanently deletes the row. The
+     *   caller is responsible for rolling back any optimistic UI
+     *   update that was tied to this mutation.
+     */
+    suspend fun resolveFailed(
+        id: Long,
+        resolution: FailedResolution,
+    ) {
+        when (resolution) {
+            is FailedResolution.Retry -> {
+                val freshToken = resolution.freshToken
+                if (freshToken != null) {
+                    dao.refreshToken(
+                        id = id,
+                        pendingStatus = PendingMutationStatus.Pending.wireValue,
+                        freshToken = freshToken,
+                    )
+                } else {
+                    dao.markRetryable(
+                        id = id,
+                        pendingStatus = PendingMutationStatus.Pending.wireValue,
+                        lastError = "manual retry",
+                    )
+                }
+            }
+            FailedResolution.Drop ->
+                dao.deleteById(id)
+        }
+    }
+
+    /**
      * Live queue-depth surface for the global "你有 N 笔待同步"
      * status pill.
      */
@@ -246,6 +287,15 @@ class OutboxRepository(
      */
     fun observeConflicts(): Flow<List<OutboxRow>> =
         dao.observeConflictRows(PendingMutationStatus.Conflict.wireValue)
+            .map { rows -> rows.map { it.toDomain() } }
+
+    /**
+     * Live stream of FAILED rows for the "manual retry / drop"
+     * banner. Counterpart of [observeConflicts]; both states block
+     * same-target later mutations and need a UI surface to clear.
+     */
+    fun observeFailed(): Flow<List<OutboxRow>> =
+        dao.observeFailedRows(PendingMutationStatus.Failed.wireValue)
             .map { rows -> rows.map { it.toDomain() } }
 
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
@@ -326,4 +376,16 @@ private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
 sealed interface ConflictResolution {
     data class KeepMine(val freshToken: String) : ConflictResolution
     data object DropMine : ConflictResolution
+}
+
+/**
+ * User-facing branch on a FAILED row. Unlike [ConflictResolution]
+ * the fresh token is optional — most FAILED rows are payload-parse
+ * errors or unsupported-dispatcher rows where re-fetching server
+ * state isn't meaningful; the user is just deciding "try again on
+ * an upgraded build" vs "give up".
+ */
+sealed interface FailedResolution {
+    data class Retry(val freshToken: String? = null) : FailedResolution
+    data object Drop : FailedResolution
 }

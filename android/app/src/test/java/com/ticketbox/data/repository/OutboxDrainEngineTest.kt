@@ -242,6 +242,46 @@ class OutboxDrainEngineTest {
     }
 
     @Test
+    fun blockedTargetsDoNotStarveOtherRunnableTargets() = runTest {
+        // [codex round-3 P2#1] If the first N PENDING rows in
+        // createdAt order all target a CONFLICT-blocked row, the
+        // SQL filter must exclude them BEFORE LIMIT — otherwise
+        // a runnable row for a different target waiting behind
+        // them never enters the drain batch.
+        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
+        val blockedHead = outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "",
+        )
+        outbox.markConflict(blockedHead, "stale")
+        // 30 PENDING rows for the blocked target — under the old
+        // Kotlin-side filter these would have eaten the whole
+        // LIMIT before the runnable row was reached.
+        repeat(30) {
+            outbox.enqueue(
+                type = PendingMutationType.PatchExpense,
+                targetId = "expense:1",
+                payloadJson = "{}",
+                expectedUpdatedAt = "",
+            )
+        }
+        outbox.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:2",
+            payloadJson = "{}",
+            expectedUpdatedAt = "",
+        )
+
+        val summary = engine.drainOnce()
+        // expense:2 runs; the 30 expense:1 PENDING rows wait
+        // behind the CONFLICT head.
+        assertEquals(1, summary.attempted)
+        assertEquals(1, summary.done)
+    }
+
+    @Test
     fun conflictSiblingBlocksLaterPendingRow() = runTest {
         // [codex round-2 P1#1] An unresolved CONFLICT for the same
         // target must hold back later PENDING siblings — otherwise

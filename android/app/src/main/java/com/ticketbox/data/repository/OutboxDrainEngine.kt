@@ -24,9 +24,12 @@ import kotlinx.coroutines.withContext
  *    next row is dequeued, so a crash mid-drain leaves the queue
  *    in a consistent state on restart.
  * 4. Unknown mutation types ([PendingMutationType.Unknown]) and
- *    types with no registered dispatcher are left in PENDING (the
- *    app might be running an older build than the queued mutation;
- *    log + skip rather than drop).
+ *    types with no registered dispatcher are marked FAILED with
+ *    ``no_dispatcher_registered:<wireType>`` (codex round-1 P2#5).
+ *    They leave the PENDING queue so newer same-or-later rows
+ *    can proceed; the user clears them via
+ *    [OutboxRepository.resolveFailed] (Retry after app upgrade
+ *    that supplies the missing dispatcher, or Drop).
  */
 class OutboxDrainEngine(
     private val outbox: OutboxRepository,

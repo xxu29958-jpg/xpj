@@ -137,6 +137,22 @@ jobs:
       - name: Test
         run: ./gradlew --no-daemon :app:testGrayDebugUnitTest
 
+      # [codex round-3 P2#3] Verify that committed Room schema
+      # JSON matches what KSP just emitted from the @Database
+      # entity definitions. If they differ, the developer
+      # forgot to commit the regenerated `N.json` — fail loudly
+      # so the schema diff lands in the same PR as the entity
+      # change.
+      - name: Verify Room schema snapshots are committed
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain android/app/schemas)" ]; then
+            echo "::error::Room KSP regenerated schema files that aren't committed."
+            echo "Diff (commit these and push again):"
+            git diff -- android/app/schemas | head -200
+            exit 1
+          fi
+
       - name: Build gray and internal debug APKs
         run: ./gradlew --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug
 

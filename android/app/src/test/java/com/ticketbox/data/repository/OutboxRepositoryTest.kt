@@ -174,6 +174,58 @@ class OutboxRepositoryTest {
     }
 
     @Test
+    fun resolveFailedRetryWithoutTokenFlipsBackToPending() = runTest {
+        // [codex round-3 P2#2] Without a UI surface, FAILED rows
+        // permanently block same-target later mutations because of
+        // r2#1's NOT EXISTS filter. ``resolveFailed(Retry)`` must
+        // put the row back to PENDING so the next drain re-claims it.
+        val dao = FakePendingMutationDao()
+        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        repo.markFailed(id, "transient parse")
+
+        repo.resolveFailed(id, FailedResolution.Retry())
+
+        val row = dao.rows[id]!!
+        assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
+        // The row's lastError is replaced by the manual-retry
+        // marker so the UI knows it was user-initiated.
+        assertEquals("manual retry", row.lastError)
+    }
+
+    @Test
+    fun resolveFailedRetryWithFreshTokenAlsoRefreshesIt() = runTest {
+        val dao = FakePendingMutationDao()
+        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val id = repo.enqueue(
+            PendingMutationType.PatchExpense,
+            "expense:1",
+            "{}",
+            "2026-05-04T00:00:00Z",
+        )
+        repo.markFailed(id, "stale token")
+
+        repo.resolveFailed(id, FailedResolution.Retry(freshToken = "2026-05-04T01:00:00Z"))
+
+        val row = dao.rows[id]!!
+        assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
+        assertEquals("2026-05-04T01:00:00Z", row.expectedUpdatedAt)
+        assertEquals(null, row.lastError)
+    }
+
+    @Test
+    fun resolveFailedDropDeletesRow() = runTest {
+        val dao = FakePendingMutationDao()
+        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        repo.markFailed(id, "user gave up")
+
+        repo.resolveFailed(id, FailedResolution.Drop)
+
+        assertTrue(dao.rows[id] == null)
+    }
+
+    @Test
     fun activeForTargetExcludesTerminalRows() = runTest {
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))

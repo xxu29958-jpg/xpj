@@ -170,14 +170,49 @@ interface PendingMutationDao {
     // ---------------------------------------------------------------
 
     /**
-     * Drain worker entry point: oldest pending rows first, capped at
-     * [limit]. ``createdAt`` ascending preserves the order in which
-     * the user issued the mutations.
+     * Drain worker entry point: oldest PENDING rows whose target
+     * has NO unresolved sibling (IN_FLIGHT / CONFLICT / FAILED),
+     * capped at [limit].
      *
-     * The drain worker must additionally apply [isTargetBusy] before
-     * dequeuing — Room can't express "skip rows whose target is
-     * already IN_FLIGHT" as a single query without inflating the
-     * schema, and we'd rather keep the DAO declarative.
+     * The unresolved-sibling exclusion is in the SQL — not a Kotlin
+     * post-filter — so ``LIMIT`` is applied AFTER skipping blocked
+     * targets. [codex round-3 P2#1] fix: with a Kotlin post-filter,
+     * if the first 25 PENDING rows all target an ``expense:1`` that
+     * already has a CONFLICT sibling, the 26th runnable row (for
+     * ``expense:2``) never enters the batch and the drain returns
+     * IDLE forever even though there's real work available.
+     *
+     * Same-target dedup (only the oldest PENDING row per target
+     * runs in a given pass) stays in the repository layer because
+     * SQLite can't elegantly express "first-per-group" without
+     * window functions Room doesn't support in suspend queries.
+     */
+    @Query(
+        """
+        SELECT * FROM pending_mutations AS pm
+        WHERE pm.status = :pendingStatus
+          AND NOT EXISTS (
+            SELECT 1 FROM pending_mutations AS sib
+            WHERE sib.targetId = pm.targetId
+              AND sib.status IN (:inFlightStatus, :conflictStatus, :failedStatus)
+          )
+        ORDER BY pm.createdAt ASC, pm.id ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun nextRunnableBatch(
+        pendingStatus: String,
+        inFlightStatus: String,
+        conflictStatus: String,
+        failedStatus: String,
+        limit: Int,
+    ): List<PendingMutationEntity>
+
+    /**
+     * Plain "PENDING ordered by createdAt" pull. Pre-round-3 entry
+     * point — kept for tests and for the recovery sweep code path
+     * that doesn't care about target dedup. Drain engine uses
+     * [nextRunnableBatch] instead.
      */
     @Query(
         """
@@ -312,6 +347,26 @@ interface PendingMutationDao {
         """,
     )
     fun observeConflictRows(conflictStatus: String): Flow<List<PendingMutationEntity>>
+
+    /**
+     * Live stream of rows that hit a terminal-failure status. Drives
+     * the "manual retry / drop" banner the user uses to clear FAILED
+     * rows that would otherwise block same-target siblings.
+     *
+     * [codex round-3 finding P2#2] companion: FAILED rows do block
+     * same-target later mutations now (see [nextRunnableBatch]), so
+     * there MUST be a UI path to retry or drop them; otherwise a
+     * single payload-parse failure deadlocks the rest of the queue
+     * for that target.
+     */
+    @Query(
+        """
+        SELECT * FROM pending_mutations
+        WHERE status = :failedStatus
+        ORDER BY createdAt ASC, id ASC
+        """,
+    )
+    fun observeFailedRows(failedStatus: String): Flow<List<PendingMutationEntity>>
 
     /**
      * Delete by id. Used when the user picks "drop mine" on a
