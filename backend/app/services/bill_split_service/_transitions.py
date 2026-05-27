@@ -134,6 +134,7 @@ def cancel_invitation(
     inv = get_invitation(db, public_id)
     if sender_account_id != inv.sender_account_id:
         raise AppError("invitation_not_yours", status_code=403)
+    _load_writer_member(db, inv.sender_ledger_id, sender_account_id)
     if inv.status != "invited":
         # Already terminal — accepted invitations CANNOT be cancelled
         # because the receiver already has a real expense.

@@ -149,3 +149,10 @@ Index(
     BillSplitInvitation.expires_at,
     BillSplitInvitation.status,
 )
+Index(
+    "uq_bill_split_invitations_pending_receiver",
+    BillSplitInvitation.sender_expense_id,
+    BillSplitInvitation.receiver_account_id,
+    unique=True,
+    sqlite_where=BillSplitInvitation.status == "invited",
+)

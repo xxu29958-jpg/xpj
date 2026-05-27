@@ -35,6 +35,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "expense_tags" in inspector.get_table_names()
     assert "expense_items" in inspector.get_table_names()
     assert "expense_splits" in inspector.get_table_names()
+    assert "bill_split_invitations" in inspector.get_table_names()
     assert "csv_import_batches" in inspector.get_table_names()
     assert "csv_import_rows" in inspector.get_table_names()
     assert "recurring_items" in inspector.get_table_names()
@@ -76,6 +77,9 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_expense_splits_tenant_expense_position" in indexes("expense_splits")
     assert "ix_expense_splits_tenant_public_id" in indexes("expense_splits")
     assert "ix_expense_splits_tenant_member" in indexes("expense_splits")
+    assert "uq_bill_split_invitations_pending_receiver" in indexes(
+        "bill_split_invitations"
+    )
     assert "ix_csv_import_batches_tenant_public_id" in indexes("csv_import_batches")
     assert "ix_csv_import_batches_tenant_status_created_at" in indexes("csv_import_batches")
     assert "ix_csv_import_rows_tenant_batch_line" in indexes("csv_import_rows")
@@ -216,7 +220,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "bb00c453bf29"
+    assert alembic_revision == "9d8a7c6b5e4f"
 
 
 def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
@@ -252,7 +256,7 @@ def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "bb00c453bf29"
+    assert alembic_revision == "9d8a7c6b5e4f"
 
 
 def test_init_db_runs_data_migrations_for_pre_alembic_existing_data() -> None:
@@ -291,7 +295,7 @@ def test_init_db_runs_data_migrations_for_pre_alembic_existing_data() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "bb00c453bf29"
+    assert alembic_revision == "9d8a7c6b5e4f"
 
 
 def test_exchange_rates_seed_identity_ledger_ids() -> None:

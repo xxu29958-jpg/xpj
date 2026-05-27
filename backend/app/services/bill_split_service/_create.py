@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -15,6 +16,20 @@ from app.services.bill_split_service._common import (
     _load_writer_member,
 )
 from app.services.time_service import now_utc
+
+_PENDING_DUPLICATE_INDEX = "uq_bill_split_invitations_pending_receiver"
+_PENDING_DUPLICATE_COLUMNS = (
+    "bill_split_invitations.sender_expense_id",
+    "bill_split_invitations.receiver_account_id",
+)
+
+
+def _is_pending_duplicate_error(exc: IntegrityError) -> bool:
+    message = str(exc.orig if exc.orig is not None else exc)
+    return (
+        _PENDING_DUPLICATE_INDEX in message
+        or all(column in message for column in _PENDING_DUPLICATE_COLUMNS)
+    )
 
 
 def create_invitation(
@@ -32,6 +47,9 @@ def create_invitation(
     """
     if amount_cents <= 0:
         raise AppError("invalid_request", "拆账金额必须大于 0。", status_code=422)
+
+    if receiver_account_id == sender_account_id:
+        raise AppError("invalid_request", status_code=422)
 
     # 1. Sender's role on sender_ledger must be writer.
     sender_member = _load_writer_member(db, sender_ledger_id, sender_account_id)
@@ -74,6 +92,16 @@ def create_invitation(
     sender = db.get(Account, sender_account_id)
     assert sender is not None  # AuthContext already validated this
 
+    pending_duplicate = db.scalar(
+        select(BillSplitInvitation.id)
+        .where(BillSplitInvitation.sender_expense_id == expense.id)
+        .where(BillSplitInvitation.receiver_account_id == receiver_account_id)
+        .where(BillSplitInvitation.status == "invited")
+        .limit(1)
+    )
+    if pending_duplicate is not None:
+        raise AppError("split_invitation_already_pending", status_code=409)
+
     now = now_utc()
     invitation = BillSplitInvitation(
         sender_account_id=sender_account_id,
@@ -98,7 +126,13 @@ def create_invitation(
         created_at=now,
     )
     db.add(invitation)
-    db.flush()  # need invitation.public_id for audit row
+    try:
+        db.flush()  # need invitation.public_id for audit row
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_pending_duplicate_error(exc):
+            raise AppError("split_invitation_already_pending", status_code=409) from exc
+        raise
     _audit(db, sender_ledger_id, "bill_split_invited",
            actor_account_id=sender_account_id,
            target_account_id=receiver_account_id,

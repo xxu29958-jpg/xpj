@@ -87,7 +87,7 @@ def list_my_sent(
 def accept_split_invitation(
     public_id: str,
     payload: BillSplitAcceptRequest,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> BillSplitInboxResponse:
     inv, _expense = bsplit.accept_invitation(
@@ -105,7 +105,7 @@ def accept_split_invitation(
 )
 def reject_split_invitation(
     public_id: str,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> BillSplitInboxResponse:
     inv = bsplit.reject_invitation(
@@ -120,7 +120,7 @@ def reject_split_invitation(
 )
 def cancel_split_invitation(
     public_id: str,
-    auth: AuthContext = Depends(get_current_writer_context),
+    auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> BillSplitSentResponse:
     inv = bsplit.cancel_invitation(
