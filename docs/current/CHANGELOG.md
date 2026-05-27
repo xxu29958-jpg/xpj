@@ -23,6 +23,13 @@
   - `backend/scripts/_audit_mutate_token_coverage.py`：走 in-process OpenAPI schema 扫所有 mutate route (POST/PUT/PATCH/DELETE)，验证每个都 carry `expected_updated_at` / `expected_updated_at_by_id`；ALLOWLIST 列豁免（create / terminal lifecycle / batch / admin / preview / single-writer maintenance）每条带 one-line reason；KNOWN_GAPS 标 6 个 v1.1 pre-ADR-0038 sediment route（goal PATCH / income-plan PATCH/DELETE / budget PUT / dashboard PUT / ui-preferences PUT）只 WARN 不 FAIL，未来 strict 模式可加 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1` 收紧。
   - 已接入 `release_audit.py` 自动 discovery，跑过 138 个 mutate route 全分类（27 token / 105 ALLOWLIST / 6 KNOWN_GAPS）。
 
+- **PR-2j v1.1 sediment 清账 + audit 收紧到 strict**：
+  - `PATCH /api/goals/{public_id}` 加必填 `expected_updated_at`：`GoalUpdateRequest` 加字段（`extra="forbid"`）；`goal_service.update_goal` 改用 `claim_row_with_token` + `extra_where=(Goal.status=='active')`；rowcount=0 分支为 archived → 409 `invalid_request`，else → 409 `state_conflict`。Android `GoalUpdateRequestDto` / `GoalUpdate` domain model 加 `expectedUpdatedAt` 必传。
+  - `PATCH /api/income-plans/{public_id}` 同款：`IncomePlanUpdateRequest` 加字段；service 用 `claim_row_with_token` + `extra_where=(MonthlyIncomePlan.status=='active')`；archived 仍走"请先恢复" 409 `state_conflict`。Android `IncomePlanUpdateRequestDto` / `IncomePlanPatch` mapper 加字段。
+  - 剩余 4 条原 KNOWN_GAPS 移入 ALLOWLIST：`DELETE /api/income-plans/{id}` (archive lifecycle 与现有 restore POST 对称)，`PUT /api/budgets/monthly/{month}` (upsert by (tenant, month) 不是 row PATCH)，`PUT /api/dashboard/cards` (按 surface replace-all layout)，`PUT /api/me/ui-preferences` (账号级 local UI cache upsert)。
+  - audit `_strict_gate_enabled()` 默认 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1`（KNOWN_GAPS 现在空集，默认 strict 不影响）；audit 数字变成 30 carry token / 108 ALLOWLIST / 0 KNOWN_GAPS。
+  - 两套独立 contract test：`test_goal_optimistic_concurrency.py` / `test_income_plan_optimistic_concurrency.py`，覆盖 missing 422 / stale 409 / unknown 404 / two-session race / archived row preserved 409。
+
 ## v1.2.0 — 现金流预算 + Learning Feedback + OCR facts 单源（当前）
 
 v1.1 主线"家庭现金流预算"与 v1.2 主线"learning-feedback + OCR facts 单源"内容均合入此 release。v1.1.0 没有单独发布 tag；版本号一次到 1.2.0。

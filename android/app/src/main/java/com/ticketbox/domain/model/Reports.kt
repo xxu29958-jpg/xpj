@@ -112,6 +112,7 @@ data class GoalDraft(
 )
 
 data class GoalUpdate(
+    val expectedUpdatedAt: String,
     val name: String? = null,
     val month: String? = null,
     val targetAmountCents: Long? = null,

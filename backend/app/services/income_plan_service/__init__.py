@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.ledger_scope import add_ledger_scope, ledger_filter, ledger_scoped_select
 from app.models import MonthlyIncomePlan
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
 IncomeStatus = Literal["active", "archived"]
@@ -96,6 +97,7 @@ def update_income_plan(
     *,
     tenant_id: str,
     public_id: str,
+    expected_updated_at: datetime,
     label: str | None = None,
     source_type: str | None = None,
     amount_cents: int | None = None,
@@ -103,7 +105,15 @@ def update_income_plan(
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
     """Partial update. Only fields explicitly provided are changed.
-    Archived plans cannot be edited — caller must reactivate first."""
+    Archived plans cannot be edited — caller must reactivate first.
+
+    ADR-0038 PR-2j atomic optimistic-concurrency claim:
+    ``UPDATE monthly_income_plans SET ..., updated_at = now WHERE
+    id, tenant_id, status='active', updated_at = expected``.
+    ``rowcount == 0`` disambiguates: row archived in the meantime →
+    409 ``state_conflict`` (existing UX preserved); otherwise →
+    409 ``state_conflict``.
+    """
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "archived":
@@ -112,6 +122,12 @@ def update_income_plan(
             "已归档的收入计划不能直接修改，请先恢复。",
             status_code=409,
         )
+
+    plan_id = plan.id
+    new_label = plan.label
+    new_source_type = plan.source_type
+    new_amount_cents = plan.amount_cents
+    new_pay_day = plan.pay_day
 
     if label is not None:
         clean = label.strip()
@@ -123,24 +139,50 @@ def update_income_plan(
                 f"收入名称最多 {_LABEL_MAX_LEN} 个字符。",
                 status_code=422,
             )
-        plan.label = clean
+        new_label = clean
     if source_type is not None:
-        plan.source_type = source_type.strip()[:_SOURCE_TYPE_MAX_LEN] or "salary"
+        new_source_type = source_type.strip()[:_SOURCE_TYPE_MAX_LEN] or "salary"
     if amount_cents is not None:
         if amount_cents < 0:
             raise AppError("invalid_request", "金额不能为负数。", status_code=422)
-        plan.amount_cents = amount_cents
+        new_amount_cents = amount_cents
     if pay_day is not None:
         if not 1 <= pay_day <= 31:
             raise AppError(
                 "invalid_request", "发薪日需在 1 到 31 之间。", status_code=422
             )
-        plan.pay_day = pay_day
+        new_pay_day = pay_day
 
-    plan.updated_at = now or now_utc()
+    when = now or now_utc()
+    rowcount = claim_row_with_token(
+        db,
+        MonthlyIncomePlan,
+        pk_id=plan_id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={
+            "label": new_label,
+            "source_type": new_source_type,
+            "amount_cents": new_amount_cents,
+            "pay_day": new_pay_day,
+            "updated_at": when,
+        },
+        extra_where=(MonthlyIncomePlan.status == "active",),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+        if current.status == "archived":
+            raise AppError(
+                "state_conflict",
+                "已归档的收入计划不能直接修改，请先恢复。",
+                status_code=409,
+            )
+        raise AppError("state_conflict", status_code=409)
     db.commit()
-    db.refresh(plan)
-    return plan
+    db.expire_all()
+    return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
 
 def archive_income_plan(

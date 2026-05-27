@@ -35,6 +35,7 @@ fun IncomePlanDraft.toCreateRequest(): IncomePlanCreateRequestDto =
     )
 
 data class IncomePlanPatch(
+    val expectedUpdatedAt: String,
     val label: String? = null,
     val sourceType: IncomeSourceType? = null,
     val amountCents: Long? = null,
@@ -43,6 +44,7 @@ data class IncomePlanPatch(
 
 fun IncomePlanPatch.toUpdateRequest(): IncomePlanUpdateRequestDto =
     IncomePlanUpdateRequestDto(
+        expectedUpdatedAt = expectedUpdatedAt,
         label = label?.trim(),
         sourceType = sourceType?.wireValue,
         amountCents = amountCents,

@@ -9,6 +9,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Goal
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services.category_service import normalize_category
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.spending_contract_service import clean_month, confirmed_amount_query
 from app.services.time_service import now_utc
 
@@ -276,35 +277,78 @@ def update_goal(
     payload: GoalUpdateRequest,
     timezone_name: str | None = None,
 ) -> GoalResponse:
+    """ADR-0038 PR-2j: atomic optimistic-concurrency PATCH.
+
+    Validates the new fields then runs ``UPDATE goals SET ...,
+    updated_at = now WHERE id, tenant_id, status='active', updated_at =
+    expected``. ``rowcount == 0`` disambiguates: row vanished /
+    no longer active → 404 ``goal_not_found``; else → 409
+    ``state_conflict``. Archived check happens at the DB predicate
+    layer so a peer archiving between the read and this PATCH
+    surfaces as state_conflict, not a silent overwrite of an
+    archived row.
+    """
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     if goal.status == "archived":
         raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
-    updates = payload.model_dump(exclude_unset=True)
+
+    updates = payload.model_dump(
+        exclude_unset=True, exclude={"expected_updated_at"}
+    )
+    goal_id = goal.id
+    new_name = goal.name
+    new_month = goal.month
+    new_category = goal.category
+    new_target = goal.target_amount_cents
     if "name" in updates:
-        goal.name = _clean_name(updates["name"])
+        new_name = _clean_name(updates["name"])
     if "month" in updates:
-        goal.month = _clean_month(updates["month"])
+        new_month = _clean_month(updates["month"])
     if "category" in updates:
-        goal.category = _clean_category(updates["category"])
+        new_category = _clean_category(updates["category"])
     if "target_amount_cents" in updates:
-        goal.target_amount_cents = _clean_target_amount(updates["target_amount_cents"])
+        new_target = _clean_target_amount(updates["target_amount_cents"])
     if _active_goal_conflict_exists(
         db,
         tenant_id=tenant_id,
-        month=goal.month,
-        category=goal.category,
+        month=new_month,
+        category=new_category,
         goal_type=goal.goal_type,
         period=goal.period,
         exclude_public_id=goal.public_id,
     ):
         _raise_duplicate_goal()
-    goal.updated_at = now_utc()
+
+    now = now_utc()
     try:
-        db.commit()
+        rowcount = claim_row_with_token(
+            db,
+            Goal,
+            pk_id=goal_id,
+            tenant_id=tenant_id,
+            expected_updated_at=payload.expected_updated_at,
+            set_values={
+                "name": new_name,
+                "month": new_month,
+                "category": new_category,
+                "target_amount_cents": new_target,
+                "updated_at": now,
+            },
+            extra_where=(Goal.status == "active",),
+            synchronize_session=False,
+        )
     except IntegrityError:
         db.rollback()
         _raise_duplicate_goal()
-    db.refresh(goal)
+    if rowcount != 1:
+        db.rollback()
+        current = get_goal(db, tenant_id=tenant_id, public_id=public_id)
+        if current.status != "active":
+            raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
+        raise AppError("state_conflict", status_code=409)
+    db.commit()
+    db.expire_all()
+    goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     totals = _month_spend_totals(
         db,
         tenant_id=tenant_id,

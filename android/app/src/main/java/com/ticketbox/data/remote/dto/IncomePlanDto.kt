@@ -33,7 +33,13 @@ data class IncomePlanCreateRequestDto(
     @param:Json(name = "pay_day") val payDay: Int,
 )
 
+/**
+ * ADR-0038 PR-2j: PATCH /api/income-plans/{publicId} body. ``expectedUpdatedAt``
+ * is the client's last-seen ``updated_at`` token; server returns 409
+ * on stale snapshot.
+ */
 data class IncomePlanUpdateRequestDto(
+    @param:Json(name = "expected_updated_at") val expectedUpdatedAt: String,
     val label: String? = null,
     @param:Json(name = "source_type") val sourceType: String? = null,
     @param:Json(name = "amount_cents") val amountCents: Long? = null,

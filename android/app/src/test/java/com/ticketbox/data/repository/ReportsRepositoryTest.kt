@@ -85,7 +85,11 @@ class ReportsRepositoryTest {
             ).getOrThrow()
             val updated = repository.updateGoal(
                 publicId = " goal-1 ",
-                update = GoalUpdate(targetAmountCents = 90000, category = "购物"),
+                update = GoalUpdate(
+                    expectedUpdatedAt = "2026-05-04T00:00:00Z",
+                    targetAmountCents = 90000,
+                    category = "购物",
+                ),
             ).getOrThrow()
             val cards = repository.dashboardCards(DashboardSurface.Android).getOrThrow()
             val savedCards = repository.updateDashboardCards(

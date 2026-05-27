@@ -124,6 +124,20 @@ ALLOWLIST: dict[str, str] = {
     "PUT /api/exchange-rates/{currency_code}/{rate_date}":
         "owner-console-only — manual rate edit",
 
+    # --- /api upsert / replace-all / lifecycle surfaces (account-
+    # level prefs, monthly-key budgets, dashboard layout, archive).
+    # These are not per-row PATCHes — they overwrite a tenant/account-
+    # keyed bucket OR are idempotent terminal lifecycle. ADR-0038
+    # PR-2j confirmed these route shapes deliberately stay token-free.
+    "DELETE /api/income-plans/{public_id}":
+        "archive lifecycle — idempotent terminal, mirrors restore POST",
+    "PUT /api/budgets/monthly/{month}":
+        "upsert by (tenant, month) — replaces the whole monthly budget bucket",
+    "PUT /api/dashboard/cards":
+        "replace-all layout by (tenant, surface) — single writer per surface",
+    "PUT /api/me/ui-preferences":
+        "upsert single row per account — local UI cache, no cross-window contention",
+
     # --- /web mutate forms / create / batch / nav. The /web/<edit>
     # surface that DOES need per-row tokens already carries them and
     # is detected as TOKEN by this audit — those entries don't appear
@@ -204,19 +218,18 @@ ALLOWLIST: dict[str, str] = {
 
 # Pre-existing PATCH / DELETE / PUT routes that legitimately COULD use
 # optimistic-concurrency tokens but pre-date ADR-0038 and don't yet.
-# Audit emits these as WARN — not FAIL — so the v1.3 cut-over is
-# unblocked while the sediment is paid down incrementally. NEW
-# mutating routes that should have a token must NOT be added here —
-# add the token instead. Set XPJ_AUDIT_MUTATE_TOKEN_STRICT=1 to gate
-# strictly (the future v1.4 lane).
-KNOWN_GAPS: frozenset[str] = frozenset({
-    "PATCH /api/goals/{public_id}",
-    "DELETE /api/income-plans/{public_id}",
-    "PATCH /api/income-plans/{public_id}",
-    "PUT /api/budgets/monthly/{month}",
-    "PUT /api/dashboard/cards",
-    "PUT /api/me/ui-preferences",
-})
+# Audit emits these as WARN — not FAIL — so a route can be parked here
+# mid-migration. NEW mutating routes that should have a token must
+# NOT be added here — add the token instead. Set
+# XPJ_AUDIT_MUTATE_TOKEN_STRICT=1 to gate strictly (turn WARNs into
+# FAILs).
+#
+# v1.3 PR-2j paid down the original 6 entries: 2 routes now carry the
+# token (goals PATCH / income-plans PATCH) so they're auto-detected
+# as TOKEN carriers; 4 moved to ALLOWLIST with explicit reasons
+# (upsert / replace-all / archive lifecycle). The set is empty and
+# strict mode is the working default.
+KNOWN_GAPS: frozenset[str] = frozenset()
 
 # Routes that ARE expected to carry the token but the audit can't see
 # it via the schema alone (e.g. a query-string token, a header). We
@@ -299,9 +312,16 @@ def _iter_routes(spec: dict) -> list[tuple[str, str, dict]]:
 
 
 def _strict_gate_enabled() -> bool:
+    """Default-on: KNOWN_GAPS entries FAIL the audit (not WARN).
+
+    ADR-0038 PR-2j paid down all the v1.1 sediment, so strict is the
+    working default. ``XPJ_AUDIT_MUTATE_TOKEN_STRICT=0`` flips it
+    back to WARN — only useful when a route is genuinely mid-
+    migration and you need the audit to ride along without blocking.
+    """
     import os
 
-    return os.environ.get("XPJ_AUDIT_MUTATE_TOKEN_STRICT", "0") == "1"
+    return os.environ.get("XPJ_AUDIT_MUTATE_TOKEN_STRICT", "1") == "1"
 
 
 def _bucket_routes(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.services.time_service import to_iso
 
@@ -25,6 +25,17 @@ class IncomePlanCreateRequest(BaseModel):
 
 
 class IncomePlanUpdateRequest(BaseModel):
+    """ADR-0038 PR-2j: ``PATCH /api/income-plans/{public_id}`` body.
+
+    ``expected_updated_at`` is the client's last-seen optimistic-
+    concurrency token. Service issues atomic ``UPDATE WHERE id,
+    tenant_id, status='active', updated_at = expected`` and returns
+    409 ``state_conflict`` on stale snapshot.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
     label: str | None = Field(default=None, min_length=1, max_length=64)
     source_type: str | None = Field(default=None, min_length=1, max_length=32)
     amount_cents: int | None = Field(default=None, ge=0)

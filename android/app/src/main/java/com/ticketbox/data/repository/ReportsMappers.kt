@@ -93,6 +93,7 @@ fun GoalDraft.toRequest(): GoalCreateRequestDto = GoalCreateRequestDto(
 )
 
 fun GoalUpdate.toRequest(): GoalUpdateRequestDto = GoalUpdateRequestDto(
+    expectedUpdatedAt = expectedUpdatedAt,
     name = name?.trim()?.takeIf { it.isNotBlank() },
     month = month?.trim()?.takeIf { it.isNotBlank() },
     targetAmountCents = targetAmountCents,

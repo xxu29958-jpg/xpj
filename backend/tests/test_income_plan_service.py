@@ -154,8 +154,13 @@ def test_update_changes_only_provided_fields(identity) -> None:  # noqa: ARG001
             amount_cents=1_000_000, pay_day=10,
         )
         pid = plan.public_id
+        token = plan.updated_at
         updated = update_income_plan(
-            db, tenant_id="owner", public_id=pid, amount_cents=1_200_000
+            db,
+            tenant_id="owner",
+            public_id=pid,
+            expected_updated_at=token,
+            amount_cents=1_200_000,
         )
     assert updated.amount_cents == 1_200_000
     assert updated.label == "工资"  # unchanged
@@ -168,17 +173,27 @@ def test_update_rejects_archived_plan(identity) -> None:  # noqa: ARG001
             db, tenant_id="owner", label="x", source_type="salary",
             amount_cents=100, pay_day=5,
         )
+        token = plan.updated_at
         archive_income_plan(db, tenant_id="owner", public_id=plan.public_id)
         with pytest.raises(AppError, match="归档"):
             update_income_plan(
-                db, tenant_id="owner", public_id=plan.public_id, label="y"
+                db,
+                tenant_id="owner",
+                public_id=plan.public_id,
+                expected_updated_at=token,
+                label="y",
             )
 
 
 def test_update_unknown_public_id_returns_not_found(identity) -> None:  # noqa: ARG001
+    from datetime import UTC, datetime
     with SessionLocal() as db, pytest.raises(AppError, match="不存在"):
         update_income_plan(
-            db, tenant_id="owner", public_id="nonexistent", label="x"
+            db,
+            tenant_id="owner",
+            public_id="nonexistent",
+            expected_updated_at=datetime(2026, 5, 4, tzinfo=UTC),
+            label="x",
         )
 
 

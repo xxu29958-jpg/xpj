@@ -319,10 +319,12 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
     assert created.status_code == 201, created.json()
     public_id = created.json()["public_id"]
 
+    # ADR-0038 PR-2j: PATCH requires expected_updated_at token.
     updated = client.patch(
         f"/api/goals/{public_id}",
         headers=identity.app_headers,
         json={
+            "expected_updated_at": created.json()["updated_at"],
             "name": "全月目标",
             "category": None,
             "target_amount_cents": 5000,
@@ -352,7 +354,10 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
     archived_patch = client.patch(
         f"/api/goals/{public_id}",
         headers=identity.app_headers,
-        json={"name": "不能修改"},
+        json={
+            "expected_updated_at": archived.json()["updated_at"],
+            "name": "不能修改",
+        },
     )
     assert archived_patch.status_code == 409
     assert archived_patch.json()["error"] == "invalid_request"

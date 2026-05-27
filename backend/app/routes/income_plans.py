@@ -86,10 +86,12 @@ def update_plan(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
+    # ADR-0038 PR-2j: token-gated PATCH. Stale snapshot → 409.
     plan = update_income_plan(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
+        expected_updated_at=payload.expected_updated_at,
         label=payload.label,
         source_type=payload.source_type,
         amount_cents=payload.amount_cents,

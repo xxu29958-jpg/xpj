@@ -5280,6 +5280,8 @@
         "type": "object"
       },
       "GoalUpdateRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2j: ``PATCH /api/goals/{public_id}`` body.\n\n``expected_updated_at`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, updated_at = expected`` and returns 409 ``state_conflict``\non stale snapshot. Same shape as the rest of the v1.3 PATCH surface.",
         "properties": {
           "category": {
             "anyOf": [
@@ -5292,6 +5294,11 @@
               }
             ],
             "title": "Category"
+          },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
           },
           "month": {
             "anyOf": [
@@ -5332,6 +5339,9 @@
             "title": "Target Amount Cents"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "GoalUpdateRequest",
         "type": "object"
       },
@@ -5549,6 +5559,8 @@
         "type": "object"
       },
       "IncomePlanUpdateRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-2j: ``PATCH /api/income-plans/{public_id}`` body.\n\n``expected_updated_at`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, status='active', updated_at = expected`` and returns\n409 ``state_conflict`` on stale snapshot.",
         "properties": {
           "amount_cents": {
             "anyOf": [
@@ -5561,6 +5573,11 @@
               }
             ],
             "title": "Amount Cents"
+          },
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
           },
           "label": {
             "anyOf": [
@@ -5602,6 +5619,9 @@
             "title": "Source Type"
           }
         },
+        "required": [
+          "expected_updated_at"
+        ],
         "title": "IncomePlanUpdateRequest",
         "type": "object"
       },

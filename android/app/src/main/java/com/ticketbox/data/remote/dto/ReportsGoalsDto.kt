@@ -67,7 +67,14 @@ data class GoalCreateRequestDto(
     val period: String = "monthly",
 )
 
+/**
+ * ADR-0038 PR-2j: PATCH /api/goals/{publicId} body. ``expectedUpdatedAt``
+ * is the client's last-seen ``updated_at`` token; server returns 409 on
+ * stale snapshot.
+ */
 data class GoalUpdateRequestDto(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
     val name: String? = null,
     val month: String? = null,
     val category: String? = null,

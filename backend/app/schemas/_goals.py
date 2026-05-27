@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.services.time_service import to_iso
 
@@ -26,6 +26,17 @@ class GoalCreateRequest(BaseModel):
 
 
 class GoalUpdateRequest(BaseModel):
+    """ADR-0038 PR-2j: ``PATCH /api/goals/{public_id}`` body.
+
+    ``expected_updated_at`` is the client's last-seen optimistic-
+    concurrency token. Service issues atomic ``UPDATE WHERE id,
+    tenant_id, updated_at = expected`` and returns 409 ``state_conflict``
+    on stale snapshot. Same shape as the rest of the v1.3 PATCH surface.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
     name: str | None = Field(default=None, min_length=1, max_length=80)
     month: str | None = Field(default=None, min_length=7, max_length=7)
     category: str | None = Field(default=None, max_length=64)

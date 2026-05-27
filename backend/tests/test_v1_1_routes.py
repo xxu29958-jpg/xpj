@@ -70,10 +70,14 @@ def test_update_income_plan_partial(client: TestClient, *, identity) -> None:
     ).json()
     pid = created["public_id"]
 
+    # ADR-0038 PR-2j: PATCH requires expected_updated_at token.
     updated = client.patch(
         f"/api/income-plans/{pid}",
         headers=identity.app_headers,
-        json={"amount_cents": 500_000},
+        json={
+            "expected_updated_at": created["updated_at"],
+            "amount_cents": 500_000,
+        },
     )
     assert updated.status_code == 200, updated.text
     body = updated.json()
@@ -86,7 +90,10 @@ def test_update_unknown_income_plan_returns_404(client: TestClient, *, identity)
     resp = client.patch(
         "/api/income-plans/nonexistent",
         headers=identity.app_headers,
-        json={"label": "x"},
+        json={
+            "expected_updated_at": "2026-05-04T00:00:00Z",
+            "label": "x",
+        },
     )
     assert resp.status_code == 404
 
