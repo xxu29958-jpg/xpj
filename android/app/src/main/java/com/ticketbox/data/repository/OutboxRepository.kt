@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
@@ -344,7 +345,25 @@ class OutboxRepository(
     private fun nowIso(): String = ISO.format(Instant.now(clock))
 
     companion object {
-        private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
+        /**
+         * Fixed-width UTC timestamp formatter used everywhere outbox
+         * writes a time to a TEXT column.
+         *
+         * [codex round-6 P2] fix: SQLite compares TEXT columns
+         * lexicographically. ``DateTimeFormatter.ISO_INSTANT`` is
+         * variable-width — it omits fractional seconds when they're
+         * zero, so ``2026-05-04T12:00:00.001Z`` (later in time)
+         * actually sorts BEFORE ``2026-05-04T12:00:00Z`` because
+         * ``'.'`` (0x2E) < ``'Z'`` (0x5A). That breaks
+         * ``ORDER BY createdAt`` causality AND breaks the
+         * ``recoverStaleInFlight`` cutoff comparison.
+         *
+         * Fixed width (always ``yyyy-MM-ddTHH:mm:ss.SSS'Z'``, 24
+         * chars) makes lex order == time order.
+         */
+        private val ISO: DateTimeFormatter = DateTimeFormatter
+            .ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'")
+            .withZone(ZoneOffset.UTC)
 
         const val DEFAULT_DRAIN_BATCH: Int = 25
         /** 7 days — enough to power undo / audit and not enough to

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 9,
-    "identityHash": "0000000000000000000000000000000000000000",
+    "identityHash": "2cd98e34c91a2f606551f7aea5e9e23f",
     "entities": [
       {
         "tableName": "expenses",
@@ -257,38 +257,103 @@
         "tableName": "pending_mutations",
         "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `type` TEXT NOT NULL, `targetId` TEXT NOT NULL, `payload` TEXT NOT NULL, `expectedUpdatedAt` TEXT NOT NULL, `status` TEXT NOT NULL, `retryCount` INTEGER NOT NULL DEFAULT 0, `lastError` TEXT, `createdAt` TEXT NOT NULL, `attemptedAt` TEXT, `completedAt` TEXT)",
         "fields": [
-          {"fieldPath": "id", "columnName": "id", "affinity": "INTEGER", "notNull": true},
-          {"fieldPath": "type", "columnName": "type", "affinity": "TEXT", "notNull": true},
-          {"fieldPath": "targetId", "columnName": "targetId", "affinity": "TEXT", "notNull": true},
-          {"fieldPath": "payload", "columnName": "payload", "affinity": "TEXT", "notNull": true},
-          {"fieldPath": "expectedUpdatedAt", "columnName": "expectedUpdatedAt", "affinity": "TEXT", "notNull": true},
-          {"fieldPath": "status", "columnName": "status", "affinity": "TEXT", "notNull": true},
-          {"fieldPath": "retryCount", "columnName": "retryCount", "affinity": "INTEGER", "notNull": true, "defaultValue": "0"},
-          {"fieldPath": "lastError", "columnName": "lastError", "affinity": "TEXT"},
-          {"fieldPath": "createdAt", "columnName": "createdAt", "affinity": "TEXT", "notNull": true},
-          {"fieldPath": "attemptedAt", "columnName": "attemptedAt", "affinity": "TEXT"},
-          {"fieldPath": "completedAt", "columnName": "completedAt", "affinity": "TEXT"}
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetId",
+            "columnName": "targetId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedUpdatedAt",
+            "columnName": "expectedUpdatedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retryCount",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptedAt",
+            "columnName": "attemptedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completedAt",
+            "affinity": "TEXT"
+          }
         ],
-        "primaryKey": {"autoGenerate": true, "columnNames": ["id"]},
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
         "indices": [
           {
             "name": "index_pending_mutations_createdAt",
             "unique": false,
-            "columnNames": ["createdAt"],
+            "columnNames": [
+              "createdAt"
+            ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
           },
           {
             "name": "index_pending_mutations_targetId_status",
             "unique": false,
-            "columnNames": ["targetId", "status"],
+            "columnNames": [
+              "targetId",
+              "status"
+            ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_targetId_status` ON `${TABLE_NAME}` (`targetId`, `status`)"
           },
           {
             "name": "index_pending_mutations_status",
             "unique": false,
-            "columnNames": ["status"],
+            "columnNames": [
+              "status"
+            ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_status` ON `${TABLE_NAME}` (`status`)"
           }
@@ -297,7 +362,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0000000000000000000000000000000000000000')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2cd98e34c91a2f606551f7aea5e9e23f')"
     ]
   }
 }

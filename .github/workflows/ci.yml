@@ -134,6 +134,27 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
+      # [codex round-7 followup] Force KSP to materially regenerate
+      # the latest schema JSON on every CI run. Room's KSP processor
+      # is incremental (room.incremental=true) and SKIPS overwriting
+      # an existing schemaLocation file when its internal cache says
+      # the entity hash is unchanged — including when the committed
+      # file itself is wrong (e.g. a hand-written placeholder hash
+      # that ships in a feature PR). Deleting the latest version's
+      # file is the only reliable trigger for a fresh write. We
+      # discover the highest version automatically so future v10/v11
+      # additions don't have to update this step.
+      - name: Force regenerate latest Room schema
+        working-directory: .
+        run: |
+          set -euo pipefail
+          schemaDir="android/app/schemas/com.ticketbox.data.local.AppDatabase"
+          latest=$(ls "$schemaDir" | grep -E '^[0-9]+\.json$' | sort -n | tail -1)
+          if [ -n "$latest" ]; then
+            echo "Deleting $schemaDir/$latest to force KSP regeneration"
+            rm -f "$schemaDir/$latest"
+          fi
+
       - name: Test
         run: ./gradlew --no-daemon :app:testGrayDebugUnitTest
 
@@ -144,14 +165,45 @@ jobs:
       # so the schema diff lands in the same PR as the entity
       # change.
       - name: Verify Room schema snapshots are committed
+        # [codex round-6 P1] The Android job runs with
+        # working-directory: android, so a path like
+        # ``android/app/schemas`` resolved to
+        # ``android/android/app/schemas`` (does not exist), git
+        # silently returned empty output and the gate "passed"
+        # even when KSP had rewritten 9.json. Run from repo root.
+        working-directory: .
         run: |
           set -euo pipefail
           if [ -n "$(git status --porcelain android/app/schemas)" ]; then
             echo "::error::Room KSP regenerated schema files that aren't committed."
-            echo "Diff (commit these and push again):"
-            git diff -- android/app/schemas | head -200
+            echo "git status:"
+            git status --porcelain android/app/schemas
+            echo ""
+            echo "Diff against HEAD (full, no truncation — schema files run ~300 lines):"
+            git diff -- android/app/schemas
+            echo ""
+            echo "Untracked file content (git diff doesn't show new files):"
+            git status --porcelain android/app/schemas | awk '/^\?\? /{print $2}' | while read -r f; do
+              echo "--- $f"
+              cat "$f"
+              echo "--- end $f"
+            done
             exit 1
           fi
+
+      # [codex round-7 followup] Always upload the regenerated
+      # schemas dir so the canonical baseline can be downloaded
+      # from a failed run and committed back. Running on
+      # ``always()`` (not just on failure) means a green-CI baseline
+      # can also be archived for ad-hoc inspection.
+      - name: Upload regenerated Room schemas
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: room-schemas-regenerated
+          path: android/app/schemas/com.ticketbox.data.local.AppDatabase/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Build gray and internal debug APKs
         run: ./gradlew --no-daemon :app:assembleGrayDebug :app:assembleInternalDebug

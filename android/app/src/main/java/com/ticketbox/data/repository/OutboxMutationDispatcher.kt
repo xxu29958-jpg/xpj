@@ -19,12 +19,19 @@ import com.ticketbox.data.local.PendingMutationType
  * 2. Calling the ApiService method with both the payload AND
  *    ``row.expectedUpdatedAt`` (where the route requires a token).
  * 3. Translating the HTTP response into a [DispatchResult]:
- *      - 2xx → [DispatchResult.Success]
- *      - 409 ``state_conflict`` → [DispatchResult.Conflict] with the
- *        server's Chinese message
- *      - any other 4xx/5xx → [DispatchResult.Failure]
+ *      - 2xx → [DispatchResult.Success] (carry ``newUpdatedAt``
+ *        from response so the engine can cascade the post-mutation
+ *        token to same-target PENDING rows)
+ *      - 409 ``state_conflict`` → [DispatchResult.Conflict] with
+ *        the server's Chinese message
+ *      - 408 / 429 / 5xx / network ``IOException`` →
+ *        [DispatchResult.RetryableFailure] (drain keeps the row
+ *        PENDING for the next tick instead of marking FAILED)
+ *      - payload deserialise errors (Moshi exceptions) and other
+ *        non-recoverable 4xx → [DispatchResult.Failure]
  *      - "the row's already been resolved by another path" /
- *        "the target was deleted" → [DispatchResult.Discarded]
+ *        "the target was deleted" / 404 / status-specific 409 →
+ *        [DispatchResult.Discarded]
  *
  * Why a Map<Type, Dispatcher> registry instead of a sealed-class
  * hierarchy: new mutation kinds will be wired one by one in
