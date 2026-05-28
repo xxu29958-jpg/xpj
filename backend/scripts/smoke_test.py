@@ -200,6 +200,21 @@ def upload(base_url: str, filename: str, content_type: str, content: bytes) -> A
     )
 
 
+def wait_for_expense_thumbnail(base_url: str, expense_id: int, label: str) -> dict:
+    for _ in range(20):
+        result = request(
+            "GET",
+            f"{base_url}/api/expenses/{expense_id}",
+            headers=app_headers(),
+        )
+        assert_equal(result.status, 200, f"{label} snapshot status")
+        payload = result.json()
+        if payload.get("thumbnail_path"):
+            return payload
+        time.sleep(0.2)
+    raise AssertionError(f"{label}: thumbnail enrichment did not finish")
+
+
 def run_smoke(base_url: str) -> None:
     global BOOTSTRAP_ADMIN_TOKEN
     global SESSION_TOKEN
@@ -468,15 +483,14 @@ def run_smoke(base_url: str) -> None:
     recognize_id = int(recognize_upload.json()["id"])
     # ADR-0038 PR-2e: recognize-text now requires ``expected_updated_at``;
     # snapshot the freshly uploaded row's ``updated_at`` and ship it.
-    recognize_snapshot = request(
-        "GET",
-        f"{base_url}/api/expenses/{recognize_id}",
-        headers=app_headers(),
+    recognize_snapshot = wait_for_expense_thumbnail(
+        base_url,
+        recognize_id,
+        "recognize",
     )
-    assert_equal(recognize_snapshot.status, 200, "recognize snapshot status")
     recognize_body = json.dumps(
         {
-            "expected_updated_at": recognize_snapshot.json()["updated_at"],
+            "expected_updated_at": recognize_snapshot["updated_at"],
             "raw_text": "\n".join(
                 [
                     "中国建设银行",
@@ -619,19 +633,18 @@ def run_smoke(base_url: str) -> None:
     assert_true(any(item["id"] == second_id for item in duplicates), "duplicate should be suspected")
     print("OK duplicate detection")
 
-    second_snapshot = request(
-        "GET",
-        f"{base_url}/api/expenses/{second_id}",
-        headers=app_headers(),
+    second_snapshot = wait_for_expense_thumbnail(
+        base_url,
+        second_id,
+        "second patch",
     )
-    assert_equal(second_snapshot.status, 200, "second patch snapshot status")
     second_update_body = json.dumps(
         {
             "amount_cents": 2000,
             "merchant": "OpenAI",
             "note": "订阅",
             "expense_time": "2026-05-04T04:20:00Z",
-            "expected_updated_at": second_snapshot.json()["updated_at"],
+            "expected_updated_at": second_snapshot["updated_at"],
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -668,14 +681,13 @@ def run_smoke(base_url: str) -> None:
     similar_upload = upload(base_url, "ticket4.png", "image/png", PNG_BYTES)
     assert_equal(similar_upload.status, 200, "similar upload status")
     similar_id = int(similar_upload.json()["id"])
-    similar_mnd_snapshot = request(
-        "GET",
-        f"{base_url}/api/expenses/{similar_id}",
-        headers=app_headers(),
+    similar_mnd_snapshot = wait_for_expense_thumbnail(
+        base_url,
+        similar_id,
+        "similar mark-not-duplicate",
     )
-    assert_equal(similar_mnd_snapshot.status, 200, "similar mark-not-duplicate snapshot status")
     similar_mnd_body = json.dumps(
-        {"expected_updated_at": similar_mnd_snapshot.json()["updated_at"]},
+        {"expected_updated_at": similar_mnd_snapshot["updated_at"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
