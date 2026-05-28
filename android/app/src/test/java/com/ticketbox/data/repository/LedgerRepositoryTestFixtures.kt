@@ -216,7 +216,9 @@ internal class StubApi(
         id: Long,
         request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
     ): com.ticketbox.data.remote.dto.BillSplitSentDto = ledgerUnsupported()
-    override suspend fun listBillSplitInbox(): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto = ledgerUnsupported()
+    override suspend fun listBillSplitInbox(
+        status: String?,
+    ): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto = ledgerUnsupported()
     override suspend fun listBillSplitSent(): com.ticketbox.data.remote.dto.BillSplitSentListResponseDto = ledgerUnsupported()
     override suspend fun acceptBillSplitInvitation(
         publicId: String,

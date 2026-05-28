@@ -265,7 +265,9 @@ internal class FakeApiService(
         id: Long,
         request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
     ): com.ticketbox.data.remote.dto.BillSplitSentDto = stubBillSplitSent()
-    override suspend fun listBillSplitInbox(): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto =
+    override suspend fun listBillSplitInbox(
+        status: String?,
+    ): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto =
         com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(items = listOf(stubBillSplitInbox()))
     override suspend fun listBillSplitSent(): com.ticketbox.data.remote.dto.BillSplitSentListResponseDto =
         com.ticketbox.data.remote.dto.BillSplitSentListResponseDto(items = listOf(stubBillSplitSent()))
