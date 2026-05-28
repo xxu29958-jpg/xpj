@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,6 +22,7 @@ from app.services.app_meta_service import (
     V1_TARGET_VERSION,
     _version_tuple,
 )
+from app.services.time_service import now_utc
 from tests._infra.db import reset_db_state
 
 
@@ -37,17 +39,12 @@ def _fresh_db():
 def _inline_handlers():
     """Run background tasks synchronously; clean registry between tests."""
     os.environ["XPJ_BACKGROUND_TASK_INLINE"] = "1"
-    saved = bgtasks.get_registered_handlers()
-    for k in list(saved.keys()):
-        bgtasks._handlers.pop(k, None)
+    saved = bgtasks.replace_registered_handlers_for_testing()
     try:
         yield
     finally:
         os.environ.pop("XPJ_BACKGROUND_TASK_INLINE", None)
-        for k in list(bgtasks._handlers.keys()):
-            bgtasks._handlers.pop(k, None)
-        for k, h in saved.items():
-            bgtasks.register_handler(k, h)
+        bgtasks.replace_registered_handlers_for_testing(saved)
 
 
 # --- version_tuple --------------------------------------------------------
@@ -125,6 +122,63 @@ def test_v1_migration_handler_refuses_pre_v1_binary(
         assert app_meta_service.schema_min_compatible(db) == V09_DEFAULT_VERSION
 
 
+def test_v1_migration_handler_observes_cancellation_before_backup() -> None:
+    with SessionLocal() as db:
+        task = BackgroundTask(
+            task_type=v1_migration_service.V1_MIGRATION_TASK_TYPE,
+            status="running",
+            cancellation_requested_at=now_utc(),
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        with pytest.raises(bgtasks.TaskCancelledError):
+            v1_migration_service._handler(db, task, {})
+
+        assert app_meta_service.schema_version(db) == V09_DEFAULT_VERSION
+        assert app_meta_service.schema_min_compatible(db) == V09_DEFAULT_VERSION
+
+
+def test_v1_migration_handler_observes_cancellation_before_final_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        v1_migration_service.backup_service,
+        "create_pre_v1_backup",
+        lambda: SimpleNamespace(file_name="pre-v1-test.db", size_bytes=123),
+    )
+    monkeypatch.setattr(
+        v1_migration_service.migration_readiness_service,
+        "build_v1_migration_readiness_report",
+        lambda *, create_backup=False: SimpleNamespace(ready=True, checks=[]),
+    )
+    original_update_progress = bgtasks.update_progress
+
+    def cancel_after_snapshot_progress(db, task_id: int, **kwargs) -> None:
+        original_update_progress(db, task_id, **kwargs)
+        if kwargs.get("current") == 2:
+            task = db.get(BackgroundTask, task_id)
+            assert task is not None
+            task.cancellation_requested_at = now_utc()
+            db.commit()
+
+    monkeypatch.setattr(bgtasks, "update_progress", cancel_after_snapshot_progress)
+
+    with SessionLocal() as db:
+        task = BackgroundTask(
+            task_type=v1_migration_service.V1_MIGRATION_TASK_TYPE,
+            status="running",
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        with pytest.raises(bgtasks.TaskCancelledError):
+            v1_migration_service._handler(db, task, {})
+
+        assert app_meta_service.schema_version(db) == V09_DEFAULT_VERSION
+        assert app_meta_service.schema_min_compatible(db) == V09_DEFAULT_VERSION
+
+
 # --- mark_v1_cut_over_completed writes all three keys ---------------------
 
 
@@ -136,3 +190,31 @@ def test_mark_v1_cut_over_completed_writes_all_keys() -> None:
         assert app_meta_service.schema_version(db) == V1_TARGET_VERSION
         assert app_meta_service.schema_min_compatible(db) == V1_TARGET_VERSION
         assert app_meta_service.migration_completed_at(db) is not None
+
+
+def test_mark_v1_cut_over_completed_rolls_back_partial_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = app_meta_service._set_value_in_transaction
+    calls = 0
+
+    def fail_after_first_write(*args, **kwargs) -> None:
+        nonlocal calls
+        calls += 1
+        original(*args, **kwargs)
+        if calls == 1:
+            raise RuntimeError("simulated app_meta write failure")
+
+    monkeypatch.setattr(
+        app_meta_service,
+        "_set_value_in_transaction",
+        fail_after_first_write,
+    )
+
+    with SessionLocal() as db, pytest.raises(RuntimeError, match="simulated"):
+        app_meta_service.mark_v1_cut_over_completed(db)
+
+    with SessionLocal() as db:
+        assert app_meta_service.schema_version(db) == V09_DEFAULT_VERSION
+        assert app_meta_service.schema_min_compatible(db) == V09_DEFAULT_VERSION
+        assert app_meta_service.migration_completed_at(db) is None

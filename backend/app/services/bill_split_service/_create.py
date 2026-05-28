@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import UTC, date, datetime, time
+
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,7 @@ from app.services.bill_split_service._common import (
     _display_name,
     _load_writer_member,
 )
+from app.services.currency_common import normalize_currency_code
 from app.services.time_service import now_utc
 
 _PENDING_DUPLICATE_INDEX = "uq_bill_split_invitations_pending_receiver"
@@ -85,12 +88,29 @@ def create_invitation(
             status_code=422,
         )
 
-    # 5. Receiver account must exist; build display snapshots.
+    # 5. Receiver account must exist; build display snapshots. Keep the
+    # public error generic so this endpoint cannot be used as an account
+    # existence oracle.
     receiver = db.get(Account, receiver_account_id)
     if receiver is None:
-        raise AppError("account_not_found", status_code=404)
+        raise AppError("invalid_request", status_code=422)
     sender = db.get(Account, sender_account_id)
     assert sender is not None  # AuthContext already validated this
+
+    active_split_total = int(
+        db.scalar(
+            select(func.coalesce(func.sum(BillSplitInvitation.amount_cents), 0))
+            .where(BillSplitInvitation.sender_expense_id == expense.id)
+            .where(BillSplitInvitation.status.in_(("invited", "accepted")))
+        )
+        or 0
+    )
+    if active_split_total + amount_cents > expense.amount_cents:
+        raise AppError(
+            "invalid_request",
+            "拆账邀请总额不能超过原账单金额。",
+            status_code=422,
+        )
 
     pending_duplicate = db.scalar(
         select(BillSplitInvitation.id)
@@ -103,6 +123,8 @@ def create_invitation(
         raise AppError("split_invitation_already_pending", status_code=409)
 
     now = now_utc()
+    home_currency = normalize_currency_code(expense.home_currency_code)
+    original_currency = normalize_currency_code(expense.original_currency_code)
     invitation = BillSplitInvitation(
         sender_account_id=sender_account_id,
         sender_ledger_id=sender_ledger_id,
@@ -112,11 +134,11 @@ def create_invitation(
         receiver_account_id=receiver_account_id,
         receiver_display_name_snapshot=_display_name(receiver),
         amount_cents=amount_cents,
-        home_currency_code=expense.home_currency_code,
-        original_currency_code=expense.original_currency_code,
+        home_currency_code=home_currency,
+        original_currency_code=original_currency,
         original_amount_minor=expense.original_amount_minor,
         exchange_rate_to_cny=expense.exchange_rate_to_cny,
-        exchange_rate_date=None,  # date column copy is fragile; receiver snapshot uses dt
+        exchange_rate_date=_exchange_rate_datetime(expense.exchange_rate_date),
         exchange_rate_source=expense.exchange_rate_source,
         merchant_snapshot=expense.merchant,
         category_suggestion=expense.category,
@@ -140,3 +162,11 @@ def create_invitation(
     db.commit()
     db.refresh(invitation)
     return invitation
+
+
+def _exchange_rate_datetime(value: date | datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return datetime.combine(value, time.min, tzinfo=UTC)

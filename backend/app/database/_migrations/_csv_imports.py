@@ -150,3 +150,27 @@ def _migrate_csv_import_rows(connection, *, default_home: str, source_base: str)
             "CREATE INDEX IF NOT EXISTS ix_csv_import_rows_tenant_batch_status "
             "ON csv_import_rows (tenant_id, batch_id, status)"
         ))
+    if {"tenant_id", "expense_id"}.issubset(columns):
+        if {"status", "error_code", "error_message"}.issubset(columns):
+            connection.execute(
+                text(
+                    "UPDATE csv_import_rows "
+                    "SET status = 'insert_failed', "
+                    "error_code = COALESCE(error_code, 'duplicate_expense_id'), "
+                    "error_message = COALESCE(error_message, 'Duplicate imported expense link removed.'), "
+                    "expense_id = NULL "
+                    "WHERE expense_id IS NOT NULL "
+                    "AND id NOT IN ("
+                    "SELECT MIN(id) FROM csv_import_rows "
+                    "WHERE expense_id IS NOT NULL "
+                    "GROUP BY tenant_id, expense_id"
+                    ")"
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_csv_import_rows_tenant_expense_id "
+                "ON csv_import_rows (tenant_id, expense_id) "
+                "WHERE expense_id IS NOT NULL"
+            )
+        )

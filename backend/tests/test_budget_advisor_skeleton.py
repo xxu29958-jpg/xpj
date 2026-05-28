@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import get_settings
+from app.errors import AppError
 from app.services.budget_advisor_service import (
     BudgetAdvice,
     BudgetAdvisorProvider,
@@ -81,11 +82,11 @@ def test_explicit_empty_name_returns_empty_advisor() -> None:
     assert isinstance(advisor, EmptyBudgetAdvisor)
 
 
-def test_unknown_provider_falls_back_to_empty() -> None:
+def test_unknown_provider_fails_fast() -> None:
     # Unknown name == "treat as not configured" — never quietly upgrade to a
     # real provider, but also never crash startup. Mirrors get_ocr_provider.
-    advisor = get_budget_advisor("does_not_exist")
-    assert isinstance(advisor, EmptyBudgetAdvisor)
+    with pytest.raises(AppError, match="BUDGET_ADVISOR_PROVIDER"):
+        get_budget_advisor("does_not_exist")
 
 
 def test_mock_provider_dispatch() -> None:
@@ -113,7 +114,22 @@ def test_mock_provider_handles_empty_inputs() -> None:
     assert advice.suggestions == []
 
 
-@pytest.mark.parametrize("name", ["openai_compat", "openai-compat", "openai", "OpenAI_Compat"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "openai_compat",
+        "openai-compat",
+        "openai",
+        "OpenAI_Compat",
+        "deepseek",
+        "deepseek-chat",
+        "siliconflow",
+        "silicon-flow",
+        "silicon_flow",
+        "together",
+        "groq",
+    ],
+)
 def test_openai_compat_requires_base_url_and_model(name: str, monkeypatch: pytest.MonkeyPatch) -> None:
     # With no env config, openai_compat must refuse to dispatch — never
     # silently fall back to Empty (would hide a real misconfiguration).

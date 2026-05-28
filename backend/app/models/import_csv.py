@@ -123,3 +123,10 @@ class CsvImportRow(Base):
 
 Index("ix_csv_import_rows_tenant_batch_line", CsvImportRow.tenant_id, CsvImportRow.batch_id, CsvImportRow.line_number)
 Index("ix_csv_import_rows_tenant_batch_status", CsvImportRow.tenant_id, CsvImportRow.batch_id, CsvImportRow.status)
+Index(
+    "uq_csv_import_rows_tenant_expense_id",
+    CsvImportRow.tenant_id,
+    CsvImportRow.expense_id,
+    unique=True,
+    sqlite_where=CsvImportRow.expense_id.is_not(None),
+)

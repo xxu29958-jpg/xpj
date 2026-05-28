@@ -29,6 +29,7 @@ import json
 import logging
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -40,6 +41,7 @@ from app.services import (
     migration_readiness_service,
 )
 from app.services.app_meta_service import _version_tuple
+from app.services.time_service import now_utc
 from app.version import BACKEND_VERSION
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ def _handler(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None
             f"than v1.0 target {app_meta_service.V1_TARGET_VERSION!r}. Upgrade "
             "the binary first, then re-run cut-over from the v1.0 binary."
         )
+    _raise_if_cancelled(db, task)
 
     report = migration_readiness_service.build_v1_migration_readiness_report(
         create_backup=False
@@ -72,6 +75,7 @@ def _handler(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None
     background_task_service.update_progress(
         db, task.id, current=1, total=3, message="readiness check passed"
     )
+    _raise_if_cancelled(db, task)
 
     # Rollback material. The schema_version write below is the
     # point-of-no-return for old binaries; this backup is the only
@@ -90,6 +94,7 @@ def _handler(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None
         total=3,
         message=f"pre-v1.0 snapshot: {snapshot.file_name}",
     )
+    _guard_final_commit_not_cancelled(db, task.id)
 
     app_meta_service.mark_v1_cut_over_completed(db)
 
@@ -108,3 +113,20 @@ def _handler(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None
 def register() -> None:
     """Idempotent registration — called from FastAPI lifespan startup."""
     background_task_service.register_handler(V1_MIGRATION_TASK_TYPE, _handler)
+
+
+def _raise_if_cancelled(db: Session, task: BackgroundTask) -> None:
+    if background_task_service.check_cancellation_requested(db, task.id):
+        raise background_task_service.TaskCancelledError()
+
+
+def _guard_final_commit_not_cancelled(db: Session, task_id: int) -> None:
+    result = db.execute(
+        update(BackgroundTask)
+        .where(BackgroundTask.id == task_id)
+        .where(BackgroundTask.cancellation_requested_at.is_(None))
+        .values(last_progress_at=now_utc())
+        .execution_options(synchronize_session=False)
+    )
+    if int(result.rowcount or 0) != 1:
+        raise background_task_service.TaskCancelledError()

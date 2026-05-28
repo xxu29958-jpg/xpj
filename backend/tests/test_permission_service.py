@@ -79,4 +79,4 @@ def test_app_scope_cannot_use_admin_maintenance_guard() -> None:
 
     with pytest.raises(AppError) as denied:
         permission_service.require_admin_maintenance(owner)
-    assert denied.value.status_code == 401
+    assert denied.value.status_code == 403

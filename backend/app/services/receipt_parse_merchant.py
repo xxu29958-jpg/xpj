@@ -56,14 +56,10 @@ def _success_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantC
         if not any(keyword in line for keyword in TRANSACTION_SUCCESS_KEYWORDS):
             continue
 
-        candidates.extend(
-            _nearby_success_title_candidates(text, lines, success_index=index)
-        )
+        candidates.extend(_nearby_success_title_candidates(text, lines, success_index=index))
 
         if line.strip() == "支付成功":
-            candidates.extend(
-                _nearby_success_body_candidates(text, lines, success_index=index)
-            )
+            candidates.extend(_nearby_success_body_candidates(text, lines, success_index=index))
     return candidates
 
 
@@ -177,9 +173,7 @@ def _keyword_merchant_candidates(text: str) -> list[_MerchantCandidate]:
             text=text,
             value=keyword,
             base_score=base_score,
-            line_index=_line_index_for_offset(
-                lower_text, lower_text.find(keyword.lower())
-            ),
+            line_index=_line_index_for_offset(lower_text, lower_text.find(keyword.lower())),
             source="keyword",
             require_no_digits=False,
         )
@@ -484,11 +478,7 @@ def _has_more_specific_nearby_merchant_alias(
     if len(value) >= 6:
         return False
 
-    for line in context.lines[
-        max(0, candidate.line_index - 1) : min(
-            len(context.lines), candidate.line_index + 3
-        )
-    ]:
+    for line in context.lines[max(0, candidate.line_index - 1) : min(len(context.lines), candidate.line_index + 3)]:
         cleaned = _clean_merchant(line)
         if not cleaned or cleaned == value:
             continue

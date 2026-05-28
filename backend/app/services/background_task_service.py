@@ -84,6 +84,16 @@ def get_registered_handlers() -> dict[str, TaskHandler]:
     return dict(_handlers)
 
 
+def replace_registered_handlers_for_testing(
+    handlers: dict[str, TaskHandler] | None = None,
+) -> dict[str, TaskHandler]:
+    """Replace test handlers explicitly and return the previous registry."""
+    previous = dict(_handlers)
+    _handlers.clear()
+    _handlers.update(dict(handlers or {}))
+    return previous
+
+
 # -------------------------------------------------------------------------
 # Executor lifecycle
 
@@ -129,6 +139,92 @@ def enqueue(
             status_code=400,
         )
 
+    payload_copy = dict(payload or {})
+    task = _insert_queued_task(
+        db,
+        task_type=task_type,
+        initiator_account_id=initiator_account_id,
+        initiator_device_id=initiator_device_id,
+        ledger_id=ledger_id,
+        progress_total=progress_total,
+    )
+    _submit_task(task.id, payload_copy)
+    return task
+
+
+def enqueue_or_get_active(
+    db: Session,
+    *,
+    task_type: str,
+    initiator_account_id: int | None,
+    initiator_device_id: int | None = None,
+    ledger_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+    progress_total: int | None = None,
+) -> tuple[BackgroundTask, bool]:
+    """Insert a task unless an active one already exists.
+
+    Returns ``(task, created)``. This is intentionally narrow: it is for
+    singleton flows such as the v1 cut-over where a second click must point
+    at the existing ``queued``/``running`` row rather than creating another
+    backup and app_meta write sequence.
+    """
+    if task_type not in _handlers:
+        raise AppError(
+            "unknown_task_type",
+            f"Background task type {task_type!r} is not registered.",
+            status_code=400,
+        )
+    if db.in_transaction():
+        raise AppError(
+            "state_conflict",
+            "Cannot acquire singleton background-task guard inside an active transaction.",
+            status_code=409,
+        )
+
+    payload_copy = dict(payload or {})
+    try:
+        # SQLite serializes writers behind BEGIN IMMEDIATE. That makes the
+        # read-then-insert guard DB-backed without adding a new queue/broker
+        # dependency or widening this one-shot cut-over slice into schema work.
+        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        existing = _active_task(
+            db,
+            task_type=task_type,
+            ledger_id=ledger_id,
+        )
+        if existing is not None:
+            db.commit()
+            db.refresh(existing)
+            return existing, False
+
+        task = BackgroundTask(
+            task_type=task_type,
+            tenant_id=ledger_id,
+            initiated_by_account_id=initiator_account_id,
+            initiated_by_device_id=initiator_device_id,
+            progress_total=progress_total,
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+    except Exception:
+        db.rollback()
+        raise
+
+    _submit_task(task.id, payload_copy)
+    return task, True
+
+
+def _insert_queued_task(
+    db: Session,
+    *,
+    task_type: str,
+    initiator_account_id: int | None,
+    initiator_device_id: int | None,
+    ledger_id: str | None,
+    progress_total: int | None,
+) -> BackgroundTask:
     task = BackgroundTask(
         task_type=task_type,
         tenant_id=ledger_id,
@@ -139,13 +235,31 @@ def enqueue(
     db.add(task)
     db.commit()
     db.refresh(task)
-
-    payload_copy = dict(payload or {})
-    if _inline_mode():
-        _run_task(task.id, payload_copy)
-    else:
-        _get_executor().submit(_run_task, task.id, payload_copy)
     return task
+
+
+def _submit_task(task_id: int, payload: dict[str, Any]) -> None:
+    if _inline_mode():
+        _run_task(task_id, payload)
+    else:
+        _get_executor().submit(_run_task, task_id, payload)
+
+
+def _active_task(
+    db: Session,
+    *,
+    task_type: str,
+    ledger_id: str | None,
+) -> BackgroundTask | None:
+    stmt = select(BackgroundTask).where(
+        BackgroundTask.task_type == task_type,
+        BackgroundTask.status.in_(_RECOVERABLE_STATUSES),
+    )
+    if ledger_id is None:
+        stmt = stmt.where(BackgroundTask.tenant_id.is_(None))
+    else:
+        stmt = stmt.where(BackgroundTask.tenant_id == ledger_id)
+    return db.scalar(stmt.order_by(BackgroundTask.created_at.desc()).limit(1))
 
 
 def get_task(db: Session, public_id: str, *, account_id: int | None) -> BackgroundTask:

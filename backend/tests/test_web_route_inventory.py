@@ -53,7 +53,13 @@ from starlette.routing import Route
 
 from app.main import app
 
-Classification = Literal["local-only-rendering", "writer-only", "media", "auth"]
+Classification = Literal[
+    "local-only-rendering",
+    "writer-only",
+    "media",
+    "auth",
+    "owner-live-provider",
+]
 
 
 # (method, path) -> classification. Keep sorted by path for diff readability.
@@ -75,6 +81,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/budgets/save"): "writer-only",
     # v1.1 AI budget advisor + income plan (PR-9)
     ("GET", "/web/budget-advise"): "local-only-rendering",
+    ("POST", "/web/budget-advise"): "owner-live-provider",
     ("GET", "/web/income-plans"): "local-only-rendering",
     ("POST", "/web/income-plans/create"): "writer-only",
     ("POST", "/web/income-plans/{public_id}/archive"): "writer-only",
@@ -207,6 +214,13 @@ def _writer_only_paths() -> list[tuple[str, str]]:
     ]
 
 
+def _owner_live_provider_paths() -> list[tuple[str, str]]:
+    return [
+        key for key, kind in _WEB_ROUTE_CLASSIFICATION.items()
+        if kind == "owner-live-provider"
+    ]
+
+
 def _route_endpoint(method: str, path: str) -> Callable[..., object] | None:
     for route in app.routes:
         if not isinstance(route, Route):
@@ -256,3 +270,18 @@ def test_writer_only_routes_actually_check_writer(method: str, path: str) -> Non
         f"({endpoint.__module__}.{endpoint.__name__}) does not reference "
         "_require_selected_ledger_write directly."
     )
+
+
+@pytest.mark.parametrize("method,path", _owner_live_provider_paths())
+def test_owner_live_provider_routes_use_shared_advisor_runner(
+    method: str, path: str
+) -> None:
+    endpoint = _route_endpoint(method, path)
+    assert endpoint is not None, f"endpoint not found: {method} {path}"
+    source = inspect.getsource(endpoint)
+    assert "_render_budget_advise(" in source
+
+    render_source = inspect.getsource(endpoint.__globals__["_render_budget_advise"])
+    assert "run_budget_advisor(" in render_source
+    assert "run_advise: bool = Form(default=False)" in source
+    assert "allow_outbound=run_advise" in source

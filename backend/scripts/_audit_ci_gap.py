@@ -1,28 +1,31 @@
 """Read-only audit: CI invokes every gradle task / pytest lane we expect.
 
-Catches the class of gap that hid ``connectedGrayDebugAndroidTest``
-until the v1.0 maturity audit — the task was wired up in the project
-but CI never invoked it, so the existing ``Android`` job stayed green
-while the only instrumented test we had never actually ran.
-
-The check is intentionally dumb: a hand-maintained whitelist below
-must each appear verbatim somewhere under ``.github/workflows/*.yml``
-(any workflow — the lane may live in a sibling workflow file such as
-``android-connected-test.yml``). Adding a new gradle task / pytest
-lane that should be enforced → add it to the whitelist; CI gap is
-caught immediately.
-
-Exit code 0 if every entry is referenced. Exit code 1 otherwise, with
-the missing entries listed on stdout.
+This lane scans actual GitHub Actions ``run:`` command bodies instead of
+global workflow text. Comments and prose cannot satisfy the gate.
 """
 
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
+from dataclasses import dataclass
 
-# Gradle tasks that CI must invoke. Update when adding a new test /
-# lint / build lane that should not silently regress.
+
+@dataclass(frozen=True)
+class RequiredCommand:
+    label: str
+    pattern: re.Pattern[str]
+
+
+@dataclass(frozen=True)
+class WorkflowCommand:
+    workflow: pathlib.Path
+    text: str
+
+
+# Gradle tasks that CI must invoke. Update when adding a new test / lint /
+# build lane that should not silently regress.
 REQUIRED_GRADLE_TASKS = [
     ":app:testGrayDebugUnitTest",
     ":app:assembleGrayDebug",
@@ -31,13 +34,23 @@ REQUIRED_GRADLE_TASKS = [
     ":app:connectedGrayDebugAndroidTest",
 ]
 
-# Backend invocations expected in CI. Substring match — keep these
-# short enough to survive minor flag reorderings, but concrete enough
-# that deleting the release audit step fails this lane.
+# Backend invocations expected in CI. These match actual run-command bodies,
+# not global workflow text, so comments cannot satisfy the gate.
 REQUIRED_CI_INVOCATIONS = [
-    "scripts\\release_audit.py",
-    "pytest --cov=app",
-    "pytest -q -m file_backed_only",
+    RequiredCommand(
+        "release audit aggregator",
+        re.compile(r"\bpython(?:\.exe)?\s+scripts[\\/]+release_audit\.py\b"),
+    ),
+    RequiredCommand(
+        "pytest coverage lane",
+        re.compile(r"\b(?:python(?:\.exe)?\s+-m\s+)?pytest\b[^\n]*\s--cov=app\b"),
+    ),
+    RequiredCommand(
+        "file-backed pytest lane",
+        re.compile(
+            r"\b(?:python(?:\.exe)?\s+-m\s+)?pytest\b[^\n]*\s-m\s+file_backed_only\b"
+        ),
+    ),
 ]
 
 
@@ -52,27 +65,96 @@ def _locate_workflow_dir() -> pathlib.Path | None:
     return None
 
 
+def _line_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _command_key(stripped_line: str) -> str | None:
+    stripped = stripped_line
+    if stripped.startswith("- "):
+        stripped = stripped[2:].lstrip()
+    if stripped.startswith("run:"):
+        return "run:"
+    if stripped.startswith("script:"):
+        return "script:"
+    return None
+
+
+def _command_value(stripped_line: str, key: str) -> str:
+    stripped = stripped_line
+    if stripped.startswith("- "):
+        stripped = stripped[2:].lstrip()
+    return stripped.removeprefix(key).strip()
+
+
+def _read_yaml_command_block(
+    lines: list[str], *, start_index: int, parent_indent: int
+) -> tuple[str, int]:
+    block: list[str] = []
+    index = start_index
+    while index < len(lines):
+        child = lines[index]
+        if child.strip() and _line_indent(child) <= parent_indent:
+            break
+        block.append(child)
+        index += 1
+    return "\n".join(block), index
+
+
+def _iter_workflow_run_commands(workflow_dir: pathlib.Path) -> list[WorkflowCommand]:
+    commands: list[WorkflowCommand] = []
+    for path in sorted(workflow_dir.glob("*.yml")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            stripped = line.lstrip()
+            key = _command_key(stripped)
+            if key is None:
+                index += 1
+                continue
+
+            indent = _line_indent(line)
+            value = _command_value(stripped, key)
+            if value in {"|", ">"}:
+                text, index = _read_yaml_command_block(
+                    lines,
+                    start_index=index + 1,
+                    parent_indent=indent,
+                )
+                commands.append(WorkflowCommand(path, text))
+                continue
+
+            commands.append(WorkflowCommand(path, value))
+            index += 1
+    return commands
+
+
+def _missing_gradle_tasks(commands: list[WorkflowCommand]) -> list[str]:
+    command_text = "\n".join(command.text for command in commands)
+    return [task for task in REQUIRED_GRADLE_TASKS if task not in command_text]
+
+
+def _missing_ci_invocations(commands: list[WorkflowCommand]) -> list[str]:
+    missing: list[str] = []
+    for required in REQUIRED_CI_INVOCATIONS:
+        if not any(required.pattern.search(command.text) for command in commands):
+            missing.append(required.label)
+    return missing
+
+
 def main() -> int:
     workflow_dir = _locate_workflow_dir()
     if workflow_dir is None:
-        print("CI gap audit: FAIL — .github/workflows/ directory not found")
+        print("CI gap audit: FAIL - .github/workflows/ directory not found")
         return 1
 
-    # Concatenate all workflow files so the check is "gated somewhere
-    # in CI?" not "gated in ci.yml?". Catches splits where one
-    # workflow runs unit tests and a sibling runs the emulator lane.
-    combined = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted(workflow_dir.glob("*.yml"))
-    )
-
+    commands = _iter_workflow_run_commands(workflow_dir)
     missing: list[str] = []
-    for task in REQUIRED_GRADLE_TASKS:
-        if task not in combined:
-            missing.append(f"gradle task: {task}")
-    for invocation in REQUIRED_CI_INVOCATIONS:
-        if invocation not in combined:
-            missing.append(f"ci invocation: {invocation}")
+    for task in _missing_gradle_tasks(commands):
+        missing.append(f"gradle task: {task}")
+    for invocation in _missing_ci_invocations(commands):
+        missing.append(f"ci invocation: {invocation}")
 
     if missing:
         print("=== CI gap audit: FAIL ===")

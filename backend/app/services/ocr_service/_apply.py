@@ -84,13 +84,18 @@ def collect_auto_ocr_extractions(
             fallback_result = get_ocr_provider(fallback_name).extract(
                 expense, timezone_name=timezone_name
             )
-            results.append(
-                OcrExtraction(
-                    provider_name=fallback_name,
-                    ocr_model=_provider_model(fallback_name),
-                    result=fallback_result,
+            if _fallback_confidence_is_not_worse(
+                primary_result,
+                fallback_result,
+                timezone_name=timezone_name,
+            ):
+                results.append(
+                    OcrExtraction(
+                        provider_name=fallback_name,
+                        ocr_model=_provider_model(fallback_name),
+                        result=fallback_result,
+                    )
                 )
-            )
         return results
     except Exception:
         # Upload must stay reliable. Manual retry exposes provider errors to the user.
@@ -169,6 +174,7 @@ def _apply_ocr_result_to_expense(
     if (
         _can_apply_ocr_field("amount_cents", draft_fields, expense.amount_cents is None)
         and merged.amount_cents is not None
+        and merged.amount_cents > 0
     ):
         expense.amount_cents = merged.amount_cents
         applied_fields.add("amount_cents")
@@ -221,6 +227,25 @@ def _needs_fallback(expense: Expense) -> bool:
         or not (expense.merchant or "").strip()
         or expense.expense_time is None
     )
+
+
+def _fallback_confidence_is_not_worse(
+    primary_result: OcrResult,
+    fallback_result: OcrResult,
+    timezone_name: str | None = None,
+) -> bool:
+    return (
+        _effective_ocr_confidence(fallback_result, timezone_name=timezone_name)
+        >= _effective_ocr_confidence(primary_result, timezone_name=timezone_name)
+    )
+
+
+def _effective_ocr_confidence(result: OcrResult, timezone_name: str | None = None) -> float:
+    parsed = parse_receipt_text(result.raw_text, timezone_name=timezone_name)
+    merged = _merge_result_with_text_parse(
+        result, parsed_confidence=parsed.confidence, timezone_name=timezone_name
+    )
+    return _best_confidence(merged.confidence, parsed.confidence, result.confidence) or 0.0
 
 
 def ocr_fact_snapshot(

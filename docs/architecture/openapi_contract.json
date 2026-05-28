@@ -159,6 +159,22 @@
             "title": "Device Name",
             "type": "string"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "is_expired": {
+            "default": false,
+            "title": "Is Expired",
+            "type": "boolean"
+          },
           "last_used_at": {
             "anyOf": [
               {
@@ -1077,6 +1093,51 @@
           }
         },
         "title": "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post",
+        "type": "object"
+      },
+      "Body_page_budget_advise_run_web_budget_advise_post": {
+        "properties": {
+          "ledger_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Id"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          },
+          "reserved_buffer_yuan": {
+            "default": 0.0,
+            "minimum": 0.0,
+            "title": "Reserved Buffer Yuan",
+            "type": "number"
+          },
+          "run_advise": {
+            "default": false,
+            "title": "Run Advise",
+            "type": "boolean"
+          },
+          "savings_target_yuan": {
+            "default": 0.0,
+            "minimum": 0.0,
+            "title": "Savings Target Yuan",
+            "type": "number"
+          }
+        },
+        "title": "Body_page_budget_advise_run_web_budget_advise_post",
         "type": "object"
       },
       "Body_post_archive_web_income_plans__public_id__archive_post": {
@@ -8817,6 +8878,64 @@
         ]
       }
     },
+    "/api/admin/upload-links/{public_id}/extend": {
+      "post": {
+        "operationId": "extend_upload_link_endpoint_api_admin_upload_links__public_id__extend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUploadLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extend Upload Link Endpoint",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/upload-links/{public_id}/revoke": {
       "post": {
         "operationId": "revoke_upload_link_endpoint_api_admin_upload_links__public_id__revoke_post",
@@ -9142,6 +9261,22 @@
       "get": {
         "operationId": "list_my_inbox_api_bill_splits_inbox_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",
@@ -9522,7 +9657,6 @@
     },
     "/api/budget/advise": {
       "post": {
-        "description": "Build anonymised BudgetInputs → advisor → BudgetAdvice.\n\nADR-0036: payload going out only includes the allowed-field surface\n(enforced inside the provider by ``to_outbound_dict`` /\n``validate_outbound_payload``). The de-anonymisation is the UI's\njob, using the alias resolver on the way back.\n\nBatch 2: when a live (outbound) provider is configured, the route\nrefuses to call unless ``BUDGET_ADVISOR_OWNER_CONFIRMED=true``. Every\ninvocation against a live provider also writes one audit row\ncapturing provider/model + input hash + success.",
         "operationId": "post_advise_api_budget_advise_post",
         "parameters": [
           {
@@ -9631,7 +9765,6 @@
     },
     "/api/budget/discretionary": {
       "get": {
-        "description": "本月可自由支配 = income - fixed - savings - reserved (floored at 0).",
         "operationId": "get_discretionary_api_budget_discretionary_get",
         "parameters": [
           {
@@ -17233,7 +17366,7 @@
     },
     "/owner/migration-readiness/cut-over": {
       "post": {
-        "description": "ADR-0031 cut-over: enqueue the v1_migration handler.\n\nPR-1 MVP: handler re-checks readiness then writes\nschema_version=1.0 / schema_min_compatible=1.0 to app_meta. After\nthis completes, older binaries refuse to start (see\n:func:`app_meta_service.assert_binary_compatible_with_db`).\nShadow DB + atomic file swap + rollback CLI is the PR-2 follow-up.",
+        "description": "ADR-0031 cut-over: enqueue the v1_migration handler.\n\nThe handler re-checks readiness, creates a rollback snapshot, then writes\nschema_version=1.0 / schema_min_compatible=1.0 to app_meta. The enqueue\npath is singleton-guarded so double-clicks reuse the active task instead\nof starting duplicate backups and cut-over writes.",
         "operationId": "owner_migration_cut_over_owner_migration_readiness_cut_over_post",
         "responses": {
           "200": {
@@ -17603,6 +17736,48 @@
           }
         },
         "summary": "Owner Upload Links Delete",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/upload-links/{public_id}/extend": {
+      "post": {
+        "operationId": "owner_upload_links_extend_owner_upload_links__public_id__extend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Upload Links Extend",
         "tags": [
           "owner-console"
         ]
@@ -18193,6 +18368,44 @@
           }
         },
         "summary": "Page Budget Advise",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "page_budget_advise_run_web_budget_advise_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_page_budget_advise_run_web_budget_advise_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Page Budget Advise Run",
         "tags": [
           "web"
         ]

@@ -35,6 +35,7 @@ from app.services.admin_service._dtos import (
 from app.services.admin_service._upload_links import (
     create_upload_link,
     delete_upload_link,
+    extend_upload_link,
     list_upload_links,
     revoke_upload_link,
     rotate_upload_link,
@@ -48,6 +49,7 @@ __all__ = [
     "create_upload_link",
     "delete_device",
     "delete_upload_link",
+    "extend_upload_link",
     "list_devices",
     "list_upload_links",
     "rename_device",

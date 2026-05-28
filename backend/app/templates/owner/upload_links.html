@@ -50,6 +50,7 @@
         <th style="white-space:nowrap">时区</th>
         <th style="white-space:nowrap">日配额</th>
         <th style="white-space:nowrap">同端间隔</th>
+        <th style="white-space:nowrap">有效期至</th>
         <th style="white-space:nowrap">最近使用</th>
         <th style="white-space:nowrap">状态</th>
         <th style="white-space:nowrap">掩码路径</th>
@@ -77,10 +78,13 @@
                  value="{{ link.per_remote_min_interval_seconds }}" style="width:6rem">
           <button form="upload-link-limits-{{ link.public_id }}" type="submit" class="btn btn-secondary">保存</button>
         </td>
+        <td class="text-meta" style="white-space:nowrap;font-size:var(--type-meta-size)">{{ link.expires_at|owner_datetime }}</td>
         <td>{{ link.last_used_at|owner_datetime }}</td>
         <td>
           {% if link.revoked_at %}
             <span class="badge badge-off">已停用</span>
+          {% elif link.is_expired %}
+            <span class="badge badge-off">已过期</span>
           {% else %}
             <span class="badge badge-ok">正常</span>
           {% endif %}
@@ -93,6 +97,10 @@
                   action="/owner/upload-links/{{ link.public_id }}/rotate"
                   data-confirm="重新生成上传 Key？旧 iPhone 快捷指令将立即失效。">
               <button type="submit" class="btn btn-secondary">重新生成</button>
+            </form>
+            <form class="inline" method="post"
+                  action="/owner/upload-links/{{ link.public_id }}/extend">
+              <button type="submit" class="btn btn-secondary">Extend</button>
             </form>
             <form class="inline" method="post"
                   action="/owner/upload-links/{{ link.public_id }}/revoke"

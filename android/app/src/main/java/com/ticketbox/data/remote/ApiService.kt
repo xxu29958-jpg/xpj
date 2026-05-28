@@ -164,7 +164,9 @@ interface ApiService {
     ): com.ticketbox.data.remote.dto.BillSplitSentDto
 
     @GET("api/bill-splits/inbox")
-    suspend fun listBillSplitInbox(): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto
+    suspend fun listBillSplitInbox(
+        @Query("status") status: String? = null,
+    ): com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto
 
     @GET("api/bill-splits/sent")
     suspend fun listBillSplitSent(): com.ticketbox.data.remote.dto.BillSplitSentListResponseDto

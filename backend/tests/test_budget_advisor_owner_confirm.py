@@ -11,13 +11,18 @@ Three new surfaces:
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.config import reset_settings_cache
 from app.database import SessionLocal
-from app.models import BudgetAdvisorAuditLog
+from app.models import BudgetAdvisorAuditLog, LedgerMember
 from app.services.budget_advisor_service import _providers as providers_module
+from app.services.budget_advisor_service._audit import cleanup_expired_audit_logs
+from app.services.time_service import now_utc
 
 
 @pytest.fixture()
@@ -26,6 +31,8 @@ def live_provider_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("BUDGET_ADVISOR_BASE_URL", "http://127.0.0.1:11434/v1")
     monkeypatch.setenv("BUDGET_ADVISOR_MODEL", "test-model")
     monkeypatch.setenv("BUDGET_ADVISOR_API_KEY", "test-key")
+    monkeypatch.setenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "0")
     reset_settings_cache()
     yield monkeypatch
     reset_settings_cache()
@@ -42,6 +49,55 @@ def _patch_openai_call(monkeypatch: pytest.MonkeyPatch, *, payload: dict) -> Non
     )
 
 
+def _set_owner_role(role: str) -> None:
+    with SessionLocal() as db:
+        member = db.scalar(
+            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
+        )
+        assert member is not None
+        member.role = role
+        db.commit()
+
+
+def test_cleanup_expired_audit_logs_does_not_block_on_older_unexpired_rows(
+    *, identity
+) -> None:
+    now = now_utc()
+    with SessionLocal() as db:
+        db.add(
+            BudgetAdvisorAuditLog(
+                tenant_id="owner",
+                actor_account_id=None,
+                provider="openai_compat",
+                model="test",
+                input_hash="old-long-retention",
+                success=1,
+                retention_days=180,
+                called_at=now - timedelta(days=100),
+            )
+        )
+        db.add(
+            BudgetAdvisorAuditLog(
+                tenant_id="owner",
+                actor_account_id=None,
+                provider="openai_compat",
+                model="test",
+                input_hash="new-expired-short-retention",
+                success=1,
+                retention_days=30,
+                called_at=now - timedelta(days=40),
+            )
+        )
+        db.commit()
+
+        assert cleanup_expired_audit_logs(db, now=now, batch_size=1) == 1
+        remaining = {
+            row.input_hash for row in db.query(BudgetAdvisorAuditLog).all()
+        }
+
+    assert remaining == {"old-long-retention"}
+
+
 def test_live_provider_without_owner_confirm_returns_403(
     client: TestClient, *, identity, live_provider_env
 ) -> None:
@@ -52,6 +108,33 @@ def test_live_provider_without_owner_confirm_returns_403(
     )
     assert response.status_code == 403
     assert response.json()["error"] == "ai_advisor_not_confirmed"
+
+
+def test_live_provider_requires_owner_role(
+    client: TestClient, *, identity, live_provider_env, monkeypatch
+) -> None:
+    live_provider_env.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "true")
+    reset_settings_cache()
+    _set_owner_role("member")
+    _patch_openai_call(
+        monkeypatch,
+        payload={
+            "choices": [
+                {"message": {"content": '{"summary":"ok","suggestions":[]}'}}
+            ]
+        },
+    )
+
+    response = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": "2026-05", "timezone": "Asia/Shanghai"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "ai_advisor_owner_required"
+    with SessionLocal() as db:
+        assert db.query(BudgetAdvisorAuditLog).count() == 0
 
 
 def test_live_provider_with_owner_confirm_records_audit(
@@ -99,6 +182,45 @@ def test_live_provider_with_owner_confirm_records_audit(
         # Masked base url keeps the legitimate path; only credentials
         # embedded in the URL are stripped.
         assert row.base_url == "http://127.0.0.1:11434/v1"
+
+
+def test_live_provider_min_interval_blocks_repeated_calls(
+    client: TestClient, *, identity, live_provider_env, monkeypatch
+) -> None:
+    live_provider_env.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "true")
+    live_provider_env.setenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "60")
+    reset_settings_cache()
+    _patch_openai_call(
+        monkeypatch,
+        payload={
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"summary":"ok","suggestions":[],"confidence":0.5}'
+                        )
+                    }
+                }
+            ]
+        },
+    )
+
+    first = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": "2026-05", "timezone": "Asia/Shanghai"},
+    )
+    second = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": "2026-05", "timezone": "Asia/Shanghai"},
+    )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 429
+    assert second.json()["error"] == "ai_advisor_rate_limited"
+    with SessionLocal() as db:
+        assert db.query(BudgetAdvisorAuditLog).count() == 1
 
 
 def test_advisor_status_reflects_provider_config(
@@ -154,3 +276,4 @@ def test_advisor_status_after_call_shows_last_outcome(
     assert body["last_success"] is True
     assert body["last_suggestion_count"] == 1
     assert body["last_called_at"] is not None
+    assert "input_hash" not in body

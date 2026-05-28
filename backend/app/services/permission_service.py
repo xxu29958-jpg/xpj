@@ -112,7 +112,7 @@ def require_manage_upload_links(ctx: AuthContext) -> None:
 
 def require_admin_maintenance(ctx: AuthContext) -> None:
     if not can_use_admin_maintenance(ctx):
-        raise AppError("invalid_token", status_code=401)
+        _deny()
 
 
 def require_create_top_level_ledger(ctx: AuthContext) -> None:

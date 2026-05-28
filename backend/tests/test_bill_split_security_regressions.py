@@ -14,6 +14,7 @@ from app.models import (
     Device,
     Expense,
     Ledger,
+    LedgerAuditLog,
     LedgerMember,
 )
 from app.services import bill_split_service as bsplit
@@ -232,12 +233,87 @@ def test_sender_expense_updates_do_not_change_receiver_snapshot() -> None:
     assert after == before
 
 
+def test_inbox_status_filter() -> None:
+    expense_id = _make_expense_for_owner()
+    receiver_account_id = _seed_receiver(name="B-filter", ledger_id="receiver_filter")
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_account_id,
+            amount_cents=2500,
+        )
+        public_id = inv.public_id
+
+    with SessionLocal() as db:
+        invited = bsplit.list_inbox(db, receiver_account_id=receiver_account_id, status="invited")
+        assert len(invited) == 1
+        bsplit.reject_invitation(
+            db,
+            public_id=public_id,
+            rejecting_account_id=receiver_account_id,
+        )
+
+    with SessionLocal() as db:
+        assert bsplit.list_inbox(db, receiver_account_id=receiver_account_id, status="invited") == []
+        rejected = bsplit.list_inbox(db, receiver_account_id=receiver_account_id, status="rejected")
+        assert len(rejected) == 1
+
+
+def test_reject_audit_does_not_record_external_receiver_as_sender_ledger_actor() -> None:
+    expense_id = _make_expense_for_owner()
+    receiver_account_id = _seed_receiver(name="B-reject", ledger_id="receiver_reject")
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_account_id,
+            amount_cents=2500,
+        )
+        public_id = inv.public_id
+
+    with SessionLocal() as db:
+        bsplit.reject_invitation(
+            db,
+            public_id=public_id,
+            rejecting_account_id=receiver_account_id,
+        )
+
+    with SessionLocal() as db:
+        audit = db.scalar(
+            select(LedgerAuditLog)
+            .where(LedgerAuditLog.action == "bill_split_rejected")
+            .where(LedgerAuditLog.invitation_public_id == public_id)
+        )
+        assert audit is not None
+        assert audit.ledger_id == "owner"
+        assert audit.actor_account_id is None
+        assert audit.target_account_id == receiver_account_id
+
+
 def test_sender_cannot_invite_self(client: TestClient, *, identity) -> None:
     expense_id = _make_expense_for_owner()
     response = client.post(
         f"/api/expenses/{expense_id}/split-invite",
         headers=identity.app_headers,
         json={"receiver_account_id": _owner_account_id(), "amount_cents": 2500},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_unknown_receiver_does_not_enumerate_accounts(
+    client: TestClient, *, identity
+) -> None:
+    expense_id = _make_expense_for_owner()
+    response = client.post(
+        f"/api/expenses/{expense_id}/split-invite",
+        headers=identity.app_headers,
+        json={"receiver_account_id": 999_999_999, "amount_cents": 2500},
     )
     assert response.status_code == 422
     assert response.json()["error"] == "invalid_request"

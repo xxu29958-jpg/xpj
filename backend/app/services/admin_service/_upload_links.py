@@ -9,11 +9,12 @@ from app.errors import AppError
 from app.models import Account, Device, Ledger, UploadLink
 from app.services.admin_service._dtos import UploadLinkSecret, UploadLinkSummary
 from app.services.identity_service import (
-    _ensure_device,
+    _create_device,
     hash_secret,
     new_upload_key,
 )
-from app.services.time_service import now_utc, to_iso
+from app.services.session_lifecycle_service import upload_link_expires_at
+from app.services.time_service import ensure_utc, now_utc, to_iso
 
 
 def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
@@ -29,6 +30,8 @@ def _upload_link_summary(db: Session, link: UploadLink) -> UploadLinkSummary:
         default_timezone=link.default_timezone,
         daily_byte_budget=link.daily_byte_budget,
         per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
+        expires_at=to_iso(link.expires_at),
+        is_expired=_is_expired(link),
         # Lists / dashboards must NEVER show the full upload key — only the
         # public_id is safe to reveal repeatedly.
         masked_url_path="/u/***",
@@ -81,6 +84,8 @@ def list_upload_links(db: Session, *, ledger_ids: set[str] | None = None) -> lis
                 default_timezone=link.default_timezone,
                 daily_byte_budget=link.daily_byte_budget,
                 per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
+                expires_at=to_iso(link.expires_at),
+                is_expired=_is_expired(link),
                 # Lists / dashboards must NEVER show the full upload key — only the
                 # public_id is safe to reveal repeatedly.
                 masked_url_path="/u/***",
@@ -119,7 +124,8 @@ def create_upload_link(
         raise AppError("invalid_request", "账本不存在。", status_code=404)
     # Each UploadLink is anchored on a synthetic device entry so the device
     # column stays meaningful (a revoked device should kill its links).
-    device = _ensure_device(db, admin_account_id, "iPhone 快捷指令", "ios")
+    issued_at = now_utc()
+    device = _create_device(db, admin_account_id, "iPhone 快捷指令", "ios")
     upload_key = new_upload_key()
     link = UploadLink(
         public_id=_new_public_id(db),
@@ -128,6 +134,7 @@ def create_upload_link(
         device_id=device.id,
         ledger_id=ledger_id,
         default_timezone=default_timezone,
+        expires_at=upload_link_expires_at(issued_at),
     )
     db.add(link)
     db.commit()
@@ -151,8 +158,15 @@ def rotate_upload_link(
             "上传链接已停用，不能继续轮换。",
             status_code=409,
         )
+    if _is_expired(link):
+        raise AppError(
+            "invalid_request",
+            "Cannot rotate an expired upload link.",
+            status_code=409,
+        )
     now = now_utc()
     link.revoked_at = now
+    expires_at = upload_link_expires_at(now)
     new_key = new_upload_key()
     new_link = UploadLink(
         public_id=_new_public_id(db),
@@ -161,6 +175,7 @@ def rotate_upload_link(
         device_id=link.device_id,
         ledger_id=link.ledger_id,
         default_timezone=link.default_timezone,
+        expires_at=expires_at,
         daily_byte_budget=link.daily_byte_budget,
         per_remote_min_interval_seconds=link.per_remote_min_interval_seconds,
     )
@@ -174,6 +189,35 @@ def rotate_upload_link(
         default_timezone=new_link.default_timezone,
     )
     return summary, secret
+
+
+def extend_upload_link(
+    db: Session,
+    *,
+    public_id: str,
+    ledger_ids: set[str] | None = None,
+) -> UploadLinkSummary:
+    link = _upload_link_by_public_id(db, public_id, ledger_ids=ledger_ids)
+    if link.revoked_at is not None:
+        raise AppError(
+            "invalid_request",
+            "Cannot extend a revoked upload link.",
+            status_code=409,
+        )
+    if _is_expired(link):
+        raise AppError(
+            "invalid_request",
+            "Cannot extend an expired upload link.",
+            status_code=409,
+        )
+    now = now_utc()
+    current_expiry = ensure_utc(link.expires_at)
+    link.expires_at = upload_link_expires_at(
+        current_expiry if current_expiry is not None and current_expiry > now else now
+    )
+    db.commit()
+    db.refresh(link)
+    return _upload_link_summary(db, link)
 
 
 def revoke_upload_link(
@@ -260,3 +304,8 @@ def _upload_url_path(upload_key: str, default_timezone: str | None) -> str:
     from urllib.parse import quote
 
     return f"/u/{upload_key}?tz={quote(tz, safe='/')}"
+
+
+def _is_expired(link: UploadLink) -> bool:
+    expires_at = ensure_utc(link.expires_at)
+    return expires_at is not None and expires_at <= now_utc()

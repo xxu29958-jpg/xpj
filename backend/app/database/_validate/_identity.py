@@ -37,6 +37,17 @@ def _validate_family_role_data(connection, table_names: set[str]) -> None:
         )
         if invalid_invitations:
             raise DataIntegrityError("Invalid legacy data: invitations.role contains unsupported values")
+    if "auth_tokens" in table_names:
+        invalid_auth_scopes = int(
+            connection.execute(
+                text(
+                    "SELECT COUNT(*) FROM auth_tokens "
+                    "WHERE scope IS NULL OR scope NOT IN ('app', 'admin')"
+                )
+            ).scalar_one()
+        )
+        if invalid_auth_scopes:
+            raise DataIntegrityError("Invalid legacy data: auth_tokens.scope contains unsupported values")
 
 
 def _validate_identity_unique_scopes(connection, table_names: set[str]) -> None:

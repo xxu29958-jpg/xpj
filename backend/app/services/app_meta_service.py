@@ -15,6 +15,8 @@ nothing in v0.9.x writes app_meta.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -46,6 +48,18 @@ def set_value(db: Session, key: str, value: str) -> None:
         row.value = value
         row.updated_at = now_utc()
     db.commit()
+
+
+def _set_value_in_transaction(
+    db: Session, key: str, value: str, *, updated_at: datetime
+) -> None:
+    row = db.scalar(select(AppMeta).where(AppMeta.key == key))
+    if row is None:
+        row = AppMeta(key=key, value=value, updated_at=updated_at)
+        db.add(row)
+    else:
+        row.value = value
+        row.updated_at = updated_at
 
 
 def schema_version(db: Session) -> str:
@@ -98,6 +112,17 @@ def mark_v1_cut_over_completed(db: Session) -> None:
     """Atomic cut-over write: set version, min_compatible, completed_at
     in a single transaction. Called by the v1_migration background task
     handler."""
-    set_value(db, SCHEMA_VERSION_KEY, V1_TARGET_VERSION)
-    set_value(db, SCHEMA_MIN_COMPATIBLE_KEY, V1_TARGET_VERSION)
-    set_value(db, MIGRATION_COMPLETED_AT_KEY, now_utc().isoformat())
+    completed_at = now_utc()
+    updates = (
+        (SCHEMA_VERSION_KEY, V1_TARGET_VERSION),
+        (SCHEMA_MIN_COMPATIBLE_KEY, V1_TARGET_VERSION),
+        (MIGRATION_COMPLETED_AT_KEY, completed_at.isoformat()),
+    )
+    try:
+        with db.begin_nested():
+            for key, value in updates:
+                _set_value_in_transaction(db, key, value, updated_at=completed_at)
+        db.commit()
+    except Exception:  # noqa: BLE001 - rollback must catch any failed metadata write.
+        db.rollback()
+        raise

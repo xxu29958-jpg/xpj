@@ -68,6 +68,10 @@ ERROR_MESSAGES = {
     "merchant_alias_conflict": "商家别名已指向其他商家。",
     "import_batch_not_found": "导入批次不存在。",
     "state_conflict": "记录已被其它端修改，请刷新后再试。",
+    "ai_advisor_not_confirmed": "AI 预算助手尚未经过 owner 显式确认，已禁用。",
+    "ai_advisor_owner_required": "只有账本 owner 可以调用外部 AI 预算建议。",
+    "ai_advisor_rate_limited": "AI 预算助手调用过于频繁，请稍后再试。",
+    "ai_advisor_daily_limit_exceeded": "AI 预算助手今日调用次数已达上限。",
 }
 
 

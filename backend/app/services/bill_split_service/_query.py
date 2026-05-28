@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import BillSplitInvitation
 
+_INVITATION_STATUSES = frozenset({"invited", "accepted", "rejected", "cancelled", "expired"})
+
 
 def list_sent(
     db: Session, *, sender_account_id: int, sender_ledger_id: str, limit: int = 50
@@ -25,18 +27,21 @@ def list_sent(
 
 
 def list_inbox(
-    db: Session, *, receiver_account_id: int, limit: int = 50
+    db: Session, *, receiver_account_id: int, status: str | None = None, limit: int = 50
 ) -> list[BillSplitInvitation]:
     """Receiver view — **account-scoped, NOT ledger-scoped**. Receiver's
     inbox is the same no matter which ledger they're currently viewing,
     because invitations are not yet bound to a target ledger when they
     arrive."""
-    rows = db.scalars(
-        select(BillSplitInvitation)
-        .where(BillSplitInvitation.receiver_account_id == receiver_account_id)
-        .order_by(BillSplitInvitation.created_at.desc())
-        .limit(limit)
+    statement = select(BillSplitInvitation).where(
+        BillSplitInvitation.receiver_account_id == receiver_account_id
     )
+    if status is not None:
+        status_value = status.strip().lower()
+        if status_value not in _INVITATION_STATUSES:
+            raise AppError("invalid_request", "Unsupported invitation status.", status_code=400)
+        statement = statement.where(BillSplitInvitation.status == status_value)
+    rows = db.scalars(statement.order_by(BillSplitInvitation.created_at.desc()).limit(limit))
     return list(rows)
 
 

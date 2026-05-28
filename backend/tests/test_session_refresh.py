@@ -12,11 +12,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
 from app.config import reset_settings_cache
-from app.database import SessionLocal
-from app.models import AuthToken
-from app.services.identity_service import hash_secret
+from app.database import SessionLocal, engine
+from app.models import AuthToken, Device
+from app.services.identity_service import authenticate_session_token, hash_secret
+from app.services.time_service import ensure_utc, now_utc
 
 
 @pytest.fixture()
@@ -109,3 +111,70 @@ def test_expired_app_token_is_rejected_and_revoked(client: TestClient, *, identi
     with SessionLocal() as db:
         row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token)).one()
         assert row.revoked_at is not None
+
+
+def test_auth_activity_refresh_is_throttled(client: TestClient, *, identity) -> None:
+    token = identity.app_token
+    recent = now_utc() - timedelta(seconds=30)
+    with SessionLocal() as db:
+        row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token)).one()
+        device = db.get(Device, row.device_id)
+        assert device is not None
+        row.last_used_at = recent
+        device.last_seen_at = recent
+        db.commit()
+
+    response = client.get("/api/auth/check", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+
+    with SessionLocal() as db:
+        row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token)).one()
+        device = db.get(Device, row.device_id)
+        assert device is not None
+        assert ensure_utc(row.last_used_at) == ensure_utc(recent)
+        assert ensure_utc(device.last_seen_at) == ensure_utc(recent)
+
+        old = now_utc() - timedelta(seconds=61)
+        row.last_used_at = old
+        device.last_seen_at = old
+        db.commit()
+
+    response = client.get("/api/auth/check", headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+
+    with SessionLocal() as db:
+        row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token)).one()
+        device = db.get(Device, row.device_id)
+        assert device is not None
+        assert ensure_utc(row.last_used_at) is not None
+        assert ensure_utc(device.last_seen_at) is not None
+        assert ensure_utc(row.last_used_at) > ensure_utc(old)
+        assert ensure_utc(device.last_seen_at) > ensure_utc(old)
+
+
+def test_auth_context_build_uses_batched_identity_lookup(identity) -> None:
+    token = identity.app_token
+    recent = now_utc() - timedelta(seconds=30)
+    with SessionLocal() as db:
+        row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(token)).one()
+        device = db.get(Device, row.device_id)
+        assert device is not None
+        row.last_used_at = recent
+        device.last_seen_at = recent
+        db.commit()
+
+    selects: list[str] = []
+
+    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001, ARG001
+        if statement.lstrip().upper().startswith("SELECT"):
+            selects.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        with SessionLocal() as db:
+            ctx = authenticate_session_token(db, token, {"app"})
+    finally:
+        event.remove(engine, "before_cursor_execute", before_cursor_execute)
+
+    assert ctx.ledger_id == "owner"
+    assert len(selects) == 2

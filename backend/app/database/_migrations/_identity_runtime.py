@@ -109,7 +109,26 @@ def _migrate_identity_runtime_schema(connection, table_names: set[str]) -> None:
             connection.execute(text("ALTER TABLE auth_tokens ADD COLUMN expires_at DATETIME"))
         connection.execute(
             text(
+                "UPDATE auth_tokens "
+                "SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) "
+                "WHERE revoked_at IS NULL "
+                "AND id NOT IN ("
+                "SELECT MAX(id) FROM auth_tokens "
+                "WHERE revoked_at IS NULL "
+                "GROUP BY account_id, device_id, ledger_id, scope"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
                 "CREATE INDEX IF NOT EXISTS ix_auth_tokens_expires_at "
                 "ON auth_tokens (expires_at)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_auth_tokens_active_principal "
+                "ON auth_tokens (account_id, device_id, ledger_id, scope) "
+                "WHERE revoked_at IS NULL"
             )
         )

@@ -77,6 +77,9 @@ from app.services.background_task_service import (
     recover_orphaned_tasks,
     shutdown_executor,
 )
+from app.services.budget_advisor_audit_cleanup_scheduler import (
+    start_budget_advisor_audit_cleanup_scheduler,
+)
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
 from app.services.learning_cleanup_scheduler import (
     start_learning_cleanup_scheduler,
@@ -134,6 +137,7 @@ async def lifespan(_: FastAPI):
     # v1.2 ops: optional daily learning-table cleanup. Disabled by
     # default; opt in via LEARNING_CLEANUP_AUTO_ENABLED=true.
     learning_scheduler = start_learning_cleanup_scheduler()
+    advisor_audit_scheduler = start_budget_advisor_audit_cleanup_scheduler()
     try:
         yield
     finally:
@@ -141,6 +145,7 @@ async def lifespan(_: FastAPI):
             fx_scheduler.stop()
         if learning_scheduler is not None:
             learning_scheduler.stop()
+        advisor_audit_scheduler.stop()
         shutdown_executor(wait=False)
 
 

@@ -26,7 +26,8 @@
 - 生产部署建议设置 `CLOUDFLARE_ACCESS_REQUIRED=true`；后端必须校验 `Cf-Access-Jwt-Assertion` 的签名、issuer 和 AUD，不能只相信边缘已经拦截。
 - 公网 `/web/auth/login` 可达，用 owner 生成的 8 位 pairing code 登录。
 - 登录复用 `pair_device(platform="web")`，签发 `AuthToken.scope="app"`、`Device.platform="web"`，并写入 `auth_tokens.expires_at = issued_at + 8h`。
-- 其它公网 `/web/*` 必须带 `__Host-session` HttpOnly Secure SameSite=Lax cookie。
+- 公网 `/api/auth/pair` 是无 app/admin token 的绑定入口，只接受 owner 通过 `/api/bootstrap/pairing-codes` 在 loopback/admin 边界内生成的 pairing code；它只能作为 DB-backed `remote_id` throttle 的受限 bootstrap 入口，不能把 `X-Forwarded-For` / `CF-Connecting-IP` 当作授权信号。
+- 其它公网 `/web/*` 必须带 `__Host-session` HttpOnly Secure SameSite=Strict cookie。
 - web session 校验必须同时检查 token scope 和 device platform，不能接受 Android/app token。
 - 服务端 Web token 按 `auth_tokens.expires_at` 固定 8 小时有效，不做滑动刷新；到期撤销 token 并重新 pairing。
 - cookie 绑定 ledger；URL `?ledger_id=` 与 session ledger 不一致时返回 `ledger_forbidden`。

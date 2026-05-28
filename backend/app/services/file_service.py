@@ -113,6 +113,35 @@ def _is_decodable_image(ext: str, data: bytes) -> bool:
         return False
 
 
+def _sanitize_image_bytes(ext: str, data: bytes) -> tuple[bytes, str]:
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+
+        _register_pil_decoders(ext)
+        with Image.open(BytesIO(data)) as image:
+            if not image.getexif() and not image.info:
+                return data, "jpg" if ext == "jpeg" else ext
+            image = ImageOps.exif_transpose(image)
+            output = BytesIO()
+            if ext in {"jpg", "jpeg"}:
+                if image.mode not in {"RGB", "L"}:
+                    image = image.convert("RGB")
+                image.save(output, format="JPEG", quality=95, optimize=True)
+                return output.getvalue(), "jpg"
+            if ext == "png":
+                image.save(output, format="PNG", optimize=True)
+                return output.getvalue(), "png"
+            if ext == "webp":
+                image.save(output, format="WEBP", quality=95, method=6)
+                return output.getvalue(), "webp"
+            if ext == "heic":
+                image.save(output, format="HEIF", quality=95)
+                return output.getvalue(), "heic"
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
+        raise AppError("unsupported_file_type", status_code=400) from exc
+    raise AppError("unsupported_file_type", status_code=400)
+
+
 async def save_upload(file: UploadFile, tenant_id: str) -> SavedUpload:
     data = bytearray()
     try:
@@ -150,6 +179,7 @@ def save_upload_bytes(
     ext = header_ext or metadata_ext
     if ext is None or not _looks_like_allowed_image(ext, header) or not _is_decodable_image(ext, data):
         raise AppError("unsupported_file_type", status_code=400)
+    sanitized_data, ext = _sanitize_image_bytes(ext, data)
 
     now = datetime.now(UTC)
     target_dir = settings.upload_dir / tenant_id / now.strftime("%Y") / now.strftime("%m")
@@ -157,12 +187,12 @@ def save_upload_bytes(
 
     filename = f"{secrets.token_hex(16)}.{ext}"
     target_path = target_dir / filename
-    hasher = hashlib.sha256(data)
+    hasher = hashlib.sha256(sanitized_data)
 
     try:
         with target_path.open("wb") as output:
-            output.write(data)
-    except Exception:
+            output.write(sanitized_data)
+    except Exception:  # noqa: BLE001 - failed image sanitation must clean up the partial file.
         target_path.unlink(missing_ok=True)
         raise
 

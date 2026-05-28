@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
+from io import BytesIO
 
 from api_contract_helpers import (
     _stored_upload_files,
@@ -13,7 +15,10 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import LedgerMember
+from app.models import Device, LedgerMember, UploadLink
+from app.services.file_service import resolve_protected_image, save_upload_bytes
+from app.services.identity_service import authenticate_upload_link, hash_secret
+from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_RELATIVE
 
@@ -115,6 +120,54 @@ def test_upload_rejects_invalid_token_before_saving_file(client: TestClient) -> 
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"
     assert _stored_upload_files() == []
+
+
+def test_expired_upload_link_is_rejected_and_revoked_before_saving_file(
+    client: TestClient, *, identity
+) -> None:
+    expired_at = now_utc() - timedelta(minutes=1)
+    with SessionLocal() as db:
+        link = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))
+        assert link is not None
+        link.expires_at = expired_at
+        db.commit()
+
+    response = client.post(
+        identity.upload_url_path,
+        headers={**identity.upload_headers, "Content-Type": "image/png"},
+        content=PNG_BYTES,
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+    assert _stored_upload_files() == []
+    with SessionLocal() as db:
+        link = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))
+        assert link is not None
+        assert link.revoked_at is not None
+
+
+def test_upload_link_activity_refresh_is_throttled(client: TestClient, *, identity) -> None:
+    recent = now_utc() - timedelta(seconds=30)
+    with SessionLocal() as db:
+        link = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))
+        assert link is not None
+        device = db.get(Device, link.device_id)
+        assert device is not None
+        link.last_used_at = recent
+        device.last_seen_at = recent
+        db.commit()
+
+    with SessionLocal() as db:
+        authenticate_upload_link(db, identity.upload_key)
+
+    with SessionLocal() as db:
+        link = db.scalar(select(UploadLink).where(UploadLink.token_hash == hash_secret(identity.upload_key)))
+        assert link is not None
+        device = db.get(Device, link.device_id)
+        assert device is not None
+        assert ensure_utc(link.last_used_at) == ensure_utc(recent)
+        assert ensure_utc(device.last_seen_at) == ensure_utc(recent)
 
 
 def test_upload_link_rejects_viewer_after_role_downgrade_before_saving_file(
@@ -242,6 +295,31 @@ def test_upload_rejects_spoofed_extension_and_content_type(client: TestClient, *
     assert _stored_upload_files() == []
 
 
+def test_saved_upload_strips_exif_metadata() -> None:
+    from PIL import Image
+
+    image = Image.new("RGB", (8, 8), color=(20, 40, 60))
+    exif = Image.Exif()
+    exif[0x010F] = "SensitiveCamera"
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", exif=exif)
+
+    saved = save_upload_bytes(
+        buffer.getvalue(),
+        tenant_id="owner",
+        filename="ticket.jpg",
+        content_type="image/jpeg",
+    )
+
+    stored_path, _ = resolve_protected_image(saved.relative_path, "owner")
+    try:
+        with Image.open(stored_path) as stored:
+            assert not stored.getexif()
+        assert b"SensitiveCamera" not in stored_path.read_bytes()
+    finally:
+        stored_path.unlink(missing_ok=True)
+
+
 def test_upload_rejects_fake_heic_brand_without_decodable_image(
     client: TestClient, *, identity,
 ) -> None:
@@ -283,7 +361,15 @@ def test_upload_accepts_decodable_heic_and_generates_jpeg_thumbnail(
     image = client.get(f"/api/expenses/{payload['id']}/image", headers=identity.app_headers)
     assert image.status_code == 200
     assert image.headers["content-type"].startswith("image/heic")
-    assert image.content == heic_bytes
+    assert image.content != heic_bytes
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    with Image.open(BytesIO(image.content)) as stored:
+        assert stored.size[0] > 0
+        assert stored.size[1] > 0
+        assert not stored.getexif()
 
     thumbnail = client.get(
         f"/api/expenses/{payload['id']}/thumbnail", headers=identity.app_headers

@@ -133,7 +133,7 @@ def test_advise_with_mock_provider_returns_anonymised_advice(
 ) -> None:
     _seed_minimal_data()
     with patch(
-        "app.routes.budget_advisor.get_budget_advisor",
+        "app.services.budget_advisor_service._runner.get_budget_advisor",
         return_value=MockBudgetAdvisor(),
     ):
         resp = client.post(
@@ -157,7 +157,7 @@ def test_advise_handles_provider_returning_none_gracefully(
             return None
 
     with patch(
-        "app.routes.budget_advisor.get_budget_advisor",
+        "app.services.budget_advisor_service._runner.get_budget_advisor",
         return_value=_NullAdvisor(),
     ):
         resp = client.post(

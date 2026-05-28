@@ -60,12 +60,19 @@ class Settings:
     local_llm_base_url: str
     local_llm_model: str
     local_llm_timeout_seconds: int
+    local_llm_max_concurrent: int
+    local_llm_queue_timeout_seconds: float
     budget_advisor_provider: str
     budget_advisor_base_url: str
     budget_advisor_api_key: str
     budget_advisor_model: str
     budget_advisor_timeout_seconds: int
     budget_advisor_audit_retention_days: int
+    budget_advisor_audit_cleanup_auto_enabled: bool
+    budget_advisor_audit_cleanup_daily_at: str
+    budget_advisor_audit_cleanup_timezone: str
+    budget_advisor_live_min_interval_seconds: int
+    budget_advisor_live_daily_call_limit: int
     tenants_json: str
     enable_http_bootstrap: bool
     http_bootstrap_secret: str
@@ -78,9 +85,11 @@ class Settings:
     # Public surface hardening (Batch 1).
     upload_link_default_daily_byte_budget: int
     upload_link_default_per_remote_interval_seconds: int
+    upload_link_ttl_days: int
     csv_import_max_bytes: int
     csv_import_max_lines: int
     csv_import_max_cell_bytes: int
+    csv_import_apply_lease_minutes: int
     # Batch 2: app session token TTL. ``0`` keeps the legacy never-expires
     # behavior (web session tokens are still always TTL-capped). Anything
     # > 0 gives Android tokens a hard expiry; clients should silently
@@ -227,6 +236,8 @@ def get_settings() -> Settings:
         local_llm_base_url=_resolve_local_llm_base_url(os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
+        local_llm_max_concurrent=max(1, int(os.getenv("LOCAL_LLM_MAX_CONCURRENT", "1"))),
+        local_llm_queue_timeout_seconds=max(0.0, float(os.getenv("LOCAL_LLM_QUEUE_TIMEOUT_SECONDS", "5"))),
         # ADR-0036: v1.1 AI budget advisor provider. Default 'empty' = no AI
         # call, local rules only. 'openai_compat' covers ollama / vLLM /
         # llama.cpp / LM Studio locally + OpenAI / DeepSeek / SiliconFlow /
@@ -239,6 +250,28 @@ def get_settings() -> Settings:
         budget_advisor_model=os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
         budget_advisor_timeout_seconds=int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
         budget_advisor_audit_retention_days=int(os.getenv("BUDGET_ADVISOR_AUDIT_RETENTION_DAYS", "180")),
+        budget_advisor_audit_cleanup_auto_enabled=_bool_env(
+            "BUDGET_ADVISOR_AUDIT_CLEANUP_AUTO_ENABLED",
+            False,
+        ),
+        budget_advisor_audit_cleanup_daily_at=os.getenv(
+            "BUDGET_ADVISOR_AUDIT_CLEANUP_DAILY_AT",
+            "03:45",
+        ).strip()
+        or "03:45",
+        budget_advisor_audit_cleanup_timezone=os.getenv(
+            "BUDGET_ADVISOR_AUDIT_CLEANUP_TIMEZONE",
+            "Asia/Shanghai",
+        ).strip()
+        or "Asia/Shanghai",
+        budget_advisor_live_min_interval_seconds=max(
+            0,
+            int(os.getenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "60")),
+        ),
+        budget_advisor_live_daily_call_limit=max(
+            0,
+            int(os.getenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "50")),
+        ),
         tenants_json=os.getenv("TENANTS_JSON", "").strip(),
         enable_http_bootstrap=_bool_env("ENABLE_HTTP_BOOTSTRAP", False),
         http_bootstrap_secret=os.getenv("HTTP_BOOTSTRAP_SECRET", "").strip(),
@@ -258,9 +291,13 @@ def get_settings() -> Settings:
         upload_link_default_per_remote_interval_seconds=int(
             os.getenv("UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS", "2")
         ),
+        upload_link_ttl_days=max(1, int(os.getenv("UPLOAD_LINK_TTL_DAYS", "90"))),
         csv_import_max_bytes=int(os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))),
         csv_import_max_lines=int(os.getenv("CSV_IMPORT_MAX_LINES", "25000")),
         csv_import_max_cell_bytes=int(os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")),
+        csv_import_apply_lease_minutes=max(
+            1, int(os.getenv("CSV_IMPORT_APPLY_LEASE_MINUTES", "5"))
+        ),
         app_token_ttl_days=int(os.getenv("APP_TOKEN_TTL_DAYS", "90")),
         app_token_refresh_window_days=int(os.getenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "14")),
         budget_advisor_owner_confirmed=_bool_env("BUDGET_ADVISOR_OWNER_CONFIRMED", False),

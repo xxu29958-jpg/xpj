@@ -77,7 +77,7 @@ def test_valid_pairing_code_sets_secure_session_cookie(client: TestClient, *, id
     assert "Secure" in cookie_header
     assert "HttpOnly" in cookie_header
     assert "Path=/" in cookie_header
-    assert "samesite=lax" in cookie_header.lower()
+    assert "samesite=strict" in cookie_header.lower()
     assert "Domain=" not in cookie_header
     token = _extract_session_cookie(resp)
     with SessionLocal() as db:

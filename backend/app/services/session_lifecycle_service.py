@@ -77,6 +77,14 @@ def app_token_expiry_window(issued_at: datetime) -> AppTokenExpiryWindow:
     )
 
 
+def upload_link_expires_at(issued_at: datetime) -> datetime:
+    """Return the hard expiry timestamp for newly issued UploadLinks."""
+
+    from app.config import get_settings
+
+    return issued_at + timedelta(days=max(get_settings().upload_link_ttl_days, 1))
+
+
 def issue_auth_token(
     db: Session,
     *,
@@ -108,6 +116,7 @@ def issue_upload_link(
     device_id: int,
     ledger_id: str,
     default_timezone: str | None,
+    expires_at: datetime,
 ) -> str:
     upload_key = new_upload_key()
     db.add(
@@ -117,6 +126,7 @@ def issue_upload_link(
             device_id=device_id,
             ledger_id=ledger_id,
             default_timezone=default_timezone,
+            expires_at=expires_at,
         )
     )
     db.flush()

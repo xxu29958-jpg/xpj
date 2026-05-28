@@ -155,6 +155,24 @@ def test_public_web_login_post_requires_csrf_token(client: TestClient) -> None:
     assert resp.json()["error"] == "invalid_request"
 
 
+def test_public_web_csrf_secret_missing_fails_closed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "")
+    monkeypatch.setenv("HTTP_BOOTSTRAP_SECRET", "")
+    monkeypatch.setenv("APP_TOKEN", "")
+    reset_settings_cache()
+    try:
+        pub = _public_client()
+        resp = pub.get("/web/auth/login")
+    finally:
+        reset_settings_cache()
+
+    assert resp.status_code == 500
+    assert resp.json()["error"] == "server_error"
+
+
 def test_public_web_login_post_requires_same_origin_even_with_csrf(client: TestClient) -> None:
     pub = _public_client()
     form = pub.get("/web/auth/login")

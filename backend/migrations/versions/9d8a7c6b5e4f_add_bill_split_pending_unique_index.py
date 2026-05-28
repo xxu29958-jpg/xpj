@@ -50,6 +50,37 @@ def _pending_duplicate(bind):
     ).mappings().first()
 
 
+def _deduplicate_pending_invitations(bind) -> int:
+    duplicate_ids = list(
+        bind.execute(
+            sa.text(
+                "SELECT id FROM ("
+                "  SELECT id, "
+                "  ROW_NUMBER() OVER ("
+                "    PARTITION BY sender_expense_id, receiver_account_id "
+                "    ORDER BY created_at DESC, id DESC"
+                "  ) AS row_number "
+                "  FROM bill_split_invitations "
+                "  WHERE status = 'invited'"
+                ") "
+                "WHERE row_number > 1"
+            )
+        ).scalars()
+    )
+    if not duplicate_ids:
+        return 0
+    bind.execute(
+        sa.text(
+            "UPDATE bill_split_invitations "
+            "SET status = 'cancelled', "
+            "cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP) "
+            "WHERE id IN :duplicate_ids"
+        ).bindparams(sa.bindparam("duplicate_ids", expanding=True)),
+        {"duplicate_ids": duplicate_ids},
+    )
+    return len(duplicate_ids)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     if not _has_table(bind, "bill_split_invitations"):
@@ -57,12 +88,7 @@ def upgrade() -> None:
 
     duplicate = _pending_duplicate(bind)
     if duplicate is not None:
-        raise RuntimeError(
-            "Invalid legacy data: bill_split_invitations contains duplicate "
-            "pending invitations for "
-            f"sender_expense_id={duplicate['sender_expense_id']} "
-            f"receiver_account_id={duplicate['receiver_account_id']}"
-        )
+        _deduplicate_pending_invitations(bind)
 
     if not _has_index(bind, "bill_split_invitations", INDEX_NAME):
         bind.execute(

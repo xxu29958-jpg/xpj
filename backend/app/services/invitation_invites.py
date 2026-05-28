@@ -18,7 +18,7 @@ from app.models import Account, Invitation
 from app.services import permission_service
 from app.services.identity_service import (
     _create_auth_token,
-    _ensure_device,
+    _create_device,
     _ensure_membership,
     _ledger_by_id,
     hash_secret,
@@ -266,7 +266,7 @@ def accept_invitation(
         raise AppError("invitation_invalid", status_code=400)
 
     _ensure_membership(db, ledger.ledger_id, account.id, invitation.role)
-    device = _ensure_device(db, account.id, cleaned_device_name, cleaned_platform)
+    device = _create_device(db, account.id, cleaned_device_name, cleaned_platform)
     expiry = app_token_expiry_window(used_at)
     token = _create_auth_token(
         db,

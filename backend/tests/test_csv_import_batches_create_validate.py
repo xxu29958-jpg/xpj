@@ -97,6 +97,64 @@ def test_csv_import_batch_handles_more_than_legacy_preview_limit_with_paged_appl
         assert inserted == 10_000
 
 
+def test_csv_import_batch_create_inserts_rows_in_chunks(
+    identity,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del identity
+    import app.services.csv_import_batch_service._lifecycle as lifecycle_mod
+
+    monkeypatch.setattr(lifecycle_mod, "CREATE_BATCH_INSERT_CHUNK_SIZE", 2)
+    with SessionLocal() as db:
+        real_commit = db.commit
+        commit_count = 0
+
+        def counted_commit() -> None:
+            nonlocal commit_count
+            commit_count += 1
+            real_commit()
+
+        monkeypatch.setattr(db, "commit", counted_commit)
+        batch = create_csv_import_batch(
+            db,
+            tenant_id="owner",
+            file_name="chunked-create.csv",
+            file_obj=_csv_bytes(5),
+        )
+
+        assert batch.total_rows == 5
+        assert commit_count >= 4
+
+        rows = list_csv_import_rows(
+            db,
+            tenant_id="owner",
+            public_id=batch.public_id,
+            page=1,
+            page_size=10,
+        )
+        assert rows.total == 5
+
+
+def test_csv_import_tags_are_normalized_before_batch_storage(identity) -> None:
+    del identity
+    csv = "amount_yuan,merchant,tags\n1.00,Tagged Cafe,\" food , Food, 家庭 \"\n"
+    with SessionLocal() as db:
+        batch = create_csv_import_batch(
+            db,
+            tenant_id="owner",
+            file_name="tags.csv",
+            file_obj=BytesIO(csv.encode("utf-8")),
+        )
+        rows = list_csv_import_rows(
+            db,
+            tenant_id="owner",
+            public_id=batch.public_id,
+            page=1,
+            page_size=10,
+        )
+        assert rows.items[0].tags == "food, 家庭"
+
+
 def test_csv_import_batch_converts_csv_reader_errors_to_invalid_request(client: TestClient) -> None:
     del client
     old_limit = csv_module.field_size_limit()

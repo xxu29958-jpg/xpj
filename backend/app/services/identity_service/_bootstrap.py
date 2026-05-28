@@ -11,9 +11,9 @@ from app.errors import AppError
 from app.models import BootstrapSecretConsumption
 from app.services.identity_service._device import (
     _create_auth_token,
+    _create_device,
     _create_pairing_code,
     _create_upload_link,
-    _ensure_device,
 )
 from app.services.identity_service._models import (
     DEFAULT_ACCOUNT_NAME,
@@ -84,7 +84,7 @@ def bootstrap_owner(
         name=_clean_name(ledger_name, DEFAULT_TENANT_NAME),
         owner_account=owner,
     )
-    bootstrap_device = _ensure_device(
+    bootstrap_device = _create_device(
         db,
         owner.id,
         _clean_name(device_name, DEFAULT_BOOTSTRAP_DEVICE_NAME),

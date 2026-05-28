@@ -18,6 +18,8 @@ from app.services.identity_service import (
     new_session_token,
     new_upload_key,
 )
+from app.services.session_lifecycle_service import upload_link_expires_at
+from app.services.time_service import now_utc
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,7 @@ def seed_identity() -> TestIdentity:
         app_token = new_session_token()
         tenant_app_token = new_session_token()
         tenant_upload_key = new_upload_key()
+        issued_at = now_utc()
         db.add_all(
             [
                 AuthToken(
@@ -104,6 +107,7 @@ def seed_identity() -> TestIdentity:
                     device_id=tester_device.id,
                     ledger_id=tester_ledger.ledger_id,
                     default_timezone="Asia/Shanghai",
+                    expires_at=upload_link_expires_at(issued_at),
                 ),
             ]
         )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -35,6 +37,8 @@ def accept_invitation(
 
     # Idempotent: re-accepting returns the already-created expense.
     if inv.status == "accepted":
+        if inv.receiver_ledger_id != target_ledger_id:
+            raise AppError("state_conflict", status_code=409)
         if inv.received_expense_id is None or inv.receiver_ledger_id is None:
             # Should be impossible (UNIQUE constraint), but guard anyway.
             raise AppError("server_error", status_code=500)
@@ -74,6 +78,7 @@ def accept_invitation(
         original_currency_code=inv.original_currency_code,
         original_amount_minor=inv.original_amount_minor,
         exchange_rate_to_cny=inv.exchange_rate_to_cny,
+        exchange_rate_date=_exchange_rate_date(inv.exchange_rate_date),
         exchange_rate_source=inv.exchange_rate_source,
         merchant=inv.merchant_snapshot,
         category=inv.category_suggestion or "其他",
@@ -109,6 +114,12 @@ def accept_invitation(
     return inv, received
 
 
+def _exchange_rate_date(value: datetime | None) -> date | None:
+    if value is None:
+        return None
+    return value.date()
+
+
 def reject_invitation(
     db: Session, *, public_id: str, rejecting_account_id: int
 ) -> BillSplitInvitation:
@@ -120,8 +131,8 @@ def reject_invitation(
     inv.status = "rejected"
     inv.rejected_at = now_utc()
     _audit(db, inv.sender_ledger_id, "bill_split_rejected",
-           actor_account_id=rejecting_account_id,
-           target_account_id=inv.sender_account_id,
+           actor_account_id=None,
+           target_account_id=rejecting_account_id,
            invitation_public_id=inv.public_id)
     db.commit()
     db.refresh(inv)

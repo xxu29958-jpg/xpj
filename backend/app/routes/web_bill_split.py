@@ -86,7 +86,7 @@ def web_bill_split_inbox(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     account_id = _resolve_request_account_id(db, request, selected_ledger_id=selected_id)
 
-    invitations = bsplit.list_inbox(db, receiver_account_id=account_id)
+    invitations = bsplit.list_inbox(db, receiver_account_id=account_id, status="invited")
 
     # Single query pulls every writer ledger the receiver belongs to; per
     # invited row we just in-memory exclude the sender's ledger (same-ledger

@@ -75,6 +75,7 @@ ALLOWLIST: dict[str, str] = {
     "POST /api/admin/upload-links": "owner-only — create new upload-link",
     "POST /api/admin/upload-links/{public_id}/revoke": "owner-only — terminal revoke",
     "POST /api/admin/upload-links/{public_id}/rotate": "owner-only — rotate secret",
+    "POST /api/admin/upload-links/{public_id}/extend": "owner-only — extend expiry without rotating secret",
 
     # --- /api lifecycle terminal / idempotent flows. State machine
     # rejects out-of-band transitions, no race window worth a token.
@@ -144,6 +145,7 @@ ALLOWLIST: dict[str, str] = {
     # here. What appears here are the create / batch / terminal flows
     # that don't gate on a specific row's version.
     "POST /web/budgets/save": "owner-console-only — single-writer monthly budget",
+    "POST /web/budget-advise": "advisor — read-with-LLM, no row mutate",
     "POST /web/bill-splits/{public_id}/accept": "terminal state",
     "POST /web/bill-splits/{public_id}/cancel": "terminal state",
     "POST /web/bill-splits/{public_id}/reject": "terminal state",
@@ -214,6 +216,7 @@ ALLOWLIST: dict[str, str] = {
         "owner-console-only — single-writer rate-limit edit",
     "POST /owner/upload-links/{public_id}/revoke": "owner-console-only — terminal revoke",
     "POST /owner/upload-links/{public_id}/rotate": "owner-console-only — rotate secret",
+    "POST /owner/upload-links/{public_id}/extend": "owner-console-only — extend expiry without rotating secret",
 }
 
 # Pre-existing PATCH / DELETE / PUT routes that legitimately COULD use

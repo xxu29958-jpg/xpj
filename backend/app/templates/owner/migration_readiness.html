@@ -48,10 +48,10 @@
 
 <div class="card">
   <h2>v1.0 切换 (ADR-0031)</h2>
-  <p>切换会把数据库 <code>schema_version</code> 写为 <code>1.0</code> 并锁定 <code>schema_min_compatible</code>，老 v0.9 binary 将拒绝启动。这是 one-shot 操作。当前 PR-1 MVP 不带 shadow DB 与 30 天 rollback CLI（PR-2 跟 v1.0 binary release 一起出）。</p>
+  <p>切换会先创建 pre-v1.0 回滚快照，再把数据库 <code>schema_version</code> 写为 <code>1.0</code> 并锁定 <code>schema_min_compatible</code>，老 v0.9 binary 将拒绝启动。这是 one-shot 操作。</p>
   <p class="secret-note">从 v0.9 binary 跑 cut-over 会被 safety gate 拒绝（防止自己锁出自己）；需要先升级 binary 到 v1.0 再来这里。</p>
   {% if cut_over_task_public_id %}
-  <p class="callout">已发起切换任务：<code>{{ cut_over_task_public_id }}</code>。查看 <code>GET /api/tasks/{{ cut_over_task_public_id }}</code> 跟进进度。</p>
+  <p class="callout">{% if cut_over_task_reused %}已有切换任务正在执行{% else %}已发起切换任务{% endif %}：<code>{{ cut_over_task_public_id }}</code>。查看 <code>GET /api/tasks/{{ cut_over_task_public_id }}</code> 跟进进度。</p>
   {% endif %}
   <form method="post" action="/owner/migration-readiness/cut-over" class="form-row" data-show-loading="正在执行 v1.0 切换…">
     <button type="submit" class="btn btn-primary">切换到 v1.0（不可逆）</button>

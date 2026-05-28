@@ -20,8 +20,9 @@
   </div>
 </div>
 
-<form method="get" action="/web/budget-advise" class="dt-card">
+<form method="post" action="/web/budget-advise" class="dt-card">
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <div class="dt-eyebrow">参数</div>
   <div class="dt-form-row">
     <label class="dt-label">月份</label>

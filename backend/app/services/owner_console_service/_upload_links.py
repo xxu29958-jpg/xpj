@@ -16,6 +16,7 @@ from app.services.admin_service import (
     UploadLinkSummary,
     create_upload_link,
     delete_upload_link,
+    extend_upload_link,
     list_upload_links,
     revoke_upload_link,
     rotate_upload_link,
@@ -31,6 +32,7 @@ __all__ = [
     "compose_public_upload_url",
     "do_create_upload_link",
     "do_delete_upload_link",
+    "do_extend_upload_link",
     "do_revoke_upload_link",
     "do_rotate_upload_link",
     "do_update_upload_link_limits",
@@ -59,6 +61,14 @@ def do_create_upload_link(
 
 def do_rotate_upload_link(db: Session, public_id: str) -> tuple[UploadLinkSummary, UploadLinkSecret]:
     return rotate_upload_link(
+        db,
+        public_id=public_id,
+        ledger_ids=_managed_console_ledger_ids(db),
+    )
+
+
+def do_extend_upload_link(db: Session, public_id: str) -> UploadLinkSummary:
+    return extend_upload_link(
         db,
         public_id=public_id,
         ledger_ids=_managed_console_ledger_ids(db),

@@ -39,12 +39,15 @@ def _migrate_upload_links(connection) -> None:
     """v0.3.1-alpha2: backfill upload_links.public_id for rows created
     before the column existed.
 
-    v1.1 (Batch 1 hardening): additive columns ``daily_byte_budget`` /
-    ``per_remote_min_interval_seconds`` for per-link quota + throttle.
+    v1.1 hardening: additive columns ``daily_byte_budget`` /
+    ``per_remote_min_interval_seconds`` for per-link quota + throttle,
+    and ``expires_at`` for hard UploadLink expiry.
     """
     columns = {column["name"] for column in inspect(connection).get_columns("upload_links")}
     if "public_id" not in columns:
         connection.execute(text("ALTER TABLE upload_links ADD COLUMN public_id VARCHAR(36)"))
+    if "expires_at" not in columns:
+        connection.execute(text("ALTER TABLE upload_links ADD COLUMN expires_at DATETIME"))
     if "daily_byte_budget" not in columns:
         connection.execute(text(
             "ALTER TABLE upload_links ADD COLUMN daily_byte_budget INTEGER"
@@ -62,7 +65,22 @@ def _migrate_upload_links(connection) -> None:
             text("UPDATE upload_links SET public_id = :public_id WHERE id = :id"),
             {"public_id": str(uuid4()), "id": row["id"]},
         )
+    from app.config import get_settings
+
+    ttl_days = max(get_settings().upload_link_ttl_days, 1)
+    connection.execute(
+        text(
+            "UPDATE upload_links "
+            "SET expires_at = datetime('now', '+' || :ttl_days || ' days') "
+            "WHERE expires_at IS NULL"
+        ),
+        {"ttl_days": ttl_days},
+    )
     connection.execute(text(
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_upload_links_public_id "
         "ON upload_links (public_id)"
+    ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_upload_links_expires_at "
+        "ON upload_links (expires_at)"
     ))

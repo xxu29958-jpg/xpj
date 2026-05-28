@@ -255,6 +255,8 @@ class AdminUploadLinkResponse(BaseModel):
     default_timezone: str | None = None
     daily_byte_budget: int | None = None
     per_remote_min_interval_seconds: int = 0
+    expires_at: str | None = None
+    is_expired: bool = False
     masked_url_path: str
     last_used_at: str | None = None
     revoked_at: str | None = None

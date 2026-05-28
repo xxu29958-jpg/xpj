@@ -7,6 +7,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -438,6 +439,45 @@ class OutboxDrainEngineTest {
         // Dequeue filter "skip rows whose target is IN_FLIGHT"
         // keeps the row out entirely.
         assertEquals(0, summary.attempted)
+    }
+
+    @Test
+    fun concurrentDrainClaimRaceDispatchesRowOnce() = runTest {
+        // Two drain workers can read the same PENDING batch before
+        // either claims. The DAO-level status predicate must allow
+        // exactly one claim, so only one dispatcher call may happen.
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val batchArrivals = AtomicInteger(0)
+        val bothWorkersReadBatch = CompletableDeferred<Unit>()
+        dao.beforeNextRunnableBatchReturn = {
+            if (batchArrivals.incrementAndGet() == 2) {
+                bothWorkersReadBatch.complete(Unit)
+            }
+            bothWorkersReadBatch.await()
+        }
+        val dispatchCalls = AtomicInteger(0)
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                dispatchCalls.incrementAndGet()
+                return DispatchResult.Success()
+            }
+        }
+        val firstEngine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        val secondEngine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+
+        val first = async { firstEngine.drainOnce() }
+        val second = async { secondEngine.drainOnce() }
+        val summaries = listOf(first.await(), second.await())
+
+        assertEquals(1, dispatchCalls.get(), "row must be dispatched by only one worker")
+        assertEquals(2, summaries.sumOf { it.attempted }, "both workers read the runnable row")
+        assertEquals(1, summaries.sumOf { it.done })
+        assertEquals(1, summaries.sumOf { it.raced })
+        assertTrue(outbox.activeForTarget("expense:1").isEmpty())
     }
 
     @Test

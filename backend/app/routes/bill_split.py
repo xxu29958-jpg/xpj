@@ -10,7 +10,7 @@ Two route prefixes:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -57,10 +57,11 @@ def create_split_invite(
 
 @inbox_router.get("/inbox", response_model=BillSplitInboxListResponse)
 def list_my_inbox(
+    status: str | None = Query(default=None),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> BillSplitInboxListResponse:
-    rows = bsplit.list_inbox(db, receiver_account_id=auth.account_id)
+    rows = bsplit.list_inbox(db, receiver_account_id=auth.account_id, status=status)
     return BillSplitInboxListResponse(
         items=[BillSplitInboxResponse.model_validate(bsplit.to_inbox_response_dict(r)) for r in rows]
     )

@@ -16,27 +16,30 @@ bytes that actually leave the box. We never store the payload itself.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.errors import AppError
 from app.models import BudgetAdvisorAuditLog
+from app.services.budget_advisor_service._provider_names import (
+    LIVE_PROVIDER_NAMES,
+    canonical_provider_name,
+    clean_provider_name,
+)
 from app.services.time_service import ensure_utc, now_utc, to_iso
-
-LIVE_PROVIDER_NAMES = frozenset({"openai_compat", "openai-compat", "openai", "deepseek", "siliconflow"})
 
 
 def is_live_provider(name: str | None) -> bool:
     """Return True for any provider that actually phones home."""
 
-    if name is None:
-        return False
-    return name.strip().lower() in LIVE_PROVIDER_NAMES
+    return clean_provider_name(name) in LIVE_PROVIDER_NAMES
 
 
 @dataclass(frozen=True)
@@ -56,7 +59,52 @@ class AdvisorStatus:
 
 def compute_input_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+    cfg = get_settings()
+    secret = (
+        cfg.http_bootstrap_secret
+        or cfg.admin_token
+        or cfg.app_token
+        or "xiaopiaojia-budget-advisor-audit-v1"
+    )
+    return hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).hexdigest()
+
+
+def enforce_live_call_budget(
+    db: Session,
+    *,
+    tenant_id: str,
+    now: datetime | None = None,
+) -> None:
+    """Fail before an outbound advisor call exceeds configured cost caps."""
+
+    cfg = get_settings()
+    current = now or now_utc()
+    latest = latest_audit_row(db, tenant_id=tenant_id)
+    min_interval = int(cfg.budget_advisor_live_min_interval_seconds)
+    if min_interval > 0 and latest is not None:
+        last_called = ensure_utc(latest.called_at) or latest.called_at
+        if last_called + timedelta(seconds=min_interval) > current:
+            raise AppError(
+                "ai_advisor_rate_limited",
+                "AI 预算助手调用过于频繁，请稍后再试。",
+                status_code=429,
+            )
+
+    daily_limit = int(cfg.budget_advisor_live_daily_call_limit)
+    if daily_limit <= 0:
+        return
+    window_start = current - timedelta(days=1)
+    count = db.scalar(
+        select(func.count(BudgetAdvisorAuditLog.id))
+        .where(BudgetAdvisorAuditLog.tenant_id == tenant_id)
+        .where(BudgetAdvisorAuditLog.called_at >= window_start)
+    )
+    if int(count or 0) >= daily_limit:
+        raise AppError(
+            "ai_advisor_daily_limit_exceeded",
+            "AI 预算助手今日调用次数已达上限。",
+            status_code=429,
+        )
 
 
 def mask_base_url(value: str | None) -> str | None:
@@ -146,11 +194,16 @@ def cleanup_expired_audit_logs(
     """Delete audit rows whose per-row retention window has elapsed."""
 
     threshold = now or now_utc()
+    expires_at = func.datetime(
+        BudgetAdvisorAuditLog.called_at,
+        func.printf("+%d days", BudgetAdvisorAuditLog.retention_days),
+    )
     rows = list(
         db.scalars(
             select(BudgetAdvisorAuditLog)
             .where(BudgetAdvisorAuditLog.retention_days > 0)
-            .order_by(BudgetAdvisorAuditLog.called_at.asc())
+            .where(expires_at <= threshold)
+            .order_by(expires_at.asc(), BudgetAdvisorAuditLog.called_at.asc())
             .limit(max(1, min(int(batch_size), 5000)))
         )
     )
@@ -168,7 +221,7 @@ def cleanup_expired_audit_logs(
 
 def advisor_status_for_tenant(db: Session, *, tenant_id: str) -> AdvisorStatus:
     cfg = get_settings()
-    provider = (cfg.budget_advisor_provider or "empty").strip().lower()
+    provider = canonical_provider_name(cfg.budget_advisor_provider)
     is_live = is_live_provider(provider)
     latest = latest_audit_row(db, tenant_id=tenant_id)
     return AdvisorStatus(
@@ -193,6 +246,7 @@ __all__ = [
     "advisor_status_for_tenant",
     "cleanup_expired_audit_logs",
     "compute_input_hash",
+    "enforce_live_call_budget",
     "is_live_provider",
     "latest_audit_row",
     "mask_base_url",

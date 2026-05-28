@@ -17,9 +17,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import CsvImportBatch
-from app.services.csv_import_batch_service._common import APPLY_LEASE_MINUTES
 from app.services.csv_import_batch_service._csv_io import _refresh_batch_counts
 from app.services.csv_import_batch_service._row_claim import (
     _applying_row_count,
@@ -39,6 +39,7 @@ def _claim_apply_lease(
     from app.services.csv_import_batch_service._queries import get_csv_import_batch
 
     now = now_utc()
+    lease_minutes = get_settings().csv_import_apply_lease_minutes
     result = db.execute(
         update(CsvImportBatch)
         .where(CsvImportBatch.tenant_id == tenant_id)
@@ -51,7 +52,7 @@ def _claim_apply_lease(
             )
         )
         .values(
-            locked_until=now + timedelta(minutes=APPLY_LEASE_MINUTES),
+            locked_until=now + timedelta(minutes=lease_minutes),
             apply_token=apply_token,
             status="applying",
             last_error=None,

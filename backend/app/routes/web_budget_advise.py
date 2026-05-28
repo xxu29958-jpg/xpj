@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -15,12 +15,11 @@ from app.routes.web_common import (
     _base_ctx,
     _list_ledger_options,
     _resolve_selected_ledger_id,
+    _selected_option,
     templates,
 )
-from app.services.budget_advisor_service import (
-    build_budget_inputs,
-    get_budget_advisor,
-)
+from app.services.budget_advisor_service import run_budget_advisor
+from app.services.budget_advisor_service._provider_names import canonical_provider_name
 from app.services.budget_baseline_service import (
     compute_monthly_discretionary,
     total_active_recurring_monthly_cents,
@@ -42,10 +41,58 @@ def page_budget_advise(
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> HTMLResponse:
+    # GET renders and computes local numbers only. Live outbound calls go
+    # through POST so CSRF and Origin/Referer checks protect the cost boundary.
+    return _render_budget_advise(
+        request,
+        db=db,
+        ledger_id=ledger_id,
+        month=month,
+        savings_target_yuan=savings_target_yuan,
+        reserved_buffer_yuan=reserved_buffer_yuan,
+        run_advise=run_advise,
+        allow_outbound=False,
+    )
+
+
+@router.post("", response_class=HTMLResponse)
+def page_budget_advise_run(
+    request: Request,
+    ledger_id: str | None = Form(default=None),
+    month: str | None = Form(default=None),
+    savings_target_yuan: float = Form(default=0.0, ge=0),
+    reserved_buffer_yuan: float = Form(default=0.0, ge=0),
+    run_advise: bool = Form(default=False),
+    db: Session = Depends(get_db),
+    _local: None = LocalOnly,
+) -> HTMLResponse:
+    return _render_budget_advise(
+        request,
+        db=db,
+        ledger_id=ledger_id,
+        month=month,
+        savings_target_yuan=savings_target_yuan,
+        reserved_buffer_yuan=reserved_buffer_yuan,
+        run_advise=run_advise,
+        allow_outbound=run_advise,
+    )
+
+
+def _render_budget_advise(
+    request: Request,
+    *,
+    db: Session,
+    ledger_id: str | None,
+    month: str | None,
+    savings_target_yuan: float,
+    reserved_buffer_yuan: float,
+    run_advise: bool,
+    allow_outbound: bool,
+) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     settings = get_settings()
-    provider_name = settings.budget_advisor_provider or "empty"
+    provider_name = canonical_provider_name(settings.budget_advisor_provider)
 
     month_label = month or current_accounting_month()
     income = total_monthly_income_cents(db, tenant_id=selected)
@@ -62,14 +109,24 @@ def page_budget_advise(
     advice = None
     advise_error: str | None = None
     if run_advise and provider_name != "empty":
-        try:
-            inputs = build_budget_inputs(
-                db, tenant_id=selected, month=month_label
-            )
-            advisor = get_budget_advisor()
-            advice = advisor.advise(inputs)
-        except AppError as exc:
-            advise_error = exc.message
+        if not allow_outbound:
+            advise_error = "AI advisor calls require the form button so request checks can run."
+        else:
+            try:
+                actor_role = _actor_role(request, ledger_id=selected, options=options)
+                actor_account_id = _actor_account_id(request)
+                result = run_budget_advisor(
+                    db,
+                    tenant_id=selected,
+                    actor_account_id=actor_account_id,
+                    actor_role=actor_role,
+                    month=month_label,
+                    timezone_name="Asia/Shanghai",
+                )
+                advice = result.advice
+                provider_name = result.provider_name
+            except AppError as exc:
+                advise_error = exc.message or exc.error
 
     ctx = _base_ctx(
         request,
@@ -93,3 +150,15 @@ def page_budget_advise(
         run_advise=run_advise,
     )
     return templates.TemplateResponse(request=request, name="budget_advise.html", context=ctx)
+
+
+def _actor_role(request: Request, *, ledger_id: str, options) -> str:
+    session_auth = getattr(request.state, "web_session_auth", None)
+    if session_auth is not None:
+        return session_auth.role
+    return _selected_option(options, ledger_id).role
+
+
+def _actor_account_id(request: Request) -> int | None:
+    session_auth = getattr(request.state, "web_session_auth", None)
+    return session_auth.account_id if session_auth is not None else None

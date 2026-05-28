@@ -32,8 +32,8 @@ from app.services.identity_service._bootstrap import (
 )
 from app.services.identity_service._device import (
     _create_auth_token,
+    _create_device,
     _create_pairing_code,
-    _ensure_device,
     create_pairing_code,
 )
 from app.services.identity_service._legacy_compat import (
@@ -108,7 +108,7 @@ __all__ = [
     # private helpers exported because callers import them by name
     "_create_auth_token",
     "_create_pairing_code",
-    "_ensure_device",
+    "_create_device",
     "_ensure_membership",
     "_ledger_by_id",
 ]

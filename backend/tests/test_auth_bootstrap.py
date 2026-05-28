@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuthToken, BootstrapSecretConsumption, PairingCode, UploadLink
+from app.models import AuthToken, BootstrapSecretConsumption, Device, PairingCode, UploadLink
 from app.routes import bootstrap as bootstrap_route
 from app.services.identity_service import hash_pairing_code, hash_secret
-from app.services.time_service import now_utc
+from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_APP_TOKEN, TEST_UPLOAD_TOKEN
 
@@ -302,6 +302,99 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
     )
     assert reused.status_code == 409
     assert reused.json()["error"] == "pairing_code_used"
+
+
+def _new_pairing_code(client: TestClient, *, identity) -> str:
+    response = client.post(
+        "/api/bootstrap/pairing-codes",
+        headers=identity.admin_headers,
+        json={"ttl_minutes": 15},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["pairing_code"]
+
+
+def _pair_token(client: TestClient, *, code: str, platform: str, name: str) -> str:
+    response = client.post(
+        "/api/auth/pair",
+        json={"pairing_code": code, "device_name": name, "platform": platform},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["session_token"]
+
+
+def test_repair_revokes_old_same_platform_app_tokens(client: TestClient, *, identity) -> None:
+    old_token = identity.app_token
+    new_token = _pair_token(
+        client,
+        code=_new_pairing_code(client, identity=identity),
+        platform="android",
+        name="replacement android",
+    )
+
+    with SessionLocal() as db:
+        old_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(old_token)).one()
+        new_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(new_token)).one()
+        assert old_row.revoked_at is not None
+        assert new_row.revoked_at is None
+
+
+def test_repair_revokes_blank_platform_tokens_by_stored_platform(client: TestClient, *, identity) -> None:
+    first_token = _pair_token(
+        client,
+        code=_new_pairing_code(client, identity=identity),
+        platform="   ",
+        name="unknown platform first",
+    )
+    second_token = _pair_token(
+        client,
+        code=_new_pairing_code(client, identity=identity),
+        platform="\t",
+        name="unknown platform second",
+    )
+
+    with SessionLocal() as db:
+        first_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(first_token)).one()
+        second_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(second_token)).one()
+        second_device = db.get(Device, second_row.device_id)
+        assert second_device is not None
+        assert second_device.platform == "unknown"
+        assert first_row.revoked_at is not None
+        assert second_row.revoked_at is None
+
+
+def test_repair_preserves_cross_platform_tokens_and_web_ttl(
+    client: TestClient, *, identity
+) -> None:
+    web_token = _pair_token(
+        client,
+        code=_new_pairing_code(client, identity=identity),
+        platform="web",
+        name="family browser",
+    )
+    android_token = identity.app_token
+    with SessionLocal() as db:
+        web_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(web_token)).one()
+        android_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(android_token)).one()
+        web_expires_at = ensure_utc(web_row.expires_at)
+        assert web_expires_at is not None
+        assert android_row.revoked_at is None
+
+    replacement_android = _pair_token(
+        client,
+        code=_new_pairing_code(client, identity=identity),
+        platform="android",
+        name="replacement android",
+    )
+
+    with SessionLocal() as db:
+        web_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(web_token)).one()
+        old_android = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(android_token)).one()
+        new_android = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(replacement_android)).one()
+        assert web_row.revoked_at is None
+        assert ensure_utc(web_row.expires_at) == web_expires_at
+        assert old_android.revoked_at is not None
+        assert new_android.revoked_at is None
 
 
 def test_app_owner_token_cannot_create_bootstrap_pairing_code(client: TestClient, *, identity) -> None:

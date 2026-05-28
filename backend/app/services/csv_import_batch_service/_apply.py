@@ -23,9 +23,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportRow, Expense
@@ -36,7 +38,6 @@ from app.services.csv_import_batch_service._apply_lease import (
     _mark_csv_import_apply_failed,
     _release_csv_import_apply_lease,
 )
-from app.services.csv_import_batch_service._common import ROW_APPLY_LEASE_MINUTES
 from app.services.csv_import_batch_service._idempotency import (
     _csv_import_row_idempotency_key,
     _existing_csv_import_expense_id,
@@ -161,6 +162,146 @@ def _cleanup_csv_import_apply_failure(
     )
 
 
+def _mark_csv_import_row_insert_failed(
+    db: Session,
+    *,
+    tenant_id: str,
+    row_id: int,
+    apply_token: str,
+    error_code: str,
+    error_message: str,
+    now: datetime,
+) -> None:
+    row = db.scalar(
+        select(CsvImportRow)
+        .where(CsvImportRow.tenant_id == tenant_id)
+        .where(CsvImportRow.id == row_id)
+        .where(CsvImportRow.status == "applying")
+        .where(CsvImportRow.apply_token == apply_token)
+        .limit(1)
+    )
+    if row is None:
+        return
+    row.status = "insert_failed"
+    row.apply_token = None
+    row.error_code = error_code
+    row.error_message = error_message[:255]
+    row.updated_at = now
+    db.commit()
+
+
+def _mark_csv_import_row_applied_if_existing(
+    db: Session,
+    *,
+    batch: CsvImportBatch,
+    tenant_id: str,
+    row_id: int,
+    apply_token: str,
+    now: datetime,
+) -> bool:
+    row = db.scalar(
+        select(CsvImportRow)
+        .where(CsvImportRow.tenant_id == tenant_id)
+        .where(CsvImportRow.batch_id == batch.id)
+        .where(CsvImportRow.id == row_id)
+        .where(CsvImportRow.status == "applying")
+        .where(CsvImportRow.apply_token == apply_token)
+        .limit(1)
+    )
+    if row is None:
+        return False
+    existing_expense_id = _existing_csv_import_expense_id(
+        db,
+        tenant_id=tenant_id,
+        idempotency_key=_csv_import_row_idempotency_key(batch, row),
+    )
+    if existing_expense_id is None:
+        return False
+    row.status = "applied"
+    row.apply_token = None
+    row.expense_id = existing_expense_id
+    row.updated_at = now
+    db.commit()
+    return True
+
+
+def _apply_one_claimed_csv_import_row(
+    db: Session,
+    *,
+    row_id: int,
+    batch: CsvImportBatch,
+    tenant_id: str,
+    apply_token: str,
+    now: datetime,
+) -> int:
+    row = db.scalar(
+        ledger_scoped_select(CsvImportRow, tenant_id)
+        .where(CsvImportRow.batch_id == batch.id)
+        .where(CsvImportRow.id == row_id)
+        .where(CsvImportRow.status == "applying")
+        .where(CsvImportRow.apply_token == apply_token)
+        .limit(1)
+    )
+    if row is None:
+        return 0
+    try:
+        expense = _process_csv_import_apply_row(
+            db,
+            row=row,
+            batch=batch,
+            tenant_id=tenant_id,
+            apply_token=apply_token,
+            now=now,
+        )
+        if expense is None:
+            db.commit()
+            return 0
+
+        db.add(expense)
+        db.flush()
+        sync_expense_tags(db, expense)
+        row.status = "applied"
+        row.apply_token = None
+        row.expense_id = expense.id
+        row.updated_at = now
+        db.flush()
+        db.commit()
+        return 1
+    except IntegrityError:
+        db.rollback()
+        if _mark_csv_import_row_applied_if_existing(
+            db,
+            batch=batch,
+            tenant_id=tenant_id,
+            row_id=row_id,
+            apply_token=apply_token,
+            now=now,
+        ):
+            return 0
+        _mark_csv_import_row_insert_failed(
+            db,
+            tenant_id=tenant_id,
+            row_id=row_id,
+            apply_token=apply_token,
+            error_code="insert_failed",
+            error_message="CSV row insert failed; row was not imported.",
+            now=now,
+        )
+        return 0
+    except AppError as exc:
+        db.rollback()
+        _mark_csv_import_row_insert_failed(
+            db,
+            tenant_id=tenant_id,
+            row_id=row_id,
+            apply_token=apply_token,
+            error_code=exc.error,
+            error_message=exc.message,
+            now=now,
+        )
+        return 0
+
+
 def _attempt_csv_import_apply(
     db: Session,
     *,
@@ -181,7 +322,8 @@ def _attempt_csv_import_apply(
         db,
         tenant_id=tenant_id,
         batch_id=batch.id,
-        stale_before=now_utc() - timedelta(minutes=ROW_APPLY_LEASE_MINUTES),
+        stale_before=now_utc()
+        - timedelta(minutes=get_settings().csv_import_apply_lease_minutes),
     )
     claimed_row_ids.extend(
         _claim_csv_import_rows(
@@ -195,35 +337,18 @@ def _attempt_csv_import_apply(
     batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     if not claimed_row_ids and _applying_row_count(db, batch, tenant_id) > 0:
         raise AppError("invalid_request", "导入批次正在应用中，请稍后重试。", status_code=409)
-    rows = list(
-        db.scalars(
-            ledger_scoped_select(CsvImportRow, tenant_id)
-            .where(CsvImportRow.batch_id == batch.id)
-            .where(CsvImportRow.id.in_(claimed_row_ids))
-            .where(CsvImportRow.status == "applying")
-            .where(CsvImportRow.apply_token == apply_token)
-            .order_by(CsvImportRow.line_number.asc())
-        )
-    )
     now = now_utc()
-    created: list[tuple[CsvImportRow, Expense]] = []
-    for row in rows:
-        expense = _process_csv_import_apply_row(
-            db, row=row, batch=batch, tenant_id=tenant_id, apply_token=apply_token, now=now
-        )
-        if expense is not None:
-            db.add(expense)
-            created.append((row, expense))
-    db.flush()
     inserted = 0
-    for row, expense in created:
-        sync_expense_tags(db, expense)
-        row.status = "applied"
-        row.apply_token = None
-        row.expense_id = expense.id
-        row.updated_at = now
-        inserted += 1
-    db.flush()
+    for row_id in claimed_row_ids:
+        inserted += _apply_one_claimed_csv_import_row(
+            db,
+            row_id=row_id,
+            batch=batch,
+            tenant_id=tenant_id,
+            apply_token=apply_token,
+            now=now,
+        )
+    batch = get_csv_import_batch(db, tenant_id=tenant_id, public_id=public_id)
     remaining_rows = _finalize_csv_import_apply_success(
         db,
         batch=batch,

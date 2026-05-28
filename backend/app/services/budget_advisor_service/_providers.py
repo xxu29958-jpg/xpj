@@ -22,8 +22,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from ipaddress import ip_address
 from typing import Any
 from urllib import error, request
+from urllib.parse import urlparse
 
 from app.config import get_settings
 from app.errors import AppError, DataIntegrityError
@@ -34,16 +37,33 @@ from app.services.budget_advisor_service._models import (
     BudgetSuggestion,
 )
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
+from app.services.budget_advisor_service._provider_names import (
+    EMPTY_PROVIDER_NAME,
+    MOCK_PROVIDER_NAME,
+    OPENAI_COMPAT_PROVIDER_NAMES,
+    canonical_provider_name,
+    clean_provider_name,
+    is_known_provider,
+)
+from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
 
 logger = logging.getLogger(__name__)
 
-_OPENAI_COMPAT_NAMES = frozenset({"openai_compat", "openai-compat", "openai"})
+MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024
+MAX_ADVICE_SUMMARY_CHARS = 800
+MAX_ADVICE_RATIONALE_CHARS = 600
+MAX_ADVICE_SUGGESTIONS = 20
+_SECRETISH_DETAIL_RE = re.compile(
+    r"(?i)\b(api[_-]?key|authorization|bearer|token)\b\s*[:=]\s*['\"]?[^,\s'\"]+"
+)
 
 _SYSTEM_PROMPT = (
     "你是家庭预算助手。给定结构化预算数据 JSON（仅含分类聚合和匿名占位，绝无真实商户名 / 姓名 / 路径），"
     "用中文给出建议。只返回 JSON 对象，不要解释，不要 markdown 代码块。字段："
     "summary(string, 一句总结), "
-    "suggestions(array of {category(string|null, null=整体建议), suggested_amount_cents(int), rationale(string)}), "
+    "suggestions(array of {category(string|null, null=整体建议; category must be one of "
+    + "/".join(DEFAULT_CATEGORIES)
+    + " or a category present in the input), suggested_amount_cents(int), rationale(string)}), "
     "confidence(number 0-1)。"
     "不要写预算 / 不要承诺修改账本——你只给建议，最终落盘由用户在 UI 确认。"
 )
@@ -139,7 +159,12 @@ class OpenAiCompatBudgetAdvisor:
 
         try:
             content = _extract_message_content(response_json)
-            return _parse_advice_json(content)
+            allowed_categories = {
+                normalize_category(row.category)
+                for row in inputs.category_breakdown
+                if row.category
+            }
+            return _parse_advice_json(content, allowed_categories=allowed_categories)
         except AppError:
             logger.exception("budget_advisor_openai_compat: response parse failed")
             return None
@@ -158,12 +183,27 @@ class OpenAiCompatBudgetAdvisor:
         req = request.Request(endpoint, data=encoded, method="POST", headers=headers)
         try:
             with request.urlopen(req, timeout=self._timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+                raw = response.read(MAX_PROVIDER_RESPONSE_BYTES + 1)
+                if len(raw) > MAX_PROVIDER_RESPONSE_BYTES:
+                    logger.warning(
+                        "budget_advisor_openai_compat: provider response too large bytes=%s",
+                        len(raw),
+                    )
+                    raise AppError("server_error", "AI 服务暂时不可用。", status_code=500)
+                return json.loads(raw.decode("utf-8"))
         except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            detail = _sanitize_provider_error_detail(
+                exc.read(4096).decode("utf-8", errors="replace")
+            )
+            logger.warning(
+                "budget_advisor_openai_compat: provider HTTP error status=%s reason=%s detail=%s",
+                exc.code,
+                exc.reason,
+                detail,
+            )
             raise AppError(
                 "server_error",
-                f"AI 服务返回错误：{detail[:160]}",
+                "AI 服务暂时不可用。",
                 status_code=500,
             ) from exc
         except (OSError, error.URLError, json.JSONDecodeError) as exc:
@@ -173,10 +213,11 @@ class OpenAiCompatBudgetAdvisor:
 def get_budget_advisor(provider_name: str | None = None) -> BudgetAdvisorProvider:
     """Resolve a provider by name. Defaults to ``empty`` per ADR-0036."""
 
-    name = (provider_name or get_settings().budget_advisor_provider).strip().lower()
-    if name == "mock":
+    raw_name = clean_provider_name(provider_name or get_settings().budget_advisor_provider)
+    name = canonical_provider_name(raw_name)
+    if name == MOCK_PROVIDER_NAME:
         return MockBudgetAdvisor()
-    if name in _OPENAI_COMPAT_NAMES:
+    if raw_name in OPENAI_COMPAT_PROVIDER_NAMES or name in OPENAI_COMPAT_PROVIDER_NAMES:
         settings = get_settings()
         if not settings.budget_advisor_base_url:
             raise AppError(
@@ -190,11 +231,21 @@ def get_budget_advisor(provider_name: str | None = None) -> BudgetAdvisorProvide
                 "未配置 BUDGET_ADVISOR_MODEL；无法启用 AI 预算助手。",
                 status_code=500,
             )
+        base_url = _validate_base_url(settings.budget_advisor_base_url)
+        api_key = settings.budget_advisor_api_key
+        _validate_api_key_for_base_url(base_url, api_key)
         return OpenAiCompatBudgetAdvisor(
-            base_url=settings.budget_advisor_base_url,
-            api_key=settings.budget_advisor_api_key,
+            base_url=base_url,
+            api_key=api_key,
             model=settings.budget_advisor_model,
             timeout_seconds=settings.budget_advisor_timeout_seconds,
+        )
+    if name != EMPTY_PROVIDER_NAME or not is_known_provider(raw_name):
+        logger.warning("budget_advisor: unsupported provider configured: %s", raw_name)
+        raise AppError(
+            "server_error",
+            "BUDGET_ADVISOR_PROVIDER is not supported.",
+            status_code=500,
         )
     return EmptyBudgetAdvisor()
 
@@ -212,7 +263,9 @@ def _extract_message_content(response_json: dict[str, Any]) -> str:
     raise AppError("server_error", "AI 没有返回文本。", status_code=500)
 
 
-def _parse_advice_json(content: str) -> BudgetAdvice:
+def _parse_advice_json(
+    content: str, *, allowed_categories: set[str] | None = None
+) -> BudgetAdvice:
     cleaned = content.strip()
     if cleaned.startswith("```"):
         lines = [line for line in cleaned.splitlines() if not line.strip().startswith("```")]
@@ -228,7 +281,7 @@ def _parse_advice_json(content: str) -> BudgetAdvice:
     if not isinstance(payload, dict):
         raise AppError("server_error", "AI 返回的 JSON 不是对象。", status_code=500)
 
-    summary = str(payload.get("summary") or "")
+    summary = _cap_text(payload.get("summary"), MAX_ADVICE_SUMMARY_CHARS)
     raw_confidence = payload.get("confidence")
     confidence: float | None = (
         max(0.0, min(1.0, float(raw_confidence)))
@@ -237,18 +290,24 @@ def _parse_advice_json(content: str) -> BudgetAdvice:
     )
 
     suggestions: list[BudgetSuggestion] = []
+    accepted_categories = set(DEFAULT_CATEGORIES)
+    accepted_categories.update(allowed_categories or set())
     raw_suggestions = payload.get("suggestions")
     if isinstance(raw_suggestions, list):
-        for raw in raw_suggestions:
+        for raw in raw_suggestions[:MAX_ADVICE_SUGGESTIONS]:
             if not isinstance(raw, dict):
                 continue
             category = raw.get("category")
-            category_str = str(category) if category is not None else None
+            category_str = normalize_category(str(category)) if category is not None else None
+            if category is not None and category_str not in accepted_categories:
+                continue
             try:
                 amount = int(raw.get("suggested_amount_cents"))
             except (TypeError, ValueError):
                 continue
-            rationale = str(raw.get("rationale") or "")
+            if amount < 0 or amount > 100_000_000:
+                continue
+            rationale = _cap_text(raw.get("rationale"), MAX_ADVICE_RATIONALE_CHARS)
             suggestions.append(
                 BudgetSuggestion(
                     category=category_str,
@@ -257,3 +316,74 @@ def _parse_advice_json(content: str) -> BudgetAdvice:
                 )
             )
     return BudgetAdvice(summary=summary, suggestions=suggestions, confidence=confidence)
+
+
+def _validate_base_url(value: str) -> str:
+    cleaned = (value or "").strip().rstrip("/")
+    parsed = urlparse(cleaned)
+    try:
+        _ = parsed.port
+    except ValueError as exc:
+        raise AppError(
+            "server_error",
+            "BUDGET_ADVISOR_BASE_URL is invalid.",
+            status_code=500,
+        ) from exc
+    host = parsed.hostname or ""
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not host
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or any(ch.isspace() for ch in host)
+    ):
+        raise AppError(
+            "server_error",
+            "BUDGET_ADVISOR_BASE_URL is invalid.",
+            status_code=500,
+        )
+    return cleaned
+
+
+def _is_local_or_private_host(host: str) -> bool:
+    lowered = host.lower().rstrip(".")
+    if lowered in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        parsed = ip_address(lowered)
+    except ValueError:
+        return False
+    return parsed.is_loopback or parsed.is_private or parsed.is_link_local
+
+
+def _validate_api_key_for_base_url(base_url: str, api_key: str) -> None:
+    parsed = urlparse(base_url)
+    host = parsed.hostname or ""
+    if _is_local_or_private_host(host):
+        return
+    if parsed.scheme != "https":
+        raise AppError(
+            "server_error",
+            "Public BUDGET_ADVISOR_BASE_URL must use HTTPS.",
+            status_code=500,
+        )
+    if not api_key.strip():
+        raise AppError(
+            "server_error",
+            "BUDGET_ADVISOR_API_KEY is required for public AI providers.",
+            status_code=500,
+        )
+
+
+def _sanitize_provider_error_detail(value: str) -> str:
+    collapsed = " ".join((value or "").split())
+    return _SECRETISH_DETAIL_RE.sub(r"\1=***", collapsed)[:160]
+
+
+def _cap_text(value: object, limit: int) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return text[:limit]

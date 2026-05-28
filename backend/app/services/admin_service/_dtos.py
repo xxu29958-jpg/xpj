@@ -28,6 +28,8 @@ class UploadLinkSummary:
     default_timezone: str | None
     daily_byte_budget: int | None
     per_remote_min_interval_seconds: int
+    expires_at: str | None
+    is_expired: bool
     masked_url_path: str
     last_used_at: str | None
     revoked_at: str | None

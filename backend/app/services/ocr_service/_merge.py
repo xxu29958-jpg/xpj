@@ -16,7 +16,8 @@ def _merge_result_with_text_parse(
     return OcrResult(
         raw_text=result.raw_text,
         confidence=_best_confidence(result.confidence, parsed_confidence, parsed.confidence),
-        amount_cents=result.amount_cents if result.amount_cents is not None else parsed.amount_cents,
+        amount_cents=_positive_amount_cents(result.amount_cents)
+        or _positive_amount_cents(parsed.amount_cents),
         merchant=result.merchant or parsed.merchant,
         expense_time=result.expense_time or parsed.expense_time,
         category=result.category or parsed.category,
@@ -28,3 +29,9 @@ def _best_confidence(*values: float | None) -> float | None:
     if not present:
         return None
     return max(0.0, min(1.0, max(present)))
+
+
+def _positive_amount_cents(value: int | None) -> int | None:
+    if value is None or value <= 0:
+        return None
+    return value

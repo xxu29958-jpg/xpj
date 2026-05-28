@@ -37,18 +37,12 @@ def _inline_handlers():
     """Each test runs handlers inline + starts with an empty handler
     registry, so registration leakage between tests can't happen."""
     os.environ["XPJ_BACKGROUND_TASK_INLINE"] = "1"
-    saved = bgtasks.get_registered_handlers()
-    # bgtasks._handlers is private; reset via re-registering an empty dict
-    for key in list(saved.keys()):
-        bgtasks._handlers.pop(key, None)
+    saved = bgtasks.replace_registered_handlers_for_testing()
     try:
         yield
     finally:
         os.environ.pop("XPJ_BACKGROUND_TASK_INLINE", None)
-        for key in list(bgtasks._handlers.keys()):
-            bgtasks._handlers.pop(key, None)
-        for key, handler in saved.items():
-            bgtasks.register_handler(key, handler)
+        bgtasks.replace_registered_handlers_for_testing(saved)
 
 
 # --- handler dispatch --------------------------------------------------
@@ -93,6 +87,46 @@ def test_enqueue_unknown_task_type_400(*, identity) -> None:
             ledger_id="owner",
         )
     assert exc.value.error == "unknown_task_type"
+
+
+def test_enqueue_or_get_active_reuses_existing_singleton_task() -> None:
+    ran = False
+
+    def handler(db, task, payload):
+        nonlocal ran
+        ran = True
+
+    bgtasks.register_handler("test_singleton", handler)
+    with SessionLocal() as db:
+        existing = BackgroundTask(task_type="test_singleton", status="queued")
+        db.add(existing)
+        db.commit()
+        existing_id = existing.id
+        existing_public_id = existing.public_id
+
+    with SessionLocal() as db:
+        task, created = bgtasks.enqueue_or_get_active(
+            db,
+            task_type="test_singleton",
+            initiator_account_id=None,
+            ledger_id=None,
+        )
+
+    assert created is False
+    assert task.id == existing_id
+    assert task.public_id == existing_public_id
+    assert ran is False
+
+    with SessionLocal() as db:
+        active_count = (
+            db.query(BackgroundTask)
+            .filter(
+                BackgroundTask.task_type == "test_singleton",
+                BackgroundTask.status.in_(("queued", "running")),
+            )
+            .count()
+        )
+        assert active_count == 1
 
 
 def test_handler_exception_marks_failed(*, identity) -> None:

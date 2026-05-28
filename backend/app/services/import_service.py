@@ -363,7 +363,7 @@ def parse_csv_row(
         note=cells.get("note", "").strip(),
         expense_time=expense_time,
         expense_time_display=etime_display,
-        tags=cells.get("tags", "").strip(),
+        tags=normalize_tags(cells.get("tags", "")) or "",
         source=cells.get("source", "").strip() or DEFAULT_SOURCE,
         error=error,
     )

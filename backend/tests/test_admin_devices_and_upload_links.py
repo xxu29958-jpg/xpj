@@ -18,6 +18,7 @@ These tests assert:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -25,7 +26,8 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadLink
 from app.services.identity_service import hash_secret
-from app.services.time_service import now_utc
+from app.services.session_lifecycle_service import upload_link_expires_at
+from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
 
 
@@ -75,6 +77,7 @@ def _insert_external_device_and_upload_link() -> tuple[str, str]:
             device_id=device.id,
             ledger_id=ledger.ledger_id,
             created_at=now,
+            expires_at=upload_link_expires_at(now),
         )
         db.add(link)
         db.commit()
@@ -211,6 +214,7 @@ def test_revoke_device_only_revokes_visible_ledger_sessions(client: TestClient, 
                     device_id=device.id,
                     ledger_id=private.ledger_id,
                     created_at=now,
+                    expires_at=upload_link_expires_at(now),
                 ),
             ]
         )
@@ -442,6 +446,8 @@ def test_list_upload_links_masks_full_url(client: TestClient, *, identity) -> No
     for item in items:
         UUID(item["public_id"])
         assert item["masked_url_path"] == "/u/***"
+        assert item["expires_at"] is not None
+        assert item["is_expired"] is False
         # No raw upload key or token hash anywhere in the body
         body = str(item)
         assert "token_hash" not in body
@@ -484,6 +490,8 @@ def test_create_upload_link_returns_secret_once(client: TestClient, *, identity)
     assert payload["upload_url_path"].startswith("/u/")
     assert "tz=Asia/Shanghai" in payload["upload_url_path"]
     public_id = payload["link"]["public_id"]
+    assert payload["link"]["expires_at"] is not None
+    assert payload["link"]["is_expired"] is False
     UUID(public_id)
     upload_path = payload["upload_url_path"].split("?")[0]
     upload_key = upload_path[len("/u/"):]
@@ -539,6 +547,81 @@ def test_rotate_upload_link_invalidates_old_key(client: TestClient, *, identity)
         f"/u/{new_key}", files={"file": ("ticket.png", PNG_BYTES, "image/png")}
     )
     assert new_upload.status_code == 200
+
+
+def test_rotate_upload_link_rejects_expired_link(client: TestClient, *, identity) -> None:
+    create = client.post(
+        "/api/admin/upload-links",
+        headers=identity.admin_headers,
+        json={"default_timezone": "Asia/Shanghai"},
+    )
+    assert create.status_code == 200
+    public_id = create.json()["link"]["public_id"]
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        link.expires_at = now_utc() - timedelta(minutes=1)
+        db.commit()
+
+    response = client.post(
+        f"/api/admin/upload-links/{public_id}/rotate", headers=identity.admin_headers
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_extend_upload_link_renews_expiry_without_rotating_key(client: TestClient, *, identity) -> None:
+    create = client.post(
+        "/api/admin/upload-links",
+        headers=identity.admin_headers,
+        json={"default_timezone": "Asia/Shanghai"},
+    )
+    assert create.status_code == 200
+    public_id = create.json()["link"]["public_id"]
+    key = create.json()["upload_url_path"].split("?")[0][len("/u/"):]
+    old_expiry = now_utc() + timedelta(days=1)
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        link.expires_at = old_expiry
+        db.commit()
+
+    response = client.post(
+        f"/api/admin/upload-links/{public_id}/extend",
+        headers=identity.admin_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    new_expiry = ensure_utc(
+        datetime.fromisoformat(response.json()["expires_at"].replace("Z", "+00:00"))
+    )
+    assert new_expiry is not None
+    assert new_expiry > ensure_utc(old_expiry + timedelta(days=89))
+    upload = client.post(
+        f"/u/{key}", files={"file": ("ticket.png", PNG_BYTES, "image/png")}
+    )
+    assert upload.status_code == 200
+
+
+def test_extend_upload_link_rejects_expired_link(client: TestClient, *, identity) -> None:
+    create = client.post(
+        "/api/admin/upload-links",
+        headers=identity.admin_headers,
+        json={"default_timezone": "Asia/Shanghai"},
+    )
+    assert create.status_code == 200
+    public_id = create.json()["link"]["public_id"]
+    with SessionLocal() as db:
+        link = db.query(UploadLink).filter(UploadLink.public_id == public_id).one()
+        link.expires_at = now_utc() - timedelta(minutes=1)
+        db.commit()
+
+    response = client.post(
+        f"/api/admin/upload-links/{public_id}/extend",
+        headers=identity.admin_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "invalid_request"
 
 
 def test_revoke_upload_link_blocks_further_uploads(client: TestClient, *, identity) -> None:

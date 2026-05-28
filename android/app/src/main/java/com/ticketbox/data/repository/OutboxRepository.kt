@@ -140,8 +140,7 @@ class OutboxRepository(
      *     AND the entire ``dispatcher.dispatch(row)`` (so the
      *     OkHttp token-read inside dispatch can't be interleaved
      *     with a clearAll).
-     *   - [clearAll] across the epoch bump + DAO delete + onClearAll
-     *     callback.
+     *   - [clearAll] across the epoch bump + DAO delete.
      *
      * Because [LocalLedgerSessionCoordinator] and
      * [ExpenseRepositoryCore.clearBinding] both place credential
@@ -239,38 +238,40 @@ class OutboxRepository(
      *
      * @return the number of rows dropped.
      */
-    suspend fun clearAll(): Int = dispatchLease.withLock {
-        // Round-10 follow-up: take the dispatch lease BEFORE
-        // touching the epoch / DAO. This blocks until any in-flight
-        // OutboxDrainEngine dispatch finishes, so a dispatch that
-        // already passed the post-claim epoch check completes under
-        // the OLD session (credentials haven't been rewritten yet
-        // — coordinator's credential writes follow this clearAll
-        // return). Without the lease, the dispatch's lazy
-        // apiProvider() / OkHttp interceptor token-read could fire
-        // AFTER the credential write, replaying an old row under a
-        // new session.
-        //
-        // Bump the epoch BEFORE the DAO delete so any concurrent
-        // drain that captured the old epoch sees the change on its
-        // next ``currentSessionEpoch()`` check — even if the DAO
-        // delete itself races with the drain's tryClaim. The check
-        // sequence in [OutboxDrainEngine.drainOnce] is:
-        //   capturedEpoch = currentSessionEpoch()
-        //   ... dequeue ...
-        //   ... tryClaim ...
-        //   withDispatchLease { if (epoch differs) skip; else dispatch }
-        // So bumping the counter first guarantees the post-claim
-        // check catches us.
-        sessionEpoch.incrementAndGet()
-        val removed = dao.clearAll()
+    suspend fun clearAll(): Int {
+        val removed = dispatchLease.withLock {
+            // Round-10 follow-up: take the dispatch lease BEFORE
+            // touching the epoch / DAO. This blocks until any in-flight
+            // OutboxDrainEngine dispatch finishes, so a dispatch that
+            // already passed the post-claim epoch check completes under
+            // the OLD session (credentials haven't been rewritten yet
+            // — coordinator's credential writes follow this clearAll
+            // return). Without the lease, the dispatch's lazy
+            // apiProvider() / OkHttp interceptor token-read could fire
+            // AFTER the credential write, replaying an old row under a
+            // new session.
+            //
+            // Bump the epoch BEFORE the DAO delete so any concurrent
+            // drain that captured the old epoch sees the change on its
+            // next ``currentSessionEpoch()`` check — even if the DAO
+            // delete itself races with the drain's tryClaim. The check
+            // sequence in [OutboxDrainEngine.drainOnce] is:
+            //   capturedEpoch = currentSessionEpoch()
+            //   ... dequeue ...
+            //   ... tryClaim ...
+            //   withDispatchLease { if (epoch differs) skip; else dispatch }
+            // So bumping the counter first guarantees the post-claim
+            // check catches us.
+            sessionEpoch.incrementAndGet()
+            dao.clearAll()
+        }
         try {
             onClearAll()
         } catch (_: Exception) {
             // Best-effort scheduler cancel — see [enqueue] for the
             // same Exception-not-Throwable rationale.
         }
-        removed
+        return removed
     }
 
     /**

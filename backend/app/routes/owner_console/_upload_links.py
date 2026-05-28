@@ -96,6 +96,17 @@ def owner_upload_links_revoke(
     return RedirectResponse(url="/owner/upload-links", status_code=303)
 
 
+@router.post("/upload-links/{public_id}/extend", response_class=HTMLResponse)
+def owner_upload_links_extend(
+    public_id: str,
+    request: Request,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    svc.do_extend_upload_link(db, public_id)
+    return RedirectResponse(url="/owner/upload-links", status_code=303)
+
+
 @router.post("/upload-links/{public_id}/limits", response_class=HTMLResponse)
 def owner_upload_links_limits(
     public_id: str,

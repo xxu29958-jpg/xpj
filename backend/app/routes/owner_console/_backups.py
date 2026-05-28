@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.routes.owner_console._shared import LocalOnly, _base, templates
 from app.services import backup_service, migration_readiness_service
+from app.services import owner_console_service as owner_console
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
 
@@ -142,18 +143,23 @@ def owner_migration_cut_over(
 ) -> HTMLResponse:
     """ADR-0031 cut-over: enqueue the v1_migration handler.
 
-    PR-1 MVP: handler re-checks readiness then writes
-    schema_version=1.0 / schema_min_compatible=1.0 to app_meta. After
-    this completes, older binaries refuse to start (see
-    :func:`app_meta_service.assert_binary_compatible_with_db`).
-    Shadow DB + atomic file swap + rollback CLI is the PR-2 follow-up.
+    The handler re-checks readiness, creates a rollback snapshot, then writes
+    schema_version=1.0 / schema_min_compatible=1.0 to app_meta. The enqueue
+    path is singleton-guarded so double-clicks reuse the active task instead
+    of starting duplicate backups and cut-over writes.
     """
     from app.services import background_task_service, v1_migration_service
 
-    task = background_task_service.enqueue(
+    owner_account_id = owner_console.get_owner_account_id(db)
+    # The owner lookup is read-only, but SQLAlchemy opens a transaction for
+    # it. The singleton enqueue path needs to own BEGIN IMMEDIATE from a
+    # clean session so the race guard is actually DB-backed.
+    if db.in_transaction():
+        db.rollback()
+    task, created = background_task_service.enqueue_or_get_active(
         db,
         task_type=v1_migration_service.V1_MIGRATION_TASK_TYPE,
-        initiator_account_id=None,  # cut-over is system-wide, not user-bound
+        initiator_account_id=owner_account_id,
         ledger_id=None,
     )
     report = migration_readiness_service.build_v1_migration_readiness_report(
@@ -163,6 +169,7 @@ def owner_migration_cut_over(
     ctx["migration"] = _migration_readiness_view(report)
     ctx["created_now"] = None
     ctx["cut_over_task_public_id"] = task.public_id
+    ctx["cut_over_task_reused"] = not created
     return templates.TemplateResponse(
         request=request, name="migration_readiness.html", context=ctx
     )

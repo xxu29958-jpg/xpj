@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, Expense, UploadLink
 from app.services.ledger_service import list_managed_ledgers_for_account
+from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,11 @@ def _active_upload_link_count(db: Session, *, ledger_ids: set[str]) -> int:
         db.scalar(
             select(func.count())
             .select_from(UploadLink)
-            .where(UploadLink.ledger_id.in_(ledger_ids), UploadLink.revoked_at.is_(None))
+            .where(
+                UploadLink.ledger_id.in_(ledger_ids),
+                UploadLink.revoked_at.is_(None),
+                UploadLink.expires_at > now_utc(),
+            )
         )
         or 0
     )

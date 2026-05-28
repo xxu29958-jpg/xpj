@@ -51,7 +51,7 @@ def set_session_cookie(response: Response, session_token: str) -> None:
         max_age=SESSION_COOKIE_MAX_AGE_SECONDS,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
 
@@ -64,7 +64,7 @@ def clear_session_cookie(response: Response) -> None:
         path="/",
         secure=True,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
     )
 
 

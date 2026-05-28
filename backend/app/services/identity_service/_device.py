@@ -19,11 +19,12 @@ from app.services.session_lifecycle_service import (
     issue_auth_token,
     issue_upload_link,
     new_pairing_code,
+    upload_link_expires_at,
 )
 from app.services.time_service import now_utc, to_iso
 
 
-def _ensure_device(db: Session, account_id: int, device_name: str, platform: str) -> Device:
+def _create_device(db: Session, account_id: int, device_name: str, platform: str) -> Device:
     device = Device(
         account_id=account_id,
         device_name=_clean_name(device_name, "未命名设备"),
@@ -61,12 +62,14 @@ def _create_upload_link(
     ledger_id: str,
     default_timezone: str | None,
 ) -> str:
+    issued_at = now_utc()
     return issue_upload_link(
         db,
         account_id=account_id,
         device_id=device_id,
         ledger_id=ledger_id,
         default_timezone=default_timezone,
+        expires_at=upload_link_expires_at(issued_at),
     )
 
 

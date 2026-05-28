@@ -12,7 +12,7 @@ from fastapi import Request
 from starlette.responses import Response
 
 from app.config import get_settings
-from app.errors import error_response
+from app.errors import AppError, error_response
 from app.network_boundary import is_loopback_request
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
@@ -30,6 +30,14 @@ async def csrf_loopback_form_guard(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
+    if not _is_protected_path(request):
+        return await call_next(request)
+    if _csrf_secret() is None:
+        return error_response(
+            "server_error",
+            "页面安全校验暂时不可用，请检查服务器配置。",
+            status_code=500,
+        )
     _ensure_request_csrf_token(request)
     if not _requires_csrf_check(request):
         response = await call_next(request)
@@ -55,6 +63,10 @@ def _requires_csrf_check(request: Request) -> bool:
     # existing unit tests deterministic; public-host tests use a real peer.
     if _peer_host(request) == "testclient":
         return False
+    return _is_protected_path(request)
+
+
+def _is_protected_path(request: Request) -> bool:
     path = request.url.path
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in _PROTECTED_PREFIXES)
 
@@ -89,14 +101,21 @@ def _peer_host(request: Request) -> str:
     return request.client.host if request.client else ""
 
 
-def _csrf_secret() -> bytes:
+def _csrf_secret() -> bytes | None:
     settings = get_settings()
     raw = settings.admin_token or settings.http_bootstrap_secret or settings.app_token
-    return raw.encode("utf-8")
+    raw = (raw or "").strip()
+    secret: bytes | None = None
+    if raw:
+        secret = raw.encode("utf-8")
+    return secret
 
 
 def _csrf_token_for_seed(seed: str) -> str:
-    digest = hmac.new(_csrf_secret(), seed.encode("utf-8"), sha256).digest()
+    secret = _csrf_secret()
+    if secret is None:
+        raise AppError("server_error", "CSRF secret not configured", status_code=500)
+    digest = hmac.new(secret, seed.encode("utf-8"), sha256).digest()
     token = urlsafe_b64encode(digest).decode("ascii").rstrip("=")
     return f"v1.{token}"
 

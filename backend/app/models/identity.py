@@ -73,6 +73,9 @@ class Device(Base):
 
 class AuthToken(Base):
     __tablename__ = "auth_tokens"
+    __table_args__ = (
+        CheckConstraint("scope IN ('app', 'admin')", name="ck_auth_tokens_scope_valid"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
@@ -84,6 +87,17 @@ class AuthToken(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index(
+    "uq_auth_tokens_active_principal",
+    AuthToken.account_id,
+    AuthToken.device_id,
+    AuthToken.ledger_id,
+    AuthToken.scope,
+    unique=True,
+    sqlite_where=AuthToken.revoked_at.is_(None),
+)
 
 
 class LedgerAuditLog(Base):

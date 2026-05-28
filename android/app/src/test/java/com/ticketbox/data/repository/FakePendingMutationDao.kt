@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
  */
 class FakePendingMutationDao : PendingMutationDao {
     val rows = linkedMapOf<Long, PendingMutationEntity>()
+    var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     private var nextId = 1L
     private val queueDepth = MutableStateFlow(0)
     private val conflictRows = MutableStateFlow<List<PendingMutationEntity>>(emptyList())
@@ -170,10 +171,12 @@ class FakePendingMutationDao : PendingMutationDao {
             .filter { it.status in unresolved }
             .map { it.targetId }
             .toSet()
-        return rows.values
+        val batch = rows.values
             .filter { it.status == pendingStatus && it.targetId !in unresolvedTargets }
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
             .take(limit)
+        beforeNextRunnableBatchReturn?.invoke()
+        return batch
     }
 
     override suspend fun isTargetBusy(targetId: String, inFlightStatus: String): Boolean =

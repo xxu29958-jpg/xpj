@@ -29,7 +29,19 @@ from app.services.budget_advisor_service import (
     OpenAiCompatBudgetAdvisor,
     get_budget_advisor,
 )
-from app.services.budget_advisor_service._providers import _parse_advice_json
+from app.services.budget_advisor_service._providers import (
+    _SYSTEM_PROMPT,
+    MAX_ADVICE_RATIONALE_CHARS,
+    MAX_ADVICE_SUGGESTIONS,
+    MAX_ADVICE_SUMMARY_CHARS,
+    MAX_PROVIDER_RESPONSE_BYTES,
+    _parse_advice_json,
+)
+from app.services.category_common import (
+    DEFAULT_CATEGORIES,
+    LEGACY_CATEGORY_ALIASES,
+    normalize_category,
+)
 
 
 def _advisor() -> OpenAiCompatBudgetAdvisor:
@@ -131,10 +143,39 @@ def test_advise_returns_none_on_http_error() -> None:
     assert advice is None
 
 
+def test_http_error_body_is_not_exposed_in_app_error() -> None:
+    advisor = _advisor()
+    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+        mock_urlopen.side_effect = error.HTTPError(
+            "http://x",
+            500,
+            "Server Error",
+            {},
+            BytesIO(b'{"error":"secret upstream body token=sk-live-123"}'),
+        )
+        with pytest.raises(AppError) as exc:
+            advisor._post_chat_completion({"messages": []})
+
+    assert "secret upstream body" not in exc.value.message
+    assert "sk-live-123" not in exc.value.message
+    assert "AI" in exc.value.message
+
+
 def test_advise_returns_none_on_transport_error() -> None:
     with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
         mock_urlopen.side_effect = error.URLError("dns down")
         advice = _advisor().advise(_inputs())
+    assert advice is None
+
+
+def test_provider_response_size_cap_returns_none() -> None:
+    response_bytes = b'{"choices":[{"message":{"content":"' + (
+        b"x" * MAX_PROVIDER_RESPONSE_BYTES
+    ) + b'"}}]}'
+    with patch("app.services.budget_advisor_service._providers.request.urlopen") as mock_urlopen:
+        mock_urlopen.return_value.__enter__.return_value = BytesIO(response_bytes)
+        advice = _advisor().advise(_inputs())
+
     assert advice is None
 
 
@@ -218,6 +259,25 @@ def test_factory_returns_openai_compat_when_configured(monkeypatch: pytest.Monke
         get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(
+    "alias",
+    ["deepseek", "deepseek-chat", "siliconflow", "silicon-flow", "together", "groq"],
+)
+def test_factory_routes_openai_compatible_aliases(
+    alias: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BUDGET_ADVISOR_PROVIDER", alias)
+    monkeypatch.setenv("BUDGET_ADVISOR_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("BUDGET_ADVISOR_MODEL", "test-model")
+    monkeypatch.setenv("BUDGET_ADVISOR_API_KEY", "test-key")
+    get_settings.cache_clear()
+    try:
+        advisor = get_budget_advisor()
+        assert isinstance(advisor, OpenAiCompatBudgetAdvisor)
+    finally:
+        get_settings.cache_clear()
+
+
 def test_factory_rejects_openai_compat_without_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BUDGET_ADVISOR_PROVIDER", "openai_compat")
     monkeypatch.delenv("BUDGET_ADVISOR_BASE_URL", raising=False)
@@ -237,6 +297,46 @@ def test_factory_rejects_openai_compat_without_model(monkeypatch: pytest.MonkeyP
     get_settings.cache_clear()
     try:
         with pytest.raises(AppError, match="BUDGET_ADVISOR_MODEL"):
+            get_budget_advisor()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_factory_rejects_public_openai_compat_without_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BUDGET_ADVISOR_PROVIDER", "openai_compat")
+    monkeypatch.setenv("BUDGET_ADVISOR_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("BUDGET_ADVISOR_MODEL", "test-model")
+    monkeypatch.delenv("BUDGET_ADVISOR_API_KEY", raising=False)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(AppError, match="BUDGET_ADVISOR_API_KEY"):
+            get_budget_advisor()
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "ftp://api.example.com/v1",
+        "https://user:pass@api.example.com/v1",
+        "https://api.example.com:bad/v1",
+        "https:///v1",
+        "https://api.example.com/v1?token=leak",
+        "https://api.example.com/v1#fragment",
+    ],
+)
+def test_factory_rejects_invalid_base_url(
+    base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BUDGET_ADVISOR_PROVIDER", "openai_compat")
+    monkeypatch.setenv("BUDGET_ADVISOR_BASE_URL", base_url)
+    monkeypatch.setenv("BUDGET_ADVISOR_MODEL", "qwen2.5:7b")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(AppError, match="BUDGET_ADVISOR_BASE_URL"):
             get_budget_advisor()
     finally:
         get_settings.cache_clear()
@@ -268,3 +368,76 @@ def test_parser_clamps_confidence_to_0_1() -> None:
     low = _parse_advice_json(json.dumps({"summary": "s", "suggestions": [], "confidence": -0.5}))
     assert high.confidence == 1.0
     assert low.confidence == 0.0
+
+
+def test_prompt_category_list_uses_shared_default_categories() -> None:
+    for category in DEFAULT_CATEGORIES:
+        assert category in _SYSTEM_PROMPT
+
+
+def test_parser_normalizes_legacy_category_alias() -> None:
+    legacy, canonical = next(iter(LEGACY_CATEGORY_ALIASES.items()))
+    advice = _parse_advice_json(
+        json.dumps(
+            {
+                "summary": "ok",
+                "suggestions": [
+                    {
+                        "category": legacy,
+                        "suggested_amount_cents": 50000,
+                        "rationale": "alias",
+                    }
+                ],
+                "confidence": 0.5,
+            },
+            ensure_ascii=False,
+        )
+    )
+    assert len(advice.suggestions) == 1
+    assert advice.suggestions[0].category == canonical
+    assert normalize_category(legacy) == canonical
+
+
+def test_parser_accepts_category_present_in_input_allowlist() -> None:
+    custom_category = "custom-family-category"
+    advice = _parse_advice_json(
+        json.dumps(
+            {
+                "summary": "ok",
+                "suggestions": [
+                    {
+                        "category": custom_category,
+                        "suggested_amount_cents": 50000,
+                        "rationale": "from input",
+                    }
+                ],
+                "confidence": 0.5,
+            }
+        ),
+        allowed_categories={custom_category},
+    )
+    assert len(advice.suggestions) == 1
+    assert advice.suggestions[0].category == custom_category
+
+
+def test_parser_caps_text_and_suggestion_count() -> None:
+    advice = _parse_advice_json(
+        json.dumps(
+            {
+                "summary": "s" * (MAX_ADVICE_SUMMARY_CHARS + 20),
+                "suggestions": [
+                    {
+                        "category": DEFAULT_CATEGORIES[0],
+                        "suggested_amount_cents": index,
+                        "rationale": "r" * (MAX_ADVICE_RATIONALE_CHARS + 20),
+                    }
+                    for index in range(MAX_ADVICE_SUGGESTIONS + 5)
+                ],
+                "confidence": 0.5,
+            },
+            ensure_ascii=False,
+        )
+    )
+    assert len(advice.summary) == MAX_ADVICE_SUMMARY_CHARS
+    assert len(advice.suggestions) == MAX_ADVICE_SUGGESTIONS
+    assert len(advice.suggestions[0].rationale) == MAX_ADVICE_RATIONALE_CHARS

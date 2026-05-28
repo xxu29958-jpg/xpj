@@ -177,3 +177,21 @@ def revoke_upload_link_endpoint(
             ledger_ids=manageable_ledger_ids(db, auth),
         )
     )
+
+
+@router.post(
+    "/upload-links/{public_id}/extend",
+    response_model=AdminUploadLinkResponse,
+)
+def extend_upload_link_endpoint(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_admin_context),
+    db: Session = Depends(get_db),
+) -> AdminUploadLinkResponse:
+    return _link_response(
+        admin_service.extend_upload_link(
+            db,
+            public_id=public_id,
+            ledger_ids=manageable_ledger_ids(db, auth),
+        )
+    )
