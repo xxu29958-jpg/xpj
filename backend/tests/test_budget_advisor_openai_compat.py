@@ -232,6 +232,7 @@ def test_advise_sends_only_allowed_top_level_keys() -> None:
         "home_currency",
         "category_breakdown",
         "historical_baseline",
+        "income_plan",
     }
     # Verify no real PII fields leaked.
     for cat in payload["category_breakdown"]:

@@ -23,6 +23,14 @@
   schedulers). Soft-deleted rows are hidden from every read regardless, so this
   only bounds storage lag, never the undo window.
 
+- ADR-0036 AI advisor (widened): the outbound payload now also carries
+  **planned income** — `income_plan[]` with a generalised `source_type`,
+  `amount_cents`, and `pay_day` — so the advisor can reason about cash flow,
+  not just spend. `source_type` is free text in storage, so the builder
+  generalises it to a PII-free allowlist (unknown → `other`) and the outbound
+  guard fail-closes on anything outside it; the free-text income `label` is
+  never sent. Merchant/member aliases and fixed/recurring summaries stay out.
+
 - `/web/reports` now renders its three ECharts (spending trend / category
   month-over-month / merchant ranking) via `reports.js` from a server-injected
   `#reports-overview-data` JSON blob, plus a "导出 PNG" trend snapshot. Activates
@@ -32,8 +40,9 @@
 
 - AI budget-advisor live provider payload is now explicitly limited to
   month/home-currency, category aggregates, and historical category baselines.
-  Merchant/member aliases, income plans, and fixed expenses are kept out of the
-  outbound provider envelope unless a future ADR/code/test change widens it.
+  Merchant/member aliases and fixed/recurring summaries are kept out of the
+  outbound provider envelope unless a future ADR/code/test change widens it
+  (income plans were since widened in — see the ADR-0036 entry above).
   `BUDGET_ADVISOR_API_KEY` is also no longer trimmed during config loading:
   leading/trailing spaces or embedded whitespace are rejected as invalid config
   instead of being silently corrected.

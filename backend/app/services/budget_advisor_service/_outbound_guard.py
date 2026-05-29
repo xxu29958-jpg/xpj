@@ -11,7 +11,10 @@ from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from app.errors import DataIntegrityError
-from app.services.budget_advisor_service._models import BudgetInputs
+from app.services.budget_advisor_service._models import (
+    ALLOWED_INCOME_SOURCE_TYPES,
+    BudgetInputs,
+)
 from app.services.category_common import DEFAULT_CATEGORIES
 
 ALLOWED_TOP_LEVEL_KEYS = frozenset(
@@ -20,11 +23,13 @@ ALLOWED_TOP_LEVEL_KEYS = frozenset(
         "home_currency",
         "category_breakdown",
         "historical_baseline",
+        "income_plan",
     }
 )
 
 ALLOWED_CATEGORY_KEYS = frozenset({"category", "amount_cents", "count"})
 ALLOWED_BASELINE_KEYS = frozenset({"category", "median_cents", "p75_cents"})
+ALLOWED_INCOME_PLAN_KEYS = frozenset({"source_type", "amount_cents", "pay_day"})
 
 _LIST_KEY_TO_ALLOWED_ROW_KEYS: dict[str, frozenset[str]] = {
     "category_breakdown": ALLOWED_CATEGORY_KEYS,
@@ -79,3 +84,29 @@ def validate_outbound_payload(payload: dict[str, Any]) -> None:
                     "budget_advisor_outbound: unexpected category on "
                     f"'{list_key}[{index}]'"
                 )
+
+    _validate_income_plan(payload.get("income_plan", []))
+
+
+def _validate_income_plan(rows: Any) -> None:
+    """Income rows are not category-bearing: validate the key set and a
+    fail-closed ``source_type`` allowlist so no free-text (potential PII)
+    source type can ever reach a provider."""
+    if not isinstance(rows, list):
+        raise DataIntegrityError("budget_advisor_outbound: 'income_plan' must be a list")
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise DataIntegrityError(
+                f"budget_advisor_outbound: 'income_plan[{index}]' must be a dict"
+            )
+        extra = set(row.keys()) - ALLOWED_INCOME_PLAN_KEYS
+        if extra:
+            raise DataIntegrityError(
+                "budget_advisor_outbound: unexpected key(s) on "
+                f"'income_plan[{index}]': {', '.join(sorted(extra))}"
+            )
+        if row.get("source_type") not in ALLOWED_INCOME_SOURCE_TYPES:
+            raise DataIntegrityError(
+                "budget_advisor_outbound: unexpected source_type on "
+                f"'income_plan[{index}]'"
+            )

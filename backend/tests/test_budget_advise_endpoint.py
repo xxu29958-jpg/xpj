@@ -25,8 +25,10 @@ from app.services.budget_advisor_service import (
     MockBudgetAdvisor,
     build_budget_inputs,
 )
+from app.services.budget_advisor_service._models import ALLOWED_INCOME_SOURCE_TYPES
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
 from app.services.category_common import DEFAULT_CATEGORIES
+from app.services.income_plan_service import create_income_plan
 from app.services.time_service import now_utc
 
 
@@ -197,13 +199,34 @@ def test_builder_anonymises_member_account_id(identity) -> None:  # noqa: ARG001
     assert not hasattr(inputs, "members")
 
 
-def test_builder_does_not_send_income_plan(identity) -> None:  # noqa: ARG001
+def test_builder_sends_generalized_income_plan(identity) -> None:  # noqa: ARG001
+    # ADR-0036: income_plan is now part of the live envelope. The free-text
+    # source_type is generalized to a PII-free allowlist (unknown -> "other")
+    # and the free-text label is never carried into the snapshot.
     _seed_minimal_data()
     with SessionLocal() as db:
-        inputs = build_budget_inputs(
-            db, tenant_id="owner", month=_current_month()
+        create_income_plan(
+            db,
+            tenant_id="owner",
+            label="Acme Corp 工资",
+            source_type="工资",
+            amount_cents=1_500_000,
+            pay_day=15,
         )
-    assert not hasattr(inputs, "income_plan")
+        db.commit()
+    with SessionLocal() as db:
+        inputs = build_budget_inputs(db, tenant_id="owner", month=_current_month())
+    plans = {p.amount_cents: p for p in inputs.income_plan}
+    assert 1_500_000 in plans, "the created income line must be present"
+    mine = plans[1_500_000]
+    assert mine.source_type == "other"  # free-text 工资 generalized, never raw
+    assert mine.pay_day == 15
+    # Every emitted source_type is in the PII-free allowlist (no raw free text),
+    # and the snapshot shape carries no `label` (potential PII).
+    assert all(p.source_type in ALLOWED_INCOME_SOURCE_TYPES for p in inputs.income_plan)
+    assert all(not hasattr(p, "label") for p in inputs.income_plan)
+    # The serialized payload still passes the fail-closed outbound guard.
+    to_outbound_dict(inputs)
 
 
 def test_builder_does_not_send_recurring_merchants(identity) -> None:  # noqa: ARG001
@@ -326,6 +349,8 @@ def test_builder_returns_valid_budget_inputs_when_empty(identity) -> None:  # no
         "home_currency",
         "category_breakdown",
         "historical_baseline",
+        "income_plan",
     }
+    assert inputs.income_plan == []  # empty ledger -> no income lines
     assert not hasattr(inputs, "members")
     assert not hasattr(inputs, "merchant_summary")

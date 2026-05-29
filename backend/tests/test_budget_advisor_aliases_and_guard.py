@@ -59,6 +59,7 @@ def test_to_outbound_dict_only_contains_current_builder_keys() -> None:
         "home_currency",
         "category_breakdown",
         "historical_baseline",
+        "income_plan",
     }
 
 
@@ -71,7 +72,7 @@ def test_to_outbound_dict_category_rows_have_only_aggregate_fields() -> None:
 
 @pytest.mark.parametrize(
     "removed_key",
-    ["members", "merchant_summary", "income_plan", "fixed_expenses"],
+    ["members", "merchant_summary", "fixed_expenses"],
 )
 def test_validate_rejects_removed_future_or_empty_collections(removed_key: str) -> None:
     payload = to_outbound_dict(_full_inputs())
@@ -79,6 +80,55 @@ def test_validate_rejects_removed_future_or_empty_collections(removed_key: str) 
 
     with pytest.raises(DataIntegrityError, match=removed_key):
         validate_outbound_payload(payload)
+
+
+# --- ADR-0036: income_plan crossed into the live envelope (PII-free) ---------
+
+
+def _payload_with_income(income_rows: list[dict]) -> dict:
+    return {
+        "month": "2026-05",
+        "home_currency": "CNY",
+        "category_breakdown": [],
+        "historical_baseline": [],
+        "income_plan": income_rows,
+    }
+
+
+def test_validate_accepts_generalized_income_plan() -> None:
+    validate_outbound_payload(
+        _payload_with_income(
+            [{"source_type": "salary", "amount_cents": 1_500_000, "pay_day": 15}]
+        )
+    )
+
+
+def test_validate_rejects_freetext_income_source_type() -> None:
+    # A user could type an employer name into the free-text source_type; the
+    # builder generalises it, and the guard fail-closes on anything raw.
+    with pytest.raises(DataIntegrityError, match="source_type"):
+        validate_outbound_payload(
+            _payload_with_income(
+                [{"source_type": "我老板张三的公司", "amount_cents": 1, "pay_day": 1}]
+            )
+        )
+
+
+def test_validate_rejects_income_plan_label_leak() -> None:
+    # The free-text `label` (potential PII) must never appear on an income row.
+    with pytest.raises(DataIntegrityError, match="label"):
+        validate_outbound_payload(
+            _payload_with_income(
+                [
+                    {
+                        "source_type": "salary",
+                        "amount_cents": 1,
+                        "pay_day": 1,
+                        "label": "Acme Corp 工资",
+                    }
+                ]
+            )
+        )
 
 
 def test_validate_rejects_unknown_top_level_key() -> None:

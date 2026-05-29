@@ -12,11 +12,14 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.services.budget_advisor_service._models import (
+    ALLOWED_INCOME_SOURCE_TYPES,
     BudgetInputs,
     CategorySnapshot,
     HistoricalBaseline,
+    IncomePlanSnapshot,
 )
 from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
+from app.services.income_plan_service import list_income_plans
 from app.services.monthly_report_service import (
     MonthlyReport,
     compose_budget_explanation,
@@ -52,6 +55,7 @@ def build_budget_inputs(
             report=report,
             timezone_name=timezone_name,
         ),
+        income_plan=_income_plan(db, tenant_id=tenant_id),
     )
 
 
@@ -106,6 +110,24 @@ def _historical_baseline(
             )
         )
     return rows
+
+
+def _income_plan(db: Session, *, tenant_id: str) -> list[IncomePlanSnapshot]:
+    """Active income plans as advisor input. ``source_type`` is generalised to a
+    PII-free allowlist; the free-text ``label`` is intentionally never sent."""
+    return [
+        IncomePlanSnapshot(
+            source_type=_generalize_source_type(plan.source_type),
+            amount_cents=int(plan.amount_cents),
+            pay_day=int(plan.pay_day),
+        )
+        for plan in list_income_plans(db, tenant_id=tenant_id, status="active")
+    ]
+
+
+def _generalize_source_type(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    return normalized if normalized in ALLOWED_INCOME_SOURCE_TYPES else "other"
 
 
 def _advisor_category(category: str | None) -> str:

@@ -19,6 +19,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+# ADR-0036: income source types safe to send to a provider. ``source_type`` is
+# free text in storage (a user could type an employer name), so the builder
+# generalises every value to one of these — anything else collapses to
+# ``"other"`` — and the outbound guard fail-closes on anything outside the set.
+# These are generic income kinds with no PII.
+ALLOWED_INCOME_SOURCE_TYPES = frozenset(
+    {"salary", "freelance", "bonus", "investment", "rental", "pension", "business", "other"}
+)
+
 
 @dataclass(frozen=True)
 class CategorySnapshot:
@@ -27,6 +36,17 @@ class CategorySnapshot:
     category: str
     amount_cents: int
     count: int
+
+
+@dataclass(frozen=True)
+class IncomePlanSnapshot:
+    """One planned income stream. ``source_type`` is generalised to
+    :data:`ALLOWED_INCOME_SOURCE_TYPES` (no free-text / PII); ``pay_day`` is a
+    day-of-month (1-31), never a full date."""
+
+    source_type: str
+    amount_cents: int
+    pay_day: int
 
 
 @dataclass(frozen=True)
@@ -46,6 +66,9 @@ class BudgetInputs:
     home_currency: str
     category_breakdown: list[CategorySnapshot] = field(default_factory=list)
     historical_baseline: list[HistoricalBaseline] = field(default_factory=list)
+    # ADR-0036: planned income (generalised source_type / amount / pay_day) so
+    # the advisor can reason about cash flow, not just spend. No PII.
+    income_plan: list[IncomePlanSnapshot] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
