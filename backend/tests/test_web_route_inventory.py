@@ -167,6 +167,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/rules/applications/{public_id}/rollback"): "writer-only",
     ("POST", "/web/rules/{rule_id}/toggle"): "writer-only",
     ("POST", "/web/rules/{rule_id}/delete"): "writer-only",
+    ("POST", "/web/rules/{rule_id}/undo"): "writer-only",
     ("POST", "/web/rules/apply-pending"): "writer-only",
     ("POST", "/web/rules/apply-confirmed"): "writer-only",
     # Search / Stats

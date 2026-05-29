@@ -1969,6 +1969,17 @@
         "title": "Body_web_rules_toggle_web_rules__rule_id__toggle_post",
         "type": "object"
       },
+      "Body_web_rules_undo_web_rules__rule_id__undo_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_rules_undo_web_rules__rule_id__undo_post",
+        "type": "object"
+      },
       "Body_web_save_web_expenses__expense_id__save_post": {
         "properties": {
           "amount_yuan": {
@@ -21762,6 +21773,16 @@
               "title": "Msg",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "undo",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Undo",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -22060,6 +22081,57 @@
           }
         },
         "summary": "Web Rules Toggle",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/rules/{rule_id}/undo": {
+      "post": {
+        "operationId": "web_rules_undo_web_rules__rule_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_rules_undo_web_rules__rule_id__undo_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Rules Undo",
         "tags": [
           "web"
         ]

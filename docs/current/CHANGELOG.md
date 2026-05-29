@@ -27,7 +27,9 @@
   there is no unique constraint, so a recreated rule never conflicts and undo
   never resurrects a duplicate. Additive migration only (one nullable column +
   composite index); the periodic purge scheduler now sweeps category_rules too.
-  The `/web` rules page + Android undo affordances follow in a later slice.
+  The `/web` rules page now renders a 5s 撤销 banner after a delete (POSTs to
+  `/web/rules/{id}/undo`), mirroring the merchant page; the Android undo
+  affordance follows in a later slice.
 
 - ADR-0038 undo cleanup now has a periodic purge scheduler. Opt in with
   `SOFT_DELETE_PURGE_AUTO_ENABLED=true` to auto-purge soft-deleted rows past

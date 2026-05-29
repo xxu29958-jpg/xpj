@@ -36,6 +36,7 @@ from app.services.classify_service import (
     preview_apply_rules_to_pending,
     preview_rule_for_pending,
     rollback_rule_application,
+    undo_delete_rule,
     update_rule,
     validate_rule_application_preview,
 )
@@ -69,6 +70,7 @@ def web_rules(
     apply_preview: bool = False,
     confirmed_preview: bool = False,
     msg: str = "",
+    undo: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -120,6 +122,9 @@ def web_rules(
     ctx["preview_keyword"] = preview_keyword
     ctx["preview_category"] = preview_category
     ctx["flash_message"] = msg
+    # ADR-0038 undo: when set, the page renders a 5s 撤销 banner POSTing to the
+    # rule undo route (the row is recoverable until cleanup purges it).
+    ctx["undo_rule_id"] = undo
     ctx["q"] = "?ledger_id=" + selected_id
     return templates.TemplateResponse(request=request, name="rules.html", context=ctx)
 
@@ -248,18 +253,42 @@ def web_rules_delete(
         )
     rule = _get_rule(db, rule_id, selected_id)
     if rule is None:
-        msg = "规则不存在。"
-    else:
-        keyword = rule.keyword
-        try:
-            delete_rule(db, rule, expected_updated_at=parsed)
-            msg = f"规则 [{keyword}] 已删除。"
-        except AppError as exc:
-            msg = (
-                "规则已在其它端被修改，请刷新后重试。"
-                if exc.error == "state_conflict"
-                else exc.message
-            )
+        return _web_redirect("/web/rules", selected_id, msg="规则不存在。")
+    keyword = rule.keyword
+    try:
+        delete_rule(db, rule, expected_updated_at=parsed)
+    except AppError as exc:
+        msg = (
+            "规则已在其它端被修改，请刷新后重试。"
+            if exc.error == "state_conflict"
+            else exc.message
+        )
+        return _web_redirect("/web/rules", selected_id, msg=msg)
+    # ADR-0038 undo: surface a 撤销 banner; the row is recoverable until purge.
+    return _web_redirect(
+        "/web/rules", selected_id, msg=f"规则 [{keyword}] 已删除。", undo=str(rule_id)
+    )
+
+
+@router.post("/rules/{rule_id}/undo", response_class=HTMLResponse)
+def web_rules_undo(
+    request: Request,
+    rule_id: int,
+    ledger_id: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    # ADR-0038 undo: restore a soft-deleted rule within the retention window.
+    # No expected_updated_at — undo targets the soft-deleted row by id and is a
+    # no-op-or-restore; once purged it surfaces as a friendly message.
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    try:
+        rule = undo_delete_rule(db, tenant_id=selected_id, rule_id=rule_id)
+        msg = f"已恢复规则 [{rule.keyword}]。"
+    except AppError:
+        msg = "无法撤销：规则不存在或撤销窗口已过期。"
     return _web_redirect("/web/rules", selected_id, msg=msg)
 
 

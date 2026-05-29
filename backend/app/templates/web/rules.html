@@ -8,7 +8,16 @@
 {% endif %}
 
 {% if flash_message %}
-<div class="dt-alert success">{{ flash_message }}</div>
+<div class="dt-alert success{% if undo_rule_id and can_write %} undo-banner{% endif %}">
+  <span>{{ flash_message }}</span>
+  {% if undo_rule_id and can_write %}
+  {# ADR-0038 undo: 5s 撤销 affordance (CSS auto-dismisses the banner). #}
+  <form method="post" action="/web/rules/{{ undo_rule_id }}/undo" class="undo-banner-action">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <button type="submit" class="dt-btn">撤销</button>
+  </form>
+  {% endif %}
+</div>
 {% endif %}
 
 <div class="grid two-col">

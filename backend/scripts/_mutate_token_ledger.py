@@ -270,6 +270,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/apply-pending": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/create": Exempt("create_row", "rules", ("category_rules",)),
+    "POST /web/rules/{rule_id}/undo": Exempt(
+        "terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")
+    ),
     "POST /web/tasks/{public_id}/cancel": Exempt("terminal_flag_flip", "tasks", ("background_tasks",)),
 
     # --- /owner console (loopback-only admin / single-writer / batch) ---

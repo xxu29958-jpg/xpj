@@ -105,6 +105,51 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     assert resp.status_code in {303, 307}
 
 
+def test_web_rules_delete_then_undo(web_client: TestClient) -> None:
+    # ADR-0038 undo: /web delete soft-deletes + redirects with ?undo=<id> so
+    # the page renders a 撤销 banner; POSTing it restores the rule.
+    resp = web_client.post(
+        "/web/rules/create",
+        data={"keyword": "测试撤销规则", "category": "餐饮", "priority": "100",
+              "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in {303, 307}
+    page = web_client.get("/web/rules?ledger_id=owner")
+    rule_id = _rule_id_for_keyword(page.text, "测试撤销规则")
+    delete_token = _rule_token_for(page.text, rule_id, "delete")
+
+    deleted = web_client.post(
+        f"/web/rules/{rule_id}/delete",
+        data={"ledger_id": "owner", "expected_updated_at": delete_token},
+        follow_redirects=False,
+    )
+    assert deleted.status_code in {303, 307}
+    # The redirect carries ?undo=<id> so the banner shows.
+    undo_q = parse_qs(urlparse(deleted.headers["location"]).query).get("undo")
+    assert undo_q == [str(rule_id)]
+
+    # With msg + undo present, the page renders the 撤销 banner pointing at undo.
+    banner = web_client.get(f"/web/rules?ledger_id=owner&msg=deleted&undo={rule_id}")
+    assert banner.status_code == 200
+    assert f"/web/rules/{rule_id}/undo" in banner.text
+    assert "撤销" in banner.text
+
+    # A clean reload (no flash) confirms the rule is hidden — soft-deleted.
+    clean = web_client.get("/web/rules?ledger_id=owner")
+    assert "测试撤销规则" not in clean.text
+
+    # Undo restores it.
+    restored = web_client.post(
+        f"/web/rules/{rule_id}/undo",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert restored.status_code in {303, 307}
+    page = web_client.get("/web/rules?ledger_id=owner")
+    assert "测试撤销规则" in page.text
+
+
 def test_web_rules_preview_does_not_mutate(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_with_amount(web_client, "9.00", "星巴克 国贸店", identity=identity)
     resp = web_client.get(
