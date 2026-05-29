@@ -63,6 +63,18 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
             "`purge_expired_soft_deleted_merchant_aliases` instead."
         ),
     ),
+    ScopeExemption(
+        path="services/cleanup_service.py",
+        function="purge_expired_soft_deletes",
+        model="CategoryRule",
+        occurrences=1,
+        reason=(
+            "ADR-0038 undo: same system-wide purge sweep as MerchantAlias above "
+            "— intentionally all-tenant, gated only on `deleted_at < retention "
+            "cutoff`. category_rules has no unique constraint, so a purged row "
+            "never blocks a recreate."
+        ),
+    ),
 )
 
 

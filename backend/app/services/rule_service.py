@@ -17,8 +17,8 @@ from app.services.merchant_alias_service import (
 )
 from app.services.optimistic_concurrency import (
     claim_row_with_token,
-    delete_row_with_token,
 )
+from app.services.resource_audit import record_resource_action
 from app.services.tag_service import parse_tags, tag_key
 from app.services.time_service import now_utc
 
@@ -103,6 +103,7 @@ def classify_expense(db: Session, expense: Expense) -> Expense:
     rules = db.scalars(
         ledger_scoped_select(CategoryRule, expense.tenant_id)
         .where(CategoryRule.enabled == True)  # noqa: E712
+        .where(CategoryRule.deleted_at.is_(None))
         .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
     )
     for rule in rules:
@@ -116,6 +117,7 @@ def list_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
     return list(
         db.scalars(
             ledger_scoped_select(CategoryRule, tenant_id)
+            .where(CategoryRule.deleted_at.is_(None))
             .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
         )
     )
@@ -124,14 +126,28 @@ def list_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
 def find_rule_for_tenant(
     db: Session, *, tenant_id: str, rule_id: int
 ) -> CategoryRule | None:
-    """Return a tenant-scoped ``CategoryRule`` row or ``None``.
+    """Return a tenant-scoped, *live* (not soft-deleted) ``CategoryRule`` or
+    ``None``.
 
     Used by /web rule pages where a missing rule should redirect with a
     friendly message rather than 404; the API path uses
-    :func:`get_rule_for_tenant`.
+    :func:`get_rule_for_tenant`. Soft-deleted rows are reached only via
+    :func:`_find_soft_deleted_rule_for_tenant` (undo).
     """
     return db.scalar(
-        ledger_scoped_select(CategoryRule, tenant_id).where(CategoryRule.id == rule_id)
+        ledger_scoped_select(CategoryRule, tenant_id)
+        .where(CategoryRule.id == rule_id)
+        .where(CategoryRule.deleted_at.is_(None))
+    )
+
+
+def _find_soft_deleted_rule_for_tenant(
+    db: Session, *, tenant_id: str, rule_id: int
+) -> CategoryRule | None:
+    return db.scalar(
+        ledger_scoped_select(CategoryRule, tenant_id)
+        .where(CategoryRule.id == rule_id)
+        .where(CategoryRule.deleted_at.is_not(None))
     )
 
 
@@ -301,14 +317,18 @@ def update_rule(
 def delete_rule(
     db: Session, rule: CategoryRule, *, expected_updated_at: datetime
 ) -> None:
-    """Delete a category rule with ADR-0038 atomic optimistic concurrency.
+    """ADR-0038 undo: SOFT delete a category rule with atomic optimistic
+    concurrency.
 
-    Runs ``DELETE FROM category_rules WHERE id, tenant_id, updated_at
-    = expected`` and treats ``rowcount == 0`` the same way
-    :func:`update_rule` does — 404 if the row vanished, 409 if it was
-    mutated by a concurrent writer. The DB predicate is the
-    authoritative check; the caller's ORM instance does not need to
-    be fresh.
+    Runs ``UPDATE category_rules SET deleted_at = now, updated_at = now
+    WHERE id, tenant_id, updated_at = expected`` and treats ``rowcount == 0``
+    the same way :func:`update_rule` does — 404 if the row vanished, 409 if it
+    was mutated by a concurrent writer. The row is then hidden from every read
+    (classify / list / get) but recoverable via :func:`undo_delete_rule` until
+    cleanup purges it past the retention window. Unlike merchant_alias there is
+    no unique constraint, so undo never risks a duplicate-key clash. The DB
+    predicate is the authoritative check; the caller's ORM instance need not be
+    fresh.
     """
     try:
         rule_id = rule.id
@@ -316,12 +336,14 @@ def delete_rule(
     except ObjectDeletedError as exc:
         raise AppError("rule_not_found", status_code=404) from exc
 
-    rowcount = delete_row_with_token(
+    now = now_utc()
+    rowcount = claim_row_with_token(
         db,
         CategoryRule,
         pk_id=rule_id,
         tenant_id=rule_tenant_id,
         expected_updated_at=expected_updated_at,
+        set_values={"deleted_at": now, "updated_at": now},
     )
     if rowcount != 1:
         db.rollback()
@@ -330,6 +352,38 @@ def delete_rule(
             raise AppError("rule_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
     db.commit()
+
+
+def undo_delete_rule(
+    db: Session,
+    *,
+    tenant_id: str,
+    rule_id: int,
+    actor_account_id: int | None = None,
+) -> CategoryRule:
+    """ADR-0038 undo: restore a soft-deleted rule within its retention window.
+
+    Clears ``deleted_at`` and appends a ``ledger_audit_logs`` ``action='undo'``
+    row. 404 ``rule_not_found`` if the rule isn't currently soft-deleted (never
+    existed, already live, or already purged). category_rules has no unique
+    constraint, so restoring never collides with a live row.
+    """
+    rule = _find_soft_deleted_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
+    if rule is None:
+        raise AppError("rule_not_found", status_code=404)
+    rule.deleted_at = None
+    rule.updated_at = now_utc()
+    record_resource_action(
+        db,
+        ledger_id=tenant_id,
+        action="undo",
+        resource_type="category_rule",
+        resource_public_id=str(rule_id),
+        actor_account_id=actor_account_id,
+    )
+    db.commit()
+    db.refresh(rule)
+    return rule
 
 
 # Shared matching helpers used by rule_service and rule_application_service.

@@ -91,6 +91,7 @@ def _apply_rules_to_status(
         db.scalars(
             ledger_scoped_select(CategoryRule, tenant_id)
             .where(CategoryRule.enabled == True)  # noqa: E712
+            .where(CategoryRule.deleted_at.is_(None))
             .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
         )
     )

@@ -18,6 +18,10 @@ def _migrate_category_rules(connection) -> None:
         "amount_max_cents": "INTEGER",
         "source_contains": "VARCHAR(64)",
         "tag_contains": "VARCHAR(64)",
+        # ADR-0038 undo: soft-delete marker. NULL = live; reads filter
+        # ``deleted_at IS NULL``. Unlike merchant_aliases there is no unique
+        # constraint to preserve, so a recreated rule never conflicts.
+        "deleted_at": "DATETIME",
     }
     for column_name, column_type in additions.items():
         if column_name not in columns:
@@ -33,6 +37,10 @@ def _migrate_category_rules(connection) -> None:
     connection.execute(text(
         "CREATE INDEX IF NOT EXISTS ix_category_rules_tenant_enabled_priority "
         "ON category_rules (tenant_id, enabled, priority, id)"
+    ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_category_rules_tenant_deleted "
+        "ON category_rules (tenant_id, deleted_at)"
     ))
 
 

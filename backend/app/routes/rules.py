@@ -37,6 +37,7 @@ from app.services.classify_service import (
     preview_apply_rules_to_pending,
     preview_rule_for_pending,
     rollback_rule_application,
+    undo_delete_rule,
     update_rule,
     validate_rule_application_preview,
 )
@@ -113,6 +114,24 @@ def delete_category_rule(
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
     delete_rule(db, rule, expected_updated_at=payload.expected_updated_at)
     return StatusResponse()
+
+
+@router.post("/categories/{rule_id}/undo", response_model=CategoryRuleResponse)
+def undo_category_rule(
+    rule_id: int,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> CategoryRuleResponse:
+    # ADR-0038 undo: restore a soft-deleted rule within the retention window.
+    # No `expected_updated_at` — undo targets the soft-deleted row by id and is
+    # a no-op-or-restore; once cleanup purges it (or if it was never
+    # soft-deleted) this returns 404 rule_not_found.
+    return undo_delete_rule(
+        db,
+        tenant_id=auth.tenant_id,
+        rule_id=rule_id,
+        actor_account_id=auth.account_id,
+    )
 
 
 # v0.4-alpha3 — Rules Preview & Apply --------------------------------

@@ -55,6 +55,7 @@ def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
     rules = db.scalars(
         select(CategoryRule)
         .where(CategoryRule.tenant_id == tenant_id)
+        .where(CategoryRule.deleted_at.is_(None))
         .where(CategoryRule.category.in_(LEGACY_CATEGORY_ALIASES.keys()))
     )
     for rule in rules:
@@ -167,7 +168,9 @@ def list_category_summary(
 
     rule_count = int(
         db.scalar(
-            select(func.count(CategoryRule.id)).where(CategoryRule.tenant_id == tenant_id)
+            select(func.count(CategoryRule.id))
+            .where(CategoryRule.tenant_id == tenant_id)
+            .where(CategoryRule.deleted_at.is_(None))
         )
         or 0
     )

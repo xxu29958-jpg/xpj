@@ -41,6 +41,13 @@ class CategoryRule(Base):
     tag_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    # ADR-0038 undo: soft-delete tombstone. Hidden from every read while set;
+    # restorable via the undo endpoint until cleanup purges it past retention.
+    # Indexed via the module-level composite below (not column-level, to keep
+    # create_all and the startup migrator declaring the same index set).
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class RuleApplicationBatch(Base):
@@ -102,6 +109,7 @@ class RuleApplicationChange(Base):
 
 Index("ix_category_rules_tenant_priority_id", CategoryRule.tenant_id, CategoryRule.priority, CategoryRule.id)
 Index("ix_category_rules_tenant_enabled_priority", CategoryRule.tenant_id, CategoryRule.enabled, CategoryRule.priority, CategoryRule.id)
+Index("ix_category_rules_tenant_deleted", CategoryRule.tenant_id, CategoryRule.deleted_at)
 Index("ix_rule_application_batches_tenant_created_at", RuleApplicationBatch.tenant_id, RuleApplicationBatch.created_at)
 Index("ix_rule_application_batches_tenant_status", RuleApplicationBatch.tenant_id, RuleApplicationBatch.status)
 Index("ix_rule_application_changes_tenant_batch", RuleApplicationChange.tenant_id, RuleApplicationChange.batch_id)

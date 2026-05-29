@@ -167,6 +167,9 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
     "POST /api/recurring/from-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /api/rules/categories": Exempt("create_row", "rules", ("category_rules",)),
+    "POST /api/rules/categories/{rule_id}/undo": Exempt(
+        "terminal_flag_flip", "rules", ("category_rules", "ledger_audit_logs")
+    ),
     "POST /u/{upload_key}": Exempt("create_row", "expenses", _PUBLIC_UPLOAD, "medium"),
 
     # --- /api admin devices / upload-links (account-scoped owner admin) ---

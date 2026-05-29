@@ -32,5 +32,6 @@ from app.services.rule_service import (  # noqa: F401
     get_rule_for_tenant,
     list_rules,
     seed_default_rules,
+    undo_delete_rule,
     update_rule,
 )

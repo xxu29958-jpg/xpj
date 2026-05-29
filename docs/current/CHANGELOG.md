@@ -17,6 +17,18 @@
   (5s 撤销 banner) and the Android merchant-alias screen (5s 撤销 bar, shown only
   after a synced delete).
 
+- ADR-0038 undo (second slice — category_rules): `DELETE /api/rules/categories/{id}`
+  now SOFT-deletes (sets `deleted_at`) instead of hard-deleting; the rule is
+  hidden from every read — the classifier matcher, the rule list/get, and the
+  apply/preview/conflict engines all filter `deleted_at IS NULL` — but
+  recoverable via `POST /api/rules/categories/{id}/undo` until the periodic
+  purge sweeps it past the 5-minute retention window. Undo clears `deleted_at`
+  and appends a `ledger_audit_logs` `action='undo'` row. Unlike merchant_alias
+  there is no unique constraint, so a recreated rule never conflicts and undo
+  never resurrects a duplicate. Additive migration only (one nullable column +
+  composite index); the periodic purge scheduler now sweeps category_rules too.
+  The `/web` rules page + Android undo affordances follow in a later slice.
+
 - ADR-0038 undo cleanup now has a periodic purge scheduler. Opt in with
   `SOFT_DELETE_PURGE_AUTO_ENABLED=true` to auto-purge soft-deleted rows past
   their retention window every ~30 min (off by default, like the other cleanup

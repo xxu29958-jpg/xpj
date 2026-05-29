@@ -46,6 +46,7 @@ def _enabled_rules(db: Session, tenant_id: str) -> list[CategoryRule]:
             select(CategoryRule)
             .where(CategoryRule.tenant_id == tenant_id)
             .where(CategoryRule.enabled == True)  # noqa: E712
+            .where(CategoryRule.deleted_at.is_(None))
             .order_by(CategoryRule.priority.asc(), CategoryRule.id.asc())
         )
     )
