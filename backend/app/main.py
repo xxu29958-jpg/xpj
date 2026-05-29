@@ -85,6 +85,9 @@ from app.services.fx_rate_scheduler import start_fx_rate_scheduler
 from app.services.learning_cleanup_scheduler import (
     start_learning_cleanup_scheduler,
 )
+from app.services.soft_delete_purge_scheduler import (
+    start_soft_delete_purge_scheduler,
+)
 from app.tenants import AuthContext
 from app.version import BACKEND_VERSION, IDENTITY_SCHEMA_VERSION
 
@@ -140,6 +143,9 @@ async def lifespan(_: FastAPI):
     learning_scheduler = start_learning_cleanup_scheduler()
     advisor_audit_scheduler = start_budget_advisor_audit_cleanup_scheduler()
     device_cleanup_scheduler = start_device_cleanup_scheduler()
+    # ADR-0038 undo: optional periodic purge of soft-deleted rows past
+    # retention. Disabled by default; opt in via SOFT_DELETE_PURGE_AUTO_ENABLED.
+    soft_delete_purge_scheduler = start_soft_delete_purge_scheduler()
     try:
         yield
     finally:
@@ -149,6 +155,7 @@ async def lifespan(_: FastAPI):
             learning_scheduler.stop()
         advisor_audit_scheduler.stop()
         device_cleanup_scheduler.stop()
+        soft_delete_purge_scheduler.stop()
         shutdown_executor(wait=False)
 
 

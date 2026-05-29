@@ -13,7 +13,15 @@
   soft-deleted key stays reserved during its undo window (recreating it returns
   409 until undo or purge, which also guarantees undo never resurrects a
   duplicate). Migrations are additive only (one nullable column per table); no
-  table rebuild.
+  table rebuild. The undo affordance is wired on both the `/web` merchants page
+  (5s 撤销 banner) and the Android merchant-alias screen (5s 撤销 bar, shown only
+  after a synced delete).
+
+- ADR-0038 undo cleanup now has a periodic purge scheduler. Opt in with
+  `SOFT_DELETE_PURGE_AUTO_ENABLED=true` to auto-purge soft-deleted rows past
+  their retention window every ~30 min (off by default, like the other cleanup
+  schedulers). Soft-deleted rows are hidden from every read regardless, so this
+  only bounds storage lag, never the undo window.
 
 - `/web/reports` now renders its three ECharts (spending trend / category
   month-over-month / merchant ranking) via `reports.js` from a server-injected

@@ -18,7 +18,10 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerAuditLog, MerchantAlias
-from app.services.cleanup_service import purge_expired_soft_deleted_merchant_aliases
+from app.services.cleanup_service import (
+    purge_expired_soft_deleted_merchant_aliases,
+    purge_expired_soft_deletes,
+)
 from app.services.time_service import now_utc
 
 
@@ -155,3 +158,39 @@ def test_purge_removes_aged_soft_deletes_and_spares_fresh(client: TestClient, *,
         json={"canonical_merchant": "星巴克", "alias": "AGED 店"},
     )
     assert recreate.status_code == 201, recreate.text
+
+
+def test_global_purge_removes_aged_spares_fresh(client: TestClient, *, identity) -> None:
+    """ADR-0038 undo: the scheduler's tenant-less global purge sweeps aged
+    soft-deletes and leaves rows still inside the window."""
+    aged = _create(client, identity.app_headers, alias="AGED 全局")
+    fresh = _create(client, identity.app_headers, alias="FRESH 全局")
+    _delete(client, identity.app_headers, aged)
+    _delete(client, identity.app_headers, fresh)
+
+    with SessionLocal() as db:
+        row = db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == aged["public_id"]))
+        assert row is not None
+        row.deleted_at = now_utc() - timedelta(minutes=10)
+        db.commit()
+
+    with SessionLocal() as db:
+        purged = purge_expired_soft_deletes(db)
+    assert purged == 1
+
+    with SessionLocal() as db:
+        assert db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == aged["public_id"])) is None
+        assert db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == fresh["public_id"])) is not None
+
+
+def test_purge_scheduler_disabled_by_default() -> None:
+    """The purge scheduler is opt-in (SOFT_DELETE_PURGE_AUTO_ENABLED), so it
+    must not spin up a background thread under the default config."""
+    from app.services.soft_delete_purge_scheduler import start_soft_delete_purge_scheduler
+
+    scheduler = start_soft_delete_purge_scheduler()
+    try:
+        assert scheduler.enabled is False
+        assert scheduler.thread is None
+    finally:
+        scheduler.stop()

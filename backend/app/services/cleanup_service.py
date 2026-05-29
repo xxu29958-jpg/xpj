@@ -372,3 +372,27 @@ def purge_expired_soft_deleted_merchant_aliases(
     )
     db.commit()
     return int(result.rowcount or 0)
+
+
+def purge_expired_soft_deletes(
+    db: Session,
+    *,
+    retention_minutes: int = SOFT_DELETE_RETENTION_MINUTES,
+    now: datetime | None = None,
+) -> int:
+    """ADR-0038 undo: global (all-tenant) purge of soft-deleted rows past the
+    retention window, for the periodic purge scheduler. Returns rows purged.
+
+    Covers every resource that participates in soft-delete undo. Today that is
+    ``merchant_aliases``; extend this as the undo pattern reaches more tables.
+    Rows are hidden from every read the moment they are soft-deleted, so the
+    sweep cadence only bounds storage lag, never correctness or the undo window.
+    """
+    cutoff = (now or now_utc()) - timedelta(minutes=retention_minutes)
+    result = db.execute(
+        delete(MerchantAlias)
+        .where(MerchantAlias.deleted_at.is_not(None))
+        .where(MerchantAlias.deleted_at < cutoff)
+    )
+    db.commit()
+    return int(result.rowcount or 0)

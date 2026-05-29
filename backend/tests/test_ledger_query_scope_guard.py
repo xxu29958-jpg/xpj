@@ -49,7 +49,21 @@ class QuerySite:
     snippet: str
 
 
-EXEMPTIONS: tuple[ScopeExemption, ...] = ()
+EXEMPTIONS: tuple[ScopeExemption, ...] = (
+    ScopeExemption(
+        path="services/cleanup_service.py",
+        function="purge_expired_soft_deletes",
+        model="MerchantAlias",
+        occurrences=1,
+        reason=(
+            "ADR-0038 undo: the periodic purge scheduler sweeps system-wide "
+            "across all tenants, so it intentionally carries no tenant_id "
+            "predicate — only `deleted_at < retention cutoff`. The per-ledger "
+            "path uses the tenant-scoped "
+            "`purge_expired_soft_deleted_merchant_aliases` instead."
+        ),
+    ),
+)
 
 
 def test_ledger_scoped_orm_queries_are_explicitly_filtered() -> None:

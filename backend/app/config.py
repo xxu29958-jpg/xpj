@@ -72,6 +72,8 @@ class Settings:
     budget_advisor_audit_cleanup_auto_enabled: bool
     budget_advisor_audit_cleanup_daily_at: str
     budget_advisor_audit_cleanup_timezone: str
+    # ADR-0038 undo: opt-in periodic purge of soft-deleted rows past retention.
+    soft_delete_purge_auto_enabled: bool
     budget_advisor_live_min_interval_seconds: int
     budget_advisor_live_daily_call_limit: int
     tenants_json: str
@@ -287,6 +289,10 @@ def get_settings() -> Settings:
             "Asia/Shanghai",
         ).strip()
         or "Asia/Shanghai",
+        soft_delete_purge_auto_enabled=_bool_env(
+            "SOFT_DELETE_PURGE_AUTO_ENABLED",
+            False,
+        ),
         budget_advisor_live_min_interval_seconds=max(
             0,
             int(os.getenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "60")),
