@@ -7,6 +7,8 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
+import com.ticketbox.data.remote.dto.MerchantAliasDto
+import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.domain.model.MerchantAlias
 import kotlinx.coroutines.test.runTest
@@ -67,13 +69,27 @@ class MerchantRepositoryOutboxFallbackTest {
         api: ApiService,
         outbox: OutboxRepository? = null,
         deleteAdapter: com.squareup.moshi.JsonAdapter<MerchantAliasDeleteRequest>? = null,
+        updateAdapter: com.squareup.moshi.JsonAdapter<MerchantAliasUpdateRequest>? = null,
     ): MerchantRepository = MerchantRepository(
         apiClient = TestApiServiceFactory(api),
         settingsStore = seededSettingsStore(),
         tokenStore = seededTokenStore(),
         outbox = outbox,
         merchantAliasDeleteAdapter = deleteAdapter,
+        merchantAliasUpdateAdapter = updateAdapter,
     )
+
+    private fun aliasDto(updatedAt: String = "2026-05-20T13:00:00.000Z"): MerchantAliasDto =
+        MerchantAliasDto(
+            publicId = "alias-public-1",
+            canonicalMerchant = "标准商家",
+            canonicalKey = "标准商家",
+            alias = "新别名",
+            aliasKey = "新别名",
+            enabled = true,
+            createdAt = "2026-05-01T00:00:00Z",
+            updatedAt = updatedAt,
+        )
 
     @Test
     fun `direct 2xx returns Synced, no enqueue`() = runTest {
@@ -155,6 +171,127 @@ class MerchantRepositoryOutboxFallbackTest {
         val result = repo.deleteMerchantAliasAllowingOffline(baselineAlias())
 
         assertTrue(result.isFailure)
+    }
+
+    // region — updateMerchantAliasAllowingOffline (PR-2g.6)
+
+    @Test
+    fun `update direct 2xx returns Synced, no enqueue`() = runTest {
+        val baseline = baselineAlias()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
+        val api = UpdateAliasApiServiceStub(UpdateAliasResult.Success(aliasDto()))
+
+        val repo = buildRepository(api, outbox = outbox, updateAdapter = updateAdapter)
+        val outcome = repo.updateMerchantAliasAllowingOffline(baseline, alias = "新别名")
+            .getOrThrow()
+
+        assertTrue(outcome is MerchantAliasSaveOutcome.Synced)
+        assertEquals("新别名", outcome.alias.alias)
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `update IOException returns Queued + enqueues row without token in payload`() = runTest {
+        val baseline = baselineAlias()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
+        val api = UpdateAliasApiServiceStub(UpdateAliasResult.Throw(IOException("net out")))
+
+        val repo = buildRepository(api, outbox = outbox, updateAdapter = updateAdapter)
+        val outcome = repo.updateMerchantAliasAllowingOffline(
+            baseline = baseline,
+            enabled = false,
+        ).getOrThrow()
+
+        assertTrue(outcome is MerchantAliasSaveOutcome.Queued)
+        assertEquals(false, outcome.alias.enabled, "optimistic projection flips enabled")
+        assertEquals(baseline.alias, outcome.alias.alias, "non-submitted fields unchanged")
+        assertEquals(baseline.updatedAt, outcome.alias.updatedAt, "pre-mutation token")
+
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.UpdateMerchantAlias.wireValue, row.type)
+        assertEquals("merchant_alias:${baseline.publicId}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        // round-8 P3#5: token NOT in payload.
+        assertTrue(
+            baseline.updatedAt !in row.payload,
+            "payload must NOT embed token: ${row.payload}",
+        )
+    }
+
+    @Test
+    fun `update HttpException 409 surfaces as failure, no enqueue`() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val updateAdapter = moshi().adapter(MerchantAliasUpdateRequest::class.java)
+        val api = UpdateAliasApiServiceStub(
+            UpdateAliasResult.Throw(
+                httpExceptionForDto(409, """{"error":"state_conflict","message":"别名已修改"}"""),
+            ),
+        )
+
+        val repo = buildRepository(api, outbox = outbox, updateAdapter = updateAdapter)
+        val result = repo.updateMerchantAliasAllowingOffline(baselineAlias(), enabled = false)
+
+        assertTrue(result.isFailure)
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `update IOException without outbox wired stays as failure`() = runTest {
+        val api = UpdateAliasApiServiceStub(UpdateAliasResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox = null, deleteAdapter = null, updateAdapter = null)
+
+        val result = repo.updateMerchantAliasAllowingOffline(baselineAlias(), enabled = false)
+
+        assertTrue(result.isFailure)
+    }
+
+    // endregion
+
+    private sealed interface UpdateAliasResult {
+        data class Success(val dto: MerchantAliasDto) : UpdateAliasResult
+        data class Throw(val exception: Throwable) : UpdateAliasResult
+    }
+
+    /**
+     * Stand-in ApiService that returns / throws the configured
+     * result for updateMerchantAlias; everything else delegates.
+     */
+    private class UpdateAliasApiServiceStub(
+        private val updateResult: UpdateAliasResult,
+        private val delegate: ApiService = FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+        ),
+    ) : ApiService by delegate {
+        override suspend fun updateMerchantAlias(
+            publicId: String,
+            request: MerchantAliasUpdateRequest,
+        ): MerchantAliasDto = when (val r = updateResult) {
+            is UpdateAliasResult.Success -> r.dto
+            is UpdateAliasResult.Throw -> throw r.exception
+        }
+    }
+
+    private fun httpExceptionForDto(code: Int, body: String): HttpException {
+        val raw = Response.Builder()
+            .protocol(Protocol.HTTP_1_1)
+            .request(Request.Builder().url("https://api.example.com/").build())
+            .code(code)
+            .message("test")
+            .body(body.toResponseBody("application/json".toMediaTypeOrNull()))
+            .build()
+        return HttpException(
+            retrofit2.Response.error<MerchantAliasDto>(
+                body.toResponseBody("application/json".toMediaTypeOrNull()),
+                raw,
+            ),
+        )
     }
 
     /**

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.DeleteOutcome
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.MerchantAliasSaveOutcome
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -69,21 +70,27 @@ class MerchantAliasViewModel(
             return
         }
         viewModelScope.launch {
-            // ADR-0038 PR-2e: pass the alias's last-seen ``updatedAt`` as the
-            // optimistic-concurrency token. Server returns 409 if a peer edited
-            // the alias between this list-render and the toggle click.
-            merchantRepository.updateMerchantAlias(
-                publicId = alias.publicId,
-                expectedUpdatedAt = alias.updatedAt,
+            // ADR-0038 PR-2g.6: offline-aware toggle. IOException →
+            // enqueue + MerchantAliasSaveOutcome.Queued (optimistic
+            // flipped enabled); chained POST not used by this VM so
+            // it's safe to route through outbox.
+            merchantRepository.updateMerchantAliasAllowingOffline(
+                baseline = alias,
                 enabled = !alias.enabled,
             )
-                .onSuccess { updated ->
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        is MerchantAliasSaveOutcome.Synced ->
+                            if (outcome.alias.enabled) "商家别名已启用" else "商家别名已停用"
+                        is MerchantAliasSaveOutcome.Queued ->
+                            if (outcome.alias.enabled) "已离线启用，联网后同步" else "已离线停用，联网后同步"
+                    }
                     _uiState.update { state ->
                         state.copy(
                             merchantAliases = state.merchantAliases
-                                .map { if (it.publicId == updated.publicId) updated else it }
+                                .map { if (it.publicId == outcome.alias.publicId) outcome.alias else it }
                                 .sortedMerchantAliases(),
-                            message = if (updated.enabled) "商家别名已启用" else "商家别名已停用",
+                            message = message,
                         )
                     }
                 }

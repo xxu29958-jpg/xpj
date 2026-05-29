@@ -28,6 +28,13 @@ class MerchantRepository(
      */
     private val outbox: OutboxRepository? = null,
     private val merchantAliasDeleteAdapter: JsonAdapter<MerchantAliasDeleteRequest>? = null,
+    /**
+     * ADR-0038 PR-2g.6: adapter for [MerchantAliasUpdateRequest].
+     * Same null-default contract — if either ``outbox`` or this
+     * adapter is missing, [updateMerchantAliasAllowingOffline]
+     * falls back to the direct failure path.
+     */
+    private val merchantAliasUpdateAdapter: JsonAdapter<MerchantAliasUpdateRequest>? = null,
 ) {
     private val ledgerRequestGuard = LedgerRequestGuard(settingsStore, tokenStore, apiProvider)
     private val errorHandler = NetworkErrorHandler(
@@ -154,4 +161,99 @@ class MerchantRepository(
             DeleteOutcome.Queued as DeleteOutcome
         }
     }
+
+    /**
+     * ADR-0038 PR-2g.6: offline-aware version of [updateMerchantAlias].
+     *
+     * Mirrors [RuleRepository.updateCategoryRuleAllowingOffline]
+     * exactly (PR-2g.4): direct PATCH first; IOException after
+     * session re-check → enqueue + [MerchantAliasSaveOutcome.Queued]
+     * with an optimistic projection; HttpException
+     * (409 / 4xx / 5xx) → ``Result.failure``.
+     *
+     * Used by [com.ticketbox.viewmodel.MerchantAliasViewModel.toggleMerchantAlias]
+     * — no chained POST reads the returned ``updatedAt``.
+     */
+    suspend fun updateMerchantAliasAllowingOffline(
+        baseline: MerchantAlias,
+        canonicalMerchant: String? = null,
+        alias: String? = null,
+        enabled: Boolean? = null,
+    ): Result<MerchantAliasSaveOutcome> = errorHandler.safeCall {
+        val cleanPublicId = baseline.publicId.trim()
+        require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
+        val request = MerchantAliasUpdateRequest(
+            expectedUpdatedAt = baseline.updatedAt,
+            canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() },
+            alias = alias?.trim()?.takeIf { it.isNotBlank() },
+            enabled = enabled,
+        )
+        // [codex round-13 P1] Explicit bind so IOException catch
+        // can re-check session activity before enqueue.
+        val bound = ledgerRequestGuard.bind()
+        try {
+            val updated = bound.call { api ->
+                api.updateMerchantAlias(cleanPublicId, request).toDomain()
+            }
+            MerchantAliasSaveOutcome.Synced(updated) as MerchantAliasSaveOutcome
+        } catch (networkError: IOException) {
+            val outboxRef = outbox
+            val adapter = merchantAliasUpdateAdapter
+            if (outboxRef == null || adapter == null) {
+                throw networkError
+            }
+            // [codex round-13 P1] session race guard — see PR-2g.4
+            // / 2g.5 producers for the rationale.
+            bound.requireStillActive()
+            // [round-8 P3#5] payload sans token; row.expectedUpdatedAt
+            // is single source of truth.
+            outboxRef.enqueue(
+                type = PendingMutationType.UpdateMerchantAlias,
+                targetId = "merchant_alias:$cleanPublicId",
+                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
+                expectedUpdatedAt = baseline.updatedAt,
+            )
+            MerchantAliasSaveOutcome.Queued(
+                projectOptimisticAlias(baseline, canonicalMerchant, alias, enabled),
+            ) as MerchantAliasSaveOutcome
+        }
+    }
+
+    /**
+     * Optimistic projection: apply submitted fields over baseline.
+     * ``updatedAt`` stays at the pre-mutation value (NOT a
+     * server-confirmed token; no chained POST reads it from this
+     * return path).
+     */
+    private fun projectOptimisticAlias(
+        baseline: MerchantAlias,
+        canonicalMerchant: String?,
+        alias: String?,
+        enabled: Boolean?,
+    ): MerchantAlias = baseline.copy(
+        canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() }
+            ?: baseline.canonicalMerchant,
+        alias = alias?.trim()?.takeIf { it.isNotBlank() } ?: baseline.alias,
+        enabled = enabled ?: baseline.enabled,
+    )
+}
+
+/**
+ * ADR-0038 PR-2g.6 sealed result for
+ * [MerchantRepository.updateMerchantAliasAllowingOffline]. Mirrors
+ * [SaveOutcome] (expense) and [CategoryRuleSaveOutcome] (rule).
+ * Parallel-defined; future PR may generic-ify into ``SaveOutcome<T>``.
+ */
+sealed interface MerchantAliasSaveOutcome {
+    val alias: MerchantAlias
+
+    /** Server confirmed the PATCH; ``alias.updatedAt`` is the post-mutation token. */
+    data class Synced(override val alias: MerchantAlias) : MerchantAliasSaveOutcome
+
+    /**
+     * Network failed; row queued in outbox. ``alias`` is the
+     * optimistic projection (submitted fields applied over baseline).
+     * ``updatedAt`` is pre-mutation; chained POSTs must not consume it.
+     */
+    data class Queued(override val alias: MerchantAlias) : MerchantAliasSaveOutcome
 }

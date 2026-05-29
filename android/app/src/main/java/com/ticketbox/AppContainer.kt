@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
+import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
@@ -29,6 +30,7 @@ import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
+import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.security.SecureTokenStore
 import kotlinx.coroutines.flow.map
 
@@ -71,6 +73,11 @@ class AppContainer(context: Context) {
     // replay (single source of truth — round-8 P3#5).
     private val categoryRuleDeleteAdapter = outboxMoshi.adapter(CategoryRuleDeleteRequest::class.java)
     private val merchantAliasDeleteAdapter = outboxMoshi.adapter(MerchantAliasDeleteRequest::class.java)
+
+    // PR-2g.6: PATCH merchant alias adapter. Shared between
+    // UpdateMerchantAliasDispatcher and
+    // MerchantRepository.updateMerchantAliasAllowingOffline.
+    private val merchantAliasUpdateAdapter = outboxMoshi.adapter(MerchantAliasUpdateRequest::class.java)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -134,9 +141,11 @@ class AppContainer(context: Context) {
      * [UpdateCategoryRuleDispatcher] + matching call site. PR-2g.5
      * added [DeleteCategoryRuleDispatcher] +
      * [DeleteMerchantAliasDispatcher] + matching call sites
-     * (2 DELETE shapes, shared [DeleteOutcome] sealed). The
-     * remaining 12 ``PendingMutationType``s land one-per-batch in
-     * PR-2g.6+ follow-ups grouped by mutation shape; each
+     * (2 DELETE shapes, shared [DeleteOutcome] sealed). PR-2g.6
+     * added [UpdateMerchantAliasDispatcher] + matching call site
+     * (PATCH merchant alias). The remaining 11 ``PendingMutationType``s
+     * land one-per-batch in PR-2g.7+ follow-ups grouped by
+     * mutation shape; each
      * follow-up appends dispatchers here AND routes its matching
      * call sites through [OutboxRepository.enqueue] in the
      * appropriate Repository.
@@ -163,6 +172,11 @@ class AppContainer(context: Context) {
         DeleteMerchantAliasDispatcher(
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = merchantAliasDeleteAdapter,
+        ),
+        // PR-2g.6: PATCH /api/merchants/aliases/{publicId} via outbox.
+        UpdateMerchantAliasDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = merchantAliasUpdateAdapter,
         ),
     )
 
@@ -239,9 +253,10 @@ class AppContainer(context: Context) {
         settingsStore = settingsStore,
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
-        // PR-2g.5: outbox + delete adapter for
-        // deleteMerchantAliasAllowingOffline.
+        // PR-2g.5: outbox + delete adapter.
+        // PR-2g.6: + update adapter for updateMerchantAliasAllowingOffline.
         outbox = outboxRepository,
         merchantAliasDeleteAdapter = merchantAliasDeleteAdapter,
+        merchantAliasUpdateAdapter = merchantAliasUpdateAdapter,
     )
 }

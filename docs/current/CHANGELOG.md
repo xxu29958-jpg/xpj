@@ -91,6 +91,17 @@
   - `backend/scripts/_audit_mutate_token_coverage.py`：走 in-process OpenAPI schema 扫所有 mutate route (POST/PUT/PATCH/DELETE)，验证每个都 carry `expected_updated_at` / `expected_updated_at_by_id`；ALLOWLIST 列豁免（create / terminal lifecycle / batch / admin / preview / single-writer maintenance）每条带 one-line reason；KNOWN_GAPS 标 6 个 v1.1 pre-ADR-0038 sediment route（goal PATCH / income-plan PATCH/DELETE / budget PUT / dashboard PUT / ui-preferences PUT）只 WARN 不 FAIL，未来 strict 模式可加 `XPJ_AUDIT_MUTATE_TOKEN_STRICT=1` 收紧。
   - 已接入 `release_audit.py` 自动 discovery，跑过 138 个 mutate route 全分类（27 token / 105 ALLOWLIST / 6 KNOWN_GAPS）。
 
+- **PR-2g.6 Android PATCH merchant_alias 过 outbox**：
+  - 新增 `UpdateMerchantAliasDispatcher`（PATCH `/api/merchants/aliases/{publicId}`，target `merchant_alias:<publicId>`），形态镜像 PR-2g.4 `UpdateCategoryRuleDispatcher` + PR-2g.5 `DeleteMerchantAliasDispatcher`。
+  - `MerchantRepository` 加 `merchantAliasUpdateAdapter` 可选构造参（默认 null backward compat），新增 `updateMerchantAliasAllowingOffline(baseline, canonicalMerchant?, alias?, enabled?)` 返 `Result<MerchantAliasSaveOutcome>`（sealed Synced/Queued，与 `CategoryRuleSaveOutcome` 并行）；direct `updateMerchantAlias` 保留。
+  - `MerchantAliasViewModel.toggleMerchantAlias` 切到新方法，按 outcome 分支文案（Synced "已启用/已停用"，Queued "已离线启用/停用，联网后同步"）。`MerchantAliasViewModel.updateMerchantAlias` 当前无完整编辑入口（只有 toggle），所以这次仅 wire 一个 call site。
+  - **Round-13 P1 一致**：新方法上手即用 `val bound = ledgerRequestGuard.bind()` + `bound.call { ... }` + IOException catch 里 `bound.requireStillActive()` BEFORE enqueue — 不留窗口。
+  - **Round-8 P3#5 一致**：enqueue 用 `request.copy(expectedUpdatedAt = "")` 占位（DTO 非空 String），dispatcher replay 时从 row.expectedUpdatedAt 覆盖填。
+  - `AppContainer`：注册 `UpdateMerchantAliasDispatcher` 到 `outboxDispatchers`（现共 5 dispatcher：PatchExpense / UpdateCategoryRule / DeleteCategoryRule / DeleteMerchantAlias / UpdateMerchantAlias）；共享 `merchantAliasUpdateAdapter` 给 dispatcher 和 repository。
+  - 4 个新 contract test (`MerchantRepositoryOutboxFallbackTest`)：direct 2xx → Synced 不入队 / IOException → Queued 入队 + 乐观投影 + payload 不含 token / 409 → 失败 / outbox 未接 → 失败。
+  - **Pre-flight checklist** 4 项全过：caller grep（3 个 MerchantRepository ctor 站点 backward compat）/ CI symptom / KDoc/body / bypass。
+  - **不在此 PR**：剩 11 个 mutation type（PR-2g.7+）/ Compose conflict banner (PR-2g.11)。
+
 - **PR-2g.5 Android DELETE 两对：category_rule + merchant_alias 过 outbox**：
   - 新增 `DeleteCategoryRuleDispatcher`（DELETE `/api/rules/categories/{id}`，target `category_rule:<id>`）和 `DeleteMerchantAliasDispatcher`（DELETE `/api/merchants/aliases/{publicId}`，target `merchant_alias:<publicId>`）。两个 dispatcher 同形态（token-only body），HttpException 映射与 PR-2g.4 PATCH 一致；DELETE 404 → `Discarded`（"已经没了"等于意图达成）。
   - 新增 `DeleteOutcome` sealed type（共享给 Category 和 Merchant 两边 DELETE 路径）：`Synced` / `Queued`，无 payload —— DELETE 不返实体，只用来决定 UI 文案。放在 `RuleRepository.kt` top-level，`MerchantRepository.kt` 直接 import。
