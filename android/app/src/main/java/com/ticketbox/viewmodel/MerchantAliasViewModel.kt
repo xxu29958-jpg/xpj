@@ -18,6 +18,9 @@ data class MerchantAliasUiState(
     val merchantAliases: List<MerchantAlias> = emptyList(),
     val busy: Boolean = false,
     val message: String? = null,
+    // ADR-0038 undo: the just-(soft-)deleted alias, surfaced as a 5s 撤销
+    // affordance. Null when there is nothing to undo.
+    val undoableAlias: MerchantAlias? = null,
 )
 
 class MerchantAliasViewModel(
@@ -113,15 +116,49 @@ class MerchantAliasViewModel(
                         DeleteOutcome.Synced -> "商家别名已删除"
                         DeleteOutcome.Queued -> "已离线删除，联网后同步"
                     }
+                    // ADR-0038 undo: offer 撤销 only when the server already
+                    // holds the soft-deleted row (Synced). A queued offline
+                    // delete has nothing to restore via the API yet.
+                    val undoable = if (outcome == DeleteOutcome.Synced) alias else null
                     _uiState.update { state ->
                         state.copy(
                             merchantAliases = state.merchantAliases.filterNot { it.publicId == alias.publicId },
                             message = message,
+                            undoableAlias = undoable,
                         )
                     }
                 }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
         }
+    }
+
+    fun undoDelete() {
+        val target = _uiState.value.undoableAlias ?: return
+        viewModelScope.launch {
+            merchantRepository.undoMerchantAlias(target.publicId)
+                .onSuccess { restored ->
+                    _uiState.update { state ->
+                        state.copy(
+                            merchantAliases = (state.merchantAliases + restored).sortedMerchantAliases(),
+                            message = "已恢复商家别名",
+                            undoableAlias = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            message = error.message ?: "没有恢复成功，请稍后再试。",
+                            undoableAlias = null,
+                        )
+                    }
+                }
+        }
+    }
+
+    /** Clear the undo affordance once its 5s window lapses (or after use). */
+    fun dismissUndo() {
+        _uiState.update { it.copy(undoableAlias = null) }
     }
 }
 

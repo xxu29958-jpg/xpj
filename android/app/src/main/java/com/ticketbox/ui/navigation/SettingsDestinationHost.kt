@@ -77,6 +77,8 @@ internal data class SettingsRouteActions(
     val onCreateMerchantAlias: (String, String) -> Unit,
     val onToggleMerchantAlias: (MerchantAlias) -> Unit,
     val onDeleteMerchantAlias: (MerchantAlias) -> Unit,
+    val onUndoMerchantAlias: () -> Unit,
+    val onDismissMerchantAliasUndo: () -> Unit,
     val onPreviewApplyConfirmedRules: () -> Unit,
     val onConfirmApplyConfirmedRules: () -> Unit,
     val onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
@@ -276,6 +278,9 @@ internal fun SettingsDestinationHost(
             onCreateAlias = actions.onCreateMerchantAlias,
             onToggleAlias = actions.onToggleMerchantAlias,
             onDeleteAlias = actions.onDeleteMerchantAlias,
+            undoableAlias = state.merchantAliasUndoable,
+            onUndoDelete = actions.onUndoMerchantAlias,
+            onDismissUndo = actions.onDismissMerchantAliasUndo,
         )
 
         SettingsDestination.DataExport -> DataExportScreen(

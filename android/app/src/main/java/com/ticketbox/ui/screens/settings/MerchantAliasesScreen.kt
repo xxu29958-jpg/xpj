@@ -17,16 +17,19 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.ui.components.AppGlassCard
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
+import kotlinx.coroutines.delay
 
 @Composable
 fun MerchantAliasesScreen(
@@ -38,6 +41,9 @@ fun MerchantAliasesScreen(
     onCreateAlias: (String, String) -> Unit,
     onToggleAlias: (MerchantAlias) -> Unit,
     onDeleteAlias: (MerchantAlias) -> Unit,
+    undoableAlias: MerchantAlias? = null,
+    onUndoDelete: () -> Unit = {},
+    onDismissUndo: () -> Unit = {},
 ) {
     var canonicalMerchant by remember { mutableStateOf("") }
     var aliasText by remember { mutableStateOf("") }
@@ -72,6 +78,33 @@ fun MerchantAliasesScreen(
         subtitle = merchantAliasSummary(aliases),
         onBack = onBack,
     ) {
+        // ADR-0038 undo: a soft-deleted alias is recoverable for a 5s window.
+        // Online-only (only shown after a synced delete); auto-dismisses.
+        undoableAlias?.let { undoable ->
+            LaunchedEffect(undoable.publicId) {
+                delay(5000)
+                onDismissUndo()
+            }
+            AppGlassCard(containerAlpha = 0.98f) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(AppSpacing.compactGap),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "已删除「${undoable.alias}」",
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(AppSpacing.compactGap))
+                    TextButton(onClick = onUndoDelete) { Text("撤销") }
+                }
+            }
+        }
+
         if (!readOnly) {
             SettingsSection(title = "新增别名", icon = Icons.Filled.Tune) {
                 AppGlassCard(containerAlpha = 0.96f) {

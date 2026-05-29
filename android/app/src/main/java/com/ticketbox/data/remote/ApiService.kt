@@ -279,6 +279,11 @@ interface ApiService {
         @Body request: MerchantAliasDeleteRequest,
     ): StatusDto
 
+    // ADR-0038 undo: restore a soft-deleted alias (no body / token — it
+    // restores the row the caller just deleted). Returns the restored alias.
+    @POST("api/merchants/aliases/{publicId}/undo")
+    suspend fun undoMerchantAlias(@Path("publicId") publicId: String): MerchantAliasDto
+
     @GET("api/rules/applications")
     suspend fun ruleApplications(
         @Query("limit") limit: Int = 20,

@@ -253,6 +253,43 @@ class MerchantRepositoryOutboxFallbackTest {
 
     // endregion
 
+    // region — undoMerchantAlias (ADR-0038 undo)
+
+    @Test
+    fun `undo returns restored alias`() = runTest {
+        val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
+        val repo = buildRepository(api)
+
+        val restored = repo.undoMerchantAlias("alias-public-1").getOrThrow()
+
+        assertEquals("alias-public-1", restored.publicId)
+        assertTrue("alias-public-1" in api.merchantAliasUndoTargets)
+    }
+
+    @Test
+    fun `undo 404 surfaces as failure`() = runTest {
+        val api = UndoAliasApiServiceStub(
+            httpExceptionForDto(404, """{"error":"merchant_alias_not_found"}"""),
+        )
+        val repo = buildRepository(api)
+
+        val result = repo.undoMerchantAlias("gone-id")
+
+        assertTrue(result.isFailure, "404 must surface as failure")
+    }
+
+    private class UndoAliasApiServiceStub(
+        private val exception: Throwable,
+        private val delegate: ApiService = FakeApiService(
+            events = mutableListOf(),
+            confirmedFailuresRemaining = 0,
+        ),
+    ) : ApiService by delegate {
+        override suspend fun undoMerchantAlias(publicId: String): MerchantAliasDto = throw exception
+    }
+
+    // endregion
+
     private sealed interface UpdateAliasResult {
         data class Success(val dto: MerchantAliasDto) : UpdateAliasResult
         data class Throw(val exception: Throwable) : UpdateAliasResult

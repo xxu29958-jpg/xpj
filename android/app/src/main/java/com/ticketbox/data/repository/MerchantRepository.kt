@@ -115,6 +115,21 @@ class MerchantRepository(
         }
 
     /**
+     * ADR-0038 undo: restore a soft-deleted alias. Online-only — the undo
+     * snackbar only appears after a [DeleteOutcome.Synced] delete (the server
+     * has the soft-deleted row), so there is no offline/outbox path here.
+     * 404 ``merchant_alias_not_found`` once cleanup has purged it.
+     */
+    suspend fun undoMerchantAlias(publicId: String): Result<MerchantAlias> =
+        errorHandler.safeCall {
+            val cleanPublicId = publicId.trim()
+            require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
+            ledgerRequestGuard.guardedCall { api ->
+                api.undoMerchantAlias(cleanPublicId).toDomain()
+            }
+        }
+
+    /**
      * ADR-0038 PR-2g.5: offline-aware version of [deleteMerchantAlias].
      *
      * Same pattern as [RuleRepository.deleteCategoryRuleAllowingOffline]:

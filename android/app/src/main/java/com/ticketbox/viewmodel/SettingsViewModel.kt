@@ -41,6 +41,9 @@ data class SettingsUiState(
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
     val merchantAliases: List<MerchantAlias> = emptyList(),
+    // ADR-0038 undo: just-deleted alias surfaced as a 5s 撤销 affordance
+    // (merged in from MerchantAliasViewModel by SettingsRoute).
+    val merchantAliasUndoable: MerchantAlias? = null,
     val ruleApplications: List<RuleApplicationBatch> = emptyList(),
     val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
     val lastUploadAt: String? = null,

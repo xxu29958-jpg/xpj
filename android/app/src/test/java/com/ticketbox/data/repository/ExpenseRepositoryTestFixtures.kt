@@ -399,6 +399,20 @@ internal class FakeApiService(
         return StatusDto("ok")
     }
 
+    val merchantAliasUndoTargets = mutableListOf<String>()
+
+    override suspend fun undoMerchantAlias(publicId: String): MerchantAliasDto {
+        merchantAliasUndoTargets += publicId
+        return merchantAliasDto(
+            publicId = publicId,
+            canonicalMerchant = "星巴克",
+            canonicalKey = "星巴克",
+            alias = "Starbucks",
+            aliasKey = "starbucks",
+            enabled = true,
+        )
+    }
+
     override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = RuleApplicationListDto(
         items = listOf(
             RuleApplicationBatchDto(

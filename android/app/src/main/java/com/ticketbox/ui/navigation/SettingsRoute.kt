@@ -45,6 +45,7 @@ internal fun SettingsRoute(
         ruleApplications = rulesState.ruleApplications,
         confirmedRulesPreview = rulesState.confirmedRulesPreview,
         merchantAliases = merchantState.merchantAliases,
+        merchantAliasUndoable = merchantState.undoableAlias,
         backgroundSettings = appearanceState.backgroundSettings,
         busy = settingsState.busy || rulesState.busy || merchantState.busy,
         message = settingsState.message
@@ -72,6 +73,8 @@ internal fun SettingsRoute(
             onCreateMerchantAlias = merchantAliasViewModel::createMerchantAlias,
             onToggleMerchantAlias = merchantAliasViewModel::toggleMerchantAlias,
             onDeleteMerchantAlias = merchantAliasViewModel::deleteMerchantAlias,
+            onUndoMerchantAlias = merchantAliasViewModel::undoDelete,
+            onDismissMerchantAliasUndo = merchantAliasViewModel::dismissUndo,
             onPreviewApplyConfirmedRules = categoryRulesViewModel::previewApplyConfirmedRules,
             onConfirmApplyConfirmedRules = categoryRulesViewModel::confirmApplyConfirmedRules,
             onRollbackRuleApplication = categoryRulesViewModel::rollbackRuleApplication,
