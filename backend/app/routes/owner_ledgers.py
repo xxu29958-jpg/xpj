@@ -26,7 +26,7 @@ from app.database import get_db
 from app.errors import AppError
 from app.network_boundary import require_owner_console_local
 from app.routes.owner_console import _base, _format_owner_datetime
-from app.services import invitation_service
+from app.services import invitation_service, ledger_service
 from app.services import owner_console_service as svc
 from app.version import BACKEND_VERSION  # noqa: F401  (kept for parity with sibling pages)
 
@@ -318,13 +318,4 @@ def owner_ledger_member_disable_post(
 
 
 def _ledger_name(db: Session, ledger_id: str) -> str | None:
-    from sqlalchemy import select
-
-    from app.models import Ledger
-
-    row = db.scalar(
-        select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1)
-    )
-    if row is None or row.archived_at is not None:
-        return None
-    return row.name
+    return ledger_service.active_ledger_name(db, ledger_id)

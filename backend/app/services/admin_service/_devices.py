@@ -24,6 +24,16 @@ class DeviceCleanupResult:
     deleted_upload_links: int
 
 
+def device_public_id(db: Session, device_id: int | None) -> str:
+    """Public id for a device id, or '' when unknown. Lets routes resolve the
+    current device's public id without importing the ORM model directly
+    (ENGINEERING_RULES §1: presentation layer goes through a service)."""
+    if device_id is None:
+        return ""
+    device = db.get(Device, device_id)
+    return device.public_id if device is not None else ""
+
+
 def _device_with_relations(
     db: Session,
     device: Device,

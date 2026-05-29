@@ -7,12 +7,13 @@ state-machine rules live in :mod:`app.services.income_plan_service`
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
-from app.models import MonthlyIncomePlan
 from app.schemas import (
     IncomePlanCreateRequest,
     IncomePlanListResponse,
@@ -28,6 +29,11 @@ from app.services.income_plan_service import (
     update_income_plan,
 )
 from app.tenants import AuthContext
+
+if TYPE_CHECKING:
+    # Used only for the _to_response type hint; importing at runtime would
+    # cross the route→model layer for no behavioural reason.
+    from app.models import MonthlyIncomePlan
 
 router = APIRouter(prefix="/api/income-plans", tags=["income-plans"])
 

@@ -278,7 +278,19 @@ def audit_layer_violations() -> DebtCounts:
                 if node.lineno in type_checking_lines:
                     continue
                 m = node.module
-                if m == "app.models" or m.startswith("app.models.") or m == "app.database" or m.startswith("app.database."):
+                # ``from app.database import get_db`` is the FastAPI session
+                # dependency every route wires in via Depends() — the sanctioned
+                # DI seam, not a presentation-layer DB crossing. Flag everything
+                # else (SessionLocal / engine / Base / model imports). Kept as a
+                # single flat condition so the loop nesting stays shallow.
+                is_layer_module = (
+                    m == "app.models"
+                    or m.startswith("app.models.")
+                    or m == "app.database"
+                    or m.startswith("app.database.")
+                )
+                is_db_di_only = m == "app.database" and {a.name for a in node.names} <= {"get_db"}
+                if is_layer_module and not is_db_di_only:
                     items.append((p, node.lineno, f"imports {m}"))
     print(f"== B3. Route modules importing models / database directly ({len(items)}) ==")
     by_file: dict[pathlib.Path, list[tuple[int, str]]] = defaultdict(list)
@@ -507,8 +519,52 @@ def audit_deep_arg_dicts() -> DebtCounts:
     return {"nested_dict_args": len(items)}
 
 
+def _return_annotation_allows_none(annotation: ast.expr | None) -> bool:
+    """True if the return annotation explicitly permits None (``-> None``,
+    ``-> X | None``, ``-> Optional[X]``, or a string form). Functions that
+    return both a value and None under such an annotation are idiomatic
+    Optionals, not the implicit-None inconsistency this lane targets."""
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Constant):
+        if annotation.value is None:
+            return True
+        if isinstance(annotation.value, str):
+            return "None" in annotation.value or "Optional" in annotation.value
+        return False
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _return_annotation_allows_none(annotation.left) or _return_annotation_allows_none(
+            annotation.right
+        )
+    if isinstance(annotation, ast.Subscript):
+        base = annotation.value
+        name = base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
+        return name == "Optional"
+    return False
+
+
+def _own_return_nodes(func_node: ast.AST) -> list[ast.Return]:
+    """Return statements belonging to ``func_node``'s own body, not to nested
+    functions/lambdas. ``ast.walk`` descends into nested defs, which conflates a
+    closure's bare ``return`` with the outer function's value returns and
+    produces false ``mixed_return`` hits."""
+    returns: list[ast.Return] = []
+    stack: list[ast.AST] = list(ast.iter_child_nodes(func_node))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue  # nested scope — its returns are its own contract
+        if isinstance(node, ast.Return):
+            returns.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    return returns
+
+
 def audit_return_type_inconsistency() -> DebtCounts:
-    """Functions that have both `return None` and `return <value>` paths."""
+    """Functions that have both `return None` and `return <value>` paths
+    *without* declaring an Optional/None return — declared Optionals are
+    idiomatic and skipped (see [_return_annotation_allows_none]). Returns from
+    nested functions are not counted against the outer one."""
     items = []
     for p in walk(APP):
         tree = parse(p)
@@ -518,13 +574,16 @@ def audit_return_type_inconsistency() -> DebtCounts:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 has_value_return = False
                 has_bare_return = False
-                for sub in ast.walk(node):
-                    if isinstance(sub, ast.Return):
-                        if sub.value is None or (isinstance(sub.value, ast.Constant) and sub.value.value is None):
-                            has_bare_return = True
-                        else:
-                            has_value_return = True
-                if has_value_return and has_bare_return:
+                for sub in _own_return_nodes(node):
+                    if sub.value is None or (isinstance(sub.value, ast.Constant) and sub.value.value is None):
+                        has_bare_return = True
+                    else:
+                        has_value_return = True
+                if (
+                    has_value_return
+                    and has_bare_return
+                    and not _return_annotation_allows_none(node.returns)
+                ):
                     items.append((p, node.lineno, node.name))
     print(f"== E3. Functions with mixed `return X` and `return None/return` ({len(items)}) ==")
     for p, ln, name in items[:40]:

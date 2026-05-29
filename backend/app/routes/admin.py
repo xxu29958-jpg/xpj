@@ -18,7 +18,6 @@ from app.auth import get_current_admin_context
 from app.config import get_settings
 from app.database import get_db
 from app.errors import AppError
-from app.models import Device
 from app.network_boundary import require_admin_network_boundary
 from app.schemas import (
     AdminDeviceRenameRequest,
@@ -47,8 +46,7 @@ def _link_response(summary: admin_service.UploadLinkSummary) -> AdminUploadLinkR
 
 
 def _current_device_public_id(db: Session, auth: AuthContext) -> str:
-    device = db.get(Device, auth.device_id)
-    return device.public_id if device is not None else ""
+    return admin_service.device_public_id(db, auth.device_id)
 
 
 @router.get("/devices", response_model=list[AdminDeviceResponse])

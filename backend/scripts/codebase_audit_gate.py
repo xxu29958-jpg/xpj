@@ -16,16 +16,23 @@ DebtCounts = dict[str, int]
 # cohesive files purely to stay under the line is the wrong trade. The lowered
 # counters (nested_dict_args / service_public_no_private / unreferenced_modules)
 # bank real reductions so they cannot silently regress later.
+#
+# ``route_layer_imports`` and ``mixed_return_functions`` are now 0: the audit
+# was de-noised (route lane no longer counts the ``get_db`` DI import; the
+# mixed-return lane skips declared Optionals and no longer attributes a nested
+# closure's bare return to its parent), and the few genuine cases were moved
+# into services (device_public_id / active_ledger_name) or behind TYPE_CHECKING.
+# Both at 0 means any real route→model import or implicit-None return now fails.
 CODEBASE_DEBT_LIMITS: DebtCounts = {
     "files_over_500": 12,
     "long_functions": 42,
     "deep_nesting_functions": 6,
-    "route_layer_imports": 64,
+    "route_layer_imports": 0,
     "service_public_no_private": 4,
     "global_usage": 6,
     "cached_singletons": 3,
     "nested_dict_args": 17,
-    "mixed_return_functions": 91,
+    "mixed_return_functions": 0,
     "broad_exception": 24,
     "generic_raises": 7,
     "todo_markers": 9,

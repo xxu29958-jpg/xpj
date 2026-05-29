@@ -168,6 +168,16 @@ def list_writer_ledger_ids_for_account(db: Session, *, account_id: int) -> list[
     return list(rows)
 
 
+def active_ledger_name(db: Session, ledger_id: str) -> str | None:
+    """Display name of a non-archived ledger, or None when missing/archived.
+    Lets /owner routes resolve a ledger name without querying the ORM model
+    directly (ENGINEERING_RULES §1)."""
+    row = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
+    if row is None or row.archived_at is not None:
+        return None
+    return row.name
+
+
 def get_ledger_for_account(db: Session, *, account_id: int, ledger_id: str) -> tuple[Ledger, str]:
     """Return ``(ledger, role)`` if the account has active membership.
 
