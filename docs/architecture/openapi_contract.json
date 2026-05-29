@@ -1675,6 +1675,17 @@
         "title": "Body_web_merchant_alias_toggle_web_merchants_aliases__public_id__toggle_post",
         "type": "object"
       },
+      "Body_web_merchant_alias_undo_web_merchants_aliases__public_id__undo_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_merchant_alias_undo_web_merchants_aliases__public_id__undo_post",
+        "type": "object"
+      },
       "Body_web_pending_batch_reject_web_pending_batch_reject_post": {
         "properties": {
           "expense_ids": {
@@ -20734,6 +20745,16 @@
               "title": "Msg",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "undo",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Undo",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -20901,6 +20922,57 @@
           }
         },
         "summary": "Web Merchant Alias Toggle",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/merchants/aliases/{public_id}/undo": {
+      "post": {
+        "operationId": "web_merchant_alias_undo_web_merchants_aliases__public_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_merchant_alias_undo_web_merchants_aliases__public_id__undo_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Merchant Alias Undo",
         "tags": [
           "web"
         ]

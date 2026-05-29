@@ -254,6 +254,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/income-plans/{public_id}/archive": Exempt("terminal_flag_flip", "budget", _INCOME_PLAN),
     "POST /web/income-plans/{public_id}/restore": Exempt("terminal_flag_flip", "budget", _INCOME_PLAN),
     "POST /web/merchants/aliases/create": Exempt("create_row", "merchants", ("merchant_aliases",)),
+    "POST /web/merchants/aliases/{public_id}/undo": Exempt(
+        "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")
+    ),
     "POST /web/pending/batch-reject": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),

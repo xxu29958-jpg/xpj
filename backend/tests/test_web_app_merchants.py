@@ -82,3 +82,53 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
     assert deleted.status_code in {303, 307}
     page = web_client.get("/web/merchants?ledger_id=owner")
     assert "还没有商家别名" in page.text
+
+
+def test_web_merchant_alias_delete_then_undo_restores(web_client: TestClient) -> None:
+    """ADR-0038 undo: /web delete offers a 5s 撤销 banner that restores the row."""
+    import re as _re
+
+    web_client.post(
+        "/web/merchants/aliases/create",
+        data={"canonical_merchant": "星巴克", "alias": "STARBUCKS 国贸店", "ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    page = web_client.get("/web/merchants?ledger_id=owner")
+    public_id = _re.search(r"/web/merchants/aliases/([^/]+)/delete", page.text).group(1)
+    delete_token = _re.search(
+        rf"/web/merchants/aliases/{public_id}/delete.*?expected_updated_at\"\s*value=\"([^\"]+)\"",
+        page.text,
+        flags=_re.DOTALL,
+    ).group(1)
+
+    deleted = web_client.post(
+        f"/web/merchants/aliases/{public_id}/delete",
+        data={"ledger_id": "owner", "expected_updated_at": delete_token},
+        follow_redirects=False,
+    )
+    assert deleted.status_code in {303, 307}
+    # The redirect carries the undo handle and the page renders the 撤销 banner.
+    assert f"undo={public_id}" in deleted.headers["location"]
+    undo_page = web_client.get(deleted.headers["location"])
+    assert "undo-banner" in undo_page.text
+    assert f"/web/merchants/aliases/{public_id}/undo" in undo_page.text
+    assert "撤销" in undo_page.text
+    assert "还没有商家别名" in undo_page.text  # hidden from the live list while soft-deleted
+
+    undone = web_client.post(
+        f"/web/merchants/aliases/{public_id}/undo",
+        data={"ledger_id": "owner"},
+        follow_redirects=False,
+    )
+    assert undone.status_code in {303, 307}
+    restored = web_client.get("/web/merchants?ledger_id=owner")
+    assert "STARBUCKS 国贸店" in restored.text
+
+
+def test_web_merchant_alias_undo_remote_returns_403(client: TestClient, *, identity) -> None:
+    # ADR-0038: /web undo is loopback-gated like every other /web mutation.
+    resp = client.post(
+        "/web/merchants/aliases/some-public-id/undo",
+        data={"ledger_id": "owner"},
+    )
+    assert resp.status_code == 403

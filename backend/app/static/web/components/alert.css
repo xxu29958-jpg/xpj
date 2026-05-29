@@ -40,3 +40,32 @@
     border-color: var(--state-info-border);
     color: var(--state-info-fg);
 }
+
+/* ADR-0038 undo: delete flash with an inline 撤销 affordance that auto-dismisses
+ * after a 5s window (CSS-only — no inline script). The row is soft-deleted and
+ * recoverable server-side until cleanup purges it; this banner is the UI nudge. */
+.dt-alert.undo-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-5);
+    overflow: hidden;
+    animation: undo-banner-dismiss 5s forwards;
+}
+.undo-banner-action {
+    margin: 0;
+    flex: 0 0 auto;
+}
+@keyframes undo-banner-dismiss {
+    0%, 88% { opacity: 1; }
+    99% { opacity: 0; max-height: 120px; }
+    100% {
+        opacity: 0;
+        visibility: hidden;
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        margin-bottom: 0;
+        border-width: 0;
+    }
+}

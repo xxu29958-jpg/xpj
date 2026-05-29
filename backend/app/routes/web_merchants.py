@@ -27,6 +27,7 @@ from app.services.merchant_alias_service import (
     delete_merchant_alias,
     get_merchant_alias,
     list_merchant_aliases,
+    undo_delete_merchant_alias,
     update_merchant_alias,
 )
 
@@ -38,6 +39,7 @@ def web_merchants(
     request: Request,
     ledger_id: str = "",
     msg: str = "",
+    undo: str = "",
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -47,6 +49,9 @@ def web_merchants(
     ctx = _base_ctx(request, options=options, selected_ledger_id=selected_id)
     ctx["aliases"] = aliases
     ctx["flash_message"] = msg
+    # ADR-0038 undo: a just-deleted alias's public_id, so the flash can offer a
+    # 5s 撤销 affordance that POSTs to the undo route.
+    ctx["undo_public_id"] = undo
     ctx["q"] = "?ledger_id=" + selected_id
     return templates.TemplateResponse(
         request=request,
@@ -147,11 +152,41 @@ def web_merchant_alias_delete(
         item = get_merchant_alias(db, tenant_id=selected_id, public_id=public_id)
         alias = item.alias
         delete_merchant_alias(db, item, expected_updated_at=parsed)
-        msg = f"别名 [{alias}] 已删除。"
     except AppError as exc:
         msg = (
             "别名已在其它端被修改，请刷新后重试。"
             if exc.error == "state_conflict"
+            else exc.message
+        )
+        return _web_redirect("/web/merchants", selected_id, msg=msg)
+    # ADR-0038 undo: pass the soft-deleted public_id so the page renders a 5s
+    # 撤销 banner; the row is recoverable until cleanup purges it.
+    return _web_redirect(
+        "/web/merchants", selected_id, msg=f"别名 [{alias}] 已删除。", undo=public_id
+    )
+
+
+@router.post("/merchants/aliases/{public_id}/undo", response_class=HTMLResponse)
+def web_merchant_alias_undo(
+    request: Request,
+    public_id: str,
+    ledger_id: str = Form(""),
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    # ADR-0038 undo: restore a soft-deleted alias from the 5s banner. No
+    # ``expected_updated_at`` — this restores the row the operator just deleted
+    # (near-zero contention inside the window). 404 once cleanup has purged it.
+    options = _list_ledger_options(db)
+    selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    _require_selected_ledger_write(options, selected_id)
+    try:
+        item = undo_delete_merchant_alias(db, tenant_id=selected_id, public_id=public_id)
+        msg = f"已恢复别名 [{item.alias}]。"
+    except AppError as exc:
+        msg = (
+            "无法恢复：该别名已被永久清理或不存在。"
+            if exc.error == "merchant_alias_not_found"
             else exc.message
         )
     return _web_redirect("/web/merchants", selected_id, msg=msg)
