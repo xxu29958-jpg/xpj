@@ -2,6 +2,19 @@
 
 ## Upgrade Notes
 
+- ADR-0038 undo (first slice — merchant_alias): `DELETE /api/merchants/aliases/{id}`
+  now SOFT-deletes (sets `deleted_at`). The alias is hidden from every read but
+  recoverable via `POST /api/merchants/aliases/{id}/undo` until cleanup purges
+  it past a 5-minute retention window (`purge_expired_soft_deleted_merchant_aliases`).
+  Undo appends a `ledger_audit_logs` `action='undo'` row — that audit log gained
+  generic, nullable `resource_type` / `resource_public_id` columns so it can record
+  resource-level actions alongside the family/membership rows. The
+  `(tenant_id, alias_key)` unique constraint is intentionally kept, so a
+  soft-deleted key stays reserved during its undo window (recreating it returns
+  409 until undo or purge, which also guarantees undo never resurrects a
+  duplicate). Migrations are additive only (one nullable column per table); no
+  table rebuild.
+
 - AI budget-advisor live provider payload is now explicitly limited to
   month/home-currency, category aggregates, and historical category baselines.
   Merchant/member aliases, income plans, and fixed expenses are kept out of the

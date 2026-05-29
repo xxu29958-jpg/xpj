@@ -13,6 +13,26 @@ from sqlalchemy import text
 from app.database._core import _sqlite_column_names
 
 
+def _migrate_ledger_audit_logs(connection, table_names: set[str]) -> None:
+    """ADR-0038 undo: add generic resource columns to the governance audit log.
+
+    Lets ``ledger_audit_logs`` record resource-level actions (e.g.
+    ``action='undo'`` on a soft-deleted merchant_alias) alongside the existing
+    family/membership rows. Purely additive nullable columns.
+    """
+    if "ledger_audit_logs" not in table_names:
+        return
+    columns = _sqlite_column_names(connection, "ledger_audit_logs")
+    if "resource_type" not in columns:
+        connection.execute(text("ALTER TABLE ledger_audit_logs ADD COLUMN resource_type VARCHAR(64)"))
+    if "resource_public_id" not in columns:
+        connection.execute(text("ALTER TABLE ledger_audit_logs ADD COLUMN resource_public_id VARCHAR(64)"))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_ledger_audit_logs_resource_public_id "
+        "ON ledger_audit_logs (resource_public_id)"
+    ))
+
+
 def _migrate_user_ui_preferences(connection, table_names: set[str]) -> None:
     if "user_ui_preferences" not in table_names:
         return

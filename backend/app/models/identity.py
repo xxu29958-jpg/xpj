@@ -120,6 +120,11 @@ class LedgerAuditLog(Base):
     )
     target_member_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     invitation_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    # ADR-0038 undo: generic resource reference so this governance-shaped audit
+    # log can also record resource-level actions (e.g. action='undo' on a
+    # soft-deleted merchant_alias). NULL for the family/membership rows.
+    resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resource_public_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     previous_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     new_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     result: Mapped[str] = mapped_column(String(32), default="success", nullable=False, index=True)

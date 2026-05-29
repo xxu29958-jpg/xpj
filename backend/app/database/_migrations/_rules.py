@@ -63,6 +63,18 @@ def _migrate_rule_application_changes(connection) -> None:
 
 
 def _migrate_merchant_aliases(connection) -> None:
+    # ADR-0038 undo: additive soft-delete marker. NULL = live. The
+    # (tenant_id, alias_key) unique constraint is intentionally left intact
+    # (SQLite cannot drop a table constraint without a rebuild), so a
+    # soft-deleted key stays reserved during its undo window — recreating it
+    # returns 409 until undo or cleanup. Reads filter ``deleted_at IS NULL``.
+    columns = {column["name"] for column in inspect(connection).get_columns("merchant_aliases")}
+    if "deleted_at" not in columns:
+        connection.execute(text("ALTER TABLE merchant_aliases ADD COLUMN deleted_at DATETIME"))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_merchant_aliases_tenant_deleted "
+        "ON merchant_aliases (tenant_id, deleted_at)"
+    ))
     connection.execute(text(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_aliases_tenant_alias_key "
         "ON merchant_aliases (tenant_id, alias_key)"

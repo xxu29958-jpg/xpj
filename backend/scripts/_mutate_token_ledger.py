@@ -162,6 +162,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/ledgers": Exempt("create_row", "identity", _LEDGER_CREATE),
     "POST /api/ledgers/{ledger_id}/invitations": Exempt("create_row", "identity", ("invitations",)),
     "POST /api/merchants/aliases": Exempt("create_row", "merchants", ("merchant_aliases",)),
+    "POST /api/merchants/aliases/{public_id}/undo": Exempt(
+        "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")
+    ),
     "POST /api/recurring/from-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /api/rules/categories": Exempt("create_row", "rules", ("category_rules",)),
     "POST /u/{upload_key}": Exempt("create_row", "expenses", _PUBLIC_UPLOAD, "medium"),

@@ -18,6 +18,7 @@ from app.services.merchant_alias_service import (
     delete_merchant_alias,
     get_merchant_alias,
     list_merchant_aliases,
+    undo_delete_merchant_alias,
     update_merchant_alias,
 )
 from app.tenants import AuthContext
@@ -90,3 +91,21 @@ def delete_merchant_alias_route(
     item = get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
     delete_merchant_alias(db, item, expected_updated_at=payload.expected_updated_at)
     return StatusResponse()
+
+
+@router.post("/aliases/{public_id}/undo", response_model=MerchantAliasResponse)
+def undo_merchant_alias_route(
+    public_id: str,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> MerchantAliasResponse:
+    # ADR-0038 undo: restore a soft-deleted alias within the retention window.
+    # No ``expected_updated_at`` token — this restores the row the caller just
+    # soft-deleted (near-zero contention inside the undo window). 404 once
+    # cleanup has purged it past retention.
+    return undo_delete_merchant_alias(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        actor_account_id=auth.account_id,
+    )

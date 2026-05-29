@@ -50,6 +50,7 @@ from app.database._migrations._expenses import (
 )
 from app.database._migrations._identity_runtime import (
     _migrate_identity_runtime_schema,
+    _migrate_ledger_audit_logs,
     _migrate_user_ui_preferences,
 )
 from app.database._migrations._ocr_facts import _migrate_ocr_facts
@@ -168,6 +169,7 @@ def _run_identity_schema_phase() -> set[str]:
         _migrate_identity_runtime_schema(connection, table_names)
         _validate_legacy_unique_scopes(connection, table_names)
         _migrate_user_ui_preferences(connection, table_names)
+        _migrate_ledger_audit_logs(connection, table_names)
     return table_names
 
 

@@ -44,6 +44,14 @@ class MerchantAlias(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    # ADR-0038 undo: soft-delete marker. NULL = live; non-NULL = deleted and
+    # hidden from every read, recoverable via POST .../undo until cleanup
+    # purges it past the retention window. The (tenant_id, alias_key) unique
+    # constraint stays in force, so a soft-deleted key is reserved during its
+    # undo window (recreating it returns 409 until undo or purge).
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
 
 class Tag(Base):

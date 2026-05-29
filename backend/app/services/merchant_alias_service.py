@@ -11,8 +11,8 @@ from app.models import MerchantAlias
 from app.services.merchant_service import display_merchant, normalize_merchant
 from app.services.optimistic_concurrency import (
     claim_row_with_token,
-    delete_row_with_token,
 )
+from app.services.resource_audit import record_resource_action
 from app.services.time_service import now_utc
 
 
@@ -30,9 +30,27 @@ def _get_alias_by_public_id(
     tenant_id: str,
     public_id: str,
 ) -> MerchantAlias | None:
+    """Live (not soft-deleted) alias by public_id. Normal get/patch/delete
+    operate on live rows only; soft-deleted rows are reached via
+    :func:`_get_soft_deleted_alias_by_public_id` for undo."""
     return db.scalar(
         ledger_scoped_select(MerchantAlias, tenant_id)
         .where(MerchantAlias.public_id == public_id)
+        .where(MerchantAlias.deleted_at.is_(None))
+        .limit(1)
+    )
+
+
+def _get_soft_deleted_alias_by_public_id(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+) -> MerchantAlias | None:
+    return db.scalar(
+        ledger_scoped_select(MerchantAlias, tenant_id)
+        .where(MerchantAlias.public_id == public_id)
+        .where(MerchantAlias.deleted_at.is_not(None))
         .limit(1)
     )
 
@@ -43,6 +61,14 @@ def _get_alias_by_key(
     tenant_id: str,
     alias_key: str,
 ) -> MerchantAlias | None:
+    """Alias by key INCLUDING soft-deleted rows.
+
+    Uniqueness intentionally spans soft-deleted rows: the DB keeps the
+    ``(tenant_id, alias_key)`` unique constraint, so a soft-deleted key stays
+    reserved during its undo window. Creating it again returns 409 until the
+    row is undone or purged — which also guarantees undo never resurrects a
+    duplicate key.
+    """
     return db.scalar(
         ledger_scoped_select(MerchantAlias, tenant_id)
         .where(MerchantAlias.alias_key == alias_key)
@@ -65,7 +91,9 @@ def _ensure_alias_available(
 def list_merchant_aliases(db: Session, tenant_id: str) -> list[MerchantAlias]:
     return list(
         db.scalars(
-            ledger_scoped_select(MerchantAlias, tenant_id).order_by(
+            ledger_scoped_select(MerchantAlias, tenant_id)
+            .where(MerchantAlias.deleted_at.is_(None))
+            .order_by(
                 MerchantAlias.canonical_key.asc(),
                 MerchantAlias.alias_key.asc(),
                 MerchantAlias.id.asc(),
@@ -208,14 +236,14 @@ def delete_merchant_alias(
     *,
     expected_updated_at: datetime,
 ) -> None:
-    """ADR-0038 PR-2e: atomic optimistic-concurrency DELETE.
+    """ADR-0038 undo: atomic optimistic-concurrency SOFT delete.
 
-    ``DELETE FROM merchant_aliases WHERE id, tenant_id, updated_at =
-    expected``. ``rowcount == 0`` disambiguates 404 vs 409 the same way
-    :func:`update_merchant_alias` does. Same ``ObjectDeletedError`` guard
-    as :func:`update_merchant_alias` and :func:`delete_rule` so a
-    concurrent-delete race is reported as 404 rather than an opaque
-    SQLAlchemy error.
+    ``UPDATE merchant_aliases SET deleted_at = now, updated_at = now WHERE id,
+    tenant_id, updated_at = expected``. The row is hidden from every read but
+    recoverable via :func:`undo_delete_merchant_alias` until cleanup purges it
+    past the retention window. ``rowcount == 0`` disambiguates 404 vs 409
+    exactly like the hard delete it replaces; the ``ObjectDeletedError`` guard
+    handles a concurrent-delete race.
     """
     try:
         item_id = item.id
@@ -224,12 +252,14 @@ def delete_merchant_alias(
     except ObjectDeletedError as exc:
         raise AppError("merchant_alias_not_found", status_code=404) from exc
 
-    rowcount = delete_row_with_token(
+    now = now_utc()
+    rowcount = claim_row_with_token(
         db,
         MerchantAlias,
         pk_id=item_id,
         tenant_id=item_tenant_id,
         expected_updated_at=expected_updated_at,
+        set_values={"deleted_at": now, "updated_at": now},
     )
     if rowcount != 1:
         db.rollback()
@@ -242,12 +272,56 @@ def delete_merchant_alias(
     db.commit()
 
 
+def undo_delete_merchant_alias(
+    db: Session,
+    *,
+    tenant_id: str,
+    public_id: str,
+    actor_account_id: int | None = None,
+) -> MerchantAlias:
+    """ADR-0038 undo: restore a soft-deleted alias within its retention window.
+
+    Clears ``deleted_at`` and appends a ``ledger_audit_logs`` ``action='undo'``
+    row. 404 if the alias isn't currently soft-deleted (never existed, already
+    live, or already purged). Because create is blocked while a soft-deleted
+    holder reserves the key, no live row can hold the same key at undo time;
+    the live-holder guard below is defensive belt-and-braces.
+    """
+    item = _get_soft_deleted_alias_by_public_id(
+        db, tenant_id=tenant_id, public_id=public_id
+    )
+    if item is None:
+        raise AppError("merchant_alias_not_found", status_code=404)
+    live_holder = db.scalar(
+        ledger_scoped_select(MerchantAlias, tenant_id)
+        .where(MerchantAlias.alias_key == item.alias_key)
+        .where(MerchantAlias.deleted_at.is_(None))
+        .limit(1)
+    )
+    if live_holder is not None:
+        raise AppError("merchant_alias_conflict", status_code=409)
+    item.deleted_at = None
+    item.updated_at = now_utc()
+    record_resource_action(
+        db,
+        ledger_id=tenant_id,
+        action="undo",
+        resource_type="merchant_alias",
+        resource_public_id=public_id,
+        actor_account_id=actor_account_id,
+    )
+    db.commit()
+    db.refresh(item)
+    return item
+
+
 def enabled_merchant_alias_map(db: Session, *, tenant_id: str) -> dict[str, str]:
     return {
         item.alias_key: item.canonical_merchant
         for item in db.scalars(
             ledger_scoped_select(MerchantAlias, tenant_id)
             .where(MerchantAlias.enabled == True)  # noqa: E712
+            .where(MerchantAlias.deleted_at.is_(None))
             .order_by(MerchantAlias.alias_key.asc(), MerchantAlias.id.asc())
         )
     }

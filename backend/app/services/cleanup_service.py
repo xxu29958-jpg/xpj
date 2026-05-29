@@ -4,11 +4,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Expense
+from app.models import Expense, MerchantAlias
 from app.services.file_service import (
     ALLOWED_EXTENSIONS,
     resolve_upload_path_for_tenant,
@@ -16,6 +16,11 @@ from app.services.file_service import (
 )
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
+
+# ADR-0038 undo: server-side retention before a soft-deleted row is purged
+# for good. The client undo banner is a shorter UX window (~5s); this is the
+# server's grace period after which the row is gone permanently.
+SOFT_DELETE_RETENTION_MINUTES = 5
 
 
 @dataclass(frozen=True)
@@ -343,3 +348,27 @@ def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True)
         orphan_bytes=orphan_bytes,
         deleted_bytes=deleted_bytes,
     )
+
+
+def purge_expired_soft_deleted_merchant_aliases(
+    db: Session,
+    tenant_id: str,
+    *,
+    retention_minutes: int = SOFT_DELETE_RETENTION_MINUTES,
+    now: datetime | None = None,
+) -> int:
+    """ADR-0038 undo: permanently delete merchant_aliases soft-deleted past the
+    retention window. Returns the number of rows purged.
+
+    Tenant-scoped so an admin/maintenance call cannot purge other ledgers.
+    Rows still inside the window stay recoverable via the undo endpoint.
+    """
+    cutoff = (now or now_utc()) - timedelta(minutes=retention_minutes)
+    result = db.execute(
+        delete(MerchantAlias)
+        .where(MerchantAlias.tenant_id == tenant_id)
+        .where(MerchantAlias.deleted_at.is_not(None))
+        .where(MerchantAlias.deleted_at < cutoff)
+    )
+    db.commit()
+    return int(result.rowcount or 0)
