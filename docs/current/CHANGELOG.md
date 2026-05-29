@@ -23,13 +23,20 @@
   schedulers). Soft-deleted rows are hidden from every read regardless, so this
   only bounds storage lag, never the undo window.
 
+- ADR-0036 AI advisor (widened): the outbound payload now also carries a
+  **coarse fixed/recurring-commitment aggregate** — `recurring_total_monthly_cents`
+  and `recurring_active_count` (two scalars). Recurring items are merchant-keyed
+  (PII), so only the aggregate magnitude crosses — never per-merchant rows,
+  amounts, or names; paused/archived items are excluded. The outbound guard
+  fail-closes on either scalar that is not a non-negative int.
+
 - ADR-0036 AI advisor (widened): the outbound payload now also carries
   **planned income** — `income_plan[]` with a generalised `source_type`,
   `amount_cents`, and `pay_day` — so the advisor can reason about cash flow,
   not just spend. `source_type` is free text in storage, so the builder
   generalises it to a PII-free allowlist (unknown → `other`) and the outbound
   guard fail-closes on anything outside it; the free-text income `label` is
-  never sent. Merchant/member aliases and fixed/recurring summaries stay out.
+  never sent. Merchant/member aliases stay out.
 
 - `/web/reports` now renders its three ECharts (spending trend / category
   month-over-month / merchant ranking) via `reports.js` from a server-injected

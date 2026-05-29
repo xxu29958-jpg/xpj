@@ -24,7 +24,15 @@ ALLOWED_TOP_LEVEL_KEYS = frozenset(
         "category_breakdown",
         "historical_baseline",
         "income_plan",
+        # ADR-0036: coarse fixed/recurring-commitment aggregate (scalars only;
+        # no per-merchant rows — recurring items are merchant-keyed = PII).
+        "recurring_total_monthly_cents",
+        "recurring_active_count",
     }
+)
+
+_NON_NEGATIVE_INT_KEYS = frozenset(
+    {"recurring_total_monthly_cents", "recurring_active_count"}
 )
 
 ALLOWED_CATEGORY_KEYS = frozenset({"category", "amount_cents", "count"})
@@ -86,6 +94,18 @@ def validate_outbound_payload(payload: dict[str, Any]) -> None:
                 )
 
     _validate_income_plan(payload.get("income_plan", []))
+    # Recurring summary is a coarse aggregate (total monthly cents + active
+    # count). Fail closed on anything that is not a non-negative int so no
+    # free-text (potential PII) can be smuggled through a scalar slot. (bool is
+    # rejected too — it is an int subclass in Python.)
+    for key in _NON_NEGATIVE_INT_KEYS:
+        if key not in payload:
+            continue
+        value = payload[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise DataIntegrityError(
+                f"budget_advisor_outbound: '{key}' must be a non-negative int"
+            )
 
 
 def _validate_income_plan(rows: Any) -> None:

@@ -233,6 +233,8 @@ def test_advise_sends_only_allowed_top_level_keys() -> None:
         "category_breakdown",
         "historical_baseline",
         "income_plan",
+        "recurring_total_monthly_cents",
+        "recurring_active_count",
     }
     # Verify no real PII fields leaked.
     for cat in payload["category_breakdown"]:

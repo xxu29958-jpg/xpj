@@ -238,6 +238,54 @@ def test_builder_does_not_send_recurring_merchants(identity) -> None:  # noqa: A
     assert not hasattr(inputs, "fixed_expenses")
 
 
+def test_builder_sends_coarse_recurring_summary(identity) -> None:  # noqa: ARG001
+    # ADR-0036: recurring items are merchant-keyed (PII), so only a coarse
+    # aggregate crosses the boundary — total monthly cents + active count,
+    # never per-merchant rows. Active only; paused/archived are excluded.
+    _seed_minimal_data()  # one active recurring: Netflix @ 2_000
+    now = now_utc()
+    with SessionLocal() as db:
+        db.add(
+            RecurringItem(
+                tenant_id="owner",
+                merchant_key="spotify",
+                merchant_name="Spotify",
+                baseline_amount_cents=1_500,
+                last_amount_cents=1_500,
+                frequency="monthly",
+                status="active",
+                source="declared",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.add(
+            RecurringItem(
+                tenant_id="owner",
+                merchant_key="gym",
+                merchant_name="健身房会员",
+                baseline_amount_cents=9_900,
+                last_amount_cents=9_900,
+                frequency="monthly",
+                status="paused",
+                source="declared",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        db.commit()
+    with SessionLocal() as db:
+        inputs = build_budget_inputs(db, tenant_id="owner", month=_current_month())
+    # 2_000 (Netflix) + 1_500 (Spotify); paused 健身房会员 excluded.
+    assert inputs.recurring_total_monthly_cents == 3_500
+    assert inputs.recurring_active_count == 2
+    # No merchant identity leaks through the coarse aggregate.
+    assert "Netflix" not in repr(inputs)
+    assert "Spotify" not in repr(inputs)
+    assert "健身房会员" not in repr(inputs)
+    to_outbound_dict(inputs)  # passes the fail-closed guard
+
+
 def test_builder_pulls_current_month_category_breakdown(identity) -> None:  # noqa: ARG001
     _seed_minimal_data()
     with SessionLocal() as db:
@@ -350,7 +398,11 @@ def test_builder_returns_valid_budget_inputs_when_empty(identity) -> None:  # no
         "category_breakdown",
         "historical_baseline",
         "income_plan",
+        "recurring_total_monthly_cents",
+        "recurring_active_count",
     }
     assert inputs.income_plan == []  # empty ledger -> no income lines
+    assert inputs.recurring_total_monthly_cents == 0  # empty ledger -> no commitments
+    assert inputs.recurring_active_count == 0
     assert not hasattr(inputs, "members")
     assert not hasattr(inputs, "merchant_summary")

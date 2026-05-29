@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.ledger_scope import ledger_scoped_select
+from app.models import RecurringItem
 from app.services.budget_advisor_service._models import (
     ALLOWED_INCOME_SOURCE_TYPES,
     BudgetInputs,
@@ -56,7 +58,30 @@ def build_budget_inputs(
             timezone_name=timezone_name,
         ),
         income_plan=_income_plan(db, tenant_id=tenant_id),
+        recurring_total_monthly_cents=_recurring_total_monthly_cents(db, tenant_id=tenant_id),
+        recurring_active_count=_recurring_active_count(db, tenant_id=tenant_id),
     )
+
+
+def _active_recurring_items(db: Session, *, tenant_id: str) -> list[RecurringItem]:
+    return list(
+        db.scalars(
+            ledger_scoped_select(RecurringItem, tenant_id).where(
+                RecurringItem.status == "active"
+            )
+        )
+    )
+
+
+def _recurring_total_monthly_cents(db: Session, *, tenant_id: str) -> int:
+    """Aggregate monthly recurring commitment. Coarse magnitude only —
+    recurring rows are merchant-keyed (PII), so no per-item / per-merchant
+    detail leaves the device; the advisor sees just the total."""
+    return sum(int(item.last_amount_cents) for item in _active_recurring_items(db, tenant_id=tenant_id))
+
+
+def _recurring_active_count(db: Session, *, tenant_id: str) -> int:
+    return len(_active_recurring_items(db, tenant_id=tenant_id))
 
 
 def _category_breakdown(report: MonthlyReport) -> list[CategorySnapshot]:

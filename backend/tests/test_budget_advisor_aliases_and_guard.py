@@ -60,6 +60,8 @@ def test_to_outbound_dict_only_contains_current_builder_keys() -> None:
         "category_breakdown",
         "historical_baseline",
         "income_plan",
+        "recurring_total_monthly_cents",
+        "recurring_active_count",
     }
 
 
@@ -129,6 +131,31 @@ def test_validate_rejects_income_plan_label_leak() -> None:
                 ]
             )
         )
+
+
+# --- ADR-0036: coarse fixed/recurring-commitment aggregate (scalars only) ----
+
+
+def test_validate_accepts_recurring_summary_scalars() -> None:
+    payload = to_outbound_dict(_full_inputs())
+    payload["recurring_total_monthly_cents"] = 2_000
+    payload["recurring_active_count"] = 1
+    validate_outbound_payload(payload)
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    ["不能放商户名", -1, True, 3.5],
+)
+def test_validate_rejects_non_int_recurring_scalar(bad_value) -> None:
+    # The scalar slots must stay coarse ints — fail closed so no free-text
+    # (potential PII) or sentinel can ride through. bool is rejected too
+    # (bool is an int subclass in Python).
+    payload = to_outbound_dict(_full_inputs())
+    payload["recurring_total_monthly_cents"] = bad_value
+
+    with pytest.raises(DataIntegrityError, match="recurring_total_monthly_cents"):
+        validate_outbound_payload(payload)
 
 
 def test_validate_rejects_unknown_top_level_key() -> None:

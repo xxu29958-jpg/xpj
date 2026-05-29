@@ -69,6 +69,11 @@ class BudgetInputs:
     # ADR-0036: planned income (generalised source_type / amount / pay_day) so
     # the advisor can reason about cash flow, not just spend. No PII.
     income_plan: list[IncomePlanSnapshot] = field(default_factory=list)
+    # ADR-0036: coarse fixed/recurring-commitment summary. Recurring items are
+    # merchant-keyed (PII), so only the aggregate magnitude is sent — total
+    # monthly recurring spend + how many active items — never per-merchant rows.
+    recurring_total_monthly_cents: int = 0
+    recurring_active_count: int = 0
 
 
 @dataclass(frozen=True)
