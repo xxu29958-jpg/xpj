@@ -100,6 +100,7 @@ def create_pending_expense(
         image_path=saved_file.relative_path,
         thumbnail_path=thumbnail_path,
         image_hash=saved_file.image_hash,
+        image_perceptual_hash=saved_file.image_perceptual_hash,
         raw_text="",
         confidence=None,
         status="pending",
@@ -140,6 +141,7 @@ def enrich_pending_expense(
             expense, timezone_name=timezone_name
         )
 
+    generated_thumbnail_path: str | None = None
     with SessionLocal() as db:
         try:
             _begin_immediate_write_if_sqlite(db)
@@ -149,9 +151,10 @@ def enrich_pending_expense(
             if expense is None or expense.status != "pending":
                 return
             if not expense.thumbnail_path:
-                expense.thumbnail_path = _try_generate_thumbnail(
+                generated_thumbnail_path = _try_generate_thumbnail(
                     expense.image_path, expense.tenant_id
                 )
+                expense.thumbnail_path = generated_thumbnail_path
             for extraction in ocr_extractions:
                 apply_ocr_result_and_append_fact(
                     db,
@@ -187,6 +190,7 @@ def enrich_pending_expense(
                 tenant_id,
             )
             db.rollback()
+            delete_relative_upload(generated_thumbnail_path)
 
 
 def create_manual_expense(

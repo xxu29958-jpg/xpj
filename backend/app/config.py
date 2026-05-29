@@ -52,6 +52,7 @@ class Settings:
     delete_image_after_days: int
     delete_rejected_after_days: int
     orphan_upload_grace_hours: int
+    background_task_orphan_grace_seconds: int
     ocr_provider: str
     ocr_auto_run: bool
     ocr_fallback_provider: str
@@ -86,16 +87,29 @@ class Settings:
     upload_link_default_daily_byte_budget: int
     upload_link_default_per_remote_interval_seconds: int
     upload_link_ttl_days: int
+    upload_link_legacy_expiry_spread_days: int
     csv_import_max_bytes: int
     csv_import_max_lines: int
     csv_import_max_cell_bytes: int
     csv_import_apply_lease_minutes: int
+    csv_import_row_apply_lease_minutes: int
     # Batch 2: app session token TTL. ``0`` keeps the legacy never-expires
     # behavior (web session tokens are still always TTL-capped). Anything
     # > 0 gives Android tokens a hard expiry; clients should silently
     # rotate via ``/api/auth/refresh`` once inside the soft window.
     app_token_ttl_days: int
     app_token_refresh_window_days: int
+    app_token_rotation_grace_seconds: int
+    device_cleanup_retention_days: int
+    device_cleanup_auto_enabled: bool
+    device_cleanup_daily_at: str
+    device_cleanup_timezone: str
+    # Performance budget (ENGINEERING_RULES §12 — no unbounded queries): the
+    # perceptual-hash duplicate check can't filter Hamming distance in SQL, so
+    # it scans candidates in Python. Cap how many of the most-recent
+    # phash-bearing expenses it sweeps so a large ledger doesn't turn every
+    # upload into a full-table scan.
+    duplicate_phash_scan_limit: int
     # Batch 2: AI budget advisor live calls require explicit opt-in.
     # ``empty`` / ``mock`` providers do not need this flag.
     budget_advisor_owner_confirmed: bool
@@ -228,6 +242,10 @@ def get_settings() -> Settings:
         delete_image_after_days=int(os.getenv("DELETE_IMAGE_AFTER_DAYS", "0")),
         delete_rejected_after_days=int(os.getenv("DELETE_REJECTED_AFTER_DAYS", "0")),
         orphan_upload_grace_hours=int(os.getenv("ORPHAN_UPLOAD_GRACE_HOURS", "24")),
+        background_task_orphan_grace_seconds=max(
+            0,
+            int(os.getenv("BACKGROUND_TASK_ORPHAN_GRACE_SECONDS", "0")),
+        ),
         ocr_provider=os.getenv("OCR_PROVIDER", "empty").strip().lower(),
         ocr_auto_run=_bool_env("OCR_AUTO_RUN", False),
         ocr_fallback_provider=os.getenv("OCR_FALLBACK_PROVIDER", "empty").strip().lower(),
@@ -236,7 +254,12 @@ def get_settings() -> Settings:
         local_llm_base_url=_resolve_local_llm_base_url(os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")),
         local_llm_model=os.getenv("LOCAL_LLM_MODEL", "").strip(),
         local_llm_timeout_seconds=int(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "60")),
-        local_llm_max_concurrent=max(1, int(os.getenv("LOCAL_LLM_MAX_CONCURRENT", "1"))),
+        # Default 2 deliberately allows a little OCR throughput overlap. A
+        # single-GPU / single-stream local vision model (e.g. one quantized
+        # model in LM Studio) should set LOCAL_LLM_MAX_CONCURRENT=1 to avoid
+        # VRAM contention; the queue + LOCAL_LLM_QUEUE_TIMEOUT_SECONDS still
+        # bound how long callers wait for a slot.
+        local_llm_max_concurrent=max(1, int(os.getenv("LOCAL_LLM_MAX_CONCURRENT", "2"))),
         local_llm_queue_timeout_seconds=max(0.0, float(os.getenv("LOCAL_LLM_QUEUE_TIMEOUT_SECONDS", "5"))),
         # ADR-0036: v1.1 AI budget advisor provider. Default 'empty' = no AI
         # call, local rules only. 'openai_compat' covers ollama / vLLM /
@@ -246,7 +269,7 @@ def get_settings() -> Settings:
         # BUDGET_ADVISOR_BASE_URL + MODEL raises at provider lookup.
         budget_advisor_provider=os.getenv("BUDGET_ADVISOR_PROVIDER", "empty").strip().lower(),
         budget_advisor_base_url=os.getenv("BUDGET_ADVISOR_BASE_URL", "").strip(),
-        budget_advisor_api_key=os.getenv("BUDGET_ADVISOR_API_KEY", "").strip(),
+        budget_advisor_api_key=os.getenv("BUDGET_ADVISOR_API_KEY", ""),
         budget_advisor_model=os.getenv("BUDGET_ADVISOR_MODEL", "").strip(),
         budget_advisor_timeout_seconds=int(os.getenv("BUDGET_ADVISOR_TIMEOUT_SECONDS", "60")),
         budget_advisor_audit_retention_days=int(os.getenv("BUDGET_ADVISOR_AUDIT_RETENTION_DAYS", "180")),
@@ -292,14 +315,40 @@ def get_settings() -> Settings:
             os.getenv("UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS", "2")
         ),
         upload_link_ttl_days=max(1, int(os.getenv("UPLOAD_LINK_TTL_DAYS", "90"))),
+        upload_link_legacy_expiry_spread_days=max(
+            1,
+            int(os.getenv("UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS", "30")),
+        ),
         csv_import_max_bytes=int(os.getenv("CSV_IMPORT_MAX_BYTES", str(8 * 1024 * 1024))),
         csv_import_max_lines=int(os.getenv("CSV_IMPORT_MAX_LINES", "25000")),
         csv_import_max_cell_bytes=int(os.getenv("CSV_IMPORT_MAX_CELL_BYTES", "4096")),
         csv_import_apply_lease_minutes=max(
             1, int(os.getenv("CSV_IMPORT_APPLY_LEASE_MINUTES", "5"))
         ),
+        csv_import_row_apply_lease_minutes=max(
+            1, int(os.getenv("CSV_IMPORT_ROW_APPLY_LEASE_MINUTES", "2"))
+        ),
         app_token_ttl_days=int(os.getenv("APP_TOKEN_TTL_DAYS", "90")),
         app_token_refresh_window_days=int(os.getenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "14")),
+        app_token_rotation_grace_seconds=max(
+            0,
+            int(os.getenv("APP_TOKEN_ROTATION_GRACE_SECONDS", "60")),
+        ),
+        device_cleanup_retention_days=max(
+            0,
+            int(os.getenv("DEVICE_CLEANUP_RETENTION_DAYS", "180")),
+        ),
+        device_cleanup_auto_enabled=_bool_env("DEVICE_CLEANUP_AUTO_ENABLED", False),
+        device_cleanup_daily_at=os.getenv(
+            "DEVICE_CLEANUP_DAILY_AT", "04:10"
+        ).strip() or "04:10",
+        device_cleanup_timezone=os.getenv(
+            "DEVICE_CLEANUP_TIMEZONE", "Asia/Shanghai"
+        ).strip() or "Asia/Shanghai",
+        duplicate_phash_scan_limit=max(
+            1,
+            int(os.getenv("DUPLICATE_PHASH_SCAN_LIMIT", "500")),
+        ),
         budget_advisor_owner_confirmed=_bool_env("BUDGET_ADVISOR_OWNER_CONFIRMED", False),
         learning_cleanup_auto_enabled=_bool_env(
             "LEARNING_CLEANUP_AUTO_ENABLED", False

@@ -31,6 +31,7 @@ def _expenses_required_columns(default_home: str, source_base: str, status_ready
         "fx_status": f"VARCHAR(32) NOT NULL DEFAULT '{status_ready}'",
         "image_deleted_at": "DATETIME",
         "thumbnail_deleted_at": "DATETIME",
+        "image_perceptual_hash": "VARCHAR(16)",
     }
 
 
@@ -53,6 +54,12 @@ def _migrate_expenses_columns(
         text(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_expenses_id_tenant_id "
             "ON expenses (id, tenant_id)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_expenses_tenant_image_phash "
+            "ON expenses (tenant_id, image_perceptual_hash)"
         )
     )
     connection.execute(

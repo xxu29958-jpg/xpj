@@ -13,6 +13,7 @@ from app.models.ai_advisor import (
     AiMerchantAnonMap,
     AiTransactionTempIdMap,
     BudgetAdvisorAuditLog,
+    BudgetAdvisorQuotaLock,
 )
 from app.models.app_meta import AppMeta
 from app.models.auth import (
@@ -62,6 +63,7 @@ __all__ = [
     "BootstrapSecretConsumption",
     "Budget",
     "BudgetAdvisorAuditLog",
+    "BudgetAdvisorQuotaLock",
     "BudgetCategory",
     "CategoryRule",
     "CsvImportBatch",

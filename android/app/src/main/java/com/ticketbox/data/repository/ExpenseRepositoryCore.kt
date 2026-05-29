@@ -218,28 +218,19 @@ internal class ExpenseRepositoryCore(
     }
 
     suspend fun clearBinding() {
-        // ADR-0038 PR-2g.3 codex round-9 P1 (round-10 follow-up):
-        // outbox.clearAll() MUST run BEFORE clearing the apiProvider
-        // / settings / token. clearAll() bumps the
-        // [OutboxRepository] session-boundary epoch; the drain
-        // engine's post-claim check reads that epoch to decide
-        // whether to skip a dispatch. If we clear the API binding
-        // first, a concurrent drain that has already passed the
-        // epoch check (epoch still old) would resolve apiProvider()
-        // inside dispatch under whatever the user binds next →
-        // wrong-session replay. Order:
-        //   1) outbox.clearAll  (epoch bumps, queue wiped)
-        //   2) apiProvider/settings/token cleared
-        // After step 1, no new drain can pass the post-claim check
-        // for an old row. The drains in flight that already passed
-        // it dispatch under the still-old credentials (step 2 hasn't
-        // run yet) — old-session in-flight, not wrong-session
-        // replay. Acceptable until Room v10 binding columns.
-        outbox?.clearAll()
-        apiProvider.clear()
-        expenseDao.clear()
-        settingsStore.clear()
-        tokenStore.clear()
+        val clearStores: suspend () -> Unit = {
+            apiProvider.clear()
+            expenseDao.clear()
+            settingsStore.clear()
+            tokenStore.clear()
+        }
+        if (outbox != null) {
+            outbox.withBindingTransition(clearExistingRows = true) {
+                clearStores()
+            }
+        } else {
+            clearStores()
+        }
     }
 
     companion object {

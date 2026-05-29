@@ -65,6 +65,7 @@ def init_db() -> None:
         note="legacy hand-written migrate_sqlite_schema baseline",
     )
     _stamp_alembic_baseline_if_needed()
+    _seed_fresh_schema_metadata_if_needed()
     seed_identity_data()
     validate_sqlite_data_integrity()
     # v0.3.1-alpha2: do NOT auto-migrate legacy uploads on startup. Old image
@@ -142,3 +143,10 @@ def _stamp_alembic_baseline_if_needed() -> None:
         with engine.begin() as connection:
             cfg.attributes["connection"] = connection
             command.upgrade(cfg, "head")
+
+
+def _seed_fresh_schema_metadata_if_needed() -> None:
+    from app.services.app_meta_service import seed_fresh_schema_metadata
+
+    with SessionLocal() as db:
+        seed_fresh_schema_metadata(db)

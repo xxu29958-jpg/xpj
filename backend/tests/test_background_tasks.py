@@ -5,9 +5,9 @@ synchronously on the test thread, so we can verify chunked progress /
 cancellation / completion without a real ThreadPoolExecutor + a file-
 backed SQLite shared across threads.
 
-One test (``test_orphan_recovery_force_fails_stale_running``) directly
-manipulates row state to simulate "process died mid-task" without going
-through enqueue, so it doesn't depend on inline mode.
+The orphan-recovery tests directly manipulate row state to simulate
+"process died mid-task" without going through enqueue, so they do not
+depend on inline mode.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.models import Account, BackgroundTask
 from app.services import background_task_service as bgtasks
@@ -37,12 +38,20 @@ def _inline_handlers():
     """Each test runs handlers inline + starts with an empty handler
     registry, so registration leakage between tests can't happen."""
     os.environ["XPJ_BACKGROUND_TASK_INLINE"] = "1"
-    saved = bgtasks.replace_registered_handlers_for_testing()
     try:
-        yield
+        with bgtasks.isolated_registered_handlers_for_testing():
+            yield
     finally:
         os.environ.pop("XPJ_BACKGROUND_TASK_INLINE", None)
-        bgtasks.replace_registered_handlers_for_testing(saved)
+
+
+def test_isolated_handler_registry_for_testing_does_not_mutate_default() -> None:
+    baseline = bgtasks.get_registered_handlers()
+    with bgtasks.isolated_registered_handlers_for_testing():
+        bgtasks.register_handler("test_isolated", lambda db, task, payload: None)
+        assert "test_isolated" in bgtasks.get_registered_handlers()
+
+    assert bgtasks.get_registered_handlers() == baseline
 
 
 # --- handler dispatch --------------------------------------------------
@@ -70,7 +79,7 @@ def test_enqueue_runs_handler_and_marks_completed(*, identity) -> None:
 
     assert captured["payload_echo"] == "hello"
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id())
+        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.completed_at is not None
         assert json.loads(row.result_summary_json)["ran"] is True
@@ -144,7 +153,7 @@ def test_handler_exception_marks_failed(*, identity) -> None:
         public_id = task.public_id
 
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id())
+        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "failed"
         assert row.error_code == "RuntimeError"
         assert "kaboom" in (row.error_message or "")
@@ -173,7 +182,7 @@ def test_handler_reports_progress_through_chunks(*, identity) -> None:
         public_id = task.public_id
 
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id())
+        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "completed"
         assert row.progress_current == 5
         assert row.progress_total == 5
@@ -209,7 +218,7 @@ def test_handler_observes_cancellation_request(*, identity) -> None:
         public_id = task.public_id
 
     with SessionLocal() as db:
-        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id())
+        row = bgtasks.get_task(db, public_id, account_id=_owner_account_id(), tenant_id="owner")
         assert row.status == "cancelled"
         assert row.completed_at is not None
 
@@ -232,7 +241,9 @@ def test_request_cancellation_idempotent_on_terminal_task(*, identity) -> None:
 
     with SessionLocal() as db:
         # cancel should not flip status from completed
-        row = bgtasks.request_cancellation(db, public_id, account_id=_owner_account_id())
+        row = bgtasks.request_cancellation(
+            db, public_id, account_id=_owner_account_id(), tenant_id="owner"
+        )
         assert row.status == "completed"
         assert row.cancellation_requested_at is None
 
@@ -255,7 +266,7 @@ def test_account_isolation_get(*, identity) -> None:
     from app.errors import AppError
 
     with SessionLocal() as db, pytest.raises(AppError) as exc:
-        bgtasks.get_task(db, public_id, account_id=99999)
+        bgtasks.get_task(db, public_id, account_id=99999, tenant_id="owner")
     assert exc.value.error == "task_not_found"
 
 
@@ -277,19 +288,61 @@ def test_list_recent_tasks_account_scoped(*, identity) -> None:
         )
 
     with SessionLocal() as db:
-        mine = bgtasks.list_recent_tasks(db, account_id=_owner_account_id())
+        mine = bgtasks.list_recent_tasks(db, account_id=_owner_account_id(), tenant_id="owner")
         assert len(mine) == 1
         assert mine[0].initiated_by_account_id == _owner_account_id()
+
+
+def test_list_recent_tasks_tenant_scoped(*, identity) -> None:
+    """A multi-ledger account only sees the active ledger's tasks (the bug:
+    a task initiated under ledger A leaking into ledger B's task list)."""
+    bgtasks.register_handler("test_tenant_iso", lambda db, t, p: None)
+    owner = _owner_account_id()
+    with SessionLocal() as db:
+        bgtasks.enqueue(
+            db,
+            task_type="test_tenant_iso",
+            initiator_account_id=owner,
+            ledger_id="owner",
+        )
+        bgtasks.enqueue(
+            db,
+            task_type="test_tenant_iso",
+            initiator_account_id=owner,
+            ledger_id="other_ledger",
+        )
+
+    with SessionLocal() as db:
+        mine = bgtasks.list_recent_tasks(db, account_id=owner, tenant_id="owner")
+        assert len(mine) == 1
+        assert mine[0].tenant_id == "owner"
+
+
+def test_get_task_rejects_cross_tenant(*, identity) -> None:
+    """Same account, wrong active ledger → 404 (no existence leak)."""
+    from app.errors import AppError
+
+    bgtasks.register_handler("test_tenant_iso2", lambda db, t, p: None)
+    owner = _owner_account_id()
+    with SessionLocal() as db:
+        task = bgtasks.enqueue(
+            db,
+            task_type="test_tenant_iso2",
+            initiator_account_id=owner,
+            ledger_id="owner",
+        )
+        public_id = task.public_id
+
+    with SessionLocal() as db, pytest.raises(AppError) as exc:
+        bgtasks.get_task(db, public_id, account_id=owner, tenant_id="other_ledger")
+    assert exc.value.error == "task_not_found"
 
 
 # --- orphan recovery --------------------------------------------------
 
 
 def test_orphan_recovery_force_fails_any_running() -> None:
-    """Single-process model: every ``running`` task on startup is an
-    orphan regardless of heartbeat freshness. The previous design used a
-    5-minute ``last_progress_at`` threshold; that leaked phantom rows
-    under fast restarts. New rule: force-fail unconditionally."""
+    """Default single-process mode force-fails active rows immediately."""
     with SessionLocal() as db:
         # Even with a heartbeat from "just now" — still an orphan.
         fresh_running = BackgroundTask(
@@ -341,6 +394,49 @@ def test_orphan_recovery_force_fails_queued() -> None:
         row = db.get(BackgroundTask, queued_id)
         assert row.status == "failed"
         assert row.error_code == "orphaned_after_restart"
+
+
+def test_orphan_recovery_grace_preserves_fresh_multi_worker_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BACKGROUND_TASK_ORPHAN_GRACE_SECONDS", "300")
+    reset_settings_cache()
+    try:
+        with SessionLocal() as db:
+            fresh_running = BackgroundTask(
+                task_type="test_orphan_grace_running",
+                status="running",
+                last_progress_at=now_utc(),
+                started_at=now_utc() - timedelta(seconds=10),
+            )
+            fresh_queued = BackgroundTask(
+                task_type="test_orphan_grace_queued",
+                status="queued",
+                created_at=now_utc(),
+            )
+            stale_running = BackgroundTask(
+                task_type="test_orphan_grace_stale",
+                status="running",
+                last_progress_at=now_utc() - timedelta(minutes=10),
+                started_at=now_utc() - timedelta(minutes=11),
+            )
+            db.add_all([fresh_running, fresh_queued, stale_running])
+            db.commit()
+            ids = (fresh_running.id, fresh_queued.id, stale_running.id)
+
+        recovered = bgtasks.recover_orphaned_tasks()
+        assert recovered >= 1
+
+        with SessionLocal() as db:
+            fresh_running_row = db.get(BackgroundTask, ids[0])
+            fresh_queued_row = db.get(BackgroundTask, ids[1])
+            stale_running_row = db.get(BackgroundTask, ids[2])
+            assert fresh_running_row.status == "running"
+            assert fresh_queued_row.status == "queued"
+            assert stale_running_row.status == "failed"
+            assert stale_running_row.error_code == "orphaned_after_restart"
+    finally:
+        reset_settings_cache()
 
 
 def test_orphan_recovery_leaves_terminal_alone() -> None:

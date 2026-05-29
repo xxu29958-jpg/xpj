@@ -25,6 +25,7 @@ from app.services.time_service import ensure_utc, now_utc
 def ttl_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APP_TOKEN_TTL_DAYS", "30")
     monkeypatch.setenv("APP_TOKEN_REFRESH_WINDOW_DAYS", "7")
+    monkeypatch.setenv("APP_TOKEN_ROTATION_GRACE_SECONDS", "120")
     reset_settings_cache()
     yield
     reset_settings_cache()
@@ -50,7 +51,7 @@ def test_pair_response_carries_expiry_metadata(client: TestClient, *, identity, 
     assert expires_at > soft_after
 
 
-def test_refresh_rotates_token_and_revokes_previous(client: TestClient, *, identity, ttl_env) -> None:
+def test_refresh_rotates_token_and_graces_previous(client: TestClient, *, identity, ttl_env) -> None:
     pair_payload = _pair(client, code=identity.pairing_code)
     old_token = pair_payload["session_token"]
 
@@ -64,13 +65,28 @@ def test_refresh_rotates_token_and_revokes_previous(client: TestClient, *, ident
     new_token = body["session_token"]
     assert new_token != old_token
 
-    # Old token must be revoked.
+    grace_check = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+    assert grace_check.status_code == 200, grace_check.text
+
     with SessionLocal() as db:
         old_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(old_token)).one()
         new_row = db.query(AuthToken).filter(AuthToken.token_hash == hash_secret(new_token)).one()
         assert old_row.revoked_at is not None
+        assert old_row.grace_until is not None
         assert new_row.revoked_at is None
         assert new_row.expires_at is not None
+
+        old_row.grace_until = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
+
+    expired_grace = client.get(
+        "/api/auth/check",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+    assert expired_grace.status_code == 401
 
 
 def test_refresh_with_ttl_disabled_is_noop(client: TestClient, *, identity, monkeypatch: pytest.MonkeyPatch) -> None:

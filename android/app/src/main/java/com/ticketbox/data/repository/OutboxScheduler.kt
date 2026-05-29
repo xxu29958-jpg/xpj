@@ -27,9 +27,9 @@ import java.util.concurrent.TimeUnit
  *     returns, which is exactly the "drain on connectivity-up"
  *     contract from ADR-0038.
  *
- *  2. [ONE_TIME_WORK_NAME] — the immediate trigger. Future PR-2g.3
- *     call sites will invoke [enqueueOnce] right after enqueueing
- *     a new outbox row, so the user doesn't wait up to 15 min for
+ *  2. [ONE_TIME_WORK_NAME] — the immediate trigger. Mutation call
+ *     sites invoke [enqueueOnce] right after enqueueing a new
+ *     outbox row, so the user doesn't wait up to 15 min for
  *     the periodic tick. ``KEEP`` policy means a second call while
  *     a one-time worker is already queued is a no-op — no
  *     thundering herd if 20 rows are enqueued in a burst.
@@ -40,21 +40,11 @@ import java.util.concurrent.TimeUnit
  * the engine-level fault path; per-row retries already live inside
  * the drain engine and are independent.
  */
-object OutboxScheduler {
-    /**
-     * Unique work names. Public so a future maintenance command
-     * (e.g. ``adb shell cmd jobscheduler``) can address them and so
-     * tests can assert against the same constants.
-     */
-    const val PERIODIC_WORK_NAME = "ticketbox.outbox.drain.periodic"
-    const val ONE_TIME_WORK_NAME = "ticketbox.outbox.drain.one_shot"
-
-    /** Periodic interval per ADR-0038. 15 min is WorkManager's floor. */
-    val PERIODIC_INTERVAL_MIN: Long = 15
-
-    /** Exponential backoff floor after a [Result.retry]. */
-    val BACKOFF_MIN_SECONDS: Long = 30
-
+class OutboxScheduler(
+    private val workManagerProvider: (Context) -> WorkManager = { context ->
+        WorkManager.getInstance(context)
+    },
+) {
     /**
      * Wire the periodic drain. Safe to call from
      * [com.ticketbox.TicketboxApplication.onCreate] on every cold
@@ -80,7 +70,7 @@ object OutboxScheduler {
             .addTag(TAG_OUTBOX)
             .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        workManagerProvider(context).enqueueUniquePeriodicWork(
             PERIODIC_WORK_NAME,
             // UPDATE means: if a previous schedule exists with the
             // same name but different constraints/interval (app
@@ -94,9 +84,8 @@ object OutboxScheduler {
     /**
      * Fire a one-time drain ASAP. The drain still respects
      * [NetworkType.CONNECTED] — if the device is offline when this
-     * is called, the worker queues until network returns. Future
-     * call sites (PR-2g.3) call this right after
-     * [OutboxRepository.enqueue].
+     * is called, the worker queues until network returns. Mutation
+     * call sites call this right after [OutboxRepository.enqueue].
      *
      * [ExistingWorkPolicy.KEEP] makes back-to-back calls
      * idempotent: a burst of 20 enqueues during one connectivity
@@ -117,7 +106,7 @@ object OutboxScheduler {
             .addTag(TAG_OUTBOX)
             .build()
 
-        WorkManager.getInstance(context).enqueueUniqueWork(
+        workManagerProvider(context).enqueueUniqueWork(
             ONE_TIME_WORK_NAME,
             ExistingWorkPolicy.KEEP,
             request,
@@ -129,14 +118,30 @@ object OutboxScheduler {
      * worker doesn't try to dispatch against a torn-down session.
      */
     fun cancel(context: Context) {
-        val wm = WorkManager.getInstance(context)
+        val wm = workManagerProvider(context)
         wm.cancelUniqueWork(PERIODIC_WORK_NAME)
         wm.cancelUniqueWork(ONE_TIME_WORK_NAME)
     }
 
-    /**
-     * Tag every outbox WorkRequest with this so a debug tool or
-     * future maintenance script can filter just our work.
-     */
-    const val TAG_OUTBOX = "ticketbox.outbox"
+    companion object {
+        /**
+         * Unique work names. Public so a future maintenance command
+         * (e.g. ``adb shell cmd jobscheduler``) can address them and so
+         * tests can assert against the same constants.
+         */
+        const val PERIODIC_WORK_NAME = "ticketbox.outbox.drain.periodic"
+        const val ONE_TIME_WORK_NAME = "ticketbox.outbox.drain.one_shot"
+
+        /** Periodic interval per ADR-0038. 15 min is WorkManager's floor. */
+        const val PERIODIC_INTERVAL_MIN: Long = 15
+
+        /** Exponential backoff floor after a [Result.retry]. */
+        const val BACKOFF_MIN_SECONDS: Long = 30
+
+        /**
+         * Tag every outbox WorkRequest with this so a debug tool or
+         * future maintenance script can filter just our work.
+         */
+        const val TAG_OUTBOX = "ticketbox.outbox"
+    }
 }

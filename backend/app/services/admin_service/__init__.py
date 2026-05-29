@@ -22,6 +22,8 @@ the full public surface so callers keep importing from
 from __future__ import annotations
 
 from app.services.admin_service._devices import (
+    DeviceCleanupResult,
+    cleanup_revoked_devices,
     delete_device,
     list_devices,
     rename_device,
@@ -44,8 +46,10 @@ from app.services.admin_service._upload_links import (
 
 __all__ = [
     "DeviceSummary",
+    "DeviceCleanupResult",
     "UploadLinkSecret",
     "UploadLinkSummary",
+    "cleanup_revoked_devices",
     "create_upload_link",
     "delete_device",
     "delete_upload_link",

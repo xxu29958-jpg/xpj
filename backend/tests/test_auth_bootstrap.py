@@ -300,8 +300,8 @@ def test_owner_can_create_pairing_code_and_android_can_pair_once(
             "platform": "android",
         },
     )
-    assert reused.status_code == 409
-    assert reused.json()["error"] == "pairing_code_used"
+    assert reused.status_code == 401
+    assert reused.json()["error"] == "invalid_pairing_code"
 
 
 def _new_pairing_code(client: TestClient, *, identity) -> str:
@@ -403,8 +403,8 @@ def test_app_owner_token_cannot_create_bootstrap_pairing_code(client: TestClient
         headers=identity.app_headers,
         json={"ttl_minutes": 15},
     )
-    assert response.status_code == 401
-    assert response.json()["error"] == "invalid_token"
+    assert response.status_code == 403
+    assert response.json()["error"] == "permission_denied"
 
 
 def test_pairing_codes_rejects_public_host_even_with_admin_token(
@@ -449,8 +449,8 @@ def test_pairing_code_expires(client: TestClient, *, identity) -> None:
         "/api/auth/pair",
         json={"pairing_code": code, "device_name": "过期设备", "platform": "android"},
     )
-    assert expired.status_code == 410
-    assert expired.json()["error"] == "pairing_code_expired"
+    assert expired.status_code == 401
+    assert expired.json()["error"] == "invalid_pairing_code"
 
 
 def test_framework_errors_use_uniform_chinese_shape(client: TestClient, *, identity) -> None:

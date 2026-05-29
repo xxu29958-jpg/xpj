@@ -13,8 +13,10 @@ from app.schemas import (
     LearningTableSnapshotResponse,
     MaintenanceAuditCleanupResponse,
     MaintenanceCleanupResponse,
+    MaintenanceDeviceCleanupResponse,
     MaintenanceOrphanCleanupResponse,
 )
+from app.services.admin_service import cleanup_revoked_devices
 from app.services.budget_advisor_service import cleanup_expired_audit_logs
 from app.services.cleanup_service import cleanup_confirmed_images, cleanup_orphan_uploads, cleanup_rejected_images
 from app.services.learning_service import (
@@ -92,6 +94,31 @@ def post_cleanup_ai_advisor_audit(
     return MaintenanceAuditCleanupResponse(
         deleted_rows=deleted,
         batch_size=batch_size,
+    )
+
+
+@router.post(
+    "/cleanup-devices",
+    response_model=MaintenanceDeviceCleanupResponse,
+)
+def post_cleanup_devices(
+    auth: AuthContext = Depends(verify_admin_token),
+    batch_size: int = Query(default=500, ge=1, le=5000),
+    retention_days: int | None = Query(default=None, ge=0, le=3650),
+    db: Session = Depends(get_db),
+) -> MaintenanceDeviceCleanupResponse:
+    result = cleanup_revoked_devices(
+        db,
+        tenant_id=auth.tenant_id,
+        retention_days=retention_days,
+        batch_size=batch_size,
+    )
+    return MaintenanceDeviceCleanupResponse(
+        retention_days=result.retention_days,
+        scanned=result.scanned,
+        deleted_devices=result.deleted_devices,
+        deleted_tokens=result.deleted_tokens,
+        deleted_upload_links=result.deleted_upload_links,
     )
 
 

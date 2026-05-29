@@ -39,6 +39,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
+from app.models.ocr_facts import OCR_PROVIDER_VALUES
 from app.services.learning_service._algorithm_registry import (
     ALGORITHM_TYPES,
     BUDGET_SUGGESTION,
@@ -472,12 +473,15 @@ def record_ocr_fact(
         raise ValueError("ocr fact expense does not exist")
     if expense.tenant_id != draft.tenant_id:
         raise ValueError("ocr fact expense belongs to another tenant")
+    provider_name = (draft.ocr_provider or "empty").strip().lower()
+    if provider_name not in OCR_PROVIDER_VALUES:
+        raise ValueError(f"ocr_provider is not registered: {provider_name}")
 
     timestamp = now or now_utc()
     row = OcrFact(
         tenant_id=draft.tenant_id,
         expense_id=draft.expense_id,
-        ocr_provider=draft.ocr_provider,
+        ocr_provider=provider_name,
         ocr_model=draft.ocr_model,
         raw_text=draft.raw_text,
         parsed_amount_cents=draft.parsed_amount_cents,

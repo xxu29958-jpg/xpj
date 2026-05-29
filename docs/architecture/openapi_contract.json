@@ -691,12 +691,10 @@
         "description": "Body for ``POST /api/expenses/{id}/split-invite``.\n\nNOTE the absence of ``receiver_ledger_id`` — see ADR-0029 Q0. Sender\nmust NOT specify which ledger receiver accepts to; receiver picks\nthat at accept time.",
         "properties": {
           "amount_cents": {
-            "exclusiveMinimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
           "receiver_account_id": {
-            "exclusiveMinimum": 0.0,
             "title": "Receiver Account Id",
             "type": "integer"
           }
@@ -2317,6 +2315,17 @@
           "provider_name": {
             "title": "Provider Name",
             "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
           }
         },
         "required": [
@@ -6591,6 +6600,39 @@
           "deleted_thumbnails"
         ],
         "title": "MaintenanceCleanupResponse",
+        "type": "object"
+      },
+      "MaintenanceDeviceCleanupResponse": {
+        "properties": {
+          "deleted_devices": {
+            "title": "Deleted Devices",
+            "type": "integer"
+          },
+          "deleted_tokens": {
+            "title": "Deleted Tokens",
+            "type": "integer"
+          },
+          "deleted_upload_links": {
+            "title": "Deleted Upload Links",
+            "type": "integer"
+          },
+          "retention_days": {
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "scanned": {
+            "title": "Scanned",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retention_days",
+          "scanned",
+          "deleted_devices",
+          "deleted_tokens",
+          "deleted_upload_links"
+        ],
+        "title": "MaintenanceDeviceCleanupResponse",
         "type": "object"
       },
       "MaintenanceOrphanCleanupResponse": {
@@ -14083,6 +14125,85 @@
           }
         },
         "summary": "Post Cleanup Ai Advisor Audit",
+        "tags": [
+          "maintenance"
+        ]
+      }
+    },
+    "/api/maintenance/cleanup-devices": {
+      "post": {
+        "operationId": "post_cleanup_devices_api_maintenance_cleanup_devices_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "batch_size",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Batch Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retention_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Retention Days"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenanceDeviceCleanupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Cleanup Devices",
         "tags": [
           "maintenance"
         ]

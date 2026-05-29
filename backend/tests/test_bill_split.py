@@ -412,6 +412,7 @@ def test_invite_amount_must_be_positive(client: TestClient, *, identity) -> None
         json={"receiver_account_id": receiver_account_id, "amount_cents": 0},
     )
     assert response.status_code == 422
+    assert response.json()["error"] == "split_amount_invalid"
 
 
 def test_invite_amount_capped_at_sender_expense_total(client: TestClient, *, identity) -> None:
@@ -423,6 +424,7 @@ def test_invite_amount_capped_at_sender_expense_total(client: TestClient, *, ide
         json={"receiver_account_id": receiver_account_id, "amount_cents": 9999},
     )
     assert response.status_code == 422
+    assert response.json()["error"] == "split_amount_exceeds_parent"
 
 
 # -------------------------------------------------------------------------

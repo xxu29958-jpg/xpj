@@ -78,10 +78,13 @@ class MainActivity : FragmentActivity() {
         // ANR threshold and keeps the sync contract that
         // ``setContent`` below assumes (bound credentials by the
         // time UI inflates).
-        runBlocking { container.outboxRepository.clearAll() }
-        container.settingsStore.saveServerUrl(serverUrl)
-        container.tokenStore.saveToken(sessionToken)
-        container.settingsStore.markUnlocked()
+        runBlocking {
+            container.outboxRepository.withBindingTransition(clearExistingRows = true) {
+                container.settingsStore.saveServerUrl(serverUrl)
+                container.tokenStore.saveToken(sessionToken)
+                container.settingsStore.markUnlocked()
+            }
+        }
     }
 
     private companion object {

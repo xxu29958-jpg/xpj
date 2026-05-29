@@ -24,6 +24,9 @@ from datetime import UTC, datetime
 from sqlalchemy import inspect, text
 
 from app.database._core import engine, settings
+from app.database._migrations._ai_advisor import (
+    _migrate_budget_advisor_quota_locks,
+)
 from app.database._migrations._budgets_tags import (
     _migrate_budgets,
     _migrate_expense_tags,
@@ -49,6 +52,7 @@ from app.database._migrations._identity_runtime import (
     _migrate_identity_runtime_schema,
     _migrate_user_ui_preferences,
 )
+from app.database._migrations._ocr_facts import _migrate_ocr_facts
 from app.database._migrations._recurring_goals import (
     _migrate_goals,
     _migrate_recurring_items,
@@ -236,6 +240,8 @@ def _run_post_duplicate_table_migrations(connection, table_names: set[str]) -> N
         _migrate_goals(connection, table_names)
     if "upload_links" in table_names:
         _migrate_upload_links(connection)
+    _migrate_budget_advisor_quota_locks(connection, table_names)
+    _migrate_ocr_facts(connection, table_names)
 
 
 def _migrate_expense_post_item_columns(connection, table_names: set[str]) -> None:

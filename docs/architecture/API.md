@@ -54,8 +54,6 @@ invalid_token
 legacy_auth_removed
 bootstrap_already_initialized
 invalid_pairing_code
-pairing_code_expired
-pairing_code_used
 file_too_large
 unsupported_file_type
 expense_not_found
@@ -282,8 +280,7 @@ Android 首次绑定后校验 session token 使用。
 
 - `invalid_pairing_code`：绑定码不存在。
 - `invalid_pairing_code` + HTTP 429：同一来源短时间内失败次数过多，稍后再试或重新生成绑定码。
-- `pairing_code_used`：绑定码已被使用（一次性）。
-- `pairing_code_expired`：绑定码已过期（默认 15 分钟）。
+- `invalid_pairing_code` + HTTP 401：绑定码不存在、已过期或已使用；公网/云端部署下不区分这些状态，避免暴露 code 存在性。
 
 ### GET /api/ledgers
 

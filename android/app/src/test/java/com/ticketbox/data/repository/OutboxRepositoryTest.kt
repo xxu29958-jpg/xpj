@@ -2,7 +2,11 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -83,6 +87,35 @@ class OutboxRepositoryTest {
         // ``third`` is independent and runs.
         assertEquals(listOf(third), runnable)
         assertTrue(second !in runnable)
+    }
+
+    @Test
+    fun dequeueDedupesSameTargetBeforeApplyingLimit() = runTest {
+        val dao = FakePendingMutationDao()
+        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+
+        val firstSameTarget = repo.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "t0",
+        )
+        repo.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "t0",
+        )
+        val differentTarget = repo.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:2",
+            payloadJson = "{}",
+            expectedUpdatedAt = "t0",
+        )
+
+        val runnable = repo.dequeueNextRunnable(limit = 2).map { it.id }
+
+        assertEquals(listOf(firstSameTarget, differentTarget), runnable)
     }
 
     @Test
@@ -305,6 +338,129 @@ class OutboxRepositoryTest {
         val active = repo.activeForTarget("expense:1").map { it.id }
 
         assertEquals(listOf(pendingId), active)
+    }
+
+    @Test
+    fun bindingScopedQueueDoesNotDrainRowsFromPreviousLedger() = runTest {
+        val dao = FakePendingMutationDao()
+        var binding = OutboxBinding("https://old.example.com", "ledger-a")
+        val repo = OutboxRepository(
+            dao = dao,
+            clock = fixedClock("2026-05-04T00:00:00Z"),
+            bindingProvider = { binding },
+        )
+
+        val oldRow = repo.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:1",
+            payloadJson = "{}",
+            expectedUpdatedAt = "old-token",
+        )
+        binding = OutboxBinding("https://new.example.com", "ledger-b")
+        val newRow = repo.enqueue(
+            type = PendingMutationType.PatchExpense,
+            targetId = "expense:2",
+            payloadJson = "{}",
+            expectedUpdatedAt = "new-token",
+        )
+
+        val runnable = repo.dequeueNextRunnable(limit = 10).map { it.id }
+
+        assertEquals(listOf(newRow), runnable)
+        assertEquals("https://old.example.com", dao.rows[oldRow]?.serverUrl)
+        assertEquals("ledger-a", dao.rows[oldRow]?.ledgerId)
+    }
+
+    @Test
+    fun observeStatusAggregatesCurrentBindingOnly() = runTest {
+        val dao = FakePendingMutationDao()
+        var binding = OutboxBinding("https://api.example.com", "active")
+        val repo = OutboxRepository(
+            dao = dao,
+            clock = fixedClock("2026-05-04T00:00:00Z"),
+            bindingProvider = { binding },
+        )
+        val activePending = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val activeConflict = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "")
+        repo.markConflict(activeConflict, "stale")
+
+        binding = OutboxBinding("https://api.example.com", "other")
+        repo.enqueue(PendingMutationType.PatchExpense, "expense:3", "{}", "")
+        binding = OutboxBinding("https://api.example.com", "active")
+
+        val status = repo.observeStatus().first()
+
+        assertEquals(1, status.queueDepth)
+        assertEquals(listOf(activeConflict), status.conflicts.map { it.id })
+        assertTrue(status.needsUserAction)
+        assertEquals("active", dao.rows[activePending]?.ledgerId)
+    }
+
+    @Test
+    fun recoverStaleInFlightScopesToCurrentBindingOnly() = runTest {
+        val dao = FakePendingMutationDao()
+        var binding = OutboxBinding("https://api.example.com", "active")
+        val repo = OutboxRepository(
+            dao = dao,
+            clock = fixedClock("2026-05-04T00:00:00Z"),
+            bindingProvider = { binding },
+        )
+        val activeRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        dao.rows[activeRow] = dao.rows[activeRow]!!.copy(
+            status = PendingMutationStatus.InFlight.wireValue,
+            attemptedAt = "2026-05-03T00:00:00.000Z",
+        )
+
+        binding = OutboxBinding("https://api.example.com", "other")
+        val otherRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "")
+        dao.rows[otherRow] = dao.rows[otherRow]!!.copy(
+            status = PendingMutationStatus.InFlight.wireValue,
+            attemptedAt = "2026-05-03T00:00:00.000Z",
+        )
+
+        binding = OutboxBinding("https://api.example.com", "active")
+        val recovered = repo.recoverStaleInFlight()
+
+        assertEquals(1, recovered)
+        assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows[activeRow]?.status)
+        assertEquals(PendingMutationStatus.InFlight.wireValue, dao.rows[otherRow]?.status)
+    }
+
+    @Test
+    fun enqueueWaitsForBindingTransitionAndCannotPersistMixedBinding() = runTest {
+        val dao = FakePendingMutationDao()
+        var binding = OutboxBinding("https://old.example.com", "ledger-a")
+        val repo = OutboxRepository(
+            dao = dao,
+            clock = fixedClock("2026-05-04T00:00:00Z"),
+            bindingProvider = { binding },
+        )
+        val transitionStarted = CompletableDeferred<Unit>()
+        val releaseTransition = CompletableDeferred<Unit>()
+
+        val transition = async {
+            repo.withBindingTransition {
+                binding = OutboxBinding("https://new.example.com", "ledger-a")
+                transitionStarted.complete(Unit)
+                releaseTransition.await()
+                binding = OutboxBinding("https://new.example.com", "ledger-b")
+            }
+        }
+        transitionStarted.await()
+
+        val enqueue = async {
+            repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "token")
+        }
+        yield()
+        assertEquals(0, dao.rows.size)
+
+        releaseTransition.complete(Unit)
+        val rowId = enqueue.await()
+        transition.await()
+
+        val row = dao.rows[rowId]!!
+        assertEquals("https://new.example.com", row.serverUrl)
+        assertEquals("ledger-b", row.ledgerId)
     }
 
     private fun fixedClock(iso: String): Clock =

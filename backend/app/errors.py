@@ -11,6 +11,13 @@ class Utf8JSONResponse(JSONResponse):
 
 
 ERROR_MESSAGES = {
+    "split_amount_invalid": "拆账金额必须大于 0。",
+    "split_receiver_invalid": "接收方不可用。",
+    "split_parent_amount_missing": "原账单金额未确定，无法发起拆账。",
+    "split_amount_exceeds_parent": "拆账金额不能超过原账单金额。",
+    "split_total_exceeds_parent": "拆账邀请总额不能超过原账单金额。",
+    "split_status_invalid": "拆账邀请状态不正确。",
+    "bill_split_owner_account_missing": "未找到可发起拆账的 owner 账号。",
     "exchange_rate_pending": "Exchange rate is still pending. Please retry after the backend sync completes.",
     "invalid_token": "登录已失效，请重新绑定设备。",
     "legacy_auth_removed": "旧版访问方式已停用，请重新绑定。",
@@ -19,8 +26,6 @@ ERROR_MESSAGES = {
     "bootstrap_secret_required": "缺少一次性初始化口令。",
     "invalid_bootstrap_secret": "初始化口令无效或已使用。",
     "invalid_pairing_code": "绑定码无效，请重新生成。",
-    "pairing_code_expired": "绑定码已过期，请重新生成。",
-    "pairing_code_used": "绑定码已被使用，请重新生成。",
     "file_too_large": "图片太大，请换一张较小的截图。",
     "unsupported_file_type": "暂不支持这种图片格式。",
     "expense_not_found": "没有找到这笔账单。",

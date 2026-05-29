@@ -44,6 +44,10 @@ def create_split_invite(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> BillSplitSentResponse:
+    # Auth has already materialized AuthContext; release its read transaction so
+    # create_invitation can own the BEGIN IMMEDIATE writer guard for total-cap
+    # checks in shared-DB / multi-worker deployments.
+    db.rollback()
     inv = bsplit.create_invitation(
         db,
         sender_account_id=auth.account_id,

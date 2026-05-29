@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
-from sqlalchemy import exists, select, update
+from dataclasses import dataclass
+from datetime import timedelta
+
+from sqlalchemy import exists, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.errors import AppError
 from app.models import Account, AuthToken, Device, Ledger, UploadLink
 from app.services.admin_service._dtos import DeviceSummary
 from app.services.time_service import now_utc, to_iso
+
+
+@dataclass(frozen=True)
+class DeviceCleanupResult:
+    retention_days: int
+    scanned: int
+    deleted_devices: int
+    deleted_tokens: int
+    deleted_upload_links: int
 
 
 def _device_with_relations(
@@ -300,3 +313,81 @@ def delete_device(
     if not _any_device_dependents_exist(db, device.id, ledger_ids=ledger_ids, outside_scope=True):
         db.delete(device)
     db.commit()
+
+
+def cleanup_revoked_devices(
+    db: Session,
+    *,
+    tenant_id: str,
+    retention_days: int | None = None,
+    batch_size: int = 500,
+) -> DeviceCleanupResult:
+    keep_days = (
+        max(get_settings().device_cleanup_retention_days, 0)
+        if retention_days is None
+        else max(int(retention_days), 0)
+    )
+    cutoff = now_utc() - timedelta(days=keep_days)
+    scoped_token_devices = select(AuthToken.device_id).where(AuthToken.ledger_id == tenant_id)
+    scoped_link_devices = select(UploadLink.device_id).where(UploadLink.ledger_id == tenant_id)
+    active_token = exists().where(AuthToken.device_id == Device.id).where(AuthToken.revoked_at.is_(None))
+    active_link = exists().where(UploadLink.device_id == Device.id).where(UploadLink.revoked_at.is_(None))
+    outside_token = exists().where(AuthToken.device_id == Device.id).where(AuthToken.ledger_id != tenant_id)
+    outside_link = exists().where(UploadLink.device_id == Device.id).where(UploadLink.ledger_id != tenant_id)
+    candidate_ids = list(
+        db.scalars(
+            select(Device.id)
+            .where(Device.revoked_at.is_not(None))
+            .where(Device.revoked_at <= cutoff)
+            .where(
+                or_(
+                    Device.id.in_(scoped_token_devices),
+                    Device.id.in_(scoped_link_devices),
+                )
+            )
+            .where(~active_token)
+            .where(~active_link)
+            .where(~outside_token)
+            .where(~outside_link)
+            .order_by(Device.revoked_at.asc(), Device.id.asc())
+            .limit(max(1, min(int(batch_size), 5000)))
+        )
+    )
+
+    deleted_devices = 0
+    deleted_tokens = 0
+    deleted_upload_links = 0
+    if candidate_ids:
+        # Re-assert eligibility at delete time. A candidate's credentials are
+        # all revoked at scan time, but a concurrent writer could create a fresh
+        # active token/link for that device id between the scan and here; only
+        # purge revoked rows, and only drop the device when nothing references
+        # it any more, so the race can never destroy a live credential.
+        token_result = db.execute(
+            AuthToken.__table__.delete()
+            .where(AuthToken.device_id.in_(candidate_ids))
+            .where(AuthToken.revoked_at.is_not(None))
+        )
+        link_result = db.execute(
+            UploadLink.__table__.delete()
+            .where(UploadLink.device_id.in_(candidate_ids))
+            .where(UploadLink.revoked_at.is_not(None))
+        )
+        device_result = db.execute(
+            Device.__table__.delete()
+            .where(Device.id.in_(candidate_ids))
+            .where(~exists().where(AuthToken.device_id == Device.id))
+            .where(~exists().where(UploadLink.device_id == Device.id))
+        )
+        deleted_tokens = int(token_result.rowcount or 0)
+        deleted_upload_links = int(link_result.rowcount or 0)
+        deleted_devices = int(device_result.rowcount or 0)
+    if deleted_devices or deleted_tokens or deleted_upload_links:
+        db.commit()
+    return DeviceCleanupResult(
+        retention_days=keep_days,
+        scanned=len(candidate_ids),
+        deleted_devices=deleted_devices,
+        deleted_tokens=deleted_tokens,
+        deleted_upload_links=deleted_upload_links,
+    )

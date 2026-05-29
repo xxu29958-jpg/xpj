@@ -19,7 +19,7 @@ from sqlalchemy import select
 
 from app.config import reset_settings_cache
 from app.database import SessionLocal
-from app.models import BudgetAdvisorAuditLog, LedgerMember
+from app.models import BudgetAdvisorAuditLog, BudgetAdvisorQuotaLock, LedgerMember
 from app.services.budget_advisor_service import _providers as providers_module
 from app.services.budget_advisor_service._audit import cleanup_expired_audit_logs
 from app.services.time_service import now_utc
@@ -165,6 +165,7 @@ def test_live_provider_with_owner_confirm_records_audit(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["provider_name"] == "openai_compat"
+    assert body["reason_code"] is None
 
     with SessionLocal() as db:
         rows = (
@@ -182,6 +183,78 @@ def test_live_provider_with_owner_confirm_records_audit(
         # Masked base url keeps the legitimate path; only credentials
         # embedded in the URL are stripped.
         assert row.base_url == "http://127.0.0.1:11434/v1"
+        assert db.get(BudgetAdvisorQuotaLock, "owner") is not None
+
+
+def test_live_provider_parse_failure_returns_reason_and_audits(
+    client: TestClient, *, identity, live_provider_env, monkeypatch
+) -> None:
+    live_provider_env.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "true")
+    reset_settings_cache()
+    _patch_openai_call(
+        monkeypatch,
+        payload={"choices": [{"message": {"content": "not json"}}]},
+    )
+
+    response = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": "2026-05", "timezone": "Asia/Shanghai"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["advice"] is None
+    assert body["reason_code"] == "ai_advisor_response_parse_failed"
+
+    with SessionLocal() as db:
+        row = db.query(BudgetAdvisorAuditLog).one()
+        assert row.success == 0
+        assert row.error_code == "ai_advisor_response_parse_failed"
+
+
+def test_live_provider_invalid_payload_returns_reason_without_500(
+    client: TestClient, *, identity, live_provider_env, monkeypatch
+) -> None:
+    """An outbound payload that violates the schema guard yields a no-advice
+    reason_code (matching the provider path) instead of a raw 500, and does not
+    reserve a live-call budget slot or fire an outbound call."""
+    live_provider_env.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "true")
+    reset_settings_cache()
+
+    from app.errors import DataIntegrityError
+    from app.services.budget_advisor_service import _runner as runner_module
+
+    def reject(_inputs):
+        raise DataIntegrityError(
+            "budget_advisor_outbound: unexpected top-level key(s): leaked"
+        )
+
+    monkeypatch.setattr(runner_module, "to_outbound_dict", reject)
+    calls = {"count": 0}
+
+    def fake_post(self, body):  # noqa: ARG001
+        calls["count"] += 1
+        return {"choices": [{"message": {"content": "{}"}}]}
+
+    monkeypatch.setattr(
+        providers_module.OpenAiCompatBudgetAdvisor,
+        "_post_chat_completion",
+        fake_post,
+    )
+
+    response = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": "2026-05", "timezone": "Asia/Shanghai"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["advice"] is None
+    assert body["reason_code"] == "ai_advisor_payload_invalid"
+    assert calls["count"] == 0
+    with SessionLocal() as db:
+        assert db.query(BudgetAdvisorAuditLog).count() == 0
 
 
 def test_live_provider_min_interval_blocks_repeated_calls(
@@ -219,6 +292,54 @@ def test_live_provider_min_interval_blocks_repeated_calls(
     assert first.status_code == 200, first.text
     assert second.status_code == 429
     assert second.json()["error"] == "ai_advisor_rate_limited"
+    with SessionLocal() as db:
+        assert db.query(BudgetAdvisorAuditLog).count() == 1
+
+
+def test_live_provider_daily_limit_reserves_before_outbound_call(
+    client: TestClient, *, identity, live_provider_env, monkeypatch
+) -> None:
+    live_provider_env.setenv("BUDGET_ADVISOR_OWNER_CONFIRMED", "true")
+    live_provider_env.setenv("BUDGET_ADVISOR_LIVE_MIN_INTERVAL_SECONDS", "0")
+    live_provider_env.setenv("BUDGET_ADVISOR_LIVE_DAILY_CALL_LIMIT", "1")
+    reset_settings_cache()
+    calls = {"count": 0}
+
+    def fake_post(self, body):  # noqa: ARG001
+        calls["count"] += 1
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            '{"summary":"ok","suggestions":[],"confidence":0.5}'
+                        )
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        providers_module.OpenAiCompatBudgetAdvisor,
+        "_post_chat_completion",
+        fake_post,
+    )
+
+    first = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": "2026-05", "timezone": "Asia/Shanghai"},
+    )
+    second = client.post(
+        "/api/budget/advise",
+        headers=identity.app_headers,
+        json={"month": "2026-05", "timezone": "Asia/Shanghai"},
+    )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 429
+    assert second.json()["error"] == "ai_advisor_daily_limit_exceeded"
+    assert calls["count"] == 1
     with SessionLocal() as db:
         assert db.query(BudgetAdvisorAuditLog).count() == 1
 

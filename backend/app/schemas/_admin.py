@@ -17,6 +17,7 @@ __all__ = [
     "DataQualitySummaryResponse",
     "MaintenanceAuditCleanupResponse",
     "MaintenanceCleanupResponse",
+    "MaintenanceDeviceCleanupResponse",
     "MaintenanceOrphanCleanupResponse",
     "ServerSettingsResponse",
     "UserUiPreferencesResponse",
@@ -58,6 +59,14 @@ class MaintenanceOrphanCleanupResponse(BaseModel):
 class MaintenanceAuditCleanupResponse(BaseModel):
     deleted_rows: int
     batch_size: int
+
+
+class MaintenanceDeviceCleanupResponse(BaseModel):
+    retention_days: int
+    scanned: int
+    deleted_devices: int
+    deleted_tokens: int
+    deleted_upload_links: int
 
 
 class LearningTableSnapshotResponse(BaseModel):

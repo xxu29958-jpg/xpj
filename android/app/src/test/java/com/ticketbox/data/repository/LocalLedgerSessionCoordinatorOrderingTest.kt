@@ -21,18 +21,14 @@ import kotlin.test.assertTrue
  * change, resolve ``apiProvider()`` to the new ApiService, and
  * send the OLD row under the NEW session.
  *
- * These tests pin the contract: ``outbox.clearAll`` runs FIRST in
- * both session-change paths ([LocalLedgerSessionCoordinator.applyTransition]
- * with a non-None cacheInvalidation, and [ExpenseRepositoryCore.clearBinding]).
- *
- * Mechanism: a custom ``onClearAll`` callback snapshots the
- * credential state at the moment clearAll fires. If clearAll runs
- * before credentials change, the snapshot still holds OLD values.
+ * These tests pin the contract: session changes run inside
+ * [OutboxRepository.withBindingTransition], which blocks dispatch and
+ * enqueue while credentials are mutating.
  */
 class LocalLedgerSessionCoordinatorOrderingTest {
 
     @Test
-    fun targetLedgerTransition_clearsOutboxBeforeCredentialChange() = runTest {
+    fun targetLedgerTransitionRunsInsideOutboxBindingBoundary() = runTest {
         val dao = FakePendingMutationDao()
         val settings = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://old.example.com")
@@ -48,21 +44,17 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         val tokens = FakeSessionTokenStore().apply { saveToken("old-token") }
         val expenseDao = FakeExpenseDao()
 
-        var serverUrlAtClearAll: String? = null
-        var tokenAtClearAll: String? = null
+        var serverUrlAtBoundary: String? = null
+        var tokenAtBoundary: String? = null
         val outbox = OutboxRepository(
             dao = dao,
             onClearAll = {
-                // Captured the moment clearAll fires. If the
-                // ordering invariant holds, both still point at the
-                // OLD session.
-                serverUrlAtClearAll = settings.serverUrl()
-                tokenAtClearAll = tokens.getToken()
+                serverUrlAtBoundary = settings.serverUrl()
+                tokenAtBoundary = tokens.getToken()
             },
         )
-        // Seed an outbox row so the clearAll actually has work and
-        // we can be sure onClearAll fires (epoch always bumps, but
-        // having a row also exercises the DAO clear).
+        // Seed an outbox row so the binding-scoped queue preservation
+        // path is exercised.
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
@@ -91,37 +83,29 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             cacheInvalidation = LedgerCacheInvalidation.TargetLedger,
         )
 
-        assertNotNull(serverUrlAtClearAll, "onClearAll must have fired")
-        assertEquals(
-            "https://old.example.com",
-            serverUrlAtClearAll,
-            "clearAll must run BEFORE serverUrl is rewritten — otherwise an in-flight drain that passed the epoch check sees NEW credentials with OLD row",
-        )
-        assertEquals(
-            "old-token",
-            tokenAtClearAll,
-            "clearAll must run BEFORE the session token is rotated",
-        )
-        // Final state: credentials were rewritten after clearAll.
+        assertNotNull(serverUrlAtBoundary, "onClearAll must have fired")
         assertEquals("https://new.example.com", settings.serverUrl())
         assertEquals("new-token", tokens.getToken())
-        // Outbox actually got wiped.
-        assertEquals(0, dao.rows.size)
+        assertEquals("https://new.example.com", serverUrlAtBoundary)
+        assertEquals("new-token", tokenAtBoundary)
+        // Binding-scoped outbox rows are preserved; the new binding
+        // cannot drain them because repository queries now filter by
+        // serverUrl + ledgerId.
+        assertEquals(1, dao.rows.size)
     }
 
     @Test
-    fun allLedgersTransition_clearsOutboxBeforeCredentialChange() = runTest {
-        // Same invariant on the AllLedgers branch.
+    fun allLedgersTransitionRunsInsideOutboxBindingBoundary() = runTest {
         val dao = FakePendingMutationDao()
         val settings = FakeTicketboxSettingsStore().apply {
             saveServerUrl("https://old.example.com")
         }
         val tokens = FakeSessionTokenStore().apply { saveToken("old-token") }
 
-        var serverUrlAtClearAll: String? = null
+        var serverUrlAtBoundary: String? = null
         val outbox = OutboxRepository(
             dao = dao,
-            onClearAll = { serverUrlAtClearAll = settings.serverUrl() },
+            onClearAll = { serverUrlAtBoundary = settings.serverUrl() },
         )
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
@@ -151,7 +135,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             cacheInvalidation = LedgerCacheInvalidation.AllLedgers,
         )
 
-        assertEquals("https://old.example.com", serverUrlAtClearAll)
+        assertEquals("https://new.example.com", serverUrlAtBoundary)
     }
 
     @Test
@@ -193,8 +177,8 @@ class LocalLedgerSessionCoordinatorOrderingTest {
                 tokenAtDispatchTime = tokens.getToken()
                 dispatchStarted.complete(Unit)
                 // Hold the lease here. While we wait, applyTransition
-                // will try clearAll → wait for lease → block credential
-                // writes.
+                // will try the binding transition, wait for the lease,
+                // and block credential writes.
                 dispatchCanProceed.await()
                 return DispatchResult.Success()
             }
@@ -213,9 +197,9 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         // Wait until drain has entered dispatch (lease held).
         dispatchStarted.await()
 
-        // Launch the transition concurrently. clearAll() will try
-        // to acquire the lease and block; the credential writes
-        // following clearAll won't run until the lease releases.
+        // Launch the transition concurrently. The binding transition
+        // will try to acquire the lease and block; credential writes
+        // won't run until the lease releases.
         val transitionJob = launch {
             coordinator.applyTransition(
                 identity = LedgerSessionIdentity(

@@ -87,6 +87,19 @@ def _command_value(stripped_line: str, key: str) -> str:
     return stripped.removeprefix(key).strip()
 
 
+def _false_if_block_parent_indent(line: str) -> int | None:
+    stripped = line.lstrip()
+    if stripped.startswith("- "):
+        stripped = stripped[2:].lstrip()
+    if not stripped.startswith("if:"):
+        return None
+    value = stripped.removeprefix("if:").strip().strip("'\"")
+    normalized = re.sub(r"\s+", " ", value).lower()
+    if normalized in {"false", "${{ false }}", "${{false}}"}:
+        return max(0, _line_indent(line) - 2)
+    return None
+
+
 def _read_yaml_command_block(
     lines: list[str], *, start_index: int, parent_indent: int
 ) -> tuple[str, int]:
@@ -106,15 +119,26 @@ def _iter_workflow_run_commands(workflow_dir: pathlib.Path) -> list[WorkflowComm
     for path in sorted(workflow_dir.glob("*.yml")):
         lines = path.read_text(encoding="utf-8").splitlines()
         index = 0
+        disabled_parent_indents: list[int] = []
         while index < len(lines):
             line = lines[index]
+            indent = _line_indent(line)
+            while disabled_parent_indents and indent <= disabled_parent_indents[-1]:
+                disabled_parent_indents.pop()
+            disabled_parent_indent = _false_if_block_parent_indent(line)
+            if disabled_parent_indent is not None:
+                disabled_parent_indents.append(disabled_parent_indent)
+                index += 1
+                continue
             stripped = line.lstrip()
             key = _command_key(stripped)
             if key is None:
                 index += 1
                 continue
+            if disabled_parent_indents:
+                index += 1
+                continue
 
-            indent = _line_indent(line)
             value = _command_value(stripped, key)
             if value in {"|", ">"}:
                 text, index = _read_yaml_command_block(

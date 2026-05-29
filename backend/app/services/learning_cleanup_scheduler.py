@@ -26,8 +26,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.learning_service import run_full_maintenance
+from app.services.scheduler_lease_service import try_claim_scheduler_lease
 
 logger = logging.getLogger(__name__)
+_SCHEDULER_LEASE_SECONDS = 60 * 60
 
 
 @dataclass
@@ -94,6 +96,14 @@ def _scheduler_loop(
             return
         _status.last_attempt_at = datetime.now(timezone)
         try:
+            with SessionLocal() as db:
+                if not try_claim_scheduler_lease(
+                    db,
+                    name="learning_cleanup",
+                    lease_seconds=_SCHEDULER_LEASE_SECONDS,
+                ):
+                    logger.info("learning cleanup skipped: scheduler lease is held")
+                    continue
             with SessionLocal() as db:
                 result = run_full_maintenance(db)
             _status.success_count += 1

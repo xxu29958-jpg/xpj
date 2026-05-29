@@ -323,7 +323,7 @@ def _attempt_csv_import_apply(
         tenant_id=tenant_id,
         batch_id=batch.id,
         stale_before=now_utc()
-        - timedelta(minutes=get_settings().csv_import_apply_lease_minutes),
+        - timedelta(minutes=get_settings().csv_import_row_apply_lease_minutes),
     )
     claimed_row_ids.extend(
         _claim_csv_import_rows(

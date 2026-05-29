@@ -67,14 +67,20 @@ def _migrate_upload_links(connection) -> None:
         )
     from app.config import get_settings
 
-    ttl_days = max(get_settings().upload_link_ttl_days, 1)
+    settings = get_settings()
+    ttl_days = max(settings.upload_link_ttl_days, 1)
+    spread_days = max(settings.upload_link_legacy_expiry_spread_days, 1)
     connection.execute(
         text(
             "UPDATE upload_links "
-            "SET expires_at = datetime('now', '+' || :ttl_days || ' days') "
+            "SET expires_at = datetime("
+            "'now', "
+            "'+' || :ttl_days || ' days', "
+            "'+' || (ABS(id) % :spread_days) || ' days'"
+            ") "
             "WHERE expires_at IS NULL"
         ),
-        {"ttl_days": ttl_days},
+        {"ttl_days": ttl_days, "spread_days": spread_days},
     )
     connection.execute(text(
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_upload_links_public_id "

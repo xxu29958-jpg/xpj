@@ -39,10 +39,14 @@ def get_current_admin_context(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> AuthContext:
+    from app.services import permission_service
+
     token = _bearer_token(authorization)
     if is_legacy_app_token(token):
         _raise_legacy_app_removed()
-    return authenticate_session_token(db, token, {"admin"})
+    auth = authenticate_session_token(db, token, {"app", "admin"})
+    permission_service.require_admin_maintenance(auth)
+    return auth
 
 
 def get_current_owner_or_admin_context(

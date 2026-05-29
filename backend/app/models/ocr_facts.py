@@ -25,9 +25,11 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -37,6 +39,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.services.time_service import now_utc
+
+OCR_PROVIDER_VALUES = (
+    "empty",
+    "mock",
+    "rapidocr",
+    "local_llm",
+    "manual_text",
+    "legacy_expense_column",
+)
 
 
 class OcrFact(Base):
@@ -51,6 +62,22 @@ class OcrFact(Base):
 
     __tablename__ = "ocr_facts"
     __table_args__ = (
+        CheckConstraint(
+            "ocr_provider IN ("
+            "'empty', 'mock', 'rapidocr', 'local_llm', "
+            "'manual_text', 'legacy_expense_column'"
+            ")",
+            name="ck_ocr_facts_provider_valid",
+        ),
+        # Composite FK so a fact can only ever pin to an expense in the SAME
+        # ledger. expenses carries UNIQUE(id, tenant_id) precisely so children
+        # like this (and expense_items) can enforce tenant scope at the DB
+        # layer instead of trusting every writer to check it.
+        ForeignKeyConstraint(
+            ["expense_id", "tenant_id"],
+            ["expenses.id", "expenses.tenant_id"],
+            name="fk_ocr_facts_expense_tenant",
+        ),
         Index("ix_ocr_facts_tenant_expense", "tenant_id", "expense_id"),
         Index(
             "ix_ocr_facts_tenant_provider_extracted",
@@ -74,9 +101,11 @@ class OcrFact(Base):
         nullable=False,
         index=True,
     )
+    # Referential integrity is enforced by the composite
+    # fk_ocr_facts_expense_tenant constraint above (expense_id + tenant_id);
+    # the column stays indexed for the per-expense lookups.
     expense_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("expenses.id", name="fk_ocr_facts_expense"),
         nullable=False,
         index=True,
     )

@@ -60,7 +60,7 @@ ALLOWLIST: dict[str, str] = {
     "POST /api/imports/csv": "create — new csv_import_batch row",
     "POST /api/income-plans": "create — new income-plan row",
     "POST /api/invitations/preview": "preview — read-only computation",
-    "POST /api/invitations/accept": "accept invite — pre-bind identity flip, no row mutate",
+    "POST /api/invitations/accept": "session-level accept invite - pre-bind identity flip, no versioned row mutate",
     "POST /api/ledgers": "create — new ledger row",
     "POST /api/ledgers/{ledger_id}/invitations": "create — new invitation row",
     "POST /api/merchants/aliases": "create — new alias row",
@@ -69,8 +69,7 @@ ALLOWLIST: dict[str, str] = {
     "POST /u/{upload_key}": "public upload — create new expense",
 
     # --- /api admin devices / upload-links (account-scoped admin).
-    # Owner-only, single-writer in practice.
-    "POST /api/admin/devices/{public_id}/rename": "owner-only — single-writer rename",
+    "POST /api/admin/devices/{public_id}/rename": "owner-only — device rename under admin API",
     "POST /api/admin/devices/{public_id}/revoke": "owner-only — terminal revoke",
     "POST /api/admin/upload-links": "owner-only — create new upload-link",
     "POST /api/admin/upload-links/{public_id}/revoke": "owner-only — terminal revoke",
@@ -99,6 +98,7 @@ ALLOWLIST: dict[str, str] = {
     "POST /api/imports/csv/{public_id}/apply": "batch apply — owns its preview_token contract",
     "POST /api/ledgers/{ledger_id}/switch": "session-level ledger switch — no row mutate",
     "POST /api/maintenance/cleanup-ai-advisor-audit": "batch cleanup",
+    "POST /api/maintenance/cleanup-devices": "batch cleanup - admin maintenance scoped to authenticated tenant",
     "POST /api/maintenance/cleanup-images": "batch cleanup",
     "POST /api/maintenance/cleanup-learning": "batch cleanup",
     "POST /api/maintenance/cleanup-orphans": "batch cleanup",
@@ -111,19 +111,18 @@ ALLOWLIST: dict[str, str] = {
     "POST /api/rules/preview": "preview — read-only computation",
 
     # --- /api governance (members / invitations / rate-edits).
-    # Owner / member governance is owner-console-only single-writer
-    # in practice. Promote to per-row token once the owner-console
-    # gets a second writer; today the contention isn't real.
+    # Permission-gated governance actions. Promote non-terminal edits to
+    # per-row tokens if these become high-frequency multi-admin workflows.
     "POST /api/ledgers/{ledger_id}/invitations/{public_id}/revoke":
-        "owner-console-only — terminal flag",
+        "permission-gated governance — terminal flag",
     "POST /api/ledgers/{ledger_id}/members/{member_id}/disable":
-        "owner-console-only — terminal flag",
+        "permission-gated governance — terminal flag",
     "POST /api/ledgers/{ledger_id}/members/{member_id}/role":
-        "owner-console-only — role assignment",
+        "permission-gated governance — role assignment",
     "POST /api/ledgers/{ledger_id}/members/{member_id}/transfer-owner":
-        "owner-console-only — terminal",
+        "permission-gated governance — terminal owner transfer",
     "PUT /api/exchange-rates/{currency_code}/{rate_date}":
-        "owner-console-only — manual rate edit",
+        "permission-gated governance — manual rate edit",
 
     # --- /api upsert / replace-all / lifecycle surfaces (account-
     # level prefs, monthly-key budgets, dashboard layout, archive).
@@ -144,7 +143,7 @@ ALLOWLIST: dict[str, str] = {
     # is detected as TOKEN by this audit — those entries don't appear
     # here. What appears here are the create / batch / terminal flows
     # that don't gate on a specific row's version.
-    "POST /web/budgets/save": "owner-console-only — single-writer monthly budget",
+    "POST /web/budgets/save": "upsert by (tenant, month) — monthly budget bucket",
     "POST /web/budget-advise": "advisor — read-with-LLM, no row mutate",
     "POST /web/bill-splits/{public_id}/accept": "terminal state",
     "POST /web/bill-splits/{public_id}/cancel": "terminal state",
@@ -156,7 +155,7 @@ ALLOWLIST: dict[str, str] = {
     # a token carrier by ``_schema_carries_token``. Putting it here
     # would silently mask a regression if the token field were removed.
     "POST /web/dashboard/cards/reset": "reset dashboard — terminal default",
-    "POST /web/dashboard/cards/save": "save dashboard layout — single writer",
+    "POST /web/dashboard/cards/save": "replace-all layout by (tenant, surface)",
     "POST /web/expenses/{expense_id}/split-invite": "create — new bill_split_invitation row",
     "POST /web/goals/create": "create — new savings-goal row",
     "POST /web/goals/{public_id}/archive": "archive — terminal flag flip",

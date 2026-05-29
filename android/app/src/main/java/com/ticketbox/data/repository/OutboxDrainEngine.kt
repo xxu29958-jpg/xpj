@@ -49,9 +49,14 @@ class OutboxDrainEngine(
      * [codex round-2 P1#2] companion.
      */
     suspend fun drainOnce(): DrainSummary {
+        // v9 → v10 one-time backfill: adopt any rows the schema migration left
+        // with an empty binding into the current one before the binding-scoped
+        // reads run, so pre-upgrade offline edits aren't stranded. No-op once
+        // adopted / while unbound.
+        outbox.adoptLegacyRowsForCurrentBinding()
         outbox.recoverStaleInFlight()
-        // [codex round-9 P1] session-boundary epoch — capture the
-        // counter BEFORE dequeue. A clearAll() between this snapshot
+        // [codex round-9 P1] session-boundary epoch: capture the
+        // counter BEFORE dequeue. A binding transition between this snapshot
         // and the dispatch loop will bump the counter; the post-claim
         // check below will see it and abort the rest of the batch
         // before any in-memory row is sent under the new session.
@@ -91,14 +96,13 @@ class OutboxDrainEngine(
             }
             // [codex round-10 P1] Hold the dispatch lease across
             // BOTH the epoch check AND the dispatcher.dispatch(row)
-            // call. Without the lease, a clearAll() that fires
+            // call. Without the lease, a binding transition that fires
             // AFTER the epoch check but BEFORE dispatch resolves
             // apiProvider() / OkHttp reads the token would let the
             // old row be sent under the NEW session. With the
             // lease:
-            //   - clearAll() blocks until our dispatch returns,
-            //   - credentials writes happen AFTER clearAll()
-            //     (round-10 ordering in coordinator + clearBinding),
+            //   - the binding transition blocks until our dispatch returns,
+            //   - credentials writes happen inside that locked transition,
             //   - so dispatcher.dispatch(row) always sees the
             //     credentials it was queued under.
             //
@@ -109,14 +113,13 @@ class OutboxDrainEngine(
             // counters the dispatch result handlers updated.
             val signalAbort = outbox.withDispatchLease {
                 // [codex round-9 P1] post-claim epoch check.
-                // clearAll() bumps the epoch BEFORE wiping the DAO;
+                // Binding transition bumps the epoch before credentials
+                // change;
                 // if the epoch changed between our snapshot and the
-                // moment we acquired the lease, the row's DAO entry
-                // has been deleted and dispatching it would send an
-                // orphan under whatever session the user just
-                // bound. Abort the rest of the batch — every
-                // sibling was queued under the now-discarded
-                // session.
+                // moment we acquired the lease, the row was loaded under
+                // a stale binding and must not dispatch under whatever
+                // session the user just bound. Abort the rest of the
+                // batch.
                 if (outbox.currentSessionEpoch() != capturedEpoch) {
                     return@withDispatchLease true
                 }
@@ -224,10 +227,9 @@ data class DrainSummary(
     val raced: Int = 0,
     /**
      * [codex round-9 P1] rows in the batch that were skipped
-     * because a session boundary ([OutboxRepository.clearAll]) fired
-     * mid-drain. Their DAO entries were already deleted by clearAll;
-     * the in-memory copies would have been dispatched under the
-     * wrong session, so the drain aborted the remaining batch.
+     * because a session boundary ([OutboxRepository.withBindingTransition])
+     * fired mid-drain. The in-memory copies were loaded under the
+     * old binding, so the drain aborted the remaining batch.
      */
     val aborted: Int = 0,
 ) {

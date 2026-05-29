@@ -39,9 +39,10 @@ class BackgroundTask(Base):
 
     ``queued`` -> ``running`` -> ``completed`` | ``failed`` | ``cancelled``
 
-    Orphan recovery: on startup, any task with ``status='running'`` whose
-    ``last_progress_at`` is more than 5 minutes stale is force-failed,
-    since the process that owned it must have died.
+    Orphan recovery: on startup, active rows are force-failed by default
+    because the in-process executor that owned them died with the old process.
+    Cloud / multi-worker deployments can configure a grace window for fresh
+    heartbeating rows; every runner still has to atomically claim ``queued``.
     """
 
     __tablename__ = "background_tasks"

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.services.category_common import category_filter_values
 from app.services.learning_service._budget_quantile import (
     compute_budget_quantile_suggestion,
 )
@@ -163,7 +164,12 @@ def compose_budget_explanation(
         year_month=year_month,
         timezone_name=timezone_name,
     )
-    actual = sum(amount for cat, amount in rows if cat == category)
+    # Aggregate the canonical category together with its legacy aliases (e.g.
+    # '餐饮' folds in legacy '吃饭') so both the actual spend and the trailing
+    # baseline cover the same set the category breakdown rolls up under — a
+    # caller passing any alias of the group gets the whole group's history.
+    category_values = category_filter_values(category)
+    actual = sum(amount for cat, amount in rows if cat in category_values)
 
     # Anchor the quantile lookback at the start of THIS month so the
     # month we're explaining doesn't pollute its own baseline.
@@ -172,6 +178,7 @@ def compose_budget_explanation(
         db,
         tenant_id=tenant_id,
         category=category,
+        categories=category_values,
         now=anchor_start,
         min_months=3,
         timezone_name=timezone_name,

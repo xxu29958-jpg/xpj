@@ -168,8 +168,6 @@ def web_whoami(
 
 _ERROR_MESSAGES = {
     "invalid_pairing_code": "绑定码不正确，请重新输入 8 位数字。",
-    "pairing_code_used": "绑定码已被使用，请向账本所有者索取新的绑定码。",
-    "pairing_code_expired": "绑定码已过期，请向账本所有者索取新的绑定码。",
     "invalid_token": "登录已失效，请重新输入绑定码。",
     "rate_limited": "请求过于频繁，请稍后再试。",
 }

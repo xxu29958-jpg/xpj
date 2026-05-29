@@ -42,9 +42,9 @@ def pair_device(
     if pairing is None:
         _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     if pairing.used_at is not None:
-        _reject_pairing(db, remote_id, "pairing_code_used", 409)
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
     if (ensure_utc(pairing.expires_at) or pairing.expires_at) <= now_utc():
-        _reject_pairing(db, remote_id, "pairing_code_expired", 410)
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
 
     ledger = _ledger_by_id(db, pairing.ledger_id)
     if ledger is None or ledger.archived_at is not None:
@@ -59,9 +59,7 @@ def pair_device(
     consume_result = consume_pairing_code(db, pairing_id=pairing.id, used_at=used_at)
     if consume_result != "consumed":
         db.rollback()
-        if consume_result == "used":
-            _reject_pairing(db, remote_id, "pairing_code_used", 409)
-        _reject_pairing(db, remote_id, "pairing_code_expired", 410)
+        _reject_pairing(db, remote_id, "invalid_pairing_code", 401)
 
     device = _create_device(db, account.id, device_name, platform)
     # Web cookie sessions stay capped at WEB_SESSION_TTL_SECONDS (existing
@@ -125,7 +123,7 @@ def _revoke_same_platform_app_tokens(
         .where(AuthToken.scope == "app")
         .where(AuthToken.revoked_at.is_(None))
         .where(AuthToken.device_id.in_(device_ids))
-        .values(revoked_at=revoked_at)
+        .values(revoked_at=revoked_at, grace_until=None)
         .execution_options(synchronize_session=False)
     )
     return int(result.rowcount or 0)

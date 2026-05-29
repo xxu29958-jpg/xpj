@@ -9,8 +9,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.fx_rate_provider import refresh_ecb_fx_rates
+from app.services.scheduler_lease_service import try_claim_scheduler_lease
 
 logger = logging.getLogger(__name__)
+_SCHEDULER_LEASE_SECONDS = 10 * 60
 
 
 @dataclass
@@ -89,6 +91,14 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
         if stop_event.wait(delay_seconds):
             return
         try:
+            with SessionLocal() as db:
+                if not try_claim_scheduler_lease(
+                    db,
+                    name="fx_rate_sync",
+                    lease_seconds=_SCHEDULER_LEASE_SECONDS,
+                ):
+                    logger.info("ECB FX sync skipped: scheduler lease is held")
+                    continue
             with SessionLocal() as db:
                 rows = refresh_ecb_fx_rates(db)
             _status.success_count += 1

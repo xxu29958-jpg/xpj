@@ -142,6 +142,31 @@ def test_budget_explanation_no_history(*, identity) -> None:
         assert explanation.p75_cents is None
 
 
+def test_budget_explanation_aggregates_legacy_category_alias(*, identity) -> None:
+    """'吃饭' is a legacy alias of '餐饮'; actual + baseline must fold both so a
+    tenant with un-normalized legacy rows still gets one coherent explanation."""
+    # Trailing baseline split across the canonical name and its legacy alias.
+    for month, (cat, amount) in enumerate(
+        [("餐饮", 1000), ("吃饭", 2000), ("餐饮", 3000), ("吃饭", 4000), ("餐饮", 5000)],
+        start=1,
+    ):
+        _seed(
+            category=cat,
+            amount_cents=amount,
+            confirmed=datetime(2026, month, 10, tzinfo=UTC),
+        )
+    # Current-month spend recorded under the legacy alias only.
+    _seed(category="吃饭", amount_cents=3500, confirmed=datetime(2026, 6, 5, tzinfo=UTC))
+
+    with SessionLocal() as db:
+        explanation = compose_budget_explanation(
+            db, tenant_id="owner", category="餐饮", year_month="2026-06"
+        )
+    # Exact-match would report 0 here; alias aggregation counts the 吃饭 spend.
+    assert explanation.actual_cents == 3500
+    assert explanation.p75_cents is not None
+
+
 def test_monthly_report_tenant_isolation(*, identity) -> None:
     _seed(tenant_id="owner", amount_cents=5000, confirmed=datetime(2026, 5, 5, tzinfo=UTC))
     with SessionLocal() as db:

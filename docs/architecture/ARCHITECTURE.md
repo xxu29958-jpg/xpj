@@ -233,8 +233,6 @@ invalid_token
 legacy_auth_removed
 bootstrap_already_initialized
 invalid_pairing_code
-pairing_code_expired
-pairing_code_used
 file_too_large
 unsupported_file_type
 expense_not_found

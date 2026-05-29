@@ -18,6 +18,7 @@ import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.LocalLedgerSessionCoordinator
 import com.ticketbox.data.repository.MerchantRepository
 import com.ticketbox.data.repository.OutboxDrainEngine
+import com.ticketbox.data.repository.OutboxBinding
 import com.ticketbox.data.repository.OutboxMutationDispatcher
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxScheduler
@@ -29,6 +30,7 @@ import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.security.SecureTokenStore
+import kotlinx.coroutines.flow.map
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
@@ -70,17 +72,35 @@ class AppContainer(context: Context) {
     private val categoryRuleDeleteAdapter = outboxMoshi.adapter(CategoryRuleDeleteRequest::class.java)
     private val merchantAliasDeleteAdapter = outboxMoshi.adapter(MerchantAliasDeleteRequest::class.java)
 
+    val outboxScheduler = OutboxScheduler()
+
     val outboxRepository = OutboxRepository(
         dao = database.pendingMutationDao(),
+        bindingProvider = {
+            OutboxBinding(
+                serverUrl = settingsStore.serverUrl().orEmpty(),
+                ledgerId = settingsStore.activeLedgerId().orEmpty(),
+            )
+        },
+        // Reactive binding for the live status streams: re-read the binding
+        // whenever the active ledger changes so the queue-depth pill / banners
+        // follow a ledger switch instead of staying pinned to the first
+        // binding observed. (Server rebind without a ledger change is rare and
+        // goes through sign-out, which clears the queue anyway.)
+        bindingChanges = settingsStore.observeActiveLedgerId().map { ledgerId ->
+            OutboxBinding(
+                serverUrl = settingsStore.serverUrl().orEmpty(),
+                ledgerId = ledgerId.orEmpty(),
+            )
+        },
         // PR-2g.3: an enqueue immediately fires a one-time drain so
         // the user doesn't wait up to 15 min for the periodic tick.
         // OutboxScheduler.enqueueOnce uses KEEP policy → a burst of
         // 20 enqueues collapses into one drain pass.
-        onEnqueued = { OutboxScheduler.enqueueOnce(appContext) },
-        // PR-2g.3 round-8 P1: when the queue is wiped by a session
-        // boundary (clearBinding / ledger switch), cancel any
-        // in-flight or scheduled workers so they don't try to drain
-        // a row that no longer exists.
+        onEnqueued = { outboxScheduler.enqueueOnce(appContext) },
+        // Session-boundary pause: cancel any in-flight or scheduled
+        // workers so they do not keep draining rows from the old
+        // binding after credentials change.
         //
         // PR-2g.3 round-9 P2: cancel ALSO drops the periodic worker.
         // Without immediately re-arming, the next 15-min heartbeat
@@ -91,8 +111,8 @@ class AppContainer(context: Context) {
         // Re-arm right here so the periodic tick survives the
         // session boundary.
         onClearAll = {
-            OutboxScheduler.cancel(appContext)
-            OutboxScheduler.ensurePeriodic(appContext)
+            outboxScheduler.cancel(appContext)
+            outboxScheduler.ensurePeriodic(appContext)
         },
     )
 

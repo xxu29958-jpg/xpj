@@ -41,7 +41,30 @@ def test_active_split_invitation_total_cannot_exceed_parent_expense(
         json={"receiver_account_id": receiver_b, "amount_cents": 2500},
     )
     assert second.status_code == 422
-    assert second.json()["error"] == "invalid_request"
+    assert second.json()["error"] == "split_total_exceeds_parent"
+
+
+def test_create_invitation_requires_own_transaction_for_total_guard() -> None:
+    expense_id = _make_expense_for_owner(amount_cents=5000)
+    receiver_account_id = _seed_receiver(
+        name="B-guard",
+        ledger_id="receiver_guard",
+    )
+    sender_account_id = _owner_account_id()
+
+    with SessionLocal() as db, pytest.raises(AppError) as exc_info:
+        db.scalar(select(Expense.id).limit(1))
+        bsplit.create_invitation(
+            db,
+            sender_account_id=sender_account_id,
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_account_id,
+            amount_cents=2500,
+        )
+
+    assert exc_info.value.error == "state_conflict"
+    assert exc_info.value.status_code == 409
 
 
 def test_reaccept_with_different_target_ledger_is_conflict() -> None:

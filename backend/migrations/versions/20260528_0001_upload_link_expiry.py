@@ -28,6 +28,13 @@ def _upload_link_ttl_days() -> int:
         return 90
 
 
+def _legacy_expiry_spread_days() -> int:
+    try:
+        return max(1, int(os.getenv("UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS", "30")))
+    except ValueError:
+        return 30
+
+
 def _has_table(bind, table_name: str) -> bool:
     return sa.inspect(bind).has_table(table_name)
 
@@ -52,10 +59,17 @@ def upgrade() -> None:
     bind.execute(
         sa.text(
             "UPDATE upload_links "
-            "SET expires_at = datetime('now', '+' || :ttl_days || ' days') "
+            "SET expires_at = datetime("
+            "'now', "
+            "'+' || :ttl_days || ' days', "
+            "'+' || (ABS(id) % :spread_days) || ' days'"
+            ") "
             "WHERE expires_at IS NULL"
         ),
-        {"ttl_days": _upload_link_ttl_days()},
+        {
+            "ttl_days": _upload_link_ttl_days(),
+            "spread_days": _legacy_expiry_spread_days(),
+        },
     )
     if not _has_index(bind, "upload_links", INDEX_NAME):
         op.create_index(INDEX_NAME, "upload_links", ["expires_at"])

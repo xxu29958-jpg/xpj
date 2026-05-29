@@ -23,6 +23,7 @@ from app.services.app_meta_service import (
     _version_tuple,
 )
 from app.services.time_service import now_utc
+from app.version import BACKEND_VERSION
 from tests._infra.db import reset_db_state
 
 
@@ -39,12 +40,11 @@ def _fresh_db():
 def _inline_handlers():
     """Run background tasks synchronously; clean registry between tests."""
     os.environ["XPJ_BACKGROUND_TASK_INLINE"] = "1"
-    saved = bgtasks.replace_registered_handlers_for_testing()
     try:
-        yield
+        with bgtasks.isolated_registered_handlers_for_testing():
+            yield
     finally:
         os.environ.pop("XPJ_BACKGROUND_TASK_INLINE", None)
-        bgtasks.replace_registered_handlers_for_testing(saved)
 
 
 # --- version_tuple --------------------------------------------------------
@@ -58,10 +58,16 @@ def test_version_tuple_compare_zero_nine_lt_one_oh() -> None:
 # --- schema_version defaults ----------------------------------------------
 
 
-def test_default_schema_version_is_zero_nine() -> None:
+def _stamp_legacy_schema() -> None:
     with SessionLocal() as db:
-        assert app_meta_service.schema_version(db) == V09_DEFAULT_VERSION
-        assert app_meta_service.schema_min_compatible(db) == V09_DEFAULT_VERSION
+        app_meta_service.set_value(db, "schema_version", V09_DEFAULT_VERSION)
+        app_meta_service.set_value(db, "schema_min_compatible", V09_DEFAULT_VERSION)
+
+
+def test_fresh_schema_version_is_seeded_to_backend_version() -> None:
+    with SessionLocal() as db:
+        assert app_meta_service.schema_version(db) == BACKEND_VERSION
+        assert app_meta_service.schema_min_compatible(db) == BACKEND_VERSION
 
 
 # --- binary compatibility gate --------------------------------------------
@@ -102,6 +108,7 @@ def test_v1_migration_handler_refuses_pre_v1_binary(
     production; patch it back to 0.9.x to keep exercising the refuse path."""
     monkeypatch.setattr(v1_migration_service, "BACKEND_VERSION", "0.9.0a1")
     v1_migration_service.register()
+    _stamp_legacy_schema()
     with SessionLocal() as db:
         task = bgtasks.enqueue(
             db,
@@ -123,6 +130,7 @@ def test_v1_migration_handler_refuses_pre_v1_binary(
 
 
 def test_v1_migration_handler_observes_cancellation_before_backup() -> None:
+    _stamp_legacy_schema()
     with SessionLocal() as db:
         task = BackgroundTask(
             task_type=v1_migration_service.V1_MIGRATION_TASK_TYPE,
@@ -142,6 +150,7 @@ def test_v1_migration_handler_observes_cancellation_before_backup() -> None:
 def test_v1_migration_handler_observes_cancellation_before_final_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _stamp_legacy_schema()
     monkeypatch.setattr(
         v1_migration_service.backup_service,
         "create_pre_v1_backup",
@@ -195,6 +204,7 @@ def test_mark_v1_cut_over_completed_writes_all_keys() -> None:
 def test_mark_v1_cut_over_completed_rolls_back_partial_update(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _stamp_legacy_schema()
     original = app_meta_service._set_value_in_transaction
     calls = 0
 

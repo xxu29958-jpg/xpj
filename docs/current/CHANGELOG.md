@@ -1,5 +1,73 @@
 # Changelog
 
+## Upgrade Notes
+
+- AI budget-advisor live provider payload is now explicitly limited to
+  month/home-currency, category aggregates, and historical category baselines.
+  Merchant/member aliases, income plans, and fixed expenses are kept out of the
+  outbound provider envelope unless a future ADR/code/test change widens it.
+  `BUDGET_ADVISOR_API_KEY` is also no longer trimmed during config loading:
+  leading/trailing spaces or embedded whitespace are rejected as invalid config
+  instead of being silently corrected.
+  Existing ledger categories are normalized to the default category catalog
+  before provider calls, and the outbound guard rejects any programmatic
+  advisor payload whose category is outside `DEFAULT_CATEGORIES`.
+
+- `release_audit.py` now includes explicit cloud/multi-instance hardening
+  gates for advisor quota reservation, UploadLink quota/legacy expiry spread,
+  scheduler leases, auth-token rotation grace, OCR/CSV scaling contracts,
+  perceptual duplicate detection, structured tag relations, Android outbox
+  invariants, fresh schema metadata, advisor provider config validation,
+  bill-split total-cap serialization, advisor failure reason codes, and
+  thumbnail cleanup rollback.
+
+- Legacy UploadLink rows with missing `expires_at` are now backfilled to
+  `UPLOAD_LINK_TTL_DAYS + (id % UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS)`.
+  The default spread is 30 days, so old links do not all expire on the same
+  day after a cloud or multi-user upgrade. Operators can raise
+  `UPLOAD_LINK_LEGACY_EXPIRY_SPREAD_DAYS` before migration for a wider rollout.
+
+- Public UploadLink daily byte limits are now reserved in the database before
+  the request body is read. Concurrent workers share the same quota row, failed
+  uploads release their reservation, and a process crash fails closed by keeping
+  the reserved bytes for that UTC day.
+
+- Android outbox rows now persist `serverUrl` and `ledgerId`, and drain,
+  status, conflict, failed, stale-recovery, cascade, and active-target reads are
+  all scoped to that binding. Server/ledger switches no longer need to trade
+  correctness for dropping the whole offline queue; explicit sign-out and debug
+  rebind paths still call `clearAll()` to remove private local state.
+
+- In-process schedulers now claim a short database lease in `app_meta` before
+  running scheduled FX sync or cleanup jobs, so multi-worker/cloud deployments
+  do not duplicate those jobs merely because each worker started a daemon
+  thread.
+
+- Background-task startup recovery keeps the existing single-process default,
+  but cloud/multi-worker deployments can set
+  `BACKGROUND_TASK_ORPHAN_GRACE_SECONDS` so a newly started worker does not
+  immediately fail fresh `queued`/`running` work owned by another worker.
+
+- Device pairing failures (expired code, already-used code, invalid code) now
+  all return `invalid_pairing_code` (HTTP 401). The previous distinct
+  `pairing_code_expired` (410) / `pairing_code_used` (409) codes are removed so
+  the endpoint no longer reveals whether a given code existed. The user-facing
+  message ("绑定码无效，请重新生成") still tells the user to request a fresh code.
+
+- `LOCAL_LLM_MAX_CONCURRENT` now defaults to `2` to allow a little OCR
+  throughput overlap. A single-GPU / single-stream local vision model should
+  set `LOCAL_LLM_MAX_CONCURRENT=1` to avoid VRAM contention; the slot queue and
+  `LOCAL_LLM_QUEUE_TIMEOUT_SECONDS` still bound how long callers wait.
+
+- Perceptual-hash duplicate detection now scans at most
+  `DUPLICATE_PHASH_SCAN_LIMIT` (default 500) of the most-recent image-bearing
+  expenses instead of the whole ledger, so uploads stay fast on large ledgers.
+  Raise it to widen the duplicate-detection window at the cost of upload latency.
+
+- `GET /api/tasks` and task get/cancel are now scoped to the caller's active
+  ledger as well as their account, so a multi-ledger user no longer sees or
+  cancels tasks they started under a different ledger binding.
+
 所有版本都保持 `identity_schema=v0.3` 不变。
 
 ## v1.3 主线（开发中） — ADR-0038 多端同步：optimistic concurrency 普及
@@ -48,7 +116,7 @@
   - **API 拆两个方法（codex round-8 P2）**：`PendingReviewActions.updateExpense(id, draft, baseline): Result<Expense>` 是直调 PATCH，**任何错误**（IOException / HttpException）都 `Result.failure`，用于链式调用方（`ExpenseEditViewModel.confirm` / `PendingViewModel.saveAmountAndConfirm` 在 PATCH 后把 `saved.updatedAt` 喂给 confirm POST）—— stale token 链不能走 silent 队列。新增 `saveExpenseAllowingOffline(id, draft, baseline): Result<SaveOutcome>` 返 sealed `SaveOutcome.Synced(Expense)` / `Queued(Expense)`，给"纯保存不级联"的 call site（目前仅 `ExpenseEditViewModel.save`）；UI 按 outcome 分支显示"已保存" vs "已离线保存，联网后同步"。
   - **outbox 走 sealed result + 乐观 expense**：`saveExpenseAllowingOffline` 直 PATCH 失败时仅 IOException → `Queued(projectOptimisticExpense(baseline, draft))`（baseline.copy 把 draft 字段叠上，user 看到的是自己刚改的商家/金额）；409/422/5xx 等 HttpException 一律走 `safeCall` 失败路径；outbox 未接 / baseline 无 token → 也走失败路径。
   - **outbox row 不再重复存 token（codex round-8 P3#5）**：enqueue 时 `request.copy(expectedUpdatedAt = null)` 序列化，token 单一真源就是 outbox row 的 `expectedUpdatedAt` 字段；replay 时 `PatchExpenseDispatcher` 本来就用 row token 覆盖 request token，重复存反而是漂移风险。
-  - **session 边界 clearAll（codex round-8 P1）**：outbox row 当前只携 type/targetId/payload/expectedUpdatedAt，没有 serverUrl/ledgerId，绑定切了之后旧 row 会用新 session 回放（轻则 404，重则误改无关行）。`OutboxRepository` 加 `clearAll(): Int` + DAO `@Query("DELETE FROM pending_mutations")` + `onClearAll: () -> Unit` callback（AppContainer 注入 `OutboxScheduler.cancel(appContext)`）。`LocalLedgerSessionCoordinator` ctor 加 `outbox: OutboxRepository?` 参，`cacheInvalidation == TargetLedger / AllLedgers` 时一并 `outbox?.clearAll()`。`ExpenseRepositoryCore.clearBinding()` 也调一次。AppContainer 构造顺序调整：outbox → coordinator → engine → expenseRepository。永久门槛而不是数据保留 — 把"用旧 session 误回放"换成"切绑定时丢一次队列内容"是有意识的取舍，未来 Room v10 加 `ledger_id` 列后可改成 per-binding 过滤。
+  - **session 边界 clearAll（codex round-8 P1）**：outbox row 当前只携 type/targetId/payload/expectedUpdatedAt，没有 serverUrl/ledgerId，绑定切了之后旧 row 会用新 session 回放（轻则 404，重则误改无关行）。`OutboxRepository` 加 `clearAll(): Int` + DAO `@Query("DELETE FROM pending_mutations")` + `onClearAll: () -> Unit` callback（AppContainer 注入 `OutboxScheduler.cancel(appContext)`）。`LocalLedgerSessionCoordinator` ctor 加 `outbox: OutboxRepository?` 参，`cacheInvalidation == TargetLedger / AllLedgers` 时一并 `outbox?.clearAll()`。`ExpenseRepositoryCore.clearBinding()` 也调一次。AppContainer 构造顺序调整：outbox → coordinator → engine → expenseRepository。永久门槛而不是数据保留 — 把"用旧 session 误回放"换成"切绑定时丢一次队列内容"是有意识的取舍。后续 cloud-hardening pass 已把这个临时取舍升级为 `serverUrl` + `ledgerId` per-binding outbox schema；`clearAll()` 现在只保留给显式 sign-out / debug rebind 这类需要删除本地私有状态的路径。
   - **runCatching → catch Exception（codex round-8 P2#2）**：`enqueue` 内部对 `onEnqueued()` 的包装从 `runCatching` 改成 `try / catch (Exception)`，避免吞 JVM 级 Error（与 round-5 catch Throwable→Exception 同原则）；`clearAll` 内部的 `onClearAll()` 也走同样形态。
   - `AppContainer`：共享一个 Moshi 实例 + `patchExpenseAdapter` 给 `PatchExpenseDispatcher` AND `ExpenseRepository`（toJson/fromJson 同一个 adapter 保证 roundtrip 一致）。
   - 11 个新 contract test (`ExpensePendingRepositoryOutboxFallbackTest`)：direct 2xx → Synced 不入队 / IOException → Queued 入队 + optimistic expense + payload 不含 token / 409 / 422 / 5xx 三个 HttpException 不入队 / IOException 但 outbox 未接 → 失败 / `updateExpense` 直调（链式）IOException 必失败 + 不入队 / `onEnqueued` 抛异常 → enqueue 仍成功 / `clearAll` → 全删 + `onClearAll` 触发 / `onClearAll` 抛异常 → clearAll 仍成功。

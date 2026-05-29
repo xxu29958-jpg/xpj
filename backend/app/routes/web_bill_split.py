@@ -63,7 +63,7 @@ def _resolve_request_account_id(
     )
     if account_id is None:
         raise AppError(
-            "invalid_request",
+            "bill_split_owner_account_missing",
             "未找到 owner 账号；请检查 LedgerMember 配置。",
             status_code=400,
         )
@@ -195,8 +195,11 @@ def web_split_invite(
 
     amount_cents = _yuan_to_cents(amount_yuan)
     if amount_cents is None or amount_cents <= 0:
-        raise AppError("invalid_request", "拆账金额不正确。", status_code=422)
+        raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
 
+    # The lookups above are read-only. End that read transaction so the service
+    # can take its own SQLite writer guard before checking active split totals.
+    db.rollback()
     bsplit.create_invitation(
         db,
         sender_account_id=sender_account_id,

@@ -1,7 +1,6 @@
 package com.ticketbox
 
 import android.app.Application
-import com.ticketbox.data.repository.OutboxScheduler
 
 class TicketboxApplication : Application() {
     lateinit var container: AppContainer
@@ -23,7 +22,7 @@ class TicketboxApplication : Application() {
         // away on a fresh schedule, and any rows the user enqueued
         // during a previous offline session would otherwise sit
         // until then.
-        OutboxScheduler.ensurePeriodic(this)
-        OutboxScheduler.enqueueOnce(this)
+        container.outboxScheduler.ensurePeriodic(this)
+        container.outboxScheduler.enqueueOnce(this)
     }
 }

@@ -52,7 +52,7 @@ def web_tasks(
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     account_id = _resolve_account_id(db, request, selected_id)
 
-    raw = bgtasks.list_recent_tasks(db, account_id=account_id)
+    raw = bgtasks.list_recent_tasks(db, account_id=account_id, tenant_id=selected_id)
     rows: list[dict[str, Any]] = []
     for task in raw:
         result_summary: dict[str, Any] | None = None
@@ -110,5 +110,5 @@ def web_task_cancel(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     account_id = _resolve_account_id(db, request, selected_id)
-    bgtasks.request_cancellation(db, public_id, account_id=account_id)
+    bgtasks.request_cancellation(db, public_id, account_id=account_id, tenant_id=selected_id)
     return _web_redirect("/web/tasks", selected_id, msg="已请求取消任务。")

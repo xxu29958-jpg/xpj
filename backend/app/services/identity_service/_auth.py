@@ -113,6 +113,15 @@ def _context_from_token(db: Session, token: AuthToken) -> AuthContext:
     return context
 
 
+def _token_revocation_allows_grace(token: AuthToken, *, now: datetime) -> bool:
+    if token.revoked_at is None:
+        return True
+    if token.scope != "app":
+        return False
+    grace_until = ensure_utc(token.grace_until)
+    return grace_until is not None and grace_until > now
+
+
 def _refresh_upload_link_activity(
     db: Session,
     link: UploadLink,
@@ -140,14 +149,17 @@ def _refresh_upload_link_activity(
 def authenticate_session_token(db: Session, token_value: str, allowed_scopes: set[str]) -> AuthContext:
     token_hash = hash_secret(token_value)
     token = db.scalar(
-        select(AuthToken).where(AuthToken.token_hash == token_hash).where(AuthToken.revoked_at.is_(None)).limit(1)
+        select(AuthToken).where(AuthToken.token_hash == token_hash).limit(1)
     )
     if token is None or token.scope not in allowed_scopes:
         raise AppError("invalid_token", status_code=401)
     now = now_utc()
+    if not _token_revocation_allows_grace(token, now=now):
+        raise AppError("invalid_token", status_code=401)
     expires_at = ensure_utc(token.expires_at)
     if expires_at is not None and expires_at <= now:
         token.revoked_at = now
+        token.grace_until = None
         db.commit()
         raise AppError("invalid_token", status_code=401)
     return _context_from_token(db, token)

@@ -12,8 +12,14 @@ from fastapi.testclient import TestClient
 
 from app.config import reset_settings_cache
 from app.database import SessionLocal
+from app.errors import AppError
 from app.models import UploadLink, UploadLinkDailyUsage
 from app.services.identity_service import hash_secret
+from app.services.upload_link_throttle_service import (
+    release_upload_bytes,
+    reserve_upload_bytes,
+    resolve_limits,
+)
 from tests._infra.assets import PNG_BYTES
 
 
@@ -34,6 +40,13 @@ def _upload_link_id(upload_key: str) -> int:
             UploadLink.token_hash == hash_secret(upload_key)
         ).one()
         return link.id
+
+
+def _upload_link(upload_key: str) -> UploadLink:
+    with SessionLocal() as db:
+        return db.query(UploadLink).filter(
+            UploadLink.token_hash == hash_secret(upload_key)
+        ).one()
 
 
 def test_per_remote_interval_blocks_burst(
@@ -108,6 +121,45 @@ def test_daily_usage_row_records_bytes_used(
             assert usage.bytes_total == len(PNG_BYTES)
             assert usage.request_count == 1
     finally:
+        reset_settings_cache()
+
+
+def test_daily_byte_budget_is_reserved_before_body_is_processed(
+    identity, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(
+        "UPLOAD_LINK_DEFAULT_DAILY_BYTE_BUDGET", str(len(PNG_BYTES))
+    )
+    monkeypatch.setenv("UPLOAD_LINK_DEFAULT_PER_REMOTE_INTERVAL_SECONDS", "0")
+    reset_settings_cache()
+    reservation = None
+    try:
+        link = _upload_link(identity.upload_key)
+        with SessionLocal() as first_db:
+            first_link = first_db.get(UploadLink, link.id)
+            assert first_link is not None
+            reservation = reserve_upload_bytes(
+                first_db,
+                link=first_link,
+                declared_content_length=len(PNG_BYTES),
+                limits=resolve_limits(first_link),
+            )
+
+        with SessionLocal() as second_db:
+            second_link = second_db.get(UploadLink, link.id)
+            assert second_link is not None
+            with pytest.raises(AppError) as exc:
+                reserve_upload_bytes(
+                    second_db,
+                    link=second_link,
+                    declared_content_length=1,
+                    limits=resolve_limits(second_link),
+                )
+            assert exc.value.error == "upload_daily_quota_exhausted"
+    finally:
+        if reservation is not None:
+            with SessionLocal() as cleanup_db:
+                release_upload_bytes(cleanup_db, reservation=reservation)
         reset_settings_cache()
 
 

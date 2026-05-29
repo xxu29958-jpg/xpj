@@ -303,7 +303,7 @@ def test_sender_cannot_invite_self(client: TestClient, *, identity) -> None:
         json={"receiver_account_id": _owner_account_id(), "amount_cents": 2500},
     )
     assert response.status_code == 422
-    assert response.json()["error"] == "invalid_request"
+    assert response.json()["error"] == "split_receiver_invalid"
 
 
 def test_unknown_receiver_does_not_enumerate_accounts(
@@ -316,7 +316,7 @@ def test_unknown_receiver_does_not_enumerate_accounts(
         json={"receiver_account_id": 999_999_999, "amount_cents": 2500},
     )
     assert response.status_code == 422
-    assert response.json()["error"] == "invalid_request"
+    assert response.json()["error"] == "split_receiver_invalid"
 
 
 def test_duplicate_pending_invite_to_same_receiver_rejected(

@@ -12,9 +12,9 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
     return when (errorCode.trim()) {
         "invalid_token" -> "绑定已失效，请重新绑定账本。"
         "legacy_auth_removed" -> "请使用新版绑定方式。"
-        "invalid_pairing_code" -> "绑定码无效，请重新输入。"
-        "pairing_code_expired" -> "绑定码已过期，请重新获取。"
-        "pairing_code_used" -> "绑定码已使用，请重新获取。"
+        // Backend collapses expired / used / invalid into one code (v1.1, to
+        // avoid revealing whether a code existed); guide the user to re-obtain.
+        "invalid_pairing_code" -> "绑定码无效，请重新获取。"
         "file_too_large" -> "上传文件超过大小限制。"
         "unsupported_file_type" -> "不支持的图片格式。"
         "expense_not_found" -> "账单不存在。"

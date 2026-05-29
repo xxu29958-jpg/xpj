@@ -6,10 +6,11 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import DuplicateIgnore, Expense
 from app.services.time_service import ensure_utc
 
-ACTIVE_DUPLICATE_IGNORE_KINDS = ("image_hash", "similar")
+ACTIVE_DUPLICATE_IGNORE_KINDS = ("image_hash", "image_perceptual_hash", "similar")
 
 
 def mark_duplicate_status(db: Session, expense: Expense) -> Expense:
@@ -18,6 +19,13 @@ def mark_duplicate_status(db: Session, expense: Expense) -> Expense:
         expense.duplicate_status = "suspected"
         expense.duplicate_of_id = duplicate.id
         expense.duplicate_reason = "图片 hash 完全一致，可能是重复截图。"
+        return expense
+
+    duplicate = _find_visually_similar_image(db, expense)
+    if duplicate is not None:
+        expense.duplicate_status = "suspected"
+        expense.duplicate_of_id = duplicate.id
+        expense.duplicate_reason = "图片感知 hash 接近，可能是重复截图。"
         return expense
 
     duplicate = _find_similar_expense(db, expense)
@@ -49,6 +57,47 @@ def _find_same_image(db: Session, expense: Expense) -> Expense | None:
         if not _is_duplicate_ignored(db, expense.tenant_id, expense.id, candidate.id, "image_hash"):
             return candidate
     return None
+
+
+def _find_visually_similar_image(db: Session, expense: Expense) -> Expense | None:
+    match: Expense | None = None
+    if expense.image_perceptual_hash:
+        # Bounded scan over the most-recent phash-bearing expenses: Hamming
+        # distance can't be a SQL predicate, so we sweep candidates in Python.
+        # A re-upload's near-duplicate is almost always recent, so newest-first
+        # within a configured cap maximises catch rate while keeping the upload
+        # path O(limit) instead of O(ledger size) (ENGINEERING_RULES §12).
+        candidates = db.scalars(
+            select(Expense)
+            .where(Expense.id != expense.id)
+            .where(Expense.tenant_id == expense.tenant_id)
+            .where(Expense.status != "rejected")
+            .where(Expense.image_perceptual_hash.is_not(None))
+            .order_by(Expense.created_at.desc())
+            .limit(get_settings().duplicate_phash_scan_limit)
+        )
+        for candidate in candidates:
+            if _is_duplicate_ignored(
+                db,
+                expense.tenant_id,
+                expense.id,
+                candidate.id,
+                "image_perceptual_hash",
+            ):
+                continue
+            if _phash_distance(expense.image_perceptual_hash, candidate.image_perceptual_hash) <= 5:
+                match = candidate
+                break
+    return match
+
+
+def _phash_distance(left: str | None, right: str | None) -> int:
+    if not left or not right:
+        return 64
+    try:
+        return (int(left, 16) ^ int(right, 16)).bit_count()
+    except ValueError:
+        return 64
 
 
 def _find_similar_expense(db: Session, expense: Expense) -> Expense | None:
@@ -182,6 +231,8 @@ def mark_not_duplicate(db: Session, expense: Expense) -> Expense:
 
 def _duplicate_kind(expense: Expense) -> str:
     reason = expense.duplicate_reason or ""
+    if "感知" in reason:
+        return "image_perceptual_hash"
     if "hash" in reason:
         return "image_hash"
     if "金额" in reason:

@@ -101,6 +101,7 @@ def compute_budget_quantile_suggestion(
     *,
     tenant_id: str,
     category: str,
+    categories: set[str] | None = None,
     look_back_months: int = DEFAULT_LOOK_BACK_MONTHS,
     min_months: int = DEFAULT_MIN_MONTHS,
     include_zero_months: bool = True,
@@ -108,6 +109,11 @@ def compute_budget_quantile_suggestion(
     timezone_name: str | None = None,
 ) -> BudgetQuantileSuggestion | None:
     """Return the P50 / P75 monthly spend for ``category``.
+
+    ``categories`` lets callers aggregate the history across a set of raw
+    stored category strings (e.g. a canonical name plus its legacy aliases);
+    when omitted the lookback matches ``category`` exactly, preserving the
+    historical single-category contract.
 
     ``include_zero_months`` toggles whether months with no expense in
     the category contribute a zero data point. The default (True)
@@ -129,11 +135,12 @@ def compute_budget_quantile_suggestion(
     _, latest_end = month_bounds_utc(months[-1], timezone_name)
     time_expr = stat_time_expr()
 
+    match_values = set(categories) if categories else {category}
     expenses = db.scalars(
         select(Expense)
         .where(Expense.tenant_id == tenant_id)
         .where(Expense.status == "confirmed")
-        .where(Expense.category == category)
+        .where(Expense.category.in_(match_values))
         .where(Expense.amount_cents.is_not(None))
         .where(time_expr >= earliest_start)
         .where(time_expr < latest_end)

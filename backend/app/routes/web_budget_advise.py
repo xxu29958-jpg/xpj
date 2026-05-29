@@ -125,6 +125,8 @@ def _render_budget_advise(
                 )
                 advice = result.advice
                 provider_name = result.provider_name
+                if advice is None and result.reason_code:
+                    advise_error = result.reason_code
             except AppError as exc:
                 advise_error = exc.message or exc.error
 

@@ -41,6 +41,7 @@ UPLOAD_REFERENCE_PREFIX = "uploads"
 class SavedUpload:
     relative_path: str
     image_hash: str
+    image_perceptual_hash: str | None
     media_type: str
     size_bytes: int
 
@@ -142,12 +143,48 @@ def _sanitize_image_bytes(ext: str, data: bytes) -> tuple[bytes, str]:
     raise AppError("unsupported_file_type", status_code=400)
 
 
-async def save_upload(file: UploadFile, tenant_id: str) -> SavedUpload:
+def compute_image_perceptual_hash(data: bytes) -> str | None:
+    """Return a 64-bit average hash for visual duplicate detection."""
+
+    pixels: list[int] = []
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+
+        with Image.open(BytesIO(data)) as image:
+            image = ImageOps.exif_transpose(image).convert("L").resize((8, 8))
+            pixel_source = (
+                image.get_flattened_data()
+                if hasattr(image, "get_flattened_data")
+                else image.getdata()
+            )
+            pixels = [int(pixel) for pixel in pixel_source]
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        pixels = []
+    return _average_hash_from_pixels(pixels) if pixels else None
+
+
+def _average_hash_from_pixels(pixels: list[int]) -> str:
+    avg = sum(int(pixel) for pixel in pixels) / len(pixels)
+    bits = 0
+    for pixel in pixels:
+        bits = (bits << 1) | (1 if int(pixel) >= avg else 0)
+    return f"{bits:016x}"
+
+
+async def save_upload(
+    file: UploadFile,
+    tenant_id: str,
+    *,
+    max_size_bytes: int | None = None,
+) -> SavedUpload:
+    limit = get_settings().max_upload_size_bytes
+    if max_size_bytes is not None:
+        limit = max(0, min(limit, int(max_size_bytes)))
     data = bytearray()
     try:
         while chunk := await file.read(1024 * 1024):
             data.extend(chunk)
-            if len(data) > get_settings().max_upload_size_bytes:
+            if len(data) > limit:
                 raise AppError("file_too_large", status_code=413)
     finally:
         await file.close()
@@ -157,6 +194,7 @@ async def save_upload(file: UploadFile, tenant_id: str) -> SavedUpload:
         tenant_id=tenant_id,
         filename=file.filename,
         content_type=file.content_type,
+        max_size_bytes=limit,
     )
 
 
@@ -166,9 +204,13 @@ def save_upload_bytes(
     tenant_id: str,
     filename: str | None = None,
     content_type: str | None = None,
+    max_size_bytes: int | None = None,
 ) -> SavedUpload:
     settings = get_settings()
-    if len(data) > settings.max_upload_size_bytes:
+    limit = settings.max_upload_size_bytes
+    if max_size_bytes is not None:
+        limit = max(0, min(limit, int(max_size_bytes)))
+    if len(data) > limit:
         raise AppError("file_too_large", status_code=413)
     if not data:
         raise AppError("unsupported_file_type", status_code=400)
@@ -180,6 +222,7 @@ def save_upload_bytes(
     if ext is None or not _looks_like_allowed_image(ext, header) or not _is_decodable_image(ext, data):
         raise AppError("unsupported_file_type", status_code=400)
     sanitized_data, ext = _sanitize_image_bytes(ext, data)
+    image_perceptual_hash = compute_image_perceptual_hash(sanitized_data)
 
     now = datetime.now(UTC)
     target_dir = settings.upload_dir / tenant_id / now.strftime("%Y") / now.strftime("%m")
@@ -200,8 +243,11 @@ def save_upload_bytes(
     return SavedUpload(
         relative_path=relative_path,
         image_hash=hasher.hexdigest(),
+        image_perceptual_hash=image_perceptual_hash,
         media_type=MEDIA_TYPES.get(target_path.suffix.lower(), "application/octet-stream"),
-        size_bytes=len(data),
+        # Report bytes actually written to disk (post-sanitization), not the raw
+        # request body — the daily byte budget reconciles against storage cost.
+        size_bytes=len(sanitized_data),
     )
 
 

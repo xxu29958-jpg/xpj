@@ -26,9 +26,10 @@ from app.services.identity_service import (
 )
 from app.services.permission_service import require_create_pending_expense
 from app.services.upload_link_throttle_service import (
-    assert_daily_budget_available,
     enforce_remote_interval,
-    record_upload_bytes,
+    finalize_upload_bytes,
+    release_upload_bytes,
+    reserve_upload_bytes,
     resolve_limits,
 )
 from app.tenants import AuthContext
@@ -43,8 +44,14 @@ logger = logging.getLogger("ticketbox.upload")
 IOS_SHORTCUT_FILE_FIELDS = ("file", "image", "photo", "screenshot")
 
 
-async def _read_raw_body_limited(request: Request) -> bytes:
+async def _read_raw_body_limited(
+    request: Request,
+    *,
+    max_size_bytes: int | None = None,
+) -> bytes:
     limit = get_settings().max_upload_size_bytes
+    if max_size_bytes is not None:
+        limit = max(0, min(limit, int(max_size_bytes)))
     chunks: list[bytes] = []
     total = 0
     async for chunk in request.stream():
@@ -76,15 +83,23 @@ def _pick_first_upload_file(form) -> UploadFile | None:
     return None
 
 
-async def _save_request_upload(request: Request, tenant_id: str) -> tuple[SavedUpload, dict[str, int]]:
+async def _save_request_upload(
+    request: Request,
+    tenant_id: str,
+    *,
+    max_size_bytes: int | None = None,
+) -> tuple[SavedUpload, dict[str, int]]:
     timing_ms: dict[str, int] = {}
+    limit = get_settings().max_upload_size_bytes
+    if max_size_bytes is not None:
+        limit = max(0, min(limit, int(max_size_bytes)))
     content_type = request.headers.get("content-type", "")
     if content_type.lower().startswith("multipart/form-data"):
         try:
             form_context = request.form(
                 max_files=4,
                 max_fields=12,
-                max_part_size=get_settings().max_upload_size_bytes,
+                max_part_size=limit,
             )
             form_started_at = perf_counter()
             async with form_context as form:
@@ -92,7 +107,11 @@ async def _save_request_upload(request: Request, tenant_id: str) -> tuple[SavedU
                 upload_file = _pick_first_upload_file(form)
                 if upload_file is not None:
                     save_started_at = perf_counter()
-                    saved_file = await save_upload(upload_file, tenant_id)
+                    saved_file = await save_upload(
+                        upload_file,
+                        tenant_id,
+                        max_size_bytes=limit,
+                    )
                     timing_ms["file_save_ms"] = _elapsed_ms(save_started_at)
                     return saved_file, timing_ms
         except StarletteHTTPException as exc:
@@ -104,7 +123,7 @@ async def _save_request_upload(request: Request, tenant_id: str) -> tuple[SavedU
         raise AppError("invalid_request", "表单里没有找到图片文件。", status_code=422)
 
     read_started_at = perf_counter()
-    body = await _read_raw_body_limited(request)
+    body = await _read_raw_body_limited(request, max_size_bytes=limit)
     timing_ms["body_read_ms"] = _elapsed_ms(read_started_at)
     if not body:
         raise AppError("invalid_request", status_code=422)
@@ -115,6 +134,7 @@ async def _save_request_upload(request: Request, tenant_id: str) -> tuple[SavedU
         tenant_id=tenant_id,
         filename=request.headers.get("X-Upload-Filename"),
         content_type=content_type,
+        max_size_bytes=limit,
     )
     timing_ms["file_save_ms"] = _elapsed_ms(save_started_at)
     return saved_file, timing_ms
@@ -158,9 +178,14 @@ async def _handle_upload(
     source: str,
     endpoint: str,
     timezone_name: str | None = None,
+    max_size_bytes: int | None = None,
 ) -> UploadResponse:
     started_at = perf_counter()
-    saved_file, timing_ms = await _save_request_upload(request, auth.ledger_id)
+    saved_file, timing_ms = await _save_request_upload(
+        request,
+        auth.ledger_id,
+        max_size_bytes=max_size_bytes,
+    )
     db_started_at = perf_counter()
     expense = _create_pending_or_cleanup(db, saved_file, auth.ledger_id, source=source)
     timing_ms["db_create_ms"] = _elapsed_ms(db_started_at)
@@ -271,6 +296,7 @@ async def upload_link_screenshot(
     link = _load_upload_link(db, upload_key)
     limits = resolve_limits(link)
     is_loopback = is_loopback_request(request)
+    reservation = None
     # Per-remote interval and daily budget apply to public traffic only.
     # Loopback callers are the local owner / their own automation; we
     # already trust them via the surrounding network gate. The daily
@@ -280,7 +306,8 @@ async def upload_link_screenshot(
         enforce_remote_interval(
             db, link=link, remote_key=remote_key, limits=limits
         )
-        assert_daily_budget_available(
+        db.commit()
+        reservation = reserve_upload_bytes(
             db,
             link=link,
             declared_content_length=_declared_content_length(request),
@@ -292,17 +319,29 @@ async def upload_link_screenshot(
         or (upload_link_default_timezone(db, upload_key) or "").strip()
         or get_settings().ocr_default_timezone
     )
-    response = await _handle_upload(
-        request=request,
-        background_tasks=background_tasks,
-        auth=auth,
-        db=db,
-        source="iPhone截图",
-        endpoint="ios_upload_link",
-        timezone_name=resolved_timezone,
-    )
-    if not is_loopback:
-        record_upload_bytes(
-            db, link=link, bytes_used=int(response.upload_size_bytes or 0)
+    reservation_finalized = False
+    try:
+        response = await _handle_upload(
+            request=request,
+            background_tasks=background_tasks,
+            auth=auth,
+            db=db,
+            source="iPhone截图",
+            endpoint="ios_upload_link",
+            timezone_name=resolved_timezone,
+            max_size_bytes=(
+                reservation.reserved_bytes
+                if reservation and reservation.reserved_bytes > 0
+                else None
+            ),
         )
-    return response
+        finalize_upload_bytes(
+            db,
+            reservation=reservation,
+            bytes_used=int(response.upload_size_bytes or 0),
+        )
+        reservation_finalized = True
+        return response
+    finally:
+        if not reservation_finalized:
+            release_upload_bytes(db, reservation=reservation)

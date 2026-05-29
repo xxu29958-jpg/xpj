@@ -38,13 +38,11 @@ class LocalLedgerSessionCoordinator(
     private val tokenStore: SessionTokenStore,
     private val expenseDao: ExpenseDao,
     /**
-     * ADR-0038 PR-2g.3 codex round-8 P1: optional outbox cleared
-     * alongside the local expense cache whenever a session
-     * transition invalidates the cache (Target / All). A row
-     * enqueued under ledger A cannot be safely replayed under
-     * ledger B's session — outbox rows have no binding column
-     * today. ``null`` keeps tests and any pre-PR-2g.3 caller at
-     * the original behaviour.
+     * Optional outbox boundary hook. Session transitions pause
+     * dispatch before credentials are written; binding-scoped rows
+     * then prevent old ledger/server mutations from replaying under
+     * the new session. ``null`` keeps tests and older construction
+     * sites at the original behaviour.
      */
     private val outbox: OutboxRepository? = null,
 ) {
@@ -123,23 +121,66 @@ class LocalLedgerSessionCoordinator(
         clearAvailableLedgers: Boolean,
         markUnlocked: Boolean,
     ) {
-        // ADR-0038 PR-2g.3 codex round-9 P1 (round-10 follow-up):
-        // The outbox MUST be cleared BEFORE any credential change.
+        if (cacheInvalidation != LedgerCacheInvalidation.None && outbox != null) {
+            outbox.withBindingTransition {
+                serverUrl?.let(settingsStore::saveServerUrl)
+                sessionToken?.let { token ->
+                    tokenStore.saveToken(
+                        token = token,
+                        expiresAt = tokenExpiresAt,
+                        softRefreshAfter = tokenSoftRefreshAfter,
+                    )
+                }
+
+                if (clearAvailableLedgers) {
+                    settingsStore.saveAvailableLedgersJson(null)
+                }
+
+                when (cacheInvalidation) {
+                    LedgerCacheInvalidation.None -> Unit
+                    LedgerCacheInvalidation.TargetLedger -> {
+                        expenseDao.clearForLedger(identity.ledgerId)
+                        settingsStore.clearLastConfirmedSyncAtForLedger(identity.ledgerId)
+                    }
+                    LedgerCacheInvalidation.AllLedgers -> {
+                        expenseDao.clear()
+                        settingsStore.clearLedgerScopedRuntimeState()
+                    }
+                }
+
+                settingsStore.saveIdentity(
+                    accountName = identity.accountName,
+                    ledgerId = identity.ledgerId,
+                    ledgerName = identity.ledgerName,
+                    deviceName = identity.deviceName,
+                    role = identity.role,
+                    boundAt = identity.boundAt,
+                )
+                if (markUnlocked) {
+                    settingsStore.markUnlocked()
+                }
+            }
+            return
+        }
+
+        // The outbox dispatch boundary MUST be paused BEFORE any
+        // credential change.
         //
         // The drain engine's [OutboxDrainEngine] post-claim epoch
         // check catches "epoch already bumped" before dispatch. But
         // if we write serverUrl/sessionToken FIRST and only bump
-        // the epoch later via outbox.clearAll(), there's a window
+        // the epoch later via outbox.pauseForBindingTransition(),
+        // there's a window
         // where a concurrent drain has:
         //   - passed the post-claim epoch check (epoch still old)
         //   - reads apiProvider() inside dispatch → already sees
         //     the NEW serverUrl / sessionToken
         //   - sends the OLD row under the NEW session
         //
-        // Order: clearAll FIRST → epoch bumps before any new
+        // Order: pause FIRST: the epoch bumps before any new
         // credential is visible. The drain either:
-        //   - hasn't captured epoch yet → captures new value,
-        //     finds DAO empty, IDLE
+        //   - hasn't captured epoch yet → captures the new value and
+        //     drains only rows for the new binding
         //   - has captured old epoch but not yet claimed any row →
         //     post-claim check fires on next iteration, aborts
         //   - has captured old epoch AND already passed the
@@ -150,10 +191,10 @@ class LocalLedgerSessionCoordinator(
         //     ("old-session in-flight" vs "wrong-session replay").
         //
         // Old-session in-flight at the boundary moment is a real
-        // residual, but acceptable until Room v10 adds binding
-        // columns and the drain can filter at SQL time.
+        // residual, but binding-scoped drain reads prevent queued
+        // old rows from replaying after the switch.
         if (cacheInvalidation != LedgerCacheInvalidation.None) {
-            outbox?.clearAll()
+            outbox?.pauseForBindingTransition()
         }
 
         serverUrl?.let(settingsStore::saveServerUrl)
@@ -174,9 +215,9 @@ class LocalLedgerSessionCoordinator(
             LedgerCacheInvalidation.TargetLedger -> {
                 expenseDao.clearForLedger(identity.ledgerId)
                 settingsStore.clearLastConfirmedSyncAtForLedger(identity.ledgerId)
-                // outbox.clearAll() already ran above (epoch-first
-                // ordering); cache invalidation below is just the
-                // local expense rows.
+                // outbox.pauseForBindingTransition() already ran
+                // above; cache invalidation below is just the local
+                // expense rows.
             }
             LedgerCacheInvalidation.AllLedgers -> {
                 expenseDao.clear()

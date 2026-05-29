@@ -227,11 +227,15 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET expectedUpdatedAt = :freshToken
-        WHERE targetId = :targetId
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND targetId = :targetId
           AND status = :pendingStatus
         """,
     )
     suspend fun cascadeFreshTokenForTarget(
+        serverUrl: String,
+        ledgerId: String,
         targetId: String,
         pendingStatus: String,
         freshToken: String,
@@ -255,24 +259,42 @@ interface PendingMutationDao {
      * IDLE forever even though there's real work available.
      *
      * Same-target dedup (only the oldest PENDING row per target
-     * runs in a given pass) stays in the repository layer because
-     * SQLite can't elegantly express "first-per-group" without
-     * window functions Room doesn't support in suspend queries.
+     * runs in a given pass) is also pushed into SQL so ``LIMIT`` is
+     * applied after duplicate targets are removed. Otherwise 25 queued
+     * edits for one expense can consume the whole batch and starve
+     * other runnable targets until later drain passes.
      */
     @Query(
         """
         SELECT * FROM pending_mutations AS pm
-        WHERE pm.status = :pendingStatus
+        WHERE pm.serverUrl = :serverUrl
+          AND pm.ledgerId = :ledgerId
+          AND pm.status = :pendingStatus
           AND NOT EXISTS (
             SELECT 1 FROM pending_mutations AS sib
-            WHERE sib.targetId = pm.targetId
+            WHERE sib.serverUrl = pm.serverUrl
+              AND sib.ledgerId = pm.ledgerId
+              AND sib.targetId = pm.targetId
               AND sib.status IN (:inFlightStatus, :conflictStatus, :failedStatus)
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM pending_mutations AS older
+            WHERE older.serverUrl = pm.serverUrl
+              AND older.ledgerId = pm.ledgerId
+              AND older.targetId = pm.targetId
+              AND older.status = :pendingStatus
+              AND (
+                older.createdAt < pm.createdAt
+                OR (older.createdAt = pm.createdAt AND older.id < pm.id)
+              )
           )
         ORDER BY pm.createdAt ASC, pm.id ASC
         LIMIT :limit
         """,
     )
     suspend fun nextRunnableBatch(
+        serverUrl: String,
+        ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
         conflictStatus: String,
@@ -289,12 +311,19 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE status = :pendingStatus
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND status = :pendingStatus
         ORDER BY createdAt ASC, id ASC
         LIMIT :limit
         """,
     )
-    suspend fun nextPendingBatch(pendingStatus: String, limit: Int): List<PendingMutationEntity>
+    suspend fun nextPendingBatch(
+        serverUrl: String,
+        ledgerId: String,
+        pendingStatus: String,
+        limit: Int,
+    ): List<PendingMutationEntity>
 
     /**
      * True if another row for the same target is currently
@@ -309,11 +338,18 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT COUNT(*) > 0 FROM pending_mutations
-        WHERE targetId = :targetId
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND targetId = :targetId
           AND status = :inFlightStatus
         """,
     )
-    suspend fun isTargetBusy(targetId: String, inFlightStatus: String): Boolean
+    suspend fun isTargetBusy(
+        serverUrl: String,
+        ledgerId: String,
+        targetId: String,
+        inFlightStatus: String,
+    ): Boolean
 
     /**
      * True if any non-terminal row for [targetId] exists — IN_FLIGHT
@@ -334,11 +370,15 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT COUNT(*) > 0 FROM pending_mutations
-        WHERE targetId = :targetId
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND targetId = :targetId
           AND status IN (:inFlightStatus, :conflictStatus, :failedStatus)
         """,
     )
     suspend fun hasUnresolvedRowForTarget(
+        serverUrl: String,
+        ledgerId: String,
         targetId: String,
         inFlightStatus: String,
         conflictStatus: String,
@@ -361,11 +401,15 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = :pendingStatus,
             lastError = :recoveryMessage
-        WHERE status = :inFlightStatus
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND status = :inFlightStatus
           AND (attemptedAt IS NULL OR attemptedAt < :staleCutoffIso)
         """,
     )
     suspend fun recoverStaleInFlight(
+        serverUrl: String,
+        ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
         staleCutoffIso: String,
@@ -380,12 +424,16 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE targetId = :targetId
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND targetId = :targetId
           AND status IN (:pendingStatus, :inFlightStatus, :conflictStatus, :failedStatus)
         ORDER BY createdAt ASC, id ASC
         """,
     )
     suspend fun activeForTarget(
+        serverUrl: String,
+        ledgerId: String,
         targetId: String,
         pendingStatus: String,
         inFlightStatus: String,
@@ -402,10 +450,17 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT COUNT(*) FROM pending_mutations
-        WHERE status IN (:pendingStatus, :inFlightStatus)
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND status IN (:pendingStatus, :inFlightStatus)
         """,
     )
-    fun observeQueueDepth(pendingStatus: String, inFlightStatus: String): Flow<Int>
+    fun observeQueueDepth(
+        serverUrl: String,
+        ledgerId: String,
+        pendingStatus: String,
+        inFlightStatus: String,
+    ): Flow<Int>
 
     /**
      * Live stream of rows the user needs to resolve. Drives the
@@ -414,11 +469,17 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE status = :conflictStatus
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND status = :conflictStatus
         ORDER BY createdAt ASC, id ASC
         """,
     )
-    fun observeConflictRows(conflictStatus: String): Flow<List<PendingMutationEntity>>
+    fun observeConflictRows(
+        serverUrl: String,
+        ledgerId: String,
+        conflictStatus: String,
+    ): Flow<List<PendingMutationEntity>>
 
     /**
      * Live stream of rows that hit a terminal-failure status. Drives
@@ -434,11 +495,17 @@ interface PendingMutationDao {
     @Query(
         """
         SELECT * FROM pending_mutations
-        WHERE status = :failedStatus
+        WHERE serverUrl = :serverUrl
+          AND ledgerId = :ledgerId
+          AND status = :failedStatus
         ORDER BY createdAt ASC, id ASC
         """,
     )
-    fun observeFailedRows(failedStatus: String): Flow<List<PendingMutationEntity>>
+    fun observeFailedRows(
+        serverUrl: String,
+        ledgerId: String,
+        failedStatus: String,
+    ): Flow<List<PendingMutationEntity>>
 
     /**
      * Delete by id. Used when the user picks "drop mine" on a
@@ -466,17 +533,35 @@ interface PendingMutationDao {
     ): Int
 
     /**
-     * Drop every row in the outbox. Called from the session-boundary
-     * lifecycle hooks (clearBinding / ledger switch / accept
-     * invitation) — see [OutboxRepository.clearAll]. Rows in the
-     * outbox carry no ``ledger_id``/``server_url`` column today, so
-     * a row enqueued under ledger A cannot be safely replayed under
-     * ledger B; the only safe move at a session transition is to
-     * drop the queue entirely. A future Room v10 migration may add
-     * the binding columns and convert this to a per-binding filter.
+     * Drop every row in the outbox. Used only for explicit sign-out
+     * or debug/reset paths that intentionally discard local offline
+     * edits. Normal ledger/server transitions use binding-scoped
+     * rows plus the repository dispatch pause.
      *
      * @return the number of rows removed.
      */
     @Query("DELETE FROM pending_mutations")
     suspend fun clearAll(): Int
+
+    /**
+     * One-time v9 → v10 backfill. The 9→10 migration added the
+     * ``serverUrl`` / ``ledgerId`` columns with an empty-string default but
+     * could not know the active binding (it lives in settings, not the DB),
+     * so pre-upgrade rows carry ``('', '')`` and match no binding-scoped
+     * query — they would be silently stranded. The app adopts them into the
+     * current binding once at drain start (v9 had a single active binding, so
+     * the queued rows belong to it). Idempotent: matches nothing once every
+     * row carries a real binding.
+     *
+     * @return the number of legacy rows adopted.
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET serverUrl = :serverUrl,
+            ledgerId = :ledgerId
+        WHERE serverUrl = '' AND ledgerId = ''
+        """,
+    )
+    suspend fun adoptLegacyBinding(serverUrl: String, ledgerId: String): Int
 }

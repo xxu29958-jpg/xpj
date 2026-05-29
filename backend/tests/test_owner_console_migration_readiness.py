@@ -122,14 +122,13 @@ def test_owner_migration_cut_over_records_owner_initiator(
         del db, task, payload
 
     os.environ["XPJ_BACKGROUND_TASK_INLINE"] = "1"
-    saved = background_task_service.replace_registered_handlers_for_testing(
-        {v1_migration_service.V1_MIGRATION_TASK_TYPE: noop_handler}
-    )
     try:
-        resp = local_client.post("/owner/migration-readiness/cut-over")
+        with background_task_service.isolated_registered_handlers_for_testing(
+            {v1_migration_service.V1_MIGRATION_TASK_TYPE: noop_handler}
+        ):
+            resp = local_client.post("/owner/migration-readiness/cut-over")
     finally:
         os.environ.pop("XPJ_BACKGROUND_TASK_INLINE", None)
-        background_task_service.replace_registered_handlers_for_testing(saved)
 
     assert resp.status_code == 200
     with SessionLocal() as db:

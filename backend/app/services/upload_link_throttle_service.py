@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -55,6 +56,13 @@ class UploadLinkLimits:
     @property
     def has_interval(self) -> bool:
         return self.per_remote_min_interval_seconds > 0
+
+
+@dataclass(frozen=True)
+class UploadBudgetReservation:
+    upload_link_id: int
+    ymd: str
+    reserved_bytes: int
 
 
 def _ymd(now: datetime) -> str:
@@ -155,14 +163,197 @@ def enforce_remote_interval(
 
 
 def _daily_usage(
-    db: Session, *, link_id: int, ymd: str
+    db: Session, *, link_id: int, ymd: str, for_update: bool = False
 ) -> UploadLinkDailyUsage | None:
-    return db.scalar(
+    stmt = (
         select(UploadLinkDailyUsage)
         .where(UploadLinkDailyUsage.upload_link_id == link_id)
         .where(UploadLinkDailyUsage.ymd == ymd)
         .limit(1)
     )
+    if for_update:
+        stmt = stmt.with_for_update()
+    return db.scalar(stmt)
+
+
+def _raise_daily_budget_exhausted(message: str) -> None:
+    raise AppError(
+        "upload_daily_quota_exhausted",
+        message,
+        status_code=429,
+    )
+
+
+def _begin_daily_usage_write(db: Session) -> None:
+    """Start the quota write critical section.
+
+    SQLite ignores SELECT .. FOR UPDATE, so shared-DB deployments need a writer
+    transaction before reading and modifying the usage row. Other dialects keep
+    using the row-level lock requested by _daily_usage(..., for_update=True).
+    """
+
+    if db.in_transaction():
+        db.commit()
+    if db.get_bind().dialect.name == "sqlite":
+        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+
+
+def _ensure_daily_usage_row(
+    db: Session,
+    *,
+    link_id: int,
+    ymd: str,
+    now: datetime,
+) -> None:
+    if db.in_transaction():
+        db.commit()
+    if _daily_usage(db, link_id=link_id, ymd=ymd) is not None:
+        db.commit()
+        return
+    db.add(
+        UploadLinkDailyUsage(
+            upload_link_id=link_id,
+            ymd=ymd,
+            bytes_total=0,
+            request_count=0,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+
+
+def reserve_upload_bytes(
+    db: Session,
+    *,
+    link: UploadLink,
+    declared_content_length: int | None = None,
+    limits: UploadLinkLimits | None = None,
+) -> UploadBudgetReservation:
+    """Reserve today's upload-link byte budget before reading the body.
+
+    The reservation is stored in ``bytes_total`` immediately, so concurrent
+    workers sharing the DB cannot all pass the preflight check and collectively
+    exceed the daily budget. A failed upload releases the reservation; a
+    successful upload settles it to the actual byte count.
+    """
+
+    limits = limits or resolve_limits(link)
+    if not limits.has_byte_budget:
+        return UploadBudgetReservation(upload_link_id=link.id, ymd="", reserved_bytes=0)
+    declared = declared_content_length if declared_content_length is not None else None
+    if declared is not None and declared > limits.daily_byte_budget:
+        _raise_daily_budget_exhausted("此次上传将超过今日配额。")
+
+    now = now_utc()
+    _prune_daily_usage(db, link.id, now=now)
+    ymd = _ymd(now)
+    _ensure_daily_usage_row(db, link_id=link.id, ymd=ymd, now=now)
+
+    max_body_bytes = get_settings().max_upload_size_bytes
+    _begin_daily_usage_write(db)
+    committed = False
+    try:
+        usage = _daily_usage(db, link_id=link.id, ymd=ymd, for_update=True)
+        if usage is None:
+            usage = UploadLinkDailyUsage(
+                upload_link_id=link.id,
+                ymd=ymd,
+                bytes_total=0,
+                request_count=0,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(usage)
+            db.flush()
+        used = int(usage.bytes_total or 0)
+        remaining = limits.daily_byte_budget - used
+        if remaining <= 0:
+            _raise_daily_budget_exhausted("今日该上传链接配额已用尽，请明天再试。")
+        reserved = (
+            max(0, int(declared))
+            if declared is not None
+            else min(max_body_bytes, remaining)
+        )
+        if reserved > remaining:
+            _raise_daily_budget_exhausted("此次上传将超过今日配额。")
+        usage.bytes_total = used + reserved
+        usage.updated_at = now
+        db.commit()
+        committed = True
+    finally:
+        if not committed:
+            db.rollback()
+    return UploadBudgetReservation(
+        upload_link_id=link.id,
+        ymd=ymd,
+        reserved_bytes=reserved,
+    )
+
+
+def finalize_upload_bytes(
+    db: Session,
+    *,
+    reservation: UploadBudgetReservation | None,
+    bytes_used: int,
+) -> None:
+    if reservation is None or reservation.reserved_bytes <= 0:
+        return
+    now = now_utc()
+    _begin_daily_usage_write(db)
+    committed = False
+    try:
+        usage = _daily_usage(
+            db,
+            link_id=reservation.upload_link_id,
+            ymd=reservation.ymd,
+            for_update=True,
+        )
+        if usage is None:
+            db.rollback()
+            return
+        delta = max(0, int(reservation.reserved_bytes)) - max(0, int(bytes_used))
+        if delta > 0:
+            usage.bytes_total = max(0, int(usage.bytes_total or 0) - delta)
+        elif delta < 0:
+            usage.bytes_total = int(usage.bytes_total or 0) + abs(delta)
+        usage.request_count = int(usage.request_count or 0) + 1
+        usage.updated_at = now
+        db.commit()
+        committed = True
+    finally:
+        if not committed:
+            db.rollback()
+
+
+def release_upload_bytes(
+    db: Session,
+    *,
+    reservation: UploadBudgetReservation | None,
+) -> None:
+    if reservation is None or reservation.reserved_bytes <= 0:
+        return
+    now = now_utc()
+    try:
+        _begin_daily_usage_write(db)
+        usage = _daily_usage(
+            db,
+            link_id=reservation.upload_link_id,
+            ymd=reservation.ymd,
+            for_update=True,
+        )
+        if usage is not None:
+            usage.bytes_total = max(
+                0,
+                int(usage.bytes_total or 0) - max(0, int(reservation.reserved_bytes)),
+            )
+            usage.updated_at = now
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
 
 
 def assert_daily_budget_available(
@@ -194,17 +385,9 @@ def assert_daily_budget_available(
     used = usage.bytes_total if usage is not None else 0
     remaining = limits.daily_byte_budget - used
     if remaining <= 0:
-        raise AppError(
-            "upload_daily_quota_exhausted",
-            "今日该上传链接配额已用尽，请明天再试。",
-            status_code=429,
-        )
+        _raise_daily_budget_exhausted("今日该上传链接配额已用尽，请明天再试。")
     if declared_content_length is not None and declared_content_length > remaining:
-        raise AppError(
-            "upload_daily_quota_exhausted",
-            "此次上传将超过今日配额。",
-            status_code=429,
-        )
+        _raise_daily_budget_exhausted("此次上传将超过今日配额。")
     return remaining
 
 
@@ -239,9 +422,13 @@ def record_upload_bytes(db: Session, *, link: UploadLink, bytes_used: int) -> No
 
 
 __all__ = [
+    "UploadBudgetReservation",
     "UploadLinkLimits",
     "assert_daily_budget_available",
     "enforce_remote_interval",
+    "finalize_upload_bytes",
+    "release_upload_bytes",
     "record_upload_bytes",
+    "reserve_upload_bytes",
     "resolve_limits",
 ]

@@ -52,10 +52,11 @@ import androidx.room.PrimaryKey
  * Stored as TEXT; Moshi adapter is owned by the Repository layer
  * (the Entity is dumb storage).
  *
- * Indices: ``createdAt`` ascending drives the drain order;
- * ``(targetId, status)`` lets PR-2g check "is another mutation for
- * this row already IN_FLIGHT" without a full table scan; ``status``
- * lone-indexes the queue surface used by the conflict-banner UI.
+ * Indices: ``createdAt`` keeps legacy migrations cheap, while the
+ * binding-scoped indices on ``serverUrl`` + ``ledgerId`` drive all
+ * current drain/UI reads. They prevent rows captured under one
+ * server or ledger binding from replaying or rendering under a
+ * different binding after cloud sync, device rebind, or ledger switch.
  */
 @Entity(
     tableName = "pending_mutations",
@@ -63,11 +64,20 @@ import androidx.room.PrimaryKey
         Index(value = ["createdAt"]),
         Index(value = ["targetId", "status"]),
         Index(value = ["status"]),
+        Index(value = ["serverUrl", "ledgerId", "createdAt"]),
+        Index(value = ["serverUrl", "ledgerId", "targetId", "status"]),
+        Index(value = ["serverUrl", "ledgerId", "status"]),
     ],
 )
 data class PendingMutationEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+
+    @ColumnInfo(name = "serverUrl", defaultValue = "")
+    val serverUrl: String = "",
+
+    @ColumnInfo(name = "ledgerId", defaultValue = "")
+    val ledgerId: String = "",
 
     /**
      * Wire identifier for the route this row replays — see

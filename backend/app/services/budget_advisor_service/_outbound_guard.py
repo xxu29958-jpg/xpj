@@ -1,17 +1,8 @@
-"""ADR-0036 outbound payload guard.
+"""Outbound payload guard for BudgetAdvisor providers.
 
-Confirmation #1 in ADR-0036 mandates: every outbound advisor payload is
-schema-checked against the allowed field set. New keys appearing without
-an ADR update **must fail** before the HTTP call goes out.
-
-This guard runs in two places:
-
-- :func:`to_outbound_dict` is the canonical serialiser; the provider
-  passes its output to the HTTP request body. It produces exactly the
-  fields the ADR enumerates and nothing more.
-- :func:`validate_outbound_payload` re-checks the same shape so any
-  future PR that hand-rolls a payload (instead of going through
-  ``to_outbound_dict``) is rejected at runtime.
+The guard is intentionally as narrow as the current builder. Future fields must
+be added here only after the builder really populates them and the privacy
+boundary has been reviewed.
 """
 
 from __future__ import annotations
@@ -21,47 +12,29 @@ from typing import Any
 
 from app.errors import DataIntegrityError
 from app.services.budget_advisor_service._models import BudgetInputs
+from app.services.category_common import DEFAULT_CATEGORIES
 
-# Top-level keys allowed on the outbound payload. Adding one means
-# ADR-0036's "allowed fields" list also gains an entry — keep the two in
-# lockstep.
 ALLOWED_TOP_LEVEL_KEYS = frozenset(
     {
         "month",
         "home_currency",
-        "members",
         "category_breakdown",
-        "merchant_summary",
-        "income_plan",
-        "fixed_expenses",
         "historical_baseline",
     }
 )
 
-# Per-list-row key sets. Same rule: ADR-driven only.
-ALLOWED_MEMBER_KEYS = frozenset({"anon_id"})
 ALLOWED_CATEGORY_KEYS = frozenset({"category", "amount_cents", "count"})
-ALLOWED_MERCHANT_KEYS = frozenset({"anon_id", "category_class", "amount_cents", "count"})
-ALLOWED_INCOME_KEYS = frozenset({"source_type", "amount_cents", "pay_day"})
-ALLOWED_FIXED_KEYS = frozenset(
-    {"anon_id", "category_class", "amount_cents", "frequency"}
-)
 ALLOWED_BASELINE_KEYS = frozenset({"category", "median_cents", "p75_cents"})
 
 _LIST_KEY_TO_ALLOWED_ROW_KEYS: dict[str, frozenset[str]] = {
-    "members": ALLOWED_MEMBER_KEYS,
     "category_breakdown": ALLOWED_CATEGORY_KEYS,
-    "merchant_summary": ALLOWED_MERCHANT_KEYS,
-    "income_plan": ALLOWED_INCOME_KEYS,
-    "fixed_expenses": ALLOWED_FIXED_KEYS,
     "historical_baseline": ALLOWED_BASELINE_KEYS,
 }
+_ALLOWED_ADVISOR_CATEGORIES = frozenset(DEFAULT_CATEGORIES)
 
 
 def to_outbound_dict(inputs: BudgetInputs) -> dict[str, Any]:
-    """Canonical serialisation. ``asdict`` over a frozen dataclass tree
-    plus a pass through the guard — anything new on the dataclass that
-    is not in the allow-list above raises here, not in production."""
+    """Canonical serialisation with fail-closed schema validation."""
 
     if not is_dataclass(inputs):
         raise DataIntegrityError(
@@ -73,14 +46,10 @@ def to_outbound_dict(inputs: BudgetInputs) -> dict[str, Any]:
 
 
 def validate_outbound_payload(payload: dict[str, Any]) -> None:
-    """Raise :class:`DataIntegrityError` if ``payload`` includes any key
-    outside the ADR-0036 allow-list. Called once before the HTTP request
-    body is built — fail-closed."""
+    """Raise if ``payload`` includes keys outside the outbound contract."""
 
     if not isinstance(payload, dict):
-        raise DataIntegrityError(
-            "budget_advisor_outbound: payload must be a dict"
-        )
+        raise DataIntegrityError("budget_advisor_outbound: payload must be a dict")
     extra_top = set(payload.keys()) - ALLOWED_TOP_LEVEL_KEYS
     if extra_top:
         raise DataIntegrityError(
@@ -103,4 +72,10 @@ def validate_outbound_payload(payload: dict[str, Any]) -> None:
                 raise DataIntegrityError(
                     "budget_advisor_outbound: unexpected key(s) on "
                     f"'{list_key}[{index}]': {', '.join(sorted(extra))}"
+                )
+            category = row.get("category")
+            if category not in _ALLOWED_ADVISOR_CATEGORIES:
+                raise DataIntegrityError(
+                    "budget_advisor_outbound: unexpected category on "
+                    f"'{list_key}[{index}]'"
                 )

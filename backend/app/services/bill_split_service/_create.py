@@ -49,10 +49,12 @@ def create_invitation(
     Sender does NOT specify receiver_ledger_id — receiver picks at accept.
     """
     if amount_cents <= 0:
-        raise AppError("invalid_request", "拆账金额必须大于 0。", status_code=422)
+        raise AppError("split_amount_invalid", "拆账金额必须大于 0。", status_code=422)
 
     if receiver_account_id == sender_account_id:
-        raise AppError("invalid_request", status_code=422)
+        raise AppError("split_receiver_invalid", status_code=422)
+
+    _begin_split_create_transaction(db)
 
     # 1. Sender's role on sender_ledger must be writer.
     sender_member = _load_writer_member(db, sender_ledger_id, sender_account_id)
@@ -77,13 +79,13 @@ def create_invitation(
     # 4. Amount must not exceed parent expense.
     if expense.amount_cents is None:
         raise AppError(
-            "invalid_request",
+            "split_parent_amount_missing",
             "原账单金额未确定，无法发起拆账。",
             status_code=422,
         )
     if amount_cents > expense.amount_cents:
         raise AppError(
-            "invalid_request",
+            "split_amount_exceeds_parent",
             "拆账金额不能超过原账单金额。",
             status_code=422,
         )
@@ -93,7 +95,7 @@ def create_invitation(
     # existence oracle.
     receiver = db.get(Account, receiver_account_id)
     if receiver is None:
-        raise AppError("invalid_request", status_code=422)
+        raise AppError("split_receiver_invalid", status_code=422)
     sender = db.get(Account, sender_account_id)
     assert sender is not None  # AuthContext already validated this
 
@@ -107,7 +109,7 @@ def create_invitation(
     )
     if active_split_total + amount_cents > expense.amount_cents:
         raise AppError(
-            "invalid_request",
+            "split_total_exceeds_parent",
             "拆账邀请总额不能超过原账单金额。",
             status_code=422,
         )
@@ -162,6 +164,25 @@ def create_invitation(
     db.commit()
     db.refresh(invitation)
     return invitation
+
+
+def _begin_split_create_transaction(db: Session) -> None:
+    """Serialize split-create checks that depend on parent active total.
+
+    The business invariant is "active invitations for one parent expense must
+    not exceed the parent amount". SQLite cannot express that as a CHECK across
+    rows, so cloud / multi-worker deployments need the create path to take a
+    writer transaction before reading active totals and inserting the invite.
+    """
+
+    if db.in_transaction():
+        raise AppError(
+            "state_conflict",
+            "Cannot create a bill split invitation inside an active transaction.",
+            status_code=409,
+        )
+    if db.get_bind().dialect.name == "sqlite":
+        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def _exchange_rate_datetime(value: date | datetime | None) -> datetime | None:

@@ -41,17 +41,11 @@ def _fresh_db() -> None:
 @pytest.fixture(autouse=True)
 def _inline_handlers() -> Iterator[None]:
     os.environ["XPJ_BACKGROUND_TASK_INLINE"] = "1"
-    saved = bgtasks.get_registered_handlers()
-    for k in list(saved.keys()):
-        bgtasks._handlers.pop(k, None)  # noqa: SLF001
     try:
-        yield
+        with bgtasks.isolated_registered_handlers_for_testing():
+            yield
     finally:
         os.environ.pop("XPJ_BACKGROUND_TASK_INLINE", None)
-        for k in list(bgtasks._handlers.keys()):
-            bgtasks._handlers.pop(k, None)  # noqa: SLF001
-        for k, h in saved.items():
-            bgtasks.register_handler(k, h)
 
 
 @pytest.fixture()

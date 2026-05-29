@@ -230,11 +230,7 @@ def test_advise_sends_only_allowed_top_level_keys() -> None:
     assert set(payload.keys()) == {
         "month",
         "home_currency",
-        "members",
         "category_breakdown",
-        "merchant_summary",
-        "income_plan",
-        "fixed_expenses",
         "historical_baseline",
     }
     # Verify no real PII fields leaked.
@@ -398,7 +394,7 @@ def test_parser_normalizes_legacy_category_alias() -> None:
     assert normalize_category(legacy) == canonical
 
 
-def test_parser_accepts_category_present_in_input_allowlist() -> None:
+def test_parser_rejects_category_outside_default_catalog() -> None:
     custom_category = "custom-family-category"
     advice = _parse_advice_json(
         json.dumps(
@@ -413,11 +409,34 @@ def test_parser_accepts_category_present_in_input_allowlist() -> None:
                 ],
                 "confidence": 0.5,
             }
-        ),
-        allowed_categories={custom_category},
+        )
     )
-    assert len(advice.suggestions) == 1
-    assert advice.suggestions[0].category == custom_category
+    assert advice.suggestions == []
+
+
+@pytest.mark.parametrize(
+    "api_key",
+    [
+        "short",
+        "valid key",
+        "valid\nkey",
+        " sk-validkey123",
+        "sk-validkey123 ",
+    ],
+)
+def test_factory_rejects_public_api_key_with_unsafe_shape(
+    api_key: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BUDGET_ADVISOR_PROVIDER", "openai_compat")
+    monkeypatch.setenv("BUDGET_ADVISOR_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("BUDGET_ADVISOR_MODEL", "test-model")
+    monkeypatch.setenv("BUDGET_ADVISOR_API_KEY", api_key)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(AppError, match="BUDGET_ADVISOR_API_KEY"):
+            get_budget_advisor()
+    finally:
+        get_settings.cache_clear()
 
 
 def test_parser_caps_text_and_suggestion_count() -> None:

@@ -181,7 +181,11 @@ def revoke_active_tokens(
         statement = statement.where(AuthToken.ledger_id == ledger_id)
     if scope is not None:
         statement = statement.where(AuthToken.scope == scope)
-    result = db.execute(statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False))
+    result = db.execute(
+        statement.values(revoked_at=revoked_at, grace_until=None).execution_options(
+            synchronize_session=False
+        )
+    )
     return int(result.rowcount or 0)
 
 
@@ -208,6 +212,7 @@ def revoke_web_session_token(
     if device is None or (device.platform or "").strip().lower() != "web":
         return False
     row.revoked_at = revoked_at or now_utc()
+    row.grace_until = None
     db.commit()
     return True
 
@@ -225,7 +230,11 @@ def revoke_token_value(
     )
     if scope is not None:
         statement = statement.where(AuthToken.scope == scope)
-    result = db.execute(statement.values(revoked_at=revoked_at).execution_options(synchronize_session=False))
+    result = db.execute(
+        statement.values(revoked_at=revoked_at, grace_until=None).execution_options(
+            synchronize_session=False
+        )
+    )
     return int(result.rowcount or 0)
 
 
@@ -238,9 +247,18 @@ def rotate_app_token_for_ledger(
     target_ledger_id: str,
     rotated_at: datetime | None = None,
     expires_at: datetime | None = None,
+    allow_grace: bool = False,
 ) -> tuple[str, datetime]:
     rotated_at = rotated_at or now_utc()
     current_hash = hash_secret(current_token_value)
+    from app.config import get_settings
+
+    grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0) if allow_grace else 0
+    grace_until = (
+        rotated_at + timedelta(seconds=grace_seconds)
+        if grace_seconds > 0
+        else None
+    )
 
     result = db.execute(
         update(AuthToken)
@@ -249,7 +267,7 @@ def rotate_app_token_for_ledger(
         .where(AuthToken.device_id == device_id)
         .where(AuthToken.scope == "app")
         .where(AuthToken.revoked_at.is_(None))
-        .values(revoked_at=rotated_at)
+        .values(revoked_at=rotated_at, grace_until=grace_until)
         .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:

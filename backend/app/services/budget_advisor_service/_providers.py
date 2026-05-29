@@ -63,7 +63,7 @@ _SYSTEM_PROMPT = (
     "summary(string, 一句总结), "
     "suggestions(array of {category(string|null, null=整体建议; category must be one of "
     + "/".join(DEFAULT_CATEGORIES)
-    + " or a category present in the input), suggested_amount_cents(int), rationale(string)}), "
+    + "), suggested_amount_cents(int), rationale(string)}), "
     "confidence(number 0-1)。"
     "不要写预算 / 不要承诺修改账本——你只给建议，最终落盘由用户在 UI 确认。"
 )
@@ -72,6 +72,8 @@ _SYSTEM_PROMPT = (
 class EmptyBudgetAdvisor:
     """No-op provider. Returns None — caller treats absence of advice as
     "use local rules only", which is the documented zero-config path."""
+
+    last_error_code: str | None = "ai_advisor_provider_empty"
 
     def advise(self, inputs: BudgetInputs) -> BudgetAdvice | None:
         return None
@@ -86,7 +88,10 @@ class MockBudgetAdvisor:
     ("at least empty / mock implementations" for every provider).
     """
 
+    last_error_code: str | None = None
+
     def advise(self, inputs: BudgetInputs) -> BudgetAdvice | None:
+        self.last_error_code = None
         if not inputs.category_breakdown:
             return BudgetAdvice(summary="本月暂无消费数据可供建议。", confidence=0.0)
         top = max(inputs.category_breakdown, key=lambda row: row.amount_cents)
@@ -125,14 +130,17 @@ class OpenAiCompatBudgetAdvisor:
         self._api_key = api_key
         self._model = model
         self._timeout = timeout_seconds
+        self.last_error_code: str | None = None
 
     def advise(self, inputs: BudgetInputs) -> BudgetAdvice | None:
+        self.last_error_code = None
         try:
             payload = to_outbound_dict(inputs)
         except DataIntegrityError:
             # Payload schema drift — outbound guard fails closed. Log
             # without the payload itself (could contain inputs sized data
             # even if anonymised) and refuse the call.
+            self.last_error_code = "ai_advisor_payload_invalid"
             logger.exception("budget_advisor_openai_compat: outbound guard rejected payload")
             return None
 
@@ -151,24 +159,23 @@ class OpenAiCompatBudgetAdvisor:
         try:
             response_json = self._post_chat_completion(request_body)
         except AppError:
+            self.last_error_code = "ai_advisor_provider_call_failed"
             logger.exception("budget_advisor_openai_compat: HTTP call failed")
             return None
         except Exception:  # noqa: BLE001 - surface anything else as no-advice
+            self.last_error_code = "ai_advisor_provider_unexpected_error"
             logger.exception("budget_advisor_openai_compat: unexpected transport error")
             return None
 
         try:
             content = _extract_message_content(response_json)
-            allowed_categories = {
-                normalize_category(row.category)
-                for row in inputs.category_breakdown
-                if row.category
-            }
-            return _parse_advice_json(content, allowed_categories=allowed_categories)
+            return _parse_advice_json(content)
         except AppError:
+            self.last_error_code = "ai_advisor_response_parse_failed"
             logger.exception("budget_advisor_openai_compat: response parse failed")
             return None
         except Exception:  # noqa: BLE001
+            self.last_error_code = "ai_advisor_response_unexpected_error"
             logger.exception("budget_advisor_openai_compat: unexpected parse error")
             return None
 
@@ -263,9 +270,7 @@ def _extract_message_content(response_json: dict[str, Any]) -> str:
     raise AppError("server_error", "AI 没有返回文本。", status_code=500)
 
 
-def _parse_advice_json(
-    content: str, *, allowed_categories: set[str] | None = None
-) -> BudgetAdvice:
+def _parse_advice_json(content: str) -> BudgetAdvice:
     cleaned = content.strip()
     if cleaned.startswith("```"):
         lines = [line for line in cleaned.splitlines() if not line.strip().startswith("```")]
@@ -291,7 +296,6 @@ def _parse_advice_json(
 
     suggestions: list[BudgetSuggestion] = []
     accepted_categories = set(DEFAULT_CATEGORIES)
-    accepted_categories.update(allowed_categories or set())
     raw_suggestions = payload.get("suggestions")
     if isinstance(raw_suggestions, list):
         for raw in raw_suggestions[:MAX_ADVICE_SUGGESTIONS]:
@@ -361,6 +365,12 @@ def _is_local_or_private_host(host: str) -> bool:
 def _validate_api_key_for_base_url(base_url: str, api_key: str) -> None:
     parsed = urlparse(base_url)
     host = parsed.hostname or ""
+    if api_key and _api_key_has_unsafe_shape(api_key):
+        raise AppError(
+            "server_error",
+            "BUDGET_ADVISOR_API_KEY is invalid.",
+            status_code=500,
+        )
     if _is_local_or_private_host(host):
         return
     if parsed.scheme != "https":
@@ -375,6 +385,16 @@ def _validate_api_key_for_base_url(base_url: str, api_key: str) -> None:
             "BUDGET_ADVISOR_API_KEY is required for public AI providers.",
             status_code=500,
         )
+    if len(api_key) < 8 or len(api_key) > 4096:
+        raise AppError(
+            "server_error",
+            "BUDGET_ADVISOR_API_KEY is invalid.",
+            status_code=500,
+        )
+
+
+def _api_key_has_unsafe_shape(api_key: str) -> bool:
+    return any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in api_key)
 
 
 def _sanitize_provider_error_detail(value: str) -> str:

@@ -276,12 +276,12 @@ def ocr_fact_snapshot(
 
 def _normalise_provider_name(provider_name: str | None) -> str:
     clean = (provider_name or "").strip().lower()
+    if clean in {"empty", "mock", "rapidocr", "local_llm"}:
+        return clean
     if clean in {"rapid_ocr"}:
         return "rapidocr"
     if clean in {"local_vlm", "vlm"}:
         return "local_llm"
-    if clean:
-        return clean
     return "empty"
 
 

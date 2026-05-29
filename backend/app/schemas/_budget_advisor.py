@@ -55,6 +55,7 @@ class BudgetAdviseResponse(BaseModel):
 
     advice: BudgetAdviceDto | None
     provider_name: str
+    reason_code: str | None = None
 
 
 class BudgetAdvisorStatusResponse(BaseModel):

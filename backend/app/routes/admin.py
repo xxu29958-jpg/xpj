@@ -2,7 +2,7 @@
 
 v0.3.1-alpha2 Phase 3 / 4. All endpoints require an ``admin``-scope session
 token (see :func:`app.auth.get_current_admin_context`). ``app``-scope tokens
-must NOT reach this router; the dependency raises ``invalid_token`` before
+must NOT reach this router; the dependency returns ``permission_denied`` before
 the body of any handler runs.
 
 URL conventions follow the rest of the codebase: ``POST`` for verbs (revoke /

@@ -46,8 +46,8 @@ class BillSplitInviteRequest(BaseModel):
     that at accept time.
     """
 
-    receiver_account_id: int = Field(gt=0)
-    amount_cents: int = Field(gt=0)
+    receiver_account_id: int
+    amount_cents: int
 
 
 class BillSplitAcceptRequest(BaseModel):

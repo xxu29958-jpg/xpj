@@ -98,12 +98,17 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun cascadeFreshTokenForTarget(
+        serverUrl: String,
+        ledgerId: String,
         targetId: String,
         pendingStatus: String,
         freshToken: String,
     ): Int {
         val matching = rows.values.filter {
-            it.targetId == targetId && it.status == pendingStatus
+            it.serverUrl == serverUrl &&
+                it.ledgerId == ledgerId &&
+                it.targetId == targetId &&
+                it.status == pendingStatus
         }
         for (row in matching) {
             rows[row.id] = row.copy(expectedUpdatedAt = freshToken)
@@ -113,11 +118,13 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun nextPendingBatch(
+        serverUrl: String,
+        ledgerId: String,
         pendingStatus: String,
         limit: Int,
     ): List<PendingMutationEntity> =
         rows.values
-            .filter { it.status == pendingStatus }
+            .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status == pendingStatus }
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
             .take(limit)
 
@@ -160,6 +167,8 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun nextRunnableBatch(
+        serverUrl: String,
+        ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
         conflictStatus: String,
@@ -168,38 +177,65 @@ class FakePendingMutationDao : PendingMutationDao {
     ): List<PendingMutationEntity> {
         val unresolved = setOf(inFlightStatus, conflictStatus, failedStatus)
         val unresolvedTargets = rows.values
-            .filter { it.status in unresolved }
+            .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status in unresolved }
             .map { it.targetId }
             .toSet()
         val batch = rows.values
-            .filter { it.status == pendingStatus && it.targetId !in unresolvedTargets }
+            .filter {
+                it.serverUrl == serverUrl &&
+                    it.ledgerId == ledgerId &&
+                    it.status == pendingStatus &&
+                    it.targetId !in unresolvedTargets
+            }
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
+            .distinctBy { it.targetId }
             .take(limit)
         beforeNextRunnableBatchReturn?.invoke()
         return batch
     }
 
-    override suspend fun isTargetBusy(targetId: String, inFlightStatus: String): Boolean =
-        rows.values.any { it.targetId == targetId && it.status == inFlightStatus }
+    override suspend fun isTargetBusy(
+        serverUrl: String,
+        ledgerId: String,
+        targetId: String,
+        inFlightStatus: String,
+    ): Boolean =
+        rows.values.any {
+            it.serverUrl == serverUrl &&
+                it.ledgerId == ledgerId &&
+                it.targetId == targetId &&
+                it.status == inFlightStatus
+        }
 
     override suspend fun hasUnresolvedRowForTarget(
+        serverUrl: String,
+        ledgerId: String,
         targetId: String,
         inFlightStatus: String,
         conflictStatus: String,
         failedStatus: String,
     ): Boolean {
         val unresolved = setOf(inFlightStatus, conflictStatus, failedStatus)
-        return rows.values.any { it.targetId == targetId && it.status in unresolved }
+        return rows.values.any {
+            it.serverUrl == serverUrl &&
+                it.ledgerId == ledgerId &&
+                it.targetId == targetId &&
+                it.status in unresolved
+        }
     }
 
     override suspend fun recoverStaleInFlight(
+        serverUrl: String,
+        ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
         staleCutoffIso: String,
         recoveryMessage: String,
     ): Int {
         val victims = rows.values.filter {
-            it.status == inFlightStatus &&
+            it.serverUrl == serverUrl &&
+                it.ledgerId == ledgerId &&
+                it.status == inFlightStatus &&
                 (it.attemptedAt == null || it.attemptedAt!! < staleCutoffIso)
         }
         for (row in victims) {
@@ -210,6 +246,8 @@ class FakePendingMutationDao : PendingMutationDao {
     }
 
     override suspend fun activeForTarget(
+        serverUrl: String,
+        ledgerId: String,
         targetId: String,
         pendingStatus: String,
         inFlightStatus: String,
@@ -218,29 +256,48 @@ class FakePendingMutationDao : PendingMutationDao {
     ): List<PendingMutationEntity> {
         val active = setOf(pendingStatus, inFlightStatus, conflictStatus, failedStatus)
         return rows.values
-            .filter { it.targetId == targetId && it.status in active }
+            .filter {
+                it.serverUrl == serverUrl &&
+                    it.ledgerId == ledgerId &&
+                    it.targetId == targetId &&
+                    it.status in active
+            }
             .sortedWith(compareBy({ it.createdAt }, { it.id }))
     }
 
     override fun observeQueueDepth(
+        serverUrl: String,
+        ledgerId: String,
         pendingStatus: String,
         inFlightStatus: String,
     ): Flow<Int> = queueDepth.map { snapshot ->
-        rows.values.count { it.status == pendingStatus || it.status == inFlightStatus }
+        rows.values.count {
+            it.serverUrl == serverUrl &&
+                it.ledgerId == ledgerId &&
+                (it.status == pendingStatus || it.status == inFlightStatus)
+        }
             .also { /* read through snapshot to keep StateFlow hot */ snapshot.let { } }
     }
 
-    override fun observeConflictRows(conflictStatus: String): Flow<List<PendingMutationEntity>> =
+    override fun observeConflictRows(
+        serverUrl: String,
+        ledgerId: String,
+        conflictStatus: String,
+    ): Flow<List<PendingMutationEntity>> =
         conflictRows.map { _ ->
             rows.values
-                .filter { it.status == conflictStatus }
+                .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status == conflictStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
 
-    override fun observeFailedRows(failedStatus: String): Flow<List<PendingMutationEntity>> =
+    override fun observeFailedRows(
+        serverUrl: String,
+        ledgerId: String,
+        failedStatus: String,
+    ): Flow<List<PendingMutationEntity>> =
         conflictRows.map { _ ->
             rows.values
-                .filter { it.status == failedStatus }
+                .filter { it.serverUrl == serverUrl && it.ledgerId == ledgerId && it.status == failedStatus }
                 .sortedWith(compareBy({ it.createdAt }, { it.id }))
         }
 
@@ -269,6 +326,15 @@ class FakePendingMutationDao : PendingMutationDao {
         rows.clear()
         refreshObservables()
         return removed
+    }
+
+    override suspend fun adoptLegacyBinding(serverUrl: String, ledgerId: String): Int {
+        val legacy = rows.values.filter { it.serverUrl == "" && it.ledgerId == "" }
+        for (row in legacy) {
+            rows[row.id] = row.copy(serverUrl = serverUrl, ledgerId = ledgerId)
+        }
+        if (legacy.isNotEmpty()) refreshObservables()
+        return legacy.size
     }
 
     private fun refreshObservables() {

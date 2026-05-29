@@ -4,7 +4,12 @@ import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,15 +20,12 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * ADR-0038 PR-2f: offline outbox skeleton.
+ * ADR-0038 PR-2g: offline outbox queue.
  *
- * This repository is the queue surface every mutation call site
- * uses when going offline. PR-2f intentionally does NOT wire the
- * mutation call sites — those edits land in PR-2g together with
- * the WorkManager drain worker and the conflict-banner UI. Keeping
- * the skeleton landable in isolation lets reviewers focus on the
- * Room schema migration and the queue semantics without also
- * weighing the call-site changes.
+ * This repository is the queue surface mutation call sites use
+ * when going offline. Rows are scoped to the current ``serverUrl``
+ * and ``ledgerId`` so cloud/server switches, ledger switches, and
+ * device rebinds do not replay old rows under the new binding.
  *
  * Concurrency contract enforced here:
  * 1. [enqueue] takes a snapshot of the mutation; the call site
@@ -36,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong
  *    SQL filter ([PendingMutationDao.nextRunnableBatch]) excludes
  *    blocked targets BEFORE applying ``LIMIT`` so a long PENDING
  *    queue for a blocked target doesn't starve other runnable
- *    targets. PR-2g's worker calls this in a loop.
+ *    targets. The WorkManager drain worker calls this in a loop.
  * 3. [resolveConflict] is the user-facing "keep mine / drop mine"
  *    branch. ``keepMine`` re-enqueues with a fresh token (caller
  *    fetched the row again); ``dropMine`` deletes the row.
@@ -48,6 +50,16 @@ import java.util.concurrent.atomic.AtomicLong
 class OutboxRepository(
     private val dao: PendingMutationDao,
     private val clock: Clock = Clock.systemUTC(),
+    private val bindingProvider: () -> OutboxBinding = { OutboxBinding.DEFAULT },
+    /**
+     * Reactive binding source for the live UI streams ([observeStatus] and
+     * friends). When supplied (AppContainer wires it from the active-ledger
+     * settings flow), observe* re-subscribe to the new binding on a ledger
+     * switch instead of staying pinned to the binding present when the UI
+     * first subscribed. Null (tests / non-Android) falls back to a one-shot
+     * snapshot read lazily at collection time — the historical behaviour.
+     */
+    private val bindingChanges: Flow<OutboxBinding>? = null,
     /**
      * Fired immediately after a row is persisted by [enqueue]. Used
      * by AppContainer to schedule a one-time [OutboxDrainWorker]
@@ -76,26 +88,22 @@ class OutboxRepository(
      */
     private val onClearAll: () -> Unit = {},
 ) {
+    private fun currentBinding(): OutboxBinding = bindingProvider().normalized()
+
     /**
      * ADR-0038 PR-2g.3 round-9 P1: session-boundary epoch.
      *
      * Incremented at the start of [clearAll]. A drain pass captures
      * this value before dequeue and re-checks it after [tryClaim]
      * but before dispatch. If the epoch changed, the drain knows a
-     * session boundary fired mid-pass — the row's DAO entry has
-     * been wiped by [clearAll]'s DELETE and the next dispatch would
-     * send the now-orphan in-memory payload under whatever session
-     * the user just bound. The drain skips the rest of the batch
-     * and exits.
+     * session boundary fired mid-pass. The drain must not dispatch
+     * a row loaded under the old binding after credentials changed,
+     * so it skips the rest of the batch and exits.
      *
-     * Why an in-memory counter and not a Room column: this is the
-     * minimal fix that closes the in-flight race within a single
-     * process. A more complete answer is a future Room v10 migration
-     * adding ``server_url / ledger_id / session_fingerprint`` columns
-     * so the drain can filter at SQL time AND survive process
-     * restarts that bridge a session boundary. For now the periodic
-     * worker plus [clearAll] semantics make the in-process counter
-     * sufficient.
+     * Room rows also carry ``serverUrl`` / ``ledgerId`` and all DAO
+     * drain reads are binding-scoped. The epoch is still needed for
+     * the narrower in-process case where a worker has already loaded
+     * a row and is about to dispatch while credentials are changing.
      */
     private val sessionEpoch = AtomicLong(0L)
 
@@ -125,7 +133,7 @@ class OutboxRepository(
      *   2. drain tryClaim succeeds + post-claim epoch check passes
      *      (still N)
      *   3. coroutine suspends (scheduler yields)
-     *   4. clearAll() runs (bumps epoch to N+1, deletes DAO rows)
+     *   4. a binding transition starts (epoch bumps to N+1)
      *   5. session coordinator writes new serverUrl + sessionToken
      *   6. drain resumes, calls dispatcher.dispatch(row)
      *   7. dispatch resolves apiProvider() lazily; OkHttp
@@ -139,23 +147,23 @@ class OutboxRepository(
      *   - [OutboxDrainEngine.drainOnce] across BOTH the epoch check
      *     AND the entire ``dispatcher.dispatch(row)`` (so the
      *     OkHttp token-read inside dispatch can't be interleaved
-     *     with a clearAll).
-     *   - [clearAll] across the epoch bump + DAO delete.
+     *     with a binding transition).
+     *   - [withBindingTransition] across the epoch bump and all
+     *     credential/cache writes.
      *
      * Because [LocalLedgerSessionCoordinator] and
-     * [ExpenseRepositoryCore.clearBinding] both place credential
-     * mutations AFTER ``outbox.clearAll()`` returns (round-10
-     * ordering), and clearAll only returns after acquiring the
-     * lease, credential mutations always happen AFTER any in-flight
-     * dispatch completes. Worst case is "old-session in-flight at
-     * boundary moment" — the in-flight request finishes under the
-     * old session, then the session changes. Acceptable until Room
-     * v10 adds binding columns.
+     * [ExpenseRepositoryCore.clearBinding] mutate credentials inside
+     * [withBindingTransition], credential mutations always happen
+     * AFTER any in-flight dispatch completes. Worst case is
+     * "old-session in-flight at boundary moment" — the in-flight
+     * request finishes under the old session, then the session
+     * changes.
      *
      * Cost: a session transition may block up to one outbox call
      * timeout. We trade latency for correctness.
      */
     private val dispatchLease = Mutex()
+    private val bindingTransitionLease = Mutex()
 
     /**
      * Run [block] while holding the dispatch lease. Used by
@@ -164,6 +172,41 @@ class OutboxRepository(
      */
     suspend fun <T> withDispatchLease(block: suspend () -> T): T =
         dispatchLease.withLock { block() }
+
+    /**
+     * Hold the complete credential/binding mutation boundary.
+     *
+     * [enqueue] snapshots ``serverUrl`` + ``ledgerId`` from local
+     * settings. During a server or ledger switch those two values
+     * are written in separate stores, so an enqueue that interleaves
+     * with the transition could otherwise persist a mixed binding.
+     * This method blocks both dispatch and enqueue while the caller
+     * mutates credentials, bumps the epoch before any new credential
+     * is visible, and optionally clears the queue for explicit
+     * sign-out or debug rebinding.
+     */
+    suspend fun <T> withBindingTransition(
+        clearExistingRows: Boolean = false,
+        block: suspend () -> T,
+    ): T {
+        var notifyBoundary = false
+        try {
+            return dispatchLease.withLock {
+                bindingTransitionLease.withLock {
+                    sessionEpoch.incrementAndGet()
+                    notifyBoundary = true
+                    if (clearExistingRows) {
+                        dao.clearAll()
+                    }
+                    block()
+                }
+            }
+        } finally {
+            if (notifyBoundary) {
+                notifyClearBoundary()
+            }
+        }
+    }
 
     /**
      * Persist a mutation snapshot for later replay.
@@ -199,15 +242,20 @@ class OutboxRepository(
         payloadJson: String,
         expectedUpdatedAt: String,
     ): Long {
-        val row = PendingMutationEntity(
-            type = type.wireValue,
-            targetId = targetId,
-            payload = payloadJson,
-            expectedUpdatedAt = expectedUpdatedAt,
-            status = PendingMutationStatus.Pending.wireValue,
-            createdAt = nowIso(),
-        )
-        val id = dao.insert(row)
+        val id = bindingTransitionLease.withLock {
+            val binding = currentBinding()
+            val row = PendingMutationEntity(
+                serverUrl = binding.serverUrl,
+                ledgerId = binding.ledgerId,
+                type = type.wireValue,
+                targetId = targetId,
+                payload = payloadJson,
+                expectedUpdatedAt = expectedUpdatedAt,
+                status = PendingMutationStatus.Pending.wireValue,
+                createdAt = nowIso(),
+            )
+            dao.insert(row)
+        }
         try {
             onEnqueued()
         } catch (_: Exception) {
@@ -219,59 +267,36 @@ class OutboxRepository(
         return id
     }
 
+    suspend fun pauseForBindingTransition() {
+        withBindingTransition(clearExistingRows = false) {}
+    }
+
     /**
-     * Drop every queued mutation. Called from session-boundary
-     * lifecycle hooks (`ExpenseRepositoryCore.clearBinding` /
-     * `LocalLedgerSessionCoordinator.applyTransitionLocked` on a
-     * non-None `cacheInvalidation`).
-     *
-     * Why this exists (codex round-8 P1): outbox rows today only
-     * carry `type/targetId/payload/expectedUpdatedAt/status` — no
-     * server URL or ledger id. A row enqueued under ledger A would
-     * otherwise be drained under ledger B's session after a switch,
-     * either 404'ing (target doesn't exist there) or worse mutating
-     * an unrelated row that happens to share the public id space.
-     * The minimal fix until a Room v10 migration adds binding
-     * columns is to wipe the queue at every session transition.
-     * Data loss is preferable to wrong-replay; the user gets a
-     * fresh start under the new binding.
+     * Drop every queued mutation. Used for explicit sign-out or
+     * internal debug rebind paths where preserving offline edits
+     * would keep private data after credentials are intentionally
+     * removed. Ledger/server switches use [pauseForBindingTransition]
+     * instead; durable binding columns keep old rows from replaying
+     * under the wrong session.
      *
      * @return the number of rows dropped.
      */
     suspend fun clearAll(): Int {
-        val removed = dispatchLease.withLock {
-            // Round-10 follow-up: take the dispatch lease BEFORE
-            // touching the epoch / DAO. This blocks until any in-flight
-            // OutboxDrainEngine dispatch finishes, so a dispatch that
-            // already passed the post-claim epoch check completes under
-            // the OLD session (credentials haven't been rewritten yet
-            // — coordinator's credential writes follow this clearAll
-            // return). Without the lease, the dispatch's lazy
-            // apiProvider() / OkHttp interceptor token-read could fire
-            // AFTER the credential write, replaying an old row under a
-            // new session.
-            //
-            // Bump the epoch BEFORE the DAO delete so any concurrent
-            // drain that captured the old epoch sees the change on its
-            // next ``currentSessionEpoch()`` check — even if the DAO
-            // delete itself races with the drain's tryClaim. The check
-            // sequence in [OutboxDrainEngine.drainOnce] is:
-            //   capturedEpoch = currentSessionEpoch()
-            //   ... dequeue ...
-            //   ... tryClaim ...
-            //   withDispatchLease { if (epoch differs) skip; else dispatch }
-            // So bumping the counter first guarantees the post-claim
-            // check catches us.
-            sessionEpoch.incrementAndGet()
-            dao.clearAll()
+        var removed = 0
+        withBindingTransition(clearExistingRows = false) {
+            removed = dao.clearAll()
         }
+        return removed
+    }
+
+    private fun notifyClearBoundary() {
         try {
             onClearAll()
         } catch (_: Exception) {
-            // Best-effort scheduler cancel — see [enqueue] for the
-            // same Exception-not-Throwable rationale.
+            // Best-effort scheduler cancel/re-arm signal. JVM-level
+            // Errors still propagate; see [enqueue] for the same
+            // Exception-not-Throwable rationale.
         }
-        return removed
     }
 
     /**
@@ -289,16 +314,21 @@ class OutboxRepository(
      *    without per-target dedup, the same drain pass would
      *    return both A and B for ``expense:1`` and the engine
      *    would dispatch them in parallel even though
-     *    ``markInFlightIfPending`` is per-row atomic.
+     *    ``markInFlightIfPending`` is per-row atomic. The DAO now
+     *    also applies this same-target filter before ``LIMIT`` so
+     *    duplicate targets do not consume the whole batch.
      * 3. Returns the public [OutboxRow] view (not the raw Entity)
      *    so the drain engine doesn't depend on Room types.
      */
     suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH): List<OutboxRow> {
+        val binding = currentBinding()
         // [codex round-3 P2#1 / round-4 P1] Use the SQL-side filter
         // so LIMIT applies AFTER unresolved targets are excluded.
         // Round-3 introduced ``nextRunnableBatch`` but a rebase wiped
         // out the production caller; round-4 wires it back.
         val candidates = dao.nextRunnableBatch(
+            serverUrl = binding.serverUrl,
+            ledgerId = binding.ledgerId,
             pendingStatus = PendingMutationStatus.Pending.wireValue,
             inFlightStatus = PendingMutationStatus.InFlight.wireValue,
             conflictStatus = PendingMutationStatus.Conflict.wireValue,
@@ -321,6 +351,26 @@ class OutboxRepository(
     }
 
     /**
+     * One-time v9 → v10 adoption. The 9 → 10 migration added the
+     * ``serverUrl`` / ``ledgerId`` columns with an empty-string default but
+     * couldn't know the active binding (it lives in settings, not the DB), so
+     * pre-upgrade rows carry ``('', '')`` and match no binding-scoped query.
+     * v9 tracked no binding but had a single active one, so those stranded
+     * rows belong to whatever the app is bound to now. The drain engine calls
+     * this at the start of every pass; it's a no-op once adopted (or while
+     * unbound), so no extra startup wiring is needed.
+     *
+     * @return the number of legacy rows adopted into the current binding.
+     */
+    suspend fun adoptLegacyRowsForCurrentBinding(): Int {
+        val binding = currentBinding()
+        if (binding.serverUrl.isEmpty() || binding.ledgerId.isEmpty()) return 0
+        return bindingTransitionLease.withLock {
+            dao.adoptLegacyBinding(serverUrl = binding.serverUrl, ledgerId = binding.ledgerId)
+        }
+    }
+
+    /**
      * Recovery: push rows stuck in IN_FLIGHT past [staleAfterMillis]
      * back to PENDING so the next drain can re-claim them. Called
      * by the engine at the start of each drain.
@@ -332,12 +382,16 @@ class OutboxRepository(
      */
     suspend fun recoverStaleInFlight(staleAfterMillis: Long = DEFAULT_STALE_IN_FLIGHT_MS): Int {
         val cutoff = Instant.now(clock).minusMillis(staleAfterMillis)
-        return dao.recoverStaleInFlight(
-            pendingStatus = PendingMutationStatus.Pending.wireValue,
-            inFlightStatus = PendingMutationStatus.InFlight.wireValue,
-            staleCutoffIso = ISO.format(cutoff),
-            recoveryMessage = "recovered_from_stuck_in_flight",
-        )
+        return currentBinding().let { binding ->
+            dao.recoverStaleInFlight(
+                serverUrl = binding.serverUrl,
+                ledgerId = binding.ledgerId,
+                pendingStatus = PendingMutationStatus.Pending.wireValue,
+                inFlightStatus = PendingMutationStatus.InFlight.wireValue,
+                staleCutoffIso = ISO.format(cutoff),
+                recoveryMessage = "recovered_from_stuck_in_flight",
+            )
+        }
     }
 
     /**
@@ -372,11 +426,15 @@ class OutboxRepository(
      * Returns the count of cascaded rows for tests / telemetry.
      */
     suspend fun cascadeFreshToken(targetId: String, newToken: String): Int =
-        dao.cascadeFreshTokenForTarget(
-            targetId = targetId,
-            pendingStatus = PendingMutationStatus.Pending.wireValue,
-            freshToken = newToken,
-        )
+        currentBinding().let { binding ->
+            dao.cascadeFreshTokenForTarget(
+                serverUrl = binding.serverUrl,
+                ledgerId = binding.ledgerId,
+                targetId = targetId,
+                pendingStatus = PendingMutationStatus.Pending.wireValue,
+                freshToken = newToken,
+            )
+        }
 
     /**
      * Transient failure: keep the row in PENDING so the next drain
@@ -495,14 +553,32 @@ class OutboxRepository(
     }
 
     /**
-     * Live queue-depth surface for the global "你有 N 笔待同步"
-     * status pill.
+     * Binding source the live UI streams follow. A reactive [bindingChanges]
+     * (AppContainer wires it from the active-ledger settings flow) lets the
+     * observe* streams re-target the new binding on a ledger switch via
+     * [flatMapLatest]; null falls back to a single snapshot read lazily at
+     * collection time so tests / non-Android callers keep the old behaviour.
      */
+    private fun bindingFlow(): Flow<OutboxBinding> =
+        (bindingChanges ?: flow { emit(currentBinding()) })
+            .map { it.normalized() }
+            .distinctUntilChanged()
+
+    /**
+     * Live queue-depth surface for the global "你有 N 笔待同步"
+     * status pill. Re-subscribes to the new binding when the active ledger
+     * changes (see [bindingFlow]).
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun observeQueueDepth(): Flow<Int> =
-        dao.observeQueueDepth(
-            PendingMutationStatus.Pending.wireValue,
-            PendingMutationStatus.InFlight.wireValue,
-        )
+        bindingFlow().flatMapLatest { binding ->
+            dao.observeQueueDepth(
+                serverUrl = binding.serverUrl,
+                ledgerId = binding.ledgerId,
+                pendingStatus = PendingMutationStatus.Pending.wireValue,
+                inFlightStatus = PendingMutationStatus.InFlight.wireValue,
+            )
+        }
 
     /**
      * Live stream of rows in CONFLICT state. The conflict-banner
@@ -512,8 +588,15 @@ class OutboxRepository(
      * Status string is converted back to the enum on read so the
      * UI layer doesn't have to know wire values.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun observeConflicts(): Flow<List<OutboxRow>> =
-        dao.observeConflictRows(PendingMutationStatus.Conflict.wireValue)
+        bindingFlow().flatMapLatest { binding ->
+            dao.observeConflictRows(
+                serverUrl = binding.serverUrl,
+                ledgerId = binding.ledgerId,
+                conflictStatus = PendingMutationStatus.Conflict.wireValue,
+            )
+        }
             .map { rows -> rows.map { it.toDomain() } }
 
     /**
@@ -521,18 +604,38 @@ class OutboxRepository(
      * banner. Counterpart of [observeConflicts]; both states block
      * same-target later mutations and need a UI surface to clear.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun observeFailed(): Flow<List<OutboxRow>> =
-        dao.observeFailedRows(PendingMutationStatus.Failed.wireValue)
+        bindingFlow().flatMapLatest { binding ->
+            dao.observeFailedRows(
+                serverUrl = binding.serverUrl,
+                ledgerId = binding.ledgerId,
+                failedStatus = PendingMutationStatus.Failed.wireValue,
+            )
+        }
             .map { rows -> rows.map { it.toDomain() } }
 
+    fun observeStatus(): Flow<OutboxStatus> =
+        combine(observeQueueDepth(), observeConflicts(), observeFailed()) { queueDepth, conflicts, failed ->
+            OutboxStatus(
+                queueDepth = queueDepth,
+                conflicts = conflicts,
+                failed = failed,
+            )
+        }
+
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
-        dao.activeForTarget(
-            targetId = targetId,
-            pendingStatus = PendingMutationStatus.Pending.wireValue,
-            inFlightStatus = PendingMutationStatus.InFlight.wireValue,
-            conflictStatus = PendingMutationStatus.Conflict.wireValue,
-            failedStatus = PendingMutationStatus.Failed.wireValue,
-        ).map { it.toDomain() }
+        currentBinding().let { binding ->
+            dao.activeForTarget(
+                serverUrl = binding.serverUrl,
+                ledgerId = binding.ledgerId,
+                targetId = targetId,
+                pendingStatus = PendingMutationStatus.Pending.wireValue,
+                inFlightStatus = PendingMutationStatus.InFlight.wireValue,
+                conflictStatus = PendingMutationStatus.Conflict.wireValue,
+                failedStatus = PendingMutationStatus.Failed.wireValue,
+            )
+        }.map { it.toDomain() }
 
     /**
      * Garbage-collect completed DONE rows older than [retentionMillis].
@@ -590,6 +693,8 @@ class OutboxRepository(
  */
 data class OutboxRow(
     val id: Long,
+    val serverUrl: String,
+    val ledgerId: String,
     val type: PendingMutationType,
     val targetId: String,
     val payloadJson: String,
@@ -602,8 +707,34 @@ data class OutboxRow(
     val completedAt: String?,
 )
 
+data class OutboxBinding(
+    val serverUrl: String,
+    val ledgerId: String,
+) {
+    fun normalized(): OutboxBinding =
+        OutboxBinding(
+            serverUrl = serverUrl.trim().trimEnd('/'),
+            ledgerId = ledgerId.trim(),
+        )
+
+    companion object {
+        val DEFAULT = OutboxBinding(serverUrl = "", ledgerId = "")
+    }
+}
+
+data class OutboxStatus(
+    val queueDepth: Int,
+    val conflicts: List<OutboxRow>,
+    val failed: List<OutboxRow>,
+) {
+    val needsUserAction: Boolean
+        get() = conflicts.isNotEmpty() || failed.isNotEmpty()
+}
+
 private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
     id = id,
+    serverUrl = serverUrl,
+    ledgerId = ledgerId,
     type = PendingMutationType.fromWire(type),
     targetId = targetId,
     payloadJson = payload,

@@ -71,6 +71,7 @@ def post_advise(
     return BudgetAdviseResponse(
         advice=_advice_to_dto(result.advice),
         provider_name=result.provider_name,
+        reason_code=result.reason_code,
     )
 
 

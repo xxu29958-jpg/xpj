@@ -111,8 +111,11 @@ def _handler(db: Session, task: BackgroundTask, payload: dict[str, Any]) -> None
 
 
 def register() -> None:
+    # Production handlers are declared in background_task_registry's runtime
+    # catalog. This helper only populates a per-test isolated registry.
     """Idempotent registration — called from FastAPI lifespan startup."""
-    background_task_service.register_handler(V1_MIGRATION_TASK_TYPE, _handler)
+    if background_task_service.has_active_handler_registry_context():
+        background_task_service.register_handler(V1_MIGRATION_TASK_TYPE, _handler)
 
 
 def _raise_if_cancelled(db: Session, task: BackgroundTask) -> None:

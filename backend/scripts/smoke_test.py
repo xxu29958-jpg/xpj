@@ -287,7 +287,7 @@ def run_smoke(base_url: str) -> None:
     print("OK legacy upload token removed")
 
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=app_headers())
-    assert_error(result, 401, "invalid_token")
+    assert_error(result, 403, "permission_denied")
     result = request("POST", f"{base_url}/api/maintenance/cleanup-images", headers=admin_headers())
     assert_equal(result.status, 200, "maintenance cleanup status")
     assert_equal(result.json()["enabled"], False, "maintenance cleanup disabled by default")

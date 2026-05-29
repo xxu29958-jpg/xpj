@@ -39,7 +39,7 @@ def list_inbox(
     if status is not None:
         status_value = status.strip().lower()
         if status_value not in _INVITATION_STATUSES:
-            raise AppError("invalid_request", "Unsupported invitation status.", status_code=400)
+            raise AppError("split_status_invalid", "Unsupported invitation status.", status_code=400)
         statement = statement.where(BillSplitInvitation.status == status_value)
     rows = db.scalars(statement.order_by(BillSplitInvitation.created_at.desc()).limit(limit))
     return list(rows)

@@ -107,6 +107,8 @@ def _migrate_identity_runtime_schema(connection, table_names: set[str]) -> None:
         columns = _sqlite_column_names(connection, "auth_tokens")
         if "expires_at" not in columns:
             connection.execute(text("ALTER TABLE auth_tokens ADD COLUMN expires_at DATETIME"))
+        if "grace_until" not in columns:
+            connection.execute(text("ALTER TABLE auth_tokens ADD COLUMN grace_until DATETIME"))
         connection.execute(
             text(
                 "UPDATE auth_tokens "

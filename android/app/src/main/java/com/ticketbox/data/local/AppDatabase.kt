@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -215,6 +215,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val Migration9To10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pending_mutations ADD COLUMN serverUrl TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE pending_mutations ADD COLUMN ledgerId TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_createdAt ON pending_mutations (serverUrl, ledgerId, createdAt)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_targetId_status ON pending_mutations (serverUrl, ledgerId, targetId, status)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_status ON pending_mutations (serverUrl, ledgerId, status)",
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -231,6 +247,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration6To7,
                         Migration7To8,
                         Migration8To9,
+                        Migration9To10,
                     )
                     .build()
                     .also { instance = it }

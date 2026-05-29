@@ -16,6 +16,7 @@ from app.services.budget_advisor_service._models import (
     CategorySnapshot,
     HistoricalBaseline,
 )
+from app.services.category_common import DEFAULT_CATEGORIES, normalize_category
 from app.services.monthly_report_service import (
     MonthlyReport,
     compose_budget_explanation,
@@ -55,13 +56,17 @@ def build_budget_inputs(
 
 
 def _category_breakdown(report: MonthlyReport) -> list[CategorySnapshot]:
-    return [
-        CategorySnapshot(
-            category=row.category,
-            amount_cents=int(row.amount_cents),
-            count=int(row.count),
+    grouped: dict[str, tuple[int, int]] = {}
+    for row in report.top_categories:
+        category = _advisor_category(row.category)
+        amount, count = grouped.get(category, (0, 0))
+        grouped[category] = (
+            amount + int(row.amount_cents),
+            count + int(row.count),
         )
-        for row in report.top_categories
+    return [
+        CategorySnapshot(category=category, amount_cents=amount, count=count)
+        for category, (amount, count) in grouped.items()
     ]
 
 
@@ -74,7 +79,16 @@ def _historical_baseline(
     timezone_name: str,
 ) -> list[HistoricalBaseline]:
     rows: list[HistoricalBaseline] = []
+    seen_categories: set[str] = set()
     for category in [item.category for item in report.top_categories]:
+        advisor_category = _advisor_category(category)
+        # De-dupe by canonical category. compose_budget_explanation aggregates
+        # the whole alias group (canonical + legacy aliases), so the first raw
+        # member already covers the rest — skipping later aliases drops no
+        # history, it just avoids emitting the same canonical baseline twice.
+        if advisor_category in seen_categories:
+            continue
+        seen_categories.add(advisor_category)
         explanation = compose_budget_explanation(
             db,
             tenant_id=tenant_id,
@@ -86,9 +100,16 @@ def _historical_baseline(
             continue
         rows.append(
             HistoricalBaseline(
-                category=category,
+                category=advisor_category,
                 median_cents=int(explanation.p50_cents),
                 p75_cents=int(explanation.p75_cents),
             )
         )
     return rows
+
+
+def _advisor_category(category: str | None) -> str:
+    normalized = normalize_category(category)
+    if normalized in DEFAULT_CATEGORIES:
+        return normalized
+    return DEFAULT_CATEGORIES[-1]

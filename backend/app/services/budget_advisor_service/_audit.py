@@ -9,8 +9,9 @@ Owner Console "AI 状态" panel reads those rows to surface:
   (``BUDGET_ADVISOR_OWNER_CONFIRMED``), and
 * the most recent call result + timestamp.
 
-The input hash is sha256 over the outbound-guarded JSON payload — same
-bytes that actually leave the box. We never store the payload itself.
+The input hash is HMAC-SHA256 over the outbound-guarded JSON payload — same
+bytes that actually leave the box, keyed by the local deployment secret. We
+never store the payload itself.
 """
 
 from __future__ import annotations
@@ -23,17 +24,20 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError
-from app.models import BudgetAdvisorAuditLog
+from app.models import BudgetAdvisorAuditLog, BudgetAdvisorQuotaLock
 from app.services.budget_advisor_service._provider_names import (
     LIVE_PROVIDER_NAMES,
     canonical_provider_name,
     clean_provider_name,
 )
 from app.services.time_service import ensure_utc, now_utc, to_iso
+
+IN_PROGRESS_ERROR_CODE = "ai_advisor_in_progress"
 
 
 def is_live_provider(name: str | None) -> bool:
@@ -77,8 +81,16 @@ def enforce_live_call_budget(
 ) -> None:
     """Fail before an outbound advisor call exceeds configured cost caps."""
 
+    _check_live_call_budget(db, tenant_id=tenant_id, current=now or now_utc())
+
+
+def _check_live_call_budget(
+    db: Session,
+    *,
+    tenant_id: str,
+    current: datetime,
+) -> None:
     cfg = get_settings()
-    current = now or now_utc()
     latest = latest_audit_row(db, tenant_id=tenant_id)
     min_interval = int(cfg.budget_advisor_live_min_interval_seconds)
     if min_interval > 0 and latest is not None:
@@ -105,6 +117,118 @@ def enforce_live_call_budget(
             "AI 预算助手今日调用次数已达上限。",
             status_code=429,
         )
+
+
+def _ensure_quota_lock_row(db: Session, *, tenant_id: str, current: datetime) -> None:
+    if db.get(BudgetAdvisorQuotaLock, tenant_id) is not None:
+        db.commit()
+        return
+    db.add(BudgetAdvisorQuotaLock(tenant_id=tenant_id, touched_at=current))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+
+
+def _begin_quota_reservation(db: Session) -> None:
+    """Start the durable quota reservation critical section.
+
+    SQLite ignores row-level SELECT .. FOR UPDATE, so the shared-DB deployment
+    path needs the writer transaction before checking the recent audit window.
+    """
+
+    if db.in_transaction():
+        db.commit()
+    if db.get_bind().dialect.name == "sqlite":
+        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+
+
+def reserve_live_call_budget(
+    db: Session,
+    *,
+    tenant_id: str,
+    actor_account_id: int | None,
+    provider: str,
+    model: str | None,
+    base_url: str | None,
+    month: str | None,
+    input_hash: str,
+    now: datetime | None = None,
+) -> BudgetAdvisorAuditLog:
+    """Durably reserve a live advisor call against tenant cost caps.
+
+    The reservation is an audit row inserted *before* the outbound call. That
+    makes daily/min-interval checks durable across multiple workers or app
+    instances sharing the same database. If the process dies after reserving,
+    the row stays as an in-progress failed attempt and still counts against
+    the short cost window, which is the safer failure mode for paid providers.
+    """
+
+    cfg = get_settings()
+    current = now or now_utc()
+    if db.in_transaction():
+        db.commit()
+    _ensure_quota_lock_row(db, tenant_id=tenant_id, current=current)
+
+    _begin_quota_reservation(db)
+    committed = False
+    try:
+        lock = db.get(BudgetAdvisorQuotaLock, tenant_id, with_for_update=True)
+        if lock is None:
+            lock = BudgetAdvisorQuotaLock(tenant_id=tenant_id, touched_at=current)
+            db.add(lock)
+        lock.touched_at = current
+        db.flush()
+        _check_live_call_budget(db, tenant_id=tenant_id, current=current)
+        row = BudgetAdvisorAuditLog(
+            tenant_id=tenant_id,
+            actor_account_id=actor_account_id,
+            provider=provider,
+            model=model,
+            base_url=mask_base_url(base_url),
+            month=month,
+            input_hash=input_hash,
+            success=0,
+            error_code=IN_PROGRESS_ERROR_CODE,
+            suggestion_count=0,
+            duration_ms=None,
+            retention_days=max(int(cfg.budget_advisor_audit_retention_days), 0),
+            called_at=current,
+        )
+        db.add(row)
+        db.flush()
+        row_id = row.id
+        db.commit()
+        committed = True
+    finally:
+        if not committed:
+            db.rollback()
+
+    reserved = db.get(BudgetAdvisorAuditLog, row_id)
+    if reserved is None:  # pragma: no cover - committed row should exist
+        raise AppError("server_error", status_code=500)
+    db.expunge(reserved)
+    db.commit()
+    return reserved
+
+
+def complete_live_call_audit_row(
+    db: Session,
+    *,
+    audit_log_id: int,
+    success: bool,
+    error_code: str | None = None,
+    suggestion_count: int = 0,
+    duration_ms: int | None = None,
+) -> None:
+    row = db.get(BudgetAdvisorAuditLog, audit_log_id)
+    if row is None:
+        return
+    row.success = 1 if success else 0
+    row.error_code = error_code
+    row.suggestion_count = int(max(suggestion_count, 0))
+    row.duration_ms = duration_ms
+    db.commit()
 
 
 def mask_base_url(value: str | None) -> str | None:
@@ -245,8 +369,10 @@ __all__ = [
     "AdvisorStatus",
     "advisor_status_for_tenant",
     "cleanup_expired_audit_logs",
+    "complete_live_call_audit_row",
     "compute_input_hash",
     "enforce_live_call_budget",
+    "reserve_live_call_budget",
     "is_live_provider",
     "latest_audit_row",
     "mask_base_url",

@@ -140,6 +140,28 @@ class BudgetAdvisorAuditLog(Base):
     called_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
 
+class BudgetAdvisorQuotaLock(Base):
+    """Tenant-scoped durable mutex for live advisor quota reservations.
+
+    The row is updated inside the same transaction that checks the recent
+    audit window and inserts the in-progress audit row. SQLite serializes that
+    write, while row-locking databases can use the same row as the lock target.
+    """
+
+    __tablename__ = "budget_advisor_quota_locks"
+
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("ledgers.ledger_id", name="fk_budget_advisor_quota_tenant"),
+        primary_key=True,
+    )
+    touched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_utc,
+        nullable=False,
+    )
+
+
 class AiTransactionTempIdMap(Base):
     """Per-AI-call transaction placeholder. ``session_id`` lets one advisor
     call refer to a specific subset of expenses without leaking the real

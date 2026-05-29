@@ -107,6 +107,7 @@ def refresh_session(
         target_ledger_id=auth.ledger_id,
         rotated_at=rotated_at,
         expires_at=expiry.expires_at,
+        allow_grace=True,
     )
     db.commit()
     return RefreshSessionResponse(

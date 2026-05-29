@@ -50,7 +50,7 @@ def _record_ocr_fact(expense_id: int, raw_text: str, *, tenant_id: str = "owner"
             OcrFactDraft(
                 tenant_id=tenant_id,
                 expense_id=expense_id,
-                ocr_provider="pytest",
+                ocr_provider="mock",
                 raw_text=raw_text,
             ),
         )

@@ -30,7 +30,13 @@ v1.0 V10-03（10k 行 CSV 导入）和 V10-04（v0.x → v1.0 迁移）会持续
 
 Chosen option: **Stay on [[0016]] red line — `ThreadPoolExecutor(max_workers=2)` + `background_tasks` progress table + 2s client polling**.
 
-Tasks run in-process. Progress writes go to a new `background_tasks` table with `status / progress_current / progress_total / last_progress_at / cancellation_requested_at` columns. Long work is chunked into 50-100 row transactions so a crash mid-way leaves committed prefix intact. Backend startup force-fails every `status=running` **or** `status=queued` task it sees — single-process model means the previous executor died with the previous process, so anything not already terminal is an orphan the instant a new process starts. **No heartbeat threshold** (a previous draft of this ADR proposed a 5-min `last_progress_at` cutoff borrowed from distributed worker patterns; that's wrong here — fast restarts inside 5 min would leak phantom `running` rows, and `queued` rows would never be cleaned up at all).
+Tasks run in-process. Progress writes go to a new `background_tasks` table with `status / progress_current / progress_total / last_progress_at / cancellation_requested_at` columns. Long work is chunked into 50-100 row transactions so a crash mid-way leaves committed prefix intact. A worker must atomically claim a row with `UPDATE background_tasks SET status='running' ... WHERE id=:id AND status='queued'` before it executes the handler; if another worker or duplicate submit already claimed the row, the runner exits without executing the task. By default, backend startup force-fails every `status=running` **or** `status=queued` task it sees: in the single-process model, the previous executor died with the previous process, so anything not already terminal is an orphan the instant a new process starts. Cloud / multi-worker deployments may set `BACKGROUND_TASK_ORPHAN_GRACE_SECONDS` to preserve fresh active rows still heartbeating in another process; rows older than the grace window are failed as orphaned. This is only a compatibility valve for shared-DB deployments, not a durable distributed queue or broker.
+
+Handler discovery is not a mutable module-level registry in production.
+Runtime task types are declared by `background_task_registry.runtime_handler_registry()`;
+tests that need stub handlers install an isolated `ContextVar` registry. This keeps
+parallel tests and multiple app instances from sharing a process-global `_handlers`
+map.
 
 Polling is GET `/api/tasks/{public_id}` every 2 s; no WebSocket / SSE. `fx_rate_scheduler` 保留不动——它是系统定时驱动，不是用户触发，跟 background_tasks 模型不重叠。
 
@@ -57,7 +63,7 @@ Bad:
 ## Confirmation
 
 - chunked transaction 崩溃测试：100 行任务在 60 行处异常 → 前 50 行已 commit，result_summary 记 last_committed_row=50
-- orphan recovery 测试：startup 时把 `running` 与 `queued` 全部 force-fail（无 heartbeat 阈值，单进程模型重启即 orphan）
+- claim / orphan recovery 测试：同一 `background_tasks.id` 只能被一个 runner 从 `queued` 原子切到 `running`；默认单进程模式下 startup 立即 fail `running` 与 `queued`；配置 `BACKGROUND_TASK_ORPHAN_GRACE_SECONDS` 后，云端/多 worker 模式保留新鲜 heartbeat 的 active task，只 fail 超过 grace 的 stale task。
 - cancellation latency 测试：cancel 后 ≤100 ms 任务循环退出
 - concurrent_limit 测试：第 3 个任务入队后 `status=queued`，第 1 个完成才开始
 - account isolation 测试：account A 看不到 account B 的任务列表

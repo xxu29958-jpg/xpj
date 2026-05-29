@@ -11,8 +11,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.budget_advisor_service import cleanup_expired_audit_logs
+from app.services.scheduler_lease_service import try_claim_scheduler_lease
 
 logger = logging.getLogger(__name__)
+_SCHEDULER_LEASE_SECONDS = 60 * 60
 
 
 @dataclass
@@ -80,6 +82,16 @@ def _scheduler_loop(
             return
         _status.last_attempt_at = datetime.now(timezone)
         try:
+            with SessionLocal() as db:
+                if not try_claim_scheduler_lease(
+                    db,
+                    name="budget_advisor_audit_cleanup",
+                    lease_seconds=_SCHEDULER_LEASE_SECONDS,
+                ):
+                    logger.info(
+                        "budget advisor audit cleanup skipped: scheduler lease is held"
+                    )
+                    continue
             with SessionLocal() as db:
                 deleted = cleanup_expired_audit_logs(db)
             _status.success_count += 1

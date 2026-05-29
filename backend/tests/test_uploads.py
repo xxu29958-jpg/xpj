@@ -15,7 +15,9 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Device, LedgerMember, UploadLink
+from app.models import Device, Expense, LedgerMember, UploadLink
+from app.services.category_common import DEFAULT_CATEGORIES
+from app.services.expense_service._create import enrich_pending_expense
 from app.services.file_service import resolve_protected_image, save_upload_bytes
 from app.services.identity_service import authenticate_upload_link, hash_secret
 from app.services.time_service import ensure_utc, now_utc
@@ -462,6 +464,47 @@ def test_upload_thumbnail_failure_does_not_block_pending(
     item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
     assert item["status"] == "pending"
     assert item["thumbnail_path"] is None
+
+
+def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(
+    monkeypatch, *, identity
+) -> None:
+    import app.services.expense_service._create as create_mod
+
+    saved = save_upload_bytes(
+        PNG_BYTES,
+        tenant_id="owner",
+        filename="ticket.png",
+        content_type="image/png",
+    )
+    with SessionLocal() as db:
+        expense = Expense(
+            tenant_id="owner",
+            category=DEFAULT_CATEGORIES[-1],
+            status="pending",
+            image_path=saved.relative_path,
+            thumbnail_path=None,
+            raw_text="",
+            confidence=None,
+        )
+        db.add(expense)
+        db.commit()
+        expense_id = expense.id
+
+    before = set(_stored_upload_files())
+
+    def fail_classify(*args, **kwargs):
+        raise RuntimeError("classify failed after thumbnail generation")
+
+    monkeypatch.setattr(create_mod, "classify_expense", fail_classify)
+
+    enrich_pending_expense(expense_id, "owner")
+
+    assert set(_stored_upload_files()) == before
+    with SessionLocal() as db:
+        row = db.get(Expense, expense_id)
+        assert row is not None
+        assert row.thumbnail_path is None
 
 
 def test_upload_same_image_marks_suspected_duplicate_without_rejecting(

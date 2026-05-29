@@ -19,6 +19,8 @@ from tests._infra.migration_helpers import (
     table_create_sql,
 )
 
+ALEMBIC_HEAD_REVISION = "20260528_0005"
+
 
 def test_empty_database_initializes_schema_and_runtime_data() -> None:
     reset_empty_database()
@@ -61,6 +63,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
         "exchange_rate_to_cny",
         "exchange_rate_date",
         "exchange_rate_source",
+        "image_perceptual_hash",
     }.issubset(expense_columns())
     assert "ix_ledger_audit_logs_ledger_created_at" in indexes("ledger_audit_logs")
     assert "ix_expenses_tenant_draft_idempotency_key" in indexes("expenses")
@@ -95,6 +98,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
     assert "ix_exchange_rates_tenant_currency_date" in indexes("exchange_rates")
     assert "ix_fx_rates_source_home_currency_date" in indexes("fx_rates")
     assert "ix_expenses_tenant_original_currency_date" in indexes("expenses")
+    assert "ix_expenses_tenant_image_phash" in indexes("expenses")
     assert "ix_dashboard_cards_tenant_surface_position" in indexes(
         "dashboard_card_preferences"
     )
@@ -224,7 +228,7 @@ def test_empty_database_initializes_schema_and_runtime_data() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "20260528_0001"
+    assert alembic_revision == ALEMBIC_HEAD_REVISION
 
 
 def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
@@ -260,7 +264,7 @@ def test_init_db_upgrades_pre_alembic_budget_advisor_audit_table() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "20260528_0001"
+    assert alembic_revision == ALEMBIC_HEAD_REVISION
 
 
 def test_init_db_runs_data_migrations_for_pre_alembic_existing_data() -> None:
@@ -299,7 +303,7 @@ def test_init_db_runs_data_migrations_for_pre_alembic_existing_data() -> None:
         alembic_revision = connection.execute(
             text("SELECT version_num FROM alembic_version")
         ).scalar_one()
-    assert alembic_revision == "20260528_0001"
+    assert alembic_revision == ALEMBIC_HEAD_REVISION
 
 
 def test_exchange_rates_seed_identity_ledger_ids() -> None:
