@@ -117,15 +117,15 @@ http://127.0.0.1:8000/owner
 
 Owner Console 仅允许本机访问（127.0.0.1），不通过 Cloudflare Tunnel 暴露到公网。
 
-## 网页版账本（/web，本机）
+## 网页版账本（/web）
 
-v0.3.3 起，后端额外提供一个轻量网页版账本视图，方便在 PC 上确认 / 编辑账单：
+v0.3.3 起后端提供轻量网页版账本视图，方便在 PC 上确认 / 编辑账单。v1.0（ADR-0028）起 `/web` 可经 Cloudflare Tunnel 公网访问，但受浏览器 session 门控（不再是本机限定）：
 
 ```
 http://127.0.0.1:8000/web
 ```
 
-包括待确认列表、已确认列表（按月份过滤）、月度统计、单笔编辑 / 确认 / 拒绝。仅本机可访问，公网仍 403。
+包括待确认列表、已确认列表（按月份过滤）、月度统计、单笔编辑 / 确认 / 拒绝。访问受 session 门控（ADR-0028）：本机 loopback 免 cookie；公网请求须先过 Cloudflare Access，再经 `web_session_gate` 校验 `__Host-session` cookie，无 cookie 重定向到 `/web/auth/login`。`/owner` 仍强制本机 loopback。
 
 ## 首次初始化 Owner 身份
 

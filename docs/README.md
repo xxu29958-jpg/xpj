@@ -8,7 +8,7 @@
 | 理解系统怎么搭、API 长什么样 | [architecture/](architecture/) |
 | 部署 / 备份 / 排障 / 升级 | [runbook/](runbook/) |
 | 看产品路线、设计参考、未来能力 | [roadmap/](roadmap/) |
-| 查当前版本（v0.9）的设计资产和收口报告 | [current/](current/) |
+| 查当前版本（v1.2）的设计资产和收口报告 | [current/](current/) |
 | 看某个具体技术选型为什么这么定 | [DECISIONS/](DECISIONS/)（0001–0027，0018 已撤回，索引见 [DECISIONS/README.md](DECISIONS/README.md)）|
 | 拿设计稿原图与色板预览 | [design_reference/](design_reference/) |
 
@@ -27,7 +27,7 @@ OCR / 分类 / 重复检测 / 缩略图任务追加：[roadmap/V2_ROADMAP.md](ro
 
 ## 版本真值源
 
-[architecture/VERSION.md](architecture/VERSION.md) 是后端 / Android 版本号的唯一权威。任何文档、CI、脚本里的版本字符串必须与这份对齐。当前 `v0.9.0a1`。
+[architecture/VERSION.md](architecture/VERSION.md) 是后端 / Android 版本号的唯一权威。任何文档、CI、脚本里的版本字符串必须与这份对齐。当前 `v1.2.0`。
 
 ## 目录约定
 
