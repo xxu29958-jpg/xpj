@@ -261,6 +261,11 @@ interface ApiService {
         @Body request: CategoryRuleDeleteRequest,
     ): StatusDto
 
+    // ADR-0038 undo: restore a soft-deleted category rule (no body / token — it
+    // restores the row the caller just deleted). Returns the restored rule.
+    @POST("api/rules/categories/{id}/undo")
+    suspend fun undoCategoryRule(@Path("id") id: Long): CategoryRuleDto
+
     @GET("api/merchants/aliases")
     suspend fun merchantAliases(): MerchantAliasListDto
 

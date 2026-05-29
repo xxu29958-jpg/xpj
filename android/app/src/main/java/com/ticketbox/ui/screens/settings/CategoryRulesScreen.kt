@@ -1,18 +1,31 @@
 package com.ticketbox.ui.screens.settings
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
+import com.ticketbox.ui.components.AppGlassCard
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleEditorCard
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleList
@@ -20,6 +33,7 @@ import com.ticketbox.ui.screens.settings.categoryrules.ConfirmedRuleApplyPanel
 import com.ticketbox.ui.screens.settings.categoryrules.DeleteCategoryRuleDialog
 import com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationHistory
 import com.ticketbox.ui.screens.settings.categoryrules.RollbackRuleApplicationDialog
+import kotlinx.coroutines.delay
 
 @Composable
 fun CategoryRulesScreen(
@@ -36,6 +50,9 @@ fun CategoryRulesScreen(
     onPreviewApplyConfirmedRules: () -> Unit,
     onConfirmApplyConfirmedRules: () -> Unit,
     onRollbackRuleApplication: (RuleApplicationBatch) -> Unit,
+    undoableRule: CategoryRule? = null,
+    onUndoDelete: () -> Unit = {},
+    onDismissUndo: () -> Unit = {},
 ) {
     var form by remember { mutableStateOf(CategoryRuleDraftForm()) }
     var deletingRule by remember { mutableStateOf<CategoryRule?>(null) }
@@ -68,6 +85,32 @@ fun CategoryRulesScreen(
         subtitle = categoryRuleSummary(rules),
         onBack = onBack,
     ) {
+        // ADR-0038 undo: a soft-deleted rule is recoverable for a 5s window.
+        // Online-only (shown only after a synced delete); auto-dismisses.
+        undoableRule?.let { undoable ->
+            LaunchedEffect(undoable.id) {
+                delay(5000)
+                onDismissUndo()
+            }
+            AppGlassCard(containerAlpha = 0.98f) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(AppSpacing.compactGap),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "已删除「${undoable.keyword}」",
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(AppSpacing.compactGap))
+                    TextButton(onClick = onUndoDelete) { Text("撤销") }
+                }
+            }
+        }
         if (!readOnly) {
             SettingsSection(
                 title = if (form.editingRule == null) "新增规则" else "编辑规则",

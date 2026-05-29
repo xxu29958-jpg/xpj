@@ -281,6 +281,19 @@ class RuleRepository(
         }
     }
 
+    /**
+     * ADR-0038 undo: restore a soft-deleted rule within its retention window.
+     * Mirrors [MerchantRepository.undoMerchantAlias] — a plain guarded POST; a
+     * 404 (already purged / never soft-deleted) surfaces via the standard
+     * NetworkErrorHandler mapping ("分类规则不存在。").
+     */
+    suspend fun undoDeleteRule(id: Long): Result<CategoryRule> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.guardedCall { api ->
+                api.undoCategoryRule(id).toDomain()
+            }
+        }
+
     suspend fun ruleApplications(limit: Int = 8): Result<List<RuleApplicationBatch>> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->

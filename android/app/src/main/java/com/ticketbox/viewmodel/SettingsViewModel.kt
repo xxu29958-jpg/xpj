@@ -40,6 +40,9 @@ data class SettingsUiState(
     val serverSettings: ServerSettings? = null,
     val diagnostics: ConnectionDiagnostics? = null,
     val categoryRules: List<CategoryRule> = emptyList(),
+    // ADR-0038 undo: just-deleted rule surfaced as a 5s 撤销 affordance
+    // (merged in from CategoryRulesViewModel by SettingsRoute).
+    val categoryRuleUndoable: CategoryRule? = null,
     val merchantAliases: List<MerchantAlias> = emptyList(),
     // ADR-0038 undo: just-deleted alias surfaced as a 5s 撤销 affordance
     // (merged in from MerchantAliasViewModel by SettingsRoute).

@@ -74,6 +74,8 @@ internal data class SettingsRouteActions(
     val onUpdateRule: (CategoryRule, String, String, Int) -> Unit,
     val onToggleRule: (CategoryRule) -> Unit,
     val onDeleteRule: (CategoryRule) -> Unit,
+    val onUndoRuleDelete: () -> Unit,
+    val onDismissRuleUndo: () -> Unit,
     val onCreateMerchantAlias: (String, String) -> Unit,
     val onToggleMerchantAlias: (MerchantAlias) -> Unit,
     val onDeleteMerchantAlias: (MerchantAlias) -> Unit,
@@ -267,6 +269,9 @@ internal fun SettingsDestinationHost(
             onPreviewApplyConfirmedRules = actions.onPreviewApplyConfirmedRules,
             onConfirmApplyConfirmedRules = actions.onConfirmApplyConfirmedRules,
             onRollbackRuleApplication = actions.onRollbackRuleApplication,
+            undoableRule = state.categoryRuleUndoable,
+            onUndoDelete = actions.onUndoRuleDelete,
+            onDismissUndo = actions.onDismissRuleUndo,
         )
 
         SettingsDestination.MerchantAliases -> MerchantAliasesScreen(

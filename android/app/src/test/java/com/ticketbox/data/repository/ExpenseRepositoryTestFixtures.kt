@@ -349,6 +349,8 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
     ): StatusDto = unsupported()
 
+    override suspend fun undoCategoryRule(id: Long): CategoryRuleDto = unsupported()
+
     override suspend fun merchantAliases(): MerchantAliasListDto = MerchantAliasListDto(
         items = listOf(
             merchantAliasDto(

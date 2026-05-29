@@ -279,6 +279,7 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest,
     ): StatusDto = ledgerUnsupported()
     override suspend fun undoMerchantAlias(publicId: String): MerchantAliasDto = ledgerUnsupported()
+    override suspend fun undoCategoryRule(id: Long): com.ticketbox.data.remote.dto.CategoryRuleDto = ledgerUnsupported()
     override suspend fun ruleApplications(limit: Int): RuleApplicationListDto = ledgerUnsupported()
     override suspend fun rollbackRuleApplication(publicId: String): RuleApplicationRollbackDto = ledgerUnsupported()
     override suspend fun applyConfirmedRules(

@@ -22,6 +22,9 @@ data class CategoryRulesUiState(
     val confirmedRulesPreview: RuleApplyConfirmedResult? = null,
     val busy: Boolean = false,
     val message: String? = null,
+    // ADR-0038 undo: the just-(soft-)deleted rule, surfaced as a 5s 撤销
+    // affordance. Null when there is nothing to undo.
+    val undoableRule: CategoryRule? = null,
 )
 
 class CategoryRulesViewModel(
@@ -160,15 +163,52 @@ class CategoryRulesViewModel(
                         DeleteOutcome.Synced -> "分类规则已删除"
                         DeleteOutcome.Queued -> "已离线删除，联网后同步"
                     }
+                    // ADR-0038 undo: offer 撤销 only after a synced delete (a
+                    // queued offline delete has nothing to restore via the API yet).
+                    val undoable = if (outcome == DeleteOutcome.Synced) rule else null
                     _uiState.update { state ->
                         state.copy(
                             categoryRules = state.categoryRules.filterNot { it.id == rule.id },
                             message = message,
+                            undoableRule = undoable,
                         )
                     }
                 }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "没有删除成功，请稍后再试。") } }
         }
+    }
+
+    fun undoDelete() {
+        val target = _uiState.value.undoableRule ?: return
+        viewModelScope.launch {
+            ruleRepository.undoDeleteRule(target.id)
+                .onSuccess { restored ->
+                    _uiState.update { state ->
+                        state.copy(
+                            categoryRules = (state.categoryRules + restored).sortedWith(
+                                compareByDescending<CategoryRule> { item -> item.enabled }
+                                    .thenByDescending { item -> item.priority }
+                                    .thenBy { item -> item.keyword },
+                            ),
+                            message = "已恢复分类规则",
+                            undoableRule = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            message = error.message ?: "没有恢复成功，请稍后再试。",
+                            undoableRule = null,
+                        )
+                    }
+                }
+        }
+    }
+
+    /** Clear the undo affordance once its 5s window lapses (or after use). */
+    fun dismissUndo() {
+        _uiState.update { it.copy(undoableRule = null) }
     }
 
     fun previewApplyConfirmedRules() {
