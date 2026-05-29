@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -92,17 +93,33 @@ def test_web_reports_uses_real_report_service_and_csv(web_client: TestClient, *,
     assert "预算解释" in response.text
     assert "历史不足" in response.text
     assert "¥60.00" in response.text
-    assert "星巴克" in response.text
+
+    # ADR-0026: reports.js renders the charts from the injected JSON; verify the
+    # data contract + that the category-filtered merchant ranking is correct.
+    blob = re.search(
+        r'<script type="application/json" id="reports-overview-data">(.*?)</script>',
+        response.text,
+        re.DOTALL,
+    )
+    assert blob is not None
+    overview = json.loads(blob.group(1))
+    assert {"trend", "merchant_ranking", "ranking_metric", "category_comparison"} <= overview.keys()
+    assert overview["ranking_metric"] == "count"
+    assert "星巴克" in [row["merchant"] for row in overview["merchant_ranking"]]
+    assert "灰度账本商家" not in [row["merchant"] for row in overview["merchant_ranking"]]
     assert "分类环比" in response.text
     assert "灰度账本商家" not in response.text
     assert "/web/reports/export.csv" in response.text
     assert "granularity=week" in response.text
     assert "ranking_metric=count" in response.text
     assert "merchant_category=%E9%A4%90%E9%A5%AE" in response.text
-    assert 'id="chart-trend"' in response.text
-    assert 'data-series=' in response.text
-    assert 'id="chart-category"' in response.text
-    assert 'data-categories=' in response.text
+    # ADR-0026: charts rendered by reports.js from #reports-overview-data.
+    assert 'id="reports-overview-data"' in response.text
+    assert 'id="reports-trend-chart"' in response.text
+    assert 'id="reports-merchant-chart"' in response.text
+    assert 'id="reports-category-chart"' in response.text
+    assert 'id="reports-export-png"' in response.text
+    assert "/static/web/reports.js" in response.text
     assert "商家排行" in response.text
     assert "/static/web/vendor/echarts.min.js" in response.text
     assert "/static/web/desktop.js" in response.text

@@ -127,88 +127,64 @@
 </div>
 {% endif %}
 
+{# ADR-0026 / ADR-0039: /web reports charts are rendered by reports.js from the
+   server-injected #reports-overview-data JSON. The `report` view model is a
+   superset of what the script reads (trend / merchant_ranking / ranking_metric
+   / category_comparison), so one tojson dump drives all three ECharts. #}
+<script type="application/json" id="reports-overview-data">{{ report | tojson }}</script>
+
 <div class="dash-grid">
-  {# 月度趋势：柱+线 ECharts #}
+  {# 支出趋势 — reports.js renderTrend（按所选粒度的本月走势）#}
   <div class="col-8">
-    <div class="dt-card">
+    <div class="dt-card reports-panel">
       <div class="card-head">
         <div>
-          <div class="card-title">月度趋势</div>
-          <div class="card-sub" style="margin-top:4px">柱：实际支出 · 虚线：预算 · 曲线：趋势</div>
+          <div class="card-title">支出趋势</div>
+          <div class="card-sub" style="margin-top:4px">按所选粒度的本月支出走势</div>
         </div>
-        <div class="legend">
-          <span><span class="legend-dot" style="background:var(--text-default)"></span>实际</span>
-          <span><span class="legend-dot" style="background:var(--text-faint)"></span>预算</span>
-          <span><span class="legend-dot" style="background:var(--brand-primary)"></span>趋势</span>
-        </div>
+        <button type="button" id="reports-export-png" class="dt-btn ghost">导出 PNG</button>
       </div>
-      <div id="chart-trend" class="chart-canvas tall"
-           data-series='{{ six_month_trend | tojson }}'></div>
+      <div id="reports-trend-chart" class="chart-canvas tall"></div>
     </div>
   </div>
 
-  {# 分类构成环图 #}
+  {# 分类环比 — reports.js renderCategory（本月 vs 上月）#}
   <div class="col-4">
-    <div class="dt-card">
+    <div class="dt-card reports-panel">
       <div class="card-head">
-          <div class="card-title">分类环比</div>
-        <div class="card-sub">本月</div>
+        <div class="card-title">分类环比</div>
+        <div class="card-sub">本月 vs 上月</div>
       </div>
-      <div id="chart-category" class="chart-canvas"
-           data-categories='{{ r.category_comparison | tojson }}'></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:12px">
-        {% set _total_cat = (r.category_comparison | map(attribute='amount_cents') | list | sum) or 1 %}
-        {% for c in r.category_comparison[:6] %}
-        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-muted);padding:3px 0">
-          <span style="display:inline-flex;align-items:center;gap:6px">
-            <span class="legend-dot chart-legend-{{ loop.index0 }}"></span>
-            {{ c.category }}
-          </span>
-          <span class="num" style="color:var(--text-meta);font-size:11.5px">
-            {{ ((c.amount_cents / _total_cat) * 100) | round | int }}%
-          </span>
-        </div>
-        {% endfor %}
-      </div>
+      <div id="reports-category-chart" class="chart-canvas tall"></div>
     </div>
   </div>
 
-  {# 商家排行（双列） #}
+  {# 商家排行 — reports.js renderMerchant #}
   <div class="col-12">
-    <div class="dt-card">
+    <div class="dt-card reports-panel">
       <div class="card-head">
         <div>
           <div class="card-title">商家排行</div>
-          <div class="card-sub" style="margin-top:4px">按本月支出金额降序 · 前 8 名</div>
+          <div class="card-sub" style="margin-top:4px">按本月{{ '笔数' if report.ranking_metric == 'count' else '支出金额' }}降序 · 前 8 名</div>
         </div>
         <a class="dt-btn ghost" href="/web/reports/export.csv?{{ report_export_query }}">导出 CSV</a>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
-        {% set _merchants = r.merchant_ranking[:8] %}
-        {% set _max_amt = _merchants[0].amount_cents if _merchants else 1 %}
-        {% for col in [0, 1] %}
-        <div class="merch-rank">
-          {% for m in _merchants[col * 4:col * 4 + 4] %}
-          {% set _idx = col * 4 + loop.index %}
-          <div class="merch-row">
-            <span class="merch-rank-num">0{{ _idx }}</span>
-            <div style="min-width:0">
-              <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                <span class="merch-name">{{ m.merchant }}</span>
-                <span class="merch-sub">{{ m.count }} 笔</span>
-              </div>
-              <div class="cat-bar">
-                <div class="cat-bar-fill"
-                     style="width:{{ (m.amount_cents / _max_amt * 100) if _max_amt else 0 }}%;background:{% if _idx <= 3 %}var(--brand-primary){% else %}var(--text-default){% endif %};opacity:{% if _idx <= 3 %}1{% else %}0.7{% endif %}"></div>
-              </div>
-            </div>
-            <div class="merch-amt">{{ home_currency_symbol }}{{ '%.0f' % (m.amount_cents / 100) }}</div>
-          </div>
-          {% endfor %}
-        </div>
-        {% endfor %}
-      </div>
+      <div id="reports-merchant-chart" class="chart-canvas tall"></div>
     </div>
   </div>
 </div>
+
+{# PNG export of the trend chart (reports.js bindExport) #}
+<dialog id="reports-export-dialog"
+        style="border:none;border-radius:12px;padding:18px;max-width:90vw;background:var(--surface-card,#fff)">
+  <form method="dialog" style="margin:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:10px">
+      <strong>趋势图 PNG</strong>
+      <button class="dt-btn ghost" value="close">关闭</button>
+    </div>
+    <img id="reports-export-image" alt="趋势图 PNG 预览"
+         style="max-width:min(80vw,720px);height:auto;border-radius:8px;display:block" />
+    <div class="card-sub" style="margin-top:8px">右键图片可另存为 PNG。</div>
+  </form>
+</dialog>
 {% endblock %}

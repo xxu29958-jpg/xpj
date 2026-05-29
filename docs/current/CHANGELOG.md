@@ -15,6 +15,13 @@
   duplicate). Migrations are additive only (one nullable column per table); no
   table rebuild.
 
+- `/web/reports` now renders its three ECharts (spending trend / category
+  month-over-month / merchant ranking) via `reports.js` from a server-injected
+  `#reports-overview-data` JSON blob, plus a "导出 PNG" trend snapshot. Activates
+  ADR-0026's chart layer (the page previously shipped only a partial chart set,
+  driven by the older per-container scripts); the backend report contract is
+  unchanged.
+
 - AI budget-advisor live provider payload is now explicitly limited to
   month/home-currency, category aggregates, and historical category baselines.
   Merchant/member aliases, income plans, and fixed expenses are kept out of the
