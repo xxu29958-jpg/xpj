@@ -19,9 +19,12 @@ from app.models import Expense
 from app.services.data_quality_service import data_quality_summary
 from app.services.ledger_service import (
     LedgerSummary,
+    archive_ledger,
     ledger_member_counts,
+    list_archived_ledgers_for_account,
     list_ledgers_for_account,
     list_managed_ledgers_for_account,
+    unarchive_ledger,
 )
 from app.services.ledger_service import (
     create_ledger as ledger_service_create_ledger,
@@ -187,11 +190,11 @@ def list_manageable_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
     )
 
 
-def do_create_ledger(db: Session, *, name: str) -> LedgerSummary:
-    """Create a new ledger owned by the local owner account.
+def _require_owner_id(db: Session) -> int:
+    """Resolve the local owner account, or fail with the bootstrap hint.
 
-    Owner Console runs as the local owner; we look up that account here so
-    the route handler stays free of identity logic.
+    Owner Console runs as the local owner; lifecycle actions look that account
+    up here so route handlers stay free of identity logic.
     """
     owner_id = get_owner_account_id(db)
     if owner_id is None:
@@ -200,4 +203,27 @@ def do_create_ledger(db: Session, *, name: str) -> LedgerSummary:
             "服务未初始化，请先运行 bootstrap_dev_owner.ps1。",
             status_code=409,
         )
-    return ledger_service_create_ledger(db, account_id=owner_id, name=name)
+    return owner_id
+
+
+def do_create_ledger(db: Session, *, name: str) -> LedgerSummary:
+    """Create a new ledger owned by the local owner account."""
+    return ledger_service_create_ledger(db, account_id=_require_owner_id(db), name=name)
+
+
+def do_archive_ledger(db: Session, *, ledger_id: str) -> bool:
+    """Archive a ledger owned by the local owner account (reversible soft-delete)."""
+    return archive_ledger(db, ledger_id=ledger_id, actor_account_id=_require_owner_id(db))
+
+
+def do_unarchive_ledger(db: Session, *, ledger_id: str) -> bool:
+    """Restore an archived ledger owned by the local owner account."""
+    return unarchive_ledger(db, ledger_id=ledger_id, actor_account_id=_require_owner_id(db))
+
+
+def list_archived_console_ledgers(db: Session) -> list[LedgerConsoleVM]:
+    """Archived ledgers the local owner can restore (Owner Console restore list)."""
+    owner_id = get_owner_account_id(db)
+    if owner_id is None:
+        return []
+    return _ledger_console_rows(db, list_archived_ledgers_for_account(db, account_id=owner_id))

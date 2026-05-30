@@ -135,6 +135,7 @@ _SUGGESTION_EVENT = ("algorithm_decisions", "ledger_learning_events")
 _ADVISOR_WRITE = ("budget_advisor_audit_logs", "budget_advisor_quota_locks")
 _BUDGET_BUCKET = ("budgets", "budget_categories")
 _LEDGER_CREATE = ("ledgers", "ledger_members")
+_LEDGER_ARCHIVE = ("ledgers", "ledger_audit_logs")
 _OWNER_TRANSFER = ("ledger_members", "ledgers")
 _ALGO_DECISIONS = ("algorithm_decisions",)
 _INCOME_PLAN = ("monthly_income_plans",)
@@ -287,6 +288,7 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
     "POST /owner/learning-maintenance/run": Exempt("batch_db_write", "learning", _LEARNING_PRUNE, "medium"),
     "POST /owner/ledgers": Exempt("create_row", "owner_console", _LEDGER_CREATE),
+    "POST /owner/ledgers/{ledger_id}/archive": Exempt("terminal_flag_flip", "owner_console", _LEDGER_ARCHIVE, "medium"),
     "POST /owner/ledgers/{ledger_id}/invitations": Exempt("create_row", "owner_console", ("invitations",)),
     "POST /owner/ledgers/{ledger_id}/invitations/{public_id}/revoke": Exempt(
         "governance_action", "owner_console", ("invitations",)
@@ -300,6 +302,7 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/ledgers/{ledger_id}/members/{member_id}/transfer-owner": Exempt(
         "governance_action", "owner_console", _OWNER_TRANSFER, "high"
     ),
+    "POST /owner/ledgers/{ledger_id}/unarchive": Exempt("terminal_flag_flip", "owner_console", _LEDGER_ARCHIVE),
     "POST /owner/migration-readiness/cut-over": Exempt("enqueue_task", "owner_console", ("background_tasks",), "high"),
     "POST /owner/migration-readiness/pre-v1-backup": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/pairing": Exempt("create_row", "owner_console", ("pairing_codes",)),

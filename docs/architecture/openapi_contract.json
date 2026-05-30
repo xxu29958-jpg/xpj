@@ -17294,6 +17294,49 @@
         ]
       }
     },
+    "/owner/ledgers/{ledger_id}/archive": {
+      "post": {
+        "description": "Archive (reversible soft-delete) a ledger, then redirect back.\n\nThe ledger disappears from every active surface but its data is kept; it\ncan be restored from the \"已归档账本\" section. A rejected archive (e.g. the\ndefault ledger) re-renders the page with the reason so it isn't silent.",
+        "operationId": "owner_ledger_archive_post_owner_ledgers__ledger_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Ledger Archive Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/ledgers/{ledger_id}/invitations": {
       "post": {
         "operationId": "owner_ledger_invite_post_owner_ledgers__ledger_id__invitations_post",
@@ -17597,6 +17640,49 @@
           }
         },
         "summary": "Owner Ledger Member Transfer Owner Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/ledgers/{ledger_id}/unarchive": {
+      "post": {
+        "description": "Restore an archived ledger, then redirect back to the management page.",
+        "operationId": "owner_ledger_unarchive_post_owner_ledgers__ledger_id__unarchive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Ledger Unarchive Post",
         "tags": [
           "owner-console"
         ]

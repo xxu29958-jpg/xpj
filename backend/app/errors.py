@@ -49,6 +49,7 @@ ERROR_MESSAGES = {
     "ledger_name_required": "请填写账本名称。",
     "ledger_name_too_long": "账本名称过长，请控制在 60 个字以内。",
     "ledger_forbidden": "当前账号没有该账本的访问权限。",
+    "cannot_archive_default_ledger": "默认账本不能归档，它是系统的兜底账本。",
     "permission_denied": "当前角色为只读，无法修改账本。",
     "invitation_invalid": "邀请码无效、已过期或已被使用。",
     "invitation_role_invalid": "邀请角色只能是成员或只读。",

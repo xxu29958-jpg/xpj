@@ -57,20 +57,34 @@ def _put_member_page_data(ctx: dict, db: Session, *, ledger_id: str, owner_id: i
     )
 
 
+def _render_ledgers_page(
+    request: Request,
+    db: Session,
+    *,
+    error: str | None = None,
+    submitted_name: str | None = None,
+) -> HTMLResponse:
+    """Render the ledger management page (active + archived rows).
+
+    Shared by the GET handler and the create/archive/unarchive error paths so
+    every render shows the same surface and an optional error banner.
+    """
+    ctx = _base(request, db)
+    ctx["ledger_rows"] = svc.list_manageable_console_ledgers(db)
+    ctx["archived_rows"] = svc.list_archived_console_ledgers(db)
+    ctx["error"] = error
+    ctx["created_ledger"] = None
+    ctx["submitted_name"] = submitted_name
+    return templates.TemplateResponse(request=request, name="ledgers.html", context=ctx)
+
+
 @router.get("/ledgers", response_class=HTMLResponse)
 def owner_ledgers_get(
     request: Request,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    rows = svc.list_manageable_console_ledgers(db)
-    ctx = _base(request, db)
-    ctx["ledger_rows"] = rows
-    ctx["error"] = None
-    ctx["created_ledger"] = None
-    return templates.TemplateResponse(
-        request=request, name="ledgers.html", context=ctx
-    )
+    return _render_ledgers_page(request, db)
 
 
 @router.post("/ledgers", response_class=HTMLResponse)
@@ -90,14 +104,42 @@ def owner_ledgers_post(
     try:
         svc.do_create_ledger(db, name=name)
     except AppError as exc:
-        ctx = _base(request, db)
-        ctx["ledger_rows"] = svc.list_manageable_console_ledgers(db)
-        ctx["error"] = exc.message
-        ctx["created_ledger"] = None
-        ctx["submitted_name"] = name
-        return templates.TemplateResponse(
-            request=request, name="ledgers.html", context=ctx
-        )
+        return _render_ledgers_page(request, db, error=exc.message, submitted_name=name)
+    return RedirectResponse(url="/owner/ledgers", status_code=303)
+
+
+@router.post("/ledgers/{ledger_id}/archive", response_class=HTMLResponse)
+def owner_ledger_archive_post(
+    request: Request,
+    ledger_id: str,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Archive (reversible soft-delete) a ledger, then redirect back.
+
+    The ledger disappears from every active surface but its data is kept; it
+    can be restored from the "已归档账本" section. A rejected archive (e.g. the
+    default ledger) re-renders the page with the reason so it isn't silent.
+    """
+    try:
+        svc.do_archive_ledger(db, ledger_id=ledger_id)
+    except AppError as exc:
+        return _render_ledgers_page(request, db, error=exc.message)
+    return RedirectResponse(url="/owner/ledgers", status_code=303)
+
+
+@router.post("/ledgers/{ledger_id}/unarchive", response_class=HTMLResponse)
+def owner_ledger_unarchive_post(
+    request: Request,
+    ledger_id: str,
+    _local: None = LocalOnly,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Restore an archived ledger, then redirect back to the management page."""
+    try:
+        svc.do_unarchive_ledger(db, ledger_id=ledger_id)
+    except AppError as exc:
+        return _render_ledgers_page(request, db, error=exc.message)
     return RedirectResponse(url="/owner/ledgers", status_code=303)
 
 

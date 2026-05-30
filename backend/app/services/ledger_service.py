@@ -22,11 +22,11 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, AuthToken, Device, Ledger, LedgerMember
+from app.models import Account, AuthToken, Device, Ledger, LedgerAuditLog, LedgerMember
 from app.services.identity_service import (
     _ensure_membership,
 )
@@ -34,12 +34,16 @@ from app.services.session_lifecycle_service import (
     app_token_expiry_window,
     rotate_app_token_for_ledger,
 )
-from app.services.time_service import to_iso
+from app.services.time_service import now_utc, to_iso
 from app.tenants import DEFAULT_TENANT_ID
 
 LEDGER_ID_PREFIX = "ledger_"
 LEDGER_NAME_MAX_LEN = 60
 LEDGER_ID_RANDOM_BYTES = 6  # 12 hex chars; ledger_id stays well under 64 chars.
+
+# Ledger-lifecycle audit actions (mirrors invitation_common's verb_noun naming).
+AUDIT_LEDGER_ARCHIVED = "ledger_archived"
+AUDIT_LEDGER_UNARCHIVED = "ledger_unarchived"
 
 
 @dataclass(frozen=True)
@@ -225,6 +229,115 @@ def create_ledger(db: Session, *, account_id: int, name: str) -> LedgerSummary:
     return _summary(ledger, "owner")
 
 
+def _authorize_ledger_owner(db: Session, *, ledger_id: str, actor_account_id: int) -> Ledger:
+    """Return the ``Ledger`` iff ``actor_account_id`` is its active owner.
+
+    Looks the ledger up regardless of archived state (so unarchive can authorize
+    an already-archived ledger), then checks active owner membership. Raises
+    ``ledger_not_found`` (404) when absent and ``ledger_forbidden`` (403) when the
+    actor is not its owner — the opaque code used across this module so callers
+    cannot probe another account's ledger namespace.
+    """
+    ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
+    if ledger is None:
+        raise AppError("ledger_not_found", status_code=404)
+    owner_id = find_owner_account_id_for_ledger(db, ledger_id=ledger_id)
+    if owner_id is None or owner_id != actor_account_id:
+        raise AppError("ledger_forbidden", status_code=403)
+    return ledger
+
+
+def _record_ledger_audit(db: Session, *, ledger_id: str, action: str, actor_account_id: int) -> None:
+    db.add(
+        LedgerAuditLog(
+            ledger_id=ledger_id,
+            action=action,
+            actor_account_id=actor_account_id,
+            resource_type="ledger",
+            resource_public_id=ledger_id,
+            result="success",
+        )
+    )
+
+
+def archive_ledger(db: Session, *, ledger_id: str, actor_account_id: int) -> bool:
+    """Soft-delete a ledger (owner-only). ``True`` if it flipped active→archived,
+    ``False`` if it was already archived (idempotent no-op).
+
+    Archiving only sets ``archived_at``; every read surface (ledger lists, auth,
+    pairing, invitations, upload links) already filters ``archived_at IS NULL``,
+    so the ledger disappears from the app — and its bound sessions go inert —
+    without deleting a single row. Fully reversible via :func:`unarchive_ledger`.
+    The default tenant cannot be archived: the install would be left with no
+    active ledger to fall back to.
+
+    The flip is one ``UPDATE ... WHERE archived_at IS NULL`` whose rowcount
+    decides the outcome, so two concurrent archives cannot both win or
+    double-write the audit log.
+    """
+    ledger = _authorize_ledger_owner(db, ledger_id=ledger_id, actor_account_id=actor_account_id)
+    if ledger.ledger_id == DEFAULT_TENANT_ID:
+        raise AppError("cannot_archive_default_ledger", status_code=409)
+    flipped = (
+        db.execute(
+            update(Ledger)
+            .where(Ledger.ledger_id == ledger_id, Ledger.archived_at.is_(None))
+            .values(archived_at=now_utc())
+        ).rowcount
+        == 1
+    )
+    if not flipped:
+        db.rollback()
+        return False
+    _record_ledger_audit(db, ledger_id=ledger_id, action=AUDIT_LEDGER_ARCHIVED, actor_account_id=actor_account_id)
+    db.commit()
+    return True
+
+
+def unarchive_ledger(db: Session, *, ledger_id: str, actor_account_id: int) -> bool:
+    """Restore a soft-deleted ledger (owner-only). ``True`` if it flipped
+    archived→active, ``False`` if it was already active (idempotent no-op).
+
+    Mirror of :func:`archive_ledger`; the ``UPDATE ... WHERE archived_at IS NOT
+    NULL`` rowcount gates the audit write so a double-restore is a clean no-op.
+    """
+    _authorize_ledger_owner(db, ledger_id=ledger_id, actor_account_id=actor_account_id)
+    flipped = (
+        db.execute(
+            update(Ledger)
+            .where(Ledger.ledger_id == ledger_id, Ledger.archived_at.is_not(None))
+            .values(archived_at=None)
+        ).rowcount
+        == 1
+    )
+    if not flipped:
+        db.rollback()
+        return False
+    _record_ledger_audit(db, ledger_id=ledger_id, action=AUDIT_LEDGER_UNARCHIVED, actor_account_id=actor_account_id)
+    db.commit()
+    return True
+
+
+def list_archived_ledgers_for_account(db: Session, *, account_id: int) -> list[LedgerSummary]:
+    """Archived ledgers the account owns — the Owner Console restore list.
+
+    The complement of :func:`list_ledgers_for_account`: only ``archived_at IS NOT
+    NULL`` rows where the account is the active owner, newest archive first.
+    """
+    rows = list(
+        db.execute(
+            select(Ledger, LedgerMember.role)
+            .join(LedgerMember, LedgerMember.ledger_id == Ledger.ledger_id)
+            .where(LedgerMember.account_id == account_id)
+            .where(LedgerMember.disabled_at.is_(None))
+            .where(LedgerMember.role == "owner")
+            .where(Ledger.archived_at.is_not(None))
+            .order_by(Ledger.archived_at.desc())
+        ).all()
+    )
+    return [_summary(ledger, role) for ledger, role in rows]
+
+
 def switch_ledger(
     db: Session,
     *,
@@ -311,15 +424,20 @@ def ledger_member_counts(db: Session, *, ledger_id: str) -> dict[str, int]:
 
 
 __all__ = [
+    "AUDIT_LEDGER_ARCHIVED",
+    "AUDIT_LEDGER_UNARCHIVED",
     "LedgerSummary",
     "SwitchLedgerResult",
+    "archive_ledger",
     "create_ledger",
     "find_owner_account_id_for_ledger",
     "get_ledger_for_account",
     "ledger_member_counts",
+    "list_archived_ledgers_for_account",
     "list_ledgers_for_account",
     "list_managed_ledgers_for_account",
     "list_writer_ledger_ids_for_account",
     "managed_ledger_ids_for_account",
     "switch_ledger",
+    "unarchive_ledger",
 ]
