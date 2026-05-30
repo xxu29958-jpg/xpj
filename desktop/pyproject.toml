@@ -1,0 +1,17 @@
+# Lint/format config for the desktop backend-manager package. Mirrors
+# backend/pyproject.toml (the canonical ruleset, see docs/rules/CODE_QUALITY_STANDARDS.md)
+# but co-located so ruff detects `backend_manager` as first-party and applies it
+# correctly — `ruff check .` from this dir is the standard gate.
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "C901"]
+ignore = ["E501"]  # parity with backend: line-length guides, doesn't hard-fail
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend_manager"]

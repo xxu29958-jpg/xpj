@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>小票夹 后端</title>
+<script>window.CONTROL_TOKEN="__CONTROL_TOKEN__";</script>
+<style>
+  :root{
+    --bg:#0E1116; --panel:#161A21; --panel-2:#1B2027; --line:#252B34;
+    --text:#E6E9EF; --muted:#9099A6; --meta:#5E6672;
+    --accent:#6E8BFF; --accent-soft:#1B2540;
+    --ok:#3FB950; --ok-soft:#13261A; --danger:#F0603A; --danger-soft:#2C1813;
+    --mono:"JetBrains Mono","Cascadia Code","SF Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:radial-gradient(1200px 500px at 80% -10%, #18202e 0%, var(--bg) 55%);font-family:"Inter","Segoe UI Variable Display","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;color:var(--text);padding:22px 24px;user-select:none;}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+  .head{display:flex;align-items:center;gap:12px;}
+  .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(145deg,#6E8BFF,#5566d6);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;box-shadow:0 4px 14px rgba(85,102,214,.4);}
+  .h-title{font-size:16px;font-weight:650;letter-spacing:-.01em;} .h-sub{font-size:11.5px;color:var(--meta);margin-top:2px;}
+  .pill{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid transparent;}
+  .pdot{width:7px;height:7px;border-radius:50%;box-shadow:0 0 8px currentColor;}
+  .row{display:flex;gap:13px;margin-top:18px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 17px;}
+  .clabel{font-size:10.5px;font-weight:700;letter-spacing:.13em;color:var(--meta);text-transform:uppercase;}
+  .kv{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;font-size:13px;}
+  .kv .k{color:var(--muted);} .kv .v{font-weight:600;}
+  .addr{flex:1;display:flex;gap:16px;} .addr .info{flex:1;}
+  .qr{width:88px;height:88px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:#8a8f99;font-size:9.5px;text-align:center;flex:0 0 auto;}
+  .qr-cap{font-size:10px;color:var(--meta);text-align:center;margin-top:6px;font-weight:600;}
+  .controls{display:flex;align-items:center;gap:9px;margin-top:18px;}
+  .btn{font-size:13px;font-weight:600;padding:9px 17px;border-radius:10px;cursor:pointer;border:1px solid var(--line);background:var(--panel-2);color:var(--text);transition:all .12s;}
+  .btn:hover{border-color:#333b46;background:#20262f;} .btn:active{transform:scale(.97);}
+  .btn-primary{background:var(--accent);border-color:transparent;color:#fff;box-shadow:0 4px 14px rgba(110,139,255,.32);}
+  .btn-primary:hover{background:#5d7bf5;}
+  .tg{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);cursor:pointer;}
+  .sw{width:36px;height:20px;border-radius:999px;background:#2B313B;position:relative;transition:background .15s;}
+  .sw.on{background:var(--ok);}
+  .sw::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.4);}
+  .sw.on::after{left:18px;}
+  .openconsole{margin-top:15px;display:flex;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid #243154;border-radius:11px;padding:12px 15px;cursor:pointer;transition:background .12s;}
+  .openconsole:hover{background:#1f2c4d;}
+  .oc-l{font-size:12.5px;color:#b9c5e8;font-weight:500;} .oc-b{font-size:12.5px;color:var(--accent);font-weight:700;}
+  .logwrap{margin-top:18px;}
+  .log{background:#0A0D11;border:1px solid var(--line);border-radius:11px;padding:12px 14px;font-family:var(--mono);font-size:11px;line-height:1.7;color:#aab2bf;height:140px;overflow-y:auto;}
+  .log .ok{color:#56b96a;} .log .warn{color:#d9a441;} .log .err{color:#f0603a;} .log .dim{color:#646b78;}
+  .log::-webkit-scrollbar{width:7px;} .log::-webkit-scrollbar-thumb{background:#2b313b;border-radius:4px;}
+</style></head><body>
+  <div class="head">
+    <div class="logo">票</div>
+    <div><div class="h-title">小票夹 · 后端</div><div class="h-sub mono">localhost · 本机服务</div></div>
+    <div class="pill" id="pill"><span class="pdot"></span><span id="pillText">…</span></div>
+  </div>
+  <div class="row">
+    <div class="card" style="flex:1">
+      <div class="clabel">状态</div>
+      <div class="kv"><span class="k">健康检查</span><span class="v" id="health">—</span></div>
+      <div class="kv"><span class="k">已运行</span><span class="v mono" id="uptime">—</span></div>
+      <div class="kv"><span class="k">端口 · PID</span><span class="v mono" id="port">—</span></div>
+      <div class="kv"><span class="k">自动重启</span><span class="v" id="autoState">—</span></div>
+    </div>
+    <div class="card addr">
+      <div class="info">
+        <div class="clabel">连接地址</div>
+        <div class="kv"><span class="k">局域网</span><span class="v mono" id="lan">—</span></div>
+        <div class="kv"><span class="k">隧道</span><span class="v mono" id="tunnel" style="font-size:11.5px">—</span></div>
+      </div>
+      <div><div class="qr" id="qr">QR</div><div class="qr-cap">扫码连手机</div></div>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="btn btn-primary" onclick="act('restart')">重启</button>
+    <button class="btn" id="toggleBtn" onclick="toggleRun()">停止</button>
+    <div class="tg" onclick="act('auto_restart')"><span class="sw" id="autoSw"></span>自动重启</div>
+  </div>
+  <div class="openconsole" onclick="act('open_console')">
+    <span class="oc-l">管理台 · 设置 / 备份 / 设备配对 / 诊断</span>
+    <span class="oc-b">打开 /owner ›</span>
+  </div>
+  <div class="logwrap">
+    <div class="clabel" style="margin-bottom:9px">实时日志</div>
+    <div class="log mono" id="log"></div>
+  </div>
+<script>
+let running = false;
+const $ = (id) => document.getElementById(id);
+function fmtUptime(s){ if(!s) return "—"; const h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return h>0?`${h}h ${m}m`:`${m}m ${s%60}s`; }
+function logClass(l){ if(/\bWARN/i.test(l)) return "warn"; if(/\bERROR|Traceback|Exception/i.test(l)) return "err"; if(/\bINFO|启动|已启动/i.test(l)) return "ok"; return "dim"; }
+function setPill(state){
+  const map={ ok:["var(--ok-soft)","var(--ok)","运行中"], bad:["var(--danger-soft)","var(--danger)","无响应"], off:["#1B2027","var(--muted)","已停止"] };
+  const [bg,fg,txt]=map[state]; const p=$("pill"); p.style.background=bg; p.style.color=fg; p.style.borderColor=fg+"40"; p.querySelector(".pdot").style.background=fg; $("pillText").textContent=txt;
+}
+async function refresh(){
+  try{
+    const s = await (await fetch("/api/status")).json();
+    running = s.running;
+    const healthy = s.running && s.health;
+    setPill(healthy ? "ok" : (s.running ? "bad" : "off"));
+    $("health").textContent = healthy ? "● 正常" : (s.running ? "● 无响应" : "● 已停止");
+    $("health").style.color = healthy ? "var(--ok)" : (s.running ? "var(--danger)" : "var(--muted)");
+    $("uptime").textContent = fmtUptime(s.uptime_seconds);
+    $("port").textContent = s.port + (s.pid ? " · " + s.pid : "");
+    $("autoState").textContent = s.auto_restart ? `已启用 · ${s.restarts} 次` : "已关闭";
+    $("lan").textContent = s.lan;
+    $("tunnel").textContent = s.tunnel || "未配置";
+    $("autoSw").className = "sw" + (s.auto_restart ? " on" : "");
+    $("toggleBtn").textContent = s.running ? "停止" : "启动";
+    const log = $("log"); const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+    log.innerHTML = (s.log||[]).map(l => `<div class="${logClass(l)}">${l.replace(/</g,"&lt;")}</div>`).join("");
+    if(atBottom) log.scrollTop = log.scrollHeight;
+  }catch(e){ setPill("off"); $("pillText").textContent="管理器离线"; }
+}
+async function act(a){ try{ await fetch("/api/"+a, {method:"POST", headers:{"X-Control-Token": window.CONTROL_TOKEN}}); }catch(e){} refresh(); }
+function toggleRun(){ act(running ? "stop" : "start"); }
+refresh(); setInterval(refresh, 2000);
+</script>
+</body></html>

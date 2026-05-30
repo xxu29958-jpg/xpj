@@ -48,3 +48,15 @@ artifacts/
 # Ops logs (boundary-check etc. — see scripts\scheduled_public_boundary_check.ps1)
 logs/
 release_audit.log
+
+# PyInstaller backend-packaging spike artifacts (regenerable; not committed)
+backend/dist/
+backend/build/
+backend/_spike_server.py
+backend/ticketbox-backend.spec
+backend/.spike_*.log
+# Local UI/GUI design mocks + scratch logs (not committed)
+.sync_ui_mock.*
+.ledger_ui_mock.*
+.backend_gui_mock.*
+.build_apk.log
