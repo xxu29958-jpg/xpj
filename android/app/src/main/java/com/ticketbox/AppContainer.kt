@@ -24,6 +24,7 @@ import com.ticketbox.data.repository.OutboxBinding
 import com.ticketbox.data.repository.OutboxMutationDispatcher
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxScheduler
+import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecurringRepository
@@ -209,6 +210,11 @@ class AppContainer(context: Context) {
         ),
         // PR-2g.8: POST /api/expenses/{id}/ocr/retry via outbox.
         RetryOcrDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = expenseStateTokenAdapter,
+        ),
+        // PR-2g.9: POST /api/expenses/{id}/items/acknowledge-mismatch via outbox.
+        AcknowledgeItemsMismatchDispatcher(
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = expenseStateTokenAdapter,
         ),

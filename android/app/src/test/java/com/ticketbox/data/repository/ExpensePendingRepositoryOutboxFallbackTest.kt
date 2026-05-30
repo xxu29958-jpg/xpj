@@ -7,11 +7,13 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseItems
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
@@ -610,6 +612,80 @@ class ExpensePendingRepositoryOutboxFallbackTest {
 
     // endregion
 
+    // region — acknowledgeItemsMismatch AllowingOffline (PR-2g.9)
+
+    private fun mismatchKnownItems(): ExpenseItems = ExpenseItems(
+        expenseId = 42L,
+        parentAmountCents = 12345L,
+        itemsTotalAmountCents = 10000L,
+        mismatchCents = 2345L,
+        itemsSumStatus = "mismatch_known",
+        items = emptyList(),
+    )
+
+    @Test
+    fun `acknowledge IOException returns Queued acknowledged-projection + enqueues row`() = runTest {
+        val baseline = baselineExpense()
+        val current = mismatchKnownItems()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(acknowledgeException = IOException("net out"))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.acknowledgeItemsMismatchAllowingOffline(baseline, current)
+            .getOrThrow() as ItemsAckOutcome.Queued
+
+        // Optimistic projection flips the items-sum status to acknowledged.
+        assertEquals("mismatch_acknowledged", outcome.items.itemsSumStatus)
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.AcknowledgeItemsMismatch.wireValue, row.type)
+        assertEquals("expense:${baseline.id}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertTrue(
+            baseline.updatedAt !in row.payload,
+            "payload must NOT embed the token: ${row.payload}",
+        )
+    }
+
+    @Test
+    fun `acknowledge direct 2xx returns Synced, no enqueue`() = runTest {
+        val baseline = baselineExpense()
+        val current = mismatchKnownItems()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        // acknowledgeException = null → success path.
+        val api = ApiServiceStub()
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.acknowledgeItemsMismatchAllowingOffline(baseline, current).getOrThrow()
+
+        assertTrue(outcome is ItemsAckOutcome.Synced)
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `acknowledge HttpException 409 surfaces as failure, no enqueue`() = runTest {
+        val baseline = baselineExpense()
+        val current = mismatchKnownItems()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(
+            acknowledgeException = httpException(409, """{"error":"state_conflict","message":"账单已修改"}"""),
+        )
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val result = repo.acknowledgeItemsMismatchAllowingOffline(baseline, current)
+
+        assertTrue(result.isFailure, "409 must surface, not silently queue")
+        assertEquals(0, dao.rows.size)
+    }
+
+    // endregion
+
     // region — OutboxRepository invariants (round-7 P2 + round-8)
 
     @Test
@@ -715,6 +791,9 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         private val retryOcrResult: ApiResult = ApiResult.Throw(
             IllegalStateException("retryOcr not configured"),
         ),
+        // acknowledge returns ExpenseItemsResponseDto (not ExpenseDto), so
+        // it can't reuse ApiResult; null exception = success.
+        private val acknowledgeException: Throwable? = null,
         private val delegate: ApiService = FakeApiService(
             events = mutableListOf(),
             confirmedFailuresRemaining = 0,
@@ -758,6 +837,21 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         ): ExpenseDto = when (val r = retryOcrResult) {
             is ApiResult.Success -> r.dto
             is ApiResult.Throw -> throw r.exception
+        }
+
+        override suspend fun acknowledgeExpenseItemsMismatch(
+            id: Long,
+            request: ExpenseStateTokenRequest,
+        ): ExpenseItemsResponseDto {
+            acknowledgeException?.let { throw it }
+            return ExpenseItemsResponseDto(
+                expenseId = id,
+                parentAmountCents = 12345L,
+                itemsTotalAmountCents = 10000L,
+                mismatchCents = 2345L,
+                itemsSumStatus = "mismatch_acknowledged",
+                items = emptyList(),
+            )
         }
     }
 

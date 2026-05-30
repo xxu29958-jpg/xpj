@@ -149,6 +149,12 @@ class ExpenseRepository(
     ): Result<ExpenseItems> =
         detailRepository.acknowledgeExpenseItemsMismatch(id, expectedUpdatedAt)
 
+    suspend fun acknowledgeItemsMismatchAllowingOffline(
+        expense: Expense,
+        currentItems: ExpenseItems,
+    ): Result<ItemsAckOutcome> =
+        detailRepository.acknowledgeItemsMismatchAllowingOffline(expense, currentItems)
+
     suspend fun createBillSplitInvitation(
         expenseId: Long,
         receiverAccountId: Long,

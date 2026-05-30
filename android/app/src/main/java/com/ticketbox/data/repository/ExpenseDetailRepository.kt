@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.ItemsSumStatus
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.NotificationDraft
@@ -67,6 +68,52 @@ internal class ExpenseDetailRepository(
                 ),
             )
         }.toDomain()
+    }
+
+    /**
+     * ADR-0038 PR-2g.9: offline-aware "原小票如此" acknowledge. Token-only
+     * POST like confirm/reject, but the response is [ExpenseItems] (not
+     * an Expense) and the server bumps the parent's ``updated_at``
+     * WITHOUT returning it — so the online success path follows up with
+     * a [fetchExpense] (the ViewModel does that, only on Synced).
+     *
+     *  - direct 2xx → [ItemsAckOutcome.Synced] with the server items.
+     *  - IOException → [ItemsAckOutcome.Queued] with [currentItems]
+     *    projected to ``mismatch_acknowledged`` (the badge clears
+     *    immediately); the row enqueues and replays on connectivity-up.
+     *  - HttpException → ``Result.failure``.
+     *
+     * Takes [currentItems] (what the user is looking at) so the Queued
+     * branch can build the optimistic projection — the same baseline
+     * reason the other offline methods take the pre-mutation snapshot.
+     */
+    suspend fun acknowledgeItemsMismatchAllowingOffline(
+        expense: Expense,
+        currentItems: ExpenseItems,
+    ): Result<ItemsAckOutcome> = core.errorHandler.safeCall {
+        if (!core.canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        val bound = core.ledgerRequestGuard.bind()
+        try {
+            val items = bound.call {
+                it.acknowledgeExpenseItemsMismatch(
+                    expense.id,
+                    ExpenseStateTokenRequest(expectedUpdatedAt = expense.updatedAt),
+                )
+            }.toDomain()
+            ItemsAckOutcome.Synced(items) as ItemsAckOutcome
+        } catch (networkError: IOException) {
+            core.enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.AcknowledgeItemsMismatch,
+                expense = expense,
+                networkError = networkError,
+            )
+            ItemsAckOutcome.Queued(
+                currentItems.copy(itemsSumStatus = ItemsSumStatus.MISMATCH_ACKNOWLEDGED),
+            ) as ItemsAckOutcome
+        }
     }
 
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = core.errorHandler.safeCall {
@@ -153,4 +200,26 @@ internal class ExpenseDetailRepository(
             api.recurringCandidates(timezone = core.currentTimezoneId()).items.map { it.toDomain() }
         }
     }
+}
+
+/**
+ * ADR-0038 PR-2g.9 sealed result for
+ * [ExpenseDetailRepository.acknowledgeItemsMismatchAllowingOffline].
+ * Carries [ExpenseItems] (not Expense) — parallel-defined alongside
+ * [ExpenseStateOutcome] rather than reused, same convention as the
+ * other outcome types. On [Synced] the ViewModel additionally
+ * re-fetches the parent expense for its bumped token; on [Queued] it
+ * keeps the current (pre-ack) token and shows the optimistic items.
+ */
+sealed interface ItemsAckOutcome {
+    val items: ExpenseItems
+
+    /** Server confirmed the acknowledge; [items] is the server snapshot. */
+    data class Synced(override val items: ExpenseItems) : ItemsAckOutcome
+
+    /**
+     * Network failed; the acknowledge is queued and [items] is the
+     * optimistic projection (``itemsSumStatus = mismatch_acknowledged``).
+     */
+    data class Queued(override val items: ExpenseItems) : ItemsAckOutcome
 }
