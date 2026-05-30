@@ -44,6 +44,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
+import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.OcrProgressCard
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
@@ -60,6 +61,12 @@ fun ExpenseEditScreen(
     onKeepDuplicate: () -> Unit,
     onDone: () -> Unit,
     onAcknowledgeItemsMismatch: () -> Unit = {},
+    onEditItems: () -> Unit = {},
+    onUpdateItemDraft: (index: Int, name: String?, amountText: String?, kind: String?) -> Unit = { _, _, _, _ -> },
+    onAddItemRow: () -> Unit = {},
+    onRemoveItemRow: (index: Int) -> Unit = {},
+    onSaveItems: () -> Unit = {},
+    onDismissItemsEditor: () -> Unit = {},
     allowConfirm: Boolean = true,
     allowReject: Boolean = true,
 ) {
@@ -67,6 +74,19 @@ fun ExpenseEditScreen(
         if (!state.saving) {
             onDone()
         }
+    }
+
+    if (state.itemEditorOpen) {
+        ItemsEditorSheet(
+            drafts = state.itemDrafts,
+            parentAmountCents = state.expenseItems?.parentAmountCents,
+            saving = state.itemsSaving,
+            onUpdate = onUpdateItemDraft,
+            onAddRow = onAddItemRow,
+            onRemoveRow = onRemoveItemRow,
+            onSave = onSaveItems,
+            onDismiss = onDismissItemsEditor,
+        )
     }
 
     val currentExpense = state.expense ?: expense
@@ -267,6 +287,7 @@ fun ExpenseEditScreen(
             itemsMessage = state.itemsMessage,
             splitsMessage = state.splitsMessage,
             onAcknowledgeItemsMismatch = onAcknowledgeItemsMismatch,
+            onEditItems = if (state.readOnly) null else onEditItems,
         )
 
         ExpenseEditMoreSection(

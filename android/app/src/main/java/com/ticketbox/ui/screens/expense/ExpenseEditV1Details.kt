@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +40,7 @@ internal fun ExpenseEditV1DetailsSection(
     itemsMessage: String?,
     splitsMessage: String?,
     onAcknowledgeItemsMismatch: () -> Unit = {},
+    onEditItems: (() -> Unit)? = null,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
@@ -48,6 +50,7 @@ internal fun ExpenseEditV1DetailsSection(
         message = itemsMessage,
         currencyDisplay = currencyDisplay,
         onAcknowledgeMismatch = onAcknowledgeItemsMismatch,
+        onEditItems = onEditItems,
     )
     ExpenseSplitsPanel(
         expenseSplits = expenseSplits,
@@ -64,6 +67,7 @@ private fun ExpenseItemsPanel(
     message: String?,
     currencyDisplay: CurrencyDisplay,
     onAcknowledgeMismatch: () -> Unit,
+    onEditItems: (() -> Unit)? = null,
 ) {
     AppSolidCard {
         Column(
@@ -75,6 +79,16 @@ private fun ExpenseItemsPanel(
                 subtitle = "商品级记录不改变账单金额、统计或导出",
                 trailing = expenseItems?.itemsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
             )
+            if (onEditItems != null && !loading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onEditItems) {
+                        Text(if (expenseItems?.items.isNullOrEmpty()) "添加明细" else "编辑明细")
+                    }
+                }
+            }
             when {
                 loading -> DetailLoadingState(
                     title = "明细加载中",

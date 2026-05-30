@@ -9,6 +9,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.ServerSettingsDto
@@ -54,6 +55,14 @@ internal class ExpenseRepositoryCore(
      * failure when either the outbox OR this adapter is missing.
      */
     val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
+    /**
+     * PR-D: body-carrying payload adapter shared between the offline-aware
+     * items editor ([ExpenseDetailRepository.replaceExpenseItemsAllowingOffline])
+     * and [ReplaceItemsDispatcher]. ``null`` keeps pre-PR-D tests (no outbox
+     * wiring) on the direct-only path — the IOException catch falls back to a
+     * hard failure when either the outbox OR this adapter is missing.
+     */
+    val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
 ) {
     val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,

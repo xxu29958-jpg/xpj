@@ -7,12 +7,15 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseItemDraft
+import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -854,6 +857,104 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             )
         }
     }
+
+    // region — replaceExpenseItemsAllowingOffline (PR-D items editor)
+
+    private fun itemsCurrent(): ExpenseItems = ExpenseItems(
+        expenseId = 42L,
+        parentAmountCents = 12345L,
+        itemsTotalAmountCents = 12345L,
+        mismatchCents = 0L,
+        itemsSumStatus = "matched",
+        items = emptyList(),
+    )
+
+    private val itemDrafts: List<ExpenseItemDraft> = listOf(
+        ExpenseItemDraft(
+            name = "咖啡",
+            quantityText = null,
+            unitPriceCents = null,
+            amountCents = 2500L,
+            category = null,
+            rawText = null,
+            confidence = null,
+            kind = ExpenseItemKind.PRODUCT,
+        ),
+    )
+
+    private fun itemsRepo(api: ApiService, outbox: OutboxRepository): ExpenseRepository = ExpenseRepository(
+        expenseDao = FakeExpenseDao(),
+        apiClient = TestApiServiceFactory(api),
+        settingsStore = seededSettingsStore(),
+        tokenStore = seededTokenStore(),
+        deviceNameProvider = { "Android Test" },
+        outbox = outbox,
+        replaceItemsAdapter = moshi().adapter(ExpenseItemReplaceRequestDto::class.java),
+    )
+
+    @Test
+    fun `replaceItems IOException returns Queued optimistic + enqueues body without token`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun replaceExpenseItems(
+                id: Long,
+                request: ExpenseItemReplaceRequestDto,
+            ): ExpenseItemsResponseDto = throw IOException("net out")
+        }
+
+        val outcome = itemsRepo(api, outbox)
+            .replaceExpenseItemsAllowingOffline(baseline, itemDrafts, itemsCurrent())
+            .getOrThrow() as ReplaceItemsOutcome.Queued
+
+        // Optimistic projection surfaces the user's edit + recomputed total.
+        assertEquals(1, outcome.items.items.size)
+        assertEquals("咖啡", outcome.items.items.first().name)
+        assertEquals(2500L, outcome.items.itemsTotalAmountCents)
+
+        // One row enqueued; token authoritative on the row, stripped from payload.
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.ReplaceItems.wireValue, row.type)
+        assertEquals("expense:${baseline.id}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
+        assertTrue("咖啡" in row.payload, "payload must carry the edit: ${row.payload}")
+        assertTrue(
+            "\"expected_updated_at\":\"\"" in row.payload,
+            "payload token must be stripped to empty (row is the source of truth): ${row.payload}",
+        )
+    }
+
+    @Test
+    fun `replaceItems direct 2xx returns Synced, no enqueue`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun replaceExpenseItems(
+                id: Long,
+                request: ExpenseItemReplaceRequestDto,
+            ): ExpenseItemsResponseDto = ExpenseItemsResponseDto(
+                expenseId = 42L,
+                parentAmountCents = 12345L,
+                itemsTotalAmountCents = 2500L,
+                mismatchCents = -9845L,
+                itemsSumStatus = "mismatch_known",
+                items = emptyList(),
+            )
+        }
+
+        val outcome = itemsRepo(api, outbox)
+            .replaceExpenseItemsAllowingOffline(baseline, itemDrafts, itemsCurrent())
+            .getOrThrow()
+
+        assertTrue(outcome is ReplaceItemsOutcome.Synced)
+        assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+    }
+
+    // endregion
 
     private fun httpException(code: Int, body: String): HttpException {
         val raw = Response.Builder()

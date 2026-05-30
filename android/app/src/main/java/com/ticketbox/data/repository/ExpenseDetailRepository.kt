@@ -5,6 +5,7 @@ import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ItemsSumStatus
@@ -116,6 +117,103 @@ internal class ExpenseDetailRepository(
         }
     }
 
+    /**
+     * PR-D: offline-aware items replace. Body-carrying PUT (mirror of the
+     * [ExpensePendingRepository] PATCH offline path).
+     *  - direct 2xx → [ReplaceItemsOutcome.Synced] with the server items.
+     *  - IOException → [ReplaceItemsOutcome.Queued] with an optimistic
+     *    projection of the user's edited items (recomputed total + mismatch);
+     *    the row enqueues and replays on connectivity-up.
+     *  - HttpException → ``Result.failure``.
+     *
+     * The optimistic projection is display-only — the server recomputes
+     * ``items_sum_status`` authoritatively when the queued PUT replays.
+     */
+    suspend fun replaceExpenseItemsAllowingOffline(
+        expense: Expense,
+        items: List<ExpenseItemDraft>,
+        currentItems: ExpenseItems,
+    ): Result<ReplaceItemsOutcome> = core.errorHandler.safeCall {
+        if (!core.canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        val bound = core.ledgerRequestGuard.bind()
+        val request = ExpenseItemReplaceRequestDto(
+            expectedUpdatedAt = expense.updatedAt,
+            items = items.map { it.toRequest() },
+        )
+        try {
+            val saved = bound.call { it.replaceExpenseItems(expense.id, request) }.toDomain()
+            ReplaceItemsOutcome.Synced(saved) as ReplaceItemsOutcome
+        } catch (networkError: IOException) {
+            val outbox = core.outbox
+            val adapter = core.replaceItemsAdapter
+            val token = expense.updatedAt
+            if (outbox == null || adapter == null || token.isEmpty()) {
+                // Outbox wiring missing OR baseline lacked a token — fall back
+                // to the failure path so we don't pretend we saved.
+                throw networkError
+            }
+            // Session race guard: an IOException jumps past bound.call's
+            // post-check, so re-assert the session before queuing (a row
+            // queued under ledger A must not land in ledger B after a switch).
+            bound.requireStillActive()
+            // Strip the token from the payload — the row's expectedUpdatedAt is
+            // the single source of truth; the dispatcher overwrites it on replay.
+            outbox.enqueue(
+                type = PendingMutationType.ReplaceItems,
+                targetId = "expense:${expense.id}",
+                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
+                expectedUpdatedAt = token,
+            )
+            ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items)) as ReplaceItemsOutcome
+        }
+    }
+
+    /**
+     * Build the optimistic [ExpenseItems] the server WOULD return once the
+     * queued PUT replays: the user's edited rows + a recomputed total and
+     * mismatch against the (unchanged) parent amount. Item timestamps are left
+     * blank — they aren't surfaced in the editor and the server overwrites the
+     * whole snapshot on replay.
+     */
+    private fun projectOptimisticItems(
+        currentItems: ExpenseItems,
+        drafts: List<ExpenseItemDraft>,
+    ): ExpenseItems {
+        val projected = drafts.mapIndexed { index, draft ->
+            ExpenseItem(
+                publicId = "local-pending-$index",
+                position = index,
+                kind = draft.kind,
+                name = draft.name,
+                quantityText = draft.quantityText,
+                unitPriceCents = draft.unitPriceCents,
+                amountCents = draft.amountCents,
+                category = draft.category.orEmpty(),
+                rawText = draft.rawText,
+                confidence = draft.confidence,
+                isOcrDraft = false,
+                createdAt = "",
+                updatedAt = "",
+            )
+        }
+        val total = drafts.sumOf { it.amountCents ?: 0L }
+        val parent = currentItems.parentAmountCents
+        val mismatch = parent?.let { total - it }
+        val status = when {
+            projected.isEmpty() -> ItemsSumStatus.NO_ITEMS
+            mismatch == null || mismatch == 0L -> ItemsSumStatus.MATCHED
+            else -> ItemsSumStatus.MISMATCH_KNOWN
+        }
+        return currentItems.copy(
+            itemsTotalAmountCents = total,
+            mismatchCents = mismatch,
+            itemsSumStatus = status,
+            items = projected,
+        )
+    }
+
     suspend fun fetchExpenseSplits(id: Long): Result<ExpenseSplits> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         bound.call { it.expenseSplits(id) }.toDomain()
@@ -222,4 +320,20 @@ sealed interface ItemsAckOutcome {
      * optimistic projection (``itemsSumStatus = mismatch_acknowledged``).
      */
     data class Queued(override val items: ExpenseItems) : ItemsAckOutcome
+}
+
+/**
+ * PR-D sealed result for [ExpenseDetailRepository.replaceExpenseItemsAllowingOffline].
+ * Mirrors [ItemsAckOutcome]: on [Synced] the items are the server snapshot; on
+ * [Queued] they are the optimistic projection of the user's edit (recomputed
+ * total + mismatch), shown immediately while the queued PUT replays.
+ */
+sealed interface ReplaceItemsOutcome {
+    val items: ExpenseItems
+
+    /** Server confirmed the replace; [items] is the server snapshot. */
+    data class Synced(override val items: ExpenseItems) : ReplaceItemsOutcome
+
+    /** Network failed; the replace is queued and [items] is the optimistic projection. */
+    data class Queued(override val items: ExpenseItems) : ReplaceItemsOutcome
 }

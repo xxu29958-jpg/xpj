@@ -8,6 +8,7 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
@@ -27,6 +28,7 @@ import com.ticketbox.data.repository.OutboxScheduler
 import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
+import com.ticketbox.data.repository.ReplaceItemsDispatcher
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
@@ -90,6 +92,11 @@ class AppContainer(context: Context) {
     // POST /api/expenses/{id}/confirm and .../reject take the same
     // ExpenseStateTokenRequest body, so one adapter serves both.
     private val expenseStateTokenAdapter = outboxMoshi.adapter(ExpenseStateTokenRequest::class.java)
+
+    // PR-D: body-carrying adapter shared between ReplaceItemsDispatcher and
+    // ExpenseDetailRepository's offline items-editor call site (PUT
+    // /api/expenses/{id}/items). Same roundtrip guarantee as patchExpenseAdapter.
+    private val replaceItemsAdapter = outboxMoshi.adapter(ExpenseItemReplaceRequestDto::class.java)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -218,6 +225,11 @@ class AppContainer(context: Context) {
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = expenseStateTokenAdapter,
         ),
+        // PR-D: PUT /api/expenses/{id}/items via outbox (offline items editor).
+        ReplaceItemsDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = replaceItemsAdapter,
+        ),
     )
 
     val outboxDrainEngine = OutboxDrainEngine(
@@ -238,6 +250,7 @@ class AppContainer(context: Context) {
         outbox = outboxRepository,
         patchExpenseAdapter = patchExpenseAdapter,
         expenseStateTokenAdapter = expenseStateTokenAdapter,
+        replaceItemsAdapter = replaceItemsAdapter,
     )
 
     val ledgerRepository = LedgerRepository(

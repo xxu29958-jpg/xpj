@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.BackgroundTask
@@ -61,6 +62,8 @@ class ExpenseRepository(
     // confirm / reject call sites. Same null-keeps-old-behaviour
     // contract as patchExpenseAdapter.
     expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
+    // PR-D: body-carrying adapter for the offline-aware items editor.
+    replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
 ) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
@@ -72,6 +75,7 @@ class ExpenseRepository(
         outbox = outbox,
         patchExpenseAdapter = patchExpenseAdapter,
         expenseStateTokenAdapter = expenseStateTokenAdapter,
+        replaceItemsAdapter = replaceItemsAdapter,
     )
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
@@ -154,6 +158,13 @@ class ExpenseRepository(
         currentItems: ExpenseItems,
     ): Result<ItemsAckOutcome> =
         detailRepository.acknowledgeItemsMismatchAllowingOffline(expense, currentItems)
+
+    suspend fun replaceExpenseItemsAllowingOffline(
+        expense: Expense,
+        items: List<ExpenseItemDraft>,
+        currentItems: ExpenseItems,
+    ): Result<ReplaceItemsOutcome> =
+        detailRepository.replaceExpenseItemsAllowingOffline(expense, items, currentItems)
 
     suspend fun createBillSplitInvitation(
         expenseId: Long,

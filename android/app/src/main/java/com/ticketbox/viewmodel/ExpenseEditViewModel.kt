@@ -7,18 +7,36 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.ItemsAckOutcome
+import com.ticketbox.data.repository.ReplaceItemsOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseItemDraft
+import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.ui.components.parseAmountCents
+import java.math.BigDecimal
+import java.math.RoundingMode
+import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/**
+ * UI-editable working copy of one receipt line item. The amount is kept as the
+ * raw text the user types (in yuan, magnitude only); the sign is derived from
+ * [kind] on save (discount → negative, per ADR-0035) and parsed to cents.
+ */
+data class EditableItem(
+    val name: String = "",
+    val amountText: String = "",
+    val kind: String = ExpenseItemKind.PRODUCT,
+)
 
 data class ExpenseEditUiState(
     val expense: Expense? = null,
@@ -34,6 +52,9 @@ data class ExpenseEditUiState(
     val splitsLoading: Boolean = false,
     val ocrRunning: Boolean = false,
     val saving: Boolean = false,
+    val itemEditorOpen: Boolean = false,
+    val itemDrafts: List<EditableItem> = emptyList(),
+    val itemsSaving: Boolean = false,
     val itemsMessage: String? = null,
     val splitsMessage: String? = null,
     val message: String? = null,
@@ -202,6 +223,134 @@ class ExpenseEditViewModel(
                 }
         }
     }
+
+    // region — PR-D items editor
+
+    /** Open the editor seeded from the currently-loaded items (amount magnitude
+     *  as text; the kind chip carries the sign). No-op until items have loaded. */
+    fun openItemsEditor() {
+        val items = _uiState.value.expenseItems ?: return
+        val drafts = items.items.map { item ->
+            EditableItem(
+                name = item.name,
+                amountText = centsToYuanText(item.amountCents),
+                kind = item.kind,
+            )
+        }
+        _uiState.update { it.copy(itemEditorOpen = true, itemDrafts = drafts, itemsMessage = null) }
+    }
+
+    fun updateItemDraft(index: Int, name: String? = null, amountText: String? = null, kind: String? = null) {
+        _uiState.update { state ->
+            val drafts = state.itemDrafts.toMutableList()
+            val current = drafts.getOrNull(index) ?: return@update state
+            drafts[index] = current.copy(
+                name = name ?: current.name,
+                amountText = amountText ?: current.amountText,
+                kind = kind ?: current.kind,
+            )
+            state.copy(itemDrafts = drafts)
+        }
+    }
+
+    fun addItemRow() {
+        _uiState.update { it.copy(itemDrafts = it.itemDrafts + EditableItem()) }
+    }
+
+    fun removeItemRow(index: Int) {
+        _uiState.update { state ->
+            val drafts = state.itemDrafts.toMutableList()
+            if (index in drafts.indices) drafts.removeAt(index)
+            state.copy(itemDrafts = drafts)
+        }
+    }
+
+    fun closeItemsEditor() {
+        _uiState.update { it.copy(itemEditorOpen = false, itemDrafts = emptyList()) }
+    }
+
+    /** Persist the edited items. Mirrors [acknowledgeItemsMismatch]'s outcome
+     *  handling: Synced refreshes the parent token + shows the saved items;
+     *  Queued keeps the optimistic projection and tells the user it'll sync. */
+    fun saveItems() {
+        val expense = _uiState.value.expense
+        val currentItems = _uiState.value.expenseItems
+        if (expense == null || currentItems == null) {
+            _uiState.update { it.copy(itemsMessage = "账单还在加载，请稍后再试。") }
+            return
+        }
+        val drafts = _uiState.value.itemDrafts
+            .filter { it.name.isNotBlank() || it.amountText.isNotBlank() }
+            .map { it.toDomainDraft() }
+        viewModelScope.launch {
+            _uiState.update { it.copy(itemsSaving = true, itemsMessage = null) }
+            repository.replaceExpenseItemsAllowingOffline(expense, drafts, currentItems)
+                .onSuccess { outcome ->
+                    when (outcome) {
+                        is ReplaceItemsOutcome.Synced -> {
+                            // Replace bumps the parent's updated_at server-side;
+                            // refresh the token so later same-page mutations don't
+                            // race a stale one. Inline refresh (not loadExpense)
+                            // keeps the success banner visible.
+                            val refreshed = repository.fetchExpense(expense.id).getOrNull()
+                            _uiState.update {
+                                it.copy(
+                                    expense = refreshed ?: it.expense,
+                                    expenseItems = outcome.items,
+                                    itemEditorOpen = false,
+                                    itemDrafts = emptyList(),
+                                    itemsSaving = false,
+                                    message = "小票明细已更新。",
+                                )
+                            }
+                        }
+                        is ReplaceItemsOutcome.Queued -> {
+                            _uiState.update {
+                                it.copy(
+                                    expenseItems = outcome.items,
+                                    itemEditorOpen = false,
+                                    itemDrafts = emptyList(),
+                                    itemsSaving = false,
+                                    message = "已离线保存，联网后同步。",
+                                )
+                            }
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            itemsSaving = false,
+                            itemsMessage = error.message ?: "明细保存失败，请稍后再试。",
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun centsToYuanText(cents: Long?): String {
+        if (cents == null) return ""
+        return BigDecimal(abs(cents)).divide(BigDecimal(100), 2, RoundingMode.HALF_UP).toPlainString()
+    }
+
+    private fun EditableItem.toDomainDraft(): ExpenseItemDraft {
+        val magnitude = parseAmountCents(amountText) ?: 0L
+        // ADR-0035: discount lines carry negative amount_cents; the editor takes
+        // the magnitude and the kind chip decides the sign.
+        val signed = if (kind == ExpenseItemKind.DISCOUNT) -abs(magnitude) else magnitude
+        return ExpenseItemDraft(
+            name = name.trim().ifBlank { "未命名" },
+            quantityText = null,
+            unitPriceCents = null,
+            amountCents = signed,
+            category = null,
+            rawText = null,
+            confidence = null,
+            kind = kind,
+        )
+    }
+
+    // endregion
 
     private fun loadExpenseSplits() {
         viewModelScope.launch {

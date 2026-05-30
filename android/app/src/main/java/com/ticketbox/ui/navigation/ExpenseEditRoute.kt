@@ -57,6 +57,12 @@ internal fun ExpenseEditRoute(
         onLoadFullImage = editViewModel::loadFullImage,
         onKeepDuplicate = editViewModel::markNotDuplicate,
         onAcknowledgeItemsMismatch = editViewModel::acknowledgeItemsMismatch,
+        onEditItems = editViewModel::openItemsEditor,
+        onUpdateItemDraft = editViewModel::updateItemDraft,
+        onAddItemRow = editViewModel::addItemRow,
+        onRemoveItemRow = editViewModel::removeItemRow,
+        onSaveItems = editViewModel::saveItems,
+        onDismissItemsEditor = editViewModel::closeItemsEditor,
         onDone = {
             if (editViewModel.consumeDone()) {
                 onCompleted()
