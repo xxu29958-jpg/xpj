@@ -327,9 +327,13 @@ class ExpenseEditViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(ocrRunning = true, message = null) }
-            repository.retryOcr(expenseId, expense.updatedAt)
-                .onSuccess { expense ->
-                    _uiState.update { it.copy(expense = expense, ocrRunning = false, message = "识别已重试") }
+            repository.retryOcrAllowingOffline(expense)
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        is ExpenseStateOutcome.Synced -> "识别已重试"
+                        is ExpenseStateOutcome.Queued -> "已离线，联网后重试识别"
+                    }
+                    _uiState.update { it.copy(expense = outcome.expense, ocrRunning = false, message = message) }
                 }
                 .onFailure { error ->
                     _uiState.update { it.copy(ocrRunning = false, message = error.message ?: "没有识别成功，请稍后再试。") }
@@ -345,9 +349,13 @@ class ExpenseEditViewModel(
             return
         }
         viewModelScope.launch {
-            repository.markNotDuplicate(expenseId, expense.updatedAt)
-                .onSuccess { updated ->
-                    _uiState.update { it.copy(expense = updated, message = "已保留这条账单") }
+            repository.markNotDuplicateAllowingOffline(expense)
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        is ExpenseStateOutcome.Synced -> "已保留这条账单"
+                        is ExpenseStateOutcome.Queued -> "已离线保留，联网后同步"
+                    }
+                    _uiState.update { it.copy(expense = outcome.expense, message = message) }
                 }
                 .onFailure { error -> _uiState.update { it.copy(message = error.message ?: "暂时没处理成功，请稍后再试。") } }
         }

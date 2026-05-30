@@ -240,7 +240,7 @@ internal class ExpensePendingRepository(
             )
             ExpenseStateOutcome.Synced(confirmed.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
-            enqueueStateTransition(
+            core.enqueueStateTransition(
                 bound = bound,
                 type = PendingMutationType.ConfirmExpense,
                 expense = expense,
@@ -260,7 +260,7 @@ internal class ExpensePendingRepository(
             }
             ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
-            enqueueStateTransition(
+            core.enqueueStateTransition(
                 bound = bound,
                 type = PendingMutationType.RejectExpense,
                 expense = expense,
@@ -270,38 +270,31 @@ internal class ExpensePendingRepository(
         }
     }
 
-    /**
-     * Shared IOException → outbox fallback for the offline-aware
-     * state-machine POSTs ([confirmExpenseAllowingOffline] /
-     * [rejectExpenseAllowingOffline]). Enqueues a token-only row:
-     * the payload carries an empty placeholder and
-     * ``row.expectedUpdatedAt`` is the single source of truth (the
-     * dispatcher overwrites the request token from the row on replay
-     * — round-8 P3#5). Re-checks session activity BEFORE enqueue so a
-     * mid-flight ledger switch can't slip an old-session row into the
-     * now-current ledger's queue (round-13 P1). Rethrows
-     * [networkError] when the outbox / adapter isn't wired or the
-     * baseline lacks a token, so the caller surfaces a hard failure
-     * instead of pretending to have queued.
-     */
-    private suspend fun enqueueStateTransition(
-        bound: BoundLedgerRequest,
-        type: PendingMutationType,
+    override suspend fun markNotDuplicateAllowingOffline(
         expense: Expense,
-        networkError: IOException,
-    ) {
-        val outbox = core.outbox
-        val adapter = core.expenseStateTokenAdapter
-        if (outbox == null || adapter == null || expense.updatedAt.isEmpty()) {
-            throw networkError
+    ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bind()
+        try {
+            val updated = core.cacheIfConfirmed(
+                bound.call {
+                    it.markNotDuplicate(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+                },
+                bound.ledgerId,
+            )
+            ExpenseStateOutcome.Synced(updated.toDomain()) as ExpenseStateOutcome
+        } catch (networkError: IOException) {
+            core.enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.MarkNotDuplicate,
+                expense = expense,
+                networkError = networkError,
+            )
+            // Optimistic projection: the suspected-duplicate badge clears
+            // the moment the user taps "保留" — duplicateStatus flips to
+            // "none" so the pending row stops showing the dedup
+            // affordance while the POST waits for connectivity.
+            ExpenseStateOutcome.Queued(expense.copy(duplicateStatus = "none")) as ExpenseStateOutcome
         }
-        bound.requireStillActive()
-        outbox.enqueue(
-            type = type,
-            targetId = "expense:${expense.id}",
-            payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedUpdatedAt = "")),
-            expectedUpdatedAt = expense.updatedAt,
-        )
     }
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = core.errorHandler.safeCall {

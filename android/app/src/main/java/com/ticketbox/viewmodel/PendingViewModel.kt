@@ -281,15 +281,19 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            repository.markNotDuplicate(expense.id, expense.updatedAt)
-                .onSuccess { updated ->
+            repository.markNotDuplicateAllowingOffline(expense)
+                .onSuccess { outcome ->
                     if (requestGeneration != generation) return@onSuccess
+                    val message = when (outcome) {
+                        is ExpenseStateOutcome.Synced -> "已保留这条账单"
+                        is ExpenseStateOutcome.Queued -> "已离线保留，联网后同步"
+                    }
                     _uiState.update { state ->
                         PendingUiStateReducer.afterUpdated(
                             current = state,
-                            updated = updated,
+                            updated = outcome.expense,
                             closeSheet = true,
-                            message = "已保留这条账单",
+                            message = message,
                         )
                     }
                 }

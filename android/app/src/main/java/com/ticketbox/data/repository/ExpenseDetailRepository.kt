@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -11,6 +12,7 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
+import java.io.IOException
 
 internal class ExpenseDetailRepository(
     private val core: ExpenseRepositoryCore,
@@ -107,6 +109,33 @@ internal class ExpenseDetailRepository(
         val retried = bound.call { it.retryOcr(id, ExpenseStateTokenRequest(expectedUpdatedAt)) }
         retried.toDomain()
     }
+
+    /**
+     * ADR-0038 PR-2g.8: offline-aware OCR retry. Token-only POST like
+     * confirm/reject (shares [ExpenseRepositoryCore.enqueueStateTransition]).
+     * The Queued projection is the expense UNCHANGED — OCR re-runs
+     * server-side so there's nothing to project optimistically; the UI
+     * just shows the "联网后重试识别" hint and the worker replays the
+     * retry once connectivity returns.
+     */
+    suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
+        core.errorHandler.safeCall {
+            val bound = core.ledgerRequestGuard.bind()
+            try {
+                val retried = bound.call {
+                    it.retryOcr(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+                }
+                ExpenseStateOutcome.Synced(retried.toDomain()) as ExpenseStateOutcome
+            } catch (networkError: IOException) {
+                core.enqueueStateTransition(
+                    bound = bound,
+                    type = PendingMutationType.RetryOcr,
+                    expense = expense,
+                    networkError = networkError,
+                )
+                ExpenseStateOutcome.Queued(expense) as ExpenseStateOutcome
+            }
+        }
 
     suspend fun fetchDuplicates(): Result<List<Expense>> = core.errorHandler.safeCall {
         core.ledgerRequestGuard.guardedCall { api ->

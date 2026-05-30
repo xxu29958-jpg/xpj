@@ -528,6 +528,88 @@ class ExpensePendingRepositoryOutboxFallbackTest {
 
     // endregion
 
+    // region — markNotDuplicate / retryOcr AllowingOffline (PR-2g.8)
+
+    @Test
+    fun `markNotDuplicate IOException returns Queued none-projection + enqueues row`() = runTest {
+        val baseline = baselineExpense().copy(duplicateStatus = "suspected")
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(markNotDuplicateResult = ApiResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.markNotDuplicateAllowingOffline(baseline)
+            .getOrThrow() as ExpenseStateOutcome.Queued
+
+        // Optimistic projection clears the suspected-duplicate badge.
+        assertEquals("none", outcome.expense.duplicateStatus)
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.MarkNotDuplicate.wireValue, row.type)
+        assertEquals("expense:${baseline.id}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertTrue(
+            baseline.updatedAt !in row.payload,
+            "payload must NOT embed the token: ${row.payload}",
+        )
+    }
+
+    @Test
+    fun `markNotDuplicate direct 2xx returns Synced, no enqueue`() = runTest {
+        val baseline = baselineExpense().copy(duplicateStatus = "suspected")
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(markNotDuplicateResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.markNotDuplicateAllowingOffline(baseline).getOrThrow()
+
+        assertTrue(outcome is ExpenseStateOutcome.Synced)
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `retryOcr IOException returns Queued unchanged + enqueues row`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(retryOcrResult = ApiResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.retryOcrAllowingOffline(baseline)
+            .getOrThrow() as ExpenseStateOutcome.Queued
+
+        // No optimistic field change — OCR re-runs server-side, so the
+        // queued projection is the expense unchanged.
+        assertEquals(baseline.updatedAt, outcome.expense.updatedAt)
+        assertEquals(baseline.merchant, outcome.expense.merchant)
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.RetryOcr.wireValue, row.type)
+        assertEquals("expense:${baseline.id}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+    }
+
+    @Test
+    fun `retryOcr direct 2xx returns Synced, no enqueue`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.retryOcrAllowingOffline(baseline).getOrThrow()
+
+        assertTrue(outcome is ExpenseStateOutcome.Synced)
+        assertEquals(0, dao.rows.size)
+    }
+
+    // endregion
+
     // region — OutboxRepository invariants (round-7 P2 + round-8)
 
     @Test
@@ -627,6 +709,12 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         private val rejectExpenseResult: ApiResult = ApiResult.Throw(
             IllegalStateException("rejectExpense not configured"),
         ),
+        private val markNotDuplicateResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("markNotDuplicate not configured"),
+        ),
+        private val retryOcrResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("retryOcr not configured"),
+        ),
         private val delegate: ApiService = FakeApiService(
             events = mutableListOf(),
             confirmedFailuresRemaining = 0,
@@ -652,6 +740,22 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             id: Long,
             request: ExpenseStateTokenRequest,
         ): ExpenseDto = when (val r = rejectExpenseResult) {
+            is ApiResult.Success -> r.dto
+            is ApiResult.Throw -> throw r.exception
+        }
+
+        override suspend fun markNotDuplicate(
+            id: Long,
+            request: ExpenseStateTokenRequest,
+        ): ExpenseDto = when (val r = markNotDuplicateResult) {
+            is ApiResult.Success -> r.dto
+            is ApiResult.Throw -> throw r.exception
+        }
+
+        override suspend fun retryOcr(
+            id: Long,
+            request: ExpenseStateTokenRequest,
+        ): ExpenseDto = when (val r = retryOcrResult) {
             is ApiResult.Success -> r.dto
             is ApiResult.Throw -> throw r.exception
         }

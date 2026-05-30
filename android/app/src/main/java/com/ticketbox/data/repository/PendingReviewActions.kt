@@ -105,6 +105,15 @@ interface PendingReviewActions {
      */
     suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+
+    /**
+     * ADR-0038 PR-2g.8: offline-aware mark-not-duplicate. Same
+     * contract as [confirmExpenseAllowingOffline] but the optimistic
+     * projection flips [Expense.duplicateStatus] to ``none`` and the
+     * row STAYS in the pending list (mark-not-duplicate keeps the
+     * expense; it just clears the suspected-duplicate badge).
+     */
+    suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun categories(): Result<List<String>>
     suspend fun uploadScreenshot(
         fileName: String,

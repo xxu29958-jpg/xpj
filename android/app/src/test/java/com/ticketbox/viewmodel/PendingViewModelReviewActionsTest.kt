@@ -295,6 +295,32 @@ class PendingViewModelReviewActionsTest {
     }
 
     @Test
+    fun markNotDuplicateQueuedOfflineKeepsItemWithOfflineMessage() = review {
+        // PR-2g.8: offline mark-not-duplicate. The item STAYS in the
+        // pending list (unlike confirm/reject) with the badge cleared,
+        // and the user sees the "联网后同步" hint.
+        val target = expense(id = 52L, duplicateStatus = "suspected")
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.markNotDuplicateOfflineResponder = {
+            Result.success(
+                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(duplicateStatus = "none")),
+            )
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.openDuplicateAction(target)
+        vm.markNotDuplicate(target)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals("none", state.items.single().duplicateStatus, "queued mark-not-dup keeps the item")
+        assertEquals(PendingSheet.None, state.activeSheet)
+        assertEquals("已离线保留，联网后同步", state.message)
+        assertEquals(1, fake.markNotDuplicateCalls)
+    }
+
+    @Test
     fun rejectExpenseRemovesItem() = review {
         val target = expense(id = 41L, duplicateStatus = "suspected")
         val fake = FakeReviewActions(pending = listOf(target))
@@ -661,6 +687,8 @@ private class FakeReviewActions(
     // the Queued (offline) branch.
     var confirmOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
     var rejectOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
+    // PR-2g.8: same default-wrap pattern for mark-not-duplicate.
+    var markNotDuplicateOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
     var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null
     var thumbnailResponder: (suspend (Long) -> Result<ProtectedImage>)? = null
 
@@ -743,6 +771,16 @@ private class FakeReviewActions(
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> {
         markNotDuplicateCalls += 1
         return markNotDuplicateResponder?.invoke(id) ?: error("markNotDuplicateResponder not set")
+    }
+
+    override suspend fun markNotDuplicateAllowingOffline(
+        expense: Expense,
+    ): Result<com.ticketbox.data.repository.ExpenseStateOutcome> {
+        markNotDuplicateCalls += 1
+        markNotDuplicateOfflineResponder?.let { return it(expense.id) }
+        return markNotDuplicateResponder?.invoke(expense.id)
+            ?.map { com.ticketbox.data.repository.ExpenseStateOutcome.Synced(it) }
+            ?: error("markNotDuplicateResponder/markNotDuplicateOfflineResponder not set")
     }
 
     override suspend fun categories(): Result<List<String>> = Result.success(categoryOptions)

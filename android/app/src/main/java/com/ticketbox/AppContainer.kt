@@ -30,7 +30,9 @@ import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
+import com.ticketbox.data.repository.MarkNotDuplicateDispatcher
 import com.ticketbox.data.repository.RejectExpenseDispatcher
+import com.ticketbox.data.repository.RetryOcrDispatcher
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
@@ -197,6 +199,16 @@ class AppContainer(context: Context) {
         ),
         // PR-2g.7: POST /api/expenses/{id}/reject via outbox.
         RejectExpenseDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = expenseStateTokenAdapter,
+        ),
+        // PR-2g.8: POST /api/expenses/{id}/mark-not-duplicate via outbox.
+        MarkNotDuplicateDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = expenseStateTokenAdapter,
+        ),
+        // PR-2g.8: POST /api/expenses/{id}/ocr/retry via outbox.
+        RetryOcrDispatcher(
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = expenseStateTokenAdapter,
         ),

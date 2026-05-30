@@ -109,6 +109,9 @@ private class ThumbnailFakeReviewActions(
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
+    override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
+        Result.failure(IllegalStateException("not exercised"))
+
     override suspend fun categories(): Result<List<String>> = Result.success(emptyList())
 
     override suspend fun uploadScreenshot(

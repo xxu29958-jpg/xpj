@@ -4,6 +4,7 @@ import android.util.Log
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.ExpenseDao
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.AuthCheckDto
@@ -242,6 +243,46 @@ internal class ExpenseRepositoryCore(
         } else {
             clearStores()
         }
+    }
+
+    /**
+     * ADR-0038 PR-2g.7/8: shared IOException → outbox fallback for the
+     * offline-aware token-only state-machine POSTs (confirm / reject /
+     * mark-not-duplicate in [ExpensePendingRepository]; retry-OCR in
+     * [ExpenseDetailRepository]). Enqueues a token-only row — the
+     * payload carries an empty placeholder and ``row.expectedUpdatedAt``
+     * is the single source of truth (the dispatcher overwrites the
+     * request token from the row on replay — round-8 P3#5). Re-checks
+     * session activity BEFORE enqueue so a mid-flight ledger switch
+     * can't slip an old-session row into the now-current ledger's queue
+     * (round-13 P1). Rethrows [networkError] when the outbox / adapter
+     * isn't wired or the baseline lacks a token, so the caller surfaces
+     * a hard failure instead of pretending to have queued.
+     *
+     * Lives on the core (not a single Repository) because both the
+     * pending repo and the detail repo route their token-only POSTs
+     * through it. The ``type = PendingMutationType.X`` literal stays at
+     * each call site so the outbox-coverage audit still sees the
+     * enqueue.
+     */
+    suspend fun enqueueStateTransition(
+        bound: BoundLedgerRequest,
+        type: PendingMutationType,
+        expense: Expense,
+        networkError: IOException,
+    ) {
+        val outboxRef = outbox
+        val adapter = expenseStateTokenAdapter
+        if (outboxRef == null || adapter == null || expense.updatedAt.isEmpty()) {
+            throw networkError
+        }
+        bound.requireStillActive()
+        outboxRef.enqueue(
+            type = type,
+            targetId = "expense:${expense.id}",
+            payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedUpdatedAt = "")),
+            expectedUpdatedAt = expense.updatedAt,
+        )
     }
 
     companion object {

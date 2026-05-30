@@ -212,8 +212,14 @@ class ExpenseRepository(
     override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         pendingRepository.rejectExpenseAllowingOffline(expense)
 
+    override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
+        pendingRepository.markNotDuplicateAllowingOffline(expense)
+
     suspend fun retryOcr(id: Long, expectedUpdatedAt: String): Result<Expense> =
         detailRepository.retryOcr(id, expectedUpdatedAt)
+
+    suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
+        detailRepository.retryOcrAllowingOffline(expense)
 
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
         pendingRepository.markNotDuplicate(id, expectedUpdatedAt)
