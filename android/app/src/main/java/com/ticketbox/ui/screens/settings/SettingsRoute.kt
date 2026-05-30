@@ -26,5 +26,6 @@ sealed class SettingsRoute {
     data object BillSplits : SettingsRoute()
     data object BackgroundTasks : SettingsRoute()
     data object IncomePlans : SettingsRoute()
+    data object SyncStatus : SettingsRoute()
     data object About : SettingsRoute()
 }

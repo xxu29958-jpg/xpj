@@ -17,6 +17,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.BackgroundSettings
@@ -49,12 +50,14 @@ import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.SettingsRootScreen
 import com.ticketbox.ui.screens.settings.SettingsRoute as SettingsDestination
+import com.ticketbox.ui.screens.settings.SyncStatusScreen
 import com.ticketbox.viewmodel.BackgroundTasksViewModel
 import com.ticketbox.viewmodel.BillSplitViewModel
 import com.ticketbox.viewmodel.FamilyMembersViewModel
 import com.ticketbox.viewmodel.IncomePlanViewModel
 import com.ticketbox.viewmodel.JoinFamilyLedgerViewModel
 import com.ticketbox.viewmodel.LedgerSwitcherViewModel
+import com.ticketbox.viewmodel.OutboxStatusViewModel
 import com.ticketbox.viewmodel.SettingsUiState
 import com.ticketbox.viewmodel.backgroundTasksViewModelFactory
 import com.ticketbox.viewmodel.billSplitViewModelFactory
@@ -62,6 +65,7 @@ import com.ticketbox.viewmodel.familyMembersViewModelFactory
 import com.ticketbox.viewmodel.incomePlanViewModelFactory
 import com.ticketbox.viewmodel.joinFamilyLedgerViewModelFactory
 import com.ticketbox.viewmodel.ledgerSwitcherViewModelFactory
+import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 
 internal data class SettingsRouteActions(
     val onTestConnection: () -> Unit,
@@ -103,6 +107,7 @@ internal data class SettingsRouteRepositories(
     val expenseRepository: ExpenseRepository,
     val reportsRepository: ReportsActions,
     val incomePlanRepository: IncomePlanActions,
+    val outboxRepository: OutboxRepository,
     val activeLedgerId: String?,
 )
 
@@ -169,6 +174,7 @@ internal fun SettingsDestinationHost(
             onOpenJoinFamilyLedger = { route = SettingsDestination.JoinFamilyLedger },
             onOpenBillSplits = { route = SettingsDestination.BillSplits },
             onOpenBackgroundTasks = { route = SettingsDestination.BackgroundTasks },
+            onOpenSyncStatus = { route = SettingsDestination.SyncStatus },
             onOpenIncomePlans = { route = SettingsDestination.IncomePlans },
             onOpenAbout = { route = SettingsDestination.About },
         )
@@ -371,6 +377,20 @@ internal fun SettingsDestinationHost(
                 factory = backgroundTasksViewModelFactory(repositories.expenseRepository),
             )
             BackgroundTasksScreen(
+                viewModel = vm,
+                onBack = { route = SettingsDestination.Root },
+            )
+        }
+
+        SettingsDestination.SyncStatus -> {
+            val vm: OutboxStatusViewModel = viewModel(
+                key = "sync-status",
+                factory = outboxStatusViewModelFactory(
+                    repositories.outboxRepository,
+                    repositories.expenseRepository,
+                ),
+            )
+            SyncStatusScreen(
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },
             )

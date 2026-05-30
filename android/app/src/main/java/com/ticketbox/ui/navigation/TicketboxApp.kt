@@ -18,6 +18,7 @@ import com.ticketbox.BuildConfig
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.LedgerRepository
+import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.domain.model.AppSkin
@@ -39,6 +40,7 @@ fun TicketboxApp(
     budgetRepository: BudgetRepository,
     reportsRepository: ReportsActions,
     incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
+    outboxRepository: OutboxRepository,
     appViewModelFactory: ViewModelProvider.Factory,
     settingsViewModelFactory: ViewModelProvider.Factory,
     categoryRulesViewModelFactory: ViewModelProvider.Factory,
@@ -78,6 +80,7 @@ fun TicketboxApp(
             budgetRepository = budgetRepository,
             reportsRepository = reportsRepository,
             incomePlanRepository = incomePlanRepository,
+            outboxRepository = outboxRepository,
             settingsViewModelFactory = settingsViewModelFactory,
             categoryRulesViewModelFactory = categoryRulesViewModelFactory,
             merchantAliasViewModelFactory = merchantAliasViewModelFactory,
@@ -98,6 +101,7 @@ private fun TicketboxContent(
     budgetRepository: BudgetRepository,
     reportsRepository: ReportsActions,
     incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
+    outboxRepository: OutboxRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     categoryRulesViewModelFactory: ViewModelProvider.Factory,
     merchantAliasViewModelFactory: ViewModelProvider.Factory,
@@ -152,6 +156,7 @@ private fun TicketboxContent(
         budgetRepository = budgetRepository,
         reportsRepository = reportsRepository,
         incomePlanRepository = incomePlanRepository,
+        outboxRepository = outboxRepository,
         settingsViewModelFactory = settingsViewModelFactory,
         categoryRulesViewModelFactory = categoryRulesViewModelFactory,
         merchantAliasViewModelFactory = merchantAliasViewModelFactory,
@@ -175,6 +180,7 @@ private fun MainShell(
     budgetRepository: BudgetRepository,
     reportsRepository: ReportsActions,
     incomePlanRepository: com.ticketbox.data.repository.IncomePlanActions,
+    outboxRepository: OutboxRepository,
     settingsViewModelFactory: ViewModelProvider.Factory,
     categoryRulesViewModelFactory: ViewModelProvider.Factory,
     merchantAliasViewModelFactory: ViewModelProvider.Factory,
@@ -199,6 +205,7 @@ private fun MainShell(
         budgetRepository,
         reportsRepository,
         incomePlanRepository,
+        outboxRepository,
         settingsViewModelFactory,
         categoryRulesViewModelFactory,
         merchantAliasViewModelFactory,
@@ -211,6 +218,7 @@ private fun MainShell(
             budgetRepository = budgetRepository,
             reportsRepository = reportsRepository,
             incomePlanRepository = incomePlanRepository,
+            outboxRepository = outboxRepository,
             settingsViewModelFactory = settingsViewModelFactory,
             categoryRulesViewModelFactory = categoryRulesViewModelFactory,
             merchantAliasViewModelFactory = merchantAliasViewModelFactory,

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.FileDownload
@@ -122,6 +123,7 @@ fun SettingsRootScreen(
     onOpenJoinFamilyLedger: () -> Unit = {},
     onOpenBillSplits: () -> Unit = {},
     onOpenBackgroundTasks: () -> Unit = {},
+    onOpenSyncStatus: () -> Unit = {},
     onOpenIncomePlans: () -> Unit = {},
     onOpenAbout: () -> Unit,
 ) {
@@ -226,6 +228,12 @@ fun SettingsRootScreen(
             subtitle = "CSV 导入 / v1.0 迁移等长任务的状态",
             icon = Icons.Filled.Tune,
             onClick = onOpenBackgroundTasks,
+        )
+        SettingsEntryRow(
+            title = "离线同步",
+            subtitle = "离线改动的同步状态，处理冲突与失败",
+            icon = Icons.Filled.Sync,
+            onClick = onOpenSyncStatus,
         )
         SettingsEntryRow(
             title = "收入计划",

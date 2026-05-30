@@ -99,6 +99,7 @@ internal fun SettingsRoute(
             expenseRepository = screenFactory.repository,
             reportsRepository = screenFactory.reportsRepository,
             incomePlanRepository = screenFactory.incomePlanRepository,
+            outboxRepository = screenFactory.outboxRepository,
             activeLedgerId = screenFactory.ledgerRepository.activeLedgerId(),
         ),
     )

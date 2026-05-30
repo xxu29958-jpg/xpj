@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LedgerRepository
 import com.ticketbox.data.repository.MerchantRepository
+import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
@@ -163,5 +164,15 @@ fun backgroundTasksViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return BackgroundTasksViewModel(repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun outboxStatusViewModelFactory(
+    outbox: OutboxRepository,
+    expenseRepository: ExpenseRepository,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return OutboxStatusViewModel(outbox, expenseRepository) as T
     }
 }
