@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.services.fx_rate_provider import refresh_ecb_fx_rates
+from app.services.fx_rate_provider import FxFetchError, refresh_ecb_fx_rates
 from app.services.scheduler_lease_service import try_claim_scheduler_lease
 
 logger = logging.getLogger(__name__)
@@ -104,14 +104,23 @@ def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezon
             _status.success_count += 1
             _status.last_success_at = datetime.now(timezone)
             logger.info("ECB FX sync completed: %s rates", len(rows))
+        except FxFetchError as exc:
+            # Transient network / TLS drop (this machine intermittently kills
+            # outbound handshakes — same flakiness that hits Maven). The fetch
+            # already retried; rates degrade gracefully to last-known and the
+            # next scheduled cycle retries. Log at WARNING with no traceback so
+            # a routine network blip doesn't spam the error log.
+            _status.failed_count += 1
+            _status.last_error = str(exc)[:200]
+            logger.warning("ECB FX sync skipped (network); keeping last-known rates: %s", exc)
         except Exception as exc:
             # Daemon thread: a propagated exception would kill the scheduler
-            # silently. Stay broad on the catch so an upstream library
-            # surprise can't take the worker down, but record the failure
-            # for the health endpoint to see.
+            # silently. Stay broad so an upstream surprise (ECB schema change,
+            # DB lock, bug) can't take the worker down — but THIS is unexpected,
+            # so keep the full traceback at ERROR for the health endpoint + logs.
             _status.failed_count += 1
             _status.last_error = f"{type(exc).__name__}: {exc}"[:200]
-            logger.exception("ECB FX sync failed")
+            logger.exception("ECB FX sync failed (unexpected)")
 
 
 def start_fx_rate_scheduler() -> FxRateScheduler | None:

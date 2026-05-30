@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import time as _time
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
@@ -25,7 +27,23 @@ from app.services.currency_common import (
 from app.services.time_service import now_utc
 
 FETCH_TIMEOUT_SECONDS = 10
+# This machine's network intermittently terminates outbound TLS handshakes
+# ("UNEXPECTED_EOF_WHILE_READING") — the same flakiness that hits Maven/gradle.
+# A single blip used to fail the whole daily sync until the next scheduled run
+# (hours later, leaving rates stale). Retry a few times with linear backoff so a
+# transient handshake drop recovers within one cycle.
+FETCH_RETRIES = 3
+FETCH_BACKOFF_SECONDS = 2.0
 logger = logging.getLogger(__name__)
+
+
+class FxFetchError(Exception):
+    """ECB rates could not be fetched after retries (transient network / TLS).
+
+    Distinct from parse / data errors so the scheduler can log a transient
+    network drop at WARNING (rates degrade gracefully to last-known, next
+    cycle retries) instead of spamming ERROR tracebacks.
+    """
 
 
 @dataclass(frozen=True)
@@ -58,14 +76,34 @@ def parse_ecb_daily_rates(xml_text: str) -> EcbDailyRates:
     return EcbDailyRates(rate_date=date.fromisoformat(day_cube.attrib["time"]), rates_per_eur=rates)
 
 
+def _fetch_ecb_xml(target: str) -> str:
+    """GET the ECB daily XML, retrying transient network/TLS failures.
+
+    ``URLError`` (urllib's wrapper) and ``OSError`` (covers ssl.SSLError,
+    ConnectionError, TimeoutError) are the transient family worth retrying;
+    everything else propagates. After [FETCH_RETRIES] attempts we raise
+    [FxFetchError] so the caller can degrade gracefully.
+    """
+    request = Request(target, headers={"User-Agent": "xiaopiaojia-fx-sync/1.0"})
+    last_exc: Exception | None = None
+    for attempt in range(1, FETCH_RETRIES + 1):
+        try:
+            with urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+                return response.read().decode("utf-8")
+        except (URLError, OSError) as exc:
+            last_exc = exc
+            if attempt < FETCH_RETRIES:
+                _time.sleep(FETCH_BACKOFF_SECONDS * attempt)
+    raise FxFetchError(
+        f"ECB fetch failed after {FETCH_RETRIES} attempts: "
+        f"{type(last_exc).__name__}: {last_exc}"
+    ) from last_exc
+
+
 def fetch_ecb_daily_rates(url: str | None = None) -> EcbDailyRates:
     settings = get_settings()
-    request = Request(
-        url or settings.fx_rate_ecb_url,
-        headers={"User-Agent": "xiaopiaojia-fx-sync/1.0"},
-    )
-    with urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
-        xml_text = response.read().decode("utf-8")
+    target = url or settings.fx_rate_ecb_url
+    xml_text = _fetch_ecb_xml(target)
     return parse_ecb_daily_rates(xml_text)
 
 
