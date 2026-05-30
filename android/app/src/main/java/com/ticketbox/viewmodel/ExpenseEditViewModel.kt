@@ -5,6 +5,7 @@ import com.ticketbox.BuildConfig
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.ExpenseRepository
+import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
@@ -303,8 +304,16 @@ class ExpenseEditViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(saving = true, message = null) }
-            repository.rejectExpense(expenseId, expense.updatedAt)
-                .onSuccess { _uiState.update { it.copy(saving = false, done = true) } }
+            repository.rejectExpenseAllowingOffline(expense)
+                .onSuccess { outcome ->
+                    // Synced keeps the silent done→navigate-back behaviour;
+                    // Queued surfaces the offline hint (mirrors save).
+                    val message = when (outcome) {
+                        is ExpenseStateOutcome.Synced -> null
+                        is ExpenseStateOutcome.Queued -> "已离线删除，联网后同步"
+                    }
+                    _uiState.update { it.copy(saving = false, message = message, done = true) }
+                }
                 .onFailure { error -> _uiState.update { it.copy(saving = false, message = error.message ?: "没有删除成功，请稍后再试。") } }
         }
     }

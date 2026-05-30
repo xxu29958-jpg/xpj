@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.PendingThumbnailLoader
 import com.ticketbox.data.repository.PendingReviewActions
 import com.ticketbox.domain.model.Expense
@@ -222,11 +223,15 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            repository.confirmExpense(expense.id, expense.updatedAt)
-                .onSuccess { confirmed ->
+            repository.confirmExpenseAllowingOffline(expense)
+                .onSuccess { outcome ->
                     if (requestGeneration != generation) return@onSuccess
+                    val message = when (outcome) {
+                        is ExpenseStateOutcome.Synced -> "已确认入账"
+                        is ExpenseStateOutcome.Queued -> "已离线确认，联网后同步"
+                    }
                     _uiState.update { state ->
-                        PendingUiStateReducer.afterConfirmed(state, confirmed, message = "已确认入账")
+                        PendingUiStateReducer.afterConfirmed(state, outcome.expense, message = message)
                     }
                 }
                 .onFailure { error ->
@@ -247,11 +252,15 @@ class PendingViewModel(
         viewModelScope.launch {
             val generation = requestGeneration
             _uiState.update { it.copy(actionInProgressIds = it.actionInProgressIds + expense.id, message = null) }
-            repository.rejectExpense(expense.id, expense.updatedAt)
-                .onSuccess { rejected ->
+            repository.rejectExpenseAllowingOffline(expense)
+                .onSuccess { outcome ->
                     if (requestGeneration != generation) return@onSuccess
+                    val message = when (outcome) {
+                        is ExpenseStateOutcome.Synced -> "已删除"
+                        is ExpenseStateOutcome.Queued -> "已离线删除，联网后同步"
+                    }
                     _uiState.update { state ->
-                        PendingUiStateReducer.afterRejected(state, rejected, message = "已删除")
+                        PendingUiStateReducer.afterRejected(state, outcome.expense, message = message)
                     }
                 }
                 .onFailure { error ->

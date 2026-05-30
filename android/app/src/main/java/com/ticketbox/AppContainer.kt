@@ -8,6 +8,7 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
@@ -23,11 +24,13 @@ import com.ticketbox.data.repository.OutboxBinding
 import com.ticketbox.data.repository.OutboxMutationDispatcher
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxScheduler
+import com.ticketbox.data.repository.ConfirmExpenseDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
 import com.ticketbox.data.repository.DeleteMerchantAliasDispatcher
+import com.ticketbox.data.repository.RejectExpenseDispatcher
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
@@ -78,6 +81,12 @@ class AppContainer(context: Context) {
     // UpdateMerchantAliasDispatcher and
     // MerchantRepository.updateMerchantAliasAllowingOffline.
     private val merchantAliasUpdateAdapter = outboxMoshi.adapter(MerchantAliasUpdateRequest::class.java)
+
+    // PR-2g.7: token-only adapter shared between the confirm / reject
+    // dispatchers and ExpensePendingRepository's offline call sites.
+    // POST /api/expenses/{id}/confirm and .../reject take the same
+    // ExpenseStateTokenRequest body, so one adapter serves both.
+    private val expenseStateTokenAdapter = outboxMoshi.adapter(ExpenseStateTokenRequest::class.java)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -143,9 +152,12 @@ class AppContainer(context: Context) {
      * [DeleteMerchantAliasDispatcher] + matching call sites
      * (2 DELETE shapes, shared [DeleteOutcome] sealed). PR-2g.6
      * added [UpdateMerchantAliasDispatcher] + matching call site
-     * (PATCH merchant alias). The remaining 11 ``PendingMutationType``s
-     * land one-per-batch in PR-2g.7+ follow-ups grouped by
-     * mutation shape; each
+     * (PATCH merchant alias). PR-2g.7 added [ConfirmExpenseDispatcher]
+     * + [RejectExpenseDispatcher] + matching call sites (the
+     * standalone single-tap confirm / reject state-machine POSTs;
+     * shared [ExpenseStateOutcome] sealed). The remaining
+     * ``PendingMutationType``s land one-per-batch in PR-2g.8+
+     * follow-ups grouped by mutation shape; each
      * follow-up appends dispatchers here AND routes its matching
      * call sites through [OutboxRepository.enqueue] in the
      * appropriate Repository.
@@ -178,6 +190,16 @@ class AppContainer(context: Context) {
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = merchantAliasUpdateAdapter,
         ),
+        // PR-2g.7: POST /api/expenses/{id}/confirm via outbox.
+        ConfirmExpenseDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = expenseStateTokenAdapter,
+        ),
+        // PR-2g.7: POST /api/expenses/{id}/reject via outbox.
+        RejectExpenseDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = expenseStateTokenAdapter,
+        ),
     )
 
     val outboxDrainEngine = OutboxDrainEngine(
@@ -194,8 +216,10 @@ class AppContainer(context: Context) {
         sessionCoordinator = ledgerSessionCoordinator,
         // PR-2g.3: pass the outbox + adapter so the PATCH expense
         // call site can fall back to enqueue on IOException.
+        // PR-2g.7: + token adapter for confirm/reject offline routing.
         outbox = outboxRepository,
         patchExpenseAdapter = patchExpenseAdapter,
+        expenseStateTokenAdapter = expenseStateTokenAdapter,
     )
 
     val ledgerRepository = LedgerRepository(

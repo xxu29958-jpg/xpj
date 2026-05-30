@@ -8,6 +8,7 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.domain.model.Expense
@@ -42,6 +43,16 @@ internal class ExpenseRepositoryCore(
      */
     val outbox: OutboxRepository? = null,
     val patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
+    /**
+     * ADR-0038 PR-2g.7: token-only payload adapter shared between the
+     * offline-aware confirm / reject call sites
+     * ([ExpensePendingRepository.confirmExpenseAllowingOffline] /
+     * ``rejectExpenseAllowingOffline``) and the matching dispatchers.
+     * ``null`` keeps pre-PR-2g.7 tests (no outbox wiring) on the
+     * direct-only path — the IOException catch falls back to a hard
+     * failure when either the outbox OR this adapter is missing.
+     */
+    val expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
 ) {
     val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,

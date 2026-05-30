@@ -70,9 +70,41 @@ interface PendingReviewActions {
     // ADR-0038 PR-2b: 状态机 POST 必须带 expected_updated_at（client
     // 上次看到的 baseline.updatedAt）。Stale 写入 → 409，由 errorHandler
     // 映射到 RepositoryException 让 UI 提示刷新。
+    //
+    // These DIRECT variants surface IOException as Result.failure with
+    // NO outbox fallback — kept for chained flows (save→confirm /
+    // saveAmount→confirm) where the follow-up POST consumes the
+    // returned token; a silently queued row would let the chain
+    // dispatch against a stale baseline. Standalone single-tap
+    // confirm/reject (PendingViewModel.confirm/reject,
+    // ExpenseEditViewModel.reject) use the *AllowingOffline variants
+    // below instead.
     suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
     suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
     suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense>
+
+    /**
+     * ADR-0038 PR-2g.7: offline-aware confirm / reject. Mirrors
+     * [saveExpenseAllowingOffline] for the state-machine POSTs.
+     *
+     *  - direct 2xx → [ExpenseStateOutcome.Synced] with the server
+     *    expense (canonical post-transition ``updatedAt``).
+     *  - IOException (and only IOException) → [ExpenseStateOutcome.Queued]
+     *    with an optimistic projection ([Expense.status] flipped to
+     *    ``confirmed`` / ``rejected``); the row is enqueued
+     *    (``ConfirmExpense`` / ``RejectExpense``) and the worker
+     *    replays it on connectivity-up.
+     *  - HttpException (409 / 4xx / 5xx) → ``Result.failure`` so the
+     *    user sees the real server problem.
+     *
+     * Takes the whole [expense] (not just id + token) because the
+     * Queued branch needs the baseline fields to build the optimistic
+     * projection — the same reason [saveExpenseAllowingOffline] takes
+     * a baseline. ``expense.updatedAt`` is the optimistic-concurrency
+     * token persisted on the outbox row.
+     */
+    suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
+    suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
     suspend fun categories(): Result<List<String>>
     suspend fun uploadScreenshot(
         fileName: String,
@@ -107,4 +139,31 @@ sealed interface SaveOutcome {
      * [PendingReviewActions.updateExpense].
      */
     data class Queued(override val expense: Expense) : SaveOutcome
+}
+
+/**
+ * ADR-0038 PR-2g.7 sealed result for the offline-aware state-machine
+ * POSTs ([PendingReviewActions.confirmExpenseAllowingOffline] /
+ * [PendingReviewActions.rejectExpenseAllowingOffline]; PR-2g.8 adds
+ * mark-not-duplicate). Parallel to [SaveOutcome] — same two-branch
+ * shape, separate type so the confirm/reject surface can't silently
+ * widen into the PATCH-save one (see the [CategoryRuleSaveOutcome]
+ * KDoc for the convention).
+ */
+sealed interface ExpenseStateOutcome {
+    val expense: Expense
+
+    /** Server confirmed the transition; [expense] is the canonical server snapshot. */
+    data class Synced(override val expense: Expense) : ExpenseStateOutcome
+
+    /**
+     * Network failed; the transition was persisted to the outbox and
+     * [expense] is the optimistic projection (baseline with
+     * [Expense.status] flipped to ``confirmed`` / ``rejected``). The
+     * token on [expense] is the pre-transition ``updatedAt``; the
+     * outbox row owns the authoritative one. The UI moves the row out
+     * of the pending list either way (it's gone from the user's
+     * perspective); the worker reconciles on replay.
+     */
+    data class Queued(override val expense: Expense) : ExpenseStateOutcome
 }

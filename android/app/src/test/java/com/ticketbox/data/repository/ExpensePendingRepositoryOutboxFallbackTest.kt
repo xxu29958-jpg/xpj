@@ -7,6 +7,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
@@ -115,6 +116,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         api: ApiService,
         outbox: OutboxRepository? = null,
         adapter: com.squareup.moshi.JsonAdapter<ExpenseUpdateRequest>? = null,
+        stateTokenAdapter: com.squareup.moshi.JsonAdapter<ExpenseStateTokenRequest>? = null,
     ): ExpenseRepository = ExpenseRepository(
         expenseDao = FakeExpenseDao(),
         apiClient = TestApiServiceFactory(api),
@@ -123,6 +125,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         deviceNameProvider = { "Android Test" },
         outbox = outbox,
         patchExpenseAdapter = adapter,
+        expenseStateTokenAdapter = stateTokenAdapter,
     )
 
     private fun successExpenseDto(serverUpdatedAt: String = "2026-05-20T13:00:00.000Z"): ExpenseDto =
@@ -405,6 +408,126 @@ class ExpensePendingRepositoryOutboxFallbackTest {
 
     // endregion
 
+    // region — confirm / reject AllowingOffline (PR-2g.7)
+
+    @Test
+    fun `confirm direct 2xx returns Synced with server expense, no enqueue`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(
+            confirmExpenseResult = ApiResult.Success(successExpenseDto(serverUpdatedAt = "2026-05-20T14:00:00.000Z")),
+        )
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.confirmExpenseAllowingOffline(baseline)
+            .getOrThrow() as ExpenseStateOutcome.Synced
+
+        assertNotEquals(baseline.updatedAt, outcome.expense.updatedAt)
+        assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+    }
+
+    @Test
+    fun `confirm IOException returns Queued confirmed projection + enqueues token-only row`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.confirmExpenseAllowingOffline(baseline)
+            .getOrThrow() as ExpenseStateOutcome.Queued
+
+        // Optimistic projection: status flipped to confirmed; the
+        // token stays at baseline (NOT a server-confirmed one).
+        assertEquals("confirmed", outcome.expense.status)
+        assertEquals(baseline.updatedAt, outcome.expense.updatedAt)
+
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.ConfirmExpense.wireValue, row.type)
+        assertEquals("expense:${baseline.id}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
+        // round-8 P3#5: token must NOT be embedded in payload — the
+        // row's expectedUpdatedAt is the single source of truth.
+        assertTrue(
+            baseline.updatedAt !in row.payload,
+            "payload must NOT embed the token (single source of truth): ${row.payload}",
+        )
+    }
+
+    @Test
+    fun `confirm HttpException 409 surfaces as failure, no enqueue`() = runTest {
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(
+            confirmExpenseResult = ApiResult.Throw(
+                httpException(409, """{"error":"state_conflict","message":"账单已修改"}"""),
+            ),
+        )
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val result = repo.confirmExpenseAllowingOffline(baselineExpense())
+
+        assertTrue(result.isFailure, "409 must surface to user, not silently queue")
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `confirm IOException without outbox wired stays as failure`() = runTest {
+        val api = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox = null, stateTokenAdapter = null)
+
+        val result = repo.confirmExpenseAllowingOffline(baselineExpense())
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `reject direct 2xx returns Synced, no enqueue`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.rejectExpenseAllowingOffline(baseline).getOrThrow()
+
+        assertTrue(outcome is ExpenseStateOutcome.Synced)
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `reject IOException returns Queued rejected projection + enqueues row`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val adapter = moshi().adapter(ExpenseStateTokenRequest::class.java)
+        val api = ApiServiceStub(rejectExpenseResult = ApiResult.Throw(IOException("net out")))
+        val repo = buildRepository(api, outbox, stateTokenAdapter = adapter)
+
+        val outcome = repo.rejectExpenseAllowingOffline(baseline)
+            .getOrThrow() as ExpenseStateOutcome.Queued
+
+        assertEquals("rejected", outcome.expense.status)
+        assertEquals(1, dao.rows.size)
+        val row = dao.rows.values.single()
+        assertEquals(PendingMutationType.RejectExpense.wireValue, row.type)
+        assertEquals("expense:${baseline.id}", row.targetId)
+        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertTrue(
+            baseline.updatedAt !in row.payload,
+            "payload must NOT embed the token: ${row.payload}",
+        )
+    }
+
+    // endregion
+
     // region — OutboxRepository invariants (round-7 P2 + round-8)
 
     @Test
@@ -495,7 +618,15 @@ class ExpensePendingRepositoryOutboxFallbackTest {
      * is configurable per test (return a DTO or throw).
      */
     private class ApiServiceStub(
-        private val updateExpenseResult: ApiResult,
+        private val updateExpenseResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("updateExpense not configured"),
+        ),
+        private val confirmExpenseResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("confirmExpense not configured"),
+        ),
+        private val rejectExpenseResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("rejectExpense not configured"),
+        ),
         private val delegate: ApiService = FakeApiService(
             events = mutableListOf(),
             confirmedFailuresRemaining = 0,
@@ -505,6 +636,22 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             id: Long,
             request: ExpenseUpdateRequest,
         ): ExpenseDto = when (val r = updateExpenseResult) {
+            is ApiResult.Success -> r.dto
+            is ApiResult.Throw -> throw r.exception
+        }
+
+        override suspend fun confirmExpense(
+            id: Long,
+            request: ExpenseStateTokenRequest,
+        ): ExpenseDto = when (val r = confirmExpenseResult) {
+            is ApiResult.Success -> r.dto
+            is ApiResult.Throw -> throw r.exception
+        }
+
+        override suspend fun rejectExpense(
+            id: Long,
+            request: ExpenseStateTokenRequest,
+        ): ExpenseDto = when (val r = rejectExpenseResult) {
             is ApiResult.Success -> r.dto
             is ApiResult.Throw -> throw r.exception
         }

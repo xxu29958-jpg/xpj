@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.BillSplitInbox
@@ -56,6 +57,10 @@ class ExpenseRepository(
      */
     outbox: OutboxRepository? = null,
     patchExpenseAdapter: JsonAdapter<ExpenseUpdateRequest>? = null,
+    // ADR-0038 PR-2g.7: token-only adapter for the offline-aware
+    // confirm / reject call sites. Same null-keeps-old-behaviour
+    // contract as patchExpenseAdapter.
+    expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
 ) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
@@ -66,6 +71,7 @@ class ExpenseRepository(
         sessionCoordinator = sessionCoordinator,
         outbox = outbox,
         patchExpenseAdapter = patchExpenseAdapter,
+        expenseStateTokenAdapter = expenseStateTokenAdapter,
     )
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
@@ -199,6 +205,12 @@ class ExpenseRepository(
 
     override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
         pendingRepository.rejectExpense(id, expectedUpdatedAt)
+
+    override suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
+        pendingRepository.confirmExpenseAllowingOffline(expense)
+
+    override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
+        pendingRepository.rejectExpenseAllowingOffline(expense)
 
     suspend fun retryOcr(id: Long, expectedUpdatedAt: String): Result<Expense> =
         detailRepository.retryOcr(id, expectedUpdatedAt)

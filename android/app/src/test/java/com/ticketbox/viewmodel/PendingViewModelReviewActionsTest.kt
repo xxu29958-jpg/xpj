@@ -312,6 +312,51 @@ class PendingViewModelReviewActionsTest {
     }
 
     @Test
+    fun confirmQueuedOfflineRemovesItemWithOfflineMessage() = review {
+        // PR-2g.7: offline confirm. The repository returns Queued; the
+        // item still leaves the pending list optimistically and the
+        // user sees the "联网后同步" hint instead of "已确认入账".
+        val target = expense(id = 50L, amountCents = 100L, merchant = "M")
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.confirmOfflineResponder = {
+            Result.success(
+                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "confirmed")),
+            )
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.confirm(target)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.items.isEmpty(), "queued confirm still removes from pending")
+        assertEquals("已离线确认，联网后同步", vm.uiState.value.message)
+        assertEquals(1, fake.confirmCalls)
+    }
+
+    @Test
+    fun rejectQueuedOfflineRemovesItemWithOfflineMessage() = review {
+        val target = expense(id = 51L, duplicateStatus = "suspected")
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectOfflineResponder = {
+            Result.success(
+                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "rejected")),
+            )
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.openDuplicateAction(target)
+        vm.reject(target)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.items.isEmpty())
+        assertEquals(PendingSheet.None, vm.uiState.value.activeSheet)
+        assertEquals("已离线删除，联网后同步", vm.uiState.value.message)
+        assertEquals(1, fake.rejectCalls)
+    }
+
+    @Test
     fun viewerWriteActionsShortCircuitWithoutRepositoryCalls() = review {
         val target = expense(id = 42L, amountCents = 100L, merchant = "M")
         val fake = FakeReviewActions(pending = listOf(target), canModifyLedger = false)
@@ -610,6 +655,12 @@ private class FakeReviewActions(
     var confirmResponder: (suspend (Long) -> Result<Expense>)? = null
     var rejectResponder: (suspend (Long) -> Result<Expense>)? = null
     var markNotDuplicateResponder: (suspend (Long) -> Result<Expense>)? = null
+    // PR-2g.7: offline-aware confirm/reject. Default to wrapping the
+    // existing confirm/rejectResponder in a Synced outcome so the
+    // online-path tests keep passing unchanged; set these to drive
+    // the Queued (offline) branch.
+    var confirmOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
+    var rejectOfflineResponder: (suspend (Long) -> Result<com.ticketbox.data.repository.ExpenseStateOutcome>)? = null
     var fetchPendingResponder: (suspend () -> Result<List<Expense>>)? = null
     var thumbnailResponder: (suspend (Long) -> Result<ProtectedImage>)? = null
 
@@ -666,6 +717,27 @@ private class FakeReviewActions(
     override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> {
         rejectCalls += 1
         return rejectResponder?.invoke(id) ?: error("rejectResponder not set")
+    }
+
+    override suspend fun confirmExpenseAllowingOffline(
+        expense: Expense,
+    ): Result<com.ticketbox.data.repository.ExpenseStateOutcome> {
+        confirmCalls += 1
+        confirmedIds += expense.id
+        confirmOfflineResponder?.let { return it(expense.id) }
+        return confirmResponder?.invoke(expense.id)
+            ?.map { com.ticketbox.data.repository.ExpenseStateOutcome.Synced(it) }
+            ?: error("confirmResponder/confirmOfflineResponder not set; got id=${expense.id}")
+    }
+
+    override suspend fun rejectExpenseAllowingOffline(
+        expense: Expense,
+    ): Result<com.ticketbox.data.repository.ExpenseStateOutcome> {
+        rejectCalls += 1
+        rejectOfflineResponder?.let { return it(expense.id) }
+        return rejectResponder?.invoke(expense.id)
+            ?.map { com.ticketbox.data.repository.ExpenseStateOutcome.Synced(it) }
+            ?: error("rejectResponder/rejectOfflineResponder not set")
     }
 
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> {

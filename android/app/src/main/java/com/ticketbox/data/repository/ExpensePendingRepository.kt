@@ -227,6 +227,83 @@ internal class ExpensePendingRepository(
         updated.toDomain()
     }
 
+    override suspend fun confirmExpenseAllowingOffline(
+        expense: Expense,
+    ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bind()
+        try {
+            val confirmed = core.cacheIfConfirmed(
+                bound.call {
+                    it.confirmExpense(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+                },
+                bound.ledgerId,
+            )
+            ExpenseStateOutcome.Synced(confirmed.toDomain()) as ExpenseStateOutcome
+        } catch (networkError: IOException) {
+            enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.ConfirmExpense,
+                expense = expense,
+                networkError = networkError,
+            )
+            ExpenseStateOutcome.Queued(expense.copy(status = "confirmed")) as ExpenseStateOutcome
+        }
+    }
+
+    override suspend fun rejectExpenseAllowingOffline(
+        expense: Expense,
+    ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bind()
+        try {
+            val rejected = bound.call {
+                it.rejectExpense(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+            }
+            ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
+        } catch (networkError: IOException) {
+            enqueueStateTransition(
+                bound = bound,
+                type = PendingMutationType.RejectExpense,
+                expense = expense,
+                networkError = networkError,
+            )
+            ExpenseStateOutcome.Queued(expense.copy(status = "rejected")) as ExpenseStateOutcome
+        }
+    }
+
+    /**
+     * Shared IOException → outbox fallback for the offline-aware
+     * state-machine POSTs ([confirmExpenseAllowingOffline] /
+     * [rejectExpenseAllowingOffline]). Enqueues a token-only row:
+     * the payload carries an empty placeholder and
+     * ``row.expectedUpdatedAt`` is the single source of truth (the
+     * dispatcher overwrites the request token from the row on replay
+     * — round-8 P3#5). Re-checks session activity BEFORE enqueue so a
+     * mid-flight ledger switch can't slip an old-session row into the
+     * now-current ledger's queue (round-13 P1). Rethrows
+     * [networkError] when the outbox / adapter isn't wired or the
+     * baseline lacks a token, so the caller surfaces a hard failure
+     * instead of pretending to have queued.
+     */
+    private suspend fun enqueueStateTransition(
+        bound: BoundLedgerRequest,
+        type: PendingMutationType,
+        expense: Expense,
+        networkError: IOException,
+    ) {
+        val outbox = core.outbox
+        val adapter = core.expenseStateTokenAdapter
+        if (outbox == null || adapter == null || expense.updatedAt.isEmpty()) {
+            throw networkError
+        }
+        bound.requireStillActive()
+        outbox.enqueue(
+            type = type,
+            targetId = "expense:${expense.id}",
+            payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedUpdatedAt = "")),
+            expectedUpdatedAt = expense.updatedAt,
+        )
+    }
+
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         bound.call { core.readProtectedImage(it.expenseThumbnail(id)) }
