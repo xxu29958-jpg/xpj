@@ -4,6 +4,8 @@
 
 ## 必读顺序
 
+**第 0 步——先看任务交接**：`.claude/HANDOFF.md` 是跨 session / 跨 AI（codex ↔ claude）的当前任务交接合同。用户说「继续任务」即从它的「下一步」接续；收工 / 换 AI 前更新它。本地文件（git 忽略）；不存在或状态为 IDLE 表示当前无在途任务。
+
 开始任何实现前，先阅读：
 
 1. `docs/rules/ENGINEERING_RULES.md`
