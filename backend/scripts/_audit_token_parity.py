@@ -5,7 +5,8 @@
 Android 视觉分叉)。本 lane 把它变成硬检查,逐主题(paper/mono/midnight)比对。
 
 校验:
-  - `tokens.css` ↔ `ThemeVisuals.kt`:brand / surface / text 共 12 个不透明核心 token
+  - `tokens.css` ↔ `ThemeVisuals.kt`:brand / surface / text 共 13 个核心 token
+    (含半透明的 `--brand-primary-bg`,midnight 端为 rgba)
   - `tokens.css` ↔ `StateTokens.kt`:success/warn/danger/info/neutral 的 **fg**(状态文字色)
 
 不校验:
@@ -15,7 +16,10 @@ Android 视觉分叉)。本 lane 把它变成硬检查,逐主题(paper/mono/midn
     属刻意分叉,比对会误报。
   - chart / goal / card 子调色板 —— 留待后续扩展。
 
-只比对不透明值(`#rrggbb` ↔ `Color(0xFFrrggbb)`),避开 alpha 取整歧义。
+颜色归一化:不透明值比 `rrggbb`(`#rrggbb` ↔ `Color(0xFFrrggbb)`);半透明值比
+`aarrggbb`,/web 的 `rgba(r,g,b,a)` 按 `aa = round(a×255)` 折算后与 Android 的
+`Color(0xAARRGGBB)` 对齐(midnight `--brand-primary-bg`:`rgba(214,180,135,0.14)`
+↔ `0x24D6B487`)。当前仅 `--brand-primary-bg` 含半透明,其余核心 token 均不透明。
 由 `release_audit.py` 自动发现并以子进程运行(cwd=backend);退出码 0=PASS。
 """
 
@@ -34,10 +38,11 @@ _STATE_TOKENS = _DESIGN / "StateTokens.kt"
 
 _THEMES = ("paper", "mono", "midnight")
 
-# tokens.css 核心 token ↔ ThemeVisuals 字段(不透明,逐主题须一致)
+# tokens.css 核心 token ↔ ThemeVisuals 字段(逐主题须一致;brand-primary-bg 含半透明)
 _CORE_MAPPING: tuple[tuple[str, str], ...] = (
     ("--brand-primary", "primary"),
     ("--brand-primary-strong", "primaryDark"),
+    ("--brand-primary-bg", "brandPrimaryBg"),
     ("--brand-accent", "accent"),
     ("--surface-app", "backgroundBottom"),
     ("--surface-card", "solidCard"),
@@ -77,14 +82,53 @@ def _norm_argb(argb: str) -> str:
     return argb[2:] if argb.startswith("ff") else argb
 
 
+_CSS_DECL_RE = re.compile(r"--([\w-]+):\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))")
+
+
+def _norm_css_color(raw: str) -> str | None:
+    """/web 颜色字面量 → 归一化十六进制,对齐 Android 的 ``0xAARRGGBB`` 约定。
+
+    不透明 → 'rrggbb';半透明 → 'aarrggbb'(alpha 在前,与 ``_norm_argb`` 一致)。
+    ``#rgb``/``#rgba`` 简写先展开;``#rrggbbaa``(CSS,alpha 在后)按 Android 顺序重排;
+    ``rgba(r,g,b,a)`` 的浮点 alpha 按 ``round(a×255)`` 折算。无法解析 → ``None``(跳过)。
+    """
+    raw = raw.strip().lower()
+    if raw.startswith("#"):
+        hexes = raw[1:]
+        if len(hexes) in (3, 4):  # #rgb / #rgba 简写 → 每位翻倍
+            hexes = "".join(ch * 2 for ch in hexes)
+        if len(hexes) == 6:
+            return hexes
+        if len(hexes) == 8:  # CSS #rrggbbaa → aarrggbb;不透明丢 alpha
+            rgb, alpha = hexes[:6], hexes[6:]
+            return rgb if alpha == "ff" else alpha + rgb
+        return None
+    inner = re.fullmatch(r"rgba?\(([^)]*)\)", raw)
+    if not inner:
+        return None
+    parts = [p.strip() for p in inner.group(1).split(",")]
+    if len(parts) not in (3, 4):
+        return None
+    try:
+        # 百分比通道(如 "84%")当前 token 不用,留待需要时再加解析。
+        red, green, blue = (int(parts[i]) for i in range(3))
+    except ValueError:
+        return None
+    alpha = round(float(parts[3]) * 255) if len(parts) == 4 else 255
+    rgb = f"{red:02x}{green:02x}{blue:02x}"
+    return rgb if alpha == 255 else f"{alpha:02x}{rgb}"
+
+
 def _css_theme_values(text: str) -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for theme in _THEMES:
         block = _balanced_block(text, text.index(f'[data-theme="{theme}"]'), "{", "}")
-        out[theme] = {
-            f"--{m.group(1)}": m.group(2).lstrip("#").lower()
-            for m in re.finditer(r"--([\w-]+):\s*(#[0-9a-fA-F]{3,8})", block)
-        }
+        values: dict[str, str] = {}
+        for m in _CSS_DECL_RE.finditer(block):
+            norm = _norm_css_color(m.group(2))
+            if norm is not None:
+                values[f"--{m.group(1)}"] = norm
+        out[theme] = values
     return out
 
 
