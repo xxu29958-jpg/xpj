@@ -106,6 +106,9 @@ private class ThumbnailFakeReviewActions(
     override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         Result.failure(IllegalStateException("not exercised"))
 
+    override suspend fun undoRejectExpense(id: Long): Result<Expense> =
+        Result.failure(IllegalStateException("not exercised"))
+
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 

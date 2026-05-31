@@ -92,7 +92,11 @@ internal fun PendingRoute(
         onOpenBulkConfirm = pendingViewModel::openBulkConfirm,
         onConfirmReady = pendingViewModel::confirmReadyExpenses,
         onOpenDuplicate = pendingViewModel::openDuplicateAction,
-        onIgnoreDuplicate = pendingViewModel::reject,
+        // ADR-0038 V14: distinct from reject() — same backend transition,
+        // different UX. "忽略" on duplicate sheet must NOT seed the 撤销
+        // banner or show "已删除".
+        onIgnoreDuplicate = pendingViewModel::ignoreDuplicate,
         onCloseSheet = pendingViewModel::closeSheet,
+        onUndoReject = pendingViewModel::undoReject,
     )
 }

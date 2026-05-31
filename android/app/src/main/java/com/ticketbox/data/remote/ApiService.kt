@@ -208,6 +208,17 @@ interface ApiService {
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
     ): ExpenseDto
 
+    // ADR-0038 undo: restore a recently-rejected expense (5-min window). No
+    // request body — the caller just rejected the row and there's near-zero
+    // contention inside the window. 404 ``expense_not_found`` once the window
+    // closes / row was never rejected / cross-tenant — same collapse semantic
+    // as merchant_alias / category_rule undo. Online-only: an offline Queued
+    // reject has nothing to restore via the API (its rejection lives in the
+    // outbox, not the server); UI should only show the undo affordance after
+    // an ExpenseStateOutcome.Synced reject.
+    @POST("api/expenses/{id}/undo")
+    suspend fun undoExpense(@Path("id") id: Long): ExpenseDto
+
     @POST("api/expenses/{id}/ocr/retry")
     suspend fun retryOcr(
         @Path("id") id: Long,

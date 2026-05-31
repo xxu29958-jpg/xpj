@@ -213,6 +213,13 @@ internal class ExpensePendingRepository(
         rejected.toDomain()
     }
 
+    override suspend fun undoRejectExpense(id: Long): Result<Expense> =
+        core.errorHandler.safeCall {
+            val bound = core.ledgerRequestGuard.bind()
+            val restored = bound.call { it.undoExpense(id) }
+            restored.toDomain()
+        }
+
     override suspend fun markNotDuplicate(
         id: Long,
         expectedUpdatedAt: String,

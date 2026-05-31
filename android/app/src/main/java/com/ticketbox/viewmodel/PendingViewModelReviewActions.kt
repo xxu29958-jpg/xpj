@@ -13,27 +13,37 @@ import kotlinx.coroutines.launch
  * 分类原因：保持 PendingViewModel.kt < 360 行（G2 闸门）。
  */
 
+// ADR-0038 V6 fix — every sheet-opening path is "user moved to another
+// action", so the prior 撤销 banner should disappear. Cheaper to gate here
+// (the single sheet-opener surface) than to chase every individual write.
+// Cancel timer + null undoableExpense via [dismissUndoable]; no-op when the
+// banner is already absent.
 fun PendingViewModel.openQuickCategory(expense: Expense) {
+    dismissUndoable()
     if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.QuickCategory(expense), message = null) }
 }
 
 fun PendingViewModel.openQuickMerchant(expense: Expense) {
+    dismissUndoable()
     if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.QuickMerchant(expense), message = null) }
 }
 
 fun PendingViewModel.openMissingAmount(expense: Expense) {
+    dismissUndoable()
     if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.MissingAmount(expense), message = null) }
 }
 
 fun PendingViewModel.openDuplicateAction(expense: Expense) {
+    dismissUndoable()
     if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.Duplicate(expense), message = null) }
 }
 
 fun PendingViewModel.openBulkConfirm() {
+    dismissUndoable()
     if (blockReadOnlyWrite()) return
     _uiState.update { it.copy(activeSheet = PendingSheet.BulkConfirm, message = null) }
 }

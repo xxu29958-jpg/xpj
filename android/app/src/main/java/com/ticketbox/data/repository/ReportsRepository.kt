@@ -196,7 +196,8 @@ class ReportsRepository(
 
     private fun readExportBody(response: Response<okhttp3.ResponseBody>): ByteArray {
         if (!response.isSuccessful) {
-            throw RepositoryException(errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string()))
+            val parsed = errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string())
+            throw RepositoryException(parsed.message, parsed.errorCode)
         }
         val body = response.body() ?: throw RepositoryException("导出内容为空。")
         return body.use { it.bytes() }

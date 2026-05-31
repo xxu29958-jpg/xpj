@@ -1,6 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.PendingReviewActions
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -13,13 +14,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -39,6 +43,14 @@ class PendingViewModelReviewActionsTest {
         try {
             block()
         } finally {
+            // ADR-0038 timer hygiene: PendingViewModel's 5s undo timer is a
+            // viewModelScope.launch that may be sitting on delay(5_000) when
+            // the test body completes. If we resetMain BEFORE draining it,
+            // runTest's structured-concurrency teardown will try to cancel
+            // it through Dispatchers.Main (now unset) and throw
+            // DispatchException → "Dispatchers.Main was accessed when ...
+            // test dispatcher was unset". Drain pending work first.
+            advanceUntilIdle()
             Dispatchers.resetMain()
         }
     }
@@ -382,6 +394,302 @@ class PendingViewModelReviewActionsTest {
         assertEquals(1, fake.rejectCalls)
     }
 
+    // ============================================================
+    // ADR-0038 undo (V1/V2/V3/V4/V5/V6/V7/V9/V11/V14 contract tests)
+    // ============================================================
+
+    @Test
+    fun syncedRejectSeedsUndoableBannerWithRestoredRow() = review {
+        // V3 contract: undoableExpense carries the canonical post-reject
+        // Expense (status='rejected', via Sweep#2 fake fidelity fix).
+        val target = expense(id = 100L)
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectResponder = { Result.success(target) }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(target)
+        // runCurrent — not advanceUntilIdle — so the VM's 5s undo timer
+        // doesn't drain via runTest's virtual-time advancement before we
+        // read state.undoableExpense.
+        runCurrent()
+
+        val state = vm.uiState.value
+        val undoable = assertNotNull(state.undoableExpense, "Synced reject seeds the 撤销 banner")
+        assertEquals(100L, undoable.id)
+        assertEquals("rejected", undoable.status, "banner row carries server post-transition status")
+        assertEquals("已删除", state.message)
+    }
+
+    @Test
+    fun queuedRejectPreservesPriorSyncedUndoableBanner() = review {
+        // V1 contract: an offline reject following an online reject must
+        // NOT wipe the prior Synced banner. The earlier row is still
+        // server-side undoable within its 5-min window; the Queued
+        // mutation is in the outbox with nothing to /undo against.
+        val first = expense(id = 200L, merchant = "星巴克", amountCents = 4800L)
+        val second = expense(id = 201L, merchant = "便利店", amountCents = 1200L)
+        val fake = FakeReviewActions(pending = listOf(first, second))
+        fake.rejectResponder = { Result.success(first) }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(first)
+        runCurrent()
+        val sycnedBanner = assertNotNull(vm.uiState.value.undoableExpense, "Synced reject sets banner")
+        assertEquals(200L, sycnedBanner.id)
+        assertEquals("星巴克", sycnedBanner.merchant)
+
+        // Force a Queued outcome on the follow-up reject.
+        fake.rejectOfflineResponder = {
+            Result.success(
+                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(second.copy(status = "rejected")),
+            )
+        }
+        vm.reject(second)
+        runCurrent()
+
+        // Round-2 contract: banner still identifies A (200L / 星巴克),
+        // NOT the just-rejected B (201L / 便利店). Without the merchant
+        // on the banner the UI would be ambiguous — user could think
+        // tapping 撤销 restores their most recent action (B's offline
+        // reject), when actually it would restore A.
+        val state = vm.uiState.value
+        val preserved = assertNotNull(
+            state.undoableExpense,
+            "Queued reject must preserve prior Synced banner",
+        )
+        assertEquals(200L, preserved.id, "banner row identity must remain A, not flip to B")
+        assertEquals("星巴克", preserved.merchant, "banner carries A's merchant for UI disambiguation")
+        assertEquals(4800L, preserved.amountCents, "banner carries A's amount for UI disambiguation")
+        assertEquals("已离线删除，联网后同步", state.message)
+    }
+
+    @Test
+    fun undoRejectRestoresRowAtTopAndClearsBanner() = review {
+        // V3 contract: restored row inserted at TOP (server orders by
+        // created_at DESC), banner cleared, "已撤销" message shown.
+        val keep = expense(id = 300L)
+        val target = expense(id = 301L)
+        val fake = FakeReviewActions(pending = listOf(target, keep))
+        fake.rejectResponder = { Result.success(target) }
+        fake.undoRejectResponder = { id ->
+            assertEquals(301L, id)
+            Result.success(target.copy(status = "pending"))
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(target)
+        runCurrent()
+        assertEquals(listOf(300L), vm.uiState.value.items.map { it.id })
+
+        vm.undoReject()
+        runCurrent()
+
+        val state = vm.uiState.value
+        assertEquals(listOf(301L, 300L), state.items.map { it.id }, "restored row goes to TOP not tail")
+        assertNull(state.undoableExpense, "banner cleared after successful undo")
+        assertEquals("已撤销，账单已恢复待确认。", state.message)
+        assertFalse(state.actionInProgressIds.contains(301L))
+    }
+
+    @Test
+    fun undoRejectExpenseNotFoundClearsBannerWithRetentionMessage() = review {
+        // V5 contract: 404 expense_not_found maps to the undo-specific
+        // retention-window message, NOT the generic "账单不存在。" that
+        // backendErrorUserMessage emits. Banner stays cleared (window
+        // is genuinely closed; retry won't help).
+        val target = expense(id = 400L)
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectResponder = { Result.success(target) }
+        fake.undoRejectResponder = {
+            Result.failure(RepositoryException("账单不存在。", errorCode = "expense_not_found"))
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(target)
+        runCurrent()
+
+        vm.undoReject()
+        runCurrent()
+
+        val state = vm.uiState.value
+        assertEquals("无法撤销：账单已超过 5 分钟保留窗口，或已被清理。", state.message)
+        assertNull(state.undoableExpense, "404 means window dead; don't restore banner")
+    }
+
+    @Test
+    fun undoRejectTransientNetworkErrorRestoresBannerForRetry() = review {
+        // V7 contract: IOException / 5xx / unknown errors leave the
+        // server-side 5-min window open — banner must come BACK so the
+        // user can retry. Distinct from 404 (V5) which clears for good.
+        val target = expense(id = 500L)
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectResponder = { Result.success(target) }
+        fake.undoRejectResponder = {
+            Result.failure(RepositoryException("网络断了。", errorCode = null))
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(target)
+        runCurrent()
+
+        vm.undoReject()
+        runCurrent()
+
+        val state = vm.uiState.value
+        val restored = assertNotNull(state.undoableExpense, "transient failure restores banner for retry")
+        assertEquals(500L, restored.id)
+        assertEquals("网络断了。", state.message)
+        assertFalse(state.actionInProgressIds.contains(500L), "retry must not stay action-in-progress")
+    }
+
+    @Test
+    fun ignoreDuplicateRemovesItemWithoutSeedingUndoBanner() = review {
+        // V14 de facto behavior change contract.
+        //
+        // Pre-fork, `onIgnoreDuplicate` was routed through `reject()` —
+        // not an intentional design, just a PendingRoute shortcut that
+        // reused the same VM method. That shortcut was nevertheless
+        // user-visible: 忽略重复 inherited reject()'s row removal +
+        // sheet close + 撤销 banner + "已删除" message.
+        //
+        // Post-fork, `ignoreDuplicate()` splits off as its own VM
+        // method. This test pins what stayed vs. what intentionally
+        // changed:
+        //   - PRESERVED from reject (row disposition unchanged):
+        //       * row removed from pending list
+        //       * duplicate sheet closes
+        //       * same backend call (rejectExpenseAllowingOffline)
+        //   - INTENTIONALLY CHANGED (UX wording / affordance):
+        //       * NO 撤销 banner (user wasn't trying to delete)
+        //       * message "已忽略重复" (not "已删除")
+        val target = expense(id = 600L, duplicateStatus = "suspected")
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectResponder = { Result.success(target) }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.openDuplicateAction(target)
+        vm.ignoreDuplicate(target)
+        runCurrent()
+
+        val state = vm.uiState.value
+        // — preserved-from-reject —
+        assertTrue(state.items.isEmpty(), "PRESERVED: row leaves pending list (was true under reject shortcut)")
+        assertEquals(PendingSheet.None, state.activeSheet, "PRESERVED: duplicate sheet closes")
+        assertEquals(1, fake.rejectCalls, "PRESERVED: same backend call (rejectExpenseAllowingOffline)")
+        assertFalse(state.actionInProgressIds.contains(600L), "PRESERVED: in-progress cleared")
+        // — intentionally changed —
+        assertNull(state.undoableExpense, "CHANGED: no 撤销 banner (wasn't a delete from user intent)")
+        assertEquals("已忽略重复", state.message, "CHANGED: wording matches 忽略 intent, not 删除")
+    }
+
+    @Test
+    fun ignoreDuplicateQueuedOfflinePreservesRowDispositionWithOfflineWording() = review {
+        // Parallel to ignoreDuplicateRemovesItemWithoutSeedingUndoBanner
+        // but exercising the Queued (offline) outcome. Same preserved-vs-
+        // changed split: row leaves pending optimistically, sheet
+        // closes, NO banner, message reads "已离线忽略，联网后同步".
+        val target = expense(id = 601L, duplicateStatus = "suspected")
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectOfflineResponder = {
+            Result.success(
+                com.ticketbox.data.repository.ExpenseStateOutcome.Queued(target.copy(status = "rejected")),
+            )
+        }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.openDuplicateAction(target)
+        vm.ignoreDuplicate(target)
+        runCurrent()
+
+        val state = vm.uiState.value
+        assertTrue(state.items.isEmpty(), "PRESERVED: optimistic removal even in Queued branch")
+        assertEquals(PendingSheet.None, state.activeSheet)
+        assertNull(state.undoableExpense, "Queued ignoreDuplicate also doesn't seed banner")
+        assertEquals("已离线忽略，联网后同步", state.message)
+    }
+
+    @Test
+    fun confirmDismissesPriorUndoableBanner() = review {
+        // V6 contract: moving to another action (confirm here) clears
+        // the prior 撤销 banner so the new "已确认入账" message doesn't
+        // sit alongside a stale undo affordance.
+        val a = expense(id = 700L)
+        val b = expense(id = 701L, amountCents = 100L, merchant = "M")
+        val fake = FakeReviewActions(pending = listOf(a, b))
+        fake.rejectResponder = { Result.success(a) }
+        fake.confirmResponder = { Result.success(b.copy(status = "confirmed")) }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(a)
+        runCurrent()
+        assertNotNull(vm.uiState.value.undoableExpense, "banner seeded after reject")
+
+        vm.confirm(b)
+        runCurrent()
+
+        val state = vm.uiState.value
+        assertNull(state.undoableExpense, "confirm clears prior banner")
+        assertEquals("已确认入账", state.message)
+    }
+
+    @Test
+    fun undoBannerAutoDismissesAfterFiveSeconds() = review {
+        // V2 / Sweep#1 contract: 5s timer is owned by the VM, not a
+        // Compose LaunchedEffect — so it fires reliably regardless of
+        // Composition lifecycle (tab switches / NavHost pops). Advance
+        // virtual time past 5s; banner must be cleared.
+        val target = expense(id = 800L)
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectResponder = { Result.success(target) }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(target)
+        runCurrent()
+        assertNotNull(vm.uiState.value.undoableExpense)
+
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertNull(vm.uiState.value.undoableExpense, "5s timer must auto-dismiss")
+    }
+
+    @Test
+    fun viewerDemotionMidBannerClearsUndoableExpense() = review {
+        // V11 contract: when the user is demoted to viewer mid-banner,
+        // blockReadOnlyWrite() must tear down undoableExpense and the
+        // timer — otherwise the banner sits as a dead affordance and
+        // each tap loops the read-only toast.
+        val target = expense(id = 900L)
+        val fake = FakeReviewActions(pending = listOf(target))
+        fake.rejectResponder = { Result.success(target) }
+        val vm = PendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.reject(target)
+        runCurrent()
+        assertNotNull(vm.uiState.value.undoableExpense)
+
+        // Backend demoted user — next write attempt should clear the
+        // banner via blockReadOnlyWrite's cleanup.
+        fake.canModifyLedgerFlag = false
+
+        vm.undoReject()
+        runCurrent()
+
+        val state = vm.uiState.value
+        assertNull(state.undoableExpense, "demoted user's banner must clear")
+        assertEquals(READ_ONLY_LEDGER_MESSAGE, state.message)
+    }
+
     @Test
     fun viewerWriteActionsShortCircuitWithoutRepositoryCalls() = review {
         val target = expense(id = 42L, amountCents = 100L, merchant = "M")
@@ -670,16 +978,22 @@ class PendingViewModelReviewActionsTest {
 private class FakeReviewActions(
     pending: List<Expense> = emptyList(),
     private val categoryOptions: List<String> = listOf("餐饮", "交通", "购物"),
-    private val canModifyLedger: Boolean = true,
+    canModifyLedger: Boolean = true,
     private val activeLedgerFlow: Flow<String?> = emptyFlow(),
     private val activeLedgerIdProvider: () -> String? = { null },
 ) : PendingReviewActions {
+    // Mutable so tests can simulate backend role demotion mid-flow (V11):
+    // the existing canModifyLedger = false ctor arg still works for
+    // "viewer from the start" scenarios.
+    var canModifyLedgerFlag: Boolean = canModifyLedger
 
     var pending: List<Expense> = pending
 
     var updateResponder: (suspend (Long, ExpenseDraft) -> Result<Expense>)? = null
     var confirmResponder: (suspend (Long) -> Result<Expense>)? = null
     var rejectResponder: (suspend (Long) -> Result<Expense>)? = null
+    // ADR-0038 undo: drives [PendingReviewActions.undoRejectExpense].
+    var undoRejectResponder: (suspend (Long) -> Result<Expense>)? = null
     var markNotDuplicateResponder: (suspend (Long) -> Result<Expense>)? = null
     // PR-2g.7: offline-aware confirm/reject. Default to wrapping the
     // existing confirm/rejectResponder in a Synced outcome so the
@@ -706,7 +1020,7 @@ private class FakeReviewActions(
         private set
     val confirmedIds = mutableListOf<Long>()
 
-    override fun canModifyLedger(): Boolean = canModifyLedger
+    override fun canModifyLedger(): Boolean = canModifyLedgerFlag
 
     override fun observeActiveLedgerId(): Flow<String?> = activeLedgerFlow
 
@@ -763,10 +1077,25 @@ private class FakeReviewActions(
     ): Result<com.ticketbox.data.repository.ExpenseStateOutcome> {
         rejectCalls += 1
         rejectOfflineResponder?.let { return it(expense.id) }
+        // Sweep #2 fix: the real backend POST /reject returns the row with
+        // status='rejected' (and rejectedAt populated); the default wrap
+        // here used to leak the caller's factory-default 'pending' status,
+        // making any ViewModel test that reads
+        // `undoableExpense.status == "rejected"` (e.g. the undo-banner
+        // contract) silently pass against an unrealistic shape. Match the
+        // explicit Queued branch in [rejectQueuedOfflineRemovesItem...] —
+        // both branches now project the same post-transition shape.
         return rejectResponder?.invoke(expense.id)
-            ?.map { com.ticketbox.data.repository.ExpenseStateOutcome.Synced(it) }
+            ?.map { restored ->
+                com.ticketbox.data.repository.ExpenseStateOutcome.Synced(
+                    restored.copy(status = "rejected"),
+                ) as com.ticketbox.data.repository.ExpenseStateOutcome
+            }
             ?: error("rejectResponder/rejectOfflineResponder not set")
     }
+
+    override suspend fun undoRejectExpense(id: Long): Result<Expense> =
+        undoRejectResponder?.invoke(id) ?: error("undoRejectResponder not set")
 
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> {
         markNotDuplicateCalls += 1

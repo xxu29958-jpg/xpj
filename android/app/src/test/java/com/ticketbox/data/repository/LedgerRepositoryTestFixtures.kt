@@ -239,6 +239,7 @@ internal class StubApi(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
     ): ExpenseDto = ledgerUnsupported()
+    override suspend fun undoExpense(id: Long): ExpenseDto = ledgerUnsupported()
     override suspend fun retryOcr(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,

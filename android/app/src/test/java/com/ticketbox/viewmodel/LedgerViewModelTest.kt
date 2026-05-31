@@ -42,6 +42,11 @@ class LedgerViewModelTest {
         val vm = LedgerViewModel(fake)
         advanceUntilIdle()
 
+        // LedgerViewModel.monthFilter defaults to YearMonth.now() — pin to the
+        // fixture's month so this test is date-independent (otherwise it would
+        // pass in May 2026 and start failing in June when "2026-06" doesn't
+        // match the fixture's "2026-05" expenseTime).
+        vm.setMonthFilter(FIXTURE_MONTH)
         vm.setViewMode(LedgerViewMode.Table)
         advanceUntilIdle()
 
@@ -63,6 +68,8 @@ class LedgerViewModelTest {
         val vm = LedgerViewModel(fake)
         advanceUntilIdle()
 
+        // Same date-rollover guard as above.
+        vm.setMonthFilter(FIXTURE_MONTH)
         vm.setCategoryFilter("餐饮")
         vm.setQuery("早餐")
         advanceUntilIdle()
@@ -75,6 +82,10 @@ class LedgerViewModelTest {
         assertEquals("早餐", state.filter.query)
     }
 }
+
+// Fixture expenses sit in 2026-05; tests pin monthFilter here so they stay
+// passing as the wall-clock moves past that month.
+private const val FIXTURE_MONTH = "2026-05"
 
 private class FakeLedgerActions(
     expenses: List<Expense>,

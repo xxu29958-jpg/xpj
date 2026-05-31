@@ -49,6 +49,7 @@ import com.ticketbox.ui.screens.pending.PendingClearCelebration
 import com.ticketbox.ui.screens.pending.PendingDisplayMode
 import com.ticketbox.ui.screens.pending.PendingDisplayModeButton
 import com.ticketbox.ui.screens.pending.PendingMessageCard
+import com.ticketbox.ui.screens.pending.PendingUndoRejectBanner
 import com.ticketbox.ui.screens.pending.PendingReviewSheetHost
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
@@ -87,6 +88,9 @@ fun PendingScreen(
     onOpenDuplicate: (Expense) -> Unit = {},
     onIgnoreDuplicate: (Expense) -> Unit = {},
     onCloseSheet: () -> Unit = {},
+    // ADR-0038 undo: 撤销 snackbar 的回调,默认 no-op 兼容旧调用方。
+    // 自动消失由 VM 拥有,不再走 UI 回调。
+    onUndoReject: () -> Unit = {},
 ) {
     var showUploadGuide by remember { mutableStateOf(false) }
     var showPendingTools by rememberSaveable { mutableStateOf(false) }
@@ -186,6 +190,20 @@ fun PendingScreen(
         if (state.items.isEmpty() && !readOnly) {
             item { PendingClearCelebration(visible = showCelebration) }
             item { UploadFlowCard() }
+        }
+
+        // ADR-0038 undo: 撤销 snackbar 排在 message 上方 — 用户看到的优先级顺序是
+        // "刚删的能撤销" > "上次操作的状态消息" > 列表内容。5s 计时由 VM 拥有
+        // (PendingViewModel.startUndoTimer),Compose 层只负责渲染。item key
+        // 用 expense id,防止 LazyColumn 因为上方 item (PendingClearCelebration /
+        // UploadFlowCard) 出现/消失重排时把 banner 当成"新 item"重组。
+        state.undoableExpense?.let { undoable ->
+            item(key = "undo-${undoable.id}") {
+                // Pass the expense so banner can show merchant/amount —
+                // disambiguates "撤的是 A 还是 B" in the
+                // Synced(A) + Queued(B) preserve-prior-banner case.
+                PendingUndoRejectBanner(expense = undoable, onUndo = onUndoReject)
+            }
         }
 
         state.message?.let { message ->

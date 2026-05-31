@@ -59,7 +59,8 @@ internal class ExpenseLedgerRepositoryActions(
                 timezone = core.currentTimezoneId(),
             )
             if (!response.isSuccessful) {
-                throw RepositoryException(core.errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string()))
+                val parsed = core.errorHandler.parseErrorMessage(response.code(), response.errorBody()?.string())
+                throw RepositoryException(parsed.message, parsed.errorCode)
             }
             val body = response.body() ?: throw RepositoryException("导出内容为空。")
             val fileName = buildString {

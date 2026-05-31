@@ -39,7 +39,8 @@ internal class NetworkErrorHandler(
         } catch (error: CancellationException) {
             throw error
         } catch (error: HttpException) {
-            Result.failure(RepositoryException(parseHttpError(error)))
+            val parsed = parseHttpError(error)
+            Result.failure(RepositoryException(parsed.message, parsed.errorCode))
         } catch (error: RepositoryException) {
             Result.failure(error)
         } catch (error: IOException) {
@@ -66,21 +67,25 @@ internal class NetworkErrorHandler(
         }
     }
 
-    fun parseHttpError(error: HttpException): String =
+    fun parseHttpError(error: HttpException): ParsedError =
         parseErrorMessage(error.code(), error.response()?.errorBody()?.string())
 
-    fun parseErrorMessage(statusCode: Int, body: String?): String {
+    fun parseErrorMessage(statusCode: Int, body: String?): ParsedError {
         if (!body.isNullOrBlank()) {
             runCatching { errorAdapter.fromJson(body) }
                 .getOrNull()
-                ?.let { return backendErrorUserMessage(it.error, it.message) }
+                ?.let { return ParsedError(backendErrorUserMessage(it.error, it.message), it.error.trim()) }
         }
-        statusMessages[statusCode]?.let { return it }
-        return when (statusCode) {
+        statusMessages[statusCode]?.let { return ParsedError(it, errorCode = null) }
+        val fallback = when (statusCode) {
             401, 403 -> "绑定已失效，请重新绑定账本。"
             else -> "连接出错（$statusCode），请稍后再试。"
         }
+        return ParsedError(fallback, errorCode = null)
     }
+
+    /** Decoded backend error: localized user-facing [message] + machine-readable [errorCode]. */
+    data class ParsedError(val message: String, val errorCode: String?)
 
     private companion object {
         // LOG_TAG used to live here; codex round-9 moved Log.w

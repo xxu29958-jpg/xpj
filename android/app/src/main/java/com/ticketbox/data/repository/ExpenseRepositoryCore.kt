@@ -93,7 +93,8 @@ internal class ExpenseRepositoryCore(
             if (BuildConfig.DEBUG) {
                 Log.w(NETWORK_LOG_TAG, "Protected image request failed: code=${response.code()} body=${errorBody?.take(160)}")
             }
-            throw RepositoryException(errorHandler.parseErrorMessage(response.code(), errorBody))
+            val parsed = errorHandler.parseErrorMessage(response.code(), errorBody)
+            throw RepositoryException(parsed.message, parsed.errorCode)
         }
         val body = response.body() ?: throw RepositoryException("图片为空。")
         val contentType = body.contentType()?.toString()
@@ -109,7 +110,7 @@ internal class ExpenseRepositoryCore(
 
     fun diagnosticErrorMessage(error: Throwable): String {
         return when (error) {
-            is HttpException -> errorHandler.parseHttpError(error)
+            is HttpException -> errorHandler.parseHttpError(error).message
             is IOException -> {
                 Log.w(NETWORK_LOG_TAG, networkDiagnosticMessage(error, settingsStore.serverUrl()), error)
                 userNetworkMessage(error, settingsStore.serverUrl())

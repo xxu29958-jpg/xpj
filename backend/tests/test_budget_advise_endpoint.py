@@ -29,6 +29,7 @@ from app.services.budget_advisor_service._models import ALLOWED_INCOME_SOURCE_TY
 from app.services.budget_advisor_service._outbound_guard import to_outbound_dict
 from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.income_plan_service import create_income_plan
+from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
 
 
@@ -37,7 +38,12 @@ def _seed_minimal_data() -> None:
     the owner tenant. Just enough to exercise the builder paths."""
 
     now = now_utc()
-    month_anchor = datetime(now.year, now.month, 15, tzinfo=now.tzinfo)
+    # 锚定到 accounting timezone 当前月的 15 号(本地 12:00 → UTC 04:00),
+    # 跟 [_current_month] 同一参考系。直接 datetime(now.year, now.month, 15)
+    # 在 UTC 跨月边界几小时里会落到上一 / 下一 accounting 月,被 query
+    # 的 month_bounds_utc 过滤掉。
+    year_str, month_str = _current_month().split("-")
+    month_anchor = datetime(int(year_str), int(month_str), 15, 12, tzinfo=now.tzinfo)
     with SessionLocal() as db:
         db.add(
             MonthlyIncomePlan(
@@ -85,8 +91,15 @@ def _seed_minimal_data() -> None:
 
 
 def _current_month() -> str:
-    now = now_utc()
-    return f"{now.year:04d}-{now.month:02d}"
+    # 用 accounting timezone (Asia/Shanghai) 的当前月份,跟 confirmed_query
+    # 里 month_bounds_utc(month, accounting_zone) 同一参考系。
+    #
+    # 之前直接拼 now_utc().year/month,在 UTC 跨日 / 跨月边界的几个钟头里会
+    # 跟 query 错配:例如 UTC 2026-05-31 22:38 = Beijing 2026-06-01 06:38,
+    # _current_month() 返 "2026-05" 但 expense_time=now_utc() 落在 query
+    # 的 "2026-06" 月窗 (May 31 16:00 UTC..June 30 16:00 UTC) 里。结果:
+    # category_breakdown 全空,断言 == {"其他"} 挂。
+    return current_accounting_month()
 
 
 # ---------------------------------------------------------------------------

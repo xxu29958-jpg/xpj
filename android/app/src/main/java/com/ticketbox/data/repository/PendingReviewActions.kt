@@ -107,6 +107,22 @@ interface PendingReviewActions {
     suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome>
 
     /**
+     * ADR-0038 undo: restore a recently-rejected expense within the 5-min
+     * server-side retention window. Online-only — call this only after an
+     * [ExpenseStateOutcome.Synced] reject (the server actually holds a
+     * rejected row to flip back). A Queued reject's row is sitting in the
+     * outbox, not on the server, so there's nothing for /undo to find.
+     *
+     *  - 200 → ``Result.success(Expense)`` with status=pending, rejected_at=null.
+     *  - 404 ``expense_not_found`` (past window / wrong status / cross-tenant /
+     *    missing-row collapse) → ``Result.failure``. UI flashes "无法撤销..."
+     *    and stops showing the undo affordance.
+     *  - IOException / 5xx → ``Result.failure``; no outbox fallback (undo is a
+     *    short-window UI nudge, not a durable mutation worth queueing).
+     */
+    suspend fun undoRejectExpense(id: Long): Result<Expense>
+
+    /**
      * ADR-0038 PR-2g.8: offline-aware mark-not-duplicate. Same
      * contract as [confirmExpenseAllowingOffline] but the optimistic
      * projection flips [Expense.duplicateStatus] to ``none`` and the

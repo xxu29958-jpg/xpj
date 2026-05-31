@@ -229,6 +229,9 @@ class ExpenseRepository(
     override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         pendingRepository.rejectExpenseAllowingOffline(expense)
 
+    override suspend fun undoRejectExpense(id: Long): Result<Expense> =
+        pendingRepository.undoRejectExpense(id)
+
     override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         pendingRepository.markNotDuplicateAllowingOffline(expense)
 

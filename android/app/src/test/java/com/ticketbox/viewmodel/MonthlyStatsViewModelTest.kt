@@ -119,6 +119,9 @@ class MonthlyStatsViewModelTest {
                 rejectedAt = null,
             ),
         )
+        // Default month falls back to YearMonth.now() — pin to the fixture's
+        // month so this test stays passing as wall-clock moves past 2026-05.
+        viewModel.setMonth("2026-05")
         advanceUntilIdle()
 
         assertEquals(StatsSource.LocalFallback, viewModel.uiState.value.statsSource)

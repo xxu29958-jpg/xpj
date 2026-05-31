@@ -2,8 +2,19 @@ package com.ticketbox.data.repository
 
 import android.util.Log
 
-/** Generic repository failure that callers can map to UI error messages. */
-class RepositoryException(message: String) : RuntimeException(message)
+/**
+ * Generic repository failure that callers can map to UI error messages.
+ *
+ * [errorCode] carries the backend's machine-readable code (e.g. `expense_not_found`,
+ * `permission_denied`) when [NetworkErrorHandler.parseErrorMessage] decoded one;
+ * it's null for transport/JSON failures and for messages synthesized client-side.
+ * VMs branching on specific backend semantics (e.g. ADR-0038 undo's 404-vs-network
+ * distinction) should match on [errorCode], not on the localized [message].
+ */
+class RepositoryException(
+    message: String,
+    val errorCode: String? = null,
+) : RuntimeException(message)
 
 /** Maps backend error codes to user-facing Chinese strings.
  *  Shared by every Repository in this module — kept out of the per-protocol

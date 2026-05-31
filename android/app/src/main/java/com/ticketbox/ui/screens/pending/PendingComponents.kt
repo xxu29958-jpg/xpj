@@ -17,11 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.PrimaryCtaButton
 import com.ticketbox.ui.components.SafeBadge
+import com.ticketbox.ui.components.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
@@ -162,4 +164,58 @@ internal fun PendingDisplayModeButton(
         enabled = !loading,
         onClick = onClick,
     )
+}
+
+/**
+ * ADR-0038 撤销 snackbar — 删除账单后短暂内可点 [onUndo] 恢复。
+ *
+ * **两个独立计时器、各管各的**:
+ * - VM 拥有 5s "banner 显示窗口" ([PendingViewModel.startUndoTimer]),只
+ *   决定**什么时候把 banner 收起来**。Compose 生命周期(LazyColumn dispose
+ *   / tab 切换 / NavHost pop)不影响它。
+ * - Server 拥有 5min "retention 窗口",真正的**可撤销边界**。banner 没
+ *   了之后(VM 5s 烧完),server 端可能还能撤——但 UI 不再露这条路。banner
+ *   还在的时候点撤销,server 也可能返 404(被另一端撤了 / 被回收了 / 几
+ *   分钟前的 banner 但 retention 已过)。
+ *
+ * 所以这个按钮的**实际可点性**始终以 server 响应为准:VM 不预判"5s 内
+ * 一定能撤",只决定 banner 显示多久。VM 5s 之内点击会发请求,server 说成
+ * 功就成功,server 说 404 就走 [PendingViewModel.undoReject] 的失败分支。
+ *
+ * [expense] 用来在 banner 里**标识被删的具体账单** (商家 / 金额),解决
+ * 在线 Synced(A) 删完 banner 还在时离线 Queued reject(B) 的歧义场景:
+ * 没标识用户会以为撤销的是最近一次操作 (B),实际撤销的是 A。
+ *
+ * 和 merchant_alias `MerchantAliasesScreen` 的撤销 bar 同 pattern, /web 的
+ * 5s CSS undo-banner 也对齐——三端"删除即可撤销 5s"做同一种 UX。
+ */
+@Composable
+internal fun PendingUndoRejectBanner(
+    expense: Expense,
+    onUndo: () -> Unit,
+) {
+    val merchant = expense.merchant?.trim()?.takeIf { it.isNotEmpty() }
+    val amount = expense.amountCents?.let { formatExpensePrimaryAmount(expense) }
+    val descriptor = listOfNotNull(merchant, amount).joinToString(" · ")
+    val label = if (descriptor.isNotEmpty()) "已删除 · $descriptor" else "已删除"
+    AppContentCard {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            AppSecondaryButton(text = "撤销", onClick = onUndo)
+        }
+    }
 }
