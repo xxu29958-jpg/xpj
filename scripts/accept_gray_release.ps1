@@ -242,8 +242,21 @@ function Assert-ReleaseArtifact {
     if ($manifest.flavor -ne "gray" -or $manifest.build_type -ne "release") {
         throw "release manifest 不是 gray release 产物。"
     }
+    # codex P1 #5: APK 内置 server_url 必须与对外宣称 -ServerUrl 一致, 防止"灰度脚本验证
+    # https://api.zen70.cn 通,但 APK 实际编译时 TICKETBOX_SERVER_URL 误设成别的地址"这类
+    # 链路分裂(以前只验后端 URL 可达,不验包内编译值)。空 server_url 说明构建时没设 env,
+    # build.gradle.kts 的 release fail-fast 应当先一步拦住,这里是 second line。
+    $manifestServerUrl = if ($manifest.PSObject.Properties["server_url"]) { [string]$manifest.server_url } else { "" }
+    if ([string]::IsNullOrWhiteSpace($manifestServerUrl)) {
+        throw "release manifest 缺少 server_url(构建时 TICKETBOX_SERVER_URL 未设)。重建 release APK 前先设环境变量。"
+    }
+    $expectedServerUrl = $BaseUrl
+    $actualServerUrl = $manifestServerUrl.TrimEnd("/")
+    if ($actualServerUrl -ne $expectedServerUrl) {
+        throw "release APK 内置 server_url($actualServerUrl) 与验收 -ServerUrl($expectedServerUrl) 不一致。重建 APK 或修正 -ServerUrl。"
+    }
 
-    Write-Host "OK   release 产物校验通过：APK / SHA256 / manifest 一致。"
+    Write-Host "OK   release 产物校验通过：APK / SHA256 / manifest / server_url 一致。"
 }
 
 Write-Host "小票夹灰度版验收"

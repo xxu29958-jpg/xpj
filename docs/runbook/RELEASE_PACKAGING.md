@@ -130,10 +130,13 @@ android/app/build/outputs/apk/gray/release/app-gray-release.manifest.json
 - APK 文件名
 - APK 大小
 - SHA256
+- `server_url` — 构建期看到的 `TICKETBOX_SERVER_URL` 环境变量, 灰度验收脚本会跟 `-ServerUrl` 做 parity check(codex P1 #5)
 - 构建 UTC 时间
 - Git commit 信息
 
 manifest 不写入 keystore、密码、服务器 token 或用户数据。
+
+> Release build 默认拒绝 `https://api.example.com` placeholder: `assembleRelease` / `bundleRelease` 启动时如果 `TICKETBOX_SERVER_URL`(env)或 `local.properties` `ticketbox.serverUrl` 都没设, Gradle hook 会直接 fail 整个 task graph(`build.gradle.kts` 顶层 `gradle.taskGraph.whenReady`)。debug build 不受影响, 仍可用 placeholder 跑本机调试。
 
 灰度验收脚本会校验 APK、SHA256 文件和 manifest 是否一致：
 

@@ -144,6 +144,12 @@ if (-not $SkipManifest) {
         $gitDirty = $true
     }
 
+    # codex P1 #5: 把构建期看到的 TICKETBOX_SERVER_URL 写入 manifest, 灰度验收脚本可与
+    # -ServerUrl 做 parity check, 防止 APK 内置 URL 与对外宣称地址不一致(尤其是 release
+    # 默认 fallback 已经被 build.gradle.kts 拒绝,但发布人误传错 URL 仍会发出去)。
+    $serverUrlBuiltIn = [Environment]::GetEnvironmentVariable("TICKETBOX_SERVER_URL")
+    if ([string]::IsNullOrWhiteSpace($serverUrlBuiltIn)) { $serverUrlBuiltIn = "" }
+
     $manifest = [ordered]@{
         app = "ticketbox"
         flavor = $Flavor
@@ -154,6 +160,7 @@ if (-not $SkipManifest) {
         apk_relative_path = $outputRelativePath
         apk_size_bytes = $apkFile.Length
         sha256 = $sha256
+        server_url = $serverUrlBuiltIn
         built_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
         git = [ordered]@{
             branch = $gitBranch

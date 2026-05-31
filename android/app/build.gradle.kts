@@ -46,9 +46,27 @@ data class TicketboxDebugSigning(
 // Server URL precedence:
 //   1. ENV: TICKETBOX_SERVER_URL
 //   2. local.properties: ticketbox.serverUrl=...
-//   3. fallback: https://api.example.com (placeholder; replace before publishing)
+//   3. fallback: https://api.example.com (debug only; release builds reject this — see hook below)
+val ticketboxServerUrlPlaceholder = "https://api.example.com"
 val ticketboxServerUrl: String =
-    ticketboxEnvOrLocal("TICKETBOX_SERVER_URL", "ticketbox.serverUrl") ?: "https://api.example.com"
+    ticketboxEnvOrLocal("TICKETBOX_SERVER_URL", "ticketbox.serverUrl") ?: ticketboxServerUrlPlaceholder
+
+// Release builds must point at a real backend. Refuse to assemble/bundle a release APK/AAB while
+// DEFAULT_SERVER_URL still falls back to the api.example.com placeholder — shipping that to gray
+// users is a release blocker (codex P1 #5). Debug builds keep the placeholder for local dev.
+gradle.taskGraph.whenReady {
+    val hasReleasePackagingTask = allTasks.any { task ->
+        val n = task.name
+        n.contains("Release", ignoreCase = true) && (n.startsWith("assemble") || n.startsWith("bundle"))
+    }
+    if (hasReleasePackagingTask && ticketboxServerUrl == ticketboxServerUrlPlaceholder) {
+        error(
+            "Refusing to package a release APK/AAB with DEFAULT_SERVER_URL=$ticketboxServerUrlPlaceholder " +
+                "placeholder. Set TICKETBOX_SERVER_URL (env) or local.properties ticketbox.serverUrl=... " +
+                "to your real backend before assembleRelease / bundleRelease. Debug builds are unaffected."
+        )
+    }
+}
 val ticketboxDebugKeystorePath: String? =
     ticketboxEnvOrLocal("TICKETBOX_DEBUG_KEYSTORE_PATH", "ticketbox.debug.keystore")
 val ticketboxDebugKeyAlias: String? =
