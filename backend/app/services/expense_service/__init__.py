@@ -42,6 +42,7 @@ from app.services.expense_service._update import (
     batch_update_confirmed_expenses,
     confirm_expense,
     reject_expense,
+    undo_reject_expense,
     update_expense,
 )
 
@@ -64,5 +65,6 @@ __all__ = [
     "recognize_expense_text",
     "reject_expense",
     "retry_expense_ocr",
+    "undo_reject_expense",
     "update_expense",
 ]

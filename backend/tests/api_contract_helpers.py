@@ -76,6 +76,17 @@ def reject_expense_api(
     )
 
 
+def undo_expense_api(
+    client: TestClient,
+    expense_id: int,
+    *,
+    headers: dict[str, str],
+) -> httpx.Response:
+    """ADR-0038 undo: restore a recently-rejected expense (5-minute window).
+    No ``expected_updated_at`` token — see ``post_undo_expense`` route doc."""
+    return client.post(f"/api/expenses/{expense_id}/undo", headers=headers)
+
+
 def mark_not_duplicate_api(
     client: TestClient,
     expense_id: int,

@@ -1,10 +1,10 @@
-"""Update / lifecycle: field edits, batch updates, confirm, reject."""
+"""Update / lifecycle: field edits, batch updates, confirm, reject, undo-reject."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -36,6 +36,8 @@ from app.services.expense_service._query import get_expense
 from app.services.ocr_service import clear_ocr_draft_fields
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_item_service import recompute_items_sum_status
+from app.services.resource_audit import record_resource_action
+from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 
@@ -43,6 +45,7 @@ __all__ = [
     "batch_update_confirmed_expenses",
     "confirm_expense",
     "reject_expense",
+    "undo_reject_expense",
     "update_expense",
 ]
 
@@ -366,6 +369,60 @@ def reject_expense(
         tenant_id=tenant_id,
         subject_kind="expense",
         subject_id=expense.id,
+    )
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+def undo_reject_expense(
+    db: Session,
+    expense_id: int,
+    tenant_id: str,
+    *,
+    actor_account_id: int | None = None,
+) -> Expense:
+    """ADR-0038 undo: restore a recently-rejected expense within retention window.
+
+    Atomic ``UPDATE WHERE id, tenant_id, status='rejected', rejected_at >= cutoff``
+    + ``rowcount=1`` 判定避免 SELECT-then-write race(memory feedback_adr_implementation
+    _atomicity)。rowcount=0 → 404 (already restored / never rejected / past 5min window /
+    cross-tenant).
+
+    Restore values: ``status='pending'`` (回到 reject 前最普通的可编辑状态) + ``rejected_at
+    = NULL`` (复用 reject lifecycle 的 nullable 语义) + ``updated_at = now`` (让任何持有
+    pre-undo token 的 mutate 撞 409 state_conflict, 防 stale write)。
+
+    Appends ``ledger_audit_logs action='undo'``, resource_type='expense', resource_public_id
+    = expense.public_id。和 merchant_alias undo / category_rule undo 同 pattern。
+    """
+    now = now_utc()
+    cutoff = now - SOFT_DELETE_RETENTION
+    stmt = (
+        update(Expense)
+        .where(Expense.id == expense_id)
+        .where(Expense.tenant_id == tenant_id)
+        .where(Expense.status == "rejected")
+        .where(Expense.rejected_at.is_not(None))
+        .where(Expense.rejected_at >= cutoff)
+        .values(status="pending", rejected_at=None, updated_at=now)
+    )
+    result = db.execute(stmt)
+    if result.rowcount != 1:
+        # 不区分 not_found / past_window / never_rejected:三种状态下 row 都不再 undo-able,
+        # 暴露区别给客户端 = 暴露 ledger 内部状态 + 也无法给用户决策(无论哪种原因, 都得让
+        # 用户重新看一眼最新状态)。
+        db.rollback()
+        raise AppError("expense_not_found", status_code=404)
+    db.expire_all()
+    expense = get_expense(db, expense_id, tenant_id)
+    record_resource_action(
+        db,
+        ledger_id=tenant_id,
+        action="undo",
+        resource_type="expense",
+        resource_public_id=expense.public_id,
+        actor_account_id=actor_account_id,
     )
     db.commit()
     db.refresh(expense)

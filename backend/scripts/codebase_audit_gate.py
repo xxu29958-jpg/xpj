@@ -24,8 +24,12 @@ DebtCounts = dict[str, int]
 # into services (device_public_id / active_ledger_name) or behind TYPE_CHECKING.
 # Both at 0 means any real route→model import or implicit-None return now fails.
 CODEBASE_DEBT_LIMITS: DebtCounts = {
-    "files_over_500": 12,
-    "long_functions": 42,
+    # ADR-0038 expense undo (POST /api/expenses/{id}/undo) bumped this from 12 → 13:
+    # routes/expenses.py crossed 500 lines for the new endpoint. Splitting the file
+    # purely to stay under the line is the wrong trade per this gate's own rule.
+    "files_over_500": 13,
+    # ADR-0038 expense undo + PR-C self-review trimmed one long function; bank it.
+    "long_functions": 41,
     "deep_nesting_functions": 6,
     "route_layer_imports": 0,
     "service_public_no_private": 4,
@@ -39,7 +43,9 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 10,
     "credentials_risk": 4,
     "n_plus_one": 2,
-    "unreferenced_modules": 218,
+    # ADR-0038 expense undo wires undo_reject_expense into two consumers; bank the
+    # reduction so unreferenced_modules can't silently re-creep.
+    "unreferenced_modules": 216,
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,

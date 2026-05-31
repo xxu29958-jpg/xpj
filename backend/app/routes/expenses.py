@@ -53,6 +53,7 @@ from app.services.expense_service import (
     recognize_expense_text,
     reject_expense,
     retry_expense_ocr,
+    undo_reject_expense,
     update_expense,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
@@ -347,6 +348,36 @@ def post_reject_expense(
         expense_id,
         auth.tenant_id,
         expected_updated_at=payload.expected_updated_at,
+    )
+    return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+
+
+@router.post("/{expense_id}/undo", response_model=ExpenseResponse)
+def post_undo_expense(
+    expense_id: int,
+    auth: AuthContext = Depends(get_current_writer_context),
+    db: Session = Depends(get_db),
+) -> ExpenseResponse:
+    # ADR-0038 undo: restore a recently-rejected expense within the 5-minute
+    # retention window. No ``expected_updated_at`` token — this restores the
+    # row the caller just rejected (near-zero contention inside the undo
+    # window) and 404 once the window closes (semantics match merchant_alias /
+    # category_rule undo paths). Past-window / wrong-status / cross-tenant /
+    # missing-row collapse to one 404 so the client just re-fetches state.
+    #
+    # Documented limitation (codex review P2): ``reject_expense`` clears
+    # ``duplicate_of_id`` on other expenses that pointed at this one
+    # (``duplicate_service.clear_duplicate_references_to``). Undo restores the
+    # rejected row's own status/rejected_at/updated_at, but does NOT walk the
+    # graph backwards to rediscover duplicates — those pointers stay ``None``.
+    # If we ever want the symmetric inverse, we'd need a fresh duplicate-detection
+    # pass against the unrejected target; flip
+    # ``test_undo_does_not_restore_cleared_duplicate_references`` accordingly.
+    expense = undo_reject_expense(
+        db,
+        expense_id,
+        auth.tenant_id,
+        actor_account_id=auth.account_id,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 

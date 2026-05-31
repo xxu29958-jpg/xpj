@@ -155,6 +155,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
+    "POST /api/expenses/{expense_id}/undo": Exempt(
+        "terminal_flag_flip", "expenses", ("expenses", "ledger_audit_logs")
+    ),
     "POST /api/goals": Exempt("create_row", "goals", ("goals",)),
     "POST /api/imports/csv": Exempt("create_row", "imports", _IMPORT_CREATE),
     "POST /api/income-plans": Exempt("create_row", "budget", _INCOME_PLAN),
