@@ -255,3 +255,31 @@ def test_cloudflare_access_service_validates_rs256_jwt(
             team_domain="https://family.cloudflareaccess.com",
             audience="wrong-aud",
         )
+
+
+def test_public_web_csrf_rejects_oversize_body_before_buffering(
+    client: TestClient,
+) -> None:
+    """codex P1 #2: CSRF 中间件 fallback 到 body 解析时不能整包 await request.body(),
+    认证用户可超大 multipart 打内存。修后:Content-Length 声明超过 max_upload_size +
+    1MB 直接 413, 不进 body 缓冲。"""
+    from app.config import get_settings
+
+    pub = _public_client()
+    cap = get_settings().max_upload_size_bytes + 1 * 1024 * 1024
+    oversize = cap + 1  # 触发 Content-Length 检查
+
+    resp = pub.post(
+        "/web/auth/login",
+        # 故意不带 X-CSRF-Token header, 也不带 csrf_token form 字段, 强制 CSRF
+        # 中间件 fallback 到 body 解析路径。
+        headers={
+            "Origin": f"https://{PUBLIC_HOST}",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Length": str(oversize),
+        },
+        content=b"x",  # 实际 body 比声明小, 但 Content-Length 阶段已拒。
+        follow_redirects=False,
+    )
+    assert resp.status_code == 413
+    assert resp.json()["error"] == "file_too_large"

@@ -26,6 +26,13 @@ _MULTIPART_CSRF_RE = re.compile(
 )
 
 
+def _max_csrf_body_bytes() -> int:
+    """CSRF body 缓冲上限。codex P1 #2:此前 await request.body() 整包读 multipart,
+    认证用户可超大 multipart 打内存。跟随 max_upload_size_bytes + 1MB 头部 / 表单字段
+    余量,既允许合法 CSV / multipart 上传 + csrf_token 字段,又拒掉无限大请求。"""
+    return get_settings().max_upload_size_bytes + 1 * 1024 * 1024
+
+
 async def csrf_loopback_form_guard(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
@@ -44,10 +51,18 @@ async def csrf_loopback_form_guard(
         _set_csrf_cookie_if_needed(request, response)
         return response
 
-    if _has_same_origin_source(request) and await _has_valid_csrf_token(request):
-        response = await call_next(request)
-        _set_csrf_cookie_if_needed(request, response)
-        return response
+    if _has_same_origin_source(request):
+        valid, body_too_large = await _has_valid_csrf_token(request)
+        if body_too_large:
+            return error_response(
+                "file_too_large",
+                "请求体过大，无法完成安全校验。",
+                status_code=413,
+            )
+        if valid:
+            response = await call_next(request)
+            _set_csrf_cookie_if_needed(request, response)
+            return response
 
     return error_response(
         "invalid_request",
@@ -129,17 +144,54 @@ def _ensure_request_csrf_token(request: Request) -> str:
     return request.state.csrf_token
 
 
-async def _has_valid_csrf_token(request: Request) -> bool:
+async def _has_valid_csrf_token(request: Request) -> tuple[bool, bool]:
+    """返回 (valid, body_too_large)。body_too_large=True 时调用方必须直接 413,
+    不能继续走 valid=False 的"过期"分支(下游也已无法读 body,且语义不同)。"""
     expected = _ensure_request_csrf_token(request)
     actual = (request.headers.get(CSRF_HEADER_NAME) or "").strip()
     if not actual:
-        body = await _body_bytes_and_replay(request)
+        body, too_large = await _body_bytes_and_replay(request)
+        if too_large:
+            return False, True
         actual = _csrf_token_from_body(request, body)
-    return bool(actual) and hmac.compare_digest(actual, expected)
+    valid = bool(actual) and hmac.compare_digest(actual, expected)
+    return valid, False
 
 
-async def _body_bytes_and_replay(request: Request) -> bytes:
-    body = await request.body()
+async def _body_bytes_and_replay(request: Request) -> tuple[bytes, bool]:
+    """流式缓冲 body 用于 CSRF token 提取,有硬上限。codex P1 #2:此前 await request.body()
+    整包读 multipart,认证用户可超大 multipart 打内存。
+
+    1) 先看 Content-Length, 声明就超限直接 (b"", True)——便宜的早期拒。
+    2) chunked encoding 没 Content-Length, 边收边累, 到上限也拒。
+    3) 成功收完则按原 Starlette idiom replay 给下游 form 解析。
+
+    返回 (body_bytes, too_large)。
+    """
+    cap = _max_csrf_body_bytes()
+    raw_cl = request.headers.get("content-length")
+    if raw_cl:
+        try:
+            declared = int(raw_cl)
+        except (TypeError, ValueError):
+            declared = -1
+        if declared > cap:
+            return b"", True
+
+    body = bytearray()
+    while True:
+        message = await request.receive()
+        if message["type"] != "http.request":
+            continue
+        chunk = message.get("body") or b""
+        if chunk:
+            body.extend(chunk)
+            if len(body) > cap:
+                return b"", True
+        if not message.get("more_body"):
+            break
+
+    body_bytes = bytes(body)
     sent = False
 
     async def _receive() -> dict[str, object]:
@@ -147,10 +199,10 @@ async def _body_bytes_and_replay(request: Request) -> bytes:
         if sent:
             return {"type": "http.request", "body": b"", "more_body": False}
         sent = True
-        return {"type": "http.request", "body": body, "more_body": False}
+        return {"type": "http.request", "body": body_bytes, "more_body": False}
 
     request._receive = _receive  # noqa: SLF001 - Starlette body replay for downstream form parsing.
-    return body
+    return body_bytes, False
 
 
 def _csrf_token_from_body(request: Request, body: bytes) -> str:
