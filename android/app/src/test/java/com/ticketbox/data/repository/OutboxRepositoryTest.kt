@@ -156,6 +156,9 @@ class OutboxRepositoryTest {
             "{}",
             "2026-05-04T00:00:00Z",
         )
+        // PR review #6: 预设 retryCount=5 制造"用户在 5 次失败后才看到 conflict"的真场景,
+        // 然后断言 KeepMine 把它重置为 0(用户显式重试,该拿到完整 max_attempts 预算)。
+        dao.rows[id] = dao.rows[id]!!.copy(retryCount = 5)
         repo.markConflict(id, "stale")
 
         repo.resolveConflict(
@@ -167,6 +170,7 @@ class OutboxRepositoryTest {
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         assertEquals("2026-05-04T00:01:00Z", row.expectedUpdatedAt)
         assertNull(row.lastError)
+        assertEquals(0, row.retryCount, "KeepMine 是用户显式重试, 必须重置 retryCount 给 max_attempts 完整预算")
     }
 
     @Test
@@ -240,9 +244,11 @@ class OutboxRepositoryTest {
 
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
-        // The row's lastError is replaced by the manual-retry
-        // marker so the UI knows it was user-initiated.
-        assertEquals("manual retry", row.lastError)
+        // The row's lastError is replaced by the manual_retry marker so the UI knows it
+        // was user-initiated. snake_case 与 ``recovered_from_stuck_in_flight`` /
+        // ``no_dispatcher_registered:`` / ``session_boundary_aborted`` 等项目内已有
+        // marker 对齐(原 PR review P3 style)。
+        assertEquals("manual_retry", row.lastError)
     }
 
     @Test
@@ -255,6 +261,10 @@ class OutboxRepositoryTest {
             "{}",
             "2026-05-04T00:00:00Z",
         )
+        // PR review #13: 预设 retryCount=7 制造"用户在 7 次失败 + max_attempts FAILED 后,
+        // 用 freshToken 重试"的真场景。断言 retryCount 重置 0(用户拿 fresh token 显式重试,
+        // 该重新获得完整预算, 否则再两次 RetryableFailure 又撞 cap)。
+        dao.rows[id] = dao.rows[id]!!.copy(retryCount = 7)
         repo.markFailed(id, "stale token")
 
         repo.resolveFailed(id, FailedResolution.Retry(freshToken = "2026-05-04T01:00:00Z"))
@@ -263,6 +273,7 @@ class OutboxRepositoryTest {
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         assertEquals("2026-05-04T01:00:00Z", row.expectedUpdatedAt)
         assertEquals(null, row.lastError)
+        assertEquals(0, row.retryCount, "Retry(freshToken) 也是用户显式重试, 必须重置 retryCount")
     }
 
     @Test

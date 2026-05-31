@@ -136,9 +136,12 @@ class FakePendingMutationDao : PendingMutationDao {
     ): Int {
         val current = rows[id] ?: return 0
         if (current.status != fromStatus) return 0
+        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
+        // 重置预算的语义。
         rows[id] = current.copy(
             status = toStatus,
             expectedUpdatedAt = freshToken,
+            retryCount = 0,
             lastError = null,
         )
         refreshObservables()
@@ -153,7 +156,26 @@ class FakePendingMutationDao : PendingMutationDao {
     ): Int {
         val current = rows[id] ?: return 0
         if (current.status != fromStatus) return 0
-        rows[id] = current.copy(status = toStatus, lastError = lastError)
+        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置(理由同 refreshTokenIfStatus)。
+        rows[id] = current.copy(status = toStatus, retryCount = 0, lastError = lastError)
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun revertClaimWithoutAttempt(
+        id: Long,
+        pendingStatus: String,
+        inFlightStatus: String,
+    ): Int {
+        // codex P2 #10 follow-up + PR review: 镜像真实 DAO 的 status guard + retryCount
+        // 抵消 + attemptedAt 重置 + 保留 lastError(不写)。
+        val current = rows[id] ?: return 0
+        if (current.status != inFlightStatus) return 0
+        rows[id] = current.copy(
+            status = pendingStatus,
+            retryCount = (current.retryCount - 1).coerceAtLeast(0),
+            attemptedAt = null,
+        )
         refreshObservables()
         return 1
     }

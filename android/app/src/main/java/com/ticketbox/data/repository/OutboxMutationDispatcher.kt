@@ -91,14 +91,20 @@ sealed interface DispatchResult {
      * Transient failure that the drain engine should retry on a
      * later tick — network blip, server 5xx, timeout. Row stays
      * PENDING; ``retryCount`` and ``lastError`` are recorded so
-     * the UI can warn after N attempts and the engine can apply
-     * back-off.
+     * the engine can apply back-off across retries.
      *
      * Splitting Failure / RetryableFailure is the [codex finding
      * P1#3] fix: previously a single transient network error
      * would mark the row FAILED, and FAILED rows are not picked
      * up by ``nextPendingBatch`` so the outbox effectively
      * stopped auto-replaying after one server hiccup.
+     *
+     * **Bounded by max_attempts (codex P1 #7)**: the engine itself caps the
+     * number of RetryableFailure cycles per row. Once ``retryCount + 1 >=
+     * maxAttempts`` (default 10), the row transitions to FAILED with
+     * ``lastError="max_attempts_exceeded(...)..."``. UI translates that marker
+     * via ``friendlyLastError`` in SyncStatusScreen and shows the user a
+     * "retry / drop" affordance.
      */
     data class RetryableFailure(val message: String) : DispatchResult
 

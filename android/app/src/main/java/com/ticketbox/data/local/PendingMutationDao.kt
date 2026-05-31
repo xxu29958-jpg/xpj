@@ -149,12 +149,16 @@ interface PendingMutationDao {
     suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: String): Int
 
     /**
-     * Atomic ``CONFLICT → PENDING`` token refresh used by
-     * [OutboxRepository.resolveConflict]. The ``status = fromStatus``
-     * predicate makes the call a no-op if the row already advanced
-     * (e.g. the user clicked "keep mine" twice on a stale banner
-     * after a different surface already resolved it). Returns the
-     * affected rowcount so the repository can branch on it.
+     * Atomic ``CONFLICT → PENDING`` or ``FAILED → PENDING`` token refresh used by
+     * both [OutboxRepository.resolveConflict] (``KeepMine``) and
+     * [OutboxRepository.resolveFailed] (``Retry(freshToken=...)``). The
+     * ``status = fromStatus`` predicate makes the call a no-op if the row already
+     * advanced (e.g. the user clicked "keep mine" twice on a stale banner after
+     * a different surface already resolved it). Returns the affected rowcount so
+     * the repository can branch on it.
+     *
+     * codex P1 #7: ``retryCount = 0`` 重置——两条路径都是用户显式"重试", 都该拿到完整
+     * 的 max_attempts 预算, 而不是接着之前的失败次数继续撞 cap。
      *
      * [codex round-4 P2] fix: prevents a stale UI banner from
      * flipping a DONE / dropped row back to PENDING.
@@ -164,6 +168,7 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = :toStatus,
             expectedUpdatedAt = :freshToken,
+            retryCount = 0,
             lastError = NULL
         WHERE id = :id AND status = :fromStatus
         """,
@@ -179,11 +184,16 @@ interface PendingMutationDao {
      * Atomic ``FAILED → PENDING`` manual retry (no token refresh).
      * Same race-protection rationale as
      * [refreshTokenIfStatus] / [markInFlightIfPending].
+     *
+     * codex P1 #7: 用户手动 retry 时 ``retryCount = 0``。否则用户点 Retry → 立刻被
+     * max_attempts 拦住 → 再点 Retry → 再被拦, 退化成永远困在 FAILED。重置 retryCount
+     * 让用户接受风险后能拿到完整的重试预算。
      */
     @Query(
         """
         UPDATE pending_mutations
         SET status = :toStatus,
+            retryCount = 0,
             lastError = :lastError
         WHERE id = :id AND status = :fromStatus
         """,
@@ -193,6 +203,35 @@ interface PendingMutationDao {
         fromStatus: String,
         toStatus: String,
         lastError: String,
+    ): Int
+
+    /**
+     * codex P2 #10 follow-up + PR review: 把 [markInFlightIfPending] 的 retryCount++ 和
+     * attemptedAt 一起抵消, 因为 caller(drain engine 的 epoch-abort + cancellation 分支)
+     * 在真正 dispatch 前就 abort 了, 这次 tryClaim 不算一次"尝试", 不该计入 max_attempts
+     * 配额, 也不该推进 attemptedAt(否则 session 反复 flap 会让两个字段都静默漂移)。
+     *
+     * **Status guard**: `AND status = :inFlightStatus` 保护——只对刚 tryClaim 成功的
+     * IN_FLIGHT row 起效, 防止后续 caller 误调到 PENDING/CONFLICT/FAILED row 上把状态
+     * 强翻 PENDING + 抵消 retryCount。
+     *
+     * **lastError 故意不写**: 保留任何先前 markRetryable 写下的诊断(如 "server 503"),
+     * abort 本身只是窗口期事件, 不该淹没真正的根因。drain engine 的 `aborted` 计数器在
+     * batch 层提供 abort 信号。
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = :pendingStatus,
+            retryCount = CASE WHEN retryCount > 0 THEN retryCount - 1 ELSE 0 END,
+            attemptedAt = NULL
+        WHERE id = :id AND status = :inFlightStatus
+        """,
+    )
+    suspend fun revertClaimWithoutAttempt(
+        id: Long,
+        pendingStatus: String,
+        inFlightStatus: String,
     ): Int
 
     /**
@@ -395,6 +434,12 @@ interface PendingMutationDao {
      * that aborts a drain after the atomic claim succeeded would
      * otherwise pin that row in IN_FLIGHT forever — same-target
      * dedup then permanently blocks all later siblings.
+     *
+     * **retryCount 故意不抵消**(不同于 [revertClaimWithoutAttempt]): 一个能滞留 IN_FLIGHT
+     * 超过 5 分钟的 row 说明 dispatcher 已经被调过, OkHttp 请求可能已经发出去甚至已经被
+     * server 处理过——把这次 claim 算成一次真实尝试是正确的。 epoch-abort / cancellation
+     * 路径相反, 它们在 dispatch 调用前 / 调用瞬间 abort, 那次 claim 没有真正联网过, 所以
+     * 用 revertClaimWithoutAttempt 抵消。
      */
     @Query(
         """

@@ -439,14 +439,33 @@ class OutboxRepository(
     /**
      * Transient failure: keep the row in PENDING so the next drain
      * pass picks it up. ``retryCount`` was already bumped by
-     * [tryClaim]; the back-off / give-up policy belongs to the
-     * scheduler in PR-2g.2.
+     * [tryClaim]; back-off is scheduler-side, but **give-up is engine-side**:
+     * [OutboxDrainEngine] checks ``row.retryCount + 1 >= maxAttempts`` in the
+     * RetryableFailure branch and routes to [markFailed] instead of
+     * [markRetryable] once the cap trips (codex P1 #7).
      */
     suspend fun markRetryable(id: Long, error: String) {
         dao.markRetryable(
             id = id,
             pendingStatus = PendingMutationStatus.Pending.wireValue,
             lastError = error,
+        )
+    }
+
+    /**
+     * codex P2 #10 follow-up: revert a [tryClaim] that aborted before any actual
+     * dispatch ran. Undoes the retryCount bump + attemptedAt set so an epoch-abort
+     * or mid-dispatch cancellation 不算一次"尝试", 避免 session 反复 flap N 次后
+     * max_attempts 假性触发。
+     *
+     * `internal` 因为只该 engine 用; DAO 也带 `AND status = :inFlightStatus` 守卫,
+     * 即使被外部误调也只对 IN_FLIGHT row 起效。
+     */
+    internal suspend fun revertClaimWithoutAttempt(id: Long) {
+        dao.revertClaimWithoutAttempt(
+            id = id,
+            pendingStatus = PendingMutationStatus.Pending.wireValue,
+            inFlightStatus = PendingMutationStatus.InFlight.wireValue,
         )
     }
 
@@ -458,6 +477,15 @@ class OutboxRepository(
         )
     }
 
+    /**
+     * Move a row to terminal FAILED. ``retryCount`` is **NOT** reset here — the
+     * historical attempt count survives so observability / debug surfaces can
+     * read it (codex P1 #7). Once the user picks
+     * [FailedResolution.Retry][FailedResolution.Retry], the DAO atomic update
+     * (`markRetryableIfStatus` / `refreshTokenIfStatus`) zeros it so they get a
+     * fresh budget. While the row is FAILED, ``retryCount`` should be treated
+     * as historical-only — no future drain decision keys off it.
+     */
     suspend fun markFailed(id: Long, error: String) {
         dao.markFailed(
             id = id,
@@ -540,7 +568,7 @@ class OutboxRepository(
                         id = id,
                         fromStatus = PendingMutationStatus.Failed.wireValue,
                         toStatus = PendingMutationStatus.Pending.wireValue,
-                        lastError = "manual retry",
+                        lastError = "manual_retry",
                     ) > 0
                 }
             }

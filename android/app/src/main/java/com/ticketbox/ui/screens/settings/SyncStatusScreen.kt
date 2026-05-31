@@ -173,8 +173,7 @@ private fun ConflictCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = row.lastError?.takeIf { it.isNotBlank() }
-                    ?: "这条改动已在其它设备被改动，没能自动同步。",
+                text = friendlyLastError(row.lastError, fallback = "这条改动已在其它设备被改动，没能自动同步。"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -222,7 +221,7 @@ private fun FailedCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = row.lastError?.takeIf { it.isNotBlank() } ?: "这条改动没能同步成功。",
+                text = friendlyLastError(row.lastError, fallback = "这条改动没能同步成功。"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -268,4 +267,33 @@ private fun mutationLabel(type: PendingMutationType): String = when (type) {
     PendingMutationType.UpdateGoal -> "修改目标"
     PendingMutationType.UpdateIncomePlan -> "修改收入计划"
     PendingMutationType.Unknown -> "改动"
+}
+
+/**
+ * 把 outbox row.lastError 里的内部 marker 翻译成用户能看懂的中文。
+ *
+ * PR review #1 + #5: 此前 SyncStatusScreen 直接渲染 row.lastError, 会把 engine 内部
+ * marker(`max_attempts_exceeded(N/M): ...`、`session_boundary_aborted`、`manual_retry`、
+ * `no_dispatcher_registered:<wire>`、`drain cancelled mid-dispatch`、`recovered_from_stuck_in_flight`)
+ * 和原始 server message(`java.net.SocketTimeoutException: ...`)直接抛给最终用户, 违反
+ * ENGINEERING_RULES §10 "普通用户界面不得出现接口名 / 英文底层异常"。
+ *
+ * 已知 marker → 中文文案;未知 lastError → 返回 fallback(card 自带的默认描述), 不把
+ * 原 lastError 透传。
+ */
+private fun friendlyLastError(raw: String?, fallback: String): String {
+    val text = raw?.trim().orEmpty()
+    if (text.isEmpty()) return fallback
+    return when {
+        text.startsWith("max_attempts_exceeded") -> "已连续多次同步失败,请检查网络或稍后再试。"
+        text.startsWith("no_dispatcher_registered") -> "App 版本不支持此操作,请升级后再重试。"
+        // 抑制内部窗口期 / 用户自触发的 marker(它们对应的 row 在 PENDING 队列里,不该到
+        // FailedCard / ConflictCard 上展示;万一漂移过来也只显示通用兜底)。
+        text == "session_boundary_aborted" -> fallback
+        text == "manual_retry" -> fallback
+        text == "drain cancelled mid-dispatch" -> fallback
+        text == "recovered_from_stuck_in_flight" -> fallback
+        // 未识别的 marker(可能是未来加的、也可能是 server message): 也不透传, 仍走 fallback。
+        else -> fallback
+    }
 }

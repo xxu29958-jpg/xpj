@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -10,6 +11,7 @@ import kotlinx.coroutines.yield
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -349,6 +351,10 @@ class OutboxDrainEngineTest {
         // to the caller (WorkManager), and the row must be put back
         // to PENDING so the next drain after the worker restarts
         // re-claims it instead of leaving it stuck IN_FLIGHT.
+        //
+        // PR review #3: 改用 revertClaimWithoutAttempt, retryCount 不再因为 cancel 累加,
+        // attemptedAt 抵消回 null。lastError 不写——保留先前任何诊断(本例 row 是新加的,
+        // lastError 一直是 null)。
         val dao = FakePendingMutationDao()
         val outbox = OutboxRepository(dao = dao)
         val dispatcher = object : OutboxMutationDispatcher {
@@ -368,7 +374,9 @@ class OutboxDrainEngineTest {
 
         val row = outbox.activeForTarget("expense:1").single()
         assertEquals(PendingMutationStatus.Pending, row.status)
-        assertEquals("drain cancelled mid-dispatch", row.lastError)
+        assertEquals(null, row.lastError, "PR review #3: revertClaim 不写 lastError, 先前诊断保留")
+        assertEquals(0, row.retryCount, "PR review #3: cancellation 不算尝试, retryCount 抵消回 0")
+        assertEquals(null, row.attemptedAt, "PR review #3: attemptedAt 也抵消")
     }
 
     @Test
@@ -591,6 +599,155 @@ class OutboxDrainEngineTest {
         assertEquals(true, clearAllReturned)
         assertEquals(1, summary.done)
         assertEquals(0, dao.rows.size, "clearAll wipes the row only after dispatch finishes")
+    }
+
+    @Test
+    fun retryableFailureBeyondMaxAttemptsMarksRowFailed() = runTest {
+        // codex P1 #7: 持续 RetryableFailure 不能无限重试。row.retryCount + 1 >= maxAttempts
+        // 时转 FAILED, lastError 带 attempt 计数 + 原 server message, 用户在
+        // SyncStatusScreen 看到 + 手动 retry(retryCount 由 DAO 在 resolveFailed.Retry
+        // 时重置为 0)/丢弃。
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val engine = OutboxDrainEngine(
+            outbox,
+            listOf(StubDispatcher(result = DispatchResult.RetryableFailure("server 503"))),
+            maxAttempts = 3,
+        )
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+
+        // Pass 1: retryCount 0 → 1, attempts=1 < 3, 仍 PENDING
+        val first = engine.drainOnce()
+        assertEquals(1, first.retryable)
+        assertEquals(1, outbox.activeForTarget("expense:1").single().retryCount)
+        assertEquals(PendingMutationStatus.Pending, outbox.activeForTarget("expense:1").single().status)
+
+        // Pass 2: retryCount 1 → 2, attempts=2 < 3, 仍 PENDING
+        engine.drainOnce()
+        assertEquals(2, outbox.activeForTarget("expense:1").single().retryCount)
+        assertEquals(PendingMutationStatus.Pending, outbox.activeForTarget("expense:1").single().status)
+
+        // Pass 3: retryCount 2 → 3, attempts=3 >= 3 → markFailed
+        val third = engine.drainOnce()
+        assertEquals(1, third.failures, "exceeding maxAttempts must markFailed, not markRetryable")
+        val row = outbox.activeForTarget("expense:1").single()
+        assertEquals(PendingMutationStatus.Failed, row.status)
+        assertTrue(
+            row.lastError?.startsWith("max_attempts_exceeded(3/3):") == true,
+            "lastError must encode attempts count + original message; got: ${row.lastError}",
+        )
+
+        // Pass 4: row 已 FAILED, dequeueNextRunnable 跳过, drain IDLE
+        val fourth = engine.drainOnce()
+        assertEquals(0, fourth.attempted)
+    }
+
+    @Test
+    fun epochAbortMarksRowPendingNotInFlight() = runTest {
+        // codex P2 #10 + PR review #9: epoch 失败时, tryClaim 已把 row 推到 IN_FLIGHT +
+        // retryCount++ + attemptedAt=now, revertClaimWithoutAttempt 必须把这三件事都抵消:
+        // 回 PENDING、retryCount-- (因为没真的 dispatch)、attemptedAt=null。lastError 不写
+        // (保留先前 markRetryable 留下的诊断, abort 是窗口期事件不该淹没根因)。
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        var dispatchCalls = 0
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                dispatchCalls++
+                if (dispatchCalls == 1) {
+                    // 第 1 个 row 派发后 bump epoch, 让第 2 个在 post-claim 检查时 abort。
+                    outbox.bumpSessionEpochForTesting()
+                }
+                return DispatchResult.Success()
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        val secondId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "tok-2")
+        // 预设第 2 个 row 已经有一次 markRetryable 留下的诊断, 验证 revertClaim 不会
+        // 把它淹没。
+        dao.rows[secondId] = dao.rows[secondId]!!.copy(lastError = "server 503")
+
+        val summary = engine.drainOnce()
+        assertEquals(1, summary.done, "first row landed before the boundary")
+        assertEquals(1, summary.aborted, "second row aborted by epoch check")
+        assertEquals(1, dispatchCalls, "aborted row must NOT be dispatched")
+
+        val abortedRow = outbox.activeForTarget("expense:2").single()
+        assertEquals(secondId, abortedRow.id)
+        assertEquals(PendingMutationStatus.Pending, abortedRow.status)
+        assertEquals(0, abortedRow.retryCount, "未真 dispatch 的 epoch-abort 必须抵消 tryClaim 的 retryCount++")
+        assertEquals(null, abortedRow.attemptedAt, "PR review #9: attemptedAt 也应该被抵消, 否则 session flap 会让它无意义地推进")
+        assertEquals("server 503", abortedRow.lastError, "PR review #9: revertClaim 不写 lastError, 先前 markRetryable 留下的根因诊断必须保留")
+    }
+
+    @Test
+    fun cancellationMidDispatchRevertsClaimWithoutInflatingRetryCount() = runTest {
+        // PR review #3: WorkManager OS-kill / process death 反复 cancel 一个 row 不能让
+        // retryCount 静默累积到 max_attempts。CancellationException 路径用 revertClaim
+        // (跟 epoch-abort 对称), 跨 N 次 cancel 后 retryCount 仍是 0。
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                throw CancellationException("WorkManager OS-kill")
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+
+        // 模拟连续 3 次 WorkManager cancel — 每次 drainOnce 都会跑到 dispatch 抛
+        // CancellationException, 引擎应该 revertClaim 然后 rethrow。
+        repeat(3) {
+            assertFailsWith<CancellationException> {
+                engine.drainOnce()
+            }
+        }
+
+        // 3 次 cancel 后, retryCount 仍是 0(每次 revertClaim 抵消了 tryClaim 的 +1),
+        // status 是 PENDING(下一次 drain 还能 claim)。max_attempts 没被消耗。
+        val row = outbox.activeForTarget("expense:1").single()
+        assertEquals(PendingMutationStatus.Pending, row.status)
+        assertEquals(0, row.retryCount, "cancellation 不该算一次尝试, 否则 N 次 WorkManager kill 后 max_attempts 假性触发")
+        assertEquals(null, row.attemptedAt)
+    }
+
+    @Test
+    fun userRetryAfterMaxAttemptsResetsRetryCountAndReopensBudget() = runTest {
+        // codex P1 #7 follow-up: max_attempts 触发后用户在 SyncStatusScreen 点 Retry,
+        // 必须真的拿到完整重试预算 — retryCount 重置 0, 不然下次 drain 立刻又超
+        // max_attempts → 永困 FAILED。本测试覆盖 PR description 承诺但之前没断言的核心
+        // 行为(原 PR review P2 gap)。
+        val dao = FakePendingMutationDao()
+        val outbox = OutboxRepository(dao = dao)
+        val engine = OutboxDrainEngine(
+            outbox,
+            listOf(StubDispatcher(result = DispatchResult.RetryableFailure("server 503"))),
+            maxAttempts = 2,
+        )
+        val rowId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+
+        // Pass 1+2: retryCount 0→1→2, attempts=2 >= 2 → FAILED
+        engine.drainOnce()
+        engine.drainOnce()
+        val failed = outbox.activeForTarget("expense:1").single()
+        assertEquals(PendingMutationStatus.Failed, failed.status)
+        assertEquals(2, failed.retryCount)
+
+        // 用户 Retry: row 回 PENDING + retryCount 重置 0 + lastError 记 manual_retry
+        val resolved = outbox.resolveFailed(rowId, FailedResolution.Retry())
+        assertEquals(true, resolved)
+        val reset = outbox.activeForTarget("expense:1").single()
+        assertEquals(PendingMutationStatus.Pending, reset.status)
+        assertEquals(0, reset.retryCount, "用户 Retry 必须重置预算, 否则下次 drain 又被拦")
+        assertEquals("manual_retry", reset.lastError)
+
+        // Pass 3: 新预算, retryCount 0→1, attempts=1 < 2, 仍可继续重试
+        val third = engine.drainOnce()
+        assertEquals(1, third.retryable, "重置后的 row 必须重新进入重试循环, 不能再被 max_attempts 拦")
+        assertEquals(1, outbox.activeForTarget("expense:1").single().retryCount)
     }
 
     private fun withDispatcher(

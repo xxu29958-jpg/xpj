@@ -26,6 +26,7 @@ class OutboxDrainWorkerTest {
         discarded: Int = 0,
         unsupported: Int = 0,
         raced: Int = 0,
+        aborted: Int = 0,
     ) = DrainSummary(
         attempted = attempted,
         done = done,
@@ -35,6 +36,7 @@ class OutboxDrainWorkerTest {
         discarded = discarded,
         unsupported = unsupported,
         raced = raced,
+        aborted = aborted,
     )
 
     @Test
@@ -120,6 +122,30 @@ class OutboxDrainWorkerTest {
         assertEquals(
             DrainOutcome.SUCCESS,
             OutboxDrainWorker.classify(summary(attempted = 3, raced = 3)),
+        )
+    }
+
+    @Test
+    fun `aborted only → RETRY`() {
+        // PR review #2: epoch-abort now calls revertClaimWithoutAttempt, which
+        // sets the row back to PENDING with attemptedAt cleared. These rows ARE
+        // actionable work for the next drain (once binding stabilises). RETRY
+        // tells WorkManager to back off briefly and re-fire, instead of waiting
+        // out the 15-min periodic tick.
+        assertEquals(
+            DrainOutcome.RETRY,
+            OutboxDrainWorker.classify(summary(attempted = 3, aborted = 3)),
+        )
+    }
+
+    @Test
+    fun `mixed done plus aborted → SUCCESS`() {
+        // At least one row resolved cleanly. SUCCESS keeps the normal periodic
+        // cadence — the aborted rows will be picked up by the next tick under
+        // the post-binding-transition state.
+        assertEquals(
+            DrainOutcome.SUCCESS,
+            OutboxDrainWorker.classify(summary(attempted = 4, done = 1, aborted = 3)),
         )
     }
 

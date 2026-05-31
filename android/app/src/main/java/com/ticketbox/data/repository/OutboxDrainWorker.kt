@@ -151,10 +151,14 @@ class OutboxDrainWorker(
                     summary.unsupported > 0 -> DrainOutcome.SUCCESS
 
                 // Pure transient-failure batch (every row came back
-                // RetryableFailure). Tell WorkManager to back off;
-                // no point firing again immediately when the
-                // underlying network blip hasn't recovered.
-                summary.retryable > 0 -> DrainOutcome.RETRY
+                // RetryableFailure) OR aborted-only batch (epoch flipped
+                // mid-drain, rows reverted to PENDING by
+                // revertClaimWithoutAttempt). Tell WorkManager to back off
+                // and retry. PR review #2: pre-PR aborted didn't write to DB
+                // so SUCCESS made sense; post-PR aborted rows ARE actionable
+                // PENDING work for the next drain, treating them as SUCCESS
+                // means a 15-min wait for the periodic tick.
+                summary.retryable > 0 || summary.aborted > 0 -> DrainOutcome.RETRY
 
                 // All-raced (every row lost the atomic claim to a
                 // concurrent drain). Treat as SUCCESS; the winning
