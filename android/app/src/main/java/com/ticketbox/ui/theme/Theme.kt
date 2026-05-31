@@ -54,80 +54,97 @@ import com.ticketbox.ui.design.stateTokensForSkin
 import com.ticketbox.ui.design.swipeActionTokensForSkin
 import com.ticketbox.ui.design.themeVisualsForSkin
 
-private val PaperScheme = lightColorScheme(
-    primary = Color(0xFF8A5A2B),
-    onPrimary = Color(0xFFFBF8F1),
-    primaryContainer = Color(0xFFEFE1CB),
-    onPrimaryContainer = Color(0xFF5A3A14),
-    secondary = Color(0xFF1C1A18),
-    onSecondary = Color(0xFFFBF8F1),
-    secondaryContainer = Color(0xFFECE7D8),
-    onSecondaryContainer = Color(0xFF4A463F),
-    tertiary = Color(0xFF4F6B3A),
-    onTertiary = Color(0xFFFBF8F1),
-    tertiaryContainer = Color(0xFFD9E0C4),
-    onTertiaryContainer = Color(0xFF2E4220),
-    background = Color(0xFFF3EFE6),
-    onBackground = Color(0xFF1C1A18),
-    surface = Color(0xFFFBF8F1),
-    onSurface = Color(0xFF1C1A18),
-    surfaceVariant = Color(0xFFF5F0E3),
-    onSurfaceVariant = Color(0xFF4A463F),
-    outline = Color(0x8F8A5A2B),
-    outlineVariant = Color(0x428A5A2B),
-    error = Color(0xFFA4361C),
-    onError = Color(0xFFFBF8F1),
-)
+// Material3 colorScheme —— 核心槽位从 ThemeVisuals / StateTokens 派生(单一真相源,
+// 刷新调色板时自动跟随,不再静默漂移)。仅 M3 专属的 on-container 对比文字 /
+// tertiaryContainer 保留字面量(它们不对应任何共享 token,是 M3 的可读性计算值);
+// outline 系列用 primary 加 alpha 派生,RGB 跟随品牌色。
+// 取值保真性由 release_audit 的 token-parity lane + 提交前脚本逐槽位核对(0 漂移)。
+private val PaperScheme = run {
+    val v = themeVisualsForSkin(AppSkin.Paper)
+    val s = stateTokensForSkin(AppSkin.Paper)
+    lightColorScheme(
+        primary = v.primary,
+        onPrimary = v.textOnPrimary,
+        primaryContainer = v.brandPrimaryBg,
+        onPrimaryContainer = Color(0xFF5A3A14),
+        secondary = v.textDefault,
+        onSecondary = v.textOnPrimary,
+        secondaryContainer = s.neutral.bg,
+        onSecondaryContainer = v.textMuted,
+        tertiary = s.success.fg,
+        onTertiary = v.textOnPrimary,
+        tertiaryContainer = s.success.bg,
+        onTertiaryContainer = Color(0xFF2E4220),
+        background = v.backgroundBottom,
+        onBackground = v.textDefault,
+        surface = v.solidCard,
+        onSurface = v.textDefault,
+        surfaceVariant = v.surfaceSunken,
+        onSurfaceVariant = v.textMuted,
+        outline = v.primary.copy(alpha = 0x8F / 255f),
+        outlineVariant = v.primary.copy(alpha = 0x42 / 255f),
+        error = s.danger.fg,
+        onError = v.textOnPrimary,
+    )
+}
 
-private val MonoScheme = lightColorScheme(
-    primary = Color(0xFF0E0E0C),
-    onPrimary = Color(0xFFFAFAF8),
-    primaryContainer = Color(0xFFE3E2DD),
-    onPrimaryContainer = Color(0xFF000000),
-    secondary = Color(0xFF6F6E6A),
-    onSecondary = Color(0xFFFAFAF8),
-    secondaryContainer = Color(0xFFE3E2DD),
-    onSecondaryContainer = Color(0xFF3A3A37),
-    tertiary = Color(0xFF2C5036),
-    onTertiary = Color(0xFFFAFAF8),
-    tertiaryContainer = Color(0xFFD6E2D6),
-    onTertiaryContainer = Color(0xFF15301C),
-    background = Color(0xFFEDEDEA),
-    onBackground = Color(0xFF0E0E0C),
-    surface = Color(0xFFFAFAF8),
-    onSurface = Color(0xFF0E0E0C),
-    surfaceVariant = Color(0xFFF1F0ED),
-    onSurfaceVariant = Color(0xFF3A3A37),
-    outline = Color(0x990E0E0C),
-    outlineVariant = Color(0x330E0E0C),
-    error = Color(0xFF8E1D12),
-    onError = Color(0xFFFAFAF8),
-)
+private val MonoScheme = run {
+    val v = themeVisualsForSkin(AppSkin.Mono)
+    val s = stateTokensForSkin(AppSkin.Mono)
+    lightColorScheme(
+        primary = v.primary,
+        onPrimary = v.textOnPrimary,
+        primaryContainer = v.brandPrimaryBg,
+        onPrimaryContainer = v.primaryDark,
+        secondary = v.accent,
+        onSecondary = v.textOnPrimary,
+        secondaryContainer = s.neutral.bg,
+        onSecondaryContainer = v.textMuted,
+        tertiary = s.success.fg,
+        onTertiary = v.textOnPrimary,
+        tertiaryContainer = s.success.bg,
+        onTertiaryContainer = Color(0xFF15301C),
+        background = v.backgroundBottom,
+        onBackground = v.textDefault,
+        surface = v.solidCard,
+        onSurface = v.textDefault,
+        surfaceVariant = v.surfaceSunken,
+        onSurfaceVariant = v.textMuted,
+        outline = v.primary.copy(alpha = 0x99 / 255f),
+        outlineVariant = v.primary.copy(alpha = 0x33 / 255f),
+        error = s.danger.fg,
+        onError = v.textOnPrimary,
+    )
+}
 
-private val MidnightScheme = darkColorScheme(
-    primary = Color(0xFFD6B487),
-    onPrimary = Color(0xFF15171C),
-    primaryContainer = Color(0xFF8A6A3E),
-    onPrimaryContainer = Color(0xFFF0D9B3),
-    secondary = Color(0xFFB89564),
-    onSecondary = Color(0xFF15171C),
-    secondaryContainer = Color(0xFF222530),
-    onSecondaryContainer = Color(0xFFE9E7DF),
-    tertiary = Color(0xFFA8B88A),
-    onTertiary = Color(0xFF15171C),
-    tertiaryContainer = Color(0xFF2C3220),
-    onTertiaryContainer = Color(0xFFCCD9B8),
-    background = Color(0xFF0C0D10),
-    onBackground = Color(0xFFE9E7DF),
-    surface = Color(0xFF15171C),
-    onSurface = Color(0xFFE9E7DF),
-    surfaceVariant = Color(0xFF1C1F25),
-    onSurfaceVariant = Color(0xFFB8B4A8),
-    outline = Color(0xAAD6B487),
-    outlineVariant = Color(0x47D6B487),
-    error = Color(0xFFD97757),
-    onError = Color(0xFF15171C),
-)
+private val MidnightScheme = run {
+    val v = themeVisualsForSkin(AppSkin.Midnight)
+    val s = stateTokensForSkin(AppSkin.Midnight)
+    darkColorScheme(
+        primary = v.primary,
+        onPrimary = v.textOnPrimary,
+        primaryContainer = v.accent,
+        onPrimaryContainer = Color(0xFFF0D9B3),
+        secondary = v.primaryDark,
+        onSecondary = v.textOnPrimary,
+        secondaryContainer = v.surfaceRaised,
+        onSecondaryContainer = v.textDefault,
+        tertiary = s.success.fg,
+        onTertiary = v.textOnPrimary,
+        tertiaryContainer = Color(0xFF2C3220),
+        onTertiaryContainer = Color(0xFFCCD9B8),
+        background = v.backgroundBottom,
+        onBackground = v.textDefault,
+        surface = v.solidCard,
+        onSurface = v.textDefault,
+        surfaceVariant = v.surfaceSunken,
+        onSurfaceVariant = v.textMuted,
+        outline = v.primary.copy(alpha = 0xAA / 255f),
+        outlineVariant = v.primary.copy(alpha = 0x47 / 255f),
+        error = s.danger.fg,
+        onError = v.textOnPrimary,
+    )
+}
 
 // M3 Shapes 派生自 [AppRadius] —— 不再硬编码 dp,与三端 design scale 真同步。
 // 映射规则:
