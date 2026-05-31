@@ -14,25 +14,25 @@ Endpoints:
 
 from __future__ import annotations
 
-from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
 from app.network_boundary import require_owner_console_local
-from app.routes.owner_console import _base, _format_owner_datetime
+from app.routes.owner_console import _base
+from app.routes.owner_console._shared import templates
 from app.services import invitation_service, ledger_service
 from app.services import owner_console_service as svc
 from app.version import BACKEND_VERSION  # noqa: F401  (kept for parity with sibling pages)
 
-_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "owner"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
-templates.env.filters["owner_datetime"] = _format_owner_datetime
+# CSRF 修复:复用 owner_console._shared 的共享 templates(已带 context_processors=[csrf_context]
+# 与 owner_datetime filter)。此前本模块自建 Jinja2Templates 漏了 csrf_context,真实浏览器下
+# 本页 POST 表单拿不到 <meta name="csrf-token">,会被 /owner CSRF 中间件 403(TestClient
+# 豁免 CSRF 故没测出)。共享单实例后这类"自建漏 processor"隐患整类消除。
 
 
 router = APIRouter(prefix="/owner", tags=["owner-console"])
