@@ -23,11 +23,11 @@ val LocalStateTokens = compositionLocalOf { stateTokensForSkin(AppSkin.Default) 
 fun stateTokensForSkin(skin: AppSkin): StateTokens {
     return when (skin) {
         AppSkin.Paper -> StateTokens(
-            success = StateTone(Color(0xFFD9E0C4), Color(0xFF4F6B3A), Color(0xFFBCCAA6)),
-            warn = StateTone(Color(0xFFF5E3C0), Color(0xFF7C4F0F), Color(0xFFE3CB91)),
-            danger = StateTone(Color(0xFFF1D4CB), Color(0xFFA4361C), Color(0xFFE2B3A5)),
-            info = StateTone(Color(0xFFDCE6E8), Color(0xFF3A5560), Color(0xFFBCCDD1)),
-            neutral = StateTone(Color(0xFFECE7D8), Color(0xFF807968), Color(0xFFD6CFBE)),
+            success = StateTone(Color(0xFFE7EFDD), Color(0xFF3F6B2E), Color(0xFFC8DBB4)),
+            warn = StateTone(Color(0xFFF6ECD7), Color(0xFF8A5A12), Color(0xFFE6D3A6)),
+            danger = StateTone(Color(0xFFF6E2D9), Color(0xFFB23A1E), Color(0xFFECC3B5)),
+            info = StateTone(Color(0xFFE3ECEE), Color(0xFF3A5560), Color(0xFFC6D6DA)),
+            neutral = StateTone(Color(0xFFEEEDE7), Color(0xFF63635E), Color(0xFFDCDAD2)),
         )
         AppSkin.Mono -> StateTokens(
             success = StateTone(Color(0xFFD6E2D6), Color(0xFF2C5036), Color(0xFFB7C9B8)),

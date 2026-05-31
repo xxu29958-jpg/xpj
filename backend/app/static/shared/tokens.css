@@ -19,46 +19,47 @@
 
 :root,
 :root[data-theme="paper"] {
-    /* Surface — 温润米白底 */
-    --surface-app: #f3efe6;
-    --surface-card: #fbf8f1;
+    /* Surface — 暖中性底 + 纯白卡（方案B refresh：卡片从暖底"弹"出来） */
+    --surface-app: #f8f7f4;
+    --surface-card: #ffffff;
     --surface-raised: #ffffff;
-    --surface-nav: #1c1a18;
-    --surface-sunken: #f5f0e3;
+    --surface-nav: #21201c;
+    --surface-sunken: #f1efea;
 
-    /* Text — 墨色四级 */
-    --text-default: #1c1a18;
-    --text-muted: #4a463f;
-    --text-meta: #807968;
-    --text-faint: #b3ad9d;
-    --text-on-primary: #fbf8f1;
+    /* Text — 墨色四级（暖中性，最重 SemiBold 即止） */
+    --text-default: #21201c;
+    --text-muted: #63635e;
+    --text-meta: #9c9b96;
+    --text-faint: #bebcb5;
+    --text-on-primary: #ffffff;
 
-    /* Brand — 茶铜强调 */
-    --brand-primary: #8a5a2b;
-    --brand-primary-strong: #6f4621;
-    --brand-accent: #d6b487;
-    --brand-primary-bg: #efe1cb;
-    --brand-focus-ring: rgba(138, 90, 43, 0.40);
+    /* Brand — 精炼铜（只用主 CTA / 选中态；金额永远用墨） */
+    --brand-primary: #a0561f;
+    --brand-primary-strong: #864718;
+    --brand-accent: #c99a5b;
+    --brand-primary-bg: #f3ebe2;
+    --brand-focus-ring: rgba(160, 86, 31, 0.40);
 
     /* State */
-    --state-success-bg: #d9e0c4; --state-success-fg: #4f6b3a; --state-success-border: #bccaa6;
-    --state-warn-bg:    #f5e3c0; --state-warn-fg:    #7c4f0f; --state-warn-border:    #e3cb91;
-    --state-danger-bg:  #f1d4cb; --state-danger-fg:  #a4361c; --state-danger-border:  #e2b3a5;
-    --state-info-bg:    #dce6e8; --state-info-fg:    #3a5560; --state-info-border:    #bccdd1;
-    --state-neutral-bg: #ece7d8; --state-neutral-fg: #807968; --state-neutral-border: #d6cfbe;
+    --state-success-bg: #e7efdd; --state-success-fg: #3f6b2e; --state-success-border: #c8dbb4;
+    --state-warn-bg:    #f6ecd7; --state-warn-fg:    #8a5a12; --state-warn-border:    #e6d3a6;
+    --state-danger-bg:  #f6e2d9; --state-danger-fg:  #b23a1e; --state-danger-border:  #ecc3b5;
+    --state-info-bg:    #e3ecee; --state-info-fg:    #3a5560; --state-info-border:    #c6d6da;
+    --state-neutral-bg: #eeede7; --state-neutral-fg: #63635e; --state-neutral-border: #dcdad2;
 
     /* Borders / radii / shadows */
-    --border-card: #e3e0d6;
-    --border-input: #c8c2b3;
-    --control-border: rgba(138, 90, 43, 0.26);
-    --control-border-hover: rgba(138, 90, 43, 0.44);
-    --control-border-active: rgba(138, 90, 43, 0.62);
-    --control-press-bg: rgba(138, 90, 43, 0.10);
-    --radius-card: 10px;
+    --border-card: #eceae3;
+    --border-input: #d8d5cc;
+    --control-border: rgba(160, 86, 31, 0.26);
+    --control-border-hover: rgba(160, 86, 31, 0.44);
+    --control-border-active: rgba(160, 86, 31, 0.62);
+    --control-press-bg: rgba(160, 86, 31, 0.10);
+    --radius-card: 16px;
     --radius-input: 6px;
     --radius-pill: 999px;
-    --shadow-card: 0 1px 3px rgba(0,0,0,.06);
-    --shadow-raised: 0 4px 16px rgba(28,26,24,.10);
+    /* 暖调分层柔阴影（非纯黑，让白卡从暖底浮起） */
+    --shadow-card: 0 1px 2px hsl(36 22% 16% / .05), 0 6px 18px hsl(36 22% 16% / .05);
+    --shadow-raised: 0 2px 6px hsl(36 22% 16% / .06), 0 14px 36px hsl(36 22% 16% / .10);
 
     /* Chart — 8 色调色板 */
     --chart-series-1: #8a5a2b;

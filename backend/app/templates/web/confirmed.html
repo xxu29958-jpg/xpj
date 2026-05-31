@@ -1,11 +1,19 @@
 {% extends "base.html" %}
 {% block title %}已确认 · 小票夹{% endblock %}
 
+{# 类目 → 图标配色 class（方案B：食/购/行 分色；其余落 other） #}
+{% set _icmap = {'餐饮': 'food', '购物': 'shop', '交通': 'trans', '娱乐': 'fun', '居家': 'home', '居住': 'home', '医疗': 'health'} %}
+
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">{{ selected_month }} · {{ month_total_count }} 笔已入账。</h1>
-  <div class="page-sub">
-    按发生时间倒序排列。月份切换在右上角。点击任意一行进入编辑。
+{# ── 月份 chip + 英雄月合计 ── #}
+<div class="ledger-hero">
+  <span class="lh-month">{{ selected_month }} ▾</span>
+  {% set _t = ('%.2f' % month_total_amount_yuan).split('.') %}
+  <div class="lh-amt"><span class="cur">{{ home_currency_symbol }}</span><span class="int">{{ _t[0] }}</span><span class="dec">.{{ _t[1] }}</span></div>
+  <div class="lh-ctx">
+    <b>{{ month_total_count }}</b> 笔<span class="dot"></span>已确认支出
+    {%- if month_total_count > 0 %}<span class="dot"></span>笔均 <b>{{ home_currency_symbol }}{{ '%.0f' % (month_total_amount_yuan / month_total_count) }}</b>{% endif %}
+    {%- if by_day | length > 0 %}{% set _dm = (by_day | map(attribute='amount_yuan') | list | max) %}<span class="dot"></span>日峰 <b>{{ home_currency_symbol }}{{ '%.0f' % _dm }}</b>{% endif %}
   </div>
 </div>
 
@@ -18,37 +26,92 @@
 <div class="readonly-callout confirmed-flash">{{ flash_message }}</div>
 {% endif %}
 
-<div class="month-overview">
-  {# 月度概览 #}
-  <div class="dt-card">
-    <div class="card-head">
-      <div class="card-title">月度概览</div>
-      <div class="card-sub">仅已确认</div>
-    </div>
-    {% set _t_parts = ('%.2f' % month_total_amount_yuan).split('.') %}
-    <div class="kpi-amount">
-      <span class="yuan">{{ home_currency_symbol }}</span>{{ _t_parts[0] }}<span class="decimals">.{{ _t_parts[1] }}</span>
-    </div>
-    <div class="trend-foot trend-foot--gap">
-      <div>笔数<span class="num">{{ month_total_count }}</span></div>
-      {% if month_total_count > 0 %}
-      <div>笔均<span class="num">{{ home_currency_symbol }}{{ '%.2f' % (month_total_amount_yuan / month_total_count) }}</span></div>
-      {% endif %}
-      {% if by_day | length > 0 %}
-      {% set _day_max = (by_day | map(attribute='amount_yuan') | list | max) %}
-      <div>日峰值<span class="num">{{ home_currency_symbol }}{{ '%.0f' % _day_max }}</span></div>
-      {% endif %}
-    </div>
-  </div>
+{# ── 类目筛选 tab（客户端即时过滤；增强自概念图的静态 tab，见 ledger-filter.js） ── #}
+{% set _cats = [] %}
+{% for e in expenses %}{% if e.category and e.category not in _cats %}{% set _ = _cats.append(e.category) %}{% endif %}{% endfor %}
+{% if _cats | length > 1 %}
+<div class="lfilter" data-ledger-filter>
+  <button type="button" class="lf on" data-cat="">全部</button>
+  {% for c in _cats %}<button type="button" class="lf" data-cat="{{ c }}">{{ c }}</button>{% endfor %}
+</div>
+{% endif %}
 
-  {# 日历热力图 #}
+{# ── 流水：按日分组 · 类目图标行制 ── #}
+<div class="dt-card ledger-stream">
+  {% set _groups = {} %}
+  {% set _order = [] %}
+  {% for e in expenses %}
+    {% set _d = e.expense_time[:10] if e.expense_time else (e.created_at[:10] if e.created_at else '—') %}
+    {% if _d not in _groups %}{% set _ = _groups.update({_d: []}) %}{% set _ = _order.append(_d) %}{% endif %}
+    {% set _ = _groups[_d].append(e) %}
+  {% endfor %}
+  {% if expenses | length == 0 %}
+  <div class="empty-cell">该月还没有已确认账单。</div>
+  {% else %}
+    {% if can_write %}
+    <div class="confirmed-batch-head">
+      <div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择本页全部账单"></div>
+      <span>本页批处理</span>
+      <span class="hint">只会修改已入账账单的分类或标签</span>
+    </div>
+    {% endif %}
+    {% for d in _order %}
+    {% set _items = _groups[d] %}
+    {% set _day_sum = _items | sum(attribute='amount_cents') %}
+    <div class="lday">
+      <span class="lday-d">{{ d[5:7] }} 月 {{ d.split('-')[2] if '-' in d else d }} 日</span>
+      <span class="lday-n">{{ _items | length }} 笔</span>
+      <span class="lday-s">{{ home_currency_symbol }}{{ '%.2f' % (_day_sum / 100) }}</span>
+    </div>
+      {% for e in _items %}
+      {# amount_label 已是带原币符号的完整串（FX 时是原币如 $12.34,本币时是 ¥X）;
+         只把末尾小数拆出来做灰显,不改符号、不强加 ¥。 #}
+      {% set _ap = (e.amount_label or '未识别').rsplit('.', 1) %}
+      <a class="timeline-row lrow{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}" data-cat="{{ e.category or '' }}">
+        {% if can_write %}
+        <div class="lrow-sel" data-stop="true">
+          <div class="checkbox row-check" data-id="{{ e.id }}" data-updated-at="{{ e.updated_at_iso }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
+        </div>
+        {% endif %}
+        <div class="lrow-ic {{ _icmap.get(e.category, 'other') }}">{{ (e.category or '·')[:1] }}</div>
+        <div class="lrow-mid">
+          <div class="lrow-merch">{{ e.merchant or '未填写商家' }}</div>
+          <div class="lrow-meta">
+            <span class="num">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '—' }}</span>
+            <span class="sep">·</span><span>{{ e.category or '未分类' }}</span>
+          </div>
+        </div>
+        <div class="lrow-amt">
+          <span class="amt-main">{% if _ap | length == 2 %}{{ _ap[0] }}<span class="d">.{{ _ap[1] }}</span>{% else %}{{ _ap[0] }}{% endif %}</span>
+          {% if e.fx_meta %}<span class="amt-fx">{{ e.fx_meta }}</span>{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    {% endfor %}
+  {% endif %}
+
+  {% if total_pages > 1 %}
+  <div class="pager-row">
+    {% if page > 1 %}
+    <a class="dt-btn ghost" href="?{{ pager_query }}&page={{ page - 1 }}">‹ 上一页</a>
+    {% endif %}
+    <span class="pager-info">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
+    {% if page < total_pages %}
+    <a class="dt-btn ghost" href="?{{ pager_query }}&page={{ page + 1 }}">下一页 ›</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{# ── 本月概况（次要：日历热力 + 来源，下沉到流水之后） ── #}
+<div class="month-overview month-overview--secondary">
   <div class="dt-card">
     <div class="card-head">
       <div class="card-title">日历视图</div>
       <div class="card-sub">{{ selected_month }}</div>
     </div>
     {% set _byday_map = {} %}
-    {% for d in by_day %}{% set _ = _byday_map.update({d.date: d}) %}{% endfor %}
+    {% for dd in by_day %}{% set _ = _byday_map.update({dd.date: dd}) %}{% endfor %}
     {% if selected_month and '-' in selected_month %}
       {% set _yparts = selected_month.split('-') %}
       {% set _y = _yparts[0] | int %}
@@ -76,7 +139,6 @@
     {% endif %}
   </div>
 
-  {# 来源占比 #}
   <div class="dt-card">
     <div class="card-head">
       <div class="card-title">来源</div>
@@ -96,76 +158,6 @@
   </div>
 </div>
 
-{# 时间线（按日分组） #}
-<div class="dt-card dt-card--timeline">
-  {% set _groups = {} %}
-  {% set _order = [] %}
-  {% for e in expenses %}
-    {% set _d = e.expense_time[:10] if e.expense_time else (e.created_at[:10] if e.created_at else '—') %}
-    {% if _d not in _groups %}{% set _ = _groups.update({_d: []}) %}{% set _ = _order.append(_d) %}{% endif %}
-    {% set _ = _groups[_d].append(e) %}
-  {% endfor %}
-  {% if expenses | length == 0 %}
-  <div class="empty-cell">该月还没有已确认账单。</div>
-  {% else %}
-    {% if can_write %}
-    <div class="confirmed-batch-head">
-      <div class="checkbox" id="check-all" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择本页全部账单"></div>
-      <span>本页批处理</span>
-      <span class="hint">只会修改已入账账单的分类或标签</span>
-    </div>
-    {% endif %}
-    {% for d in _order %}
-    {% set _items = _groups[d] %}
-    {% set _day_sum = _items | sum(attribute='amount_cents') %}
-    <div class="day-group">
-      <div class="day-label">
-        <span class="big">{{ d.split('-')[2] if '-' in d else d }}</span>
-        {{ d[5:7] }} 月 · {{ _items | length }} 笔
-        <span class="sum">{{ home_currency_symbol }}{{ '%.2f' % (_day_sum / 100) }}</span>
-      </div>
-      <div>
-        {% for e in _items %}
-        <a class="timeline-row{% if can_write %} has-check{% endif %}" href="/web/expenses/{{ e.id }}/edit{{ _q }}">
-          {% if can_write %}
-          <div data-stop="true">
-            <div class="checkbox row-check" data-id="{{ e.id }}" data-updated-at="{{ e.updated_at_iso }}" role="checkbox" aria-checked="false" tabindex="0" aria-label="选择账单 #{{ e.id }}"></div>
-          </div>
-          {% endif %}
-          <div class="timeline-time">{{ e.expense_time[11:16] if e.expense_time and ' ' in e.expense_time else '' }}</div>
-          <div>
-            <div class="timeline-merch">{{ e.merchant or '（未填）' }}</div>
-            <div class="timeline-meta">
-              <span>{{ e.category or '未分类' }}</span>
-              <span class="timeline-sep">·</span>
-              <span>{{ e.source_label }}</span>
-              <span class="timeline-sep">·</span>
-              <span class="font-num">#{{ e.id }}</span>
-            </div>
-          </div>
-          <div class="timeline-amt">
-            {{ e.amount_label or '未识别' }}
-            {% if e.fx_meta %}<div class="timeline-meta">{{ e.fx_meta }}</div>{% endif %}
-          </div>
-        </a>
-        {% endfor %}
-      </div>
-    </div>
-    {% endfor %}
-  {% endif %}
-
-  {% if total_pages > 1 %}
-  <div class="pager-row">
-    {% if page > 1 %}
-    <a class="dt-btn ghost" href="?{{ pager_query }}&page={{ page - 1 }}">‹ 上一页</a>
-    {% endif %}
-    <span class="pager-info">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
-    {% if page < total_pages %}
-    <a class="dt-btn ghost" href="?{{ pager_query }}&page={{ page + 1 }}">下一页 ›</a>
-    {% endif %}
-  </div>
-  {% endif %}
-</div>
 {% if can_write and expenses | length > 0 %}
 <form id="bulk-form" method="post" action="/web/confirmed/batch-update" class="bulk-bar confirmed-bulk-bar" data-bulk>
   <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
