@@ -51,7 +51,12 @@ $ErrorActionPreference = "Stop"
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$BackupDir = Join-Path $ProjectRoot "backend\backups"
+$BackendRoot = Join-Path $ProjectRoot "backend"
+# 备份目录跟随数据根(与 app.config.DATA_ROOT / backup_service._BACKUP_DIR 一致;
+# 冻结 EXE 部署经 TICKETBOX_DATA_DIR 指向 ticketbox-data\)。codex P1 #6:
+# 此前 $BackupDir 硬编码 backend\backups,在冻结 EXE 部署下找不到真实 pre-v1.0 备份。
+$DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
+$BackupDir = Join-Path $DataRoot "backups"
 $RestoreScript = Join-Path $PSScriptRoot "restore_ticketbox_db.ps1"
 
 if (-not (Test-Path -LiteralPath $BackupDir)) {

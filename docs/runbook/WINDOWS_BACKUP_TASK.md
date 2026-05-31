@@ -21,8 +21,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbo
 备份文件写入：
 
 ```text
-backend/backups/
+<DATA_ROOT>/backups/
 ```
+
+`DATA_ROOT` 跟随部署形态(`backend/app/services/backup_service.py:_BACKUP_DIR = DATA_ROOT / "backups"`):
+
+- 源码运行(`uvicorn app.main:app` from `backend/`):`DATA_ROOT = backend/`,实际路径 `backend/backups/`。
+- 冻结 EXE 部署:启动器把 `TICKETBOX_DATA_DIR` 指到 `ticketbox-data\`,实际路径 `ticketbox-data\backups\`。
+- 任何运行形态下,实际路径都可以用 `Owner Console`「备份」页面看到。
 
 调整备份时间：
 
@@ -77,7 +83,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop_backend.ps1
 恢复指定备份：
 
 ```powershell
+# 源码运行(DATA_ROOT = backend):
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath "backend\backups\ticketbox-20260508-033000.db"
+# 冻结 EXE 部署(TICKETBOX_DATA_DIR=ticketbox-data\):
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -BackupPath "ticketbox-data\backups\ticketbox-20260508-033000.db"
 ```
 
 恢复脚本会：
@@ -92,7 +101,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db
 
 边界：
 
-- 不提交 `backend/backups/`。
+- 不提交 `backend/backups/` 或 `ticketbox-data/backups/`(`.gitignore` 已覆盖)。
 - 不把真实 Token 写进备份文档、日志或 Git。
 - 备份只在本机用 SQLite Online Backup API 生成一致快照，不上传云端。
 - 默认只保留最近 30 天的 `ticketbox-*.db` 备份。

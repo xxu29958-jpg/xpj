@@ -122,13 +122,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\maintenance_ticketbo
 - 每次大改前手动备份。
 - 不要把真实 Token 和备份数据库提交到 Git。
 
-备份目录：
+备份目录(`backend/app/services/backup_service.py:_BACKUP_DIR = DATA_ROOT / "backups"`):
 
 ```text
-backend/backups/
+<DATA_ROOT>/backups/
 ```
 
-该目录用于本机运维，不应提交。
+`DATA_ROOT` 跟随部署形态:源码运行 `backend/`,冻结 EXE 部署 `ticketbox-data/`。该目录用于本机运维，不应提交。
 
 ## 数据清理底线
 

@@ -166,13 +166,13 @@ cd E:\projects\xiaopiaojia\backend
 powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1
 ```
 
-备份位置：
+备份位置(跟随 `DATA_ROOT`):
 
 ```text
-backend\backups\
+<DATA_ROOT>\backups\
 ```
 
-默认保留最近 30 个备份，可用 `-Keep` 修改：
+源码运行是 `backend\backups\`,冻结 EXE 部署(`TICKETBOX_DATA_DIR=ticketbox-data\`)是 `ticketbox-data\backups\`。默认保留最近 30 个备份，可用 `-Keep` 修改：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1 -Keep 60
@@ -182,6 +182,7 @@ powershell -ExecutionPolicy Bypass -File scripts\backup_database.ps1 -Keep 60
 
 ```powershell
 cd E:\projects\xiaopiaojia
+# -BackupPath 用 DATA_ROOT 下实际位置(源码运行 backend\backups\,冻结 EXE ticketbox-data\backups\)。
 powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 `
   -BackupPath backend\backups\ticketbox-20260504-120000.db
 ```
