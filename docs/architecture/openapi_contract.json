@@ -1444,6 +1444,17 @@
         "title": "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post",
         "type": "object"
       },
+      "Body_web_expense_undo_web_expenses__expense_id__undo_post": {
+        "properties": {
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_expense_undo_web_expenses__expense_id__undo_post",
+        "type": "object"
+      },
       "Body_web_goals_archive_web_goals__public_id__archive_post": {
         "properties": {
           "ledger_id": {
@@ -20104,6 +20115,57 @@
         ]
       }
     },
+    "/web/expenses/{expense_id}/undo": {
+      "post": {
+        "operationId": "web_expense_undo_web_expenses__expense_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_expense_undo_web_expenses__expense_id__undo_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Expense Undo",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/export.csv": {
       "get": {
         "operationId": "web_export_csv_web_export_csv_get",
@@ -21241,6 +21303,38 @@
                 }
               ],
               "title": "Msg"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flash_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flash Type"
             }
           }
         ],

@@ -252,6 +252,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
+    "POST /web/expenses/{expense_id}/undo": Exempt(
+        "terminal_flag_flip", "expenses", ("expenses", "ledger_audit_logs")
+    ),
     "POST /web/goals/create": Exempt("create_row", "goals", ("goals",)),
     "POST /web/goals/{public_id}/archive": Exempt("terminal_flag_flip", "goals", ("goals",)),
     "POST /web/import/preview": Exempt("create_row", "imports", _IMPORT_CREATE),

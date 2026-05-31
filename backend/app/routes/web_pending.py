@@ -24,6 +24,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.expense_service import (
+    is_expense_in_status_for_tenant,
     list_pending,
 )
 from app.services.pending_review_bulk_service import (
@@ -80,6 +81,8 @@ def web_pending(
     ledger_id: str | None = None,
     filter: str | None = None,
     msg: str | None = None,
+    undo: str | None = None,
+    flash_type: str | None = None,
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -106,6 +109,28 @@ def web_pending(
     ctx["filtered_count"] = len(items)
     ctx["filter"] = filter_key
     ctx["flash_message"] = msg or ""
+    # ADR-0038 undo: success (green) vs error (red) flash. Only the two canonical
+    # values from the redirect map onto a banner style; anything else falls back
+    # to the legacy info style so the param can't drive arbitrary CSS classes.
+    ctx["flash_type"] = flash_type if flash_type in ("success", "error") else ""
+    # ADR-0038 undo: just-rejected expense_id; pending.html renders a 5s 撤销
+    # banner that POSTs to /web/expenses/{undo_expense_id}/undo. ``undo`` is a
+    # plain int string from the redirect query — invalid values just disable the
+    # banner (no error surface, since this is a soft affordance not a contract).
+    # Ownership check: the row must actually be in ``rejected`` state under the
+    # currently-selected ledger before we expose the undo affordance. A stale
+    # ``?undo=N`` in the URL (cross-ledger via the ledger selector, or a
+    # bookmark replay) won't render a misleading "可撤销" banner — the route
+    # itself is the source of truth (atomic UPDATE WHERE tenant_id, status), but
+    # the page also stops lying.
+    undo_expense_id: int | None = None
+    if undo and undo.isdigit():
+        candidate = int(undo)
+        if is_expense_in_status_for_tenant(
+            db, expense_id=candidate, tenant_id=selected_id, status="rejected"
+        ):
+            undo_expense_id = candidate
+    ctx["undo_expense_id"] = undo_expense_id
     ctx["needs_amount_count"] = sum(1 for it in raw_items if it["needs_amount"])
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))

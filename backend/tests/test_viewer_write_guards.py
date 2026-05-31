@@ -204,6 +204,7 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
         ),
         ("expense confirm", "/web/expenses/999/confirm", {"ledger_id": ledger_id}),
         ("expense reject", "/web/expenses/999/reject", {"ledger_id": ledger_id}),
+        ("expense undo", "/web/expenses/999/undo", {"ledger_id": ledger_id}),
         (
             "bulk review",
             "/web/review/bulk",

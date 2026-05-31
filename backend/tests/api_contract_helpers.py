@@ -254,6 +254,21 @@ def web_reject_expense(
     )
 
 
+def web_undo_expense(
+    client: TestClient,
+    expense_id: int,
+    *,
+    ledger_id: str = "owner",
+    follow_redirects: bool = False,
+) -> httpx.Response:
+    """ADR-0038 undo: /web/expenses/{id}/undo posted from the 5s 撤销 banner."""
+    return client.post(
+        f"/web/expenses/{expense_id}/undo",
+        data={"ledger_id": ledger_id},
+        follow_redirects=follow_redirects,
+    )
+
+
 def web_duplicates_action(
     client: TestClient,
     expense_id: int,

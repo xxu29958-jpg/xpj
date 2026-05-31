@@ -10,7 +10,36 @@ from app.models import Expense
 from app.services.expense_query import get_expense  # noqa: F401 — re-exported
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 
-__all__ = ["get_expense", "list_confirmed", "list_expenses_by_ids", "list_pending"]
+__all__ = [
+    "get_expense",
+    "is_expense_in_status_for_tenant",
+    "list_confirmed",
+    "list_expenses_by_ids",
+    "list_pending",
+]
+
+
+def is_expense_in_status_for_tenant(
+    db: Session, *, expense_id: int, tenant_id: str, status: str
+) -> bool:
+    """Cheap predicate: does this expense exist in [status] under [tenant_id].
+
+    ADR-0038 /web undo: the pending.html banner uses this to decide whether the
+    ``?undo=<id>`` query in the URL is still meaningful (right ledger, still
+    rejected, not yet purged). Soft affordance — the atomic UPDATE in
+    ``undo_reject_expense`` is the real authority; this is the page telling
+    the truth rather than rendering a misleading "可撤销" button.
+    """
+    return (
+        db.scalar(
+            ledger_scoped_select(Expense, tenant_id)
+            .with_only_columns(Expense.id)
+            .where(Expense.id == expense_id)
+            .where(Expense.status == status)
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def list_pending(db: Session, tenant_id: str) -> list[Expense]:
