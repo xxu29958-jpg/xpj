@@ -33,7 +33,7 @@
     <button type="submit" class="btn btn-primary">立即备份一次</button>
   </form>
   <p class="secret-note" style="margin-top:8px">
-    备份文件保存在 <code>backend\backups\</code>，与计划任务每日自动备份共用同一目录。<br>
+    备份文件保存在 <code>{{ backup_dir }}</code>，与计划任务每日自动备份共用同一目录。<br>
     恢复请使用 <code>scripts\restore_ticketbox_db.ps1</code>，本页不提供网页恢复，避免误操作。
   </p>
 </div>

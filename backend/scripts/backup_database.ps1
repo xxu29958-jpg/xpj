@@ -6,7 +6,10 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $BackendRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$BackupDir = Join-Path $BackendRoot "backups"
+# 备份目录跟随数据根:冻结 EXE / 显式 override 经 TICKETBOX_DATA_DIR 指定,否则 = backend 根
+# （与 app.config.DATA_ROOT / backup_service._BACKUP_DIR 一致,保证"备份可恢复"闭环跨部署形态成立）。
+$DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
+$BackupDir = Join-Path $DataRoot "backups"
 
 function Get-BackendEnvValue {
     param([Parameter(Mandatory = $true)][string]$Name)

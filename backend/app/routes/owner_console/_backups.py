@@ -76,6 +76,7 @@ def owner_backups_get(
     ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
     ctx["created_now"] = None
     ctx["error"] = None
+    ctx["backup_dir"] = backup_service.backup_directory_label()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
 
 
@@ -98,6 +99,7 @@ def owner_backups_create(
     ctx["latest"] = _backup_view([entries[0]])[0] if entries else None
     ctx["created_now"] = created
     ctx["error"] = error
+    ctx["backup_dir"] = backup_service.backup_directory_label()
     return templates.TemplateResponse(request=request, name="backups.html", context=ctx)
 
 

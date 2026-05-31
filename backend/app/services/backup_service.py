@@ -46,6 +46,16 @@ def _backup_dir() -> Path:
     return _BACKUP_DIR
 
 
+def backup_directory_label() -> str:
+    """备份目录的**相对**展示标签(如 ``backend\\backups`` / ``ticketbox-data\\backups``)。
+
+    只取数据根末段 + ``backups``,**不暴露主机绝对路径**(测试 no_uploads_path_leak
+    禁止页面出现 ``C:\\`` / ``E:\\``)。源码部署 = backend、冻结 EXE = ticketbox-data;
+    与维护/恢复脚本(已跟随 ``TICKETBOX_DATA_DIR``)写/读的位置一致。
+    """
+    return f"{_BACKUP_DIR.parent.name}\\{_BACKUP_DIR.name}"
+
+
 def _classify(name: str) -> str:
     if name.startswith("ticketbox-before-restore-"):
         return "pre-restore"

@@ -18,7 +18,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $BackendRoot = Join-Path $ProjectRoot "backend"
-$BackupDir = Join-Path $BackendRoot "backups"
+# 备份目录跟随数据根（与 app.config.DATA_ROOT 一致;冻结 EXE / override 经 TICKETBOX_DATA_DIR 指定）。
+$DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
+$BackupDir = Join-Path $DataRoot "backups"
 $BaseUrl = $ServerUrl.TrimEnd("/")
 
 function Get-BackendEnvValue {

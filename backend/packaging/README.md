@@ -25,6 +25,7 @@ ticketbox-backend.exe
 ticketbox-data/
 ├── ticketbox.db        SQLite 账本库（首次启动 create_all 自动建表）
 ├── uploads/            小票图片
+├── backups/            SQLite 备份快照（Owner Console「备份」按钮 / 计划任务写到这里）
 └── .env                可选：用户覆盖配置（PUBLIC_BASE_URL / OCR_* / 端口 等）
 ```
 
@@ -39,6 +40,16 @@ ticketbox-data/
 | `DATABASE_URL` | `sqlite:///<data>/ticketbox.db` | 数据库 |
 | `UPLOAD_DIR` | `<data>/uploads` | 上传目录 |
 | `PUBLIC_BASE_URL` | （空） | 隧道公网地址（如有） |
+
+### 备份与恢复
+
+备份快照写在 `ticketbox-data/backups/`（Owner Console 的「备份」按钮、计划任务都写这里——和 `app.config.DATA_ROOT` 一致）。冻结 EXE **自包含**,恢复不依赖源码版脚本:
+
+1. 停掉 `ticketbox-backend.exe`；
+2. 把 `ticketbox-data/backups/` 里要恢复的那个 `ticketbox-*.db` 覆盖到 `ticketbox-data/ticketbox.db`；
+3. 重新双击 EXE。
+
+源码/家庭服务器部署的备份脚本（`backend/scripts/backup_database.ps1`、`scripts/restore_ticketbox_db.ps1`、`scripts/maintenance_ticketbox.ps1`）已改为**跟随数据根**:设了 `TICKETBOX_DATA_DIR` 用它、否则用 `backend/`,所以它们与 app 写备份的位置始终一致。诊断类脚本（`diagnose_ticketbox.ps1` 等）仍按源码 `backend/` 布局,是家庭服务器自用工具,不用于冻结 EXE。
 
 ## 冻结要点（给维护者）
 
