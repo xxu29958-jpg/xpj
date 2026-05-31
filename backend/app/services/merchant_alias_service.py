@@ -13,6 +13,7 @@ from app.services.optimistic_concurrency import (
     claim_row_with_token,
 )
 from app.services.resource_audit import record_resource_action
+from app.services.soft_delete_policy import is_within_undo_window
 from app.services.time_service import now_utc
 
 
@@ -291,6 +292,9 @@ def undo_delete_merchant_alias(
         db, tenant_id=tenant_id, public_id=public_id
     )
     if item is None:
+        raise AppError("merchant_alias_not_found", status_code=404)
+    if not is_within_undo_window(item.deleted_at):
+        # 超过保留窗口:逻辑上应已被 cleanup purge,即使 purge 滞后也不再可恢复(与 purge 语义一致)。
         raise AppError("merchant_alias_not_found", status_code=404)
     live_holder = db.scalar(
         ledger_scoped_select(MerchantAlias, tenant_id)

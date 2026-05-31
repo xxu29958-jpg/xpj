@@ -138,6 +138,33 @@ def test_undo_live_or_missing_rule_returns_404(client: TestClient, *, identity) 
     assert missing.status_code == 404
 
 
+def test_undo_past_retention_window_returns_404(client: TestClient, *, identity) -> None:
+    """codex P1: a rule soft-deleted past the retention window must not be
+    undoable even before cleanup's purge runs — restore must match purge so a
+    lapsed row can never be resurrected during purge lag.
+    """
+    rule = _create_rule(client, identity=identity, keyword=f"{_KW}Stale")
+    _soft_delete(client, identity=identity, rule=rule)
+
+    # Backdate deleted_at past the 5-minute window (purge has not run yet).
+    with SessionLocal() as db:
+        row = db.get(CategoryRule, rule["id"])
+        assert row is not None
+        row.deleted_at = now_utc() - timedelta(minutes=6)
+        db.commit()
+        assert row.deleted_at is not None
+
+    undo = client.post(
+        f"/api/rules/categories/{rule['id']}/undo", headers=identity.app_headers
+    )
+    assert undo.status_code == 404, undo.text
+    assert undo.json()["error"] == "rule_not_found"
+
+    # And it stays gone from the list (the soft-delete still hides it).
+    listing = client.get("/api/rules/categories", headers=identity.app_headers)
+    assert all(r["id"] != rule["id"] for r in listing.json())
+
+
 def test_purge_removes_soft_deleted_past_retention(client: TestClient, *, identity) -> None:
     rule = _create_rule(client, identity=identity, keyword=f"{_KW}Purge")
     _soft_delete(client, identity=identity, rule=rule)

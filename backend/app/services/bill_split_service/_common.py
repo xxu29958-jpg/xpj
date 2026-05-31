@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, LedgerAuditLog, LedgerMember
+from app.models import Account, Ledger, LedgerAuditLog, LedgerMember
 
 INVITATION_TTL = timedelta(days=30)
 WRITER_ROLES = frozenset({"owner", "member"})
@@ -42,6 +42,13 @@ def _load_writer_member(
             "请选择你有写权限的账本。",
             status_code=403,
         )
+    archived_at = db.scalar(
+        select(Ledger.archived_at).where(Ledger.ledger_id == ledger_id)
+    )
+    if archived_at is not None:
+        # 归档账本「从 app 消失」(ledger lists/auth/invitations 都过滤 archived_at IS NULL);
+        # bill-split 不能例外:归档账本既不能发起也不能接收分账。
+        raise AppError("ledger_archived", "该账本已归档，无法操作。", status_code=409)
     return member
 
 

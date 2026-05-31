@@ -364,10 +364,17 @@ def test_duplicate_pending_invite_integrity_error_maps_to_contract(
         original_scalar = db.scalar
         scalar_calls = 0
 
+        # White-box: null out the active-split-total SELECT so the in-Python
+        # pre-check is bypassed and the genuine pre-existing pending invite is
+        # caught by the DB partial UNIQUE index path. The scalar-call order in
+        # create_invitation is: 1) writer-member lookup, 2) ledger archived_at
+        # guard, 3) expense lookup, 4) active-split-total sum, 5) duplicate
+        # pre-check — so the sum is call #4. (#2 was added with the F6 archived
+        # -ledger guard; before that the sum was #3.)
         def scalar_hiding_duplicate(statement, *args, **kwargs):
             nonlocal scalar_calls
             scalar_calls += 1
-            if scalar_calls == 3:
+            if scalar_calls == 4:
                 return None
             return original_scalar(statement, *args, **kwargs)
 

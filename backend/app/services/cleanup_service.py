@@ -14,13 +14,9 @@ from app.services.file_service import (
     resolve_upload_path_for_tenant,
     upload_reference_for_path,
 )
+from app.services.soft_delete_policy import SOFT_DELETE_RETENTION_MINUTES
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
-
-# ADR-0038 undo: server-side retention before a soft-deleted row is purged
-# for good. The client undo banner is a shorter UX window (~5s); this is the
-# server's grace period after which the row is gone permanently.
-SOFT_DELETE_RETENTION_MINUTES = 5
 
 
 @dataclass(frozen=True)

@@ -130,6 +130,31 @@ def test_recreate_while_soft_deleted_conflicts_then_undo_restores(client: TestCl
     assert undo.status_code == 200, undo.text
 
 
+def test_undo_past_retention_window_returns_404(client: TestClient, *, identity) -> None:
+    """codex P1: a soft-deleted row aged past the retention window must NOT be
+    undoable even when cleanup's purge has not run yet — restore semantics must
+    match purge, otherwise an expired row could be resurrected during purge lag.
+    """
+    created = _create(client, identity.app_headers)
+    _delete(client, identity.app_headers, created)
+
+    # Backdate deleted_at past the 5-minute window (purge has not run yet).
+    with SessionLocal() as db:
+        row = db.scalar(select(MerchantAlias).where(MerchantAlias.public_id == created["public_id"]))
+        assert row is not None
+        row.deleted_at = now_utc() - timedelta(minutes=6)
+        db.commit()
+        # Row physically still here — only the window has lapsed.
+        assert row.deleted_at is not None
+
+    undo = client.post(
+        f"/api/merchants/aliases/{created['public_id']}/undo",
+        headers=identity.app_headers,
+    )
+    assert undo.status_code == 404, undo.text
+    assert undo.json()["error"] == "merchant_alias_not_found"
+
+
 def test_purge_removes_aged_soft_deletes_and_spares_fresh(client: TestClient, *, identity) -> None:
     aged = _create(client, identity.app_headers, alias="AGED 店")
     fresh = _create(client, identity.app_headers, alias="FRESH 店")

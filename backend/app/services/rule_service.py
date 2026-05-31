@@ -19,6 +19,7 @@ from app.services.optimistic_concurrency import (
     claim_row_with_token,
 )
 from app.services.resource_audit import record_resource_action
+from app.services.soft_delete_policy import is_within_undo_window
 from app.services.tag_service import parse_tags, tag_key
 from app.services.time_service import now_utc
 
@@ -370,6 +371,9 @@ def undo_delete_rule(
     """
     rule = _find_soft_deleted_rule_for_tenant(db, tenant_id=tenant_id, rule_id=rule_id)
     if rule is None:
+        raise AppError("rule_not_found", status_code=404)
+    if not is_within_undo_window(rule.deleted_at):
+        # 超过保留窗口:逻辑上应已被 cleanup purge,即使 purge 滞后也不再可恢复(与 purge 语义一致)。
         raise AppError("rule_not_found", status_code=404)
     rule.deleted_at = None
     rule.updated_at = now_utc()
