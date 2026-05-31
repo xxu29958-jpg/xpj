@@ -48,11 +48,17 @@ def mask_token(value: str | None) -> str:
 def safe_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
     """Return a redacted copy of an HTTP header mapping for logging.
 
-    - Bearer / cookie / upload-token / bootstrap-secret fields collapse to ``***``
+    - Bearer / cookie / upload-token / bootstrap-secret / Cloudflare Access JWT /
+      CSRF token fields collapse to ``***``
     - ``Referer`` / ``Origin`` values keep scheme + host but any ``/u/<key>``
       path inside them is masked (a browser-sent Referer can include the upload
       link if a user clicks an in-page link from /u/...; without this rule the
       upload_key would leak into the 5xx log via the Referer header).
+
+    codex P2: ``cf-access-jwt-assertion`` carries the Cloudflare Access user
+    identity JWT, ``x-csrf-token`` carries the per-session CSRF token. Both are
+    bearer-class secrets in the same sense as ``Authorization`` and must never
+    appear in 5xx error logs.
     """
 
     if not headers:
@@ -60,7 +66,15 @@ def safe_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
     redacted: dict[str, str] = {}
     for key, value in headers.items():
         lk = key.lower()
-        if lk in {"authorization", "upload-token", "x-bootstrap-secret", "cookie", "set-cookie"}:
+        if lk in {
+            "authorization",
+            "upload-token",
+            "x-bootstrap-secret",
+            "cookie",
+            "set-cookie",
+            "cf-access-jwt-assertion",
+            "x-csrf-token",
+        }:
             redacted[key] = "***"
         elif lk in {"referer", "origin"}:
             redacted[key] = mask_upload_path(value)

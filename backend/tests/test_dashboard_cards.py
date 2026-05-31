@@ -148,3 +148,14 @@ def test_dashboard_cards_validation_and_viewer_write_guard(client: TestClient, *
     )
     assert viewer_write.status_code == 403
     assert viewer_write.json()["error"] == "permission_denied"
+
+
+def test_put_dashboard_cards_without_auth_returns_401(client: TestClient) -> None:
+    # codex P2 #9: route-test-matrix 守护要求 mutating route 都有 401 拒绝测试。
+    # PUT /api/dashboard/cards 用 Depends(get_current_writer_context),dependency 先 resolve。
+    response = client.put(
+        "/api/dashboard/cards",
+        json={"cards": [{"key": "reports", "visible": True, "position": 0}]},
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"

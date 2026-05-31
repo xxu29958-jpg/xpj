@@ -464,3 +464,15 @@ def test_rejected_expense_splits_cannot_be_replaced(client: TestClient, *, ident
 
     assert response.status_code == 404
     assert response.json()["error"] == "expense_not_found"
+
+
+def test_put_expense_splits_without_auth_returns_401(client: TestClient) -> None:
+    # codex P2 #9: route-test-matrix 守护要求 mutating route 都有 401 拒绝测试。
+    # PUT /api/expenses/{expense_id}/splits 用 Depends(get_current_writer_context),
+    # dependency 先 resolve,无 token 在 body parse 前直接拒(expense_id=1 不会真去查 DB)。
+    response = client.put(
+        "/api/expenses/1/splits",
+        json={"expected_updated_at": "2026-01-01T00:00:00Z", "splits": []},
+    )
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"

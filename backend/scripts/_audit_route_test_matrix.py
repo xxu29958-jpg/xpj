@@ -160,7 +160,11 @@ def _new_401_gaps(missing_401: list[str]) -> list[str]:
 def _collect_route_gaps(tests_root: pathlib.Path) -> tuple[list[str], list[str]]:
     missing_any: list[str] = []
     missing_401: list[str] = []
-    seen_paths: set[str] = set()
+    # codex P2: 按 (method, path) 元组去重,不是按 path。同一 path 上 POST 和 PUT 必须
+    # 各自独立验证 401 覆盖;此前只按 path 去重会让"POST 有 401 测试 + PUT 没"的 case
+    # 静默通过。已知漏检例:PUT /api/expenses/{expense_id}/splits、PUT /api/dashboard/cards、
+    # PUT /api/me/ui-preferences。
+    seen: set[tuple[str, str]] = set()
     for method, path, handler in _route_index():
         if path in ALLOWLIST or not method:
             continue
@@ -168,13 +172,14 @@ def _collect_route_gaps(tests_root: pathlib.Path) -> tuple[list[str], list[str]]
         if not _grep_tests_for(pattern, tests_root):
             missing_any.append(f"{method} {path}  (handler: {handler})")
             continue
-        if path not in seen_paths and method in MUTATING_METHODS:
+        key = (method, path)
+        if key not in seen and method in MUTATING_METHODS:
             if path.startswith("/web/") or path.startswith("/owner/"):
-                seen_paths.add(path)
+                seen.add(key)
                 continue
             if not _grep_no_auth_check(path, tests_root):
                 missing_401.append(f"{method} {path}")
-        seen_paths.add(path)
+        seen.add(key)
     return missing_any, missing_401
 
 

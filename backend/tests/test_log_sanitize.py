@@ -31,6 +31,11 @@ def test_safe_headers_redacts_known_secret_headers() -> None:
         "Upload-Token": "old-upload-token",
         "X-Bootstrap-Secret": "boot-secret",
         "Cookie": "session=xyz",
+        # codex P2: Cf-Access-Jwt-Assertion 是 Cloudflare Access 用户身份 JWT,
+        # X-CSRF-Token 是每 session CSRF token。两者跟 Authorization 同样是 bearer 类
+        # 密钥,5xx 错误日志里必须脱敏。
+        "Cf-Access-Jwt-Assertion": "eyJhbGciOi...sensitive...XYZ",
+        "X-CSRF-Token": "csrf-token-123",
         "Content-Type": "application/json",
         "X-Timezone": "Asia/Shanghai",
     }
@@ -39,10 +44,14 @@ def test_safe_headers_redacts_known_secret_headers() -> None:
     assert safe["Upload-Token"] == "***"
     assert safe["X-Bootstrap-Secret"] == "***"
     assert safe["Cookie"] == "***"
+    assert safe["Cf-Access-Jwt-Assertion"] == "***"
+    assert safe["X-CSRF-Token"] == "***"
     assert safe["Content-Type"] == "application/json"
     assert safe["X-Timezone"] == "Asia/Shanghai"
     # Original mapping must not be mutated.
     assert raw["Authorization"] == "Bearer session-abc"
+    assert raw["Cf-Access-Jwt-Assertion"].startswith("eyJ")
+    assert raw["X-CSRF-Token"] == "csrf-token-123"
 
 
 def test_safe_headers_masks_upload_key_in_referer_and_origin() -> None:

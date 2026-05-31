@@ -119,19 +119,23 @@ if (-not (Test-Path -LiteralPath $Python)) {
 
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($existing) {
+    # codex P2 #12: 此前从 /api/health 读 $health.backend_version,但 /api/health 按
+    # SECURITY.md / ENGINEERING_RULES §12 匿名只返 {status:ok},不暴露 version(version 走
+    # 需 session 的 /api/status/private)。该字段永远 null → version 比较永远 false →
+    # listener 每次被认为版本不匹配。loadedCurrentSource(进程启动时间 ≥ 最新 .py mtime)
+    # + usesExpectedRuntime(用期望 .venv python)足以证明 listener 跑的是当前代码。
     $expectedVersion = Get-ExpectedBackendVersion
     $health = Get-BackendHealth -TargetPort $Port
-    $runningVersion = if ($health) { [string]$health.backend_version } else { "" }
     $loadedCurrentSource = Test-ListenerLoadedCurrentSource -ProcessId $existing.OwningProcess
     $usesExpectedRuntime = Test-ListenerUsesExpectedRuntime -ProcessId $existing.OwningProcess
 
-    if ($health -and $health.status -eq "ok" -and $expectedVersion -and $runningVersion -eq $expectedVersion -and $loadedCurrentSource -and $usesExpectedRuntime) {
-        "[{0}] port 127.0.0.1:{1} already has current listener pid={2} backend_version={3}" -f (Get-Date -Format "s"), $Port, $existing.OwningProcess, $runningVersion | Out-File -FilePath $LogFile -Append -Encoding utf8
+    if ($health -and $health.status -eq "ok" -and $loadedCurrentSource -and $usesExpectedRuntime) {
+        "[{0}] port 127.0.0.1:{1} already has current listener pid={2} expected_version={3}" -f (Get-Date -Format "s"), $Port, $existing.OwningProcess, $expectedVersion | Out-File -FilePath $LogFile -Append -Encoding utf8
         exit 0
     }
 
-    "[{0}] refusing stale or unknown listener on 127.0.0.1:{1} pid={2} expected={3} running={4} loaded_current_source={5} expected_runtime={6}" -f (Get-Date -Format "s"), $Port, $existing.OwningProcess, $expectedVersion, $runningVersion, $loadedCurrentSource, $usesExpectedRuntime | Out-File -FilePath $LogFile -Append -Encoding utf8
-    Write-Host "FAIL 127.0.0.1:$Port 已有监听进程 pid=$($existing.OwningProcess)，但不是当前项目后端运行时。expected=$expectedVersion running=$runningVersion loaded_current_source=$loadedCurrentSource expected_runtime=$usesExpectedRuntime。请先运行 scripts\restart_backend.ps1 -Port $Port。"
+    "[{0}] refusing stale or unknown listener on 127.0.0.1:{1} pid={2} expected={3} loaded_current_source={4} expected_runtime={5}" -f (Get-Date -Format "s"), $Port, $existing.OwningProcess, $expectedVersion, $loadedCurrentSource, $usesExpectedRuntime | Out-File -FilePath $LogFile -Append -Encoding utf8
+    Write-Host "FAIL 127.0.0.1:$Port 已有监听进程 pid=$($existing.OwningProcess)，但不是当前项目后端运行时。expected=$expectedVersion loaded_current_source=$loadedCurrentSource expected_runtime=$usesExpectedRuntime。请先运行 scripts\restart_backend.ps1 -Port $Port。"
     exit 1
 }
 

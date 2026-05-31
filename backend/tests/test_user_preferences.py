@@ -65,3 +65,12 @@ def test_ui_preferences_are_keyed_by_account_id_not_display_name(client: TestCli
     assert read_b.status_code == 200, read_b.json()
     assert read_a.json()["theme"] == "mono"
     assert read_b.json()["theme"] == "midnight"
+
+
+def test_put_ui_preferences_without_auth_returns_401(client: TestClient) -> None:
+    # codex P2 #9: route-test-matrix 守护要求 mutating route 都有 401 拒绝测试。
+    # PUT /api/me/ui-preferences 用 Depends(get_current_writer_context),dependency
+    # 在 body parse 之前 resolve,无 token 直接拒。
+    response = client.put("/api/me/ui-preferences", json={"theme": "mono"})
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
