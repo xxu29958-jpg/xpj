@@ -1,0 +1,5 @@
+# Build-time deps for freezing the backend into a distributable EXE.
+# Installed into a SEPARATE .venv-build so the runtime .venv stays lean
+# (no PyInstaller, no OCR). See packaging/README.md + scripts/build_backend_exe.ps1.
+-r requirements.txt
+pyinstaller>=6.10,<7

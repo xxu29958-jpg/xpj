@@ -1,7 +1,8 @@
 """Database backup helpers for the Owner Console.
 
-Backups live next to the SQLite database under ``backend/backups/``. The same
-location is used by ``scripts/maintenance_ticketbox.ps1 -Backup`` so that a
+Backups live under the writable data dir at ``DATA_ROOT/backups`` (``backend/
+backups/`` in a source run; ``ticketbox-data/backups/`` next to a frozen EXE).
+The same location is used by ``scripts/maintenance_ticketbox.ps1 -Backup`` so a
 backup created from the Owner Console is interchangeable with one created by
 the scheduled task.
 
@@ -19,13 +20,15 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from app.config import get_settings
+from app.config import DATA_ROOT, get_settings
 from app.errors import AppError
 from app.services.sqlite_backup_validation_service import is_sqlite_backup_valid
 from app.services.time_service import now_utc
 
-_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-_BACKUP_DIR = _BACKEND_ROOT / "backups"
+# Backups live under the writable data dir (DATA_ROOT/backups). In a frozen EXE
+# the program root is PyInstaller's throwaway _MEIPASS dir, so deriving the
+# backup folder from __file__ would write snapshots that vanish on restart.
+_BACKUP_DIR = DATA_ROOT / "backups"
 _PREFIX = "ticketbox-"
 _SUFFIX = ".db"
 

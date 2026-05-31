@@ -12,7 +12,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.config import BACKEND_ROOT
+from app.config import DATA_ROOT
 from app.database._core import settings
 from app.errors import DataIntegrityError, PathTraversalError
 
@@ -72,7 +72,7 @@ def backup_sqlite_database_once() -> Path | None:
     if not _needs_pre_v03_backup(db_path):
         return None
 
-    backup_dir = BACKEND_ROOT / "backups"
+    backup_dir = DATA_ROOT / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_name = f"{db_path.stem}-pre-v0.3-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.db"
     backup_path = (backup_dir / backup_name).resolve()

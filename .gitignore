@@ -49,9 +49,12 @@ artifacts/
 logs/
 release_audit.log
 
-# PyInstaller backend-packaging spike artifacts (regenerable; not committed)
+# Backend EXE packaging + venv build/rollback artifacts (regenerable; never committed)
 backend/dist/
 backend/build/
+backend/.venv-build/
+backend/.venv-old/
+backend/ticketbox-data/
 backend/_spike_server.py
 backend/ticketbox-backend.spec
 backend/.spike_*.log

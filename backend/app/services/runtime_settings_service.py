@@ -18,11 +18,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from app.config import BACKEND_ROOT, get_settings
+from app.config import BACKEND_ROOT, DATA_ROOT, get_settings
 from app.errors import AppError
 from app.version import BACKEND_VERSION
 
-_ENV_PATH = BACKEND_ROOT / ".env"
+# The .env the Owner Console rewrites must live in the writable data dir, not the
+# program root — in a frozen EXE BACKEND_ROOT is the throwaway _MEIPASS dir and
+# the launcher reads DATA_ROOT/.env back on restart. See app.config.DATA_ROOT.
+_ENV_PATH = DATA_ROOT / ".env"
 
 _EDITABLE_KEYS: frozenset[str] = frozenset({"BUDGET_ADVISOR_OWNER_CONFIRMED", "PUBLIC_BASE_URL"})
 

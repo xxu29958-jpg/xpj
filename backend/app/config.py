@@ -11,7 +11,26 @@ from dotenv import load_dotenv
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE, DEFAULT_SUPPORTED_CURRENCY_CODES
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(BACKEND_ROOT / ".env", encoding="utf-8-sig")
+
+
+def _resolve_data_root(backend_root: Path) -> Path:
+    """Writable-data root for files the running backend *creates* — settings
+    ``.env`` (Owner Console) and SQLite backups.
+
+    Defaults to ``backend_root`` so a normal source/dev run (and the whole test
+    suite) is unchanged. The frozen-EXE launcher (``packaging/launch.py``) sets
+    ``TICKETBOX_DATA_DIR`` to a writable ``ticketbox-data/`` folder next to the
+    EXE, because ``BACKEND_ROOT`` in a frozen build is PyInstaller's throwaway
+    ``_MEIPASS`` extraction dir — anything written there is silently lost on
+    restart. Read-only program assets (templates / static / migrations /
+    alembic.ini) keep resolving against ``BACKEND_ROOT``.
+    """
+    raw = os.environ.get("TICKETBOX_DATA_DIR", "").strip()
+    return Path(raw).resolve() if raw else backend_root
+
+
+DATA_ROOT = _resolve_data_root(BACKEND_ROOT)
+load_dotenv(DATA_ROOT / ".env", encoding="utf-8-sig")
 
 # Hosts considered loopback for outbound calls from the backend (e.g. local
 # vision LLM). Anything else makes the URL effectively "off" — see
@@ -34,7 +53,7 @@ def _resolve_sqlite_url(raw: str) -> str:
 
     db_path = Path(raw[len(prefix) :])
     if not db_path.is_absolute():
-        db_path = BACKEND_ROOT / db_path
+        db_path = DATA_ROOT / db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return prefix + db_path.resolve().as_posix()
 
@@ -229,7 +248,7 @@ def reset_settings_cache() -> None:
 def get_settings() -> Settings:
     upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
     if not upload_dir.is_absolute():
-        upload_dir = BACKEND_ROOT / upload_dir
+        upload_dir = DATA_ROOT / upload_dir
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     return Settings(
