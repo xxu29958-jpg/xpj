@@ -1140,6 +1140,11 @@
       },
       "Body_post_archive_web_income_plans__public_id__archive_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -1208,6 +1213,11 @@
       },
       "Body_post_restore_web_income_plans__public_id__restore_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "anyOf": [
               {
@@ -5690,6 +5700,22 @@
           "archived_at"
         ],
         "title": "IncomePlanResponse",
+        "type": "object"
+      },
+      "IncomePlanTokenRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-B: ``DELETE /api/income-plans/{public_id}`` (archive) and\n``POST .../{public_id}/restore`` body — carries the client's last-seen\noptimistic-concurrency token so a stale archive/restore against a\nconcurrently-modified plan is rejected with 409 ``state_conflict``\ninstead of silently flipping status.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "IncomePlanTokenRequest",
         "type": "object"
       },
       "IncomePlanUpdateRequest": {
@@ -13157,6 +13183,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomePlanTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -13281,6 +13317,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomePlanTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

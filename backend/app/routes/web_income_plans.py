@@ -18,6 +18,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
+    parse_form_updated_at_token,
     templates,
 )
 from app.services.income_plan_service import (
@@ -125,13 +126,31 @@ def post_archive(
     request: Request,
     public_id: str,
     ledger_id: str | None = Form(default=None),
+    expected_updated_at: str = Form(default=""),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
-    archive_income_plan(db, tenant_id=selected, public_id=public_id)
+    # ADR-0038 PR-B: hidden OCC token. A stale archive against a plan another
+    # tab/device just edited redirects with the standard 过期 message rather
+    # than flipping status under the user.
+    parsed = parse_form_updated_at_token(expected_updated_at)
+    if parsed is None:
+        return _web_redirect(
+            "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
+        )
+    try:
+        archive_income_plan(
+            db, tenant_id=selected, public_id=public_id, expected_updated_at=parsed
+        )
+    except AppError as exc:
+        if exc.error == "state_conflict":
+            return _web_redirect(
+                "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
+            )
+        raise
     return _web_redirect("/web/income-plans", selected, message="已归档收入计划")
 
 
@@ -140,11 +159,26 @@ def post_restore(
     request: Request,
     public_id: str,
     ledger_id: str | None = Form(default=None),
+    expected_updated_at: str = Form(default=""),
     db: Session = Depends(get_db),
     _local: None = LocalOnly,
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected = _resolve_selected_ledger_id(db, ledger_id, options=options, request=request)
     _require_selected_ledger_write(options, selected)
-    restore_income_plan(db, tenant_id=selected, public_id=public_id)
+    parsed = parse_form_updated_at_token(expected_updated_at)
+    if parsed is None:
+        return _web_redirect(
+            "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
+        )
+    try:
+        restore_income_plan(
+            db, tenant_id=selected, public_id=public_id, expected_updated_at=parsed
+        )
+    except AppError as exc:
+        if exc.error == "state_conflict":
+            return _web_redirect(
+                "/web/income-plans", selected, error="页面已过期，请刷新后重新操作。"
+            )
+        raise
     return _web_redirect("/web/income-plans", selected, message="已恢复收入计划")

@@ -190,20 +190,42 @@ def archive_income_plan(
     *,
     tenant_id: str,
     public_id: str,
+    expected_updated_at: datetime,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
-    """Soft-delete: status → archived, archived_at set. Idempotent."""
+    """Soft-delete: status → archived. Atomic optimistic concurrency.
+
+    ADR-0038 PR-B: replaces the SELECT-then-write with an atomic
+    ``UPDATE ... SET status='archived', archived_at=now, updated_at=now
+    WHERE id, tenant_id, status='active', updated_at=expected`` via
+    :func:`claim_row_with_token`. Idempotent — an already-archived plan is
+    returned unchanged (404 only when the plan does not exist); a stale token
+    against a still-active plan is 409 ``state_conflict``.
+    """
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "archived":
         return plan
     when = now or now_utc()
-    plan.status = "archived"
-    plan.archived_at = when
-    plan.updated_at = when
+    rowcount = claim_row_with_token(
+        db,
+        MonthlyIncomePlan,
+        pk_id=plan.id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={"status": "archived", "archived_at": when, "updated_at": when},
+        extra_where=(MonthlyIncomePlan.status == "active",),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+        if current.status == "archived":
+            return current
+        raise AppError("state_conflict", status_code=409)
     db.commit()
-    db.refresh(plan)
-    return plan
+    db.expire_all()
+    return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
 
 def restore_income_plan(
@@ -211,20 +233,41 @@ def restore_income_plan(
     *,
     tenant_id: str,
     public_id: str,
+    expected_updated_at: datetime,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
-    """Reactivate an archived plan. Idempotent on already-active plans."""
+    """Reactivate an archived plan. Atomic optimistic concurrency.
+
+    Mirror of :func:`archive_income_plan`: atomic ``UPDATE ... SET
+    status='active', archived_at=NULL, updated_at=now WHERE id, tenant_id,
+    status='archived', updated_at=expected``. Idempotent on already-active
+    plans (404 only when absent); a stale token against an archived plan is
+    409 ``state_conflict``.
+    """
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
     if plan.status == "active":
         return plan
     when = now or now_utc()
-    plan.status = "active"
-    plan.archived_at = None
-    plan.updated_at = when
+    rowcount = claim_row_with_token(
+        db,
+        MonthlyIncomePlan,
+        pk_id=plan.id,
+        tenant_id=tenant_id,
+        expected_updated_at=expected_updated_at,
+        set_values={"status": "active", "archived_at": None, "updated_at": when},
+        extra_where=(MonthlyIncomePlan.status == "archived",),
+        synchronize_session=False,
+    )
+    if rowcount != 1:
+        db.rollback()
+        current = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+        if current.status == "active":
+            return current
+        raise AppError("state_conflict", status_code=409)
     db.commit()
-    db.refresh(plan)
-    return plan
+    db.expire_all()
+    return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
 
 def total_monthly_income_cents(db: Session, *, tenant_id: str) -> int:

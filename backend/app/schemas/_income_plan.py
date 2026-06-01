@@ -13,6 +13,7 @@ __all__ = [
     "IncomePlanCreateRequest",
     "IncomePlanListResponse",
     "IncomePlanResponse",
+    "IncomePlanTokenRequest",
     "IncomePlanUpdateRequest",
 ]
 
@@ -40,6 +41,19 @@ class IncomePlanUpdateRequest(BaseModel):
     source_type: str | None = Field(default=None, min_length=1, max_length=32)
     amount_cents: int | None = Field(default=None, ge=0)
     pay_day: int | None = Field(default=None, ge=1, le=31)
+
+
+class IncomePlanTokenRequest(BaseModel):
+    """ADR-0038 PR-B: ``DELETE /api/income-plans/{public_id}`` (archive) and
+    ``POST .../{public_id}/restore`` body — carries the client's last-seen
+    optimistic-concurrency token so a stale archive/restore against a
+    concurrently-modified plan is rejected with 409 ``state_conflict``
+    instead of silently flipping status.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
 
 
 class IncomePlanResponse(BaseModel):

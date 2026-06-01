@@ -160,6 +160,7 @@ from app.schemas._income_plan import (
     IncomePlanCreateRequest,
     IncomePlanListResponse,
     IncomePlanResponse,
+    IncomePlanTokenRequest,
     IncomePlanUpdateRequest,
 )
 from app.schemas._recurring import (
@@ -287,6 +288,7 @@ __all__ = [
     "IncomePlanCreateRequest",
     "IncomePlanListResponse",
     "IncomePlanResponse",
+    "IncomePlanTokenRequest",
     "IncomePlanUpdateRequest",
     "InvitationAcceptRequest",
     "InvitationAcceptResponse",

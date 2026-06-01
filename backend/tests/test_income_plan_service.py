@@ -174,7 +174,9 @@ def test_update_rejects_archived_plan(identity) -> None:  # noqa: ARG001
             amount_cents=100, pay_day=5,
         )
         token = plan.updated_at
-        archive_income_plan(db, tenant_id="owner", public_id=plan.public_id)
+        archive_income_plan(
+            db, tenant_id="owner", public_id=plan.public_id, expected_updated_at=token
+        )
         with pytest.raises(AppError, match="归档"):
             update_income_plan(
                 db,
@@ -203,8 +205,14 @@ def test_archive_is_idempotent(identity) -> None:  # noqa: ARG001
             db, tenant_id="owner", label="a", source_type="salary",
             amount_cents=100, pay_day=1,
         )
-        first = archive_income_plan(db, tenant_id="owner", public_id=plan.public_id)
-        second = archive_income_plan(db, tenant_id="owner", public_id=plan.public_id)
+        first = archive_income_plan(
+            db, tenant_id="owner", public_id=plan.public_id,
+            expected_updated_at=plan.updated_at,
+        )
+        second = archive_income_plan(
+            db, tenant_id="owner", public_id=plan.public_id,
+            expected_updated_at=plan.updated_at,
+        )
     assert first.status == "archived"
     assert second.status == "archived"
     assert first.archived_at == second.archived_at  # second call doesn't touch timestamp
@@ -216,9 +224,13 @@ def test_restore_reactivates_archived_plan(identity) -> None:  # noqa: ARG001
             db, tenant_id="owner", label="b", source_type="salary",
             amount_cents=100, pay_day=1,
         )
-        archive_income_plan(db, tenant_id="owner", public_id=plan.public_id)
+        archived = archive_income_plan(
+            db, tenant_id="owner", public_id=plan.public_id,
+            expected_updated_at=plan.updated_at,
+        )
         restored = restore_income_plan(
-            db, tenant_id="owner", public_id=plan.public_id
+            db, tenant_id="owner", public_id=plan.public_id,
+            expected_updated_at=archived.updated_at,
         )
     assert restored.status == "active"
     assert restored.archived_at is None
@@ -239,7 +251,10 @@ def test_list_active_excludes_archived(identity) -> None:  # noqa: ARG001
             db, tenant_id="owner", label="dead", source_type="bonus",
             amount_cents=200, pay_day=20,
         )
-        archive_income_plan(db, tenant_id="owner", public_id=archived.public_id)
+        archive_income_plan(
+            db, tenant_id="owner", public_id=archived.public_id,
+            expected_updated_at=archived.updated_at,
+        )
         listed = list_income_plans(db, tenant_id="owner")
     pids = {p.public_id for p in listed}
     assert active.public_id in pids
@@ -256,7 +271,10 @@ def test_list_with_status_none_returns_everything(identity) -> None:  # noqa: AR
             db, tenant_id="owner", label="dead", source_type="bonus",
             amount_cents=200, pay_day=20,
         )
-        archive_income_plan(db, tenant_id="owner", public_id=archived.public_id)
+        archive_income_plan(
+            db, tenant_id="owner", public_id=archived.public_id,
+            expected_updated_at=archived.updated_at,
+        )
         listed = list_income_plans(db, tenant_id="owner", status=None)
     pids = {p.public_id for p in listed}
     assert active.public_id in pids
@@ -277,7 +295,10 @@ def test_total_monthly_income_only_counts_active(identity) -> None:  # noqa: ARG
             db, tenant_id="owner", label="dead", source_type="salary",
             amount_cents=999_999, pay_day=20,
         )
-        archive_income_plan(db, tenant_id="owner", public_id=dead.public_id)
+        archive_income_plan(
+            db, tenant_id="owner", public_id=dead.public_id,
+            expected_updated_at=dead.updated_at,
+        )
         total = total_monthly_income_cents(db, tenant_id="owner")
     assert total == 1_500_000
 

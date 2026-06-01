@@ -71,16 +71,25 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
         follow_redirects=False,
     )
     assert create_resp.status_code == 303
-    # Extract public_id by reading the list page
-    list_body = web_client.get("/web/income-plans").text
-    # public_id appears in the archive form action
+    # ADR-0038 PR-B: archive/restore now carry an OCC token. Pull both the
+    # public_id and the token out of the *rendered* archive form (real
+    # round-trip), not a DB read — mirrors the recurring regression guard.
     import re
-    match = re.search(r"/web/income-plans/([0-9a-f-]+)/archive", list_body)
-    assert match is not None, "archive button should be on the page"
-    pid = match.group(1)
+    list_body = web_client.get("/web/income-plans").text
+    match = re.search(
+        r'/web/income-plans/([0-9a-f-]+)/archive"[^>]*>.*?'
+        r'name="expected_updated_at" value="([^"]*)"',
+        list_body,
+        re.DOTALL,
+    )
+    assert match is not None, "archive form + token should be on the page"
+    pid, archive_token = match.group(1), match.group(2)
+    assert archive_token, "archive form must render a non-empty expected_updated_at"
 
     archive_resp = web_client.post(
-        f"/web/income-plans/{pid}/archive", follow_redirects=False
+        f"/web/income-plans/{pid}/archive",
+        data={"expected_updated_at": archive_token},
+        follow_redirects=False,
     )
     assert archive_resp.status_code == 303
 
@@ -89,14 +98,31 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
     assert "已归档" in after_archive
     assert "restore" in after_archive
 
+    restore_match = re.search(
+        re.escape(f"/web/income-plans/{pid}/restore") + r'"[^>]*>.*?'
+        r'name="expected_updated_at" value="([^"]*)"',
+        after_archive,
+        re.DOTALL,
+    )
+    assert restore_match is not None, "restore form + token should be on the page"
+    restore_token = restore_match.group(1)
+
     restore_resp = web_client.post(
-        f"/web/income-plans/{pid}/restore", follow_redirects=False
+        f"/web/income-plans/{pid}/restore",
+        data={"expected_updated_at": restore_token},
+        follow_redirects=False,
     )
     assert restore_resp.status_code == 303
 
     after_restore = web_client.get("/web/income-plans").text
-    # Plan should be back in the active list (not the archived table)
+    # Status-distinguishing assertion: "副业" (the label) renders in BOTH the
+    # active and archived tables, so asserting it alone has no teeth — a failed
+    # restore (stale token → still archived) would pass. The archived card is
+    # guarded by {% if plans_archived %}, so after restoring the only plan the
+    # "已归档" heading is gone. This is the PR-A P1#2 trap; assert the heading
+    # disappears so a broken restore token actually fails the test.
     assert "副业" in after_restore
+    assert "已归档" not in after_restore
 
 
 def test_income_plans_rejects_bad_pay_day(web_client: TestClient, *, identity) -> None:  # noqa: ARG001

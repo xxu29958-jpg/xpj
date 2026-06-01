@@ -191,13 +191,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    # PR-A bump: 6 routes (3 service funcs × 2 surfaces each — expense undo,
-    # recurring pause, recurring resume) moved from ALLOWLIST to token carriers.
-    # Ledger archive/unarchive deferred to PR-A.1 (needs schema migration —
-    # Ledger has no updated_at column; ABA toggle race in single-writer /owner
-    # context is theoretical, not blocking).
-    "mutate_token_carriers": 36,
-    "mutate_token_exempted": 114,
+    # PR-A: 6 routes (expense undo + recurring pause/resume) → token carriers.
+    # PR-B income_plan slice: income_plan archive/restore × (api+web) = 4 more
+    # routes moved from ALLOWLIST (terminal_flag_flip) to token carriers — the
+    # SELECT-then-write archive/restore are now atomic UPDATE WHERE + token.
+    "mutate_token_carriers": 40,
+    "mutate_token_exempted": 110,
     "mutate_token_reason_admin_single_writer": 7,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
@@ -207,11 +206,13 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 3,
     "mutate_token_reason_session_rotation": 5,
-    "mutate_token_reason_terminal_flag_flip": 29,
+    "mutate_token_reason_terminal_flag_flip": 25,
     "mutate_token_reason_upsert_bucket": 7,
-    # +1 vs PR-A baseline: codex review follow-up added a /web recurring
-    # regression test (OCC token rendered into the page, not read from DB).
-    "backend_pytest_count": 1512,
+    # +1 PR-A codex follow-up (/web recurring regression); +7 PR-B income_plan
+    # OCC tests (archive/restore without/stale token, archive race idempotent,
+    # restore-without-token 422, archive/restore unknown 404 — symmetry tests
+    # added per the subagent review that replaced the unavailable codex pass).
+    "backend_pytest_count": 1519,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination

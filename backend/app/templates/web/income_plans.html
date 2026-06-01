@@ -79,6 +79,10 @@
         <td>
           <form method="post" action="/web/income-plans/{{ plan.public_id }}/archive" class="dt-inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {# ADR-0038 PR-B: OCC token = plan updated_at at render time; a stale
+               archive (plan edited elsewhere since) fails the atomic UPDATE WHERE
+               and redirects with the 过期 message instead of flipping status. #}
+            <input type="hidden" name="expected_updated_at" value="{{ plan.updated_at | to_iso }}">
             <button class="dt-btn dt-btn--ghost" type="submit">归档</button>
           </form>
         </td>
@@ -114,6 +118,7 @@
         <td>
           <form method="post" action="/web/income-plans/{{ plan.public_id }}/restore" class="dt-inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="expected_updated_at" value="{{ plan.updated_at | to_iso }}">
             <button class="dt-btn dt-btn--ghost" type="submit">恢复</button>
           </form>
         </td>

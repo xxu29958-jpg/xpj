@@ -106,8 +106,11 @@ def test_delete_income_plan_archives(client: TestClient, *, identity) -> None:
     ).json()
     pid = created["public_id"]
 
-    delete_resp = client.delete(
-        f"/api/income-plans/{pid}", headers=identity.app_headers
+    delete_resp = client.request(
+        "DELETE",
+        f"/api/income-plans/{pid}",
+        headers=identity.app_headers,
+        json={"expected_updated_at": created["updated_at"]},
     )
     assert delete_resp.status_code == 200
     assert delete_resp.json()["status"] == "archived"
@@ -131,10 +134,17 @@ def test_restore_income_plan_reactivates(client: TestClient, *, identity) -> Non
         json={"label": "torestore", "source_type": "salary", "amount_cents": 100, "pay_day": 1},
     ).json()
     pid = created["public_id"]
-    client.delete(f"/api/income-plans/{pid}", headers=identity.app_headers)
+    archive_resp = client.request(
+        "DELETE",
+        f"/api/income-plans/{pid}",
+        headers=identity.app_headers,
+        json={"expected_updated_at": created["updated_at"]},
+    )
 
     restored = client.post(
-        f"/api/income-plans/{pid}/restore", headers=identity.app_headers
+        f"/api/income-plans/{pid}/restore",
+        headers=identity.app_headers,
+        json={"expected_updated_at": archive_resp.json()["updated_at"]},
     )
     assert restored.status_code == 200
     assert restored.json()["status"] == "active"

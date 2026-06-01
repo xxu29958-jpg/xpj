@@ -192,7 +192,6 @@ ALLOWLIST: dict[str, Exempt] = {
         "append_only_fact", "learning", _SUGGESTION_EVENT
     ),
     "POST /api/goals/{public_id}/archive": Exempt("terminal_flag_flip", "goals", ("goals",)),
-    "POST /api/income-plans/{public_id}/restore": Exempt("terminal_flag_flip", "budget", _INCOME_PLAN),
     "POST /api/recurring/items/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /api/tasks/{public_id}/cancel": Exempt("terminal_flag_flip", "tasks", ("background_tasks",)),
 
@@ -232,7 +231,6 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
 
     # --- /api upsert / replace-all / lifecycle (tenant/account-keyed bucket) ---
-    "DELETE /api/income-plans/{public_id}": Exempt("terminal_flag_flip", "budget", _INCOME_PLAN),
     "PUT /api/budgets/monthly/{month}": Exempt("upsert_bucket", "budget", _BUDGET_BUCKET),
     "PUT /api/dashboard/cards": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "PUT /api/me/ui-preferences": Exempt("upsert_bucket", "identity", ("user_ui_preferences",)),
@@ -253,8 +251,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/import/confirm": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /web/import/{public_id}/apply": Exempt("batch_db_write", "imports", _IMPORT_APPLY, "medium"),
     "POST /web/income-plans/create": Exempt("create_row", "budget", _INCOME_PLAN),
-    "POST /web/income-plans/{public_id}/archive": Exempt("terminal_flag_flip", "budget", _INCOME_PLAN),
-    "POST /web/income-plans/{public_id}/restore": Exempt("terminal_flag_flip", "budget", _INCOME_PLAN),
     "POST /web/merchants/aliases/create": Exempt("create_row", "merchants", ("merchant_aliases",)),
     "POST /web/merchants/aliases/{public_id}/undo": Exempt(
         "terminal_flag_flip", "merchants", ("merchant_aliases", "ledger_audit_logs")

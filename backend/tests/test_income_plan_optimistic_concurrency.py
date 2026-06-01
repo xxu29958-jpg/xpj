@@ -148,7 +148,17 @@ def test_archived_plan_patch_preserves_existing_409(
     archived path raises before the token check ever runs."""
     plan = _create_plan(client, identity=identity, label="To Archive")
     with SessionLocal() as db:
-        archive_income_plan(db, tenant_id="owner", public_id=plan["public_id"])
+        current = db.scalar(
+            select(MonthlyIncomePlan).where(
+                MonthlyIncomePlan.public_id == plan["public_id"]
+            )
+        )
+        archive_income_plan(
+            db,
+            tenant_id="owner",
+            public_id=plan["public_id"],
+            expected_updated_at=current.updated_at,
+        )
 
     response = client.patch(
         f"/api/income-plans/{plan['public_id']}",
@@ -160,3 +170,142 @@ def test_archived_plan_patch_preserves_existing_409(
     )
     assert response.status_code == 409, response.text
     assert response.json()["error"] == "state_conflict"
+
+
+def test_income_plan_archive_without_token_returns_422(
+    client: TestClient, *, identity
+) -> None:
+    plan = _create_plan(client, identity=identity)
+    response = client.request(
+        "DELETE",
+        f"/api/income-plans/{plan['public_id']}",
+        headers=identity.app_headers,
+        json={},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_income_plan_archive_with_stale_token_returns_409(
+    client: TestClient, *, identity
+) -> None:
+    plan = _create_plan(client, identity=identity)
+    # PATCH bumps updated_at so the create-time token goes stale while the
+    # plan is still active — the archive must then 409 rather than flip it.
+    bump = client.patch(
+        f"/api/income-plans/{plan['public_id']}",
+        headers=identity.app_headers,
+        json={"expected_updated_at": plan["updated_at"], "amount_cents": 1_100_000},
+    )
+    assert bump.status_code == 200, bump.text
+    stale = client.request(
+        "DELETE",
+        f"/api/income-plans/{plan['public_id']}",
+        headers=identity.app_headers,
+        json={"expected_updated_at": plan["updated_at"]},
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["error"] == "state_conflict"
+
+
+def test_income_plan_restore_with_stale_token_returns_409(
+    client: TestClient, *, identity
+) -> None:
+    plan = _create_plan(client, identity=identity)
+    archived = client.request(
+        "DELETE",
+        f"/api/income-plans/{plan['public_id']}",
+        headers=identity.app_headers,
+        json={"expected_updated_at": plan["updated_at"]},
+    )
+    assert archived.status_code == 200, archived.text
+    # Pre-archive token is stale for the now-archived row → restore 409.
+    stale = client.post(
+        f"/api/income-plans/{plan['public_id']}/restore",
+        headers=identity.app_headers,
+        json={"expected_updated_at": plan["updated_at"]},
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["error"] == "state_conflict"
+
+
+def test_two_sessions_archive_race_idempotent_no_double_write(
+    client: TestClient, *, identity
+) -> None:
+    """Two sessions hold the same pre-archive token. session_a archives;
+    session_b's stale claim then matches 0 rows (status no longer 'active'),
+    rolls back, re-reads the now-archived row and returns it unchanged — no
+    409, no second ``archived_at`` write.
+
+    NB: because ``SessionLocal`` is ``expire_on_commit=False``, session_b's
+    ``_require_plan`` returns its stale identity-mapped 'active' row, so this
+    exercises the **rollback-recovery** branch (rowcount=0 → re-read archived),
+    NOT the same-session early-return — that path is covered separately by
+    ``test_archive_is_idempotent``. Either way it asserts the idempotent
+    archive contract, distinct from PATCH where the second racing writer 409s.
+    """
+    plan = _create_plan(client, identity=identity)
+    public_id = plan["public_id"]
+    session_a = SessionLocal()
+    session_b = SessionLocal()
+    try:
+        row_a = session_a.scalar(
+            select(MonthlyIncomePlan).where(MonthlyIncomePlan.public_id == public_id)
+        )
+        row_b = session_b.scalar(
+            select(MonthlyIncomePlan).where(MonthlyIncomePlan.public_id == public_id)
+        )
+        assert row_a is not None and row_b is not None
+        assert row_a.updated_at == row_b.updated_at
+        shared = row_a.updated_at
+
+        first = archive_income_plan(
+            session_a, tenant_id="owner", public_id=public_id,
+            expected_updated_at=shared,
+        )
+        assert first.status == "archived"
+        first_archived_at = first.archived_at
+
+        second = archive_income_plan(
+            session_b, tenant_id="owner", public_id=public_id,
+            expected_updated_at=shared,
+        )
+        assert second.status == "archived"
+        assert second.archived_at == first_archived_at
+    finally:
+        session_a.close()
+        session_b.close()
+
+
+def test_income_plan_restore_without_token_returns_422(
+    client: TestClient, *, identity
+) -> None:
+    plan = _create_plan(client, identity=identity)
+    response = client.post(
+        f"/api/income-plans/{plan['public_id']}/restore",
+        headers=identity.app_headers,
+        json={},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_income_plan_archive_unknown_returns_404(
+    client: TestClient, *, identity
+) -> None:
+    response = client.request(
+        "DELETE",
+        "/api/income-plans/no-such-public-id",
+        headers=identity.app_headers,
+        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+    )
+    assert response.status_code == 404, response.text
+
+
+def test_income_plan_restore_unknown_returns_404(
+    client: TestClient, *, identity
+) -> None:
+    response = client.post(
+        "/api/income-plans/no-such-public-id/restore",
+        headers=identity.app_headers,
+        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+    )
+    assert response.status_code == 404, response.text

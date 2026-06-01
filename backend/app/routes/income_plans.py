@@ -18,6 +18,7 @@ from app.schemas import (
     IncomePlanCreateRequest,
     IncomePlanListResponse,
     IncomePlanResponse,
+    IncomePlanTokenRequest,
     IncomePlanUpdateRequest,
 )
 from app.services.income_plan_service import (
@@ -109,11 +110,16 @@ def update_plan(
 @router.delete("/{public_id}", response_model=IncomePlanResponse)
 def archive_plan(
     public_id: str,
+    payload: IncomePlanTokenRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
+    # ADR-0038 PR-B: token-gated archive (atomic UPDATE WHERE). Stale → 409.
     plan = archive_income_plan(
-        db, tenant_id=auth.tenant_id, public_id=public_id
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_updated_at=payload.expected_updated_at,
     )
     return _to_response(plan)
 
@@ -121,10 +127,14 @@ def archive_plan(
 @router.post("/{public_id}/restore", response_model=IncomePlanResponse)
 def restore_plan(
     public_id: str,
+    payload: IncomePlanTokenRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
     plan = restore_income_plan(
-        db, tenant_id=auth.tenant_id, public_id=public_id
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_updated_at=payload.expected_updated_at,
     )
     return _to_response(plan)
