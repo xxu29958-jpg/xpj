@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Final, cast
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
 
@@ -375,8 +375,20 @@ def undo_delete_rule(
     if not is_within_undo_window(rule.deleted_at):
         # 超过保留窗口:逻辑上应已被 cleanup purge,即使 purge 滞后也不再可恢复(与 purge 语义一致)。
         raise AppError("rule_not_found", status_code=404)
-    rule.deleted_at = None
-    rule.updated_at = now_utc()
+    # ADR-0038 PR-B: atomic restore (UPDATE WHERE deleted_at IS NOT NULL) so two
+    # concurrent undos can't both clear it + double-write the audit log; rowcount
+    # ==0 means a peer undo / cleanup purge already won -> 404. Was SELECT-then-write.
+    now = now_utc()
+    rowcount = db.execute(
+        update(CategoryRule)
+        .where(CategoryRule.id == rule.id)
+        .where(CategoryRule.tenant_id == tenant_id)
+        .where(CategoryRule.deleted_at.is_not(None))
+        .values(deleted_at=None, updated_at=now)
+    ).rowcount
+    if rowcount != 1:
+        db.rollback()
+        raise AppError("rule_not_found", status_code=404)
     record_resource_action(
         db,
         ledger_id=tenant_id,

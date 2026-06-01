@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
 
@@ -304,8 +305,22 @@ def undo_delete_merchant_alias(
     )
     if live_holder is not None:
         raise AppError("merchant_alias_conflict", status_code=409)
-    item.deleted_at = None
-    item.updated_at = now_utc()
+    # ADR-0038 PR-B: atomic restore. ``UPDATE ... SET deleted_at=NULL WHERE id,
+    # tenant_id, deleted_at IS NOT NULL`` so two concurrent undos can't both
+    # clear it and double-write the audit log — rowcount==0 means a peer undo
+    # (or a cleanup purge) already won; collapse to 404 like the other
+    # not-restorable cases. Replaces the prior SELECT-then-write.
+    now = now_utc()
+    rowcount = db.execute(
+        update(MerchantAlias)
+        .where(MerchantAlias.id == item.id)
+        .where(MerchantAlias.tenant_id == tenant_id)
+        .where(MerchantAlias.deleted_at.is_not(None))
+        .values(deleted_at=None, updated_at=now)
+    ).rowcount
+    if rowcount != 1:
+        db.rollback()
+        raise AppError("merchant_alias_not_found", status_code=404)
     record_resource_action(
         db,
         ledger_id=tenant_id,
