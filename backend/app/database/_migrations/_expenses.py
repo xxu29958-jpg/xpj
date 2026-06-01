@@ -202,6 +202,12 @@ def _migrate_expenses_split_origin_invitation_id(
 
     Pure additive column with default NULL. No backfill — existing rows
     are not from bill split (no invitation exists pre-v1.0).
+
+    ADR-0038 PR-C: this column-add path only fires on a pre-v0.3 DB, where
+    split_origin is entirely NULL, so the partial-UNIQUE index (matching
+    ``create_all`` and the Alembic migration) is safe to create directly —
+    no duplicates can exist yet. Deployed v0.3+ DBs already have the column,
+    early-return here, and pick up the unique index via Alembic instead.
     """
     if "split_origin_invitation_id" in existing_expense_columns:
         return
@@ -209,8 +215,9 @@ def _migrate_expenses_split_origin_invitation_id(
         "ALTER TABLE expenses ADD COLUMN split_origin_invitation_id VARCHAR(36)"
     ))
     connection.execute(text(
-        "CREATE INDEX IF NOT EXISTS ix_expenses_split_origin_invitation_id "
-        "ON expenses (split_origin_invitation_id)"
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_expenses_split_origin_invitation "
+        "ON expenses (split_origin_invitation_id) "
+        "WHERE split_origin_invitation_id IS NOT NULL"
     ))
 
 

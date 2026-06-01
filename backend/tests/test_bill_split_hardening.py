@@ -7,11 +7,11 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Expense, Ledger, LedgerMember
+from app.models import BillSplitInvitation, Expense, Ledger, LedgerMember
 from app.services import bill_split_service as bsplit
 from app.services.time_service import now_utc
 from tests.test_bill_split import (
@@ -173,3 +173,113 @@ def test_bill_split_copies_exchange_rate_date_to_received_expense() -> None:
         )
         assert received is not None
         assert received.exchange_rate_date == rate_date
+
+
+def test_two_sessions_accept_race_creates_single_received_expense(*, identity) -> None:
+    """ADR-0038 PR-C: two sessions hold the same pre-accept ('invited') read
+    of one invitation. session_a accepts (creates the received expense +
+    atomically claims the invitation); session_b then runs its stale-'invited'
+    accept, whose expense INSERT trips the ``uq_expenses_split_origin_invitation``
+    backstop → IntegrityError → rollback → re-read the now-'accepted'
+    invitation and return session_a's expense. Net: exactly ONE received
+    expense, the receiver ledger total is NOT doubled.
+
+    Mirrors ``test_two_sessions_archive_race_idempotent_no_double_write``:
+    because ``SessionLocal`` is ``expire_on_commit=False``, session_b's
+    ``get_invitation`` returns its stale identity-mapped 'invited' row, so this
+    exercises the **lost-claim recovery** branch (not the same-session fast
+    path that ``test_accept_idempotent_returns_same_received_expense`` covers).
+    """
+    expense_id = _make_expense_for_owner(amount_cents=5000)
+    receiver_account_id = _seed_receiver(name="B-race", ledger_id="receiver_race")
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_account_id,
+            amount_cents=2500,
+        )
+        public_id = inv.public_id
+
+    session_a = SessionLocal()
+    session_b = SessionLocal()
+    try:
+        row_a = session_a.scalar(
+            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+        )
+        row_b = session_b.scalar(
+            select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+        )
+        assert row_a is not None and row_b is not None
+        assert row_a.status == "invited" and row_b.status == "invited"
+
+        _inv_a, exp_a = bsplit.accept_invitation(
+            session_a,
+            public_id=public_id,
+            accepting_account_id=receiver_account_id,
+            target_ledger_id="receiver_race",
+        )
+        exp_a_id = exp_a.id
+
+        _inv_b, exp_b = bsplit.accept_invitation(
+            session_b,
+            public_id=public_id,
+            accepting_account_id=receiver_account_id,
+            target_ledger_id="receiver_race",
+        )
+        # Idempotent convergence: session_b returns session_a's expense.
+        assert exp_b.id == exp_a_id
+    finally:
+        session_a.close()
+        session_b.close()
+
+    with SessionLocal() as db:
+        received = list(
+            db.scalars(
+                select(Expense)
+                .where(Expense.split_origin_invitation_id == public_id)
+                .where(Expense.tenant_id == "receiver_race")
+            )
+        )
+    assert len(received) == 1
+    assert received[0].id == exp_a_id
+    assert received[0].amount_cents == 2500
+
+
+def test_accept_claim_update_is_guarded_by_invited_status(*, identity) -> None:
+    """The atomic claim only flips an invitation while it is still 'invited' —
+    a second guarded UPDATE matches 0 rows. This pins the application-level
+    guard inside ``accept_invitation`` independently of the partial-unique DB
+    backstop, so the SELECT-then-write regression can't silently return."""
+    expense_id = _make_expense_for_owner()
+    receiver_account_id = _seed_receiver(name="B-claim", ledger_id="receiver_claim")
+    with SessionLocal() as db:
+        inv = bsplit.create_invitation(
+            db,
+            sender_account_id=_owner_account_id(),
+            sender_ledger_id="owner",
+            expense_id=expense_id,
+            receiver_account_id=receiver_account_id,
+            amount_cents=2500,
+        )
+        public_id = inv.public_id
+
+    with SessionLocal() as db:
+        bsplit.accept_invitation(
+            db,
+            public_id=public_id,
+            accepting_account_id=receiver_account_id,
+            target_ledger_id="receiver_claim",
+        )
+
+    with SessionLocal() as db:
+        rowcount = db.execute(
+            update(BillSplitInvitation)
+            .where(BillSplitInvitation.public_id == public_id)
+            .where(BillSplitInvitation.status == "invited")
+            .values(status="accepted")
+        ).rowcount
+        db.rollback()
+    assert rowcount == 0

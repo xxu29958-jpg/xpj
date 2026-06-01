@@ -208,11 +208,11 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 23,
     "mutate_token_reason_upsert_bucket": 7,
-    # +1 PR-A codex follow-up (/web recurring regression); +7 PR-B income_plan
-    # OCC tests (archive/restore without/stale token, archive race idempotent,
-    # restore-without-token 422, archive/restore unknown 404 — symmetry tests
-    # added per the subagent review that replaced the unavailable codex pass).
-    "backend_pytest_count": 1519,
+    # +1 PR-A (/web recurring regression); +7 PR-B income_plan OCC (archive/
+    # restore without/stale token, race idempotent, 422, unknown 404 — symmetry
+    # added per the subagent review replacing the absent codex pass); +4 PR-C
+    # bill_split accept atomic-claim (two-session race / claim-guard / migration ×2).
+    "backend_pytest_count": 1523,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination

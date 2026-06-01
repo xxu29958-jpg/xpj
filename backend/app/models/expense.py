@@ -140,8 +140,11 @@ class Expense(Base):
     # ledger bill split invitation, points back to the invitation.
     # NULL for normal expenses. Together with ``source='bill_split_received'``
     # forms the marker used by update_expense's IMMUTABLE guard.
+    # ADR-0038 PR-C: indexed via the module-level partial-UNIQUE index below
+    # (not column-level) so create_all and the startup migrator declare the
+    # same index set — the DB backstop against a concurrent-accept double-create.
     split_origin_invitation_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True, index=True
+        String(36), nullable=True
     )
 
     @property
@@ -200,6 +203,19 @@ Index("ix_expenses_status_category_confirmed_at", Expense.status, Expense.catego
 Index("ix_expenses_status_amount_merchant", Expense.status, Expense.amount_cents, Expense.merchant)
 Index("ix_expenses_status_merchant_expense_time", Expense.status, Expense.merchant, Expense.expense_time)
 Index("ix_expenses_status_merchant_confirmed_at", Expense.status, Expense.merchant, Expense.confirmed_at)
+# ADR-0038 PR-C: at most one received expense per bill-split invitation — the
+# DB-level backstop to the atomic claim in accept_invitation against a
+# concurrent double-accept doubling the receiver's money. Partial because the
+# many NULL rows (normal expenses) must not collide; NULLs are already distinct
+# in a UNIQUE index on both SQLite and Postgres, the WHERE just keeps the index
+# to bill-split rows and the intent explicit.
+Index(
+    "uq_expenses_split_origin_invitation",
+    Expense.split_origin_invitation_id,
+    unique=True,
+    sqlite_where=Expense.split_origin_invitation_id.isnot(None),
+    postgresql_where=Expense.split_origin_invitation_id.isnot(None),
+)
 
 
 class ExpenseItem(Base):
