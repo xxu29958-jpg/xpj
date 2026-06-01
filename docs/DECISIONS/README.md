@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0039（0018 已撤回；0032–0034 未使用，编号跳过无 ADR）。
+**编号范围**：0001–0041（0018 已撤回；0032–0034 未使用，编号跳过；0040 保留给 outbox 子资源 undo 契约，见 `expense_service/_update.py`，尚未下发）。
 
 ## 索引
 
@@ -44,10 +44,12 @@
 | [0037](0037-v1.2-learning-feedback-dual-tables.md) | v1.2 Learning Feedback Dual Tables | algorithm_decisions / ledger_learning_events / ocr_facts 三表 append-only 建议层，不污染账本 | v1.2 学习反馈底层 |
 | [0038](0038-v1.3-multi-surface-sync.md) | v1.3 Multi-Surface Sync | mutate endpoint body `expected_updated_at` + 409 `state_conflict`；Android Room offline outbox + WorkManager drain；soft-delete + 5s undo window | v1.3 同步 invariant |
 | [0039](0039-adr-implementation-calibration.md) | ADR Implementation Calibration | 校准 0001–0038 的当前实现状态；区分仍绑定、文字漂移、真实待修和计划未完成 | ADR 审计校准 |
+| 0040 | — | **保留**：outbox 子资源 undo 契约（`expense_service/_update.py` 引用，未下发） | — |
+| [0041](0041-postgresql-engine-migration.md) | 存储层完整性债清偿 | 开发期一次性清存储层债：本机自托管 Postgres + row_version 替 `updated_at`-as-CAS；SQLite+row_version 保留为 fallback | accepted；[[0038]] 升级 |
 
 ## 编写新 ADR
 
-下一编号 `0040`。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0042`（`0040` 保留给 outbox 子资源 undo 契约）。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题
