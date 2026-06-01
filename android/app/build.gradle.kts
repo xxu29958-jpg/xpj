@@ -406,11 +406,18 @@ tasks.register("assertAndroidTestCountEqualsBaseline") {
         //   → XPJ_AUDIT_BASE_REF env (manual override)
         //   → "main" fallback (local dev).
         // Prefixed with origin/ if not already namespaced.
-        val baseRefRaw = System.getenv("GITHUB_BASE_REF")
-            ?: System.getenv("XPJ_AUDIT_BASE_REF")
+        // GitHub Actions sets GITHUB_BASE_REF to the empty string on push
+        // events (not unset — non-null but empty). System.getenv() returns
+        // "" not null in that case, so a naïve null-coalesce treats push
+        // CI as PR CI and builds baseRef="origin/" → unreachable → FAIL.
+        // Treat empty same as null for both ref selection and PR-context
+        // detection. Matches backend gate's ``bool(os.environ.get(...))``
+        // which naturally treats empty as falsy via Python truthiness.
+        val baseRefRaw = System.getenv("GITHUB_BASE_REF")?.takeIf { it.isNotEmpty() }
+            ?: System.getenv("XPJ_AUDIT_BASE_REF")?.takeIf { it.isNotEmpty() }
             ?: "main"
         val baseRef = if (baseRefRaw.contains("/")) baseRefRaw else "origin/$baseRefRaw"
-        val isPrCiContext = System.getenv("GITHUB_BASE_REF") != null
+        val isPrCiContext = !System.getenv("GITHUB_BASE_REF").isNullOrEmpty()
 
         // Distinguish three states (parallels backend gate's tuple return):
         //   - refReachable=false: git itself can't see the base ref (shallow
