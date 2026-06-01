@@ -36,7 +36,7 @@ REASON_CODES: frozenset[str] = frozenset(
         "batch_db_write",        # touches many rows; owns its own batch / preview contract
         "governance_action",     # permission-gated membership / invitation / role write
         "session_rotation",      # mints / rotates / consumes auth + identity rows
-        "admin_single_writer",   # owner/admin single-writer edit (rename/rotate/extend/limits)
+        "admin_single_writer",   # owner/admin single-writer edit/toggle (rename/rotate/extend/limits/ledger archive)
         "enqueue_task",          # inserts a background_tasks row; the worker does the real write
         "external_side_effect",  # writes filesystem / .env / network only — NO db row
         "read_only_compute",     # preview / computation — NO write at all
@@ -280,7 +280,10 @@ ALLOWLIST: dict[str, Exempt] = {
     ),
     "POST /owner/learning-maintenance/run": Exempt("batch_db_write", "learning", _LEARNING_PRUNE, "medium"),
     "POST /owner/ledgers": Exempt("create_row", "owner_console", _LEDGER_CREATE),
-    "POST /owner/ledgers/{ledger_id}/archive": Exempt("terminal_flag_flip", "owner_console", _LEDGER_ARCHIVE, "medium"),
+    # ADR-0038 PR-D (原 PR-A.1): /owner loopback single-admin reversible toggle,
+    # already atomic UPDATE WHERE archived_at — admin_single_writer fits better
+    # than terminal_flag_flip (no concurrent writer to guard against on loopback).
+    "POST /owner/ledgers/{ledger_id}/archive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE, "medium"),
     "POST /owner/ledgers/{ledger_id}/invitations": Exempt("create_row", "owner_console", ("invitations",)),
     "POST /owner/ledgers/{ledger_id}/invitations/{public_id}/revoke": Exempt(
         "governance_action", "owner_console", ("invitations",)
@@ -294,7 +297,7 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/ledgers/{ledger_id}/members/{member_id}/transfer-owner": Exempt(
         "governance_action", "owner_console", _OWNER_TRANSFER, "high"
     ),
-    "POST /owner/ledgers/{ledger_id}/unarchive": Exempt("terminal_flag_flip", "owner_console", _LEDGER_ARCHIVE),
+    "POST /owner/ledgers/{ledger_id}/unarchive": Exempt("admin_single_writer", "owner_console", _LEDGER_ARCHIVE),
     "POST /owner/migration-readiness/cut-over": Exempt("enqueue_task", "owner_console", ("background_tasks",), "high"),
     "POST /owner/migration-readiness/pre-v1-backup": Exempt("external_side_effect", "owner_console", ()),
     "POST /owner/pairing": Exempt("create_row", "owner_console", ("pairing_codes",)),

@@ -197,7 +197,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # SELECT-then-write archive/restore are now atomic UPDATE WHERE + token.
     "mutate_token_carriers": 40,
     "mutate_token_exempted": 110,
-    "mutate_token_reason_admin_single_writer": 7,
+    "mutate_token_reason_admin_single_writer": 9,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
     "mutate_token_reason_create_row": 26,
@@ -206,7 +206,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 3,
     "mutate_token_reason_session_rotation": 5,
-    "mutate_token_reason_terminal_flag_flip": 25,
+    "mutate_token_reason_terminal_flag_flip": 23,
     "mutate_token_reason_upsert_bucket": 7,
     # +1 PR-A codex follow-up (/web recurring regression); +7 PR-B income_plan
     # OCC tests (archive/restore without/stale token, archive race idempotent,
