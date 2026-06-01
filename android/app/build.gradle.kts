@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.util.concurrent.TimeUnit
 
 val ticketboxVersionCode = 10200000
 val ticketboxVersionName = "1.2.0"
@@ -299,4 +300,204 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// ---------------------------------------------------------------------------
+// ADR-0038 prep: PR-Δ verification — Android side
+// ---------------------------------------------------------------------------
+//
+// Counterpart to backend's ``_audit_pr_delta_metrics.py`` strict-equality
+// gate. The Android count is enforced here (not by reaching across the
+// backend/android boundary) — each side owns its own baseline file and
+// own assertion. Cut-over PRs (ADR-0038 PR-A/B/C/D etc) that change the
+// Android test count MUST bump ``audit/test_count_baseline.txt`` in the
+// same diff. Strict equality (NOT >=); drift in either direction fails.
+//
+// Annotation set covers JUnit4 (``@Test`` only at present) and is
+// forward-compatible with a JUnit5 migration (``@ParameterizedTest`` /
+// ``@RepeatedTest`` / ``@TestFactory`` / ``@TestTemplate`` — currently
+// 0 matches each). Adding them now costs nothing today and avoids a
+// silent under-count if JUnit5 lands later without this task being
+// updated in the same PR.
+//
+// Per-line predicate (kept simple — line-level state machine instead
+// of full Kotlin parser):
+//
+//   - trim().startsWith(<test annotation>)  — annotation is the first
+//     token on the line (the common style: each annotation on its
+//     own line above the method)
+//   - && NOT startsWith("//")  — line comment
+//   - && NOT startsWith("*")   — KDoc continuation line ("* @Test")
+//
+// Known limitation: multi-annotation lines like ``@JvmField @Test``
+// where ``@Test`` is not the first token aren't counted. The project
+// doesn't use that style today; if it ever does, this task will
+// under-count and the baseline mismatch will surface the missed style
+// for explicit decision.
+val androidTestAnnotations = listOf(
+    "@Test",
+    "@ParameterizedTest",
+    "@RepeatedTest",
+    "@TestFactory",
+    "@TestTemplate",
+)
+
+// Conceptual counter name: ``android_junit_test_method_count`` — explicitly
+// names "annotation-based method count", not "runtime-collected test count".
+// Parametrized JUnit5 expansions (when/if migrated) would still register as
+// 1 method per ``@ParameterizedTest`` site, not N runtime instances. The
+// counter measures source-level test method declarations; runtime test
+// count is a different metric (would need ``gradle test --dry-run`` and
+// parsing). Keep them mentally separate.
+
+tasks.register("assertAndroidTestCountEqualsBaseline") {
+    group = "verification"
+    description = "ADR-0038 PR-Δ: assert Android JUnit @Test method-annotation " +
+        "count exactly matches audit/test_count_baseline.txt (strict-equality + " +
+        "UP-ratchet vs PR base baseline + bootstrap exception by data shape)."
+
+    val baselineFile = rootProject.file("audit/test_count_baseline.txt")
+    val testDir = file("src/test")
+    inputs.file(baselineFile)
+    inputs.dir(testDir)
+
+    doLast {
+        if (!baselineFile.exists()) {
+            throw GradleException(
+                "ADR-0038 PR-Δ: baseline file missing at ${baselineFile.absolutePath}. " +
+                "Create it with a single integer (current Android JUnit @Test method count)."
+            )
+        }
+        val currentBaseline = baselineFile.readText().trim().toInt()
+
+        val actual = if (testDir.exists()) {
+            fileTree(testDir).matching { include("**/*.kt") }.sumOf { file ->
+                file.useLines { lines ->
+                    lines.count { line ->
+                        val trimmed = line.trim()
+                        androidTestAnnotations.any { trimmed.startsWith(it) } &&
+                            !trimmed.startsWith("//") &&
+                            !trimmed.startsWith("*")
+                    }
+                }
+            }
+        } else {
+            0
+        }
+
+        // Layer 1: strict equality (actual == current baseline). Both directions FAIL.
+        if (actual != currentBaseline) {
+            val diff = actual - currentBaseline
+            val sign = if (diff > 0) "+" else ""
+            throw GradleException(
+                "ADR-0038 PR-Δ strict equality FAIL: actual=$actual " +
+                "current_baseline=$currentBaseline ($sign$diff). Update " +
+                "audit/test_count_baseline.txt in the SAME PR if intentional " +
+                "(both directions FAIL — silent drift in either is a bug)."
+            )
+        }
+
+        // Layer 2: UP ratchet — current baseline must be >= base baseline.
+        // Bootstrap exception: if base baseline file doesn't exist (prep PR
+        // is the first to introduce it), only strict equality applies.
+        //
+        // Base ref priority mirrors backend gate:
+        //   GITHUB_BASE_REF env (PR CI sets to PR target branch)
+        //   → XPJ_AUDIT_BASE_REF env (manual override)
+        //   → "main" fallback (local dev).
+        // Prefixed with origin/ if not already namespaced.
+        val baseRefRaw = System.getenv("GITHUB_BASE_REF")
+            ?: System.getenv("XPJ_AUDIT_BASE_REF")
+            ?: "main"
+        val baseRef = if (baseRefRaw.contains("/")) baseRefRaw else "origin/$baseRefRaw"
+        val isPrCiContext = System.getenv("GITHUB_BASE_REF") != null
+
+        // Distinguish three states (parallels backend gate's tuple return):
+        //   - refReachable=false: git itself can't see the base ref (shallow
+        //     checkout, ref not fetched) → infra failure
+        //     · PR CI: FAIL loudly
+        //     · local: INFO-skip ratchet
+        //   - refReachable=true, fileMissing=true: ref reachable but baseline
+        //     file didn't exist at base → integral-bootstrap for this counter
+        //     · skip ratchet (no value to compare); strict equality already
+        //       enforced above
+        //   - refReachable=true, fileMissing=false, baseBaseline=N: normal
+        //     ratchet path
+        val refReachable = try {
+            val proc = ProcessBuilder("git", "rev-parse", "--verify", baseRef)
+                .directory(rootProject.rootDir)
+                .redirectErrorStream(true)
+                .start()
+            proc.waitFor(30, TimeUnit.SECONDS)
+            proc.exitValue() == 0
+        } catch (e: Exception) {
+            false
+        }
+
+        if (!refReachable) {
+            if (isPrCiContext) {
+                throw GradleException(
+                    "ADR-0038 PR-Δ: in PR CI but base ref '$baseRef' is unreachable. " +
+                    "Possible: shallow checkout (need fetch-depth: 0 in CI workflow), " +
+                    "or remote not fetched. Fix CI config; do NOT downgrade to " +
+                    "strict-equality-only as a workaround."
+                )
+            }
+            println(
+                "ADR-0038 PR-Δ: Android count $actual matches current baseline " +
+                "(base ref '$baseRef' unreachable — local dev, ratchet skipped)."
+            )
+            return@doLast
+        }
+
+        val baseBaseline: Int? = try {
+            val proc = ProcessBuilder(
+                "git", "show", "$baseRef:android/audit/test_count_baseline.txt"
+            )
+                .directory(rootProject.rootDir)
+                .redirectErrorStream(false)
+                .start()
+            val output = proc.inputStream.bufferedReader().readText().trim()
+            val finished = proc.waitFor(30, TimeUnit.SECONDS)
+            if (finished && proc.exitValue() == 0 && output.isNotEmpty()) {
+                output.toIntOrNull()
+            } else {
+                // File didn't exist at base (ref was reachable, so this is
+                // legit "this counter is new in this PR"). Bootstrap.
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+
+        if (baseBaseline == null) {
+            // refReachable=true + baseBaseline=null → integral-bootstrap.
+            // Strict equality already enforced above (actual == currentBaseline);
+            // ratchet skipped because there's no base value to ratchet against.
+            // Auto-extinguishes once the baseline file lands in main.
+            println(
+                "ADR-0038 PR-Δ: Android count $actual matches current baseline " +
+                "(bootstrap — baseline file new in this PR; ratchet auto-engages " +
+                "next PR after merge)."
+            )
+            return@doLast
+        }
+
+        if (currentBaseline < baseBaseline) {
+            throw GradleException(
+                "ADR-0038 PR-Δ ratchet FAIL: Android test count baseline at base=$baseBaseline, " +
+                "at current PR=$currentBaseline (dropped by ${baseBaseline - currentBaseline}). " +
+                "Tests should accumulate, not vanish. If this drop is intentional " +
+                "(test consolidation, dead code removal with paired test removal), " +
+                "document the rationale and get explicit sign-off — don't silently " +
+                "lower the floor. Strict equality alone misses this when actuals dropped " +
+                "in lockstep — UP-ratchet catches it."
+            )
+        }
+
+        println(
+            "ADR-0038 PR-Δ: Android test count $actual matches current baseline " +
+            "(base=$baseBaseline; ratchet UP OK)."
+        )
+    }
 }

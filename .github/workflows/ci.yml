@@ -27,6 +27,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # ADR-0038 PR-Δ gate needs to ``git show <base_ref>:...`` to read
+          # the base baseline; shallow clone (fetch-depth: 1, the default)
+          # can't reach it and the gate FAILs in PR CI rather than silently
+          # downgrading to strict-equality-only.
+          fetch-depth: 0
 
       - name: Check PowerShell scripts
         working-directory: .
@@ -118,6 +124,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # ADR-0038 PR-Δ gate (assertAndroidTestCountEqualsBaseline) needs
+          # ``git show <base_ref>:android/audit/test_count_baseline.txt`` to
+          # read the base baseline for ratchet check. fetch-depth: 0 makes
+          # the base ref reachable; without it the task FAILs in PR CI
+          # rather than silently downgrading to strict-equality-only.
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -157,6 +170,15 @@ jobs:
 
       - name: Test
         run: ./gradlew --no-daemon :app:testGrayDebugUnitTest
+
+      - name: ADR-0038 PR-Δ — assert Android test count equals baseline
+        # Three-layer policy (strict equality + UP ratchet vs base + bootstrap
+        # by data shape). GITHUB_BASE_REF is set by GitHub Actions on PR
+        # events; the gradle task uses ``git show <base_ref>:...`` to read
+        # the base baseline file. fetch-depth: 0 on the Android checkout
+        # is what makes ``origin/<base_ref>`` reachable; if missing, the
+        # task FAILs loudly in PR CI rather than silently downgrading.
+        run: ./gradlew --no-daemon :app:assertAndroidTestCountEqualsBaseline
 
       # [codex round-3 P2#3] Verify that committed Room schema
       # JSON matches what KSP just emitted from the @Database

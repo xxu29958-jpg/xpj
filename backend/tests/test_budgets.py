@@ -89,12 +89,24 @@ def _assert_permission_denied(response, *, label: str) -> None:
 def test_monthly_budget_dashboard_uses_confirmed_spend_fixed_and_exclusions(
     client: TestClient, *, identity,
 ) -> None:
-    _seed_recurring(baseline_amount_cents=6800)
+    # Anchor created_at to the test's target month (2026-05). The default
+    # ``now_utc()`` makes this test wall-clock-dependent: once now_utc()
+    # crosses into 2026-06, the recurring's created_at falls outside the
+    # "2026-05" UTC end bound and gets filtered out (fixed_amount_cents
+    # becomes 0). Same anti-pattern as test_budget_advise_endpoint's
+    # _current_month() / _seed_minimal_data() — fix at the call site,
+    # matching test_monthly_budget_fixed_spend_uses_recurring_month_membership
+    # which already passes explicit created_at dates.
+    _seed_recurring(
+        baseline_amount_cents=6800,
+        created_at=datetime(2026, 5, 1, tzinfo=UTC),
+    )
     _seed_recurring(
         tenant_id="tester_1",
         merchant_key="gray-recurring",
         merchant_name="Gray Recurring",
         baseline_amount_cents=9900,
+        created_at=datetime(2026, 5, 1, tzinfo=UTC),
     )
     _manual_expense(
         client,
