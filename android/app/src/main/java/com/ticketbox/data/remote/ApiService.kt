@@ -65,7 +65,6 @@ import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
-import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HTTP
 import retrofit2.http.Header
@@ -434,14 +433,16 @@ interface ApiService {
         @Body request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto,
     ): com.ticketbox.data.remote.dto.IncomePlanDto
 
-    @DELETE("api/income-plans/{publicId}")
+    @HTTP(method = "DELETE", path = "api/income-plans/{publicId}", hasBody = true)
     suspend fun archiveIncomePlan(
         @Path("publicId") publicId: String,
+        @Body request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto,
     ): com.ticketbox.data.remote.dto.IncomePlanDto
 
     @POST("api/income-plans/{publicId}/restore")
     suspend fun restoreIncomePlan(
         @Path("publicId") publicId: String,
+        @Body request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto,
     ): com.ticketbox.data.remote.dto.IncomePlanDto
 
     @GET("api/budget/discretionary")

@@ -24,8 +24,8 @@ interface IncomePlanActions {
     suspend fun listIncluding(status: IncomePlanStatus): Result<List<IncomePlan>>
     suspend fun create(draft: IncomePlanDraft): Result<IncomePlan>
     suspend fun update(publicId: String, patch: IncomePlanPatch): Result<IncomePlan>
-    suspend fun archive(publicId: String): Result<IncomePlan>
-    suspend fun restore(publicId: String): Result<IncomePlan>
+    suspend fun archive(publicId: String, expectedUpdatedAt: String): Result<IncomePlan>
+    suspend fun restore(publicId: String, expectedUpdatedAt: String): Result<IncomePlan>
 }
 
 data class IncomePlanListing(
@@ -105,24 +105,30 @@ class IncomePlanRepository(
         }
     }
 
-    override suspend fun archive(publicId: String): Result<IncomePlan> {
+    override suspend fun archive(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                api.archiveIncomePlan(publicId).toDomain()
+                api.archiveIncomePlan(
+                    publicId,
+                    com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedUpdatedAt),
+                ).toDomain()
             }
         }
     }
 
-    override suspend fun restore(publicId: String): Result<IncomePlan> {
+    override suspend fun restore(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
         return errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
-                api.restoreIncomePlan(publicId).toDomain()
+                api.restoreIncomePlan(
+                    publicId,
+                    com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedUpdatedAt),
+                ).toDomain()
             }
         }
     }

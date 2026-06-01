@@ -150,7 +150,7 @@ fun IncomePlanScreen(
                         canModify = state.canModify,
                         trailingIcon = Icons.Default.DeleteOutline,
                         trailingDescription = "归档",
-                        onTrailing = { viewModel.archive(plan.publicId) },
+                        onTrailing = { viewModel.archive(plan.publicId, plan.updatedAt) },
                     )
                 }
             }
@@ -164,7 +164,7 @@ fun IncomePlanScreen(
                         canModify = state.canModify,
                         trailingIcon = Icons.Default.Restore,
                         trailingDescription = "恢复",
-                        onTrailing = { viewModel.restore(plan.publicId) },
+                        onTrailing = { viewModel.restore(plan.publicId, plan.updatedAt) },
                         dimmed = true,
                     )
                 }

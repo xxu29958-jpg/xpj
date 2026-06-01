@@ -45,3 +45,12 @@ data class IncomePlanUpdateRequestDto(
     @param:Json(name = "amount_cents") val amountCents: Long? = null,
     @param:Json(name = "pay_day") val payDay: Int? = null,
 )
+
+/**
+ * ADR-0038 PR-B: archive (DELETE) / restore (POST) body. Carries only the OCC
+ * token — backend ``IncomePlanTokenRequest`` is ``extra="forbid"``, so reusing
+ * the richer update DTO would be rejected. Mirrors RecurringItemTokenRequest.
+ */
+data class IncomePlanTokenRequestDto(
+    @param:Json(name = "expected_updated_at") val expectedUpdatedAt: String,
+)

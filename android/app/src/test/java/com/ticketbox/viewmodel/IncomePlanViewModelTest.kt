@@ -100,7 +100,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.archive("some-id")
+        viewModel.archive("some-id", "2026-01-01T00:00:00Z")
         advanceUntilIdle()
         assertEquals("some-id", repo.lastArchiveId)
         assertEquals("已归档", viewModel.state.value.flashMessage)
@@ -111,7 +111,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.restore("some-id")
+        viewModel.restore("some-id", "2026-01-01T00:00:00Z")
         advanceUntilIdle()
         assertEquals("some-id", repo.lastRestoreId)
         assertEquals("已恢复", viewModel.state.value.flashMessage)
@@ -122,7 +122,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.archive("x")
+        viewModel.archive("x", "2026-01-01T00:00:00Z")
         advanceUntilIdle()
         viewModel.dismissFlash()
         assertNull(viewModel.state.value.flashMessage)
@@ -208,12 +208,12 @@ class IncomePlanViewModelTest {
         override suspend fun update(publicId: String, patch: com.ticketbox.data.repository.IncomePlanPatch) =
             Result.success(stub(publicId))
 
-        override suspend fun archive(publicId: String): Result<IncomePlan> {
+        override suspend fun archive(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
             lastArchiveId = publicId
             return Result.success(stub(publicId, IncomePlanStatus.ARCHIVED))
         }
 
-        override suspend fun restore(publicId: String): Result<IncomePlan> {
+        override suspend fun restore(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
             lastRestoreId = publicId
             return Result.success(stub(publicId, IncomePlanStatus.ACTIVE))
         }
