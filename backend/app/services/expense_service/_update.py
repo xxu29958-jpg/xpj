@@ -34,7 +34,7 @@ from app.services.expense_service._helpers import (
 )
 from app.services.expense_service._query import get_expense
 from app.services.ocr_service import clear_ocr_draft_fields
-from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.optimistic_concurrency import claim_row_with_token, updated_at_predicate
 from app.services.receipt_item_service import recompute_items_sum_status
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
@@ -379,22 +379,54 @@ def undo_reject_expense(
     db: Session,
     expense_id: int,
     tenant_id: str,
+    expected_updated_at: datetime,
     *,
     actor_account_id: int | None = None,
 ) -> Expense:
     """ADR-0038 undo: restore a recently-rejected expense within retention window.
 
-    Atomic ``UPDATE WHERE id, tenant_id, status='rejected', rejected_at >= cutoff``
-    + ``rowcount=1`` 判定避免 SELECT-then-write race(memory feedback_adr_implementation
-    _atomicity)。rowcount=0 → 404 (already restored / never rejected / past 5min window /
-    cross-tenant).
+    Atomic ``UPDATE WHERE id, tenant_id, status='rejected',
+    rejected_at >= cutoff, updated_at = expected_updated_at`` + ``rowcount=1``
+    判定避免 SELECT-then-write race(memory feedback_adr_implementation
+    _atomicity)。rowcount=0 → 404 (already restored / never rejected /
+    past 5min window / cross-tenant / **stale undo for a row that's been
+    re-rejected since the banner was shown**).
 
-    Restore values: ``status='pending'`` (回到 reject 前最普通的可编辑状态) + ``rejected_at
-    = NULL`` (复用 reject lifecycle 的 nullable 语义) + ``updated_at = now`` (让任何持有
-    pre-undo token 的 mutate 撞 409 state_conflict, 防 stale write)。
+    The OCC token (expected_updated_at) is the v1.3 PR-A addition. Without
+    it, a stale /undo request from a cached banner could un-do a NEW reject
+    the user just made: T0 reject A → T+3s undo → T+10s re-reject A (this
+    time intentionally) → T+15s stale /undo arrives → server sees
+    status='rejected' AND rejected_at>=cutoff and undoes the **second**
+    reject (the intentional one). The token-check rejects this because A's
+    updated_at was bumped by the second reject.
 
-    Appends ``ledger_audit_logs action='undo'``, resource_type='expense', resource_public_id
-    = expense.public_id。和 merchant_alias undo / category_rule undo 同 pattern。
+    Restore values: ``status='pending'`` (回到 reject 前最普通的可编辑状态)
+    + ``rejected_at = NULL`` (复用 reject lifecycle 的 nullable 语义) +
+    ``updated_at = now`` (让任何持有 pre-undo token 的 mutate 撞 409
+    state_conflict, 防 stale write)。
+
+    Appends ``ledger_audit_logs action='undo'``, resource_type='expense',
+    resource_public_id = expense.public_id。和 merchant_alias undo /
+    category_rule undo 同 pattern。
+
+    **Current /undo contract for child resources (v1.x temporary —
+    replaced by ADR-0040 when landed)**: undo ONLY flips the parent
+    Expense row's status / rejected_at / updated_at. Splits, items, and
+    suggestion decisions on this expense are NOT touched. After undo,
+    child resources retain whatever state they had during reject. This
+    is explicit deterministic behavior, not undefined — but the full
+    semantic (e.g. should bill_split invitations re-activate? should
+    item-level acknowledge-mismatch persist?) is owned by ADR-0040.
+
+    **Residual ABA risk (v1.x — closed by Postgres migration's
+    row_version column)**: ``updated_at`` is the CAS token here. SQLite
+    DateTime microsecond precision + Python ``datetime.now()`` jitter
+    means two operations within ~15ms can write equal ``updated_at``
+    values, defeating the OCC check. At home-server / low-concurrency
+    profile the probability is low enough to defer; the structural fix
+    is a monotonic ``row_version`` int column that strictly increments
+    per UPDATE, landing as part of the Postgres migration work where
+    schema rebuild absorbs the cost.
     """
     now = now_utc()
     cutoff = now - SOFT_DELETE_RETENTION
@@ -405,13 +437,16 @@ def undo_reject_expense(
         .where(Expense.status == "rejected")
         .where(Expense.rejected_at.is_not(None))
         .where(Expense.rejected_at >= cutoff)
+        .where(updated_at_predicate(Expense.updated_at, expected_updated_at))
         .values(status="pending", rejected_at=None, updated_at=now)
     )
     result = db.execute(stmt)
     if result.rowcount != 1:
-        # 不区分 not_found / past_window / never_rejected:三种状态下 row 都不再 undo-able,
-        # 暴露区别给客户端 = 暴露 ledger 内部状态 + 也无法给用户决策(无论哪种原因, 都得让
-        # 用户重新看一眼最新状态)。
+        # 不区分 not_found / past_window / never_rejected / stale_token:
+        # 四种状态下 row 都不再 undo-able,暴露区别给客户端 = 暴露 ledger
+        # 内部状态 + 也无法给用户决策 (无论哪种原因, 都得让用户重新看一眼
+        # 最新状态)。OCC stale_token 走同一 404 而不是 409 是因为在 retention
+        # 窗口外/外 tenant 等场景下区分意义不大,统一 404 = "refetch 最新状态"。
         db.rollback()
         raise AppError("expense_not_found", status_code=404)
     db.expire_all()

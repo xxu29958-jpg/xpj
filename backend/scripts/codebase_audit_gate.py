@@ -108,8 +108,9 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # routes/expenses.py crossed 500 lines for the new endpoint. Splitting the file
     # purely to stay under the line is the wrong trade per this gate's own rule.
     "files_over_500": 13,
-    # ADR-0038 expense undo + PR-C self-review trimmed one long function; bank it.
-    "long_functions": 41,
+    # PR-A expanded undo_reject_expense docstring (ABA + child resource
+    # contract) tipped one function over the 80-line threshold; bank +1.
+    "long_functions": 42,
     "deep_nesting_functions": 6,
     "route_layer_imports": 0,
     "service_public_no_private": 4,
@@ -123,9 +124,10 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "hardcoded_urls": 10,
     "credentials_risk": 4,
     "n_plus_one": 2,
-    # ADR-0038 expense undo wires undo_reject_expense into two consumers; bank the
-    # reduction so unreferenced_modules can't silently re-creep.
-    "unreferenced_modules": 216,
+    # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the
+    # /web/pending route; bank the reduction so unreferenced_modules can't
+    # silently re-creep.
+    "unreferenced_modules": 215,
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -189,8 +191,13 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 30,
-    "mutate_token_exempted": 120,
+    # PR-A bump: 6 routes (3 service funcs × 2 surfaces each — expense undo,
+    # recurring pause, recurring resume) moved from ALLOWLIST to token carriers.
+    # Ledger archive/unarchive deferred to PR-A.1 (needs schema migration —
+    # Ledger has no updated_at column; ABA toggle race in single-writer /owner
+    # context is theoretical, not blocking).
+    "mutate_token_carriers": 36,
+    "mutate_token_exempted": 114,
     "mutate_token_reason_admin_single_writer": 7,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
@@ -200,9 +207,11 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 3,
     "mutate_token_reason_session_rotation": 5,
-    "mutate_token_reason_terminal_flag_flip": 35,
+    "mutate_token_reason_terminal_flag_flip": 29,
     "mutate_token_reason_upsert_bucket": 7,
-    "backend_pytest_count": 1511,
+    # +1 vs PR-A baseline: codex review follow-up added a /web recurring
+    # regression test (OCC token rendered into the page, not read from DB).
+    "backend_pytest_count": 1512,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination

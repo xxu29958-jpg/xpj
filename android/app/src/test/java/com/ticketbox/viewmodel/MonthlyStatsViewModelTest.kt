@@ -203,10 +203,10 @@ private class FakeStatsRecurringActions : RecurringActions {
         nextExpectedDate: String?,
     ): Result<RecurringItem> = Result.failure(IllegalArgumentException("not used"))
 
-    override suspend fun pause(publicId: String): Result<RecurringItem> =
+    override suspend fun pause(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 
-    override suspend fun resume(publicId: String): Result<RecurringItem> =
+    override suspend fun resume(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 
     override suspend fun archive(publicId: String): Result<RecurringItem> =

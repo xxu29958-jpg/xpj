@@ -1446,6 +1446,11 @@
       },
       "Body_web_expense_undo_web_expenses__expense_id__undo_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1772,6 +1777,11 @@
       },
       "Body_web_recurring_pause_web_recurring__public_id__pause_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -1783,6 +1793,11 @@
       },
       "Body_web_recurring_resume_web_recurring__public_id__resume_post": {
         "properties": {
+          "expected_updated_at": {
+            "default": "",
+            "title": "Expected Updated At",
+            "type": "string"
+          },
           "ledger_id": {
             "default": "",
             "title": "Ledger Id",
@@ -5027,6 +5042,22 @@
         "title": "ExpenseSplitsResponse",
         "type": "object"
       },
+      "ExpenseUndoRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-A: ``POST /api/expenses/{id}/undo`` body. The OCC token\nrejects a stale /undo for a row that's been re-rejected since the\nbanner was shown — without it, a cached banner's /undo could un-do\na NEW intentional reject. See ``undo_reject_expense`` docstring.",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "ExpenseUndoRequest",
+        "type": "object"
+      },
       "ExpenseUpdateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7656,6 +7687,22 @@
           "updated_at"
         ],
         "title": "RecurringItemResponse",
+        "type": "object"
+      },
+      "RecurringItemTokenRequest": {
+        "additionalProperties": false,
+        "description": "ADR-0038 PR-A: ``POST /api/recurring/items/{public_id}/{pause,resume}``\nbody. The OCC token rejects stale toggle requests across the\npause↔active state-machine pair — without it, a stale pause arriving\nafter a user-intentional resume would silently re-pause (atomic\nUPDATE WHERE status!='archived' matches either state).",
+        "properties": {
+          "expected_updated_at": {
+            "format": "date-time",
+            "title": "Expected Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_updated_at"
+        ],
+        "title": "RecurringItemTokenRequest",
         "type": "object"
       },
       "RefreshSessionResponse": {
@@ -12165,6 +12212,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseUndoRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -15333,6 +15390,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringItemTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -15391,6 +15458,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecurringItemTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

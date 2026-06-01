@@ -213,10 +213,15 @@ internal class ExpensePendingRepository(
         rejected.toDomain()
     }
 
-    override suspend fun undoRejectExpense(id: Long): Result<Expense> =
+    override suspend fun undoRejectExpense(
+        id: Long,
+        expectedUpdatedAt: String,
+    ): Result<Expense> =
         core.errorHandler.safeCall {
             val bound = core.ledgerRequestGuard.bind()
-            val restored = bound.call { it.undoExpense(id) }
+            val restored = bound.call {
+                it.undoExpense(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+            }
             restored.toDomain()
         }
 

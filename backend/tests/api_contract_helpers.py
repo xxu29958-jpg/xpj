@@ -81,10 +81,26 @@ def undo_expense_api(
     expense_id: int,
     *,
     headers: dict[str, str],
+    expected_updated_at: str | None = None,
 ) -> httpx.Response:
     """ADR-0038 undo: restore a recently-rejected expense (5-minute window).
-    No ``expected_updated_at`` token — see ``post_undo_expense`` route doc."""
-    return client.post(f"/api/expenses/{expense_id}/undo", headers=headers)
+
+    PR-A added the ``expected_updated_at`` OCC token. Default snapshots
+    the current row's ``updated_at`` (matches the realistic banner flow:
+    user just rejected, banner reads new ``updated_at``, undo POST
+    carries it). Pass an explicit string to simulate stale-token race
+    tests.
+    """
+    if expected_updated_at is None:
+        snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
+        if snapshot.status_code != 200:
+            return snapshot
+        expected_updated_at = snapshot.json()["updated_at"]
+    return client.post(
+        f"/api/expenses/{expense_id}/undo",
+        headers=headers,
+        json={"expected_updated_at": expected_updated_at},
+    )
 
 
 def mark_not_duplicate_api(
@@ -259,14 +275,37 @@ def web_undo_expense(
     expense_id: int,
     *,
     ledger_id: str = "owner",
+    expected_updated_at: str | None = None,
     follow_redirects: bool = False,
 ) -> httpx.Response:
-    """ADR-0038 undo: /web/expenses/{id}/undo posted from the 5s 撤销 banner."""
+    """ADR-0038 undo: /web/expenses/{id}/undo posted from the 5s 撤销 banner.
+
+    PR-A added the OCC token form field. Default reads the row's current
+    ``updated_at`` directly from the DB (no API call — /web is
+    LocalOnly and doesn't carry the app auth headers; using SessionLocal
+    matches the real banner flow where the template reads from
+    ``fetch_expense_updated_at_in_status``). Pass an explicit value to
+    test stale-token races.
+    """
+    if expected_updated_at is None:
+        with SessionLocal() as db:
+            row = db.scalar(_select_expense_for_test(expense_id))
+            expected_updated_at = row.updated_at.isoformat() if row else ""
     return client.post(
         f"/web/expenses/{expense_id}/undo",
-        data={"ledger_id": ledger_id},
+        data={
+            "ledger_id": ledger_id,
+            "expected_updated_at": expected_updated_at,
+        },
         follow_redirects=follow_redirects,
     )
+
+
+def _select_expense_for_test(expense_id: int):
+    from sqlalchemy import select
+
+    from app.models import Expense
+    return select(Expense).where(Expense.id == expense_id).limit(1)
 
 
 def web_duplicates_action(

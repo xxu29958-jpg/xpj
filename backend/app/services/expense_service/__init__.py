@@ -33,6 +33,7 @@ from app.services.expense_service._helpers import EDITABLE_STATUSES
 from app.services.expense_service._image import ensure_image_file, ensure_thumbnail_file
 from app.services.expense_service._ocr import recognize_expense_text, retry_expense_ocr
 from app.services.expense_service._query import (
+    fetch_expense_updated_at_in_status,
     get_expense,
     is_expense_in_status_for_tenant,
     list_confirmed,
@@ -57,6 +58,7 @@ __all__ = [
     "ensure_image_file",
     "ensure_thumbnail_file",
     "enrich_pending_expense",
+    "fetch_expense_updated_at_in_status",
     "get_expense",
     "is_expense_in_status_for_tenant",
     "list_confirmed",

@@ -88,9 +88,9 @@ private class FakeRecurringActions(
         return Result.success(item(merchant = candidate.merchant))
     }
 
-    override suspend fun pause(publicId: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun pause(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
 
-    override suspend fun resume(publicId: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun resume(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
 
     override suspend fun archive(publicId: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
 }

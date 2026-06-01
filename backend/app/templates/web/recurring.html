@@ -76,14 +76,19 @@
         </td>
         <td>
           {% if can_write %}
+            {# ADR-0038 PR-A: hidden expected_updated_at OCC token. Without it
+               a stale pause/resume POST (e.g. from a tab opened before another
+               tab toggled the state) would silently flip the row again. #}
             {% if item.status == 'active' %}
             <form method="post" action="/web/recurring/{{ item.public_id }}/pause" class="inline">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_updated_at" value="{{ item.updated_at }}">
               <button type="submit" class="dt-btn">暂停</button>
             </form>
             {% elif item.status == 'paused' %}
             <form method="post" action="/web/recurring/{{ item.public_id }}/resume" class="inline">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+              <input type="hidden" name="expected_updated_at" value="{{ item.updated_at }}">
               <button type="submit" class="dt-btn">恢复</button>
             </form>
             {% endif %}

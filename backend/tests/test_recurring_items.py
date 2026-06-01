@@ -142,13 +142,23 @@ def test_recurring_candidate_next_expected_uses_local_expense_date(client: TestC
 def test_recurring_item_state_transitions(client: TestClient, *, identity) -> None:
     item = _confirm_candidate(client, identity=identity)
     public_id = item["public_id"]
+    token = item["updated_at"]
 
-    paused = client.post(f"/api/recurring/items/{public_id}/pause", headers=identity.app_headers)
+    paused = client.post(
+        f"/api/recurring/items/{public_id}/pause",
+        headers=identity.app_headers,
+        json={"expected_updated_at": token},
+    )
     assert paused.status_code == 200, paused.json()
     assert paused.json()["status"] == "paused"
     assert paused.json()["paused_at"] is not None
+    token = paused.json()["updated_at"]
 
-    resumed = client.post(f"/api/recurring/items/{public_id}/resume", headers=identity.app_headers)
+    resumed = client.post(
+        f"/api/recurring/items/{public_id}/resume",
+        headers=identity.app_headers,
+        json={"expected_updated_at": token},
+    )
     assert resumed.status_code == 200, resumed.json()
     assert resumed.json()["status"] == "active"
     assert resumed.json()["paused_at"] is None
@@ -166,7 +176,11 @@ def test_recurring_item_state_transitions(client: TestClient, *, identity) -> No
     assert visible.status_code == 200, visible.json()
     assert [entry["public_id"] for entry in visible.json()["items"]] == [public_id]
 
-    blocked = client.post(f"/api/recurring/items/{public_id}/resume", headers=identity.app_headers)
+    blocked = client.post(
+        f"/api/recurring/items/{public_id}/resume",
+        headers=identity.app_headers,
+        json={"expected_updated_at": visible.json()["items"][0]["updated_at"]},
+    )
     assert blocked.status_code == 409, blocked.json()
     assert blocked.json()["error"] == "recurring_item_archived"
 

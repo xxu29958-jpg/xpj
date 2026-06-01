@@ -14,6 +14,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.insights_service import normalize_merchant, recurring_candidates
+from app.services.optimistic_concurrency import updated_at_predicate
 from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -329,7 +330,16 @@ def get_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Recurr
     return item
 
 
-def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
+def pause_recurring_item(
+    db: Session, *, tenant_id: str, public_id: str, expected_updated_at: datetime
+) -> RecurringItem:
+    """ADR-0038 PR-A: pause with optimistic concurrency.
+
+    pause and resume are a state-machine toggle pair — stale pause arriving
+    after a user-intentional resume would silently re-pause without OCC
+    (atomic UPDATE WHERE status!='archived' would match either state).
+    Token check rejects the stale request.
+    """
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -337,6 +347,7 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Recu
         .where(RecurringItem.public_id == public_id)
         .where(RecurringItem.status != "archived")
         .where(RecurringItem.archived_at.is_(None))
+        .where(updated_at_predicate(RecurringItem.updated_at, expected_updated_at))
         .values(status="paused", paused_at=now, updated_at=now)
     )
     if result.rowcount:
@@ -346,10 +357,14 @@ def pause_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Recu
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "archived" or item.archived_at is not None:
         raise AppError("recurring_item_archived", status_code=409)
-    return item
+    raise AppError("state_conflict", status_code=409)
 
 
-def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:
+def resume_recurring_item(
+    db: Session, *, tenant_id: str, public_id: str, expected_updated_at: datetime
+) -> RecurringItem:
+    """ADR-0038 PR-A: resume with optimistic concurrency. Same rationale
+    as :func:`pause_recurring_item`."""
     now = now_utc()
     result = db.execute(
         update(RecurringItem)
@@ -357,6 +372,7 @@ def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Rec
         .where(RecurringItem.public_id == public_id)
         .where(RecurringItem.status != "archived")
         .where(RecurringItem.archived_at.is_(None))
+        .where(updated_at_predicate(RecurringItem.updated_at, expected_updated_at))
         .values(status="active", paused_at=None, updated_at=now)
     )
     if result.rowcount:
@@ -366,7 +382,7 @@ def resume_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Rec
     item = get_recurring_item(db, tenant_id=tenant_id, public_id=public_id)
     if item.status == "archived" or item.archived_at is not None:
         raise AppError("recurring_item_archived", status_code=409)
-    return item
+    raise AppError("state_conflict", status_code=409)
 
 
 def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> RecurringItem:

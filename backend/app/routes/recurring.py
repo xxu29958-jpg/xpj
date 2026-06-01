@@ -9,6 +9,7 @@ from app.schemas import (
     RecurringCandidateConfirmRequest,
     RecurringItemListResponse,
     RecurringItemResponse,
+    RecurringItemTokenRequest,
 )
 from app.services.recurring_service import (
     archive_recurring_item,
@@ -93,19 +94,31 @@ def get_recurring_item_detail(
 @router.post("/items/{public_id}/pause", response_model=RecurringItemResponse)
 def post_recurring_pause(
     public_id: str,
+    payload: RecurringItemTokenRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(pause_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id))
+    return recurring_item_response(pause_recurring_item(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_updated_at=payload.expected_updated_at,
+    ))
 
 
 @router.post("/items/{public_id}/resume", response_model=RecurringItemResponse)
 def post_recurring_resume(
     public_id: str,
+    payload: RecurringItemTokenRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> RecurringItemResponse:
-    return recurring_item_response(resume_recurring_item(db, tenant_id=auth.tenant_id, public_id=public_id))
+    return recurring_item_response(resume_recurring_item(
+        db,
+        tenant_id=auth.tenant_id,
+        public_id=public_id,
+        expected_updated_at=payload.expected_updated_at,
+    ))
 
 
 @router.post("/items/{public_id}/archive", response_model=RecurringItemResponse)

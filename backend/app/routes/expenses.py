@@ -25,6 +25,7 @@ from app.schemas import (
     ExpenseResponse,
     ExpenseSplitReplaceRequest,
     ExpenseSplitsResponse,
+    ExpenseUndoRequest,
     ExpenseUpdateRequest,
     MonthsResponse,
     NotificationDraftCreateRequest,
@@ -355,15 +356,17 @@ def post_reject_expense(
 @router.post("/{expense_id}/undo", response_model=ExpenseResponse)
 def post_undo_expense(
     expense_id: int,
+    payload: ExpenseUndoRequest,
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     # ADR-0038 undo: restore a recently-rejected expense within the 5-minute
-    # retention window. No ``expected_updated_at`` token — this restores the
-    # row the caller just rejected (near-zero contention inside the undo
-    # window) and 404 once the window closes (semantics match merchant_alias /
-    # category_rule undo paths). Past-window / wrong-status / cross-tenant /
-    # missing-row collapse to one 404 so the client just re-fetches state.
+    # retention window. The ``expected_updated_at`` token (v1.3 PR-A) rejects
+    # stale /undo from a cached banner for a row that's been re-rejected
+    # since the banner was shown — without it, a late /undo from an iPhone
+    # banner could un-do a NEW intentional reject. Past-window / wrong-status
+    # / cross-tenant / missing-row / stale-token all collapse to one 404 so
+    # the client just re-fetches state.
     #
     # Documented limitation (codex review P2): ``reject_expense`` clears
     # ``duplicate_of_id`` on other expenses that pointed at this one
@@ -377,6 +380,7 @@ def post_undo_expense(
         db,
         expense_id,
         auth.tenant_id,
+        payload.expected_updated_at,
         actor_account_id=auth.account_id,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)

@@ -239,7 +239,10 @@ internal class StubApi(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
     ): ExpenseDto = ledgerUnsupported()
-    override suspend fun undoExpense(id: Long): ExpenseDto = ledgerUnsupported()
+    override suspend fun undoExpense(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto = ledgerUnsupported()
     override suspend fun retryOcr(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
@@ -350,8 +353,8 @@ internal class StubApi(
         timezone: String?,
     ): RecurringItemDto = ledgerUnsupported()
     override suspend fun recurringItem(publicId: String, month: String?, timezone: String?): RecurringItemDto = ledgerUnsupported()
-    override suspend fun pauseRecurringItem(publicId: String): RecurringItemDto = ledgerUnsupported()
-    override suspend fun resumeRecurringItem(publicId: String): RecurringItemDto = ledgerUnsupported()
+    override suspend fun pauseRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = ledgerUnsupported()
+    override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = ledgerUnsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = ledgerUnsupported()
     override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = ledgerUnsupported()
     override suspend fun getUiPreferences(): Response<UserUiPreferencesDto> = ledgerUnsupported()

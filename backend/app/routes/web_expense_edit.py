@@ -173,27 +173,36 @@ def web_expense_undo(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(default=""),
+    expected_updated_at: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     # ADR-0038 undo: restore a recently-rejected expense from the 5s banner.
-    # No ``expected_updated_at`` — this restores the row the operator just
-    # rejected; 404 once the 5-min retention cutoff passes (semantics match
-    # the /api/expenses/{id}/undo route). Past-window / wrong-status /
-    # cross-tenant / missing-row collapse to one flash message + flash_type=error
-    # so /web/pending renders the red banner variant, not the green one.
+    # PR-A added the ``expected_updated_at`` token — without it, a stale /undo
+    # POST from a cached banner could un-do a NEW intentional reject if the
+    # user re-rejected the same row in between. /web/pending seeds the form's
+    # hidden field with the row's updated_at at banner-render time; this route
+    # parses it and lets ``undo_reject_expense``'s atomic UPDATE WHERE either
+    # match (token still current → restore) or rowcount=0 (token stale →
+    # 404 → flash "无法撤销"). Past-window / wrong-status / cross-tenant /
+    # missing-row / stale-token all collapse to one flash message + flash_type=error.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
+    parsed = parse_form_updated_at_token(expected_updated_at)
+    if parsed is None:
+        return _web_redirect(
+            "/web/pending", selected_id,
+            msg="页面已过期，请刷新后重新操作。", flash_type="error",
+        )
     try:
-        undo_reject_expense(db, expense_id, selected_id)
+        undo_reject_expense(db, expense_id, selected_id, parsed)
         msg = "已撤销，账单已恢复待确认。"
         flash_type = "success"
     except AppError:
-        # ``undo_reject_expense`` only raises ``expense_not_found`` today. If a future
-        # validation grows here it should map to a flash, not bubble up — but adding a
-        # branch for an error class that doesn't exist is dead weight; one bucket covers
-        # past-window / wrong-status / cross-tenant / missing-row from the user's POV.
+        # ``undo_reject_expense`` only raises ``expense_not_found`` today (covers
+        # past-window / wrong-status / cross-tenant / missing-row / stale-token
+        # uniformly). One bucket covers all from the user's POV.
         msg = "无法撤销：账单已超过 5 分钟保留窗口，或已被清理。"
         flash_type = "error"
     return _web_redirect("/web/pending", selected_id, msg=msg, flash_type=flash_type)

@@ -306,7 +306,10 @@ internal class FakeApiService(
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
     ): ExpenseDto = unsupported()
 
-    override suspend fun undoExpense(id: Long): ExpenseDto = unsupported()
+    override suspend fun undoExpense(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto = unsupported()
 
     override suspend fun retryOcr(
         id: Long,
@@ -550,8 +553,8 @@ internal class FakeApiService(
         timezone: String?,
     ): RecurringItemDto = unsupported()
     override suspend fun recurringItem(publicId: String, month: String?, timezone: String?): RecurringItemDto = unsupported()
-    override suspend fun pauseRecurringItem(publicId: String): RecurringItemDto = unsupported()
-    override suspend fun resumeRecurringItem(publicId: String): RecurringItemDto = unsupported()
+    override suspend fun pauseRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()
+    override suspend fun resumeRecurringItem(publicId: String, request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest): RecurringItemDto = unsupported()
     override suspend fun archiveRecurringItem(publicId: String): RecurringItemDto = unsupported()
     override suspend fun dataQualitySummary(): com.ticketbox.data.remote.dto.DataQualitySummaryDto = unsupported()
 

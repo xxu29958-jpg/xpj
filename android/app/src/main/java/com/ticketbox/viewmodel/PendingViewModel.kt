@@ -416,7 +416,13 @@ class PendingViewModel(
         // which would otherwise overwrite the row we're about to restore.
         refreshSkipEpoch += 1
         viewModelScope.launch {
-            repository.undoRejectExpense(target.id)
+            // ADR-0038 PR-A: undo carries the rejected row's updated_at as
+            // the OCC token. ``target`` is the Synced reject's expense (set
+            // at seed time in reject()'s onSuccess), so its updated_at is
+            // exactly what the banner showed. If the row's been re-rejected
+            // since, the server-side atomic UPDATE WHERE fails → 404 → the
+            // standard "无法撤销" flash.
+            repository.undoRejectExpense(target.id, target.updatedAt)
                 .onSuccess { restored ->
                     if (requestGeneration != generation) return@onSuccess
                     _uiState.update { state ->

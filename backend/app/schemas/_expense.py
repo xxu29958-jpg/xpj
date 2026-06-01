@@ -32,6 +32,7 @@ __all__ = [
     "ExpenseRecognizeTextRequest",
     "ExpenseRejectRequest",
     "ExpenseResponse",
+    "ExpenseUndoRequest",
     "PendingCategorySuggestionResponse",
     "PendingDuplicateCandidateResponse",
     "ExpenseSplitReplaceRequest",
@@ -138,6 +139,17 @@ class ExpenseRejectRequest(BaseModel):
 
 class ExpenseMarkNotDuplicateRequest(BaseModel):
     """ADR-0038 PR-2b: ``POST /api/expenses/{id}/mark-not-duplicate``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
+
+
+class ExpenseUndoRequest(BaseModel):
+    """ADR-0038 PR-A: ``POST /api/expenses/{id}/undo`` body. The OCC token
+    rejects a stale /undo for a row that's been re-rejected since the
+    banner was shown — without it, a cached banner's /undo could un-do
+    a NEW intentional reject. See ``undo_reject_expense`` docstring."""
 
     model_config = ConfigDict(extra="forbid")
 

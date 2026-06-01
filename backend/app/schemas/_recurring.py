@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.services.time_service import to_iso
 
@@ -14,7 +14,20 @@ __all__ = [
     "RecurringCandidatesResponse",
     "RecurringItemListResponse",
     "RecurringItemResponse",
+    "RecurringItemTokenRequest",
 ]
+
+
+class RecurringItemTokenRequest(BaseModel):
+    """ADR-0038 PR-A: ``POST /api/recurring/items/{public_id}/{pause,resume}``
+    body. The OCC token rejects stale toggle requests across the
+    pause↔active state-machine pair — without it, a stale pause arriving
+    after a user-intentional resume would silently re-pause (atomic
+    UPDATE WHERE status!='archived' matches either state)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_updated_at: datetime
 
 
 # v0.4-alpha3 — Recurring candidates (read-only insights)

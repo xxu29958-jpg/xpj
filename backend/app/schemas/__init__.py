@@ -109,6 +109,7 @@ from app.schemas._expense import (
     ExpenseSplitRequest,
     ExpenseSplitResponse,
     ExpenseSplitsResponse,
+    ExpenseUndoRequest,
     ExpenseUpdateRequest,
     NotificationDraftCreateRequest,
     OcrRetryResponse,
@@ -167,6 +168,7 @@ from app.schemas._recurring import (
     RecurringCandidatesResponse,
     RecurringItemListResponse,
     RecurringItemResponse,
+    RecurringItemTokenRequest,
 )
 from app.schemas._reports import (
     LifestyleStatsResponse,
@@ -271,6 +273,7 @@ __all__ = [
     "ExpenseRecognizeTextRequest",
     "ExpenseRejectRequest",
     "ExpenseResponse",
+    "ExpenseUndoRequest",
     "ExpenseSplitReplaceRequest",
     "ExpenseSplitRequest",
     "ExpenseSplitResponse",
@@ -334,6 +337,7 @@ __all__ = [
     "RecurringCandidatesResponse",
     "RecurringItemListResponse",
     "RecurringItemResponse",
+    "RecurringItemTokenRequest",
     "ReportCategoryComparisonResponse",
     "ReportMerchantRankingResponse",
     "ReportTrendPointResponse",

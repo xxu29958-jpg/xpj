@@ -187,9 +187,13 @@ def test_high_risk_api_surfaces_are_ledger_scoped(client: TestClient, *, identit
         ).status_code
         == 404
     )
+    # ADR-0038 PR-A: pause now requires expected_updated_at; cross-tenant should
+    # still 404 (ledger-scoped query finds no row to apply the token to).
     assert (
         client.post(
-            f"/api/recurring/items/{public_id}/pause", headers=identity.gray_app_headers
+            f"/api/recurring/items/{public_id}/pause",
+            headers=identity.gray_app_headers,
+            json={"expected_updated_at": owner_recurring.json()["updated_at"]},
         ).status_code
         == 404
     )

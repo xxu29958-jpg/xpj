@@ -216,8 +216,15 @@ interface ApiService {
     // reject has nothing to restore via the API (its rejection lives in the
     // outbox, not the server); UI should only show the undo affordance after
     // an ExpenseStateOutcome.Synced reject.
+    // ADR-0038 PR-A: undo now carries expected_updated_at — rejects stale
+    // /undo from a banner whose row has been re-rejected since the banner
+    // was shown. Without it a cached banner could un-do a NEW intentional
+    // reject.
     @POST("api/expenses/{id}/undo")
-    suspend fun undoExpense(@Path("id") id: Long): ExpenseDto
+    suspend fun undoExpense(
+        @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+    ): ExpenseDto
 
     @POST("api/expenses/{id}/ocr/retry")
     suspend fun retryOcr(
@@ -475,10 +482,16 @@ interface ApiService {
     ): RecurringItemDto
 
     @POST("api/recurring/items/{publicId}/pause")
-    suspend fun pauseRecurringItem(@Path("publicId") publicId: String): RecurringItemDto
+    suspend fun pauseRecurringItem(
+        @Path("publicId") publicId: String,
+        @Body request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest,
+    ): RecurringItemDto
 
     @POST("api/recurring/items/{publicId}/resume")
-    suspend fun resumeRecurringItem(@Path("publicId") publicId: String): RecurringItemDto
+    suspend fun resumeRecurringItem(
+        @Path("publicId") publicId: String,
+        @Body request: com.ticketbox.data.remote.dto.RecurringItemTokenRequest,
+    ): RecurringItemDto
 
     @POST("api/recurring/items/{publicId}/archive")
     suspend fun archiveRecurringItem(@Path("publicId") publicId: String): RecurringItemDto

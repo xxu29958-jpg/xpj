@@ -120,7 +120,7 @@ interface PendingReviewActions {
      *  - IOException / 5xx → ``Result.failure``; no outbox fallback (undo is a
      *    short-window UI nudge, not a durable mutation worth queueing).
      */
-    suspend fun undoRejectExpense(id: Long): Result<Expense>
+    suspend fun undoRejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
 
     /**
      * ADR-0038 PR-2g.8: offline-aware mark-not-duplicate. Same

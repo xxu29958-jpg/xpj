@@ -1094,7 +1094,7 @@ private class FakeReviewActions(
             ?: error("rejectResponder/rejectOfflineResponder not set")
     }
 
-    override suspend fun undoRejectExpense(id: Long): Result<Expense> =
+    override suspend fun undoRejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
         undoRejectResponder?.invoke(id) ?: error("undoRejectResponder not set")
 
     override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> {

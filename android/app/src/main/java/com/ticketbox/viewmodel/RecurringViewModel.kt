@@ -82,15 +82,15 @@ class RecurringViewModel(
         }
     }
 
-    fun pause(publicId: String) {
+    fun pause(publicId: String, expectedUpdatedAt: String) {
         mutate {
-            repository.pause(publicId)
+            repository.pause(publicId, expectedUpdatedAt)
         }
     }
 
-    fun resume(publicId: String) {
+    fun resume(publicId: String, expectedUpdatedAt: String) {
         mutate {
-            repository.resume(publicId)
+            repository.resume(publicId, expectedUpdatedAt)
         }
     }
 

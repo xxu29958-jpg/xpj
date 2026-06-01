@@ -155,9 +155,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/notification-drafts": Exempt("create_row", "expenses", ("expenses",)),
     "POST /api/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
-    "POST /api/expenses/{expense_id}/undo": Exempt(
-        "terminal_flag_flip", "expenses", ("expenses", "ledger_audit_logs")
-    ),
     "POST /api/goals": Exempt("create_row", "goals", ("goals",)),
     "POST /api/imports/csv": Exempt("create_row", "imports", _IMPORT_CREATE),
     "POST /api/income-plans": Exempt("create_row", "budget", _INCOME_PLAN),
@@ -197,8 +194,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /api/goals/{public_id}/archive": Exempt("terminal_flag_flip", "goals", ("goals",)),
     "POST /api/income-plans/{public_id}/restore": Exempt("terminal_flag_flip", "budget", _INCOME_PLAN),
     "POST /api/recurring/items/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
-    "POST /api/recurring/items/{public_id}/pause": Exempt("terminal_flag_flip", "recurring", _RECURRING),
-    "POST /api/recurring/items/{public_id}/resume": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /api/tasks/{public_id}/cancel": Exempt("terminal_flag_flip", "tasks", ("background_tasks",)),
 
     # --- /api batch / maintenance / preview / advisor / session ---
@@ -252,9 +247,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/dashboard/cards/reset": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/dashboard/cards/save": Exempt("upsert_bucket", "budget", _DASHBOARD),
     "POST /web/expenses/{expense_id}/split-invite": Exempt("create_row", "bill_split", _BILL_SPLIT),
-    "POST /web/expenses/{expense_id}/undo": Exempt(
-        "terminal_flag_flip", "expenses", ("expenses", "ledger_audit_logs")
-    ),
     "POST /web/goals/create": Exempt("create_row", "goals", ("goals",)),
     "POST /web/goals/{public_id}/archive": Exempt("terminal_flag_flip", "goals", ("goals",)),
     "POST /web/import/preview": Exempt("create_row", "imports", _IMPORT_CREATE),
@@ -270,8 +262,6 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /web/pending/batch-reject": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/recurring/confirm-candidate": Exempt("create_row", "recurring", _RECURRING),
     "POST /web/recurring/{public_id}/archive": Exempt("terminal_flag_flip", "recurring", _RECURRING),
-    "POST /web/recurring/{public_id}/pause": Exempt("terminal_flag_flip", "recurring", _RECURRING),
-    "POST /web/recurring/{public_id}/resume": Exempt("terminal_flag_flip", "recurring", _RECURRING),
     "POST /web/review/bulk": Exempt("batch_db_write", "expenses", ("expenses",)),
     "POST /web/rules/applications/{public_id}/rollback": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),
     "POST /web/rules/apply-confirmed": Exempt("batch_db_write", "rules", _RULES_APPLY, "medium"),

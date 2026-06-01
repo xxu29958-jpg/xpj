@@ -56,6 +56,15 @@ data class RecurringItemDto(
     val archivedAt: String?,
 )
 
+// ADR-0038 PR-A: OCC token body for pause/resume. Mirrors the backend
+// RecurringItemTokenRequest — the recurring screen sends the item's last-seen
+// updatedAt so a stale toggle (e.g. another device already paused) gets a 409
+// instead of silently re-flipping. Same shape as ExpenseStateTokenRequest.
+data class RecurringItemTokenRequest(
+    @param:Json(name = "expected_updated_at")
+    val expectedUpdatedAt: String,
+)
+
 data class RecurringItemListResponseDto(
     val items: List<RecurringItemDto>,
 )
