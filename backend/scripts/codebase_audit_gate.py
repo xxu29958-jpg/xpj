@@ -212,7 +212,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # restore without/stale token, race idempotent, 422, unknown 404 — symmetry
     # added per the subagent review replacing the absent codex pass); +4 PR-C
     # bill_split accept atomic-claim (two-session race / claim-guard / migration ×2).
-    "backend_pytest_count": 1523,
+    "backend_pytest_count": 1531,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination
