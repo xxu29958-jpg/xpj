@@ -1,6 +1,6 @@
 """ADR-0038 contract tests for category_rule PATCH/DELETE.
 
-The mutation endpoints accept ``expected_updated_at`` (required); a
+The mutation endpoints accept ``expected_row_version`` (required); a
 stale value surfaces as ``409 state_conflict`` so the client can
 re-read and let the user resolve. PR-1 试点 — only the API surface,
 not Android outbox / undo (PR-2+).
@@ -52,7 +52,7 @@ def test_patch_category_rule_with_fresh_updated_at_succeeds(
         headers=identity.app_headers,
         json={
             "category": "交通",
-            "expected_updated_at": rule["updated_at"],
+            "expected_row_version": rule["row_version"],
         },
     )
     assert resp.status_code == 200, resp.text
@@ -70,7 +70,7 @@ def test_patch_category_rule_with_stale_updated_at_returns_409(
         headers=identity.app_headers,
         json={
             "category": "交通",
-            "expected_updated_at": rule["updated_at"],
+            "expected_row_version": rule["row_version"],
         },
     )
     assert first.status_code == 200
@@ -80,7 +80,7 @@ def test_patch_category_rule_with_stale_updated_at_returns_409(
         headers=identity.app_headers,
         json={
             "category": "购物",
-            "expected_updated_at": rule["updated_at"],
+            "expected_row_version": rule["row_version"],
         },
     )
     assert stale.status_code == 409
@@ -89,7 +89,7 @@ def test_patch_category_rule_with_stale_updated_at_returns_409(
     assert body["message"]
 
 
-def test_patch_category_rule_without_expected_updated_at_returns_422(
+def test_patch_category_rule_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     rule = _create_rule(client, identity=identity)
@@ -113,7 +113,7 @@ def test_delete_category_rule_with_fresh_updated_at_succeeds(
         "DELETE",
         f"/api/rules/categories/{rule['id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": rule["updated_at"]},
+        json={"expected_row_version": rule["row_version"]},
     )
     assert resp.status_code == 200, resp.text
 
@@ -128,7 +128,7 @@ def test_delete_category_rule_with_stale_updated_at_returns_409(
         headers=identity.app_headers,
         json={
             "enabled": False,
-            "expected_updated_at": rule["updated_at"],
+            "expected_row_version": rule["row_version"],
         },
     )
     assert first.status_code == 200
@@ -137,13 +137,13 @@ def test_delete_category_rule_with_stale_updated_at_returns_409(
         "DELETE",
         f"/api/rules/categories/{rule['id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": rule["updated_at"]},
+        json={"expected_row_version": rule["row_version"]},
     )
     assert stale.status_code == 409
     assert stale.json()["error"] == "state_conflict"
 
 
-def test_delete_category_rule_without_expected_updated_at_returns_422(
+def test_delete_category_rule_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     rule = _create_rule(client, identity=identity, keyword="DeleteMissingField")
@@ -178,14 +178,14 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
         assert rule_a is not None and rule_b is not None
         # Both sessions read the same version; this is the read/read
         # half of the race.
-        assert rule_a.updated_at == rule_b.updated_at
-        shared_version = rule_a.updated_at
+        assert rule_a.row_version == rule_b.row_version
+        shared_version = rule_a.row_version
 
         # Writer A commits first — succeeds.
         update_rule(
             session_a,
             rule_a,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
             category="交通",
         )
 
@@ -197,7 +197,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
             update_rule(
                 session_b,
                 rule_b,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 category="购物",
             )
         assert exc_info.value.error == "state_conflict"
@@ -211,7 +211,7 @@ def test_two_sessions_concurrent_delete_then_update_resolves_to_404_or_409(
     client: TestClient, *, identity
 ) -> None:
     """Variant: writer A deletes, writer B tries to PATCH with the
-    pre-delete expected_updated_at. The atomic UPDATE finds no row
+    pre-delete expected_row_version. The atomic UPDATE finds no row
     (rowcount=0); disambiguation falls through to ``rule_not_found``
     404 because find_rule_for_tenant also returns None."""
     rule_payload = _create_rule(client, identity=identity, keyword="RaceDeleted")
@@ -223,7 +223,7 @@ def test_two_sessions_concurrent_delete_then_update_resolves_to_404_or_409(
         rule_a = session_a.scalar(select(CategoryRule).where(CategoryRule.id == rule_id))
         rule_b = session_b.scalar(select(CategoryRule).where(CategoryRule.id == rule_id))
         assert rule_a is not None and rule_b is not None
-        shared_version = rule_a.updated_at
+        shared_version = rule_a.row_version
 
         session_a.delete(rule_a)
         session_a.commit()
@@ -232,7 +232,7 @@ def test_two_sessions_concurrent_delete_then_update_resolves_to_404_or_409(
             update_rule(
                 session_b,
                 rule_b,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 category="购物",
             )
         assert exc_info.value.error == "rule_not_found"

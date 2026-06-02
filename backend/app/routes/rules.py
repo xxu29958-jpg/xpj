@@ -85,17 +85,17 @@ def patch_category_rule(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
-    # ADR-0038: client sends `expected_updated_at` (the value it saw
+    # ADR-0038: client sends `expected_row_version` (the value it saw
     # when it read the rule). update_rule raises state_conflict 409
     # if the server's current value differs.
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
     field_updates = payload.model_dump(
-        exclude={"expected_updated_at"}, exclude_unset=True
+        exclude={"expected_row_version"}, exclude_unset=True
     )
     return update_rule(
         db,
         rule,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
         **field_updates,
     )
 
@@ -107,12 +107,12 @@ def delete_category_rule(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
-    # ADR-0038: DELETE carries a body with `expected_updated_at` so
+    # ADR-0038: DELETE carries a body with `expected_row_version` so
     # stale clicks (rule edited by another window between list-render
     # and delete-click) surface as state_conflict 409 instead of
     # silently destroying the concurrent edit.
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-    delete_rule(db, rule, expected_updated_at=payload.expected_updated_at)
+    delete_rule(db, rule, expected_row_version=payload.expected_row_version)
     return StatusResponse()
 
 
@@ -123,7 +123,7 @@ def undo_category_rule(
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
     # ADR-0038 undo: restore a soft-deleted rule within the retention window.
-    # No `expected_updated_at` — undo targets the soft-deleted row by id and is
+    # No `expected_row_version` — undo targets the soft-deleted row by id and is
     # a no-op-or-restore; once cleanup purges it (or if it was never
     # soft-deleted) this returns 404 rule_not_found.
     return undo_delete_rule(

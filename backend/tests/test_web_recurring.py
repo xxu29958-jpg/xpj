@@ -99,23 +99,23 @@ def test_web_recurring_confirm_pause_resume_archive(web_client: TestClient) -> N
     # ADR-0038 PR-A: pause/resume need OCC token (banner-render time updated_at)
     with SessionLocal() as db:
         token = db.scalar(
-            select(RecurringItem.updated_at).where(RecurringItem.public_id == public_id)
-        ).isoformat()
+            select(RecurringItem.row_version).where(RecurringItem.public_id == public_id)
+        )
     paused = web_client.post(
         f"/web/recurring/{public_id}/pause",
-        data={"ledger_id": "owner", "expected_updated_at": token},
+        data={"ledger_id": "owner", "expected_row_version": token},
         follow_redirects=False,
     )
     assert paused.status_code == 303
     with SessionLocal() as db:
         assert db.scalar(select(RecurringItem.status).where(RecurringItem.public_id == public_id)) == "paused"
         token = db.scalar(
-            select(RecurringItem.updated_at).where(RecurringItem.public_id == public_id)
-        ).isoformat()
+            select(RecurringItem.row_version).where(RecurringItem.public_id == public_id)
+        )
 
     resumed = web_client.post(
         f"/web/recurring/{public_id}/resume",
-        data={"ledger_id": "owner", "expected_updated_at": token},
+        data={"ledger_id": "owner", "expected_row_version": token},
         follow_redirects=False,
     )
     assert resumed.status_code == 303
@@ -171,21 +171,21 @@ def test_web_recurring_viewer_read_only(web_client: TestClient) -> None:
 
 
 def _extract_hidden_token(html: str, *, action: str) -> str:
-    """Pull ``expected_updated_at`` out of the form whose ``action`` matches —
+    """Pull ``expected_row_version`` out of the form whose ``action`` matches —
     i.e. the token as actually rendered into the page, not a value read
     straight from the DB. Returns "" when absent so the caller can assert the
     page emits a real token."""
     form = re.search(re.escape(f'action="{action}"') + r".*?</form>", html, re.DOTALL)
     if not form:
         return ""
-    field = re.search(r'name="expected_updated_at"\s+value="([^"]*)"', form.group(0))
+    field = re.search(r'name="expected_row_version"\s+value="([^"]*)"', form.group(0))
     return field.group(1) if field else ""
 
 
 def test_web_recurring_pause_resume_use_rendered_token(web_client: TestClient) -> None:
     """ADR-0038 PR-A regression (codex P1#2). The pause/resume forms must carry
     a real OCC token *rendered into the page*. ``_item_view`` previously omitted
-    ``updated_at`` so the hidden field rendered empty → parse_form_updated_at_token
+    ``updated_at`` so the hidden field rendered empty → parse_form_row_version_token
     returned None → every web user hit the "页面已过期" redirect and could never
     toggle. Driving the token from the rendered HTML (not a DB read like the
     sibling test) fails if the page stops emitting it."""
@@ -196,11 +196,11 @@ def test_web_recurring_pause_resume_use_rendered_token(web_client: TestClient) -
     page = web_client.get("/web/recurring?ledger_id=owner")
     assert page.status_code == 200
     token = _extract_hidden_token(page.text, action=f"/web/recurring/{public_id}/pause")
-    assert token, "pause form must render a non-empty expected_updated_at token"
+    assert token, "pause form must render a non-empty expected_row_version token"
 
     paused = web_client.post(
         f"/web/recurring/{public_id}/pause",
-        data={"ledger_id": "owner", "expected_updated_at": token},
+        data={"ledger_id": "owner", "expected_row_version": token},
         follow_redirects=False,
     )
     assert paused.status_code == 303
@@ -212,11 +212,11 @@ def test_web_recurring_pause_resume_use_rendered_token(web_client: TestClient) -
 
     page = web_client.get("/web/recurring?ledger_id=owner")
     token = _extract_hidden_token(page.text, action=f"/web/recurring/{public_id}/resume")
-    assert token, "resume form must render a non-empty expected_updated_at token"
+    assert token, "resume form must render a non-empty expected_row_version token"
 
     resumed = web_client.post(
         f"/web/recurring/{public_id}/resume",
-        data={"ledger_id": "owner", "expected_updated_at": token},
+        data={"ledger_id": "owner", "expected_row_version": token},
         follow_redirects=False,
     )
     assert resumed.status_code == 303

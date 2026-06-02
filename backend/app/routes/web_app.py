@@ -34,7 +34,7 @@ from app.routes.web_common import (
     _trend14_amounts,
     _web_redirect,
     _with_ledger,
-    parse_form_updated_at_token,
+    parse_form_row_version_token,
     templates,
 )
 from app.schemas import ConfirmedExpenseBatchUpdateRequest
@@ -192,7 +192,7 @@ def web_confirmed_batch_update(
     action: str = Form(...),
     ledger_id: str = Form(default=""),
     expense_ids: list[int] = Form(default=[]),
-    expected_updated_at: list[str] = Form(default=[]),
+    expected_row_version: list[str] = Form(default=[]),
     category: str = Form(default=""),
     tags: str = Form(default=""),
     month: str = Form(default=""),
@@ -208,14 +208,14 @@ def web_confirmed_batch_update(
     if not expense_ids:
         return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="请先勾选账单。")
 
-    if len(expected_updated_at) != len(expense_ids):
+    if len(expected_row_version) != len(expense_ids):
         return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="页面已过期，请刷新后重新批处理。")
-    expected_updated_at_by_id = {}
-    for expense_id, raw_token in zip(expense_ids, expected_updated_at, strict=True):
-        parsed_token = parse_form_updated_at_token(raw_token)
+    expected_row_version_by_id = {}
+    for expense_id, raw_token in zip(expense_ids, expected_row_version, strict=True):
+        parsed_token = parse_form_row_version_token(raw_token)
         if parsed_token is None:
             return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="页面已过期，请刷新后重新批处理。")
-        expected_updated_at_by_id[expense_id] = parsed_token
+        expected_row_version_by_id[expense_id] = parsed_token
 
     action_clean = (action or "").strip()
     if action_clean == "set_category":
@@ -224,7 +224,7 @@ def web_confirmed_batch_update(
             return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="请填写分类。")
         payload = ConfirmedExpenseBatchUpdateRequest(
             expense_ids=expense_ids,
-            expected_updated_at_by_id=expected_updated_at_by_id,
+            expected_row_version_by_id=expected_row_version_by_id,
             category=category_clean,
         )
     elif action_clean == "set_tags":
@@ -233,7 +233,7 @@ def web_confirmed_batch_update(
             return _confirmed_redirect(selected_id, month=month, tag=tag, page=page, msg="请填写标签。")
         payload = ConfirmedExpenseBatchUpdateRequest(
             expense_ids=expense_ids,
-            expected_updated_at_by_id=expected_updated_at_by_id,
+            expected_row_version_by_id=expected_row_version_by_id,
             tags=tags_clean,
         )
     else:

@@ -40,7 +40,7 @@ def _delete(client: TestClient, headers: dict[str, str], created: dict) -> None:
         "DELETE",
         f"/api/merchants/aliases/{created['public_id']}",
         headers=headers,
-        json={"expected_updated_at": created["updated_at"]},
+        json={"expected_row_version": created["row_version"]},
     )
     assert response.status_code == 200, response.text
 

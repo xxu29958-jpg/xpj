@@ -154,12 +154,12 @@ def test_update_changes_only_provided_fields(identity) -> None:  # noqa: ARG001
             amount_cents=1_000_000, pay_day=10,
         )
         pid = plan.public_id
-        token = plan.updated_at
+        token = plan.row_version
         updated = update_income_plan(
             db,
             tenant_id="owner",
             public_id=pid,
-            expected_updated_at=token,
+            expected_row_version=token,
             amount_cents=1_200_000,
         )
     assert updated.amount_cents == 1_200_000
@@ -173,16 +173,16 @@ def test_update_rejects_archived_plan(identity) -> None:  # noqa: ARG001
             db, tenant_id="owner", label="x", source_type="salary",
             amount_cents=100, pay_day=5,
         )
-        token = plan.updated_at
+        token = plan.row_version
         archive_income_plan(
-            db, tenant_id="owner", public_id=plan.public_id, expected_updated_at=token
+            db, tenant_id="owner", public_id=plan.public_id, expected_row_version=token
         )
         with pytest.raises(AppError, match="归档"):
             update_income_plan(
                 db,
                 tenant_id="owner",
                 public_id=plan.public_id,
-                expected_updated_at=token,
+                expected_row_version=token,
                 label="y",
             )
 
@@ -194,7 +194,7 @@ def test_update_unknown_public_id_returns_not_found(identity) -> None:  # noqa: 
             db,
             tenant_id="owner",
             public_id="nonexistent",
-            expected_updated_at=datetime(2026, 5, 4, tzinfo=UTC),
+            expected_row_version=datetime(2026, 5, 4, tzinfo=UTC),
             label="x",
         )
 
@@ -207,11 +207,11 @@ def test_archive_is_idempotent(identity) -> None:  # noqa: ARG001
         )
         first = archive_income_plan(
             db, tenant_id="owner", public_id=plan.public_id,
-            expected_updated_at=plan.updated_at,
+            expected_row_version=plan.row_version,
         )
         second = archive_income_plan(
             db, tenant_id="owner", public_id=plan.public_id,
-            expected_updated_at=plan.updated_at,
+            expected_row_version=plan.row_version,
         )
     assert first.status == "archived"
     assert second.status == "archived"
@@ -226,11 +226,11 @@ def test_restore_reactivates_archived_plan(identity) -> None:  # noqa: ARG001
         )
         archived = archive_income_plan(
             db, tenant_id="owner", public_id=plan.public_id,
-            expected_updated_at=plan.updated_at,
+            expected_row_version=plan.row_version,
         )
         restored = restore_income_plan(
             db, tenant_id="owner", public_id=plan.public_id,
-            expected_updated_at=archived.updated_at,
+            expected_row_version=archived.row_version,
         )
     assert restored.status == "active"
     assert restored.archived_at is None
@@ -253,7 +253,7 @@ def test_list_active_excludes_archived(identity) -> None:  # noqa: ARG001
         )
         archive_income_plan(
             db, tenant_id="owner", public_id=archived.public_id,
-            expected_updated_at=archived.updated_at,
+            expected_row_version=archived.row_version,
         )
         listed = list_income_plans(db, tenant_id="owner")
     pids = {p.public_id for p in listed}
@@ -273,7 +273,7 @@ def test_list_with_status_none_returns_everything(identity) -> None:  # noqa: AR
         )
         archive_income_plan(
             db, tenant_id="owner", public_id=archived.public_id,
-            expected_updated_at=archived.updated_at,
+            expected_row_version=archived.row_version,
         )
         listed = list_income_plans(db, tenant_id="owner", status=None)
     pids = {p.public_id for p in listed}
@@ -297,7 +297,7 @@ def test_total_monthly_income_only_counts_active(identity) -> None:  # noqa: ARG
         )
         archive_income_plan(
             db, tenant_id="owner", public_id=dead.public_id,
-            expected_updated_at=dead.updated_at,
+            expected_row_version=dead.row_version,
         )
         total = total_monthly_income_cents(db, tenant_id="owner")
     assert total == 1_500_000

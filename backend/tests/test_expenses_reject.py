@@ -55,12 +55,12 @@ def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient, *, 
         assert reject_row is not None
         # Both sessions hold the same pre-confirm snapshot — the
         # token they'll pass to the state-machine endpoints.
-        shared_version = confirm_row.updated_at
+        shared_version = confirm_row.row_version
         confirmed = confirm_expense(
             confirm_db,
             expense_id,
             "owner",
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
         )
         assert confirmed.status == "confirmed"
 
@@ -73,7 +73,7 @@ def test_stale_reject_cannot_overwrite_confirmed_expense(client: TestClient, *, 
                 reject_db,
                 expense_id,
                 "owner",
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
             )
         assert error.value.error == "expense_not_found"
         assert error.value.status_code == 404

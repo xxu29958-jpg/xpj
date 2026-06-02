@@ -23,7 +23,7 @@
         if (!isVisible(el)) return;
         entries.push({
           id: el.getAttribute("data-id"),
-          updatedAt: el.getAttribute("data-updated-at") || ""
+          rowVersion: el.getAttribute("data-row-version") || ""
         });
       });
       return entries;
@@ -44,7 +44,7 @@
       });
       // 同步隐藏 input
       form.querySelectorAll('input[name="expense_ids"]').forEach(function (n) { n.remove(); });
-      form.querySelectorAll('input[name="expected_updated_at"]').forEach(function (n) { n.remove(); });
+      form.querySelectorAll('input[name="expected_row_version"]').forEach(function (n) { n.remove(); });
       entries.forEach(function (entry) {
         const h = document.createElement("input");
         h.type = "hidden";
@@ -52,11 +52,11 @@
         h.value = entry.id;
         form.appendChild(h);
 
-        if (entry.updatedAt) {
+        if (entry.rowVersion) {
           const token = document.createElement("input");
           token.type = "hidden";
-          token.name = "expected_updated_at";
-          token.value = entry.updatedAt;
+          token.name = "expected_row_version";
+          token.value = entry.rowVersion;
           form.appendChild(token);
         }
       });

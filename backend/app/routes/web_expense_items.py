@@ -15,7 +15,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
-    parse_form_updated_at_token,
+    parse_form_row_version_token,
     templates,
 )
 from app.schemas import ExpenseItemReplaceRequest
@@ -37,7 +37,7 @@ def web_items_save(
     item_unit_price_yuan: list[str] = Form(default=[]),
     item_amount_yuan: list[str] = Form(default=[]),
     item_category: list[str] = Form(default=[]),
-    expected_updated_at: str = Form(default=""),
+    expected_row_version: str = Form(default=""),
     ledger_id: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
@@ -47,13 +47,13 @@ def web_items_save(
     _require_selected_ledger_write(options, selected_id)
     error: str | None = None
     payload: ExpenseItemReplaceRequest | None = None
-    parsed_updated_at = parse_form_updated_at_token(expected_updated_at)
-    if parsed_updated_at is None:
+    parsed_row_version = parse_form_row_version_token(expected_row_version)
+    if parsed_row_version is None:
         error = "页面已过期，请刷新后重新保存明细。"
     try:
         if error is None:
             payload = item_replace_payload(
-                expected_updated_at=parsed_updated_at,
+                expected_row_version=parsed_row_version,
                 item_name=item_name,
                 item_kind=item_kind,
                 item_quantity=item_quantity,
@@ -83,7 +83,7 @@ def web_items_acknowledge_mismatch(
     expense_id: int,
     request: Request,
     ledger_id: str = Form(default=""),
-    expected_updated_at: str = Form(default=""),
+    expected_row_version: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -94,7 +94,7 @@ def web_items_acknowledge_mismatch(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["items_error"] = "页面已过期，请刷新后重新确认。"
@@ -102,7 +102,7 @@ def web_items_acknowledge_mismatch(
     error: str | None = None
     try:
         acknowledge_items_sum_mismatch(
-            db, expense_id, selected_id, expected_updated_at=parsed
+            db, expense_id, selected_id, expected_row_version=parsed
         )
     except AppError as exc:
         error = (

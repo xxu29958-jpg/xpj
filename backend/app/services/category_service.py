@@ -221,13 +221,13 @@ def bulk_set_category(
         .where(Expense.status == "pending")
     ).scalars().all()
     changed = 0
-    # ADR-0038 PR-2a: 服务端 bulk 操作刚读到 row.updated_at，可以直接
-    # 当作 expected_updated_at 喂给 update_expense（保留 PATCH 路径的
-    # 原子 UPDATE WHERE 语义，但不要求外部调用方携带 token）。
+    # ADR-0038 PR-2a / ADR-0041: 服务端 bulk 操作刚读到 row.row_version，可以直接
+    # 当作 expected_row_version 喂给 update_expense（保留 PATCH 路径的原子
+    # UPDATE WHERE row_version 语义，但不要求外部调用方携带 token）。
     for row in rows:
         payload = ExpenseUpdateRequest(
             category=cleaned_category,
-            expected_updated_at=row.updated_at,
+            expected_row_version=row.row_version,
         )
         update_expense(db, row.id, tenant_id, payload)
         changed += 1

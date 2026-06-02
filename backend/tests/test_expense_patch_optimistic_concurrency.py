@@ -1,7 +1,7 @@
 """ADR-0038 contract tests for expense PATCH.
 
 PR-2a 在真实业务路径上落实乐观锁：``PATCH /api/expenses/{id}`` 必须
-携带 ``expected_updated_at``，stale snapshot 落到 ``409 state_conflict``；
+携带 ``expected_row_version``，stale snapshot 落到 ``409 state_conflict``；
 缺字段（提交未带）则在 Pydantic 校验层 422 fail-fast。
 
 底部的 service-level test 通过两个 SQLAlchemy session 走 read/read/
@@ -56,7 +56,7 @@ def test_patch_expense_with_fresh_updated_at_succeeds(
         json={
             "merchant": "Fresh Cafe",
             "amount_cents": 1234,
-            "expected_updated_at": snapshot["updated_at"],
+            "expected_row_version": snapshot["row_version"],
         },
     )
     assert resp.status_code == 200, resp.text
@@ -77,7 +77,7 @@ def test_patch_expense_with_stale_updated_at_returns_409(
         headers=identity.app_headers,
         json={
             "merchant": "First",
-            "expected_updated_at": snapshot["updated_at"],
+            "expected_row_version": snapshot["row_version"],
         },
     )
     assert first.status_code == 200, first.text
@@ -87,7 +87,7 @@ def test_patch_expense_with_stale_updated_at_returns_409(
         headers=identity.app_headers,
         json={
             "merchant": "Second",
-            "expected_updated_at": snapshot["updated_at"],
+            "expected_row_version": snapshot["row_version"],
         },
     )
     assert stale.status_code == 409, stale.text
@@ -96,7 +96,7 @@ def test_patch_expense_with_stale_updated_at_returns_409(
     assert body["message"]
 
 
-def test_patch_expense_without_expected_updated_at_returns_422(
+def test_patch_expense_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_pending(client, identity=identity)
@@ -117,7 +117,7 @@ def test_patch_unknown_expense_returns_404(
         headers=identity.app_headers,
         json={
             "merchant": "Ghost",
-            "expected_updated_at": "2026-05-04T00:00:00Z",
+            "expected_row_version": 999999,
         },
     )
     assert resp.status_code == 404, resp.text
@@ -145,8 +145,8 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
         # Both sessions read the same version.
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         # Writer A commits first — succeeds.
         update_expense(
@@ -154,7 +154,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
             expense_id,
             tenant_id,
             ExpenseUpdateRequest(
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 merchant="Writer A",
             ),
         )
@@ -169,7 +169,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_writer_wins(
                 expense_id,
                 tenant_id,
                 ExpenseUpdateRequest(
-                    expected_updated_at=shared_version,
+                    expected_row_version=shared_version,
                     merchant="Writer B",
                 ),
             )
@@ -185,7 +185,7 @@ def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
 ) -> None:
     """Variant: writer A rejects (moves row to ``rejected`` — not in
     ``EDITABLE_STATUSES``); writer B tries to PATCH with the
-    pre-reject expected_updated_at. The atomic UPDATE finds no row
+    pre-reject expected_row_version. The atomic UPDATE finds no row
     in editable status (rowcount=0); the 404/409 disambiguation
     surfaces ``expense_not_found`` because the row is no longer
     editable.
@@ -199,7 +199,7 @@ def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        shared_version = row_a.updated_at
+        shared_version = row_a.row_version
 
         # Writer A moves the row out of EDITABLE_STATUSES.
         from app.services.expense_service import reject_expense
@@ -208,7 +208,7 @@ def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
             session_a,
             expense_id,
             tenant_id,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
         )
 
         with pytest.raises(AppError) as exc_info:
@@ -217,7 +217,7 @@ def test_two_sessions_concurrent_reject_then_patch_resolves_to_404(
                 expense_id,
                 tenant_id,
                 ExpenseUpdateRequest(
-                    expected_updated_at=shared_version,
+                    expected_row_version=shared_version,
                     merchant="Late Edit",
                 ),
             )

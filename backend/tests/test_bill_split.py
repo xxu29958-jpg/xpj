@@ -393,7 +393,7 @@ def test_received_expense_amount_cannot_be_patched(client: TestClient, *, identi
         assert row is not None
         payload = ExpenseUpdateRequest(
             amount_cents=9999,
-            expected_updated_at=row.updated_at,
+            expected_row_version=row.row_version,
         )
         update_expense(db, received_id, "receiver_imm", payload)
     assert exc.value.error == "split_received_field_immutable"

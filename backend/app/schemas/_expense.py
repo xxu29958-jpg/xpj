@@ -97,7 +97,7 @@ class NotificationDraftCreateRequest(BaseModel):
 class ExpenseUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
     amount_cents: int | None = Field(default=None, ge=0)
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: Decimal | None = Field(default=None, ge=0)
@@ -116,16 +116,16 @@ class ExpenseUpdateRequest(BaseModel):
 class ExpenseConfirmRequest(BaseModel):
     """ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.
 
-    ``expected_updated_at`` is the optimistic-concurrency token client
+    ``expected_row_version`` is the optimistic-concurrency token client
     last saw on the expense; service-layer ``confirm_expense`` atomic
-    ``UPDATE WHERE updated_at = expected_updated_at`` rejects stale
+    ``UPDATE WHERE row_version = expected`` rejects stale
     writes with 409. Confirming an already-confirmed row remains
     idempotent (200) regardless of the token — confirmed is terminal.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class ExpenseRejectRequest(BaseModel):
@@ -134,7 +134,7 @@ class ExpenseRejectRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class ExpenseMarkNotDuplicateRequest(BaseModel):
@@ -142,7 +142,7 @@ class ExpenseMarkNotDuplicateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class ExpenseUndoRequest(BaseModel):
@@ -153,7 +153,7 @@ class ExpenseUndoRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class ExpenseOcrRetryRequest(BaseModel):
@@ -161,14 +161,14 @@ class ExpenseOcrRetryRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class ConfirmedExpenseBatchUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expense_ids: list[int] = Field(min_length=1, max_length=200)
-    expected_updated_at_by_id: dict[int, datetime] = Field(min_length=1, max_length=200)
+    expected_row_version_by_id: dict[int, int] = Field(min_length=1, max_length=200)
     category: str | None = Field(default=None, max_length=64)
     tags: str | None = Field(default=None, max_length=500)
 
@@ -186,15 +186,15 @@ class ExpenseRecognizeTextRequest(BaseModel):
     Previously the service self-claimed using the row's current
     ``updated_at``, which silently overwrote concurrent edits made
     between the client's read and the recognize call. With
-    ``expected_updated_at`` the service issues an atomic ``UPDATE
-    WHERE updated_at = expected`` and returns 409 ``state_conflict``
+    ``expected_row_version`` the service issues an atomic ``UPDATE
+    WHERE row_version = expected`` and returns 409 ``state_conflict``
     on stale tokens. Same contract as the rest of the expense-mutate
     surface (PATCH / confirm / reject / ocr retry / ...).
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
     raw_text: str = Field(min_length=1, max_length=20000)
 
 
@@ -216,7 +216,7 @@ class ExpenseAcknowledgeItemsMismatchRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class PendingCategorySuggestionResponse(BaseModel):
@@ -328,7 +328,7 @@ class ExpenseItemRequest(BaseModel):
 class ExpenseItemReplaceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
     items: list[ExpenseItemRequest] = Field(default_factory=list, max_length=200)
 
 
@@ -372,7 +372,7 @@ class ExpenseSplitRequest(BaseModel):
 class ExpenseSplitReplaceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
     splits: list[ExpenseSplitRequest] = Field(default_factory=list, max_length=100)
 
 

@@ -113,8 +113,8 @@ def _resolve_bulk_action_handler(
             ExpenseUpdateRequest(
                 category=category_clean,
                 # ADR-0038 PR-2a: 服务端 bulk handler 已经读到 row.updated_at，
-                # 拿来当 expected_updated_at 用即可，无需让外层管线携带 token。
-                expected_updated_at=row.updated_at,
+                # 拿来当 expected_row_version 用即可，无需让外层管线携带 token。
+                expected_row_version=row.row_version,
             ),
             result,
         )
@@ -125,7 +125,7 @@ def _resolve_bulk_action_handler(
             tenant_id,
             ExpenseUpdateRequest(
                 merchant=merchant_clean,
-                expected_updated_at=row.updated_at,
+                expected_row_version=row.row_version,
             ),
             result,
         )
@@ -160,7 +160,7 @@ def _apply_reject(db: Session, row, tenant_id: str, result: BulkResult) -> None:
     try:
         # ADR-0038 PR-2b: 服务端 bulk handler 已经读到 row.updated_at，
         # 直接喂给 reject_expense；不让外层管线携带 token。
-        reject_expense(db, row.id, tenant_id, expected_updated_at=row.updated_at)
+        reject_expense(db, row.id, tenant_id, expected_row_version=row.row_version)
         result.success_count += 1
     except AppError:
         result.bump("忽略失败")
@@ -174,7 +174,7 @@ def _apply_confirm_ready(db: Session, row, tenant_id: str, result: BulkResult) -
         result.bump(SKIP_REASON_MISSING_AMOUNT)
         return
     try:
-        confirm_expense(db, row.id, tenant_id, expected_updated_at=row.updated_at)
+        confirm_expense(db, row.id, tenant_id, expected_row_version=row.row_version)
         result.success_count += 1
     except AppError:
         result.bump("确认失败")
@@ -186,7 +186,7 @@ def _apply_keep_duplicate(db: Session, row, tenant_id: str, result: BulkResult) 
         return
     try:
         mark_expense_not_duplicate(
-            db, row.id, tenant_id, expected_updated_at=row.updated_at
+            db, row.id, tenant_id, expected_row_version=row.row_version
         )
         result.success_count += 1
     except AppError:

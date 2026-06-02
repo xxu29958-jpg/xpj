@@ -60,9 +60,9 @@ def test_web_rules_local_returns_200(web_client: TestClient) -> None:
 
 def _rule_token_for(page_html: str, rule_id: int, action: str) -> str:
     # ADR-0038 PR-1 (form-token): toggle/delete forms render the row's
-    # current updated_at as a hidden ``expected_updated_at`` input.
+    # current updated_at as a hidden ``expected_row_version`` input.
     pattern = (
-        rf"/web/rules/{rule_id}/{action}.*?expected_updated_at\"\s*value=\"([^\"]+)\""
+        rf"/web/rules/{rule_id}/{action}.*?expected_row_version\"\s*value=\"([^\"]+)\""
     )
     match = re.search(pattern, page_html, flags=re.DOTALL)
     assert match, page_html[:1000]
@@ -87,7 +87,7 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     toggle_token = _rule_token_for(page.text, rule_id, "toggle")
     resp = web_client.post(
         f"/web/rules/{rule_id}/toggle",
-        data={"ledger_id": "owner", "expected_updated_at": toggle_token},
+        data={"ledger_id": "owner", "expected_row_version": toggle_token},
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
@@ -99,7 +99,7 @@ def test_web_rules_create_then_delete(web_client: TestClient) -> None:
     delete_token = _rule_token_for(page.text, rule_id, "delete")
     resp = web_client.post(
         f"/web/rules/{rule_id}/delete",
-        data={"ledger_id": "owner", "expected_updated_at": delete_token},
+        data={"ledger_id": "owner", "expected_row_version": delete_token},
         follow_redirects=False,
     )
     assert resp.status_code in {303, 307}
@@ -121,7 +121,7 @@ def test_web_rules_delete_then_undo(web_client: TestClient) -> None:
 
     deleted = web_client.post(
         f"/web/rules/{rule_id}/delete",
-        data={"ledger_id": "owner", "expected_updated_at": delete_token},
+        data={"ledger_id": "owner", "expected_row_version": delete_token},
         follow_redirects=False,
     )
     assert deleted.status_code in {303, 307}

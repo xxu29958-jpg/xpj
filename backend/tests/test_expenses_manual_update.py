@@ -70,13 +70,13 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
     def _updated_at(expense_id: int, headers: dict[str, str]) -> str:
         response = client.get(f"/api/expenses/{expense_id}", headers=headers)
         assert response.status_code == 200, response.text
-        return str(response.json()["updated_at"])
+        return str(response.json()["row_version"])
 
     first_id = _manual(identity.app_headers, "Batch Coffee A", "OldCat")
     second_id = _manual(identity.app_headers, "Batch Coffee B", "OldCat")
     other_ledger_id = _manual(identity.gray_app_headers, "Batch Other Ledger", "GrayCat")
     pending_id = upload_png(client, identity=identity)
-    expected_updated_at_by_id = {
+    expected_row_version_by_id = {
         first_id: _updated_at(first_id, identity.app_headers),
         second_id: _updated_at(second_id, identity.app_headers),
         other_ledger_id: _updated_at(other_ledger_id, identity.gray_app_headers),
@@ -88,7 +88,7 @@ def test_confirmed_batch_update_scopes_and_updates_tags(client: TestClient, *, i
         headers=identity.app_headers,
         json={
             "expense_ids": [first_id, second_id, pending_id, other_ledger_id, first_id],
-            "expected_updated_at_by_id": expected_updated_at_by_id,
+            "expected_row_version_by_id": expected_row_version_by_id,
             "category": "Family Meals",
             "tags": "weekend, shared, weekend",
         },
@@ -157,9 +157,9 @@ def test_confirmed_batch_update_stale_token_returns_409_without_partial_update(
         headers=identity.app_headers,
         json={
             "expense_ids": [first_id, second_id],
-            "expected_updated_at_by_id": {
-                first_id: first_snapshot["updated_at"],
-                second_id: second_snapshot["updated_at"],
+            "expected_row_version_by_id": {
+                first_id: first_snapshot["row_version"],
+                second_id: second_snapshot["row_version"],
             },
             "category": "Should Not Land",
         },

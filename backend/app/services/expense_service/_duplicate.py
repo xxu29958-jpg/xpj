@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -31,7 +29,7 @@ def mark_expense_not_duplicate(
     expense_id: int,
     tenant_id: str,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
 ) -> Expense:
     """ADR-0038 PR-2b: claim-then-apply mark-not-duplicate.
 
@@ -57,7 +55,7 @@ def mark_expense_not_duplicate(
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={
             "duplicate_status": "none",
             "duplicate_of_id": None,

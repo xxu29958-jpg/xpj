@@ -52,7 +52,7 @@ def test_confirmed_batch_update_token_map_must_cover_every_requested_id(
         headers=identity.app_headers,
         json={
             "expense_ids": [first_id, second_id],
-            "expected_updated_at_by_id": {first_id: first["updated_at"]},
+            "expected_row_version_by_id": {first_id: first["row_version"]},
             "category": "New",
         },
     )
@@ -72,15 +72,15 @@ def test_two_sessions_confirmed_batch_update_race_only_first_writer_wins(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         batch_update_confirmed_expenses(
             session_a,
             tenant_id=tenant_id,
             payload=ConfirmedExpenseBatchUpdateRequest(
                 expense_ids=[expense_id],
-                expected_updated_at_by_id={expense_id: shared_version},
+                expected_row_version_by_id={expense_id: shared_version},
                 category="Writer A",
             ),
         )
@@ -91,7 +91,7 @@ def test_two_sessions_confirmed_batch_update_race_only_first_writer_wins(
                 tenant_id=tenant_id,
                 payload=ConfirmedExpenseBatchUpdateRequest(
                     expense_ids=[expense_id],
-                    expected_updated_at_by_id={expense_id: shared_version},
+                    expected_row_version_by_id={expense_id: shared_version},
                     category="Writer B",
                 ),
             )

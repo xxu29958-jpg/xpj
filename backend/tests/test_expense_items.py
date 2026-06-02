@@ -42,7 +42,7 @@ def _replace_items(
         f"/api/expenses/{expense_id}/items",
         headers=request_headers,
         json={
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
             "items": [
                 {
                     "name": "拿铁",
@@ -127,7 +127,7 @@ def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: Tes
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": detail.json()["updated_at"],
+            "expected_row_version": detail.json()["row_version"],
             "items": [{"name": "咖啡豆", "amount_cents": 1500, "category": "购物"}],
         },
     )
@@ -232,9 +232,9 @@ def test_recognize_text_does_not_overwrite_manual_items(client: TestClient, *, i
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": client.get(
+            "expected_row_version": client.get(
                 f"/api/expenses/{expense_id}", headers=identity.app_headers
-            ).json()["updated_at"],
+            ).json()["row_version"],
             "items": [{"name": "用户确认明细", "amount_cents": 1250, "category": "餐饮"}],
         },
     )
@@ -289,7 +289,7 @@ def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: Test
         f"/api/expenses/{owner_expense_id}/items",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": viewer_snapshot.json()["updated_at"],
+            "expected_row_version": viewer_snapshot.json()["row_version"],
             "items": [{"name": "不该写入", "amount_cents": 1}],
         },
     )
@@ -306,7 +306,7 @@ def test_rejected_expense_items_cannot_be_replaced(client: TestClient, *, identi
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": rejected.json()["updated_at"],
+            "expected_row_version": rejected.json()["row_version"],
             "items": [{"name": "作废明细", "amount_cents": 100}],
         },
     )

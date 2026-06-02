@@ -3,7 +3,7 @@
 Covers ``POST /api/expenses/{id}/confirm``, ``/reject``, and
 ``/mark-not-duplicate``. Each must:
 
-* require ``expected_updated_at`` (Pydantic 422 if missing);
+* require ``expected_row_version`` (Pydantic 422 if missing);
 * succeed with a fresh token;
 * return ``409 state_conflict`` if the row's ``updated_at`` already
   moved past the client's snapshot;
@@ -69,7 +69,7 @@ def _snapshot_updated_at(
         f"/api/expenses/{expense_id}", headers=identity.app_headers
     )
     assert resp.status_code == 200, resp.text
-    return resp.json()["updated_at"]
+    return resp.json()["row_version"]
 
 
 # ---------------------------------------------------------------------------
@@ -101,13 +101,13 @@ def test_confirm_with_stale_updated_at_returns_409(
     stale = client.post(
         f"/api/expenses/{expense_id}/confirm",
         headers=identity.app_headers,
-        json={"expected_updated_at": stale_token},
+        json={"expected_row_version": stale_token},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
 
 
-def test_confirm_without_expected_updated_at_returns_422(
+def test_confirm_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _seed_ready(client, identity=identity)
@@ -132,7 +132,7 @@ def test_confirm_already_confirmed_is_idempotent(
     replay = client.post(
         f"/api/expenses/{expense_id}/confirm",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-01-01T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert replay.status_code == 200, replay.text
     assert replay.json()["status"] == "confirmed"
@@ -144,7 +144,7 @@ def test_confirm_unknown_expense_returns_404(
     resp = client.post(
         "/api/expenses/9999999/confirm",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert resp.status_code == 404, resp.text
 
@@ -177,13 +177,13 @@ def test_reject_with_stale_updated_at_returns_409(
     stale = client.post(
         f"/api/expenses/{expense_id}/reject",
         headers=identity.app_headers,
-        json={"expected_updated_at": stale_token},
+        json={"expected_row_version": stale_token},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
 
 
-def test_reject_without_expected_updated_at_returns_422(
+def test_reject_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_pending(client, identity=identity)
@@ -204,7 +204,7 @@ def test_reject_already_rejected_is_idempotent(
     replay = client.post(
         f"/api/expenses/{expense_id}/reject",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-01-01T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert replay.status_code == 200, replay.text
     assert replay.json()["status"] == "rejected"
@@ -251,13 +251,13 @@ def test_mark_not_duplicate_with_stale_updated_at_returns_409(
     stale = client.post(
         f"/api/expenses/{expense_id}/mark-not-duplicate",
         headers=identity.app_headers,
-        json={"expected_updated_at": stale_token},
+        json={"expected_row_version": stale_token},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
 
 
-def test_mark_not_duplicate_without_expected_updated_at_returns_422(
+def test_mark_not_duplicate_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_pending(client, identity=identity)
@@ -287,22 +287,19 @@ def test_two_sessions_seeing_same_updated_at_only_first_confirm_wins(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         # Writer A patches then commits (bumps updated_at to T2).
         # We use update_expense semantics via a direct UPDATE to keep
         # the test focused on the state-machine claim, not the full
         # PATCH path.
-        from datetime import timedelta
-
         from sqlalchemy import update
 
-        new_t = shared_version + timedelta(seconds=1)
         session_a.execute(
             update(Expense)
             .where(Expense.id == expense_id)
-            .values(updated_at=new_t)
+            .values(row_version=Expense.row_version + 1)
         )
         session_a.commit()
 
@@ -312,7 +309,7 @@ def test_two_sessions_seeing_same_updated_at_only_first_confirm_wins(
                 session_b,
                 expense_id,
                 tenant_id,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
             )
         assert exc_info.value.error == "state_conflict"
         assert exc_info.value.status_code == 409
@@ -335,13 +332,13 @@ def test_two_sessions_concurrent_reject_then_confirm_resolves_to_404(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        shared_version = row_a.updated_at
+        shared_version = row_a.row_version
 
         reject_expense(
             session_a,
             expense_id,
             tenant_id,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
         )
 
         with pytest.raises(AppError) as exc_info:
@@ -349,7 +346,7 @@ def test_two_sessions_concurrent_reject_then_confirm_resolves_to_404(
                 session_b,
                 expense_id,
                 tenant_id,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
             )
         assert exc_info.value.error == "expense_not_found"
         assert exc_info.value.status_code == 404
@@ -379,13 +376,13 @@ def test_two_sessions_mark_not_duplicate_race(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        shared_version = row_a.updated_at
+        shared_version = row_a.row_version
 
         mark_expense_not_duplicate(
             session_a,
             expense_id,
             tenant_id,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
         )
 
         with pytest.raises(AppError) as exc_info:
@@ -393,7 +390,7 @@ def test_two_sessions_mark_not_duplicate_race(
                 session_b,
                 expense_id,
                 tenant_id,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
             )
         assert exc_info.value.error == "state_conflict"
         assert exc_info.value.status_code == 409

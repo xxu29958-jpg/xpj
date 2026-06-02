@@ -33,7 +33,7 @@ def _put_items(client: TestClient, *, identity, expense_id: int, items: list[dic
     return client.put(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"], "items": items},
+        json={"expected_row_version": snapshot.json()["row_version"], "items": items},
     )
 
 

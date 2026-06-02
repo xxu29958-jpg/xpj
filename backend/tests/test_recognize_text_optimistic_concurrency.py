@@ -9,8 +9,6 @@ the expense-mutate surface.
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 import pytest
 from api_contract_helpers import (
     patch_expense,
@@ -59,7 +57,7 @@ def test_recognize_text_with_stale_token_returns_409(
         f"/api/expenses/{expense_id}/recognize-text",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
             "raw_text": "中国建设银行\n交易金额：18.51",
         },
     )
@@ -126,12 +124,12 @@ def test_two_sessions_recognize_text_race_only_first_writer_wins(
         row_a = session_a.get(Expense, expense_id)
         row_b = session_b.get(Expense, expense_id)
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
-        # Session A wins via a direct manual edit that bumps updated_at.
+        # Session A wins via a direct manual edit that bumps row_version.
         row_a.merchant = "Writer A"
-        row_a.updated_at = shared_version + timedelta(seconds=5)
+        row_a.row_version = shared_version + 1
         session_a.commit()
 
         with pytest.raises(AppError) as exc_info:
@@ -140,7 +138,7 @@ def test_two_sessions_recognize_text_race_only_first_writer_wins(
                 expense_id,
                 tenant_id,
                 ExpenseRecognizeTextRequest(
-                    expected_updated_at=shared_version,
+                    expected_row_version=shared_version,
                     raw_text="OCR text from a stale read",
                 ),
             )
@@ -161,11 +159,12 @@ def test_recognize_text_preserves_pre_claim_ocr_draft_anchor(
 ) -> None:
     """ADR-0038 PR-2e keeps the legacy OCR draft-field detection anchor.
 
-    The service sets ``expense.updated_at = expected_updated_at`` after the
-    raw UPDATE so ``apply_ocr_result_and_append_fact`` sees the pre-claim
-    snapshot when deciding which draft fields it owns. This test exercises
-    the happy path and confirms the recognize-text route still extracts
-    fields end-to-end with the new contract.
+    The service re-anchors ``expense.updated_at`` to the pre-claim snapshot
+    (``anchor_updated_at``) after the row_version claim so
+    ``apply_ocr_result_and_append_fact`` sees the pre-claim state when deciding
+    which draft fields it owns. This test exercises the happy path and confirms
+    the recognize-text route still extracts fields end-to-end with the new
+    contract.
     """
     expense_id = upload_png(client, identity=identity)
     response = recognize_text_api(

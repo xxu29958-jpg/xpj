@@ -21,7 +21,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
-    parse_form_updated_at_token,
+    parse_form_row_version_token,
     templates,
 )
 from app.services.classify_service import (
@@ -197,7 +197,7 @@ def web_rules_toggle(
     request: Request,
     rule_id: int,
     ledger_id: str = Form(""),
-    expected_updated_at: str = Form(""),
+    expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -206,11 +206,11 @@ def web_rules_toggle(
     # ``__Host-session`` cookie reach /web too. The pre-PR-4 comment
     # claimed "no race window under loopback" was sufficient; that
     # assumption broke when /web went cookie-accessible. Carry a
-    # hidden ``expected_updated_at`` per row instead.
+    # hidden ``expected_row_version`` per row instead.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect(
             "/web/rules", selected_id, msg="页面已过期，请刷新后重试。"
@@ -221,7 +221,7 @@ def web_rules_toggle(
     else:
         try:
             updated_rule = update_rule(
-                db, rule, expected_updated_at=parsed, enabled=not rule.enabled
+                db, rule, expected_row_version=parsed, enabled=not rule.enabled
             )
             msg = f"规则 [{updated_rule.keyword}] {'已启用' if updated_rule.enabled else '已停用'}。"
         except AppError as exc:
@@ -238,7 +238,7 @@ def web_rules_delete(
     request: Request,
     rule_id: int,
     ledger_id: str = Form(""),
-    expected_updated_at: str = Form(""),
+    expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -246,7 +246,7 @@ def web_rules_delete(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect(
             "/web/rules", selected_id, msg="页面已过期，请刷新后重试。"
@@ -256,7 +256,7 @@ def web_rules_delete(
         return _web_redirect("/web/rules", selected_id, msg="规则不存在。")
     keyword = rule.keyword
     try:
-        delete_rule(db, rule, expected_updated_at=parsed)
+        delete_rule(db, rule, expected_row_version=parsed)
     except AppError as exc:
         msg = (
             "规则已在其它端被修改，请刷新后重试。"
@@ -279,7 +279,7 @@ def web_rules_undo(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     # ADR-0038 undo: restore a soft-deleted rule within the retention window.
-    # No expected_updated_at — undo targets the soft-deleted row by id and is a
+    # No expected_row_version — undo targets the soft-deleted row by id and is a
     # no-op-or-restore; once purged it surfaces as a friendly message.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)

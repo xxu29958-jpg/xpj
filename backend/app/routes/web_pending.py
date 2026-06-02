@@ -24,7 +24,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.expense_service import (
-    fetch_expense_updated_at_in_status,
+    fetch_expense_row_version_in_status,
     list_pending,
 )
 from app.services.pending_review_bulk_service import (
@@ -124,22 +124,21 @@ def web_pending(
     # itself is the source of truth (atomic UPDATE WHERE tenant_id, status), but
     # the page also stops lying.
     undo_expense_id: int | None = None
-    undo_expected_updated_at: str | None = None
+    undo_expected_row_version: int | None = None
     if undo and undo.isdigit():
         candidate = int(undo)
-        # ADR-0038 PR-A: also fetch the rejected row's ``updated_at`` so
-        # the banner's hidden form field can carry the OCC token. One
-        # query for "is it still rejected?" + "what's its token?" keeps
-        # the predicate and token read in the same snapshot (no TOCTOU
-        # between two separate fetches).
-        updated_at = fetch_expense_updated_at_in_status(
+        # ADR-0041: also fetch the rejected row's ``row_version`` so the
+        # banner's hidden form field can carry the OCC token. One query for
+        # "is it still rejected?" + "what's its token?" keeps the predicate and
+        # token read in the same snapshot (no TOCTOU between two separate fetches).
+        row_version = fetch_expense_row_version_in_status(
             db, expense_id=candidate, tenant_id=selected_id, status="rejected"
         )
-        if updated_at is not None:
+        if row_version is not None:
             undo_expense_id = candidate
-            undo_expected_updated_at = updated_at.isoformat()
+            undo_expected_row_version = row_version
     ctx["undo_expense_id"] = undo_expense_id
-    ctx["undo_expected_updated_at"] = undo_expected_updated_at
+    ctx["undo_expected_row_version"] = undo_expected_row_version
     ctx["needs_amount_count"] = sum(1 for it in raw_items if it["needs_amount"])
     ctx["needs_merchant_count"] = sum(1 for it in raw_items if it["needs_merchant"])
     ctx["needs_category_count"] = sum(1 for it in raw_items if _needs_category(it))

@@ -56,7 +56,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": plan["updated_at"],
+            "expected_row_version": plan["row_version"],
             "amount_cents": 1_100_000,
         },
     )
@@ -66,7 +66,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": plan["updated_at"],
+            "expected_row_version": plan["row_version"],
             "amount_cents": 1_200_000,
         },
     )
@@ -81,7 +81,7 @@ def test_income_plan_patch_unknown_returns_404(
         "/api/income-plans/no-such-public-id",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": "2026-05-04T00:00:00Z",
+            "expected_row_version": 999999,
             "label": "Bogus",
         },
     )
@@ -104,14 +104,14 @@ def test_two_sessions_income_plan_patch_race_only_first_writer_wins(
             select(MonthlyIncomePlan).where(MonthlyIncomePlan.public_id == public_id)
         )
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         update_income_plan(
             session_a,
             tenant_id="owner",
             public_id=public_id,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
             amount_cents=1_500_000,
         )
 
@@ -120,7 +120,7 @@ def test_two_sessions_income_plan_patch_race_only_first_writer_wins(
                 session_b,
                 tenant_id="owner",
                 public_id=public_id,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 amount_cents=1_700_000,
             )
         assert exc_info.value.error == "state_conflict"
@@ -157,14 +157,14 @@ def test_archived_plan_patch_preserves_existing_409(
             db,
             tenant_id="owner",
             public_id=plan["public_id"],
-            expected_updated_at=current.updated_at,
+            expected_row_version=current.row_version,
         )
 
     response = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": plan["updated_at"],
+            "expected_row_version": plan["row_version"],
             "amount_cents": 999,
         },
     )
@@ -194,14 +194,14 @@ def test_income_plan_archive_with_stale_token_returns_409(
     bump = client.patch(
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": plan["updated_at"], "amount_cents": 1_100_000},
+        json={"expected_row_version": plan["row_version"], "amount_cents": 1_100_000},
     )
     assert bump.status_code == 200, bump.text
     stale = client.request(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": plan["updated_at"]},
+        json={"expected_row_version": plan["row_version"]},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
@@ -215,14 +215,14 @@ def test_income_plan_restore_with_stale_token_returns_409(
         "DELETE",
         f"/api/income-plans/{plan['public_id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": plan["updated_at"]},
+        json={"expected_row_version": plan["row_version"]},
     )
     assert archived.status_code == 200, archived.text
     # Pre-archive token is stale for the now-archived row → restore 409.
     stale = client.post(
         f"/api/income-plans/{plan['public_id']}/restore",
         headers=identity.app_headers,
-        json={"expected_updated_at": plan["updated_at"]},
+        json={"expected_row_version": plan["row_version"]},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
@@ -255,19 +255,19 @@ def test_two_sessions_archive_race_idempotent_no_double_write(
             select(MonthlyIncomePlan).where(MonthlyIncomePlan.public_id == public_id)
         )
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared = row_a.row_version
 
         first = archive_income_plan(
             session_a, tenant_id="owner", public_id=public_id,
-            expected_updated_at=shared,
+            expected_row_version=shared,
         )
         assert first.status == "archived"
         first_archived_at = first.archived_at
 
         second = archive_income_plan(
             session_b, tenant_id="owner", public_id=public_id,
-            expected_updated_at=shared,
+            expected_row_version=shared,
         )
         assert second.status == "archived"
         assert second.archived_at == first_archived_at
@@ -295,7 +295,7 @@ def test_income_plan_archive_unknown_returns_404(
         "DELETE",
         "/api/income-plans/no-such-public-id",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text
 
@@ -306,6 +306,6 @@ def test_income_plan_restore_unknown_returns_404(
     response = client.post(
         "/api/income-plans/no-such-public-id/restore",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text

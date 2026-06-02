@@ -99,7 +99,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
         f"/api/merchants/aliases/{public_id}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": created["updated_at"],
+            "expected_row_version": created["row_version"],
             "canonical_merchant": "星巴克咖啡",
             "alias": "STARBUCKS 北京店",
             "enabled": False,
@@ -115,7 +115,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
         "DELETE",
         f"/api/merchants/aliases/{public_id}",
         headers=identity.app_headers,
-        json={"expected_updated_at": payload["updated_at"]},
+        json={"expected_row_version": payload["row_version"]},
     )
     assert deleted.status_code == 200
     assert deleted.json() == {"status": "ok"}
@@ -154,7 +154,7 @@ def test_merchant_aliases_are_ledger_isolated(client: TestClient, *, identity) -
         f"/api/merchants/aliases/{owner['public_id']}",
         headers=identity.gray_app_headers,
         json={
-            "expected_updated_at": owner["updated_at"],
+            "expected_row_version": owner["row_version"],
             "canonical_merchant": "越权改名",
         },
     )
@@ -176,7 +176,7 @@ def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) 
             f"/api/merchants/aliases/{created['public_id']}",
             headers=identity.app_headers,
             json={
-                "expected_updated_at": created["updated_at"],
+                "expected_row_version": created["row_version"],
                 "enabled": False,
             },
         ),
@@ -184,7 +184,7 @@ def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) 
             "DELETE",
             f"/api/merchants/aliases/{created['public_id']}",
             headers=identity.app_headers,
-            json={"expected_updated_at": created["updated_at"]},
+            json={"expected_row_version": created["row_version"]},
         ),
     ]
     for response in checks:

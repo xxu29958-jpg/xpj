@@ -162,7 +162,7 @@ def test_viewer_cannot_mutate_rules_or_apply_pending(client: TestClient, *, iden
                 headers=_bearer(viewer_token),
                 json={
                     "expense_ids": [999],
-                    "expected_updated_at_by_id": {"999": "2026-05-04T08:00:00Z"},
+                    "expected_row_version_by_id": {"999": "2026-05-04T08:00:00Z"},
                     "category": "餐饮",
                 },
             ),
@@ -228,12 +228,12 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
         (
             "rules toggle",
             "/web/rules/999/toggle",
-            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
         ),
         (
             "rules delete",
             "/web/rules/999/delete",
-            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
         ),
         ("rules apply pending", "/web/rules/apply-pending", {"ledger_id": ledger_id}),
         ("rules apply confirmed", "/web/rules/apply-confirmed", {"ledger_id": ledger_id, "preview_confirmed": "yes"}),
@@ -250,12 +250,12 @@ def test_web_viewer_direct_post_write_entries_are_rejected(web_client: TestClien
         (
             "merchant alias toggle",
             "/web/merchants/aliases/missing/toggle",
-            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
         ),
         (
             "merchant alias delete",
             "/web/merchants/aliases/missing/delete",
-            {"ledger_id": ledger_id, "expected_updated_at": "2026-05-04T00:00:00Z"},
+            {"ledger_id": ledger_id, "expected_row_version": 999999},
         ),
         (
             "csv import confirm",

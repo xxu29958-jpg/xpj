@@ -61,17 +61,17 @@ def patch_merchant_alias(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantAliasResponse:
-    # ADR-0038 PR-2e: ``expected_updated_at`` token gates the PATCH;
+    # ADR-0038 PR-2e: ``expected_row_version`` token gates the PATCH;
     # ``state_conflict`` 409 on stale snapshot (peer edited the alias
     # between the client's read and this PATCH).
     item = get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
     field_updates = payload.model_dump(
-        exclude={"expected_updated_at"}, exclude_unset=True
+        exclude={"expected_row_version"}, exclude_unset=True
     )
     return update_merchant_alias(
         db,
         item,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
         **field_updates,
     )
 
@@ -83,13 +83,13 @@ def delete_merchant_alias_route(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
-    # ADR-0038 PR-2e: DELETE carries a body with ``expected_updated_at``
+    # ADR-0038 PR-2e: DELETE carries a body with ``expected_row_version``
     # (same shape as category_rule DELETE). Stale clicks against an
     # alias edited by another window between list-render and delete-
     # click surface as ``state_conflict`` 409 instead of silently
     # destroying the concurrent edit.
     item = get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
-    delete_merchant_alias(db, item, expected_updated_at=payload.expected_updated_at)
+    delete_merchant_alias(db, item, expected_row_version=payload.expected_row_version)
     return StatusResponse()
 
 
@@ -100,7 +100,7 @@ def undo_merchant_alias_route(
     db: Session = Depends(get_db),
 ) -> MerchantAliasResponse:
     # ADR-0038 undo: restore a soft-deleted alias within the retention window.
-    # No ``expected_updated_at`` token — this restores the row the caller just
+    # No ``expected_row_version`` token — this restores the row the caller just
     # soft-deleted (near-zero contention inside the undo window). 404 once
     # cleanup has purged it past retention.
     return undo_delete_merchant_alias(

@@ -303,7 +303,7 @@ def update_goal(
         raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
 
     updates = payload.model_dump(
-        exclude_unset=True, exclude={"expected_updated_at"}
+        exclude_unset=True, exclude={"expected_row_version"}
     )
     goal_id = goal.id
     new_name = goal.name
@@ -336,7 +336,7 @@ def update_goal(
             Goal,
             pk_id=goal_id,
             tenant_id=tenant_id,
-            expected_updated_at=payload.expected_updated_at,
+            expected_row_version=payload.expected_row_version,
             set_values={
                 "name": new_name,
                 "month": new_month,

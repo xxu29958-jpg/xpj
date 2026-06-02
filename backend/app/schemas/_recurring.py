@@ -27,7 +27,7 @@ class RecurringItemTokenRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 # v0.4-alpha3 — Recurring candidates (read-only insights)

@@ -3,8 +3,8 @@
 Walks the live OpenAPI schema (the same FastAPI app the smoke and
 contract tests hit) and verifies every mutating route accepts an
 optimistic-concurrency token — either a body field named
-``expected_updated_at`` or a batch token map
-``expected_updated_at_by_id``. Routes that legitimately do NOT take a
+``expected_row_version`` or a batch token map
+``expected_row_version_by_id``. Routes that legitimately do NOT take a
 token (create endpoints, account-level admin actions that don't mutate
 a versioned row, lifecycle no-ops, pure read-modify-emit endpoints)
 live in the structured risk ledger (:mod:`_mutate_token_ledger`), each
@@ -17,7 +17,7 @@ from PR-1, ``/web/rules`` toggle/delete from PR-1, the entire
 ``acknowledge-mismatch`` surface from goal triage). Each one shipped
 because no audit checked "does this mutate route have a token at
 all". This lane closes that loop: every new mutate route either has
-``expected_updated_at`` in its body, or shows up explicitly in the
+``expected_row_version`` in its body, or shows up explicitly in the
 ledger with a reviewed ``reason_code``. Forgetting both fails the audit.
 
 Naming convention follows :file:`release_audit.py`: drop this file
@@ -75,7 +75,7 @@ KNOWN_GAPS: frozenset[str] = frozenset()
 # it here so the audit doesn't get confused.
 QUERY_STRING_TOKEN_ROUTES: frozenset[str] = frozenset()
 
-TOKEN_FIELD_NAMES = frozenset({"expected_updated_at", "expected_updated_at_by_id"})
+TOKEN_FIELD_NAMES = frozenset({"expected_row_version", "expected_row_version_by_id"})
 
 
 def _load_openapi_app_schema() -> dict:
@@ -171,7 +171,7 @@ def _bucket_routes(
     audit-script complexity budget.
 
     The third bucket exists so a ledger entry that has since grown a
-    real ``expected_updated_at`` body field is flagged as a stale
+    real ``expected_row_version`` body field is flagged as a stale
     exemption rather than silently masking a regression — the schema
     is now the authoritative signal for that route, the ledger entry
     would only matter again if someone removes the token. Keep the
@@ -252,7 +252,7 @@ def _emit_route_failures(
         failed = True
         print(
             "\nFAIL: ledger routes that actually DO carry "
-            "``expected_updated_at`` in their schema. Remove from the "
+            "``expected_row_version`` in their schema. Remove from the "
             "ledger so the schema is the authoritative signal — keeping "
             "the entry would silently mask a regression if the token "
             "field were ever removed from the route:"
@@ -262,11 +262,11 @@ def _emit_route_failures(
 
     if missing_new:
         failed = True
-        print("\nFAIL: NEW mutate routes missing ``expected_updated_at`` body field:")
+        print("\nFAIL: NEW mutate routes missing ``expected_row_version`` body field:")
         for line in sorted(missing_new):
             print(f"  - {line}")
         print(
-            "\nFix: add ``expected_updated_at: datetime`` to the request "
+            "\nFix: add ``expected_row_version: int`` to the request "
             "schema (ADR-0038 PR-1 / PR-2 pattern), wire the service to "
             "``claim_row_with_token`` / ``delete_row_with_token``, and "
             "add a contract test. If the route legitimately cannot use a "
@@ -345,7 +345,7 @@ def main() -> int:
     hist = risk_histogram()
     print(
         f"OK: {total} mutate routes audited; "
-        f"{token_carriers} carry ``expected_updated_at``, "
+        f"{token_carriers} carry ``expected_row_version``, "
         f"{len(ALLOWLIST)} explicitly exempted "
         f"({hist['high']} high / {hist['medium']} medium / {hist['low']} low risk), "
         f"{len(KNOWN_GAPS)} grandfathered as known gaps."

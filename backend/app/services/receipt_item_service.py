@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -41,7 +39,7 @@ def replace_expense_items(
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
         set_values={"updated_at": now},
         extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
         synchronize_session=False,
@@ -112,7 +110,7 @@ def acknowledge_items_sum_mismatch(
     expense_id: int,
     tenant_id: str,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
 ) -> ExpenseItemsResponse:
     """User-confirmed "原小票如此" path: mismatch_known → mismatch_acknowledged.
 
@@ -134,7 +132,7 @@ def acknowledge_items_sum_mismatch(
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"items_sum_status": "mismatch_acknowledged", "updated_at": now},
         extra_where=(Expense.items_sum_status == "mismatch_known",),
         synchronize_session=False,

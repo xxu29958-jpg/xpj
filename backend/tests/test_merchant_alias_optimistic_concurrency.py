@@ -64,7 +64,7 @@ def test_merchant_alias_patch_with_stale_token_returns_409(
         f"/api/merchants/aliases/{created['public_id']}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": created["updated_at"],
+            "expected_row_version": created["row_version"],
             "enabled": False,
         },
     )
@@ -74,7 +74,7 @@ def test_merchant_alias_patch_with_stale_token_returns_409(
         f"/api/merchants/aliases/{created['public_id']}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": created["updated_at"],
+            "expected_row_version": created["row_version"],
             "enabled": True,
         },
     )
@@ -90,7 +90,7 @@ def test_merchant_alias_delete_with_stale_token_returns_409(
         f"/api/merchants/aliases/{created['public_id']}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": created["updated_at"],
+            "expected_row_version": created["row_version"],
             "enabled": False,
         },
     )
@@ -100,7 +100,7 @@ def test_merchant_alias_delete_with_stale_token_returns_409(
         "DELETE",
         f"/api/merchants/aliases/{created['public_id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": created["updated_at"]},
+        json={"expected_row_version": created["row_version"]},
     )
     assert response.status_code == 409, response.text
     assert response.json()["error"] == "state_conflict"
@@ -122,13 +122,13 @@ def test_two_sessions_patch_alias_race_only_first_writer_wins(
             select(MerchantAlias).where(MerchantAlias.public_id == public_id)
         )
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         update_merchant_alias(
             session_a,
             row_a,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
             enabled=False,
         )
 
@@ -136,7 +136,7 @@ def test_two_sessions_patch_alias_race_only_first_writer_wins(
             update_merchant_alias(
                 session_b,
                 row_b,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 enabled=True,
             )
         assert exc_info.value.error == "state_conflict"
@@ -170,12 +170,12 @@ def test_delete_alias_with_stale_token_after_concurrent_patch(
             select(MerchantAlias).where(MerchantAlias.public_id == public_id)
         )
         assert row_a is not None and row_b is not None
-        shared_version = row_a.updated_at
+        shared_version = row_a.row_version
 
         update_merchant_alias(
             session_a,
             row_a,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
             enabled=False,
         )
 
@@ -183,7 +183,7 @@ def test_delete_alias_with_stale_token_after_concurrent_patch(
             delete_merchant_alias(
                 session_b,
                 row_b,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
             )
         assert exc_info.value.error == "state_conflict"
         assert exc_info.value.status_code == 409
@@ -220,13 +220,13 @@ def test_delete_then_patch_race_resolves_to_404(
             select(MerchantAlias).where(MerchantAlias.public_id == public_id)
         )
         assert row_a is not None and row_b is not None
-        shared_version = row_a.updated_at
+        shared_version = row_a.row_version
 
         # Session A wins via DELETE. The row is gone.
         delete_merchant_alias(
             session_a,
             row_a,
-            expected_updated_at=shared_version,
+            expected_row_version=shared_version,
         )
 
         # Force session_b's row to be considered deleted in the identity
@@ -238,7 +238,7 @@ def test_delete_then_patch_race_resolves_to_404(
             update_merchant_alias(
                 session_b,
                 row_b,
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 enabled=False,
             )
         assert exc_info.value.error == "merchant_alias_not_found"
@@ -253,7 +253,7 @@ def test_patch_unknown_alias_returns_404(client: TestClient, *, identity) -> Non
         "/api/merchants/aliases/no-such-public-id",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": "2026-05-04T00:00:00Z",
+            "expected_row_version": 999999,
             "enabled": False,
         },
     )
@@ -266,7 +266,7 @@ def test_delete_unknown_alias_returns_404(client: TestClient, *, identity) -> No
         "DELETE",
         "/api/merchants/aliases/no-such-public-id",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text
     assert response.json()["error"] == "merchant_alias_not_found"

@@ -86,7 +86,7 @@ def replace_expense_splits(
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
         set_values={"updated_at": now},
         extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
         synchronize_session=False,

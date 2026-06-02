@@ -15,7 +15,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
-    parse_form_updated_at_token,
+    parse_form_row_version_token,
     templates,
 )
 from app.schemas import ExpenseUpdateRequest
@@ -56,7 +56,7 @@ def web_save(
     category: str = Form(default=""),
     note: str = Form(default=""),
     ledger_id: str = Form(default=""),
-    expected_updated_at: str = Form(default=""),
+    expected_row_version: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -66,13 +66,13 @@ def web_save(
     original_amount, error = parse_original_amount(amount_yuan)
 
     if error is None:
-        # ADR-0038: the edit form renders a hidden `expected_updated_at`
+        # ADR-0038: the edit form renders a hidden `expected_row_version`
         # input pre-filled from ``expense.updated_at``. The handler simply
         # passes it through; if the user submits a stale form (e.g. left
         # the page open while another window mutated the row),
         # ``update_expense``'s atomic claim returns 409 ``state_conflict``.
         payload_args: dict[str, object] = {
-            "expected_updated_at": expected_updated_at,
+            "expected_row_version": expected_row_version,
             "merchant": merchant.strip() or None,
             "category": category.strip() or None,
             "note": note.strip() or None,
@@ -103,20 +103,20 @@ def web_confirm(
     expense_id: int,
     request: Request,
     ledger_id: str = Form(default=""),
-    expected_updated_at: str = Form(default=""),
+    expected_row_version: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["error"] = "页面已过期，请刷新后重新确认。"
         return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
     try:
-        confirm_expense(db, expense_id, selected_id, expected_updated_at=parsed)
+        confirm_expense(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         # ADR-0038 PR-2b: 409 state_conflict surfaces a clearer message
@@ -134,20 +134,20 @@ def web_reject(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(default=""),
-    expected_updated_at: str = Form(default=""),
+    expected_row_version: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         ctx["error"] = "页面已过期，请刷新后重新操作。"
         return templates.TemplateResponse(request=request, name="edit.html", context=ctx)
     try:
-        reject_expense(db, expense_id, selected_id, expected_updated_at=parsed)
+        reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
     except AppError as exc:
         ctx = web_edit_context(db, request, options, selected_id, expense_id)
         if exc.error == "state_conflict":
@@ -173,12 +173,12 @@ def web_expense_undo(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(default=""),
-    expected_updated_at: str = Form(default=""),
+    expected_row_version: str = Form(default=""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     # ADR-0038 undo: restore a recently-rejected expense from the 5s banner.
-    # PR-A added the ``expected_updated_at`` token — without it, a stale /undo
+    # PR-A added the ``expected_row_version`` token — without it, a stale /undo
     # POST from a cached banner could un-do a NEW intentional reject if the
     # user re-rejected the same row in between. /web/pending seeds the form's
     # hidden field with the row's updated_at at banner-render time; this route
@@ -189,7 +189,7 @@ def web_expense_undo(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect(
             "/web/pending", selected_id,

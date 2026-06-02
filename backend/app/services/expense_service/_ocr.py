@@ -8,8 +8,6 @@ so legacy draft-field detection stays consistent.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -35,7 +33,7 @@ def _claim_pending_expense_for_ocr(
     *,
     expense_id: int,
     tenant_id: str,
-    expected_updated_at,
+    expected_row_version: int,
     claimed_at,
 ) -> Expense:
     rowcount = claim_row_with_token(
@@ -43,7 +41,7 @@ def _claim_pending_expense_for_ocr(
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"updated_at": claimed_at},
         extra_where=(Expense.status == "pending",),
         synchronize_session=False,
@@ -65,7 +63,7 @@ def retry_expense_ocr(
     expense_id: int,
     tenant_id: str,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
 ) -> Expense:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
@@ -80,15 +78,19 @@ def retry_expense_ocr(
 
     result = extract_ocr_result(expense)
     now = now_utc()
+    # ADR-0041: the OCC token is row_version (int) now; legacy OCR draft-field
+    # detection still anchors on the pre-claim updated_at, so snapshot it off the
+    # row loaded above before the claim bumps it.
+    anchor_updated_at = expense.updated_at
     expense = _claim_pending_expense_for_ocr(
         db,
         expense_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         claimed_at=now,
     )
     # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
-    expense.updated_at = expected_updated_at
+    expense.updated_at = anchor_updated_at
     apply_ocr_result_and_append_fact(
         db,
         expense=expense,
@@ -123,7 +125,7 @@ def retry_expense_ocr(
 def recognize_expense_text(
     db: Session, expense_id: int, tenant_id: str, payload: ExpenseRecognizeTextRequest
 ) -> Expense:
-    # ADR-0038 PR-2e: client supplies ``expected_updated_at`` so the
+    # ADR-0038 PR-2e: client supplies ``expected_row_version`` so the
     # atomic claim rejects stale writes (peer edited amount/items
     # between the client's read and this recognize call) as 409
     # ``state_conflict``. Previously the service self-claimed using
@@ -134,19 +136,22 @@ def recognize_expense_text(
         raise AppError("expense_not_found", status_code=404)
 
     raw_text = payload.raw_text.strip()
-    expected_updated_at = payload.expected_updated_at
+    expected_row_version = payload.expected_row_version
     now = now_utc()
+    # ADR-0041: snapshot pre-claim updated_at for the legacy draft-field anchor
+    # (token is row_version now, not the updated_at datetime).
+    anchor_updated_at = expense.updated_at
     expense = _claim_pending_expense_for_ocr(
         db,
         expense_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         claimed_at=now,
     )
     # Keep legacy OCR draft-field detection anchored to the pre-claim
     # snapshot — apply_ocr_result_and_append_fact reads expense.updated_at
     # to decide which draft fields it owns and is allowed to overwrite.
-    expense.updated_at = expected_updated_at
+    expense.updated_at = anchor_updated_at
     result = OcrResult(raw_text=raw_text, confidence=None)
     apply_ocr_result_and_append_fact(
         db,

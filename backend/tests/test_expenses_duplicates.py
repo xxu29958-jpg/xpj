@@ -129,7 +129,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
         json={
             "priority": 2,
             "enabled": False,
-            "expected_updated_at": created_rule["updated_at"],
+            "expected_row_version": created_rule["row_version"],
         },
     )
     assert response.status_code == 200
@@ -140,7 +140,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
         "DELETE",
         f"/api/rules/categories/{rule_id}",
         headers=identity.app_headers,
-        json={"expected_updated_at": response.json()["updated_at"]},
+        json={"expected_row_version": response.json()["row_version"]},
     )
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

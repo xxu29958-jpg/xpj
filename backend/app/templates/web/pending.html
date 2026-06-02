@@ -34,7 +34,7 @@
        this stale token fails the atomic UPDATE WHERE and the route flashes
        the standard "无法撤销" error — protects against a cached banner un-doing
        a NEW intentional reject. #}
-    <input type="hidden" name="expected_updated_at" value="{{ undo_expected_updated_at }}">
+    <input type="hidden" name="expected_row_version" value="{{ undo_expected_row_version }}">
     <button type="submit" class="dt-btn">撤销</button>
   </form>
   {% endif %}

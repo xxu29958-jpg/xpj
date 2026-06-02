@@ -46,10 +46,10 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
     assert match, page.text[:500]
     public_id = match.group(1)
     # ADR-0038 PR-2e: /web mutate forms render the row's updated_at as a
-    # hidden ``expected_updated_at`` token; the page already contains it
+    # hidden ``expected_row_version`` token; the page already contains it
     # so pull it out instead of fetching the API directly.
     token_match = _re.search(
-        rf"/web/merchants/aliases/{public_id}/toggle.*?expected_updated_at\"\s*value=\"([^\"]+)\"",
+        rf"/web/merchants/aliases/{public_id}/toggle.*?expected_row_version\"\s*value=\"([^\"]+)\"",
         page.text,
         flags=_re.DOTALL,
     )
@@ -58,7 +58,7 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
 
     toggled = web_client.post(
         f"/web/merchants/aliases/{public_id}/toggle",
-        data={"ledger_id": "owner", "expected_updated_at": token},
+        data={"ledger_id": "owner", "expected_row_version": token},
         follow_redirects=False,
     )
     assert toggled.status_code in {303, 307}
@@ -66,7 +66,7 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
     assert "停用" in page.text
 
     delete_token_match = _re.search(
-        rf"/web/merchants/aliases/{public_id}/delete.*?expected_updated_at\"\s*value=\"([^\"]+)\"",
+        rf"/web/merchants/aliases/{public_id}/delete.*?expected_row_version\"\s*value=\"([^\"]+)\"",
         page.text,
         flags=_re.DOTALL,
     )
@@ -75,7 +75,7 @@ def test_web_merchants_alias_create_toggle_delete(web_client: TestClient) -> Non
         f"/web/merchants/aliases/{public_id}/delete",
         data={
             "ledger_id": "owner",
-            "expected_updated_at": delete_token_match.group(1),
+            "expected_row_version": delete_token_match.group(1),
         },
         follow_redirects=False,
     )
@@ -96,14 +96,14 @@ def test_web_merchant_alias_delete_then_undo_restores(web_client: TestClient) ->
     page = web_client.get("/web/merchants?ledger_id=owner")
     public_id = _re.search(r"/web/merchants/aliases/([^/]+)/delete", page.text).group(1)
     delete_token = _re.search(
-        rf"/web/merchants/aliases/{public_id}/delete.*?expected_updated_at\"\s*value=\"([^\"]+)\"",
+        rf"/web/merchants/aliases/{public_id}/delete.*?expected_row_version\"\s*value=\"([^\"]+)\"",
         page.text,
         flags=_re.DOTALL,
     ).group(1)
 
     deleted = web_client.post(
         f"/web/merchants/aliases/{public_id}/delete",
-        data={"ledger_id": "owner", "expected_updated_at": delete_token},
+        data={"ledger_id": "owner", "expected_row_version": delete_token},
         follow_redirects=False,
     )
     assert deleted.status_code in {303, 307}

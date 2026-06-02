@@ -19,7 +19,7 @@ from app.routes.web_common import (
     _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
-    parse_form_updated_at_token,
+    parse_form_row_version_token,
     templates,
 )
 from app.services.merchant_alias_service import (
@@ -90,18 +90,18 @@ def web_merchant_alias_toggle(
     request: Request,
     public_id: str,
     ledger_id: str = Form(""),
-    expected_updated_at: str = Form(""),
+    expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    # ADR-0038 PR-2e: /web mutate forms carry the hidden ``expected_updated_at``
+    # ADR-0038 PR-2e: /web mutate forms carry the hidden ``expected_row_version``
     # so cross-window race (PR-4 cookie sessions reach /web from public host
     # too) surfaces as 409 → "页面已过期/已在其它端修改" UX instead of silently
     # toggling a stale snapshot.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect(
             "/web/merchants",
@@ -116,7 +116,7 @@ def web_merchant_alias_toggle(
         # ``synchronize_session="auto"`` having run, which is not a
         # contract — the helper is the authoritative read.
         updated = update_merchant_alias(
-            db, item, expected_updated_at=parsed, enabled=not item.enabled
+            db, item, expected_row_version=parsed, enabled=not item.enabled
         )
         msg = f"别名 [{updated.alias}] {'已启用' if updated.enabled else '已停用'}。"
     except AppError as exc:
@@ -133,7 +133,7 @@ def web_merchant_alias_delete(
     request: Request,
     public_id: str,
     ledger_id: str = Form(""),
-    expected_updated_at: str = Form(""),
+    expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -141,7 +141,7 @@ def web_merchant_alias_delete(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect(
             "/web/merchants",
@@ -151,7 +151,7 @@ def web_merchant_alias_delete(
     try:
         item = get_merchant_alias(db, tenant_id=selected_id, public_id=public_id)
         alias = item.alias
-        delete_merchant_alias(db, item, expected_updated_at=parsed)
+        delete_merchant_alias(db, item, expected_row_version=parsed)
     except AppError as exc:
         msg = (
             "别名已在其它端被修改，请刷新后重试。"
@@ -175,7 +175,7 @@ def web_merchant_alias_undo(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     # ADR-0038 undo: restore a soft-deleted alias from the 5s banner. No
-    # ``expected_updated_at`` — this restores the row the operator just deleted
+    # ``expected_row_version`` — this restores the row the operator just deleted
     # (near-zero contention inside the window). 404 once cleanup has purged it.
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)

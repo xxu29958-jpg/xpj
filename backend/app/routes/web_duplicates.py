@@ -33,7 +33,7 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _sidebar_counts,
     _web_redirect,
-    parse_form_updated_at_token,
+    parse_form_row_version_token,
     templates,
 )
 from app.services.expense_service import (
@@ -141,19 +141,19 @@ def web_duplicate_keep(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
-    expected_updated_at: str = Form(""),
+    expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
         mark_expense_not_duplicate(
-            db, expense_id, selected_id, expected_updated_at=parsed
+            db, expense_id, selected_id, expected_row_version=parsed
         )
         msg = "已标记为「不是重复」。"
     except AppError as exc:
@@ -166,18 +166,18 @@ def web_duplicate_reject_current(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
-    expected_updated_at: str = Form(""),
+    expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     try:
-        reject_expense(db, expense_id, selected_id, expected_updated_at=parsed)
+        reject_expense(db, expense_id, selected_id, expected_row_version=parsed)
         msg = "已删除当前账单。"
     except AppError as exc:
         msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message
@@ -189,14 +189,14 @@ def web_duplicate_reject_original(
     request: Request,
     expense_id: int,
     ledger_id: str = Form(""),
-    expected_updated_at: str = Form(""),
+    expected_row_version: str = Form(""),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     _require_selected_ledger_write(options, selected_id)
-    parsed = parse_form_updated_at_token(expected_updated_at)
+    parsed = parse_form_row_version_token(expected_row_version)
     if parsed is None:
         return _web_redirect("/web/duplicates", selected_id, msg=_STALE_DUPLICATE_MSG)
     msg = "已删除被复制的那条，并保留当前账单。"
@@ -207,14 +207,14 @@ def web_duplicate_reject_original(
         # ADR-0038 PR-2b: client only owns the *current* row's token
         # (which is the row the duplicates UI surfaces); the linked
         # ``original`` row is server-internal — we use its own
-        # ``updated_at`` as the internal token for the cascaded reject.
+        # ``row_version`` as the internal token for the cascaded reject.
         reject_expense(
-            db, original.id, selected_id, expected_updated_at=original.updated_at
+            db, original.id, selected_id, expected_row_version=original.row_version
         )
         # Clear the suspected flag on the kept row using the
         # client-provided token (matches the row the UI displayed).
         mark_expense_not_duplicate(
-            db, current.id, selected_id, expected_updated_at=parsed
+            db, current.id, selected_id, expected_row_version=parsed
         )
     except AppError as exc:
         msg = _STALE_DUPLICATE_MSG if exc.error == "state_conflict" else exc.message

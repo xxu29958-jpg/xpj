@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from api_contract_helpers import confirm_expense_api, expense_updated_at, reject_expense_api
+from api_contract_helpers import confirm_expense_api, expense_row_version, reject_expense_api
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -143,7 +143,7 @@ def _replace_splits(
         f"/api/expenses/{expense_id}/splits",
         headers=headers,
         json={
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
             "splits": [
                 {
                     "member_id": owner_member_id,
@@ -331,7 +331,7 @@ def test_expense_splits_are_tenant_isolated_and_viewer_can_only_read(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(viewer_token),
         json={
-            "expected_updated_at": expense_updated_at(
+            "expected_row_version": expense_row_version(
                 client, expense_id, headers=_bearer(viewer_token)
             ),
             "splits": [{"member_id": owner_member_id, "amount_cents": 10000}],
@@ -381,7 +381,7 @@ def test_expense_splits_preserve_disabled_member_attribution(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
         json={
-            "expected_updated_at": expense_updated_at(
+            "expected_row_version": expense_row_version(
                 client, expense_id, headers=_bearer(owner_token)
             ),
             "splits": [
@@ -411,7 +411,7 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
         json={
-            "expected_updated_at": expense_updated_at(
+            "expected_row_version": expense_row_version(
                 client, expense_id, headers=_bearer(owner_token)
             ),
             "splits": [
@@ -427,7 +427,7 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
         json={
-            "expected_updated_at": expense_updated_at(
+            "expected_row_version": expense_row_version(
                 client, expense_id, headers=_bearer(owner_token)
             ),
             "splits": [
@@ -457,7 +457,7 @@ def test_rejected_expense_splits_cannot_be_replaced(client: TestClient, *, ident
         f"/api/expenses/{expense_id}/splits",
         headers=_bearer(owner_token),
         json={
-            "expected_updated_at": rejected.json()["updated_at"],
+            "expected_row_version": rejected.json()["row_version"],
             "splits": [{"member_id": owner_member_id, "amount_cents": 10000}],
         },
     )
@@ -472,7 +472,7 @@ def test_put_expense_splits_without_auth_returns_401(client: TestClient) -> None
     # dependency 先 resolve,无 token 在 body parse 前直接拒(expense_id=1 不会真去查 DB)。
     response = client.put(
         "/api/expenses/1/splits",
-        json={"expected_updated_at": "2026-01-01T00:00:00Z", "splits": []},
+        json={"expected_row_version": "2026-01-01T00:00:00Z", "splits": []},
     )
     assert response.status_code == 401
     assert response.json()["error"] == "invalid_token"

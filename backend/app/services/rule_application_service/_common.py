@@ -206,18 +206,18 @@ def _try_apply_rule_category(
     after_category: str,
     now,
 ) -> tuple[int, int, str, str, str] | None:
-    # ADR-0038: same atomic UPDATE WHERE updated_at = expected pattern as
+    # ADR-0038: same atomic UPDATE WHERE row_version = expected pattern as
     # the user-facing optimistic-concurrency endpoints. Previously had its
     # own ``_updated_at_matches`` without tz normalisation — relied on
     # ``expense.updated_at`` already being naive from an ORM read. The
-    # helper now goes through ``updated_at_predicate`` so the predicate
+    # helper now goes through ``row_version_predicate`` so the predicate
     # is dialect-independent.
     rowcount = claim_row_with_token(
         db,
         Expense,
         pk_id=int(expense.id),
         tenant_id=tenant_id,
-        expected_updated_at=expense.updated_at,
+        expected_row_version=expense.row_version,
         set_values={
             "category": after_category,
             "ocr_draft_fields": ocr_draft_fields_after_clearing(expense, {"category"}),
@@ -247,7 +247,7 @@ def _try_rollback_rule_change(
         Expense,
         pk_id=int(change.expense_id),
         tenant_id=tenant_id,
-        expected_updated_at=expense.updated_at,
+        expected_row_version=expense.row_version,
         set_values={"category": change.before_category, "updated_at": now},
         extra_where=(Expense.category == expense.category,),
         synchronize_session=False,

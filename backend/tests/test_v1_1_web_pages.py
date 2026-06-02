@@ -78,17 +78,17 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
     list_body = web_client.get("/web/income-plans").text
     match = re.search(
         r'/web/income-plans/([0-9a-f-]+)/archive"[^>]*>.*?'
-        r'name="expected_updated_at" value="([^"]*)"',
+        r'name="expected_row_version" value="([^"]*)"',
         list_body,
         re.DOTALL,
     )
     assert match is not None, "archive form + token should be on the page"
     pid, archive_token = match.group(1), match.group(2)
-    assert archive_token, "archive form must render a non-empty expected_updated_at"
+    assert archive_token, "archive form must render a non-empty expected_row_version"
 
     archive_resp = web_client.post(
         f"/web/income-plans/{pid}/archive",
-        data={"expected_updated_at": archive_token},
+        data={"expected_row_version": archive_token},
         follow_redirects=False,
     )
     assert archive_resp.status_code == 303
@@ -100,7 +100,7 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     restore_match = re.search(
         re.escape(f"/web/income-plans/{pid}/restore") + r'"[^>]*>.*?'
-        r'name="expected_updated_at" value="([^"]*)"',
+        r'name="expected_row_version" value="([^"]*)"',
         after_archive,
         re.DOTALL,
     )
@@ -109,7 +109,7 @@ def test_income_plans_archive_and_restore(web_client: TestClient, *, identity) -
 
     restore_resp = web_client.post(
         f"/web/income-plans/{pid}/restore",
-        data={"expected_updated_at": restore_token},
+        data={"expected_row_version": restore_token},
         follow_redirects=False,
     )
     assert restore_resp.status_code == 303

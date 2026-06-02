@@ -46,46 +46,46 @@ from fastapi.testclient import TestClient
         (
             "POST",
             "/api/expenses/confirmed/batch-update",
-            {"json": {"expense_ids": [1], "expected_updated_at_by_id": {"1": "2026-05-04T08:00:00Z"}}},
+            {"json": {"expense_ids": [1], "expected_row_version_by_id": {"1": "2026-05-04T08:00:00Z"}}},
         ),
         (
             "POST",
             "/api/expenses/notification-drafts",
             {"json": {"source": "android-notification", "amount_cents": 1200}},
         ),
-        # ADR-0038 PR-2b: confirm/reject now require an `expected_updated_at`
+        # ADR-0038 PR-2b: confirm/reject now require an `expected_row_version`
         # body, but auth runs first — 401 fires before payload validation.
         (
             "POST",
             "/api/expenses/1/confirm",
-            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+            {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
         ),
         (
             "POST",
             "/api/expenses/1/reject",
-            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+            {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
         ),
         (
             "POST",
             "/api/expenses/1/items/acknowledge-mismatch",
-            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+            {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
         ),
         (
             "POST",
             "/api/expenses/1/mark-not-duplicate",
-            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+            {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
         ),
         (
             "POST",
             "/api/expenses/1/ocr/retry",
-            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+            {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
         ),
         (
             "POST",
             "/api/expenses/1/recognize-text",
             {
                 "json": {
-                    "expected_updated_at": "2026-05-04T00:00:00Z",
+                    "expected_row_version": "2026-05-04T00:00:00Z",
                     "raw_text": "merchant 12.00",
                 }
             },
@@ -118,7 +118,7 @@ from fastapi.testclient import TestClient
             "/api/merchants/aliases/alias_missing",
             {
                 "json": {
-                    "expected_updated_at": "2026-05-04T00:00:00Z",
+                    "expected_row_version": "2026-05-04T00:00:00Z",
                     "enabled": False,
                 }
             },
@@ -126,7 +126,7 @@ from fastapi.testclient import TestClient
         (
             "DELETE",
             "/api/merchants/aliases/alias_missing",
-            {"json": {"expected_updated_at": "2026-05-04T00:00:00Z"}},
+            {"json": {"expected_row_version": "2026-05-04T00:00:00Z"}},
         ),
         (
             "POST",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 from api_contract_helpers import (
@@ -162,7 +162,7 @@ def test_spent_at_alias_clears_ocr_time_ownership(client: TestClient, *, identit
     assert second.json()["expense_time"] == "2026-05-04T05:00:00Z"
 
 
-def test_retry_ocr_without_expected_updated_at_returns_422(
+def test_retry_ocr_without_expected_row_version_returns_422(
     client: TestClient, *, identity,
 ) -> None:
     expense_id = upload_png(client, identity=identity)
@@ -202,7 +202,7 @@ def test_retry_ocr_with_stale_updated_at_returns_409(
     stale = client.post(
         f"/api/expenses/{expense_id}/ocr/retry",
         headers=identity.app_headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
     assert stale.status_code == 409, stale.text
@@ -215,7 +215,7 @@ def test_retry_ocr_unknown_expense_returns_404(
     response = client.post(
         "/api/expenses/9999999/ocr/retry",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text
     assert response.json()["error"] == "expense_not_found"
@@ -229,7 +229,7 @@ def test_retry_ocr_rejects_stale_pending_snapshot(
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
-        expected_updated_at = expense.updated_at
+        expected_row_version = expense.row_version
 
     def slow_ocr_result(expense: Expense) -> OcrResult:
         with SessionLocal() as user_db:
@@ -237,7 +237,7 @@ def test_retry_ocr_rejects_stale_pending_snapshot(
             assert row is not None
             row.merchant = "鐢ㄦ埛鎵嬪姩淇敼"
             row.amount_cents = 1234
-            row.updated_at = (row.updated_at or row.created_at) + timedelta(seconds=5)
+            row.row_version = (row.row_version or 0) + 1
             user_db.commit()
         return OcrResult(
             raw_text="OCR 鍟嗗\n99.99",
@@ -257,7 +257,7 @@ def test_retry_ocr_rejects_stale_pending_snapshot(
             db,
             expense_id,
             "owner",
-            expected_updated_at=expected_updated_at,
+            expected_row_version=expected_row_version,
         )
 
     assert exc_info.value.error == "state_conflict"
@@ -290,11 +290,11 @@ def test_two_sessions_retry_ocr_race_returns_state_conflict(
         row_a = session_a.get(Expense, expense_id)
         row_b = session_b.get(Expense, expense_id)
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         row_a.merchant = "Writer A"
-        row_a.updated_at = shared_version + timedelta(seconds=5)
+        row_a.row_version = shared_version + 1
         session_a.commit()
 
         with pytest.raises(AppError) as exc_info:
@@ -302,7 +302,7 @@ def test_two_sessions_retry_ocr_race_returns_state_conflict(
                 session_b,
                 expense_id,
                 "owner",
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
             )
         assert exc_info.value.error == "state_conflict"
         assert exc_info.value.status_code == 409

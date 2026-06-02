@@ -424,7 +424,7 @@ def run_smoke(base_url: str) -> None:
     )
     assert_equal(pre_confirm_snapshot.status, 200, "pre-confirm snapshot status")
     confirm_no_amount_body = json.dumps(
-        {"expected_updated_at": pre_confirm_snapshot.json()["updated_at"]},
+        {"expected_row_version": pre_confirm_snapshot.json()["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -449,7 +449,7 @@ def run_smoke(base_url: str) -> None:
             "category": "餐饮",
             "note": "午饭",
             "expense_time": "2026-05-03T04:20:00Z",
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -470,7 +470,7 @@ def run_smoke(base_url: str) -> None:
     # OCR_PROVIDER=empty 下 retry 必须 503 ocr_not_configured（fact-backed contract，
     # 见 backend/app/services/expense_service/_ocr.py:retry_expense_ocr 与 ADR-0021）。
     retry_body = json.dumps(
-        {"expected_updated_at": patched["updated_at"]},
+        {"expected_row_version": patched["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -485,7 +485,7 @@ def run_smoke(base_url: str) -> None:
     recognize_upload = upload(base_url, "recognize.png", "image/png", PNG_BYTES)
     assert_equal(recognize_upload.status, 200, "recognize upload status")
     recognize_id = int(recognize_upload.json()["id"])
-    # ADR-0038 PR-2e: recognize-text now requires ``expected_updated_at``;
+    # ADR-0038 PR-2e: recognize-text now requires ``expected_row_version``;
     # snapshot the freshly uploaded row's ``updated_at`` and ship it.
     recognize_snapshot = wait_for_expense_thumbnail(
         base_url,
@@ -494,7 +494,7 @@ def run_smoke(base_url: str) -> None:
     )
     recognize_body = json.dumps(
         {
-            "expected_updated_at": recognize_snapshot["updated_at"],
+            "expected_row_version": recognize_snapshot["row_version"],
             "raw_text": "\n".join(
                 [
                     "中国建设银行",
@@ -526,7 +526,7 @@ def run_smoke(base_url: str) -> None:
     )
     assert_equal(confirm_snapshot.status, 200, "confirm snapshot status")
     confirm_body = json.dumps(
-        {"expected_updated_at": confirm_snapshot.json()["updated_at"]},
+        {"expected_row_version": confirm_snapshot.json()["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -602,7 +602,7 @@ def run_smoke(base_url: str) -> None:
     rule = result.json()
     rule_id = int(rule["id"])
     patch_rule_body = json.dumps(
-        {"priority": 2, "expected_updated_at": rule["updated_at"]},
+        {"priority": 2, "expected_row_version": rule["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -615,7 +615,7 @@ def run_smoke(base_url: str) -> None:
     patched_rule = result.json()
     assert_equal(patched_rule["priority"], 2, "rule patched priority")
     delete_rule_body = json.dumps(
-        {"expected_updated_at": patched_rule["updated_at"]},
+        {"expected_row_version": patched_rule["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -648,7 +648,7 @@ def run_smoke(base_url: str) -> None:
             "merchant": "OpenAI",
             "note": "订阅",
             "expense_time": "2026-05-04T04:20:00Z",
-            "expected_updated_at": second_snapshot["updated_at"],
+            "expected_row_version": second_snapshot["row_version"],
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -669,7 +669,7 @@ def run_smoke(base_url: str) -> None:
     )
     assert_equal(second_mnd_snapshot.status, 200, "mark-not-duplicate snapshot status")
     second_mnd_body = json.dumps(
-        {"expected_updated_at": second_mnd_snapshot.json()["updated_at"]},
+        {"expected_row_version": second_mnd_snapshot.json()["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -691,7 +691,7 @@ def run_smoke(base_url: str) -> None:
         "similar mark-not-duplicate",
     )
     similar_mnd_body = json.dumps(
-        {"expected_updated_at": similar_mnd_snapshot["updated_at"]},
+        {"expected_row_version": similar_mnd_snapshot["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -712,7 +712,7 @@ def run_smoke(base_url: str) -> None:
             "amount_cents": 2000,
             "merchant": "OpenAI",
             "expense_time": "2026-05-04T05:00:00Z",
-            "expected_updated_at": similar_snapshot.json()["updated_at"],
+            "expected_row_version": similar_snapshot.json()["row_version"],
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -733,7 +733,7 @@ def run_smoke(base_url: str) -> None:
     )
     assert_equal(reject_snapshot.status, 200, "reject snapshot status")
     reject_body = json.dumps(
-        {"expected_updated_at": reject_snapshot.json()["updated_at"]},
+        {"expected_row_version": reject_snapshot.json()["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -753,7 +753,7 @@ def run_smoke(base_url: str) -> None:
     )
     assert_equal(second_confirm_snapshot.status, 200, "second confirm snapshot status")
     second_confirm_body = json.dumps(
-        {"expected_updated_at": second_confirm_snapshot.json()["updated_at"]},
+        {"expected_row_version": second_confirm_snapshot.json()["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(

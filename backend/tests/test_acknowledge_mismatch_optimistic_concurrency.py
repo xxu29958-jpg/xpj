@@ -83,7 +83,7 @@ def test_acknowledge_mismatch_with_stale_token_returns_409(
     response = client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
         headers=identity.app_headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
     assert response.status_code == 409, response.text
     assert response.json()["error"] == "state_conflict"
@@ -120,7 +120,7 @@ def test_acknowledge_mismatch_status_check_preserves_existing_409(
     response = client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
         headers=identity.app_headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
     assert response.status_code == 409, response.text
     assert response.json()["error"] == "items_sum_not_in_mismatch"
@@ -149,20 +149,20 @@ def test_two_sessions_acknowledge_race_only_first_writer_wins(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         # Session A acknowledges first, which bumps updated_at and flips
         # status away from ``mismatch_known``.
         acknowledge_items_sum_mismatch(
-            session_a, expense_id, tenant_id, expected_updated_at=shared_version
+            session_a, expense_id, tenant_id, expected_row_version=shared_version
         )
 
         # Session B's stale snapshot can no longer ack — both updated_at
         # AND status filters miss.
         with pytest.raises(AppError) as exc_info:
             acknowledge_items_sum_mismatch(
-                session_b, expense_id, tenant_id, expected_updated_at=shared_version
+                session_b, expense_id, tenant_id, expected_row_version=shared_version
             )
         assert exc_info.value.status_code == 409
         # Either error code is acceptable per the disambiguation contract;
@@ -185,7 +185,7 @@ def test_acknowledge_mismatch_unknown_expense_returns_404(
     response = client.post(
         "/api/expenses/9999999/items/acknowledge-mismatch",
         headers=identity.app_headers,
-        json={"expected_updated_at": "2026-05-04T00:00:00Z"},
+        json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text
     assert response.json()["error"] == "expense_not_found"

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -13,7 +11,7 @@ from app.services.expense_query import get_expense  # noqa: F401 — re-exported
 from app.services.spending_contract_service import confirmed_ordered, confirmed_query
 
 __all__ = [
-    "fetch_expense_updated_at_in_status",
+    "fetch_expense_row_version_in_status",
     "get_expense",
     "is_expense_in_status_for_tenant",
     "list_confirmed",
@@ -45,20 +43,20 @@ def is_expense_in_status_for_tenant(
     )
 
 
-def fetch_expense_updated_at_in_status(
+def fetch_expense_row_version_in_status(
     db: Session, *, expense_id: int, tenant_id: str, status: str
-) -> datetime | None:
-    """ADR-0038 PR-A: return the row's ``updated_at`` if it's in [status]
-    under [tenant_id], else None. Used by ``/web/pending`` to seed the
-    undo banner's hidden ``expected_updated_at`` form field — without it
-    the banner POSTs a body the server can't validate.
+) -> int | None:
+    """ADR-0041: return the row's ``row_version`` if it's in [status] under
+    [tenant_id], else None. Used by ``/web/pending`` to seed the undo banner's
+    hidden ``expected_row_version`` form field — without it the banner POSTs a
+    body the server can't validate.
 
-    Combines "is it still rejected?" with "what's its CAS token?" in
-    one query so the ownership check and token read stay consistent
-    (no TOCTOU between the predicate and a separate token fetch)."""
+    Combines "is it still rejected?" with "what's its CAS token?" in one query
+    so the ownership check and token read stay consistent (no TOCTOU between the
+    predicate and a separate token fetch)."""
     return db.scalar(
         ledger_scoped_select(Expense, tenant_id)
-        .with_only_columns(Expense.updated_at)
+        .with_only_columns(Expense.row_version)
         .where(Expense.id == expense_id)
         .where(Expense.status == status)
         .limit(1)

@@ -1140,9 +1140,9 @@
       },
       "Body_post_archive_web_income_plans__public_id__archive_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1213,9 +1213,9 @@
       },
       "Body_post_restore_web_income_plans__public_id__restore_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1287,9 +1287,9 @@
       },
       "Body_web_confirm_web_expenses__expense_id__confirm_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1312,12 +1312,12 @@
             "title": "Category",
             "type": "string"
           },
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": [],
             "items": {
               "type": "string"
             },
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "array"
           },
           "expense_ids": {
@@ -1408,9 +1408,9 @@
       },
       "Body_web_duplicate_keep_web_duplicates__expense_id__keep_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1424,9 +1424,9 @@
       },
       "Body_web_duplicate_reject_current_web_duplicates__expense_id__reject_current_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1440,9 +1440,9 @@
       },
       "Body_web_duplicate_reject_original_web_duplicates__expense_id__reject_original_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1456,9 +1456,9 @@
       },
       "Body_web_expense_undo_web_expenses__expense_id__undo_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1570,9 +1570,9 @@
       },
       "Body_web_items_acknowledge_mismatch_web_expenses__expense_id__items_acknowledge_mismatch_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1586,9 +1586,9 @@
       },
       "Body_web_items_save_web_expenses__expense_id__items_save_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "item_amount_yuan": {
@@ -1671,9 +1671,9 @@
       },
       "Body_web_merchant_alias_delete_web_merchants_aliases__public_id__delete_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1687,9 +1687,9 @@
       },
       "Body_web_merchant_alias_toggle_web_merchants_aliases__public_id__toggle_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1787,9 +1787,9 @@
       },
       "Body_web_recurring_pause_web_recurring__public_id__pause_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1803,9 +1803,9 @@
       },
       "Body_web_recurring_resume_web_recurring__public_id__resume_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1819,9 +1819,9 @@
       },
       "Body_web_reject_web_expenses__expense_id__reject_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1975,9 +1975,9 @@
       },
       "Body_web_rules_delete_web_rules__rule_id__delete_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -1991,9 +1991,9 @@
       },
       "Body_web_rules_toggle_web_rules__rule_id__toggle_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -2028,9 +2028,9 @@
             "title": "Category",
             "type": "string"
           },
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -2122,9 +2122,9 @@
       },
       "Body_web_splits_save_web_expenses__expense_id__splits_save_post": {
         "properties": {
-          "expected_updated_at": {
+          "expected_row_version": {
             "default": "",
-            "title": "Expected Updated At",
+            "title": "Expected Row Version",
             "type": "string"
           },
           "ledger_id": {
@@ -2846,16 +2846,15 @@
         "type": "object"
       },
       "CategoryRuleDeleteRequest": {
-        "description": "DELETE body for ADR-0038 optimistic concurrency on category_rule.\n\nDELETE carries a request body so the client's ``expected_updated_at``\ncan travel via the same channel as PATCH (Pydantic-typed, FastAPI-\nparsed). No query-string fallback — open-dev contract; clients must\nsend body.",
+        "description": "DELETE body for ADR-0038 optimistic concurrency on category_rule.\n\nDELETE carries a request body so the client's ``expected_row_version``\ncan travel via the same channel as PATCH (Pydantic-typed, FastAPI-\nparsed). No query-string fallback — open-dev contract; clients must\nsend body.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "CategoryRuleDeleteRequest",
         "type": "object"
@@ -3014,10 +3013,9 @@
             ],
             "title": "Enabled"
           },
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           },
           "keyword": {
             "anyOf": [
@@ -3065,7 +3063,7 @@
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "CategoryRuleUpdateRequest",
         "type": "object"
@@ -3108,14 +3106,13 @@
             ],
             "title": "Category"
           },
-          "expected_updated_at_by_id": {
+          "expected_row_version_by_id": {
             "additionalProperties": {
-              "format": "date-time",
-              "type": "string"
+              "type": "integer"
             },
             "maxProperties": 200,
             "minProperties": 1,
-            "title": "Expected Updated At By Id",
+            "title": "Expected Row Version By Id",
             "type": "object"
           },
           "expense_ids": {
@@ -3142,7 +3139,7 @@
         },
         "required": [
           "expense_ids",
-          "expected_updated_at_by_id"
+          "expected_row_version_by_id"
         ],
         "title": "ConfirmedExpenseBatchUpdateRequest",
         "type": "object"
@@ -3851,30 +3848,28 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-2e: ``POST /api/expenses/{id}/items/acknowledge-mismatch``.\n\nAcknowledging \"原小票如此\" flips ``items_sum_status`` from\n``mismatch_known`` to ``mismatch_acknowledged``. Without the token,\na stale page open before a peer edited amount/items would let the\nuser blindly accept a *new* mismatch as if it were the one they\nsaw. The service uses ``claim_row_with_token`` with the predicate\n``items_sum_status == \"mismatch_known\"`` so:\n\n- row not visible / vanished → 404 ``expense_not_found``\n- status != ``mismatch_known`` → 409 ``items_sum_not_in_mismatch``\n  (existing UX, preserved)\n- else → 409 ``state_conflict``",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseAcknowledgeItemsMismatchRequest",
         "type": "object"
       },
       "ExpenseConfirmRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.\n\n``expected_updated_at`` is the optimistic-concurrency token client\nlast saw on the expense; service-layer ``confirm_expense`` atomic\n``UPDATE WHERE updated_at = expected_updated_at`` rejects stale\nwrites with 409. Confirming an already-confirmed row remains\nidempotent (200) regardless of the token — confirmed is terminal.",
+        "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.\n\n``expected_row_version`` is the optimistic-concurrency token client\nlast saw on the expense; service-layer ``confirm_expense`` atomic\n``UPDATE WHERE row_version = expected`` rejects stale\nwrites with 409. Confirming an already-confirmed row remains\nidempotent (200) regardless of the token — confirmed is terminal.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseConfirmRequest",
         "type": "object"
@@ -3882,10 +3877,9 @@
       "ExpenseItemReplaceRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           },
           "items": {
             "items": {
@@ -3897,7 +3891,7 @@
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseItemReplaceRequest",
         "type": "object"
@@ -4367,14 +4361,13 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/mark-not-duplicate``.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseMarkNotDuplicateRequest",
         "type": "object"
@@ -4383,26 +4376,24 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-2c: ``POST /api/expenses/{id}/ocr/retry`` body.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseOcrRetryRequest",
         "type": "object"
       },
       "ExpenseRecognizeTextRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2e: ``POST /api/expenses/{id}/recognize-text`` body.\n\nPreviously the service self-claimed using the row's current\n``updated_at``, which silently overwrote concurrent edits made\nbetween the client's read and the recognize call. With\n``expected_updated_at`` the service issues an atomic ``UPDATE\nWHERE updated_at = expected`` and returns 409 ``state_conflict``\non stale tokens. Same contract as the rest of the expense-mutate\nsurface (PATCH / confirm / reject / ocr retry / ...).",
+        "description": "ADR-0038 PR-2e: ``POST /api/expenses/{id}/recognize-text`` body.\n\nPreviously the service self-claimed using the row's current\n``updated_at``, which silently overwrote concurrent edits made\nbetween the client's read and the recognize call. With\n``expected_row_version`` the service issues an atomic ``UPDATE\nWHERE row_version = expected`` and returns 409 ``state_conflict``\non stale tokens. Same contract as the rest of the expense-mutate\nsurface (PATCH / confirm / reject / ocr retry / ...).",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           },
           "raw_text": {
             "maxLength": 20000,
@@ -4412,7 +4403,7 @@
           }
         },
         "required": [
-          "expected_updated_at",
+          "expected_row_version",
           "raw_text"
         ],
         "title": "ExpenseRecognizeTextRequest",
@@ -4422,14 +4413,13 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/reject`` body — same\ncontract as ExpenseConfirmRequest; ``rejected`` is also terminal.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseRejectRequest",
         "type": "object"
@@ -4867,10 +4857,9 @@
       "ExpenseSplitReplaceRequest": {
         "additionalProperties": false,
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           },
           "splits": {
             "items": {
@@ -4882,7 +4871,7 @@
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseSplitReplaceRequest",
         "type": "object"
@@ -5066,14 +5055,13 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-A: ``POST /api/expenses/{id}/undo`` body. The OCC token\nrejects a stale /undo for a row that's been re-rejected since the\nbanner was shown — without it, a cached banner's /undo could un-do\na NEW intentional reject. See ``undo_reject_expense`` docstring.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseUndoRequest",
         "type": "object"
@@ -5104,10 +5092,9 @@
             ],
             "title": "Category"
           },
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           },
           "expense_time": {
             "anyOf": [
@@ -5248,7 +5235,7 @@
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "ExpenseUpdateRequest",
         "type": "object"
@@ -5440,7 +5427,7 @@
       },
       "GoalUpdateRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2j: ``PATCH /api/goals/{public_id}`` body.\n\n``expected_updated_at`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, updated_at = expected`` and returns 409 ``state_conflict``\non stale snapshot. Same shape as the rest of the v1.3 PATCH surface.",
+        "description": "ADR-0038 PR-2j: ``PATCH /api/goals/{public_id}`` body.\n\n``expected_row_version`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, updated_at = expected`` and returns 409 ``state_conflict``\non stale snapshot. Same shape as the rest of the v1.3 PATCH surface.",
         "properties": {
           "category": {
             "anyOf": [
@@ -5454,10 +5441,9 @@
             ],
             "title": "Category"
           },
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           },
           "month": {
             "anyOf": [
@@ -5499,7 +5485,7 @@
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "GoalUpdateRequest",
         "type": "object"
@@ -5726,21 +5712,20 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-B: ``DELETE /api/income-plans/{public_id}`` (archive) and\n``POST .../{public_id}/restore`` body — carries the client's last-seen\noptimistic-concurrency token so a stale archive/restore against a\nconcurrently-modified plan is rejected with 409 ``state_conflict``\ninstead of silently flipping status.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "IncomePlanTokenRequest",
         "type": "object"
       },
       "IncomePlanUpdateRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2j: ``PATCH /api/income-plans/{public_id}`` body.\n\n``expected_updated_at`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, status='active', updated_at = expected`` and returns\n409 ``state_conflict`` on stale snapshot.",
+        "description": "ADR-0038 PR-2j: ``PATCH /api/income-plans/{public_id}`` body.\n\n``expected_row_version`` is the client's last-seen optimistic-\nconcurrency token. Service issues atomic ``UPDATE WHERE id,\ntenant_id, status='active', updated_at = expected`` and returns\n409 ``state_conflict`` on stale snapshot.",
         "properties": {
           "amount_cents": {
             "anyOf": [
@@ -5754,10 +5739,9 @@
             ],
             "title": "Amount Cents"
           },
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           },
           "label": {
             "anyOf": [
@@ -5800,7 +5784,7 @@
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "IncomePlanUpdateRequest",
         "type": "object"
@@ -6817,16 +6801,15 @@
       },
       "MerchantAliasDeleteRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2e: ``DELETE /api/merchants/aliases/{public_id}`` body.\n\nMirrors :class:`CategoryRuleDeleteRequest`: DELETE carries a body so\n``expected_updated_at`` travels the same channel as PATCH (Pydantic-\ntyped, FastAPI-parsed). No query-string fallback — clients must send\nbody. 409 ``state_conflict`` on stale token; 404 if the row vanished\nbetween the client's read and the delete.",
+        "description": "ADR-0038 PR-2e: ``DELETE /api/merchants/aliases/{public_id}`` body.\n\nMirrors :class:`CategoryRuleDeleteRequest`: DELETE carries a body so\n``expected_row_version`` travels the same channel as PATCH (Pydantic-\ntyped, FastAPI-parsed). No query-string fallback — clients must send\nbody. 409 ``state_conflict`` on stale token; 404 if the row vanished\nbetween the client's read and the delete.",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "MerchantAliasDeleteRequest",
         "type": "object"
@@ -6916,7 +6899,7 @@
       },
       "MerchantAliasUpdateRequest": {
         "additionalProperties": false,
-        "description": "ADR-0038 PR-2e: ``PATCH /api/merchants/aliases/{public_id}`` body.\n\n``expected_updated_at`` is the optimistic-concurrency token the\nclient saw when it last read the alias. The service issues an\natomic ``UPDATE ... WHERE updated_at = expected`` and returns\n409 ``state_conflict`` if the row has been mutated by another\nwriter between the read and this PATCH.",
+        "description": "ADR-0038 PR-2e: ``PATCH /api/merchants/aliases/{public_id}`` body.\n\n``expected_row_version`` is the optimistic-concurrency token the\nclient saw when it last read the alias. The service issues an\natomic ``UPDATE ... WHERE row_version = expected`` and returns\n409 ``state_conflict`` if the row has been mutated by another\nwriter between the read and this PATCH.",
         "properties": {
           "alias": {
             "anyOf": [
@@ -6955,14 +6938,13 @@
             ],
             "title": "Enabled"
           },
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "MerchantAliasUpdateRequest",
         "type": "object"
@@ -7749,14 +7731,13 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-A: ``POST /api/recurring/items/{public_id}/{pause,resume}``\nbody. The OCC token rejects stale toggle requests across the\npause↔active state-machine pair — without it, a stale pause arriving\nafter a user-intentional resume would silently re-pause (atomic\nUPDATE WHERE status!='archived' matches either state).",
         "properties": {
-          "expected_updated_at": {
-            "format": "date-time",
-            "title": "Expected Updated At",
-            "type": "string"
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
           }
         },
         "required": [
-          "expected_updated_at"
+          "expected_row_version"
         ],
         "title": "RecurringItemTokenRequest",
         "type": "object"

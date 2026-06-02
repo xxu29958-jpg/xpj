@@ -10,7 +10,7 @@ formatting.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
@@ -41,26 +41,25 @@ _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates" / "web"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR), context_processors=[csrf_context])
 # ADR-0038 PR-2e: register ``to_iso`` so /web templates can render
 # ORM ``updated_at`` values (datetime) into the canonical ISO-Z form
-# the hidden ``expected_updated_at`` form fields use. Without this
+# the hidden ``expected_row_version`` form fields use. Without this
 # filter the template would emit Python's ``str(datetime)`` (no T
-# separator, no Z), which ``parse_form_updated_at_token`` rejects.
+# separator, no Z), which ``parse_form_row_version_token`` rejects.
 templates.env.filters["to_iso"] = _datetime_to_iso
 
 
-def parse_form_updated_at_token(value: str) -> datetime | None:
-    """ADR-0038: parse the hidden ``expected_updated_at`` form field.
+def parse_form_row_version_token(value: str) -> int | None:
+    """ADR-0041: parse the hidden ``expected_row_version`` form field as int.
 
-    Returns ``None`` when the field is blank or malformed; callers
-    surface the same "页面已过期/账单已在其它端被修改" UX as a stale-write
-    409. Centralised here to keep the parse rules (trim, ``Z`` → ``+00:00``)
-    in one place — PR-2b used two ad-hoc helpers (``_parse_form_updated_at``
-    vs ``_parse_expected_updated_at``) before this refactor.
+    Returns ``None`` when the field is blank or malformed; callers surface the
+    same "页面已过期/账单已在其它端被修改" UX as a stale-write 409. ``row_version``
+    is a monotonic integer — no ISO/tz normalisation (that was the ``updated_at``
+    era); a non-numeric value is simply treated as a stale/absent token.
     """
     cleaned = (value or "").strip()
     if not cleaned:
         return None
     try:
-        return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+        return int(cleaned)
     except ValueError:
         return None
 
@@ -404,6 +403,9 @@ def _expense_view(expense) -> dict:
         "status": expense.status,
         "expense_time": expense.expense_time.strftime("%Y-%m-%d %H:%M") if expense.expense_time else "",
         "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
+        # ADR-0041: row_version is the OCC token the hidden form fields carry now
+        # (updated_at_iso kept for any display use).
+        "row_version": getattr(expense, "row_version", None),
         "created_at": expense.created_at.strftime("%Y-%m-%d %H:%M") if expense.created_at else "",
         "has_image": has_image,
         "image_state": image_state,

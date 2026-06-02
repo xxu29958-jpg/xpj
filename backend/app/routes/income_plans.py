@@ -99,7 +99,7 @@ def update_plan(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
         label=payload.label,
         source_type=payload.source_type,
         amount_cents=payload.amount_cents,
@@ -120,7 +120,7 @@ def archive_plan(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     )
     return _to_response(plan)
 
@@ -136,6 +136,6 @@ def restore_plan(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     )
     return _to_response(plan)

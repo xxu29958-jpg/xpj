@@ -53,10 +53,10 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     assert page.status_code == 200
     assert 'action="/web/confirmed/batch-update"' in page.text
     assert f'data-id="{expense_id}"' in page.text
-    assert 'data-updated-at="' in page.text
+    assert 'data-row-version="' in page.text
     assert 'id="check-all"' in page.text
     token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()[
-        "updated_at"
+        "row_version"
     ]
 
     category_resp = web_client.post(
@@ -65,7 +65,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "action": "set_category",
             "ledger_id": "owner",
             "expense_ids": [str(expense_id)],
-            "expected_updated_at": [token],
+            "expected_row_version": [token],
             "category": "Batch Web Cat",
             "page": "2",
         },
@@ -76,7 +76,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert "Batch Web Cat" in detail.text
     token = web_client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()[
-        "updated_at"
+        "row_version"
     ]
 
     tags_resp = web_client.post(
@@ -85,7 +85,7 @@ def test_web_confirmed_batch_markup_and_updates(web_client: TestClient, *, ident
             "action": "set_tags",
             "ledger_id": "owner",
             "expense_ids": [str(expense_id)],
-            "expected_updated_at": [token],
+            "expected_row_version": [token],
             "tags": "web, family, web",
         },
         follow_redirects=False,
@@ -123,7 +123,7 @@ def test_web_confirmed_batch_stale_token_redirects_without_partial_update(
             "action": "set_category",
             "ledger_id": "owner",
             "expense_ids": [str(first_id), str(second_id)],
-            "expected_updated_at": [first_before["updated_at"], second_before["updated_at"]],
+            "expected_row_version": [first_before["row_version"], second_before["row_version"]],
             "category": "Should Not Land",
         },
         follow_redirects=False,
@@ -178,8 +178,8 @@ def test_web_pending_bulk_selection_markup_and_js_field_name(web_client: TestCli
     js_path = Path(__file__).resolve().parents[1] / "app/static/web/desktop/bulk-bar.js"
     js = js_path.read_text(encoding="utf-8")
     assert 'h.name = "expense_ids";' in js
-    assert "if (entry.updatedAt)" in js
-    assert 'token.name = "expected_updated_at";' in js
+    assert "if (entry.rowVersion)" in js
+    assert 'token.name = "expected_row_version";' in js
 
 
 def test_web_bulk_set_category_updates_pending(web_client: TestClient, *, identity) -> None:

@@ -1,44 +1,40 @@
-"""ADR-0038 optimistic-concurrency claim helpers.
+"""ADR-0038 optimistic-concurrency claim helpers — ADR-0041 row_version CAS.
 
-Used by every endpoint that mutates a row gated by ``expected_updated_at``:
+Used by every endpoint that mutates a row gated by ``expected_row_version``:
 
 - expense PATCH / confirm / reject / mark-not-duplicate / OCR retry /
   items replace / splits replace / confirmed batch update
-  (ADR-0038 PR-2a~2d)
-- expense recognize-text / items acknowledge-mismatch (ADR-0038 PR-2e)
-- merchant_alias PATCH / DELETE (ADR-0038 PR-2e)
-- category_rule PATCH / DELETE (ADR-0038 PR-1)
-- rule_application apply / rollback (Alpha3 engine — pre-dates ADR-0038
-  but follows the same atomic ``UPDATE WHERE updated_at = expected``
-  shape; latent tz-handling bug fixed by this refactor)
+- expense recognize-text / items acknowledge-mismatch
+- merchant_alias PATCH / DELETE
+- category_rule PATCH / DELETE
+- rule_application apply / rollback (Alpha3 engine — same atomic shape)
 
 Two layers:
 
-* :func:`updated_at_predicate` builds the SQL ``column == expected``
-  comparator with SQLite tz handling baked in. ``DateTime(timezone=True)``
-  reads back as naive on SQLite, so the bound value has to lose its
-  tzinfo or the predicate is silently dialect-dependent. Previously
-  copy-pasted in 4 inline sites + 3 module-local helpers (each with
-  slightly different behaviour — see commit history).
-* :func:`claim_row_with_token` / :func:`delete_row_with_token` build
-  the atomic ``UPDATE / DELETE WHERE tenant_id, id, updated_at =
-  expected`` and return ``rowcount``. The **disambiguation** (rowcount=0
-  → ``not_found`` 404 vs ``state_conflict`` 409 vs terminal-status
-  idempotency) stays in the caller because each endpoint's terminal
-  rules differ — confirm has ``confirmed`` as idempotent, OCR retry
-  doesn't, rule PATCH has no terminal at all, rule_application returns
-  ``None`` instead of raising.
+* :func:`row_version_predicate` builds the SQL ``column == expected_row_version``
+  comparator. ``row_version`` is a monotonic ``Integer NOT NULL`` so this is a
+  plain integer equality — dialect-safe by construction. (ADR-0041 retired the
+  old ``updated_at`` comparator: its SQLite-naive vs Postgres-aware-timestamptz
+  handling hung OCC correctness on a tz-strip workaround, and its ~15ms equal-
+  timestamp window let ABA stale tokens through. The monotonic counter fixes
+  both.)
+* :func:`claim_row_with_token` / :func:`delete_row_with_token` build the atomic
+  ``UPDATE / DELETE WHERE tenant_id, id, row_version = expected`` and return
+  ``rowcount``. The **disambiguation** (rowcount=0 → ``not_found`` 404 vs
+  ``state_conflict`` 409 vs terminal-status idempotency) stays in the caller
+  because each endpoint's terminal rules differ — confirm has ``confirmed`` as
+  idempotent, OCR retry doesn't, rule PATCH has no terminal at all,
+  rule_application returns ``None`` instead of raising.
 
-Not abstracted: the caller's choice of ``db.rollback()`` vs
-``db.expire_all()`` on the failure path. PR-1 uses ``rollback``;
-PR-2a/2b/2c use ``expire_all``; the two are not equivalent if a
-caller adds a pre-claim flush. Picking one would silently change
-behaviour, so the cleanup is deliberately a follow-up review pass.
+:func:`bump_row_version` is for the non-helper mutation paths (see its docstring).
+
+Not abstracted: the caller's choice of ``db.rollback()`` vs ``db.expire_all()``
+on the failure path. The two are not equivalent if a caller adds a pre-claim
+flush, so the cleanup stays a deliberate per-caller choice.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete as sa_delete
@@ -47,13 +43,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import ColumnElement
 
 from app.ledger_scope import ledger_filter
-from app.services.time_service import ensure_utc
 
 __all__ = [
     "bump_row_version",
     "claim_row_with_token",
     "delete_row_with_token",
-    "updated_at_predicate",
+    "row_version_predicate",
 ]
 
 
@@ -74,19 +69,13 @@ def bump_row_version(instance: Any) -> None:
     instance.row_version = type(instance).row_version + 1
 
 
-def updated_at_predicate(column, value: datetime | None) -> ColumnElement:
-    """SQL predicate matching ``column == expected_updated_at``.
+def row_version_predicate(column, value: int) -> ColumnElement:
+    """SQL predicate matching ``column == expected_row_version`` (ADR-0041).
 
-    Normalises ``value`` through ``ensure_utc(...).replace(tzinfo=None)``
-    because SQLite reads ``DateTime(timezone=True)`` back as naive;
-    binding an aware value would compare unequal (dialect-dependent).
-    A naive value (e.g. read directly from an ORM-loaded row on SQLite)
-    passes through unchanged because ``ensure_utc`` treats naive as
-    UTC and ``.replace(tzinfo=None)`` strips it back.
+    ``row_version`` is a monotonic ``Integer NOT NULL`` — plain integer
+    equality, dialect-safe by construction (no tz normalisation, no ABA window).
     """
-    if value is None:
-        return column.is_(None)
-    return column == ensure_utc(value).replace(tzinfo=None)
+    return column == value
 
 
 def claim_row_with_token(
@@ -95,60 +84,44 @@ def claim_row_with_token(
     *,
     pk_id: int,
     tenant_id: str,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     set_values: dict[str, Any],
     extra_where: tuple = (),
     synchronize_session: bool | str = "auto",
 ) -> int:
-    """Atomic UPDATE ``WHERE tenant_id, id, updated_at = expected [+extra]``.
+    """Atomic UPDATE ``WHERE tenant_id, id, row_version = expected [+extra]``.
 
-    Returns ``rowcount`` so the caller can branch on ``== 1`` (claim
-    succeeded) vs ``== 0`` (row not visible / status filter mismatch /
-    token stale). The caller is responsible for the rowcount=0
-    disambiguation because endpoint-specific terminal-status rules
-    don't generalise (confirm has ``confirmed`` as idempotent, etc.).
+    Returns ``rowcount`` so the caller can branch on ``== 1`` (claim succeeded)
+    vs ``== 0`` (row not visible / status filter mismatch / token stale). The
+    caller owns the rowcount=0 disambiguation because endpoint-specific
+    terminal-status rules don't generalise (confirm has ``confirmed`` as
+    idempotent, etc.).
 
-    ``set_values`` MUST include ``updated_at`` — the helper does not
-    inject it because terminal-status claims own the timestamp tuple
-    (e.g. ``status=confirmed, confirmed_at=now, updated_at=now``).
-
-    The helper DOES auto-inject ``row_version = row_version + 1`` (ADR-0041
-    phase ③ Slice A): every guarded mutation bumps the monotonic
-    ``row_version`` counter DB-side. Callers must NOT pass ``row_version`` in
-    ``set_values``. The CAS predicate still rides ``updated_at`` in Slice A;
-    Slice B flips it to ``row_version`` (and the cross-surface token contract).
+    ``set_values`` MUST include ``updated_at`` (retained for display/sort) — the
+    helper does not inject it because terminal claims own the timestamp tuple
+    (e.g. ``status=confirmed, confirmed_at=now, updated_at=now``). The helper
+    DOES auto-inject ``row_version = row_version + 1`` (the CAS increment);
+    callers must NOT pass ``row_version`` in ``set_values``.
 
     ``model`` must be ledger-scoped (have a ``tenant_id`` column);
-    :func:`ledger_filter` is used so we fail loudly if the caller
-    passes a non-tenant model.
+    :func:`ledger_filter` fails loudly if the caller passes a non-tenant model.
 
-    ``synchronize_session`` defaults to SQLAlchemy's ``"auto"`` (evaluate).
-    DIALECT FOOTGUN (ADR-0041): on PostgreSQL the evaluate strategy compares
-    the in-session row's *aware* ``timestamptz`` ``updated_at`` against the
-    *naive* value :func:`updated_at_predicate` binds — those are unequal — so
-    it silently fails to sync the identity-map row. Combined with
-    ``expire_on_commit=False`` (see ``_core.SessionLocal``), any caller that
-    reads the mutated row back through the identity map after ``db.commit()``
-    MUST ``db.expire_all()`` first or it returns the pre-update value. The
-    expense / merchant_alias / rule paths all do this; new readback callers
-    must too. (On SQLite the row reads back naive and evaluate happens to
-    match, which is why this only surfaces on Postgres.) Callers that don't
-    read back pass ``synchronize_session=False`` explicitly.
+    ``synchronize_session`` defaults to ``"auto"``. The injected
+    ``row_version + 1`` is a SQL expression the evaluate strategy can't compute
+    in Python, so SQLAlchemy expires ``row_version`` on matched in-session rows
+    (no error); any caller that reads the mutated row back through the identity
+    map after ``db.commit()`` should ``db.expire_all()`` first
+    (``expire_on_commit=False`` on ``SessionLocal``). Callers that don't read
+    back pass ``synchronize_session=False`` explicitly.
     """
     stmt = (
         sa_update(model)
         .where(ledger_filter(model, tenant_id))
         .where(model.id == pk_id)
-        .where(updated_at_predicate(model.updated_at, expected_updated_at))
+        .where(row_version_predicate(model.row_version, expected_row_version))
     )
     for predicate in extra_where:
         stmt = stmt.where(predicate)
-    # ADR-0041: maintain row_version as a live monotonic counter on every
-    # guarded mutation. DB-side ``row_version + 1`` (not read-modify-write) so
-    # concurrent claims can't lose a bump. Set last so a caller's set_values
-    # can't shadow it. Under synchronize_session="evaluate"/"auto" the col+1
-    # expression isn't Python-evaluatable, so SQLAlchemy expires the attribute
-    # on matched in-session rows (no error) — readback callers expire_all anyway.
     result = db.execute(
         stmt.values(**set_values, row_version=model.row_version + 1).execution_options(
             synchronize_session=synchronize_session
@@ -163,9 +136,9 @@ def delete_row_with_token(
     *,
     pk_id: int,
     tenant_id: str,
-    expected_updated_at: datetime,
+    expected_row_version: int,
 ) -> int:
-    """Atomic DELETE ``WHERE tenant_id, id, updated_at = expected``.
+    """Atomic DELETE ``WHERE tenant_id, id, row_version = expected``.
 
     Returns ``rowcount``; caller disambiguates rowcount=0 into 404 / 409.
     """
@@ -173,7 +146,7 @@ def delete_row_with_token(
         sa_delete(model)
         .where(ledger_filter(model, tenant_id))
         .where(model.id == pk_id)
-        .where(updated_at_predicate(model.updated_at, expected_updated_at))
+        .where(row_version_predicate(model.row_version, expected_row_version))
     )
     result = db.execute(stmt)
     return int(result.rowcount or 0)

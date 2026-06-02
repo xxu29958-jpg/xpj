@@ -5,7 +5,6 @@ route files don't have to import from each other.
 """
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from fastapi import Request
@@ -144,7 +143,7 @@ def _web_split_members(db: Session, ledger_id: str) -> list[dict]:
 
 def item_replace_payload(
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     item_name: list[str],
     item_kind: list[str],
     item_quantity: list[str],
@@ -195,14 +194,14 @@ def item_replace_payload(
         except ValueError as exc:
             raise AppError("invalid_request", str(exc), status_code=422) from exc
     return ExpenseItemReplaceRequest(
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         items=items,
     )
 
 
 def split_replace_payload(
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     split_member_id: list[str],
     split_amount_yuan: list[str],
     split_note: list[str],
@@ -232,7 +231,7 @@ def split_replace_payload(
             )
         )
     return ExpenseSplitReplaceRequest(
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         splits=splits,
     )
 

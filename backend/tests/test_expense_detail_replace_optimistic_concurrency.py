@@ -52,7 +52,7 @@ def _owner_member_id() -> int:
         return int(member.id)
 
 
-def test_replace_items_without_expected_updated_at_returns_422(
+def test_replace_items_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_manual_expense(client, identity=identity)
@@ -68,13 +68,13 @@ def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_manual_expense(client, identity=identity)
-    stale = _snapshot(client, expense_id, identity=identity)["updated_at"]
+    stale = _snapshot(client, expense_id, identity=identity)["row_version"]
 
     first = client.put(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": stale,
+            "expected_row_version": stale,
             "items": [{"name": "First", "amount_cents": 500}],
         },
     )
@@ -84,7 +84,7 @@ def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
         f"/api/expenses/{expense_id}/items",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": stale,
+            "expected_row_version": stale,
             "items": [{"name": "Second", "amount_cents": 600}],
         },
     )
@@ -108,15 +108,15 @@ def test_two_sessions_replace_items_race_only_first_writer_wins(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         replace_expense_items(
             session_a,
             expense_id,
             tenant_id,
             ExpenseItemReplaceRequest(
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 items=[ExpenseItemRequest(name="Writer A", amount_cents=500)],
             ),
         )
@@ -127,7 +127,7 @@ def test_two_sessions_replace_items_race_only_first_writer_wins(
                 expense_id,
                 tenant_id,
                 ExpenseItemReplaceRequest(
-                    expected_updated_at=shared_version,
+                    expected_row_version=shared_version,
                     items=[ExpenseItemRequest(name="Writer B", amount_cents=600)],
                 ),
             )
@@ -138,7 +138,7 @@ def test_two_sessions_replace_items_race_only_first_writer_wins(
         session_b.close()
 
 
-def test_replace_splits_without_expected_updated_at_returns_422(
+def test_replace_splits_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_manual_expense(client, identity=identity)
@@ -156,13 +156,13 @@ def test_replace_splits_with_stale_updated_at_returns_409_and_keeps_rows(
 ) -> None:
     expense_id = _create_manual_expense(client, identity=identity)
     member_id = _owner_member_id()
-    stale = _snapshot(client, expense_id, identity=identity)["updated_at"]
+    stale = _snapshot(client, expense_id, identity=identity)["row_version"]
 
     first = client.put(
         f"/api/expenses/{expense_id}/splits",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": stale,
+            "expected_row_version": stale,
             "splits": [{"member_id": member_id, "amount_cents": 1500, "note": "First"}],
         },
     )
@@ -172,7 +172,7 @@ def test_replace_splits_with_stale_updated_at_returns_409_and_keeps_rows(
         f"/api/expenses/{expense_id}/splits",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": stale,
+            "expected_row_version": stale,
             "splits": [{"member_id": member_id, "amount_cents": 1000, "note": "Second"}],
         },
     )
@@ -197,15 +197,15 @@ def test_two_sessions_replace_splits_race_only_first_writer_wins(
         row_a = session_a.scalar(select(Expense).where(Expense.id == expense_id))
         row_b = session_b.scalar(select(Expense).where(Expense.id == expense_id))
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         replace_expense_splits(
             session_a,
             expense_id,
             tenant_id,
             ExpenseSplitReplaceRequest(
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 splits=[
                     ExpenseSplitRequest(member_id=member_id, amount_cents=1500, note="Writer A")
                 ],
@@ -219,7 +219,7 @@ def test_two_sessions_replace_splits_race_only_first_writer_wins(
                 expense_id,
                 tenant_id,
                 ExpenseSplitReplaceRequest(
-                    expected_updated_at=shared_version,
+                    expected_row_version=shared_version,
                     splits=[
                         ExpenseSplitRequest(
                             member_id=member_id,

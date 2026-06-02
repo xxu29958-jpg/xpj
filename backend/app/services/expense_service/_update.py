@@ -34,7 +34,7 @@ from app.services.expense_service._helpers import (
 )
 from app.services.expense_service._query import get_expense
 from app.services.ocr_service import clear_ocr_draft_fields
-from app.services.optimistic_concurrency import claim_row_with_token, updated_at_predicate
+from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.receipt_item_service import recompute_items_sum_status
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
@@ -57,7 +57,7 @@ def batch_update_confirmed_expenses(
     payload: ConfirmedExpenseBatchUpdateRequest,
 ) -> ConfirmedExpenseBatchUpdateResponse:
     expense_ids = list(dict.fromkeys(payload.expense_ids))
-    expected_by_id = payload.expected_updated_at_by_id
+    expected_by_id = payload.expected_row_version_by_id
     if set(expected_by_id) != set(expense_ids):
         raise AppError("invalid_request", status_code=422)
 
@@ -97,7 +97,7 @@ def batch_update_confirmed_expenses(
             Expense,
             pk_id=expense_id,
             tenant_id=tenant_id,
-            expected_updated_at=expected_by_id[expense_id],
+            expected_row_version=expected_by_id[expense_id],
             set_values={"updated_at": now},
             extra_where=(Expense.status == "confirmed",),
             synchronize_session=False,
@@ -129,7 +129,7 @@ def _claim_expense_for_update(
     *,
     expense_id: int,
     tenant_id: str,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     claimed_at: datetime,
 ) -> Expense:
     """ADR-0038 atomic optimistic-concurrency claim for ``PATCH /api/expenses/{id}``.
@@ -142,14 +142,14 @@ def _claim_expense_for_update(
     transaction the business-logic updates commit, so stale writes
     never reach the row.
 
-    tz normalisation lives in ``optimistic_concurrency.updated_at_predicate``.
+    tz normalisation lives in ``optimistic_concurrency.row_version_predicate``.
     """
     rowcount = claim_row_with_token(
         db,
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"updated_at": claimed_at},
         extra_where=(Expense.status.in_(EDITABLE_STATUSES),),
         synchronize_session=False,
@@ -177,12 +177,12 @@ def update_expense(
         db,
         expense_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
         claimed_at=now_utc(),
     )
 
     updates = payload.model_dump(
-        exclude_unset=True, exclude={"expected_updated_at"}
+        exclude_unset=True, exclude={"expected_row_version"}
     )
 
     # ADR-0029: received split expenses freeze their money / merchant /
@@ -261,7 +261,7 @@ def confirm_expense(
     expense_id: int,
     tenant_id: str,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
 ) -> Expense:
     """ADR-0038 PR-2b: confirm with optimistic concurrency.
 
@@ -286,7 +286,7 @@ def confirm_expense(
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"status": "confirmed", "confirmed_at": now, "updated_at": now},
         extra_where=(Expense.status == "pending", Expense.amount_cents.is_not(None)),
         synchronize_session=False,
@@ -330,7 +330,7 @@ def reject_expense(
     expense_id: int,
     tenant_id: str,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
 ) -> Expense:
     """ADR-0038 PR-2b: reject with optimistic concurrency.
 
@@ -343,7 +343,7 @@ def reject_expense(
         Expense,
         pk_id=expense_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"status": "rejected", "rejected_at": now, "updated_at": now},
         extra_where=(Expense.status == "pending",),
         synchronize_session=False,
@@ -379,20 +379,20 @@ def undo_reject_expense(
     db: Session,
     expense_id: int,
     tenant_id: str,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     *,
     actor_account_id: int | None = None,
 ) -> Expense:
     """ADR-0038 undo: restore a recently-rejected expense within retention window.
 
     Atomic ``UPDATE WHERE id, tenant_id, status='rejected',
-    rejected_at >= cutoff, updated_at = expected_updated_at`` + ``rowcount=1``
+    rejected_at >= cutoff, updated_at = expected_row_version`` + ``rowcount=1``
     判定避免 SELECT-then-write race(memory feedback_adr_implementation
     _atomicity)。rowcount=0 → 404 (already restored / never rejected /
     past 5min window / cross-tenant / **stale undo for a row that's been
     re-rejected since the banner was shown**).
 
-    The OCC token (expected_updated_at) is the v1.3 PR-A addition. Without
+    The OCC token (expected_row_version) is the v1.3 PR-A addition. Without
     it, a stale /undo request from a cached banner could un-do a NEW reject
     the user just made: T0 reject A → T+3s undo → T+10s re-reject A (this
     time intentionally) → T+15s stale /undo arrives → server sees
@@ -418,15 +418,11 @@ def undo_reject_expense(
     semantic (e.g. should bill_split invitations re-activate? should
     item-level acknowledge-mismatch persist?) is owned by ADR-0040.
 
-    **Residual ABA risk (v1.x — closed by Postgres migration's
-    row_version column)**: ``updated_at`` is the CAS token here. SQLite
-    DateTime microsecond precision + Python ``datetime.now()`` jitter
-    means two operations within ~15ms can write equal ``updated_at``
-    values, defeating the OCC check. At home-server / low-concurrency
-    profile the probability is low enough to defer; the structural fix
-    is a monotonic ``row_version`` int column that strictly increments
-    per UPDATE, landing as part of the Postgres migration work where
-    schema rebuild absorbs the cost.
+    **ABA (resolved, ADR-0041)**: the CAS token here is the monotonic
+    ``row_version`` int (``WHERE row_version = expected``), which strictly
+    increments per guarded UPDATE. This closes the old ``updated_at`` ABA
+    window — two operations within ~15ms could write equal ``updated_at``
+    values and defeat the OCC check; an integer that only ever goes up can't.
     """
     now = now_utc()
     cutoff = now - SOFT_DELETE_RETENTION
@@ -437,7 +433,7 @@ def undo_reject_expense(
         .where(Expense.status == "rejected")
         .where(Expense.rejected_at.is_not(None))
         .where(Expense.rejected_at >= cutoff)
-        .where(updated_at_predicate(Expense.updated_at, expected_updated_at))
+        .where(Expense.row_version == expected_row_version)
         .values(
             status="pending",
             rejected_at=None,

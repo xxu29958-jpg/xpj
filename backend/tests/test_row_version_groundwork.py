@@ -131,7 +131,7 @@ def test_rule_row_version_starts_at_one_and_increments(client: TestClient, *, id
     updated = client.patch(
         f"/api/rules/categories/{rule['id']}",
         headers=identity.app_headers,
-        json={"category": "交通", "expected_updated_at": rule["updated_at"]},
+        json={"category": "交通", "expected_row_version": rule["row_version"]},
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["row_version"] == 2
@@ -158,7 +158,7 @@ def test_goal_row_version_starts_at_one_and_increments(client: TestClient, *, id
     updated = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers=identity.app_headers,
-        json={"target_amount_cents": 6000, "expected_updated_at": goal["updated_at"]},
+        json={"target_amount_cents": 6000, "expected_row_version": goal["row_version"]},
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["row_version"] == 2
@@ -196,12 +196,12 @@ def test_recurring_pause_resume_increment_row_version(client: TestClient, *, ide
     assert listed.status_code == 200, listed.text
     start = next(i for i in listed.json()["items"] if i["public_id"] == public_id)
     assert start["row_version"] == 1
-    token = start["updated_at"]
+    token = start["row_version"]
 
     paused = client.post(
         f"/api/recurring/items/{public_id}/pause",
         headers=identity.app_headers,
-        json={"expected_updated_at": token},
+        json={"expected_row_version": token},
     )
     assert paused.status_code == 200, paused.text
     assert paused.json()["row_version"] == 2
@@ -209,7 +209,7 @@ def test_recurring_pause_resume_increment_row_version(client: TestClient, *, ide
     resumed = client.post(
         f"/api/recurring/items/{public_id}/resume",
         headers=identity.app_headers,
-        json={"expected_updated_at": paused.json()["updated_at"]},
+        json={"expected_row_version": paused.json()["row_version"]},
     )
     assert resumed.status_code == 200, resumed.text
     assert resumed.json()["row_version"] == 3

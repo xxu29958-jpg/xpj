@@ -100,16 +100,16 @@ def test_web_expense_edit_routes_have_single_owner() -> None:
 def _seed_detail_rows(expense_id: int) -> None:
     member_id = _owner_member_id()
     with SessionLocal() as db:
-        expected_updated_at = db.scalar(
-            select(Expense.updated_at).where(Expense.id == expense_id)
+        expected_row_version = db.scalar(
+            select(Expense.row_version).where(Expense.id == expense_id)
         )
-        assert expected_updated_at is not None
+        assert expected_row_version is not None
         replace_expense_items(
             db,
             expense_id,
             "owner",
             ExpenseItemReplaceRequest(
-                expected_updated_at=expected_updated_at,
+                expected_row_version=expected_row_version,
                 items=[
                     ExpenseItemRequest(
                         name="牛奶",
@@ -121,16 +121,16 @@ def _seed_detail_rows(expense_id: int) -> None:
             ),
         )
     with SessionLocal() as db:
-        expected_updated_at = db.scalar(
-            select(Expense.updated_at).where(Expense.id == expense_id)
+        expected_row_version = db.scalar(
+            select(Expense.row_version).where(Expense.id == expense_id)
         )
-        assert expected_updated_at is not None
+        assert expected_row_version is not None
         replace_expense_splits(
             db,
             expense_id,
             "owner",
             ExpenseSplitReplaceRequest(
-                expected_updated_at=expected_updated_at,
+                expected_row_version=expected_row_version,
                 splits=[ExpenseSplitRequest(member_id=member_id, amount_cents=1234, note="我先记")]
             ),
             actor_account_id=None,
@@ -149,7 +149,7 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
         f"/web/expenses/{expense_id}/items/save",
         data={
             "ledger_id": "owner",
-            "expected_updated_at": item_snapshot.json()["updated_at"],
+            "expected_row_version": item_snapshot.json()["row_version"],
             "item_name": ["牛奶", "面包", ""],
             "item_quantity": ["1盒", "2个", ""],
             "item_unit_price_yuan": ["", "3.25", ""],
@@ -168,7 +168,7 @@ def test_web_edit_can_replace_receipt_items_and_family_splits(web_client: TestCl
         f"/web/expenses/{expense_id}/splits/save",
         data={
             "ledger_id": "owner",
-            "expected_updated_at": split_snapshot.json()["updated_at"],
+            "expected_row_version": split_snapshot.json()["row_version"],
             "split_member_id": [str(member_id), ""],
             "split_amount_yuan": ["12.34", ""],
             "split_note": ["我先记", ""],

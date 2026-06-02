@@ -27,7 +27,7 @@
     <form method="post" action="/web/expenses/{{ expense.id }}/save" class="edit-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <input type="hidden" name="original_currency" value="{{ expense.original_currency_code }}">
-      <input type="hidden" name="expected_updated_at" value="{{ expense.updated_at_iso }}">
+      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <div class="dt-form-row">
         <label>金额 ({{ expense.original_currency_code }})</label>
         <input type="text" name="amount_yuan" value="{{ expense.original_amount_value }}" placeholder="例如 12.34" inputmode="decimal" {% if not can_write %}disabled{% endif %}>
@@ -92,7 +92,7 @@
     </div>
     <form method="post" action="/web/expenses/{{ expense.id }}/items/acknowledge-mismatch" class="acknowledge-form">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <input type="hidden" name="expected_updated_at" value="{{ expense.updated_at_iso }}">
+      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       {% if can_write %}<button type="submit" class="dt-btn">原小票如此</button>{% endif %}
     </form>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
@@ -102,7 +102,7 @@
     {% endif %}
 
     <form method="post" action="/web/expenses/{{ expense.id }}/items/save">
-      <input type="hidden" name="expected_updated_at" value="{{ expense.updated_at_iso }}">
+      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <table class="dt-table dt-table--compact edit-subtable">
         <thead>
@@ -167,7 +167,7 @@
     </div>
     {% endif %}
     <form method="post" action="/web/expenses/{{ expense.id }}/splits/save">
-      <input type="hidden" name="expected_updated_at" value="{{ expense.updated_at_iso }}">
+      <input type="hidden" name="expected_row_version" value="{{ expense.row_version }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
       <table class="dt-table dt-table--compact edit-subtable">
         <thead>

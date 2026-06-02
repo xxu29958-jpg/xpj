@@ -102,7 +102,7 @@ def post_recurring_pause(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     ))
 
 
@@ -117,7 +117,7 @@ def post_recurring_resume(
         db,
         tenant_id=auth.tenant_id,
         public_id=public_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     ))
 
 

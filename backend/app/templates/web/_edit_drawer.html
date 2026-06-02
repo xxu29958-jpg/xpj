@@ -68,7 +68,7 @@
   <form method="post" action="/web/expenses/{{ e.id }}/save" data-drawer-form>
     <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
     <input type="hidden" name="original_currency" value="{{ e.original_currency_code }}">
-    <input type="hidden" name="expected_updated_at" value="{{ e.updated_at_iso }}">
+    <input type="hidden" name="expected_row_version" value="{{ e.row_version }}">
     <div class="field-row">
       <div class="field field--amount">
         <div class="field-label">

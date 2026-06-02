@@ -70,12 +70,12 @@ def test_update_income_plan_partial(client: TestClient, *, identity) -> None:
     ).json()
     pid = created["public_id"]
 
-    # ADR-0038 PR-2j: PATCH requires expected_updated_at token.
+    # ADR-0038 PR-2j: PATCH requires expected_row_version token.
     updated = client.patch(
         f"/api/income-plans/{pid}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": created["updated_at"],
+            "expected_row_version": created["row_version"],
             "amount_cents": 500_000,
         },
     )
@@ -91,7 +91,7 @@ def test_update_unknown_income_plan_returns_404(client: TestClient, *, identity)
         "/api/income-plans/nonexistent",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": "2026-05-04T00:00:00Z",
+            "expected_row_version": 999999,
             "label": "x",
         },
     )
@@ -110,7 +110,7 @@ def test_delete_income_plan_archives(client: TestClient, *, identity) -> None:
         "DELETE",
         f"/api/income-plans/{pid}",
         headers=identity.app_headers,
-        json={"expected_updated_at": created["updated_at"]},
+        json={"expected_row_version": created["row_version"]},
     )
     assert delete_resp.status_code == 200
     assert delete_resp.json()["status"] == "archived"
@@ -138,13 +138,13 @@ def test_restore_income_plan_reactivates(client: TestClient, *, identity) -> Non
         "DELETE",
         f"/api/income-plans/{pid}",
         headers=identity.app_headers,
-        json={"expected_updated_at": created["updated_at"]},
+        json={"expected_row_version": created["row_version"]},
     )
 
     restored = client.post(
         f"/api/income-plans/{pid}/restore",
         headers=identity.app_headers,
-        json={"expected_updated_at": archive_resp.json()["updated_at"]},
+        json={"expected_row_version": archive_resp.json()["row_version"]},
     )
     assert restored.status_code == 200
     assert restored.json()["status"] == "active"

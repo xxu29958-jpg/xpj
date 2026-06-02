@@ -26,7 +26,7 @@ def web_save_expense(
     """Test helper for the /web edit form save flow (ADR-0038 PR-2a).
 
     Mirrors what the real edit page does: render the form with a hidden
-    ``expected_updated_at`` field pre-filled from the row's current
+    ``expected_row_version`` field pre-filled from the row's current
     ``updated_at``, then submit. The helper does the GET-then-POST so
     test setup blocks don't repeat that boilerplate.
     """
@@ -36,7 +36,7 @@ def web_save_expense(
     assert snapshot.status_code == 200, snapshot.text
     return client.post(
         f"/web/expenses/{expense_id}/save",
-        data={**data, "expected_updated_at": snapshot.json()["updated_at"]},
+        data={**data, "expected_row_version": snapshot.json()["row_version"]},
         follow_redirects=follow_redirects,
     )
 
@@ -48,7 +48,7 @@ def confirm_expense_api(
     headers: dict[str, str],
 ) -> httpx.Response:
     """ADR-0038 PR-2b helper: POST /api/expenses/{id}/confirm with
-    fresh ``expected_updated_at`` from a GET snapshot. Returns the GET
+    fresh ``expected_row_version`` from a GET snapshot. Returns the GET
     response unchanged on non-200 (so callers can assert on 404/403)."""
     snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
     if snapshot.status_code != 200:
@@ -56,7 +56,7 @@ def confirm_expense_api(
     return client.post(
         f"/api/expenses/{expense_id}/confirm",
         headers=headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
 
@@ -72,7 +72,7 @@ def reject_expense_api(
     return client.post(
         f"/api/expenses/{expense_id}/reject",
         headers=headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
 
@@ -81,25 +81,25 @@ def undo_expense_api(
     expense_id: int,
     *,
     headers: dict[str, str],
-    expected_updated_at: str | None = None,
+    expected_row_version: int | None = None,
 ) -> httpx.Response:
     """ADR-0038 undo: restore a recently-rejected expense (5-minute window).
 
-    PR-A added the ``expected_updated_at`` OCC token. Default snapshots
+    PR-A added the ``expected_row_version`` OCC token. Default snapshots
     the current row's ``updated_at`` (matches the realistic banner flow:
     user just rejected, banner reads new ``updated_at``, undo POST
     carries it). Pass an explicit string to simulate stale-token race
     tests.
     """
-    if expected_updated_at is None:
+    if expected_row_version is None:
         snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
         if snapshot.status_code != 200:
             return snapshot
-        expected_updated_at = snapshot.json()["updated_at"]
+        expected_row_version = snapshot.json()["row_version"]
     return client.post(
         f"/api/expenses/{expense_id}/undo",
         headers=headers,
-        json={"expected_updated_at": expected_updated_at},
+        json={"expected_row_version": expected_row_version},
     )
 
 
@@ -115,7 +115,7 @@ def mark_not_duplicate_api(
     return client.post(
         f"/api/expenses/{expense_id}/mark-not-duplicate",
         headers=headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
 
@@ -131,7 +131,7 @@ def retry_ocr_api(
     return client.post(
         f"/api/expenses/{expense_id}/ocr/retry",
         headers=headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
 
@@ -143,7 +143,7 @@ def recognize_text_api(
     raw_text: str,
 ) -> httpx.Response:
     """ADR-0038 PR-2e helper: POST /api/expenses/{id}/recognize-text with
-    a fresh ``expected_updated_at`` from a GET snapshot.
+    a fresh ``expected_row_version`` from a GET snapshot.
 
     Returns the GET response unchanged on non-200 so callers can assert
     on 404/403 against rejected/confirmed/cross-tenant rows without
@@ -156,7 +156,7 @@ def recognize_text_api(
         f"/api/expenses/{expense_id}/recognize-text",
         headers=headers,
         json={
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
             "raw_text": raw_text,
         },
     )
@@ -169,26 +169,26 @@ def acknowledge_items_mismatch_api(
     headers: dict[str, str],
 ) -> httpx.Response:
     """ADR-0038 PR-2e helper: POST /api/expenses/{id}/items/acknowledge-mismatch
-    with a fresh ``expected_updated_at`` from a GET snapshot."""
+    with a fresh ``expected_row_version`` from a GET snapshot."""
     snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
     if snapshot.status_code != 200:
         return snapshot
     return client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
         headers=headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"]},
+        json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
 
-def expense_updated_at(
+def expense_row_version(
     client: TestClient,
     expense_id: int,
     *,
     headers: dict[str, str],
-) -> str:
+) -> int:
     snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
     assert snapshot.status_code == 200, snapshot.text
-    return str(snapshot.json()["updated_at"])
+    return int(snapshot.json()["row_version"])
 
 
 def replace_items_api(
@@ -204,7 +204,7 @@ def replace_items_api(
     return client.put(
         f"/api/expenses/{expense_id}/items",
         headers=headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"], "items": items},
+        json={"expected_row_version": snapshot.json()["row_version"], "items": items},
     )
 
 
@@ -221,7 +221,7 @@ def replace_splits_api(
     return client.put(
         f"/api/expenses/{expense_id}/splits",
         headers=headers,
-        json={"expected_updated_at": snapshot.json()["updated_at"], "splits": splits},
+        json={"expected_row_version": snapshot.json()["row_version"], "splits": splits},
     )
 
 
@@ -242,7 +242,7 @@ def web_confirm_expense(
         f"/web/expenses/{expense_id}/confirm",
         data={
             "ledger_id": ledger_id,
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
         },
         follow_redirects=follow_redirects,
     )
@@ -264,7 +264,7 @@ def web_reject_expense(
         f"/web/expenses/{expense_id}/reject",
         data={
             "ledger_id": ledger_id,
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
         },
         follow_redirects=follow_redirects,
     )
@@ -275,7 +275,7 @@ def web_undo_expense(
     expense_id: int,
     *,
     ledger_id: str = "owner",
-    expected_updated_at: str | None = None,
+    expected_row_version: int | None = None,
     follow_redirects: bool = False,
 ) -> httpx.Response:
     """ADR-0038 undo: /web/expenses/{id}/undo posted from the 5s 撤销 banner.
@@ -284,18 +284,18 @@ def web_undo_expense(
     ``updated_at`` directly from the DB (no API call — /web is
     LocalOnly and doesn't carry the app auth headers; using SessionLocal
     matches the real banner flow where the template reads from
-    ``fetch_expense_updated_at_in_status``). Pass an explicit value to
+    ``fetch_expense_row_version_in_status``). Pass an explicit value to
     test stale-token races.
     """
-    if expected_updated_at is None:
+    if expected_row_version is None:
         with SessionLocal() as db:
             row = db.scalar(_select_expense_for_test(expense_id))
-            expected_updated_at = row.updated_at.isoformat() if row else ""
+            expected_row_version = row.row_version if row else None
     return client.post(
         f"/web/expenses/{expense_id}/undo",
         data={
             "ledger_id": ledger_id,
-            "expected_updated_at": expected_updated_at,
+            "expected_row_version": expected_row_version,
         },
         follow_redirects=follow_redirects,
     )
@@ -327,7 +327,7 @@ def web_duplicates_action(
         f"/web/duplicates/{expense_id}/{action}",
         data={
             "ledger_id": ledger_id,
-            "expected_updated_at": snapshot.json()["updated_at"],
+            "expected_row_version": snapshot.json()["row_version"],
         },
         follow_redirects=follow_redirects,
     )
@@ -341,7 +341,7 @@ def patch_expense(
     fields: dict[str, Any],
 ) -> httpx.Response:
     """Test helper: GET the expense to snapshot ``updated_at`` then PATCH
-    with ``expected_updated_at`` filled in (ADR-0038 PR-2a contract).
+    with ``expected_row_version`` filled in (ADR-0038 PR-2a contract).
 
     Mirrors the production client flow (Android / /web read the row,
     then PATCH with the snapshot's ``updated_at`` as the optimistic-
@@ -350,7 +350,7 @@ def patch_expense(
     their own stale ``updated_at`` and call ``client.patch`` directly.
 
     Pass non-expected fields only in ``fields``; the helper fills in
-    ``expected_updated_at``. If the GET returns non-200 (e.g. 404
+    ``expected_row_version``. If the GET returns non-200 (e.g. 404
     cross-tenant), the helper returns that response so the caller can
     assert on it.
     """
@@ -360,7 +360,7 @@ def patch_expense(
     return client.patch(
         f"/api/expenses/{expense_id}",
         headers=headers,
-        json={**fields, "expected_updated_at": snapshot.json()["updated_at"]},
+        json={**fields, "expected_row_version": snapshot.json()["row_version"]},
     )
 
 

@@ -14,7 +14,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.insights_service import normalize_merchant, recurring_candidates
-from app.services.optimistic_concurrency import bump_row_version, updated_at_predicate
+from app.services.optimistic_concurrency import bump_row_version
 from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -333,7 +333,7 @@ def get_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Recurr
 
 
 def pause_recurring_item(
-    db: Session, *, tenant_id: str, public_id: str, expected_updated_at: datetime
+    db: Session, *, tenant_id: str, public_id: str, expected_row_version: int
 ) -> RecurringItem:
     """ADR-0038 PR-A: pause with optimistic concurrency.
 
@@ -349,7 +349,7 @@ def pause_recurring_item(
         .where(RecurringItem.public_id == public_id)
         .where(RecurringItem.status != "archived")
         .where(RecurringItem.archived_at.is_(None))
-        .where(updated_at_predicate(RecurringItem.updated_at, expected_updated_at))
+        .where(RecurringItem.row_version == expected_row_version)
         .values(
             status="paused",
             paused_at=now,
@@ -368,7 +368,7 @@ def pause_recurring_item(
 
 
 def resume_recurring_item(
-    db: Session, *, tenant_id: str, public_id: str, expected_updated_at: datetime
+    db: Session, *, tenant_id: str, public_id: str, expected_row_version: int
 ) -> RecurringItem:
     """ADR-0038 PR-A: resume with optimistic concurrency. Same rationale
     as :func:`pause_recurring_item`."""
@@ -379,7 +379,7 @@ def resume_recurring_item(
         .where(RecurringItem.public_id == public_id)
         .where(RecurringItem.status != "archived")
         .where(RecurringItem.archived_at.is_(None))
-        .where(updated_at_predicate(RecurringItem.updated_at, expected_updated_at))
+        .where(RecurringItem.row_version == expected_row_version)
         .values(
             status="active",
             paused_at=None,

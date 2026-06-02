@@ -104,7 +104,7 @@ def test_confirm_expense_closes_active_decisions(
             db,
             expense_id,
             tenant_id="owner",
-            expected_updated_at=expense.updated_at,
+            expected_row_version=expense.row_version,
         )
         decision = db.get(AlgorithmDecision, decision_id)
         assert decision.status == "dismissed"
@@ -123,7 +123,7 @@ def test_reject_expense_closes_active_decisions(
             db,
             expense_id,
             tenant_id="owner",
-            expected_updated_at=expense.updated_at,
+            expected_row_version=expense.row_version,
         )
         decision = db.get(AlgorithmDecision, decision_id)
         assert decision.status == "dismissed"

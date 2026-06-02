@@ -53,14 +53,14 @@ def test_goal_patch_with_stale_token_returns_409(
     bump = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": goal["updated_at"], "name": "First"},
+        json={"expected_row_version": goal["row_version"], "name": "First"},
     )
     assert bump.status_code == 200, bump.text
 
     stale = client.patch(
         f"/api/goals/{goal['public_id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": goal["updated_at"], "name": "Stale"},
+        json={"expected_row_version": goal["row_version"], "name": "Stale"},
     )
     assert stale.status_code == 409, stale.text
     assert stale.json()["error"] == "state_conflict"
@@ -71,7 +71,7 @@ def test_goal_patch_unknown_returns_404(client: TestClient, *, identity) -> None
         "/api/goals/no-such-public-id",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": "2026-05-04T00:00:00Z",
+            "expected_row_version": 999999,
             "name": "Bogus",
         },
     )
@@ -90,15 +90,15 @@ def test_two_sessions_goal_patch_race_only_first_writer_wins(
         row_a = session_a.scalar(select(Goal).where(Goal.public_id == public_id))
         row_b = session_b.scalar(select(Goal).where(Goal.public_id == public_id))
         assert row_a is not None and row_b is not None
-        assert row_a.updated_at == row_b.updated_at
-        shared_version = row_a.updated_at
+        assert row_a.row_version == row_b.row_version
+        shared_version = row_a.row_version
 
         update_goal(
             session_a,
             tenant_id="owner",
             public_id=public_id,
             payload=GoalUpdateRequest(
-                expected_updated_at=shared_version,
+                expected_row_version=shared_version,
                 name="Writer A",
             ),
         )
@@ -109,7 +109,7 @@ def test_two_sessions_goal_patch_race_only_first_writer_wins(
                 tenant_id="owner",
                 public_id=public_id,
                 payload=GoalUpdateRequest(
-                    expected_updated_at=shared_version,
+                    expected_row_version=shared_version,
                     name="Writer B",
                 ),
             )
@@ -143,7 +143,7 @@ def test_goal_patch_against_archived_returns_409(
         f"/api/goals/{goal['public_id']}",
         headers=identity.app_headers,
         json={
-            "expected_updated_at": archived.json()["updated_at"],
+            "expected_row_version": archived.json()["row_version"],
             "name": "Cannot Edit",
         },
     )

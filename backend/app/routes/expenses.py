@@ -243,7 +243,7 @@ def acknowledge_expense_items_mismatch(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseItemsResponse:
-    # ADR-0038 PR-2e: ``expected_updated_at`` token guards against a
+    # ADR-0038 PR-2e: ``expected_row_version`` token guards against a
     # user clicking "原小票如此" on a stale page after a peer edited
     # amount/items — without the token the service would flip a *new*
     # mismatch into ``mismatch_acknowledged``.
@@ -251,7 +251,7 @@ def acknowledge_expense_items_mismatch(
         db,
         expense_id,
         auth.tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     )
 
 
@@ -332,7 +332,7 @@ def post_confirm_expense(
         db,
         expense_id,
         auth.tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
@@ -348,7 +348,7 @@ def post_reject_expense(
         db,
         expense_id,
         auth.tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
@@ -361,7 +361,7 @@ def post_undo_expense(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     # ADR-0038 undo: restore a recently-rejected expense within the 5-minute
-    # retention window. The ``expected_updated_at`` token (v1.3 PR-A) rejects
+    # retention window. The ``expected_row_version`` token (v1.3 PR-A) rejects
     # stale /undo from a cached banner for a row that's been re-rejected
     # since the banner was shown — without it, a late /undo from an iPhone
     # banner could un-do a NEW intentional reject. Past-window / wrong-status
@@ -380,7 +380,7 @@ def post_undo_expense(
         db,
         expense_id,
         auth.tenant_id,
-        payload.expected_updated_at,
+        payload.expected_row_version,
         actor_account_id=auth.account_id,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
@@ -397,7 +397,7 @@ def post_retry_ocr(
         db,
         expense_id,
         auth.tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
@@ -476,7 +476,7 @@ def post_mark_not_duplicate(
         db,
         expense_id,
         auth.tenant_id,
-        expected_updated_at=payload.expected_updated_at,
+        expected_row_version=payload.expected_row_version,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 

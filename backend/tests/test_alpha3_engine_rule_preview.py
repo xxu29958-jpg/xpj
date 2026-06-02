@@ -213,7 +213,7 @@ def test_rule_patch_can_clear_optional_filters(client: TestClient, *, identity) 
             "amount_max_cents": None,
             "source_contains": None,
             "tag_contains": None,
-            "expected_updated_at": created.json()["updated_at"],
+            "expected_row_version": created.json()["row_version"],
         },
     )
 

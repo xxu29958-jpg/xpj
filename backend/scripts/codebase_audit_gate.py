@@ -234,7 +234,7 @@ BASELINE_RATCHET_UP: frozenset[str] = frozenset({
 
 # Subset of STRICT_EQUALITY_BASELINE keys whose baseline value can ONLY
 # shrink vs base. Exemptions in mutate-token ALLOWLIST should drain as
-# routes graduate to carrying ``expected_updated_at``, never grow back.
+# routes graduate to carrying ``expected_row_version``, never grow back.
 # Adding a route to ALLOWLIST requires an explicit ADR pointer per the
 # v1.3 PR-2 ledger contract — this ratchet enforces that contract here.
 BASELINE_RATCHET_DOWN: frozenset[str] = frozenset({

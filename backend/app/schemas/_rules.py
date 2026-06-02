@@ -48,7 +48,7 @@ class CategoryRuleCreateRequest(BaseModel):
 
 
 class CategoryRuleUpdateRequest(BaseModel):
-    expected_updated_at: datetime
+    expected_row_version: int
     keyword: str | None = None
     category: str | None = None
     enabled: bool | None = None
@@ -62,13 +62,13 @@ class CategoryRuleUpdateRequest(BaseModel):
 class CategoryRuleDeleteRequest(BaseModel):
     """DELETE body for ADR-0038 optimistic concurrency on category_rule.
 
-    DELETE carries a request body so the client's ``expected_updated_at``
+    DELETE carries a request body so the client's ``expected_row_version``
     can travel via the same channel as PATCH (Pydantic-typed, FastAPI-
     parsed). No query-string fallback — open-dev contract; clients must
     send body.
     """
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class CategoryRuleResponse(BaseModel):
@@ -101,16 +101,16 @@ class MerchantAliasCreateRequest(BaseModel):
 class MerchantAliasUpdateRequest(BaseModel):
     """ADR-0038 PR-2e: ``PATCH /api/merchants/aliases/{public_id}`` body.
 
-    ``expected_updated_at`` is the optimistic-concurrency token the
+    ``expected_row_version`` is the optimistic-concurrency token the
     client saw when it last read the alias. The service issues an
-    atomic ``UPDATE ... WHERE updated_at = expected`` and returns
+    atomic ``UPDATE ... WHERE row_version = expected`` and returns
     409 ``state_conflict`` if the row has been mutated by another
     writer between the read and this PATCH.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
     canonical_merchant: str | None = Field(default=None, min_length=1, max_length=255)
     alias: str | None = Field(default=None, min_length=1, max_length=255)
     enabled: bool | None = None
@@ -120,7 +120,7 @@ class MerchantAliasDeleteRequest(BaseModel):
     """ADR-0038 PR-2e: ``DELETE /api/merchants/aliases/{public_id}`` body.
 
     Mirrors :class:`CategoryRuleDeleteRequest`: DELETE carries a body so
-    ``expected_updated_at`` travels the same channel as PATCH (Pydantic-
+    ``expected_row_version`` travels the same channel as PATCH (Pydantic-
     typed, FastAPI-parsed). No query-string fallback — clients must send
     body. 409 ``state_conflict`` on stale token; 404 if the row vanished
     between the client's read and the delete.
@@ -128,7 +128,7 @@ class MerchantAliasDeleteRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    expected_updated_at: datetime
+    expected_row_version: int
 
 
 class MerchantAliasResponse(BaseModel):

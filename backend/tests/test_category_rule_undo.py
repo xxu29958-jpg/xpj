@@ -42,7 +42,7 @@ def _soft_delete(client: TestClient, *, identity, rule: dict) -> None:
         "DELETE",
         f"/api/rules/categories/{rule['id']}",
         headers=identity.app_headers,
-        json={"expected_updated_at": rule["updated_at"]},
+        json={"expected_row_version": rule["row_version"]},
     )
     assert resp.status_code == 200, resp.text
 

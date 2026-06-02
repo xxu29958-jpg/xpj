@@ -13,7 +13,7 @@ rows, and a reason_code↔touched_tables consistency rule that makes a
 false "read-only" claim impossible to express.
 
 Each entry answers, for one mutating route that does NOT carry an
-``expected_updated_at`` token: why is the exemption safe, who owns it,
+``expected_row_version`` token: why is the exemption safe, who owns it,
 how risky is it, when must it be re-reviewed, and which tables does it
 actually write. See ADR-0038.
 """

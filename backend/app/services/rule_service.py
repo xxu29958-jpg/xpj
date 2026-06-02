@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Final, cast
 
 from sqlalchemy import select, update
@@ -205,7 +204,7 @@ def create_rule(
 
 
 # tz normalisation lives in ``app.services.optimistic_concurrency``
-# (``updated_at_predicate``) — used by ``claim_row_with_token`` /
+# (``row_version_predicate``) — used by ``claim_row_with_token`` /
 # ``delete_row_with_token`` below.
 
 
@@ -213,7 +212,7 @@ def update_rule(
     db: Session,
     rule: CategoryRule,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     keyword: str | None = None,
     category: str | None = None,
     enabled: bool | None = None,
@@ -296,7 +295,7 @@ def update_rule(
         CategoryRule,
         pk_id=rule_id,
         tenant_id=rule_tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values=update_values,
     )
     if rowcount != 1:
@@ -323,7 +322,7 @@ def update_rule(
 
 
 def delete_rule(
-    db: Session, rule: CategoryRule, *, expected_updated_at: datetime
+    db: Session, rule: CategoryRule, *, expected_row_version: int
 ) -> None:
     """ADR-0038 undo: SOFT delete a category rule with atomic optimistic
     concurrency.
@@ -350,7 +349,7 @@ def delete_rule(
         CategoryRule,
         pk_id=rule_id,
         tenant_id=rule_tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"deleted_at": now, "updated_at": now},
     )
     if rowcount != 1:

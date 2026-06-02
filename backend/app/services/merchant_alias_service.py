@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError
@@ -151,7 +149,7 @@ def update_merchant_alias(
     db: Session,
     item: MerchantAlias,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     canonical_merchant: str | None = None,
     alias: str | None = None,
     enabled: bool | None = None,
@@ -210,7 +208,7 @@ def update_merchant_alias(
         MerchantAlias,
         pk_id=item_id,
         tenant_id=item_tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values=set_values,
     )
     if rowcount != 1:
@@ -241,7 +239,7 @@ def delete_merchant_alias(
     db: Session,
     item: MerchantAlias,
     *,
-    expected_updated_at: datetime,
+    expected_row_version: int,
 ) -> None:
     """ADR-0038 undo: atomic optimistic-concurrency SOFT delete.
 
@@ -265,7 +263,7 @@ def delete_merchant_alias(
         MerchantAlias,
         pk_id=item_id,
         tenant_id=item_tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"deleted_at": now, "updated_at": now},
     )
     if rowcount != 1:

@@ -97,7 +97,7 @@ def update_income_plan(
     *,
     tenant_id: str,
     public_id: str,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     label: str | None = None,
     source_type: str | None = None,
     amount_cents: int | None = None,
@@ -159,7 +159,7 @@ def update_income_plan(
         MonthlyIncomePlan,
         pk_id=plan_id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={
             "label": new_label,
             "source_type": new_source_type,
@@ -190,7 +190,7 @@ def archive_income_plan(
     *,
     tenant_id: str,
     public_id: str,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
     """Soft-delete: status → archived. Atomic optimistic concurrency.
@@ -212,7 +212,7 @@ def archive_income_plan(
         MonthlyIncomePlan,
         pk_id=plan.id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"status": "archived", "archived_at": when, "updated_at": when},
         extra_where=(MonthlyIncomePlan.status == "active",),
         synchronize_session=False,
@@ -233,7 +233,7 @@ def restore_income_plan(
     *,
     tenant_id: str,
     public_id: str,
-    expected_updated_at: datetime,
+    expected_row_version: int,
     now: datetime | None = None,
 ) -> MonthlyIncomePlan:
     """Reactivate an archived plan. Atomic optimistic concurrency.
@@ -254,7 +254,7 @@ def restore_income_plan(
         MonthlyIncomePlan,
         pk_id=plan.id,
         tenant_id=tenant_id,
-        expected_updated_at=expected_updated_at,
+        expected_row_version=expected_row_version,
         set_values={"status": "active", "archived_at": None, "updated_at": when},
         extra_where=(MonthlyIncomePlan.status == "archived",),
         synchronize_session=False,
