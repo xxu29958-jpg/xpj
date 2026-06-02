@@ -14,6 +14,7 @@
 | Android minor 降级 | ⚠️ 必须重新 Pairing | session token 在 Android 端 Keystore 中；旧 APK 不识别新 token，需重新配对 |
 | **identity_schema 降级（任何方向越过 v0.3）** | ❌ 禁止 | `identity_schema=v0.3` 是 v0.3 以来的稳定契约；v0.3 之前的 `APP_TOKEN`/`UPLOAD_TOKEN` 模型已永久退役 |
 | Cloudflare Tunnel 配置变更 | ✅ 可逆 | 保留上一版 `config.yml` 即可切回 |
+| **SQLite → PostgreSQL 引擎 cut-over** | ⚠️ 仅回滚窗口内 | 保留 SQLite 源期间翻回 `DATABASE_URL=sqlite:///...` 即可;cut-over 后写入 PG 的新数据会丢失(见下方专节 + [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)) |
 
 ## 回滚顺序
 
@@ -77,6 +78,25 @@ powershell -ExecutionPolicy Bypass -File scripts\restore_ticketbox_db.ps1 -Backu
 - **v0.9 → v0.8**：Reports/Goals/DashboardCard 表在 v0.8 代码中不会被读取，无需 drop；若希望干净环境可手工 drop，但**不要** drop budget 相关表（v0.8 仍读）
 - **v0.8 → v0.7**：服务端 budget 表 v0.7 不读；同上，保留即可
 - **v0.5 及以下**：已不支持，禁止回滚
+
+## PostgreSQL 引擎 cut-over 回滚
+
+ADR-0041 把存储从 SQLite 换到本机 PostgreSQL(执行手册见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md))。在**保留 SQLite 回滚源期间**(默认 ≥ 30 天),引擎切换可逆:
+
+```powershell
+cd E:\projects\xiaopiaojia
+powershell -ExecutionPolicy Bypass -File scripts\stop_backend.ps1
+# 把 backend\.env 的 DATABASE_URL 改回 SQLite(不带 BOM):
+#   DATABASE_URL=sqlite:///data/ticketbox.db
+powershell -ExecutionPolicy Bypass -File scripts\start_backend.ps1
+powershell -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 -Strict
+```
+
+不可逆边界:
+
+- 回滚回 SQLite 会**丢失 cut-over 之后写进 PostgreSQL 的新数据**——SQLite 源停在 cut-over 时刻。窗口内若已产生真实新账,要么接受丢失,要么先 `pg_dump` 出 PostgreSQL 现状人工核对再决定。
+- 一旦真实账本在 PostgreSQL 上长期运行(超过回滚窗口),回滚需另写 ADR(ADR-0041 回收条件),不能靠本节直接翻。
+- PostgreSQL 备份(`.dump`)不能用 [scripts/restore_ticketbox_db.ps1](../../scripts/restore_ticketbox_db.ps1)(它只认 SQLite `.db`);PostgreSQL 恢复走 `pg_restore`,见 [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md)。
 
 ## v1.0 迁移预检
 

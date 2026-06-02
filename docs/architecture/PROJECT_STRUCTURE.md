@@ -233,6 +233,7 @@ docs\
     RELEASE_PACKAGING.md
     GRAY_ACCEPTANCE_EXECUTION.md
     ROLLBACK.md
+    POSTGRES_MIGRATION.md
     IOS_SHORTCUT.md
   roadmap\                   # 产品规划与设计
     POST_BETA_DEVELOPMENT_ROADMAP.md

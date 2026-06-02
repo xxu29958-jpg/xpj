@@ -67,7 +67,16 @@ function Resolve-DbPath {
     return [System.IO.Path]::GetFullPath($candidate)
 }
 
-$DbPath = Resolve-DbPath -BackendRoot $BackendRoot
+# Dialect detection. On PostgreSQL there is no SQLite file path, so resolving it
+# eagerly (it throws on a non-sqlite URL) would kill every op at load — including
+# the scheduled backup. Resolve lazily: $DbPath stays $null on PostgreSQL.
+$DatabaseUrl = Get-BackendEnvValue -Name "DATABASE_URL"
+if ([string]::IsNullOrWhiteSpace($DatabaseUrl)) {
+    $DatabaseUrl = "sqlite:///data/ticketbox.db"
+}
+$IsPostgres = $DatabaseUrl -match '^postgresql'
+$BackupSuffix = if ($IsPostgres) { ".dump" } else { ".db" }
+$DbPath = if ($IsPostgres) { $null } else { Resolve-DbPath -BackendRoot $BackendRoot }
 
 function Format-Bytes {
     param([long]$Bytes)
@@ -209,6 +218,17 @@ finally:
 }
 
 function Backup-Database {
+    if ($IsPostgres) {
+        # PostgreSQL backup (pg_dump -Fc + validation) is dialect-dispatched in
+        # backend\scripts\backup_database.ps1. Delegate to that single source so
+        # the pg logic lives in one place; -Keep 0 leaves retention to
+        # Prune-OldBackups below. (The two scripts still duplicate the SQLite
+        # path — deduping them is tracked as backlog.)
+        $backupScript = Join-Path $BackendRoot "scripts\backup_database.ps1"
+        & $backupScript -Keep 0
+        return
+    }
+
     if (-not (Test-Path -LiteralPath $DbPath)) {
         Write-Host "数据库不存在，跳过备份：$DbPath"
         return
@@ -235,7 +255,7 @@ function Prune-OldBackups {
 
     $cutoff = (Get-Date).AddDays(-$BackupRetentionDays)
     $backupRoot = (Resolve-Path -LiteralPath $BackupDir).Path
-    $oldFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.db" -File -ErrorAction SilentlyContinue |
+    $oldFiles = @(Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*$BackupSuffix" -File -ErrorAction SilentlyContinue |
         Where-Object { $_.LastWriteTime -lt $cutoff })
     if ($oldFiles.Count -eq 0) {
         Write-Host "备份保留清理完成：没有超过 $BackupRetentionDays 天的备份。"
@@ -252,6 +272,10 @@ function Prune-OldBackups {
 }
 
 function Vacuum-Database {
+    if ($IsPostgres) {
+        Write-Host "PostgreSQL 由 autovacuum 维护，跳过手动 VACUUM。"
+        return
+    }
     if (-not (Test-Path -LiteralPath $DbPath)) {
         Write-Host "数据库不存在，跳过 VACUUM：$DbPath"
         return
