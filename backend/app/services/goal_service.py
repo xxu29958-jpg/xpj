@@ -9,7 +9,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Goal
 from app.schemas import GoalCreateRequest, GoalResponse, GoalUpdateRequest
 from app.services.category_service import normalize_category
-from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.optimistic_concurrency import bump_row_version, claim_row_with_token
 from app.services.spending_contract_service import clean_month, confirmed_amount_query
 from app.services.time_service import now_utc
 
@@ -127,6 +127,7 @@ def goal_response(goal: Goal, totals: GoalSpendTotals) -> GoalResponse:
         status=goal.status,
         created_at=goal.created_at,
         updated_at=goal.updated_at,
+        row_version=goal.row_version,
         archived_at=goal.archived_at,
     )
 
@@ -380,6 +381,7 @@ def archive_goal(
         goal.status = "archived"
         goal.archived_at = now
         goal.updated_at = now
+        bump_row_version(goal)
         db.commit()
         db.refresh(goal)
     totals = _month_spend_totals(

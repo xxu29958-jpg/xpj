@@ -50,10 +50,28 @@ from app.ledger_scope import ledger_filter
 from app.services.time_service import ensure_utc
 
 __all__ = [
+    "bump_row_version",
     "claim_row_with_token",
     "delete_row_with_token",
     "updated_at_predicate",
 ]
+
+
+def bump_row_version(instance: Any) -> None:
+    """Atomically increment a loaded ORM row's ``row_version`` (ADR-0041).
+
+    For non-helper mutation paths that set ``updated_at`` directly on a loaded
+    instance — lazy thumbnail gen, background image cleanup, async enrichment,
+    recurring reactivate/archive, … . Emits a SQL ``row_version =
+    row_version + 1`` expression on flush (NOT a Python read-modify-write) so a
+    concurrent writer can't make the monotonic counter regress.
+
+    Do NOT call this on a row already claimed via :func:`claim_row_with_token`
+    in the same operation (the claim bumps it; a second bump double-counts), nor
+    on a freshly-constructed row (those start at ``row_version=1`` on insert).
+    After flush the attribute is expired — ``db.refresh`` to read it back as int.
+    """
+    instance.row_version = type(instance).row_version + 1
 
 
 def updated_at_predicate(column, value: datetime | None) -> ColumnElement:
@@ -94,6 +112,12 @@ def claim_row_with_token(
     inject it because terminal-status claims own the timestamp tuple
     (e.g. ``status=confirmed, confirmed_at=now, updated_at=now``).
 
+    The helper DOES auto-inject ``row_version = row_version + 1`` (ADR-0041
+    phase ③ Slice A): every guarded mutation bumps the monotonic
+    ``row_version`` counter DB-side. Callers must NOT pass ``row_version`` in
+    ``set_values``. The CAS predicate still rides ``updated_at`` in Slice A;
+    Slice B flips it to ``row_version`` (and the cross-surface token contract).
+
     ``model`` must be ledger-scoped (have a ``tenant_id`` column);
     :func:`ledger_filter` is used so we fail loudly if the caller
     passes a non-tenant model.
@@ -119,8 +143,14 @@ def claim_row_with_token(
     )
     for predicate in extra_where:
         stmt = stmt.where(predicate)
+    # ADR-0041: maintain row_version as a live monotonic counter on every
+    # guarded mutation. DB-side ``row_version + 1`` (not read-modify-write) so
+    # concurrent claims can't lose a bump. Set last so a caller's set_values
+    # can't shadow it. Under synchronize_session="evaluate"/"auto" the col+1
+    # expression isn't Python-evaluatable, so SQLAlchemy expires the attribute
+    # on matched in-session rows (no error) — readback callers expire_all anyway.
     result = db.execute(
-        stmt.values(**set_values).execution_options(
+        stmt.values(**set_values, row_version=model.row_version + 1).execution_options(
             synchronize_session=synchronize_session
         )
     )

@@ -59,6 +59,7 @@ class GoalResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    row_version: int
     archived_at: datetime | None = None
 
     @field_serializer("created_at", "updated_at", "archived_at")

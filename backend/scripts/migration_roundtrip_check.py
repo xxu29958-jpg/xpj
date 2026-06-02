@@ -74,6 +74,14 @@ def _seed_source(source_url: str) -> dict[str, int]:
             db.commit()
             db.refresh(expense)
             ids[str(amount)] = expense.id
+        # ADR-0041: give one row a non-default row_version so the generic
+        # field-sample reconciliation MEANINGFULLY proves row_version is copied.
+        # If every row were the default 1, a "forgot to copy row_version, the
+        # target server_default filled 1" bug would pass (1 == 1). With 9 on the
+        # source, dropping the copy yields 1 on the target → sample mismatch.
+        bumped = db.get(Expense, ids["3680"])
+        bumped.row_version = 9
+        db.commit()
     return ids
 
 

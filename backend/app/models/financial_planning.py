@@ -86,6 +86,10 @@ class MonthlyIncomePlan(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
     )
+    # ADR-0041: monotonic row_version OCC token (updated_at kept for display/sort).
+    row_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

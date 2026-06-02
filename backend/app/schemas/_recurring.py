@@ -79,6 +79,7 @@ class RecurringItemResponse(BaseModel):
     amount_delta_percent: int | None = None
     created_at: datetime
     updated_at: datetime
+    row_version: int
     paused_at: datetime | None = None
     archived_at: datetime | None = None
 

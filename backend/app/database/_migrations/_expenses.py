@@ -32,6 +32,12 @@ def _expenses_required_columns(default_home: str, source_base: str, status_ready
         "image_deleted_at": "DATETIME",
         "thumbnail_deleted_at": "DATETIME",
         "image_perceptual_hash": "VARCHAR(16)",
+        # ADR-0041: keep the legacy migrator column-complete for expenses so a
+        # legacy SQLite DB upgraded via migrate_sqlite_schema gets row_version
+        # even when the Alembic upgrade is short-circuited (e.g. a stale
+        # alembic_version stamped at head). Alembic 20260603_0001 adds it too;
+        # both are guarded so the add runs exactly once.
+        "row_version": "INTEGER NOT NULL DEFAULT 1",
     }
 
 

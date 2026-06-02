@@ -321,7 +321,11 @@ def undo_delete_merchant_alias(
         .where(MerchantAlias.id == item.id)
         .where(MerchantAlias.tenant_id == tenant_id)
         .where(MerchantAlias.deleted_at.is_not(None))
-        .values(deleted_at=None, updated_at=now)
+        .values(
+            deleted_at=None,
+            updated_at=now,
+            row_version=MerchantAlias.row_version + 1,
+        )
     ).rowcount
     if rowcount != 1:
         db.rollback()

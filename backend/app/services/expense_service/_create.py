@@ -38,6 +38,7 @@ from app.services.file_service import SavedUpload, delete_relative_upload
 from app.services.ocr_service import (
     collect_auto_ocr_extractions,
 )
+from app.services.optimistic_concurrency import bump_row_version
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
 
@@ -176,6 +177,7 @@ def enrich_pending_expense(
             ):
                 mark_duplicate_status(db, expense)
             expense.updated_at = now_utc()
+            bump_row_version(expense)
             db.commit()
         except Exception:
             # Auto-enrichment runs after the upload response has already

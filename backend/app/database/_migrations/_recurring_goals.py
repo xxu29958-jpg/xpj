@@ -30,6 +30,8 @@ def _migrate_recurring_items(connection, table_names: set[str]) -> None:
         "source": "VARCHAR(32) NOT NULL DEFAULT 'candidate'",
         "paused_at": "DATETIME",
         "archived_at": "DATETIME",
+        # ADR-0041: row_version OCC column (Alembic 20260603_0001 also adds it).
+        "row_version": "INTEGER NOT NULL DEFAULT 1",
     }
     for column_name, column_type in additions.items():
         if column_name not in columns:

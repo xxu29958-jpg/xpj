@@ -22,6 +22,9 @@ def _migrate_category_rules(connection) -> None:
         # ``deleted_at IS NULL``. Unlike merchant_aliases there is no unique
         # constraint to preserve, so a recreated rule never conflicts.
         "deleted_at": "DATETIME",
+        # ADR-0041: keep the legacy migrator column-complete for row_version
+        # (Alembic 20260603_0001 also adds it; both guarded, runs once).
+        "row_version": "INTEGER NOT NULL DEFAULT 1",
     }
     for column_name, column_type in additions.items():
         if column_name not in columns:
@@ -79,6 +82,11 @@ def _migrate_merchant_aliases(connection) -> None:
     columns = {column["name"] for column in inspect(connection).get_columns("merchant_aliases")}
     if "deleted_at" not in columns:
         connection.execute(text("ALTER TABLE merchant_aliases ADD COLUMN deleted_at DATETIME"))
+    # ADR-0041: row_version OCC column (Alembic 20260603_0001 also adds it).
+    if "row_version" not in columns:
+        connection.execute(
+            text("ALTER TABLE merchant_aliases ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1")
+        )
     connection.execute(text(
         "CREATE INDEX IF NOT EXISTS ix_merchant_aliases_tenant_deleted "
         "ON merchant_aliases (tenant_id, deleted_at)"

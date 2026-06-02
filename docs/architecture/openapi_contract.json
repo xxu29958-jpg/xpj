@@ -2915,6 +2915,10 @@
             "title": "Priority",
             "type": "integer"
           },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
           "source_contains": {
             "anyOf": [
               {
@@ -2956,7 +2960,8 @@
           "enabled",
           "priority",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "row_version"
         ],
         "title": "CategoryRuleResponse",
         "type": "object"
@@ -4746,6 +4751,10 @@
             ],
             "title": "Rejected At"
           },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -4846,6 +4855,7 @@
           "expense_time",
           "created_at",
           "updated_at",
+          "row_version",
           "confirmed_at",
           "rejected_at",
           "image_deleted_at",
@@ -5380,6 +5390,10 @@
             "title": "Remaining Amount Cents",
             "type": "integer"
           },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
           "spent_amount_cents": {
             "title": "Spent Amount Cents",
             "type": "integer"
@@ -5418,7 +5432,8 @@
           "progress_state",
           "status",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "row_version"
         ],
         "title": "GoalResponse",
         "type": "object"
@@ -5664,6 +5679,10 @@
             "title": "Public Id",
             "type": "string"
           },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
           "source_type": {
             "title": "Source Type",
             "type": "string"
@@ -5697,6 +5716,7 @@
           "status",
           "created_at",
           "updated_at",
+          "row_version",
           "archived_at"
         ],
         "title": "IncomePlanResponse",
@@ -6864,6 +6884,10 @@
             "title": "Public Id",
             "type": "string"
           },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -6884,7 +6908,8 @@
           "alias_key",
           "enabled",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "row_version"
         ],
         "title": "MerchantAliasResponse",
         "type": "object"
@@ -7678,6 +7703,10 @@
             "title": "Public Id",
             "type": "string"
           },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -7710,7 +7739,8 @@
           "status",
           "source",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "row_version"
         ],
         "title": "RecurringItemResponse",
         "type": "object"

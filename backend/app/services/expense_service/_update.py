@@ -438,7 +438,12 @@ def undo_reject_expense(
         .where(Expense.rejected_at.is_not(None))
         .where(Expense.rejected_at >= cutoff)
         .where(updated_at_predicate(Expense.updated_at, expected_updated_at))
-        .values(status="pending", rejected_at=None, updated_at=now)
+        .values(
+            status="pending",
+            rejected_at=None,
+            updated_at=now,
+            row_version=Expense.row_version + 1,
+        )
     )
     result = db.execute(stmt)
     if result.rowcount != 1:

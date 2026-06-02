@@ -274,6 +274,7 @@ class ExpenseResponse(BaseModel):
     expense_time: datetime | None
     created_at: datetime
     updated_at: datetime
+    row_version: int
     confirmed_at: datetime | None
     rejected_at: datetime | None
     image_deleted_at: datetime | None

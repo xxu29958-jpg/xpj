@@ -14,7 +14,7 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest, RecurringItemResponse
 from app.services.insights_service import normalize_merchant, recurring_candidates
-from app.services.optimistic_concurrency import updated_at_predicate
+from app.services.optimistic_concurrency import bump_row_version, updated_at_predicate
 from app.services.spending_contract_service import current_accounting_month, month_bounds_utc, stat_time
 from app.services.time_service import ensure_utc, now_utc, safe_zone
 
@@ -119,6 +119,7 @@ def recurring_item_response(
         amount_delta_percent=amount_anomaly.amount_delta_percent,
         created_at=item.created_at,
         updated_at=item.updated_at,
+        row_version=item.row_version,
         paused_at=item.paused_at,
         archived_at=item.archived_at,
     )
@@ -258,6 +259,7 @@ def confirm_recurring_candidate(
             existing.paused_at = None
             existing.archived_at = None
             existing.updated_at = now
+            bump_row_version(existing)
             db.commit()
             db.refresh(existing)
         return existing
@@ -348,7 +350,12 @@ def pause_recurring_item(
         .where(RecurringItem.status != "archived")
         .where(RecurringItem.archived_at.is_(None))
         .where(updated_at_predicate(RecurringItem.updated_at, expected_updated_at))
-        .values(status="paused", paused_at=now, updated_at=now)
+        .values(
+            status="paused",
+            paused_at=now,
+            updated_at=now,
+            row_version=RecurringItem.row_version + 1,
+        )
     )
     if result.rowcount:
         db.commit()
@@ -373,7 +380,12 @@ def resume_recurring_item(
         .where(RecurringItem.status != "archived")
         .where(RecurringItem.archived_at.is_(None))
         .where(updated_at_predicate(RecurringItem.updated_at, expected_updated_at))
-        .values(status="active", paused_at=None, updated_at=now)
+        .values(
+            status="active",
+            paused_at=None,
+            updated_at=now,
+            row_version=RecurringItem.row_version + 1,
+        )
     )
     if result.rowcount:
         db.commit()
@@ -392,7 +404,12 @@ def archive_recurring_item(db: Session, *, tenant_id: str, public_id: str) -> Re
         .where(RecurringItem.tenant_id == tenant_id)
         .where(RecurringItem.public_id == public_id)
         .where(RecurringItem.status != "archived")
-        .values(status="archived", archived_at=now, updated_at=now)
+        .values(
+            status="archived",
+            archived_at=now,
+            updated_at=now,
+            row_version=RecurringItem.row_version + 1,
+        )
     )
     if result.rowcount:
         db.commit()

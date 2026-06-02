@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.services.expense_service._query import get_expense
 from app.services.file_service import resolve_protected_image
+from app.services.optimistic_concurrency import bump_row_version
 from app.services.thumb_service import generate_thumbnail, resolve_protected_thumbnail
 from app.services.time_service import now_utc
 
@@ -32,6 +33,7 @@ def ensure_thumbnail_file(
         expense.thumbnail_path = thumbnail_path
         expense.thumbnail_deleted_at = None
         expense.updated_at = now_utc()
+        bump_row_version(expense)
         db.commit()
         db.refresh(expense)
 

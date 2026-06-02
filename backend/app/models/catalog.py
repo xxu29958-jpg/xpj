@@ -44,6 +44,10 @@ class MerchantAlias(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    # ADR-0041: monotonic row_version OCC token (updated_at kept for display/sort).
+    row_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
     # ADR-0038 undo: soft-delete marker. NULL = live; non-NULL = deleted and
     # hidden from every read, recoverable via POST .../undo until cleanup
     # purges it past the retention window. The (tenant_id, alias_key) unique

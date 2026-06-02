@@ -14,6 +14,7 @@ from app.services.file_service import (
     resolve_upload_path_for_tenant,
     upload_reference_for_path,
 )
+from app.services.optimistic_concurrency import bump_row_version
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION_MINUTES
 from app.services.time_service import now_utc
 from app.tenants import DEFAULT_TENANT_ID
@@ -198,6 +199,7 @@ def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
                 expense_changed = True
         if expense_changed:
             expense.updated_at = now
+            bump_row_version(expense)
             changed = True
 
     if changed:
@@ -259,6 +261,7 @@ def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
                 expense_changed = True
         if expense_changed:
             expense.updated_at = now
+            bump_row_version(expense)
             changed = True
 
     if changed:

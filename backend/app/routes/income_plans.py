@@ -49,6 +49,7 @@ def _to_response(plan: MonthlyIncomePlan) -> IncomePlanResponse:
         status=plan.status,
         created_at=plan.created_at,
         updated_at=plan.updated_at,
+        row_version=plan.row_version,
         archived_at=plan.archived_at,
     )
 

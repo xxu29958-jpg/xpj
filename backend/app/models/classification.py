@@ -41,6 +41,10 @@ class CategoryRule(Base):
     tag_contains: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    # ADR-0041: monotonic row_version OCC token (updated_at kept for display/sort).
+    row_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
     # ADR-0038 undo: soft-delete tombstone. Hidden from every read while set;
     # restorable via the undo endpoint until cleanup purges it past retention.
     # Indexed via the module-level composite below (not column-level, to keep

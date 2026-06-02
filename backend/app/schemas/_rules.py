@@ -85,6 +85,7 @@ class CategoryRuleResponse(BaseModel):
     tag_contains: str | None = None
     created_at: datetime
     updated_at: datetime
+    row_version: int
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:
@@ -141,6 +142,7 @@ class MerchantAliasResponse(BaseModel):
     enabled: bool
     created_at: datetime
     updated_at: datetime
+    row_version: int
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:

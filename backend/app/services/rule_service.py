@@ -391,7 +391,11 @@ def undo_delete_rule(
         .where(CategoryRule.id == rule.id)
         .where(CategoryRule.tenant_id == tenant_id)
         .where(CategoryRule.deleted_at.is_not(None))
-        .values(deleted_at=None, updated_at=now)
+        .values(
+            deleted_at=None,
+            updated_at=now,
+            row_version=CategoryRule.row_version + 1,
+        )
     ).rowcount
     if rowcount != 1:
         db.rollback()

@@ -65,6 +65,7 @@ class IncomePlanResponse(BaseModel):
     status: Literal["active", "archived"]
     created_at: datetime
     updated_at: datetime
+    row_version: int
     archived_at: datetime | None
 
     @field_serializer("created_at", "updated_at", "archived_at")
