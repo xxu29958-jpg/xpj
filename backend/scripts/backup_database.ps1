@@ -55,7 +55,36 @@ function Resolve-DbPath {
     return [System.IO.Path]::GetFullPath($candidate)
 }
 
-$DatabasePath = Resolve-DbPath -BackendRoot $BackendRoot
+function Get-DatabaseUrl {
+    $url = Get-BackendEnvValue -Name "DATABASE_URL"
+    if ([string]::IsNullOrWhiteSpace($url)) {
+        return "sqlite:///data/ticketbox.db"
+    }
+    return $url
+}
+
+function ConvertTo-LibpqUrl {
+    param([Parameter(Mandatory = $true)][string]$Url)
+    # pg_dump/pg_restore want a libpq URL without the SQLAlchemy +driver tag.
+    return ($Url -replace '^postgresql\+\w+://', 'postgresql://')
+}
+
+function Get-PgDumpBinary {
+    if (-not [string]::IsNullOrWhiteSpace($env:PG_DUMP_PATH)) {
+        return $env:PG_DUMP_PATH
+    }
+    $command = Get-Command pg_dump -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    $candidate = Get-ChildItem -Path "C:\Program Files\PostgreSQL\*\bin\pg_dump.exe" -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
+    if ($candidate) {
+        return $candidate.FullName
+    }
+    throw "未找到 pg_dump，无法备份 PostgreSQL 数据库。请设置 PG_DUMP_PATH 或将其加入 PATH。"
+}
 
 function Resolve-Python {
     $venvPython = Join-Path $BackendRoot ".venv\Scripts\python.exe"
@@ -173,20 +202,82 @@ finally:
     }
 }
 
-New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+function Test-PostgresBackup {
+    param([Parameter(Mandatory = $true)][string]$Path)
 
-if (-not (Test-Path -LiteralPath $DatabasePath)) {
-    throw "Database not found: $DatabasePath"
+    $python = Resolve-Python
+    $previousPythonPath = [Environment]::GetEnvironmentVariable("PYTHONPATH")
+    try {
+        if ([string]::IsNullOrWhiteSpace($previousPythonPath)) {
+            $env:PYTHONPATH = $BackendRoot
+        }
+        else {
+            $env:PYTHONPATH = "$BackendRoot;$previousPythonPath"
+        }
+        & $python -m app.services.postgres_backup_validation_service $Path
+        if ($LASTEXITCODE -ne 0) {
+            throw "PostgreSQL 备份校验失败：$Path"
+        }
+    }
+    finally {
+        if ($null -eq $previousPythonPath) {
+            Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:PYTHONPATH = $previousPythonPath
+        }
+    }
 }
 
+function Backup-PostgresDatabase {
+    param(
+        [Parameter(Mandatory = $true)][string]$DatabaseUrl,
+        [Parameter(Mandatory = $true)][string]$TargetPath
+    )
+
+    $pgDump = Get-PgDumpBinary
+    $libpqUrl = ConvertTo-LibpqUrl -Url $DatabaseUrl
+    $tempPath = "$TargetPath.tmp-$PID"
+    try {
+        & $pgDump --format=custom --file $tempPath --dbname $libpqUrl
+        if ($LASTEXITCODE -ne 0) {
+            throw "pg_dump 失败。"
+        }
+        Test-PostgresBackup -Path $tempPath
+        Move-Item -LiteralPath $tempPath -Destination $TargetPath -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempPath) {
+            Remove-Item -LiteralPath $tempPath -Force
+        }
+    }
+}
+
+New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
-$target = Join-Path $BackupDir "ticketbox-$timestamp.db"
-$target = Assert-PathInside -Path $target -Root $BackupDir
-Backup-SqliteDatabase -SourcePath $DatabasePath -TargetPath $target
+$databaseUrl = Get-DatabaseUrl
+
+if ($databaseUrl -match '^postgresql') {
+    $target = Join-Path $BackupDir "ticketbox-$timestamp.dump"
+    $target = Assert-PathInside -Path $target -Root $BackupDir
+    Backup-PostgresDatabase -DatabaseUrl $databaseUrl -TargetPath $target
+    $rotateFilter = "ticketbox-*.dump"
+}
+else {
+    $DatabasePath = Resolve-DbPath -BackendRoot $BackendRoot
+    if (-not (Test-Path -LiteralPath $DatabasePath)) {
+        throw "Database not found: $DatabasePath"
+    }
+    $target = Join-Path $BackupDir "ticketbox-$timestamp.db"
+    $target = Assert-PathInside -Path $target -Root $BackupDir
+    Backup-SqliteDatabase -SourcePath $DatabasePath -TargetPath $target
+    $rotateFilter = "ticketbox-*.db"
+}
 Write-Host "已备份到 $target"
 
 $resolvedBackupRoot = (Resolve-Path -LiteralPath $BackupDir).Path
-$backups = Get-ChildItem -LiteralPath $BackupDir -Filter "ticketbox-*.db" |
+$backups = Get-ChildItem -LiteralPath $BackupDir -Filter $rotateFilter |
     Sort-Object LastWriteTime -Descending
 
 if ($Keep -gt 0 -and $backups.Count -gt $Keep) {

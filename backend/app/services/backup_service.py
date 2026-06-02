@@ -6,15 +6,23 @@ The same location is used by ``scripts/maintenance_ticketbox.ps1 -Backup`` so a
 backup created from the Owner Console is interchangeable with one created by
 the scheduled task.
 
-This service intentionally only handles SQLite Online Backup snapshots.
-Restoring is done by ``scripts/restore_ticketbox_db.ps1`` and remains an
-explicit local command.
+The backup mechanism is dialect-dispatched (ADR-0041 phase-2): SQLite uses the
+Online Backup API into a ``.db`` snapshot; PostgreSQL shells out to ``pg_dump
+-Fc`` into a ``.dump`` custom-format archive. The active dialect is decided by
+``DATABASE_URL`` so a given deployment only ever produces and lists one format.
+Restoring remains an explicit local command (``scripts/restore_ticketbox_db.ps1``
+for SQLite; ``pg_restore`` per the Postgres runbook).
 """
 
 from __future__ import annotations
 
 import contextlib
+import logging
+import os
+import re
+import shutil
 import sqlite3
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +30,7 @@ from uuid import uuid4
 
 from app.config import DATA_ROOT, get_settings
 from app.errors import AppError
+from app.services.postgres_backup_validation_service import is_postgres_backup_valid
 from app.services.sqlite_backup_validation_service import is_sqlite_backup_valid
 from app.services.time_service import now_utc
 
@@ -30,7 +39,19 @@ from app.services.time_service import now_utc
 # backup folder from __file__ would write snapshots that vanish on restart.
 _BACKUP_DIR = DATA_ROOT / "backups"
 _PREFIX = "ticketbox-"
-_SUFFIX = ".db"
+_SQLITE_SUFFIX = ".db"
+_POSTGRES_SUFFIX = ".dump"
+
+_logger = logging.getLogger(__name__)
+
+
+def _is_postgres() -> bool:
+    return get_settings().database_url.startswith("postgresql")
+
+
+def _backup_suffix() -> str:
+    """File suffix for the active dialect's backups (``.db`` / ``.dump``)."""
+    return _POSTGRES_SUFFIX if _is_postgres() else _SQLITE_SUFFIX
 
 
 @dataclass(frozen=True)
@@ -69,13 +90,14 @@ def _classify(name: str) -> str:
 
 
 def list_backups() -> list[BackupEntry]:
-    """Return existing backups, newest first."""
+    """Return existing backups for the active dialect, newest first."""
     directory = _backup_dir()
+    is_valid = is_postgres_backup_valid if _is_postgres() else _sqlite_integrity_ok
     entries: list[BackupEntry] = []
-    for path in directory.glob(f"{_PREFIX}*{_SUFFIX}"):
+    for path in directory.glob(f"{_PREFIX}*{_backup_suffix()}"):
         if not path.is_file():
             continue
-        if not _sqlite_integrity_ok(path):
+        if not is_valid(path):
             continue
         try:
             stat = path.stat()
@@ -100,32 +122,35 @@ def latest_backup() -> BackupEntry | None:
 
 
 def is_backup_valid(file_name: str) -> bool:
-    """Return True only for an existing, well-formed backup file."""
+    """Return True only for an existing, well-formed backup file of the active dialect."""
     if Path(file_name).name != file_name:
         return False
-    if not file_name.startswith(_PREFIX) or not file_name.endswith(_SUFFIX):
+    if not file_name.startswith(_PREFIX) or not file_name.endswith(_backup_suffix()):
         return False
-    return _sqlite_integrity_ok(_backup_dir() / file_name)
+    path = _backup_dir() / file_name
+    return is_postgres_backup_valid(path) if _is_postgres() else _sqlite_integrity_ok(path)
 
 
 def create_manual_backup() -> BackupEntry:
-    """Snapshot the live SQLite database into ``backups/`` using the SQLite
-    Online Backup API.
+    """Snapshot the live database into ``backups/`` (dialect-dispatched).
 
-    ``shutil.copy2`` is intentionally NOT used: SQLite may be in WAL mode or
-    mid-write. ``sqlite3.Connection.backup()`` guarantees a consistent snapshot
-    even under concurrent writes.
-
-    Raises :class:`AppError` if the database URL is not SQLite or the file is
-    missing.
+    SQLite uses the Online Backup API (consistent even under WAL / concurrent
+    writes — ``shutil.copy2`` is intentionally NOT used); PostgreSQL shells out
+    to ``pg_dump -Fc``. Raises :class:`AppError` on an unsupported URL, a missing
+    file, or a failed dump.
     """
-    return _create_sqlite_backup(prefix="ticketbox-manual", kind="manual")
+    return _create_backup(prefix="ticketbox-manual", kind="manual")
 
 
 def create_pre_v1_backup() -> BackupEntry:
-    """Create a named pre-v1.0 backup for migration rehearsals."""
+    """Create a named pre-v1.0 backup for migration rehearsals (dialect-dispatched)."""
+    return _create_backup(prefix="ticketbox-pre-v1.0", kind="pre-v1.0")
 
-    return _create_sqlite_backup(prefix="ticketbox-pre-v1.0", kind="pre-v1.0")
+
+def _create_backup(*, prefix: str, kind: str) -> BackupEntry:
+    if _is_postgres():
+        return _create_postgres_backup(prefix=prefix, kind=kind)
+    return _create_sqlite_backup(prefix=prefix, kind=kind)
 
 
 def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
@@ -181,6 +206,56 @@ def _create_sqlite_backup(*, prefix: str, kind: str) -> BackupEntry:
         created_at=created_at,
         kind=kind,
     )
+
+
+def _create_postgres_backup(*, prefix: str, kind: str) -> BackupEntry:
+    libpq_url = _libpq_url(get_settings().database_url)
+    directory = _backup_dir()
+    stamp = now_utc().astimezone().strftime("%Y%m%d-%H%M%S")
+    target = directory / f"{prefix}-{stamp}-{uuid4().hex[:8]}{_POSTGRES_SUFFIX}"
+    temp_target = directory / f".{target.name}.tmp-{uuid4().hex}"
+    try:
+        result = subprocess.run(  # noqa: S603 (binary resolved from PATH/override, fixed args)
+            [_pg_dump_binary(), "--format=custom", "--file", str(temp_target), "--dbname", libpq_url],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            # pg_dump stderr can echo the DSN/host — log it, never surface it (§10).
+            _logger.warning("pg_dump failed (rc=%s): %s", result.returncode, result.stderr.strip())
+            raise AppError("server_error", "数据库备份失败，请查看后端日志。", status_code=500)
+        if not is_postgres_backup_valid(temp_target):
+            raise AppError(
+                "server_error", "数据库备份校验失败，未写入最终备份文件。", status_code=500
+            )
+        temp_target.replace(target)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            temp_target.unlink()
+
+    stat = target.stat()
+    created_at = datetime.fromtimestamp(stat.st_mtime).astimezone()
+    return BackupEntry(
+        file_name=target.name,
+        size_bytes=int(stat.st_size),
+        created_at=created_at,
+        kind=kind,
+    )
+
+
+def _libpq_url(database_url: str) -> str:
+    """SQLAlchemy URL -> libpq URL: drop the ``+driver`` tag pg_dump rejects."""
+    return re.sub(r"^postgresql\+\w+://", "postgresql://", database_url, count=1)
+
+
+def _pg_dump_binary() -> str:
+    binary = os.getenv("PG_DUMP_PATH") or shutil.which("pg_dump")
+    if not binary:
+        raise AppError(
+            "server_error", "未找到 pg_dump，无法备份 PostgreSQL 数据库。", status_code=500
+        )
+    return binary
 
 
 def _sqlite_integrity_ok(path: Path) -> bool:

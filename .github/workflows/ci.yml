@@ -176,6 +176,20 @@ jobs:
           SMOKE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
         run: python scripts/smoke_test.py
 
+      - name: PostgreSQL backup/restore recovery drill (ADR-0041 phase-2)
+        # Dumps the smoke-populated DB through the real backend backup code
+        # (backup_service.create_manual_backup -> pg_dump -Fc), validates the
+        # archive (pg_restore --list), restores into a FRESH database, and
+        # asserts the key tables round-tripped with identical row counts. Proves
+        # the Postgres backup path is restorable. Runs before the pytest suite
+        # mutates xpj_smoke; uses its own xpj_restore so it collides with nothing.
+        env:
+          DRILL_SOURCE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
+          DRILL_RESTORE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_restore
+        run: |
+          python -c "import psycopg; c = psycopg.connect('postgresql://postgres:postgres@localhost:5432/postgres'); c.autocommit = True; c.execute('DROP DATABASE IF EXISTS xpj_restore'); c.execute('CREATE DATABASE xpj_restore'); c.close()"
+          python scripts/postgres_backup_drill.py
+
       - name: PostgreSQL data-migration round-trip (ADR-0041 phase-2)
         # Seeds a throwaway SQLite source and migrates it into a FRESH PG
         # database (its own, so it never collides with the smoke / pytest data),
