@@ -68,6 +68,12 @@ def pytest_configure(config: pytest.Config) -> None:
         "file_backed_only: test only meaningful against a file-backed SQLite; "
         "skipped under the default in-memory lane. Run via XPJ_TEST_FILE_BACKED=1.",
     )
+    config.addinivalue_line(
+        "markers",
+        "sqlite_only: test exercises SQLite-only machinery (the migrate_sqlite_schema "
+        "replay, PRAGMA, file backup/validation) that no-ops on PostgreSQL; skipped on "
+        "the ADR-0041 Postgres lane (XPJ_TEST_DATABASE_URL=postgresql+psycopg://…).",
+    )
 
 
 def pytest_collection_modifyitems(
@@ -76,14 +82,31 @@ def pytest_collection_modifyitems(
     from app.database import settings as _settings
 
     url = _settings.database_url
-    if ":memory:" not in url and url != "sqlite://":
+    is_sqlite = url.startswith("sqlite")
+    is_in_memory = ":memory:" in url or url == "sqlite://"
+    # File-backed SQLite (verify_project / CI file-backed lane) runs the full
+    # suite, including file_backed_only + the SQLite migrator tests.
+    if is_sqlite and not is_in_memory:
         return
-    skip_marker = pytest.mark.skip(
+
+    on_postgres = not is_sqlite
+    skip_file_backed = pytest.mark.skip(
         reason="file_backed_only: requires file-backed SQLite (set XPJ_TEST_FILE_BACKED=1)."
+    )
+    skip_sqlite_only = pytest.mark.skip(
+        reason="sqlite_only: SQLite-only machinery, not run on the PostgreSQL lane."
     )
     for item in items:
         if "file_backed_only" in item.keywords:
-            item.add_marker(skip_marker)
+            item.add_marker(skip_file_backed)
+        # The Postgres lane skips SQLite-only machinery: the migrate_sqlite_schema
+        # replay tests (which exercise a path that no-ops on PostgreSQL) and
+        # anything explicitly marked ``sqlite_only``.
+        if on_postgres and (
+            "sqlite_only" in item.keywords
+            or "test_database_migration" in item.module.__name__
+        ):
+            item.add_marker(skip_sqlite_only)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

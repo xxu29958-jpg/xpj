@@ -98,13 +98,18 @@ def claim_row_with_token(
     :func:`ledger_filter` is used so we fail loudly if the caller
     passes a non-tenant model.
 
-    ``synchronize_session`` defaults to SQLAlchemy's ``"auto"`` so the
-    ORM identity-map stays in sync with the UPDATE — important for the
-    rule_service path which reads the row back via ``find_rule_for_tenant``
-    immediately after. Expense callers explicitly pass ``False`` because
-    they ``db.expire_all() + get_expense(...)`` in the success path and
-    don't need session syncing (and ``"auto"`` is more expensive at
-    scale).
+    ``synchronize_session`` defaults to SQLAlchemy's ``"auto"`` (evaluate).
+    DIALECT FOOTGUN (ADR-0041): on PostgreSQL the evaluate strategy compares
+    the in-session row's *aware* ``timestamptz`` ``updated_at`` against the
+    *naive* value :func:`updated_at_predicate` binds — those are unequal — so
+    it silently fails to sync the identity-map row. Combined with
+    ``expire_on_commit=False`` (see ``_core.SessionLocal``), any caller that
+    reads the mutated row back through the identity map after ``db.commit()``
+    MUST ``db.expire_all()`` first or it returns the pre-update value. The
+    expense / merchant_alias / rule paths all do this; new readback callers
+    must too. (On SQLite the row reads back naive and evaluate happens to
+    match, which is why this only surfaces on Postgres.) Callers that don't
+    read back pass ``synchronize_session=False`` explicitly.
     """
     stmt = (
         sa_update(model)

@@ -222,7 +222,12 @@ def enqueue_or_get_active(
         # SQLite serializes writers behind BEGIN IMMEDIATE. That makes the
         # read-then-insert guard DB-backed without adding a new queue/broker
         # dependency or widening this one-shot cut-over slice into schema work.
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        # ADR-0041: that grammar is SQLite-only (PostgreSQL rejects it), so
+        # guard it to SQLite like the bill_split / throttle / advisor singleton
+        # sites; on PostgreSQL the read-then-insert runs in the ordinary
+        # autobegun transaction.
+        if db.get_bind().dialect.name == "sqlite":
+            db.connection().exec_driver_sql("BEGIN IMMEDIATE")
         existing = _active_task(
             db,
             task_type=task_type,

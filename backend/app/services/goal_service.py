@@ -192,7 +192,16 @@ def list_goals(
     statement = ledger_scoped_select(Goal, tenant_id).where(Goal.month == month)
     if not include_archived:
         statement = statement.where(Goal.status != "archived")
-    statement = statement.order_by(Goal.status.asc(), Goal.category.asc(), Goal.created_at.asc(), Goal.id.asc())
+    # nulls_first(): the total goal (category IS NULL) must sort before the
+    # per-category goals. PostgreSQL sorts NULLs last by default, SQLite first,
+    # so an unqualified ``category.asc()`` flips the order across dialects
+    # (ADR-0041). SQLite 3.30+ understands NULLS FIRST.
+    statement = statement.order_by(
+        Goal.status.asc(),
+        Goal.category.asc().nulls_first(),
+        Goal.created_at.asc(),
+        Goal.id.asc(),
+    )
     goals = list(db.scalars(statement))
     totals = _month_spend_totals(
         db,

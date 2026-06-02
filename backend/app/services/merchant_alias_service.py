@@ -222,6 +222,11 @@ def update_merchant_alias(
             raise AppError("merchant_alias_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
     db.commit()
+    # Force the read-back to hit the DB: claim_row_with_token's default
+    # synchronize_session="auto" can't sync the in-session row on PostgreSQL
+    # (aware timestamptz vs the naive OCC predicate), so with expire_on_commit
+    # =False the identity-map row would return the pre-update value (ADR-0041).
+    db.expire_all()
     refreshed = _get_alias_by_public_id(
         db, tenant_id=item_tenant_id, public_id=item_public_id
     )

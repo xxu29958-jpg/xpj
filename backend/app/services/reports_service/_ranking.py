@@ -41,13 +41,19 @@ def _merchant_ranking(
     ranking_metric: ReportRankingMetric,
 ) -> list[dict]:
     stat_time = _stat_time_expr()
+    # Reuse one expression object in both SELECT and GROUP BY. Rebuilding
+    # ``func.coalesce(Expense.merchant, "")`` twice binds the "" literal as two
+    # different parameters, so PostgreSQL sees coalesce(merchant,$1) vs
+    # coalesce(merchant,$2) and rejects the SELECT column as not grouped
+    # (SQLite is lenient and never complained) — ADR-0041.
+    merchant_key = func.coalesce(Expense.merchant, "")
     statement = (
         add_ledger_scope(
             select(
-                func.coalesce(Expense.merchant, ""),
+                merchant_key,
                 func.coalesce(func.sum(Expense.amount_cents), 0),
                 func.count(Expense.id),
-            ).group_by(func.coalesce(Expense.merchant, "")),
+            ).group_by(merchant_key),
             Expense,
             tenant_id,
         )

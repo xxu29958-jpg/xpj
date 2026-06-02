@@ -108,6 +108,89 @@ jobs:
           python -m pip install pip-audit
           python -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt
 
+  backend-postgres:
+    name: Backend (PostgreSQL)
+    # ADR-0041 phase-1 dialect-proofing. The Backend job above runs the suite
+    # on SQLite (dev dialect); this lane exercises the production-bound
+    # PostgreSQL engine — an end-to-end smoke plus the pytest suite (minus the
+    # SQLite-only migrator/backup tests, see conftest) — so dialect drift fails
+    # a PR instead of surfacing at cut-over. Linux runner because GitHub Actions
+    # service containers (Postgres) only attach to Linux jobs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: xpj_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        # requirements-dev.txt (-> requirements.txt) for the app + psycopg +
+        # uvicorn (smoke) and pytest (the PG suite step below).
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Verify PostgreSQL is reachable
+        # Guards against a vacuous green: if SMOKE_DATABASE_URL is ever dropped
+        # or renamed the smoke would silently fall back to SQLite and still
+        # pass. Read the same var the smoke reads, assert it is Postgres, and
+        # connect — fail loud here if the lane isn't actually exercising PG.
+        env:
+          SMOKE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
+        run: |
+          python -c "import os, psycopg; url = os.environ['SMOKE_DATABASE_URL']; assert url.startswith('postgresql'), url; psycopg.connect(url.replace('+psycopg', '')).close(); print('PG reachable:', url.rsplit('@', 1)[-1])"
+
+      - name: PostgreSQL end-to-end smoke (ADR-0041)
+        # Drives the full bootstrap -> pair -> upload -> OCR -> OCC-token
+        # confirm flow against a real PostgreSQL via psycopg. Proves: the
+        # SQLite-only startup machinery (migrate_sqlite_schema, PRAGMA-FK,
+        # file backup, integrity validators) no-ops cleanly; Alembic replay on
+        # a fresh DB is dialect-safe; create_all builds the schema; and the
+        # timestamptz ``updated_at`` OCC predicate matches under the pinned
+        # UTC session. None of these are observable on the SQLite lane.
+        env:
+          SMOKE_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
+        run: python scripts/smoke_test.py
+
+      - name: PostgreSQL pytest suite (ADR-0041)
+        # The pytest suite against real PostgreSQL — the comprehensive dialect
+        # catch the happy-path smoke can't reach (it exercises every
+        # service/route/query/OCC path on Postgres). conftest skips the
+        # SQLite-only machinery on a non-sqlite engine: file_backed_only +
+        # test_database_migration_* (the migrate_sqlite_schema replay, a no-op
+        # on PG) + anything marked sqlite_only. Runs after the smoke so a broken
+        # startup fails fast before the slower suite.
+        env:
+          XPJ_TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/xpj_smoke
+        # -ra summarises non-passing tests; --tb=short keeps each diagnosable.
+        # The bring-up --maxfail bound was dropped once the lane went green
+        # (1463 passed / 60 skipped on PostgreSQL).
+        run: python -m pytest -q -ra --tb=short -p no:cacheprovider
+
   android:
     name: Android
     runs-on: ubuntu-latest

@@ -26,11 +26,14 @@ TEST_UPLOAD_DIR = BACKEND_ROOT / "uploads" / f"pytest_test_{TEST_RUN_ID}"
 TEST_UPLOAD_RELATIVE = TEST_UPLOAD_DIR.relative_to(BACKEND_ROOT).as_posix()
 
 
-# File-backed lane (XPJ_TEST_FILE_BACKED=1) covers migration-readiness /
-# pre-v1 backup tests that skip on in-memory SQLite. Default lane is
-# in-memory + StaticPool (see app/database/_core.py): ~1.3s -> ~16ms per
-# Base.metadata.create_all().
-_database_url = (
+# Three lanes (ADR-0041):
+# - XPJ_TEST_DATABASE_URL set  -> that engine verbatim (the Postgres CI lane
+#   points it at postgresql+psycopg://… to flush dialect drift the SQLite suite
+#   can't see; SQLite-machinery tests are skipped — see conftest).
+# - XPJ_TEST_FILE_BACKED=1      -> file-backed SQLite (migration-readiness /
+#   pre-v1 backup tests that skip on in-memory).
+# - default                     -> in-memory SQLite + StaticPool (~16ms/create_all).
+_database_url = os.environ.get("XPJ_TEST_DATABASE_URL") or (
     f"sqlite:///{TEST_DB_PATH.as_posix()}"
     if os.environ.get("XPJ_TEST_FILE_BACKED") == "1"
     else "sqlite://"

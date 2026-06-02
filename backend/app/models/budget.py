@@ -125,6 +125,7 @@ Index(
     Goal.period,
     unique=True,
     sqlite_where=(Goal.status == "active") & Goal.category.is_(None),
+    postgresql_where=(Goal.status == "active") & Goal.category.is_(None),
 )
 Index(
     "uq_goals_active_category_scope",
@@ -135,6 +136,7 @@ Index(
     Goal.category,
     unique=True,
     sqlite_where=(Goal.status == "active") & Goal.category.is_not(None),
+    postgresql_where=(Goal.status == "active") & Goal.category.is_not(None),
 )
 
 

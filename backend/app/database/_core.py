@@ -28,7 +28,15 @@ __all__ = [
 settings = get_settings()
 _is_sqlite = settings.database_url.startswith("sqlite")
 _is_memory_sqlite = _is_sqlite and (":memory:" in settings.database_url or settings.database_url == "sqlite://")
-connect_args = {"check_same_thread": False} if _is_sqlite else {}
+# PostgreSQL (ADR-0041): pin every session to UTC at connection startup via the
+# libpq ``options`` string. The app stores all timestamps as UTC, and
+# ``optimistic_concurrency.updated_at_predicate`` compares a naive-UTC value
+# against a ``timestamptz`` column — PostgreSQL interprets the naive literal in
+# the session's TimeZone, so a non-UTC session (the home-server runs
+# Asia/Shanghai) would offset every OCC comparison by 8h and fail every guarded
+# mutate. Setting it through ``options`` (not a transactional ``SET TIME ZONE``)
+# means it can't be rolled back with a later transaction. No effect on SQLite.
+connect_args = {"check_same_thread": False} if _is_sqlite else {"options": "-c timezone=utc"}
 engine_kwargs: dict = {"connect_args": connect_args, "future": True}
 # In-memory SQLite needs StaticPool: every new connection otherwise opens a
 # fresh empty DB, so schema / data created via one session vanishes when the

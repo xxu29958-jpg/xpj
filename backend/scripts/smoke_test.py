@@ -139,7 +139,11 @@ def start_server(port: int) -> subprocess.Popen:
             "UPLOAD_TOKEN": UPLOAD_TOKEN,
             "APP_TOKEN": APP_TOKEN,
             "ADMIN_TOKEN": ADMIN_TOKEN,
-            "DATABASE_URL": "sqlite:///data/smoke_test.db",
+            # Default lane is file-backed SQLite. The ADR-0041 Postgres CI lane
+            # sets SMOKE_DATABASE_URL=postgresql+psycopg://... to exercise the
+            # full bootstrap → upload → OCC-token → confirm flow against a real
+            # PostgreSQL, catching dialect drift the SQLite suite can't see.
+            "DATABASE_URL": os.environ.get("SMOKE_DATABASE_URL", "sqlite:///data/smoke_test.db"),
             "UPLOAD_DIR": "uploads/smoke_test",
             "MAX_UPLOAD_SIZE_MB": "10",
             "DELETE_IMAGE_AFTER_CONFIRM": "false",

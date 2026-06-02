@@ -56,8 +56,15 @@ def upgrade() -> None:
         with op.batch_alter_table("upload_links") as batch_op:
             batch_op.add_column(sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True))
 
-    bind.execute(
-        sa.text(
+    # ``datetime('now', ...)`` is SQLite-only — PostgreSQL has no datetime()
+    # function and rejects the statement at parse time even when zero rows
+    # match. Branch on dialect (ADR-0041): SQLite keeps the original in-engine
+    # expression; PostgreSQL builds the same ``now + (ttl + id-spread) days``
+    # as a portable interval. The legacy backfill only has rows to touch on an
+    # upgraded SQLite DB; on a fresh Postgres schema it is a no-op, but it must
+    # still parse on the dual-dialect Alembic replay path.
+    if bind.dialect.name == "sqlite":
+        expiry_sql = (
             "UPDATE upload_links "
             "SET expires_at = datetime("
             "'now', "
@@ -65,7 +72,16 @@ def upgrade() -> None:
             "'+' || (ABS(id) % :spread_days) || ' days'"
             ") "
             "WHERE expires_at IS NULL"
-        ),
+        )
+    else:
+        expiry_sql = (
+            "UPDATE upload_links "
+            "SET expires_at = now() "
+            "+ ((:ttl_days + (ABS(id) % :spread_days)) * INTERVAL '1 day') "
+            "WHERE expires_at IS NULL"
+        )
+    bind.execute(
+        sa.text(expiry_sql),
         {
             "ttl_days": _upload_link_ttl_days(),
             "spread_days": _legacy_expiry_spread_days(),

@@ -306,6 +306,13 @@ def update_rule(
             raise AppError("rule_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
     db.commit()
+    # Force the read-back to hit the DB. claim_row_with_token's default
+    # synchronize_session="auto" (evaluate) cannot sync the in-session row on
+    # PostgreSQL — it compares the aware timestamptz updated_at against the
+    # naive OCC predicate value, which is unequal — so with expire_on_commit
+    # =False the identity-map row would stay stale and return the pre-update
+    # value. expire_all mirrors the expense-update path (ADR-0041).
+    db.expire_all()
     refreshed = find_rule_for_tenant(db, tenant_id=rule_tenant_id, rule_id=rule_id)
     # rowcount == 1 means the row exists and was just updated; the
     # follow-up find cannot return None unless something else deleted

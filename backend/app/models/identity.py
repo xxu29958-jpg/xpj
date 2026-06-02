@@ -98,6 +98,7 @@ Index(
     AuthToken.scope,
     unique=True,
     sqlite_where=AuthToken.revoked_at.is_(None),
+    postgresql_where=AuthToken.revoked_at.is_(None),
 )
 
 

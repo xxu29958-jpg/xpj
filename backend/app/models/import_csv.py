@@ -129,4 +129,5 @@ Index(
     CsvImportRow.expense_id,
     unique=True,
     sqlite_where=CsvImportRow.expense_id.is_not(None),
+    postgresql_where=CsvImportRow.expense_id.is_not(None),
 )

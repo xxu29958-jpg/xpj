@@ -102,10 +102,19 @@ def record_schema_migration(
     the row will not satisfy ``--expected-backend-version`` checks.
     """
 
+    # Portable "insert if absent": check-then-insert instead of SQLite-only
+    # ``INSERT OR IGNORE`` (PostgreSQL would reject that syntax). Runs once
+    # per startup in a single process, so the TOCTOU gap is not a real race.
     with engine.begin() as connection:
+        existing = connection.execute(
+            text("SELECT 1 FROM schema_migrations WHERE name = :name LIMIT 1"),
+            {"name": name},
+        ).first()
+        if existing is not None:
+            return
         connection.execute(
             text(
-                "INSERT OR IGNORE INTO schema_migrations "
+                "INSERT INTO schema_migrations "
                 "(name, applied_at, backend_version, note) "
                 "VALUES (:name, :applied_at, :backend_version, :note)"
             ),
