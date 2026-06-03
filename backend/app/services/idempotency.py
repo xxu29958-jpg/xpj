@@ -146,6 +146,15 @@ def _ensure_sqlite_writer_transaction(db: Session) -> None:
     """
     if db.get_bind().dialect.name == "sqlite":
         if db.in_transaction():
+            # The claim must be the request's FIRST write (ADR §4.4), so this
+            # commit can only be closing a prior READ-only transaction (e.g. the
+            # auth-context SELECT). If a caller violated that and has pending
+            # writes, fail loudly — silently committing them here, before the
+            # OCC / idempotency outcome is known, would be a correctness bug.
+            assert not (db.new or db.dirty or db.deleted), (
+                "claim_idempotency_key must run before any write in the request "
+                "(ADR-0042 §4.4); the session has uncommitted changes"
+            )
             db.commit()
         # Explicit writer transaction so the begin_nested() SAVEPOINT nests in it.
         db.execute(text("BEGIN IMMEDIATE"))

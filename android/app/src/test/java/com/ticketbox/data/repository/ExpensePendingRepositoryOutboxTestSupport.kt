@@ -225,12 +225,23 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             confirmedFailuresRemaining = 0,
         ),
     ) : ApiService by delegate {
+        // ADR-0042: records the Idempotency-Key the repository supplied on the
+        // direct PATCH so tests can assert it matches the enqueued row's key.
+        // Captured before the result is applied so the IOException path still
+        // sees it.
+        var lastIdempotencyKey: String? = null
+            private set
+
         override suspend fun updateExpense(
             id: Long,
             request: ExpenseUpdateRequest,
-        ): ExpenseDto = when (val r = updateExpenseResult) {
-            is ApiResult.Success -> r.dto
-            is ApiResult.Throw -> throw r.exception
+            idempotencyKey: String?,
+        ): ExpenseDto {
+            lastIdempotencyKey = idempotencyKey
+            return when (val r = updateExpenseResult) {
+                is ApiResult.Success -> r.dto
+                is ApiResult.Throw -> throw r.exception
+            }
         }
 
         override suspend fun confirmExpense(

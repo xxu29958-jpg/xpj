@@ -43,6 +43,13 @@ class PatchExpenseDispatcher(
         val expenseId = parseExpenseId(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
 
+        // ADR-0042: a PatchExpense row MUST carry an idempotency key (every
+        // enqueue mints one). A null key means a malformed / pre-ADR-0042 row
+        // that the server would 422 anyway — surface it as a visible FAILED row
+        // the user can drop, not a silent server round-trip + Discard.
+        val idempotencyKey = row.idempotencyKey
+            ?: return DispatchResult.Failure("PatchExpense row missing idempotency key")
+
         // [codex round-2 P1#3] fix: payload deserialise errors are
         // TERMINAL, not retryable. A corrupted / stale-shape JSON
         // will keep failing on every drain tick if we route it
@@ -67,7 +74,10 @@ class PatchExpenseDispatcher(
         }
 
         return try {
-            val updated = apiProvider().updateExpense(expenseId, request)
+            // ADR-0042: replay carries the row's original intent-time key, so a
+            // committed-but-unseen first attempt is deduped server-side (HIT →
+            // canonical row) instead of false-409ing on the stale row_version.
+            val updated = apiProvider().updateExpense(expenseId, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
@@ -90,13 +100,18 @@ class PatchExpenseDispatcher(
         val body = e.response()?.errorBody()?.string().orEmpty()
         val message = extractServerMessage(body) ?: e.message().orEmpty()
         return when (e.code()) {
-            409 -> {
+            409 -> when {
                 // ADR-0038 contract: only ``state_conflict`` becomes a
-                // user-visible CONFLICT row. Other 409s (e.g.
-                // ``items_sum_not_in_mismatch``) are structural and
-                // belong in Discarded.
-                if ("state_conflict" in body) DispatchResult.Conflict(message)
-                else DispatchResult.Discarded(message)
+                // user-visible CONFLICT row.
+                "state_conflict" in body -> DispatchResult.Conflict(message)
+                // ADR-0042: a concurrent same-key request is still mid-flight
+                // (claimed, not yet committed). The committed-but-unseen replay
+                // will HIT once it lands — retry on the next tick, don't drop.
+                "idempotency_key_in_progress" in body ->
+                    DispatchResult.RetryableFailure(message.ifEmpty { "idempotency key in progress" })
+                // Other 409s (e.g. ``items_sum_not_in_mismatch``) are structural
+                // and belong in Discarded.
+                else -> DispatchResult.Discarded(message)
             }
             // [codex finding P1#3] fix: transient server errors are
             // retryable, not terminal. The drain engine puts the

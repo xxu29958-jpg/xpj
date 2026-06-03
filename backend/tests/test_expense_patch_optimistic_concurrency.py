@@ -12,6 +12,8 @@ write/write 半场：两边都读到 T1，A 先提交到 T2，B 再用 T1 触发
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -52,7 +54,7 @@ def test_patch_expense_with_fresh_updated_at_succeeds(
     snapshot = _snapshot(client, expense_id, identity=identity)
     resp = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "merchant": "Fresh Cafe",
             "amount_cents": 1234,
@@ -71,10 +73,12 @@ def test_patch_expense_with_stale_updated_at_returns_409(
 ) -> None:
     expense_id = _create_pending(client, identity=identity)
     snapshot = _snapshot(client, expense_id, identity=identity)
-    # First PATCH succeeds and bumps updated_at.
+    # First PATCH succeeds and bumps updated_at. Distinct Idempotency-Key per
+    # intent: "First" and "Second" are different requests, so the second must
+    # reach the OCC layer (→ 409) rather than HIT the first's idempotency record.
     first = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "merchant": "First",
             "expected_row_version": snapshot["row_version"],
@@ -84,7 +88,7 @@ def test_patch_expense_with_stale_updated_at_returns_409(
     # Second PATCH replays the original updated_at — now stale.
     stale = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "merchant": "Second",
             "expected_row_version": snapshot["row_version"],
@@ -100,9 +104,11 @@ def test_patch_expense_without_expected_row_version_returns_422(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _create_pending(client, identity=identity)
+    # Header present so the 422 is unambiguously the missing OCC token (body
+    # validation), not the ADR-0042 missing-key guard.
     resp = client.patch(
         f"/api/expenses/{expense_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"merchant": "Missing Token"},
     )
     assert resp.status_code == 422, resp.text
@@ -114,7 +120,7 @@ def test_patch_unknown_expense_returns_404(
     """Even with a syntactically-valid token, a non-existent id must 404."""
     resp = client.patch(
         "/api/expenses/9999999",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "merchant": "Ghost",
             "expected_row_version": 999999,

@@ -12,6 +12,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -171,6 +172,45 @@ class OutboxRepositoryTest {
         assertEquals(2L, row.expectedRowVersion)
         assertNull(row.lastError)
         assertEquals(0, row.retryCount, "KeepMine 是用户显式重试, 必须重置 retryCount 给 max_attempts 完整预算")
+    }
+
+    @Test
+    fun resolveConflictKeepMineRotatesIdempotencyKeyForKeyBearingRow() = runTest {
+        // ADR-0042 §4.8: KeepMine refreshes the token = "overwrite the new server
+        // version after seeing the conflict" NEW intent, so a key-bearing row
+        // (PatchExpense) must ROTATE its idempotency key — otherwise the replay's
+        // fingerprint (which folds in the token) would mismatch the original key.
+        val dao = FakePendingMutationDao()
+        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val id = repo.enqueue(
+            PendingMutationType.PatchExpense,
+            "expense:1",
+            "{}",
+            1L,
+            idempotencyKey = "key-original",
+        )
+        repo.markConflict(id, "stale")
+
+        repo.resolveConflict(id, ConflictResolution.KeepMine(freshToken = 2L))
+
+        val rotated = dao.rows[id]!!.idempotencyKey
+        assertNotNull(rotated, "KeepMine must keep a key-bearing row keyed")
+        assertNotEquals("key-original", rotated, "KeepMine must ROTATE the key, not reuse it")
+    }
+
+    @Test
+    fun resolveConflictKeepMineLeavesKeylessRowNull() = runTest {
+        // A keyless mutation type (confirm/reject etc. — no idempotency key in
+        // Slice B) must NOT gain a key on KeepMine; the DAO CASE only rotates
+        // rows that already carry one.
+        val dao = FakePendingMutationDao()
+        val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val id = repo.enqueue(PendingMutationType.ConfirmExpense, "expense:1", "{}", 1L)
+        repo.markConflict(id, "stale")
+
+        repo.resolveConflict(id, ConflictResolution.KeepMine(freshToken = 2L))
+
+        assertNull(dao.rows[id]!!.idempotencyKey, "keyless row must stay keyless after KeepMine")
     }
 
     @Test

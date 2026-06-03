@@ -74,6 +74,12 @@ ERROR_MESSAGES = {
     "merchant_alias_conflict": "商家别名已指向其他商家。",
     "import_batch_not_found": "导入批次不存在。",
     "state_conflict": "记录已被其它端修改，请刷新后再试。",
+    # ADR-0042 request-idempotency (Idempotency-Key header on outbox-routed
+    # mutate面). These are protocol-level errors the client/outbox consumes —
+    # the user never sees them in normal flow (Android always sends the key).
+    "idempotency_key_required": "请求缺少幂等键，请重试。",
+    "idempotency_key_in_progress": "操作正在处理中，请稍后再试。",
+    "idempotency_key_reused": "幂等键已被另一请求使用，请勿复用。",
     "ai_advisor_not_confirmed": "AI 预算助手尚未经过 owner 显式确认，已禁用。",
     "ai_advisor_owner_required": "只有账本 owner 可以调用外部 AI 预算建议。",
     "ai_advisor_rate_limited": "AI 预算助手调用过于频繁，请稍后再试。",

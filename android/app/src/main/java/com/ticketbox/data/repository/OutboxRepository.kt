@@ -17,6 +17,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -527,6 +528,10 @@ class OutboxRepository(
                     fromStatus = PendingMutationStatus.Conflict.wireValue,
                     toStatus = PendingMutationStatus.Pending.wireValue,
                     freshToken = resolution.freshToken,
+                    // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
+                    // rotate the idempotency key (DAO applies it only to
+                    // key-bearing rows; keyless types stay null).
+                    rotatedIdempotencyKey = UUID.randomUUID().toString(),
                 ) > 0
             ConflictResolution.DropMine ->
                 dao.deleteIfStatus(
@@ -567,6 +572,9 @@ class OutboxRepository(
                         fromStatus = PendingMutationStatus.Failed.wireValue,
                         toStatus = PendingMutationStatus.Pending.wireValue,
                         freshToken = freshToken,
+                        // §4.8: retry-with-fresh-token is the same overwrite-new-
+                        // version intent as KeepMine → rotate the key too.
+                        rotatedIdempotencyKey = UUID.randomUUID().toString(),
                     ) > 0
                 } else {
                     dao.markRetryableIfStatus(

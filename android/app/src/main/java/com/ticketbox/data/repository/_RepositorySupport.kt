@@ -50,6 +50,13 @@ internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): 
         "notification_source_invalid" -> "通知来源暂不支持。"
         "server_error" -> "暂时处理不了，请稍后再试。"
         "invalid_request" -> "请求参数不正确。"
+        // ADR-0042 request idempotency (PATCH expense). Protocol-level — the
+        // client always mints a key, so these should never reach the user; the
+        // text stays jargon-free (no "幂等键") per ENGINEERING_RULES §10 in case
+        // the direct path ever surfaces one.
+        "idempotency_key_required" -> "操作未能完成，请重试。"
+        "idempotency_key_in_progress" -> "操作正在处理，请稍后再试。"
+        "idempotency_key_reused" -> "操作已处理，请勿重复提交。"
         "route_not_found" -> "账本版本过旧，请重启电脑上的小票夹后再试。"
         "method_not_allowed" -> "操作方式不正确，请更新 App 后再试。"
         else -> serverMessage.trim().ifBlank { "操作失败。" }

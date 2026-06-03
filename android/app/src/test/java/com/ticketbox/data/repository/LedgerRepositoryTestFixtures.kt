@@ -202,7 +202,11 @@ internal class StubApi(
     ): ExpenseDto = ledgerUnsupported()
     override suspend fun uploadScreenshot(file: MultipartBody.Part, timezone: String?): UploadResponseDto = ledgerUnsupported()
     override suspend fun expense(id: Long): ExpenseDto = ledgerUnsupported()
-    override suspend fun updateExpense(id: Long, request: ExpenseUpdateRequest): ExpenseDto = ledgerUnsupported()
+    override suspend fun updateExpense(
+        id: Long,
+        request: ExpenseUpdateRequest,
+        idempotencyKey: String?,
+    ): ExpenseDto = ledgerUnsupported()
     override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto = ledgerUnsupported()
     override suspend fun replaceExpenseItems(
         id: Long,

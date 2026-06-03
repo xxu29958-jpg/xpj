@@ -167,12 +167,24 @@ def _claim_expense_for_update(
 
 
 def update_expense(
-    db: Session, expense_id: int, tenant_id: str, payload: ExpenseUpdateRequest
+    db: Session,
+    expense_id: int,
+    tenant_id: str,
+    payload: ExpenseUpdateRequest,
+    *,
+    commit: bool = True,
 ) -> Expense:
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
     # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
     # so two clients that both read the same updated_at can't both
     # silently overwrite the row.
+    #
+    # ADR-0042 §4.5: ``commit=False`` lets the idempotent PATCH route fold the
+    # idempotency-key claim, this OCC claim + field edits, and the
+    # ``mark_idempotency_succeeded`` flip into a SINGLE ``db.commit()`` — so
+    # "mutation committed but key not recorded" (and the inverse) can't happen.
+    # The other 3 callers (/web edit, category recat, pending-review bulk) keep
+    # the default and commit per-row.
     expense = _claim_expense_for_update(
         db,
         expense_id=expense_id,
@@ -251,8 +263,13 @@ def update_expense(
         recompute_items_sum_status(db, expense)
 
     expense.updated_at = now_utc()
-    db.commit()
-    db.refresh(expense)
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        # Caller (idempotent PATCH route) owns the commit: it still needs the
+        # edits flushed so a follow-on read in the same transaction sees them.
+        db.flush()
     return expense
 
 

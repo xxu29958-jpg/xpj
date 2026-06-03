@@ -456,7 +456,12 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "PATCH",
         f"{base_url}/api/expenses/{expense_id}",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        # ADR-0042: PATCH now requires an Idempotency-Key (outbox-routed mutate面).
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=update_body,
     )
     assert_equal(result.status, 200, "patch status")
@@ -655,7 +660,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "PATCH",
         f"{base_url}/api/expenses/{second_id}",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=second_update_body,
     )
     assert_equal(result.status, 200, "second patch status")
@@ -719,7 +728,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "PATCH",
         f"{base_url}/api/expenses/{similar_id}",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=similar_update_body,
     )
     assert_equal(result.status, 200, "similar patch status")

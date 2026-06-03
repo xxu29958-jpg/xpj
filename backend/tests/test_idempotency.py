@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
@@ -215,6 +216,31 @@ def test_rolled_back_claim_does_not_block_retry(identity) -> None:
             "a rolled-back claim must not leave a blocking in_progress row"
         )
         db.commit()
+
+
+@pytest.mark.sqlite_only
+def test_claim_rejects_pending_writes_before_claim(identity) -> None:
+    # ADR §4.4: the claim must be the request's FIRST write. The SQLite writer-
+    # transaction guard commits the prior (read-only) tx — if a caller violated
+    # the contract and has uncommitted WRITES staged, the guard must fail loudly
+    # rather than silently commit them before the OCC / idempotency outcome is
+    # known. (Postgres has no such commit, so this is a SQLite-lane guard.)
+    with SessionLocal() as db:
+        db.execute(select(ApiIdempotencyKey).limit(1)).all()  # start a read tx
+        db.add(
+            ApiIdempotencyKey(
+                tenant_id="owner",
+                idempotency_key="pending-write",
+                operation="x",
+                request_fingerprint="fp",
+                status=IDEMPOTENCY_STATUS_IN_PROGRESS,
+                created_at=now_utc(),
+                expires_at=now_utc() + timedelta(days=1),
+            )
+        )  # an uncommitted write staged BEFORE the claim
+        with pytest.raises(AssertionError):
+            _claim(db, key="k-guard")
+        db.rollback()
 
 
 def test_fingerprint_is_deterministic_and_sensitive() -> None:

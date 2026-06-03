@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from io import BytesIO
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi.testclient import TestClient
@@ -339,6 +339,7 @@ def patch_expense(
     *,
     headers: dict[str, str],
     fields: dict[str, Any],
+    idempotency_key: str | None = None,
 ) -> httpx.Response:
     """Test helper: GET the expense to snapshot ``updated_at`` then PATCH
     with ``expected_row_version`` filled in (ADR-0038 PR-2a contract).
@@ -349,6 +350,11 @@ def patch_expense(
     bypassing the contract; the explicit stale-write tests build
     their own stale ``updated_at`` and call ``client.patch`` directly.
 
+    ADR-0042: PATCH now requires an ``Idempotency-Key`` header. The helper
+    mints a fresh UUID per call by default (each helper call is a distinct
+    intent), so existing callers keep working unchanged. Pass an explicit
+    ``idempotency_key`` to replay the SAME key (committed-but-unseen tests).
+
     Pass non-expected fields only in ``fields``; the helper fills in
     ``expected_row_version``. If the GET returns non-200 (e.g. 404
     cross-tenant), the helper returns that response so the caller can
@@ -357,9 +363,10 @@ def patch_expense(
     snapshot = client.get(f"/api/expenses/{expense_id}", headers=headers)
     if snapshot.status_code != 200:
         return snapshot
+    key = idempotency_key or str(uuid4())
     return client.patch(
         f"/api/expenses/{expense_id}",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": key},
         json={**fields, "expected_row_version": snapshot.json()["row_version"]},
     )
 

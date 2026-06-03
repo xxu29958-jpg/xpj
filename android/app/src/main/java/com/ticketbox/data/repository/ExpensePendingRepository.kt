@@ -15,6 +15,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.time.Instant
+import java.util.UUID
 import kotlin.system.measureTimeMillis
 
 internal class ExpensePendingRepository(
@@ -94,8 +95,15 @@ internal class ExpensePendingRepository(
         // which returns a sealed [SaveOutcome] the caller must
         // branch on.
         val bound = core.ledgerRequestGuard.bind()
+        // ADR-0042: this DIRECT path never enqueues, so the key is single-use —
+        // it only satisfies the server's now-mandatory Idempotency-Key. (A
+        // committed-but-unseen edit on this path still surfaces as a failure for
+        // the chained caller to handle; the offline-aware variant below is the
+        // one whose replay actually reuses the key.)
         val updated = core.cacheIfConfirmed(
-            bound.call { it.updateExpense(id, draft.toRequest(baseline = baseline)) },
+            bound.call {
+                it.updateExpense(id, draft.toRequest(baseline = baseline), UUID.randomUUID().toString())
+            },
             bound.ledgerId,
         )
         updated.toDomain()
@@ -108,11 +116,17 @@ internal class ExpensePendingRepository(
     ): Result<SaveOutcome> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         val request = draft.toRequest(baseline = baseline)
+        // ADR-0042: ONE intent-time key shared by the direct attempt and the
+        // outbox replay. If the direct PATCH commits server-side but its
+        // response is lost (IOException below), the enqueued row replays with
+        // this SAME key — the server HITs the recorded success and returns the
+        // canonical row instead of false-409ing on the now-stale row_version.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             // Direct PATCH first — fast path when online. Returns
             // Synced with the server's canonical Expense.
             val updated = core.cacheIfConfirmed(
-                bound.call { it.updateExpense(id, request) },
+                bound.call { it.updateExpense(id, request, idempotencyKey) },
                 bound.ledgerId,
             )
             SaveOutcome.Synced(updated.toDomain()) as SaveOutcome
@@ -156,6 +170,9 @@ internal class ExpensePendingRepository(
                 targetId = "expense:$id",
                 payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
                 expectedRowVersion = token,
+                // Same key as the direct attempt above — see the rationale where
+                // it's minted. The dispatcher replays it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
             )
             SaveOutcome.Queued(projectOptimisticExpense(baseline, draft)) as SaveOutcome
         }

@@ -138,6 +138,13 @@ interface ApiService {
     suspend fun updateExpense(
         @Path("id") id: Long,
         @Body request: ExpenseUpdateRequest,
+        // ADR-0042: intent-time idempotency key. A committed-but-unseen replay
+        // (direct PATCH commits server-side but the response is lost, then the
+        // outbox replays) carries the SAME key so the server HITs and returns
+        // the canonical row instead of false-409ing on the now-stale
+        // expected_row_version. Nullable for Retrofit ergonomics (a null value
+        // is omitted from the request); the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
     @GET("api/expenses/{id}/items")

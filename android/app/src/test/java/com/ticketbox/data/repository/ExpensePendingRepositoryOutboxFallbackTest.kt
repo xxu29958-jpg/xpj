@@ -10,6 +10,7 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -57,6 +58,8 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         assertNotEquals(baseline.updatedAt, outcome.expense.updatedAt)
         assertNotEquals(baseline.rowVersion, outcome.expense.rowVersion)
         assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
+        // ADR-0042: the direct PATCH carried an intent-time idempotency key.
+        assertNotNull(api.lastIdempotencyKey, "direct PATCH must send an Idempotency-Key")
     }
 
     @Test
@@ -100,6 +103,11 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token (single source of truth): ${row.payload}",
         )
+        // ADR-0042: the enqueued row carries the SAME intent-time key the direct
+        // attempt used — that's what lets a committed-but-unseen replay HIT the
+        // server's recorded success instead of false-409ing on the stale token.
+        assertNotNull(row.idempotencyKey, "PatchExpense row must carry an idempotency key")
+        assertEquals(api.lastIdempotencyKey, row.idempotencyKey)
     }
 
     @Test
@@ -198,6 +206,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
             override suspend fun updateExpense(
                 id: Long,
                 request: ExpenseUpdateRequest,
+                idempotencyKey: String?,
             ): ExpenseDto {
                 settings.saveIdentity(
                     accountName = "我",

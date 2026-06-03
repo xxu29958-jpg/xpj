@@ -162,12 +162,24 @@ interface PendingMutationDao {
      *
      * [codex round-4 P2] fix: prevents a stale UI banner from
      * flipping a DONE / dropped row back to PENDING.
+     *
+     * ADR-0042 §4.8: refreshing ``expectedRowVersion`` is the "overwrite the new
+     * server version after seeing the conflict/failure" NEW intent, so a
+     * key-bearing row (PatchExpense) must ROTATE its ``idempotencyKey`` here —
+     * otherwise the replay's fingerprint (which folds in the token) would
+     * mismatch the original key, or we'd have to drop the token from the
+     * fingerprint and dirty OCC. The ``CASE`` rotates only rows that already
+     * carry a key; keyless mutation types stay null. Callers pass a fresh UUID.
      */
     @Query(
         """
         UPDATE pending_mutations
         SET status = :toStatus,
             expectedRowVersion = :freshToken,
+            idempotencyKey = CASE
+                WHEN idempotencyKey IS NOT NULL THEN :rotatedIdempotencyKey
+                ELSE idempotencyKey
+            END,
             retryCount = 0,
             lastError = NULL
         WHERE id = :id AND status = :fromStatus
@@ -178,6 +190,7 @@ interface PendingMutationDao {
         fromStatus: String,
         toStatus: String,
         freshToken: Long,
+        rotatedIdempotencyKey: String?,
     ): Int
 
     /**

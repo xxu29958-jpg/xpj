@@ -197,7 +197,11 @@ internal class FakeApiService(
         return confirmedExpenseDto()
     }
 
-    override suspend fun updateExpense(id: Long, request: ExpenseUpdateRequest): ExpenseDto = unsupported()
+    override suspend fun updateExpense(
+        id: Long,
+        request: ExpenseUpdateRequest,
+        idempotencyKey: String?,
+    ): ExpenseDto = unsupported()
 
     override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
         itemFetchIds += id

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -58,6 +58,12 @@ from app.services.expense_service import (
     update_expense,
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
+from app.services.idempotency import (
+    IdempotencyOutcomeKind,
+    claim_idempotency_key,
+    fingerprint_request,
+    mark_idempotency_succeeded,
+)
 from app.services.pending_suggestion_service import (
     record_pending_suggestion_event,
     suggestions_for_pending_expense,
@@ -314,10 +320,69 @@ def get_expense_thumbnail(
 def patch_expense(
     expense_id: int,
     payload: ExpenseUpdateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    expense = update_expense(db, expense_id, auth.tenant_id, payload)
+    """ADR-0042 idempotent edit: claim the ``Idempotency-Key`` BEFORE the OCC
+    ``row_version`` claim (§4.4), so an outbox replay of a committed-but-unseen
+    PATCH (its response lost on the wire) re-serialises the canonical row
+    instead of false-409-ing on its now-stale ``expected_row_version`` (§4.6).
+
+    OCC and idempotency are distinct: OCC rejects *concurrent* writers; this
+    layer makes *the same* write safe to replay. The key, the OCC claim, the
+    field edits, and ``mark_idempotency_succeeded`` all commit together
+    (``update_expense(commit=False)``) so the success record and the mutation
+    are atomic (§4.5). Any failure before that commit (OCC 409, validation,
+    permission) leaves no ``succeeded`` row, so a legitimate retry still runs
+    (§4.9).
+    """
+    if not idempotency_key:
+        # Outbox-routed mutate面 MUST carry the key (the Android client mints an
+        # intent-time UUID v4 at the call site). Absence is a contract breach,
+        # not a user-facing condition.
+        raise AppError("idempotency_key_required", status_code=422)
+
+    fingerprint = fingerprint_request(
+        operation="patch_expense",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    outcome = claim_idempotency_key(
+        db,
+        tenant_id=auth.tenant_id,
+        idempotency_key=idempotency_key,
+        operation="patch_expense",
+        request_fingerprint=fingerprint,
+        target_type="expense",
+        target_id=str(expense_id),
+    )
+
+    if outcome.kind is IdempotencyOutcomeKind.HIT:
+        # §4.6: the original PATCH already committed — return the row's current
+        # canonical state, skipping the OCC claim that would false-409. If the
+        # resource was hard-deleted between the original commit and this replay
+        # (an extreme tail — the replay window is seconds, expenses soft-reject
+        # rather than hard-delete), get_expense honestly 404s: a deleted row has
+        # no canonical state to re-serialise.
+        expense = get_expense(db, expense_id, auth.tenant_id)
+        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+    if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+
+    # PROCEED: we won the claim. Run the mutation without committing, record the
+    # key's success, then commit both atomically.
+    expense = update_expense(db, expense_id, auth.tenant_id, payload, commit=False)
+    mark_idempotency_succeeded(
+        db, outcome.row, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

@@ -133,6 +133,7 @@ class FakePendingMutationDao : PendingMutationDao {
         fromStatus: String,
         toStatus: String,
         freshToken: Long,
+        rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
         if (current.status != fromStatus) return 0
@@ -141,6 +142,8 @@ class FakePendingMutationDao : PendingMutationDao {
         rows[id] = current.copy(
             status = toStatus,
             expectedRowVersion = freshToken,
+            // ADR-0042 §4.8: rotate only key-bearing rows (mirrors the DAO CASE).
+            idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
             retryCount = 0,
             lastError = null,
         )
