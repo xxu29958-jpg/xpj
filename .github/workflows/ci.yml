@@ -132,11 +132,18 @@ jobs:
           POSTGRES_DB: xpj_smoke
         ports:
           - 5432:5432
+        # CI speed-up: put the data dir on tmpfs (RAM). The PG suite is
+        # I/O-bound — the run flushes hundreds of MB of checkpoints/WAL to disk
+        # under fsync — and a RAM-backed data dir makes those ~free. Safe
+        # because this database is ephemeral per run; durability is irrelevant
+        # in CI. (fsync=off would shave a little more but needs a command
+        # override the services: block can't express, so tmpfs is the lever.)
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --tmpfs /var/lib/postgresql/data
 
     steps:
       - name: Checkout
