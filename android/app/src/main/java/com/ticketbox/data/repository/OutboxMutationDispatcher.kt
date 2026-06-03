@@ -17,9 +17,9 @@ import com.ticketbox.data.local.PendingMutationType
  * 1. Deserialising ``row.payloadJson`` into the Request DTO the
  *    matching ApiService method expects.
  * 2. Calling the ApiService method with both the payload AND
- *    ``row.expectedUpdatedAt`` (where the route requires a token).
+ *    ``row.expectedRowVersion`` (where the route requires a token).
  * 3. Translating the HTTP response into a [DispatchResult]:
- *      - 2xx → [DispatchResult.Success] (carry ``newUpdatedAt``
+ *      - 2xx → [DispatchResult.Success] (carry ``newRowVersion``
  *        from response so the engine can cascade the post-mutation
  *        token to same-target PENDING rows)
  *      - 409 ``state_conflict`` → [DispatchResult.Conflict] with
@@ -54,7 +54,7 @@ sealed interface DispatchResult {
     /**
      * Server returned 2xx; outbox row transitions to DONE.
      *
-     * ``newUpdatedAt`` is the server-side ``updated_at`` from the
+     * ``newRowVersion`` is the server-side ``row_version`` from the
      * response body when the route mutated a versioned row. The
      * drain engine cascades this token onto same-target PENDING
      * rows so a chain of offline mutations against the same row
@@ -68,7 +68,7 @@ sealed interface DispatchResult {
      * Routes that don't return a token (creates / terminal
      * lifecycle that has its own state machine) pass ``null``.
      */
-    data class Success(val newUpdatedAt: String? = null) : DispatchResult
+    data class Success(val newRowVersion: Long? = null) : DispatchResult
 
     /**
      * Server returned 409 ``state_conflict``. The row goes to

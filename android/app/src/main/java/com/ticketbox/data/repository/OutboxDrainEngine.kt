@@ -209,8 +209,8 @@ class OutboxDrainEngine(
                         // target PENDING rows so the next chained
                         // mutation against this row doesn't replay
                         // with a now-stale snapshot.
-                        val newToken = result.newUpdatedAt
-                        if (!newToken.isNullOrEmpty()) {
+                        val newToken = result.newRowVersion
+                        if (newToken != null && newToken != 0L) {
                             outbox.cascadeFreshToken(row.targetId, newToken)
                         }
                         done++

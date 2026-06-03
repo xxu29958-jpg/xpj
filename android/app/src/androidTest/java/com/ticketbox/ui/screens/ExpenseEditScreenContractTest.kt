@@ -93,6 +93,7 @@ class ExpenseEditScreenContractTest {
         expenseTime = "2026-05-12T10:15:00Z",
         createdAt = "2026-05-13T13:10:55Z",
         updatedAt = "2026-05-13T13:10:55Z",
+        rowVersion = 1L,
         confirmedAt = null,
         rejectedAt = null,
     )

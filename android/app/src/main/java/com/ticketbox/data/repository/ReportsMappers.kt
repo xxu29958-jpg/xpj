@@ -82,6 +82,7 @@ fun GoalDto.toDomain(): Goal = Goal(
     status = status,
     createdAt = createdAt,
     updatedAt = updatedAt,
+    rowVersion = rowVersion,
     archivedAt = archivedAt,
 )
 
@@ -93,7 +94,7 @@ fun GoalDraft.toRequest(): GoalCreateRequestDto = GoalCreateRequestDto(
 )
 
 fun GoalUpdate.toRequest(): GoalUpdateRequestDto = GoalUpdateRequestDto(
-    expectedUpdatedAt = expectedUpdatedAt,
+    expectedRowVersion = expectedRowVersion,
     name = name?.trim()?.takeIf { it.isNotBlank() },
     month = month?.trim()?.takeIf { it.isNotBlank() },
     targetAmountCents = targetAmountCents,

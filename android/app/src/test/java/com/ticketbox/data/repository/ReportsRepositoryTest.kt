@@ -86,7 +86,7 @@ class ReportsRepositoryTest {
             val updated = repository.updateGoal(
                 publicId = " goal-1 ",
                 update = GoalUpdate(
-                    expectedUpdatedAt = "2026-05-04T00:00:00Z",
+                    expectedRowVersion = 1L,
                     targetAmountCents = 90000,
                     category = "购物",
                 ),
@@ -389,6 +389,7 @@ private fun goalDto(
     status = status,
     createdAt = "2026-05-13T00:00:00Z",
     updatedAt = "2026-05-13T00:00:00Z",
+    rowVersion = 1L,
     archivedAt = archivedAt,
 )
 

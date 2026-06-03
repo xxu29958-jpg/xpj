@@ -125,8 +125,8 @@ internal class ExpensePendingRepository(
             // safeCall and surfaces as Result.failure.
             val outbox = core.outbox
             val adapter = core.patchExpenseAdapter
-            val token = request.expectedUpdatedAt
-            if (outbox == null || adapter == null || token.isNullOrEmpty()) {
+            val token = request.expectedRowVersion
+            if (outbox == null || adapter == null || token == null || token == 0L) {
                 // Outbox wiring missing OR baseline lacked a token.
                 // Fall back to the failure path so we don't pretend
                 // we saved.
@@ -145,7 +145,7 @@ internal class ExpensePendingRepository(
             // Result.failure.
             bound.requireStillActive()
             // codex round-8 P3#5: strip the token from the payload
-            // — outbox row's expectedUpdatedAt is the single source
+            // — outbox row's expectedRowVersion is the single source
             // of truth; replay (PatchExpenseDispatcher) already
             // overwrites the request token from the row before
             // dispatching. Saving it in the payload too duplicates
@@ -154,8 +154,8 @@ internal class ExpensePendingRepository(
             outbox.enqueue(
                 type = PendingMutationType.PatchExpense,
                 targetId = "expense:$id",
-                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = null)),
-                expectedUpdatedAt = token,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = null)),
+                expectedRowVersion = token,
             )
             SaveOutcome.Queued(projectOptimisticExpense(baseline, draft)) as SaveOutcome
         }
@@ -190,12 +190,12 @@ internal class ExpensePendingRepository(
 
     override suspend fun confirmExpense(
         id: Long,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         val confirmed = core.cacheIfConfirmed(
             bound.call {
-                it.confirmExpense(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+                it.confirmExpense(id, ExpenseStateTokenRequest(expectedRowVersion))
             },
             bound.ledgerId,
         )
@@ -204,35 +204,35 @@ internal class ExpensePendingRepository(
 
     override suspend fun rejectExpense(
         id: Long,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         val rejected = bound.call {
-            it.rejectExpense(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+            it.rejectExpense(id, ExpenseStateTokenRequest(expectedRowVersion))
         }
         rejected.toDomain()
     }
 
     override suspend fun undoRejectExpense(
         id: Long,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<Expense> =
         core.errorHandler.safeCall {
             val bound = core.ledgerRequestGuard.bind()
             val restored = bound.call {
-                it.undoExpense(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+                it.undoExpense(id, ExpenseStateTokenRequest(expectedRowVersion))
             }
             restored.toDomain()
         }
 
     override suspend fun markNotDuplicate(
         id: Long,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         val updated = core.cacheIfConfirmed(
             bound.call {
-                it.markNotDuplicate(id, ExpenseStateTokenRequest(expectedUpdatedAt))
+                it.markNotDuplicate(id, ExpenseStateTokenRequest(expectedRowVersion))
             },
             bound.ledgerId,
         )
@@ -246,7 +246,7 @@ internal class ExpensePendingRepository(
         try {
             val confirmed = core.cacheIfConfirmed(
                 bound.call {
-                    it.confirmExpense(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+                    it.confirmExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
                 },
                 bound.ledgerId,
             )
@@ -268,7 +268,7 @@ internal class ExpensePendingRepository(
         val bound = core.ledgerRequestGuard.bind()
         try {
             val rejected = bound.call {
-                it.rejectExpense(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+                it.rejectExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
             }
             ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
@@ -289,7 +289,7 @@ internal class ExpensePendingRepository(
         try {
             val updated = core.cacheIfConfirmed(
                 bound.call {
-                    it.markNotDuplicate(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+                    it.markNotDuplicate(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
                 },
                 bound.ledgerId,
             )

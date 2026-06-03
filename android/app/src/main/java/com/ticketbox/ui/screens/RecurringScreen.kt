@@ -64,8 +64,8 @@ fun RecurringScreen(
     state: RecurringUiState,
     onRefresh: () -> Unit,
     onConfirmCandidate: (RecurringCandidate) -> Unit,
-    onPause: (String, String) -> Unit,
-    onResume: (String, String) -> Unit,
+    onPause: (String, Long) -> Unit,
+    onResume: (String, Long) -> Unit,
     onArchive: (String) -> Unit,
     onBack: (() -> Unit)? = null,
 ) {
@@ -178,8 +178,8 @@ private fun RecurringItemsCard(
     loading: Boolean,
     currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
-    onPause: (String, String) -> Unit,
-    onResume: (String, String) -> Unit,
+    onPause: (String, Long) -> Unit,
+    onResume: (String, Long) -> Unit,
     onArchive: (String) -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
@@ -238,8 +238,8 @@ private fun RecurringItemRow(
     item: RecurringItem,
     currencyDisplay: CurrencyDisplay,
     canModify: Boolean,
-    onPause: (String, String) -> Unit,
-    onResume: (String, String) -> Unit,
+    onPause: (String, Long) -> Unit,
+    onResume: (String, Long) -> Unit,
     onArchive: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
@@ -299,14 +299,14 @@ private fun RecurringItemRow(
 @Composable
 private fun RecurringActions(
     item: RecurringItem,
-    onPause: (String, String) -> Unit,
-    onResume: (String, String) -> Unit,
+    onPause: (String, Long) -> Unit,
+    onResume: (String, Long) -> Unit,
     onArchive: (String) -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
         when (item.status) {
-            "active" -> TextButton(onClick = { onPause(item.publicId, item.updatedAt) }) { Text("暂停") }
-            "paused" -> TextButton(onClick = { onResume(item.publicId, item.updatedAt) }) { Text("恢复") }
+            "active" -> TextButton(onClick = { onPause(item.publicId, item.rowVersion) }) { Text("暂停") }
+            "paused" -> TextButton(onClick = { onResume(item.publicId, item.rowVersion) }) { Text("恢复") }
         }
         TextButton(onClick = { onArchive(item.publicId) }) {
             Icon(Icons.Filled.DeleteOutline, contentDescription = "归档固定支出")

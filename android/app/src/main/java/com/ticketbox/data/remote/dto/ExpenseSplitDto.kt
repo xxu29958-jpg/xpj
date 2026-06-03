@@ -25,6 +25,10 @@ data class ExpenseSplitDto(
 data class ExpenseSplitsResponseDto(
     @param:Json(name = "expense_id")
     val expenseId: Long,
+    // ADR-0041: parent expense's post-mutation row_version (see
+    // ExpenseItemsResponseDto). Self-describing replace response — no second GET.
+    @param:Json(name = "row_version")
+    val rowVersion: Long,
     @param:Json(name = "parent_amount_cents")
     val parentAmountCents: Long?,
     @param:Json(name = "splits_total_amount_cents")
@@ -43,7 +47,7 @@ data class ExpenseSplitRequestDto(
 )
 
 data class ExpenseSplitReplaceRequestDto(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
     val splits: List<ExpenseSplitRequestDto> = emptyList(),
 )

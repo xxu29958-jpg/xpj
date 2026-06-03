@@ -1,0 +1,424 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 11,
+    "identityHash": "8773e0988f829c0bddbddc6b95af3c93",
+    "entities": [
+      {
+        "tableName": "expenses",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ledgerId` TEXT NOT NULL, `serverId` INTEGER NOT NULL, `publicId` TEXT NOT NULL, `amountCents` INTEGER, `homeCurrencyCode` TEXT NOT NULL, `originalCurrencyCode` TEXT NOT NULL, `originalAmountMinor` INTEGER, `exchangeRateToCny` TEXT, `exchangeRateDate` TEXT, `exchangeRateSource` TEXT, `fxStatus` TEXT NOT NULL, `merchant` TEXT, `category` TEXT NOT NULL, `note` TEXT, `source` TEXT NOT NULL, `thumbnailPath` TEXT, `imageDeletedAt` TEXT, `thumbnailDeletedAt` TEXT, `imageHash` TEXT, `rawText` TEXT, `confidence` REAL, `duplicateStatus` TEXT NOT NULL, `duplicateOfId` INTEGER, `duplicateReason` TEXT, `tags` TEXT, `valueScore` INTEGER, `regretScore` INTEGER, `status` TEXT NOT NULL, `expenseTime` TEXT, `createdAt` TEXT NOT NULL, `confirmedAt` TEXT, `updatedAt` TEXT, `rowVersion` INTEGER NOT NULL DEFAULT 1)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ledgerId",
+            "columnName": "ledgerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverId",
+            "columnName": "serverId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "publicId",
+            "columnName": "publicId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "amountCents",
+            "columnName": "amountCents",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "homeCurrencyCode",
+            "columnName": "homeCurrencyCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalCurrencyCode",
+            "columnName": "originalCurrencyCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalAmountMinor",
+            "columnName": "originalAmountMinor",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "exchangeRateToCny",
+            "columnName": "exchangeRateToCny",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "exchangeRateDate",
+            "columnName": "exchangeRateDate",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "exchangeRateSource",
+            "columnName": "exchangeRateSource",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fxStatus",
+            "columnName": "fxStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "merchant",
+            "columnName": "merchant",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "thumbnailPath",
+            "columnName": "thumbnailPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageDeletedAt",
+            "columnName": "imageDeletedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "thumbnailDeletedAt",
+            "columnName": "thumbnailDeletedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "imageHash",
+            "columnName": "imageHash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rawText",
+            "columnName": "rawText",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "duplicateStatus",
+            "columnName": "duplicateStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "duplicateOfId",
+            "columnName": "duplicateOfId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "duplicateReason",
+            "columnName": "duplicateReason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tags",
+            "columnName": "tags",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "valueScore",
+            "columnName": "valueScore",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "regretScore",
+            "columnName": "regretScore",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expenseTime",
+            "columnName": "expenseTime",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmedAt",
+            "columnName": "confirmedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rowVersion",
+            "columnName": "rowVersion",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_expenses_ledgerId_serverId",
+            "unique": true,
+            "columnNames": [
+              "ledgerId",
+              "serverId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_expenses_ledgerId_serverId` ON `${TABLE_NAME}` (`ledgerId`, `serverId`)"
+          },
+          {
+            "name": "index_expenses_publicId",
+            "unique": true,
+            "columnNames": [
+              "publicId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_expenses_publicId` ON `${TABLE_NAME}` (`publicId`)"
+          },
+          {
+            "name": "index_expenses_status_expenseTime",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "expenseTime"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_expenses_status_expenseTime` ON `${TABLE_NAME}` (`status`, `expenseTime`)"
+          },
+          {
+            "name": "index_expenses_status_confirmedAt",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "confirmedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_expenses_status_confirmedAt` ON `${TABLE_NAME}` (`status`, `confirmedAt`)"
+          },
+          {
+            "name": "index_expenses_status_createdAt",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_expenses_status_createdAt` ON `${TABLE_NAME}` (`status`, `createdAt`)"
+          },
+          {
+            "name": "index_expenses_ledgerId",
+            "unique": false,
+            "columnNames": [
+              "ledgerId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_expenses_ledgerId` ON `${TABLE_NAME}` (`ledgerId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pending_mutations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serverUrl` TEXT NOT NULL DEFAULT '', `ledgerId` TEXT NOT NULL DEFAULT '', `type` TEXT NOT NULL, `targetId` TEXT NOT NULL, `payload` TEXT NOT NULL, `expectedRowVersion` INTEGER NOT NULL DEFAULT 0, `status` TEXT NOT NULL, `retryCount` INTEGER NOT NULL DEFAULT 0, `lastError` TEXT, `createdAt` TEXT NOT NULL, `attemptedAt` TEXT, `completedAt` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverUrl",
+            "columnName": "serverUrl",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "ledgerId",
+            "columnName": "ledgerId",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetId",
+            "columnName": "targetId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedRowVersion",
+            "columnName": "expectedRowVersion",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retryCount",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptedAt",
+            "columnName": "attemptedAt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completedAt",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pending_mutations_createdAt",
+            "unique": false,
+            "columnNames": [
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
+          },
+          {
+            "name": "index_pending_mutations_targetId_status",
+            "unique": false,
+            "columnNames": [
+              "targetId",
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_targetId_status` ON `${TABLE_NAME}` (`targetId`, `status`)"
+          },
+          {
+            "name": "index_pending_mutations_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_pending_mutations_serverUrl_ledgerId_createdAt",
+            "unique": false,
+            "columnNames": [
+              "serverUrl",
+              "ledgerId",
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_serverUrl_ledgerId_createdAt` ON `${TABLE_NAME}` (`serverUrl`, `ledgerId`, `createdAt`)"
+          },
+          {
+            "name": "index_pending_mutations_serverUrl_ledgerId_targetId_status",
+            "unique": false,
+            "columnNames": [
+              "serverUrl",
+              "ledgerId",
+              "targetId",
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_serverUrl_ledgerId_targetId_status` ON `${TABLE_NAME}` (`serverUrl`, `ledgerId`, `targetId`, `status`)"
+          },
+          {
+            "name": "index_pending_mutations_serverUrl_ledgerId_status",
+            "unique": false,
+            "columnNames": [
+              "serverUrl",
+              "ledgerId",
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pending_mutations_serverUrl_ledgerId_status` ON `${TABLE_NAME}` (`serverUrl`, `ledgerId`, `status`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8773e0988f829c0bddbddc6b95af3c93')"
+    ]
+  }
+}

@@ -260,14 +260,14 @@ internal class ExpenseRepositoryCore(
      * offline-aware token-only state-machine POSTs (confirm / reject /
      * mark-not-duplicate in [ExpensePendingRepository]; retry-OCR in
      * [ExpenseDetailRepository]). Enqueues a token-only row — the
-     * payload carries an empty placeholder and ``row.expectedUpdatedAt``
+     * payload carries a ``0L`` placeholder and ``row.expectedRowVersion``
      * is the single source of truth (the dispatcher overwrites the
      * request token from the row on replay — round-8 P3#5). Re-checks
      * session activity BEFORE enqueue so a mid-flight ledger switch
      * can't slip an old-session row into the now-current ledger's queue
      * (round-13 P1). Rethrows [networkError] when the outbox / adapter
-     * isn't wired or the baseline lacks a token, so the caller surfaces
-     * a hard failure instead of pretending to have queued.
+     * isn't wired or the baseline lacks a token (``rowVersion == 0L``), so
+     * the caller surfaces a hard failure instead of pretending to have queued.
      *
      * Lives on the core (not a single Repository) because both the
      * pending repo and the detail repo route their token-only POSTs
@@ -283,15 +283,15 @@ internal class ExpenseRepositoryCore(
     ) {
         val outboxRef = outbox
         val adapter = expenseStateTokenAdapter
-        if (outboxRef == null || adapter == null || expense.updatedAt.isEmpty()) {
+        if (outboxRef == null || adapter == null || expense.rowVersion == 0L) {
             throw networkError
         }
         bound.requireStillActive()
         outboxRef.enqueue(
             type = type,
             targetId = "expense:${expense.id}",
-            payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedUpdatedAt = "")),
-            expectedUpdatedAt = expense.updatedAt,
+            payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L)),
+            expectedRowVersion = expense.rowVersion,
         )
     }
 

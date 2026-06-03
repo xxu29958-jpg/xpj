@@ -91,7 +91,7 @@ class RuleRepository(
     // NetworkErrorHandler surfaces it through the standard mapping.
     suspend fun updateCategoryRule(
         id: Long,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
         keyword: String? = null,
         category: String? = null,
         enabled: Boolean? = null,
@@ -102,7 +102,7 @@ class RuleRepository(
                 api.updateCategoryRule(
                     id,
                     CategoryRuleUpdateRequest(
-                        expectedUpdatedAt = expectedUpdatedAt,
+                        expectedRowVersion = expectedRowVersion,
                         keyword = keyword,
                         category = category,
                         enabled = enabled,
@@ -142,7 +142,7 @@ class RuleRepository(
         priority: Int? = null,
     ): Result<CategoryRuleSaveOutcome> = errorHandler.safeCall {
         val request = CategoryRuleUpdateRequest(
-            expectedUpdatedAt = baseline.updatedAt,
+            expectedRowVersion = baseline.rowVersion,
             keyword = keyword,
             category = category,
             enabled = enabled,
@@ -179,14 +179,14 @@ class RuleRepository(
             // the now-current ledger's queue.
             bound.requireStillActive()
             // [round-8 P3#5] strip token from payload — row's
-            // expectedUpdatedAt is the single source of truth.
+            // expectedRowVersion is the single source of truth.
             // Dispatcher overwrites the request token from the row
             // on replay (see UpdateCategoryRuleDispatcher).
             outboxRef.enqueue(
                 type = PendingMutationType.UpdateCategoryRule,
                 targetId = "category_rule:${baseline.id}",
-                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
-                expectedUpdatedAt = baseline.updatedAt,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = baseline.rowVersion,
             )
             CategoryRuleSaveOutcome.Queued(
                 projectOptimisticRule(baseline, keyword, category, enabled, priority),
@@ -214,12 +214,12 @@ class RuleRepository(
         priority = priority ?: baseline.priority,
     )
 
-    suspend fun deleteCategoryRule(id: Long, expectedUpdatedAt: String): Result<Unit> =
+    suspend fun deleteCategoryRule(id: Long, expectedRowVersion: Long): Result<Unit> =
         errorHandler.safeCall {
             ledgerRequestGuard.guardedCall { api ->
                 api.deleteCategoryRule(
                     id,
-                    CategoryRuleDeleteRequest(expectedUpdatedAt = expectedUpdatedAt),
+                    CategoryRuleDeleteRequest(expectedRowVersion = expectedRowVersion),
                 )
             }
             Unit
@@ -241,7 +241,7 @@ class RuleRepository(
     suspend fun deleteCategoryRuleAllowingOffline(
         rule: CategoryRule,
     ): Result<DeleteOutcome> = errorHandler.safeCall {
-        val request = CategoryRuleDeleteRequest(expectedUpdatedAt = rule.updatedAt)
+        val request = CategoryRuleDeleteRequest(expectedRowVersion = rule.rowVersion)
         // [codex round-13 P1] Explicit bind so the IOException catch
         // can re-verify session activity before enqueueing.
         // ``guardedCall`` only checks ``isStillActive`` when the
@@ -266,16 +266,16 @@ class RuleRepository(
             // old-session row into the new session's queue.
             bound.requireStillActive()
             // [round-8 P3#5] strip token from payload — row's
-            // expectedUpdatedAt is the single source of truth.
-            // CategoryRuleDeleteRequest.expectedUpdatedAt is
-            // non-nullable String so we substitute an empty
+            // expectedRowVersion is the single source of truth.
+            // CategoryRuleDeleteRequest.expectedRowVersion is
+            // non-nullable Long so we substitute a 0L
             // placeholder; dispatcher overwrites from
-            // row.expectedUpdatedAt on replay.
+            // row.expectedRowVersion on replay.
             outboxRef.enqueue(
                 type = PendingMutationType.DeleteCategoryRule,
                 targetId = "category_rule:${rule.id}",
-                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
-                expectedUpdatedAt = rule.updatedAt,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = rule.rowVersion,
             )
             DeleteOutcome.Queued as DeleteOutcome
         }

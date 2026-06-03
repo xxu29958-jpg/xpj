@@ -100,7 +100,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.archive("some-id", "2026-01-01T00:00:00Z")
+        viewModel.archive("some-id", 1L)
         advanceUntilIdle()
         assertEquals("some-id", repo.lastArchiveId)
         assertEquals("已归档", viewModel.state.value.flashMessage)
@@ -111,7 +111,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.restore("some-id", "2026-01-01T00:00:00Z")
+        viewModel.restore("some-id", 1L)
         advanceUntilIdle()
         assertEquals("some-id", repo.lastRestoreId)
         assertEquals("已恢复", viewModel.state.value.flashMessage)
@@ -122,7 +122,7 @@ class IncomePlanViewModelTest {
         val repo = FakeRepository()
         val viewModel = IncomePlanViewModel(repo)
         advanceUntilIdle()
-        viewModel.archive("x", "2026-01-01T00:00:00Z")
+        viewModel.archive("x", 1L)
         advanceUntilIdle()
         viewModel.dismissFlash()
         assertNull(viewModel.state.value.flashMessage)
@@ -178,6 +178,7 @@ class IncomePlanViewModelTest {
         status = status,
         createdAt = "2026-05-01T00:00:00Z",
         updatedAt = "2026-05-01T00:00:00Z",
+        rowVersion = 1L,
         archivedAt = if (status == IncomePlanStatus.ARCHIVED) "2026-05-15T00:00:00Z" else null,
     )
 
@@ -208,12 +209,12 @@ class IncomePlanViewModelTest {
         override suspend fun update(publicId: String, patch: com.ticketbox.data.repository.IncomePlanPatch) =
             Result.success(stub(publicId))
 
-        override suspend fun archive(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
+        override suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
             lastArchiveId = publicId
             return Result.success(stub(publicId, IncomePlanStatus.ARCHIVED))
         }
 
-        override suspend fun restore(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
+        override suspend fun restore(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
             lastRestoreId = publicId
             return Result.success(stub(publicId, IncomePlanStatus.ACTIVE))
         }
@@ -227,6 +228,7 @@ class IncomePlanViewModelTest {
             status = status,
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = "2026-05-01T00:00:00Z",
+            rowVersion = 1L,
             archivedAt = if (status == IncomePlanStatus.ARCHIVED) "2026-05-15T00:00:00Z" else null,
         )
     }

@@ -291,5 +291,6 @@ def _build_response(db: Session, expense: Expense) -> ExpenseItemsResponse:
         items_total_amount_cents=items_total,
         mismatch_cents=mismatch,
         items_sum_status=expense.items_sum_status,
+        row_version=expense.row_version,
         items=[ExpenseItemResponse.model_validate(item) for item in items],
     )

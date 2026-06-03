@@ -16,7 +16,7 @@ import retrofit2.HttpException
  * Replays a queued ``PATCH /api/expenses/{id}`` call. Targets are
  * encoded as ``expense:<id>`` per the outbox convention; the
  * payload is the Moshi-serialised [ExpenseUpdateRequest] minus the
- * token (the token lives on the row's ``expectedUpdatedAt`` so we
+ * token (the token lives on the row's ``expectedRowVersion`` so we
  * can refresh it on KeepMine without re-serialising the whole
  * payload).
  *
@@ -53,9 +53,9 @@ class PatchExpenseDispatcher(
                 ?: return DispatchResult.Failure("payload deserialised to null")
             // The token on the row is the authoritative one; replace
             // any older value embedded in the serialised payload
-            // (KeepMine refreshes ``row.expectedUpdatedAt`` but
+            // (KeepMine refreshes ``row.expectedRowVersion`` but
             // doesn't rewrite the serialised payload itself).
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -68,7 +68,7 @@ class PatchExpenseDispatcher(
 
         return try {
             val updated = apiProvider().updateExpense(expenseId, request)
-            DispatchResult.Success(newUpdatedAt = updated.updatedAt)
+            DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

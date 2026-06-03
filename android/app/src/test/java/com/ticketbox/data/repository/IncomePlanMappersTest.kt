@@ -20,6 +20,7 @@ class IncomePlanMappersTest {
             status = "active",
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = "2026-05-15T08:00:00Z",
+            rowVersion = 1L,
             archivedAt = null,
         )
 
@@ -65,12 +66,12 @@ class IncomePlanMappersTest {
     @Test
     fun patchSerialisesOnlyProvidedFields() {
         val patch = IncomePlanPatch(
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
             amountCents = 555_000,
             payDay = 15,
         )
         val request = patch.toUpdateRequest()
-        assertEquals("2026-05-04T00:00:00Z", request.expectedUpdatedAt)
+        assertEquals(1L, request.expectedRowVersion)
         assertNull(request.label)
         assertNull(request.sourceType)
         assertEquals(555_000L, request.amountCents)
@@ -80,12 +81,12 @@ class IncomePlanMappersTest {
     @Test
     fun patchTrimsLabelWhenProvided() {
         val patch = IncomePlanPatch(
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
             label = "  重命名  ",
         )
         val request = patch.toUpdateRequest()
         assertEquals("重命名", request.label)
-        assertEquals("2026-05-04T00:00:00Z", request.expectedUpdatedAt)
+        assertEquals(1L, request.expectedRowVersion)
     }
 
     private fun baseDto() = IncomePlanDto(
@@ -97,6 +98,7 @@ class IncomePlanMappersTest {
         status = "active",
         createdAt = "2026-05-01T00:00:00Z",
         updatedAt = "2026-05-01T00:00:00Z",
+        rowVersion = 1L,
         archivedAt = null,
     )
 }

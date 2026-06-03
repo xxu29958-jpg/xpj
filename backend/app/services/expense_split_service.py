@@ -214,6 +214,7 @@ def _build_response(db: Session, expense: Expense) -> ExpenseSplitsResponse:
         parent_amount_cents=expense.amount_cents,
         splits_total_amount_cents=total,
         mismatch_cents=mismatch,
+        row_version=expense.row_version,
         splits=[_split_response(split, members.get(split.member_id)) for split in splits],
     )
 

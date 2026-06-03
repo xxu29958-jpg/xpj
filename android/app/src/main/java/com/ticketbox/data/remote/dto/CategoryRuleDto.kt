@@ -20,6 +20,8 @@ data class CategoryRuleDto(
     val createdAt: String,
     @param:Json(name = "updated_at")
     val updatedAt: String,
+    @param:Json(name = "row_version")
+    val rowVersion: Long,
 )
 
 data class CategoryRuleRequest(
@@ -38,14 +40,14 @@ data class CategoryRuleRequest(
 )
 
 /**
- * ADR-0038 PR-1: PATCH /api/rules/categories/{id} body carries the
- * client's last-seen ``updated_at`` so a peer edit between the read
+ * ADR-0041: PATCH /api/rules/categories/{id} body carries the
+ * client's last-seen ``row_version`` so a peer edit between the read
  * and this PATCH surfaces as 409 ``state_conflict`` instead of a
  * silent overwrite.
  */
 data class CategoryRuleUpdateRequest(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
     val keyword: String? = null,
     val category: String? = null,
     val enabled: Boolean? = null,
@@ -66,8 +68,8 @@ data class CategoryRuleUpdateRequest(
  * PATCH. Mirrors backend ``CategoryRuleDeleteRequest``.
  */
 data class CategoryRuleDeleteRequest(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
 )
 
 data class RuleApplicationBatchDto(

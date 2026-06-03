@@ -77,7 +77,7 @@ class MerchantRepository(
     // → NetworkErrorHandler surfaces "已被其它设备修改" to the user.
     suspend fun updateMerchantAlias(
         publicId: String,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
         canonicalMerchant: String? = null,
         alias: String? = null,
         enabled: Boolean? = null,
@@ -89,7 +89,7 @@ class MerchantRepository(
                 api.updateMerchantAlias(
                     cleanPublicId,
                     MerchantAliasUpdateRequest(
-                        expectedUpdatedAt = expectedUpdatedAt,
+                        expectedRowVersion = expectedRowVersion,
                         canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() },
                         alias = alias?.trim()?.takeIf { it.isNotBlank() },
                         enabled = enabled,
@@ -100,7 +100,7 @@ class MerchantRepository(
 
     suspend fun deleteMerchantAlias(
         publicId: String,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<Unit> =
         errorHandler.safeCall {
             val cleanPublicId = publicId.trim()
@@ -108,7 +108,7 @@ class MerchantRepository(
             ledgerRequestGuard.guardedCall { api ->
                 api.deleteMerchantAlias(
                     cleanPublicId,
-                    MerchantAliasDeleteRequest(expectedUpdatedAt = expectedUpdatedAt),
+                    MerchantAliasDeleteRequest(expectedRowVersion = expectedRowVersion),
                 )
             }
             Unit
@@ -143,7 +143,7 @@ class MerchantRepository(
     ): Result<DeleteOutcome> = errorHandler.safeCall {
         val cleanPublicId = alias.publicId.trim()
         require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
-        val request = MerchantAliasDeleteRequest(expectedUpdatedAt = alias.updatedAt)
+        val request = MerchantAliasDeleteRequest(expectedRowVersion = alias.rowVersion)
         // [codex round-13 P1] Explicit bind for IOException-catch
         // session re-check. See [RuleRepository.deleteCategoryRuleAllowingOffline]
         // for the rationale: ``guardedCall``'s post-check is
@@ -166,12 +166,12 @@ class MerchantRepository(
             // the bind above — prevents wrong-session enqueue.
             bound.requireStillActive()
             // [round-8 P3#5] payload carries no token; row's
-            // expectedUpdatedAt is the single source of truth.
+            // expectedRowVersion is the single source of truth.
             outboxRef.enqueue(
                 type = PendingMutationType.DeleteMerchantAlias,
                 targetId = "merchant_alias:$cleanPublicId",
-                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
-                expectedUpdatedAt = alias.updatedAt,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = alias.rowVersion,
             )
             DeleteOutcome.Queued as DeleteOutcome
         }
@@ -198,7 +198,7 @@ class MerchantRepository(
         val cleanPublicId = baseline.publicId.trim()
         require(cleanPublicId.isNotBlank()) { "请选择一个商家别名。" }
         val request = MerchantAliasUpdateRequest(
-            expectedUpdatedAt = baseline.updatedAt,
+            expectedRowVersion = baseline.rowVersion,
             canonicalMerchant = canonicalMerchant?.trim()?.takeIf { it.isNotBlank() },
             alias = alias?.trim()?.takeIf { it.isNotBlank() },
             enabled = enabled,
@@ -220,13 +220,13 @@ class MerchantRepository(
             // [codex round-13 P1] session race guard — see PR-2g.4
             // / 2g.5 producers for the rationale.
             bound.requireStillActive()
-            // [round-8 P3#5] payload sans token; row.expectedUpdatedAt
+            // [round-8 P3#5] payload sans token; row.expectedRowVersion
             // is single source of truth.
             outboxRef.enqueue(
                 type = PendingMutationType.UpdateMerchantAlias,
                 targetId = "merchant_alias:$cleanPublicId",
-                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
-                expectedUpdatedAt = baseline.updatedAt,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = baseline.rowVersion,
             )
             MerchantAliasSaveOutcome.Queued(
                 projectOptimisticAlias(baseline, canonicalMerchant, alias, enabled),

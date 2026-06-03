@@ -85,12 +85,12 @@ class FakePendingMutationDao : PendingMutationDao {
     override suspend fun refreshToken(
         id: Long,
         pendingStatus: String,
-        freshToken: String,
+        freshToken: Long,
     ): Int {
         val current = rows[id] ?: return 0
         rows[id] = current.copy(
             status = pendingStatus,
-            expectedUpdatedAt = freshToken,
+            expectedRowVersion = freshToken,
             lastError = null,
         )
         refreshObservables()
@@ -102,7 +102,7 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         targetId: String,
         pendingStatus: String,
-        freshToken: String,
+        freshToken: Long,
     ): Int {
         val matching = rows.values.filter {
             it.serverUrl == serverUrl &&
@@ -111,7 +111,7 @@ class FakePendingMutationDao : PendingMutationDao {
                 it.status == pendingStatus
         }
         for (row in matching) {
-            rows[row.id] = row.copy(expectedUpdatedAt = freshToken)
+            rows[row.id] = row.copy(expectedRowVersion = freshToken)
         }
         if (matching.isNotEmpty()) refreshObservables()
         return matching.size
@@ -132,7 +132,7 @@ class FakePendingMutationDao : PendingMutationDao {
         id: Long,
         fromStatus: String,
         toStatus: String,
-        freshToken: String,
+        freshToken: Long,
     ): Int {
         val current = rows[id] ?: return 0
         if (current.status != fromStatus) return 0
@@ -140,7 +140,7 @@ class FakePendingMutationDao : PendingMutationDao {
         // 重置预算的语义。
         rows[id] = current.copy(
             status = toStatus,
-            expectedUpdatedAt = freshToken,
+            expectedRowVersion = freshToken,
             retryCount = 0,
             lastError = null,
         )

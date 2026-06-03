@@ -24,8 +24,8 @@ interface RecurringActions {
         candidate: RecurringCandidate,
         nextExpectedDate: String? = null,
     ): Result<RecurringItem>
-    suspend fun pause(publicId: String, expectedUpdatedAt: String): Result<RecurringItem>
-    suspend fun resume(publicId: String, expectedUpdatedAt: String): Result<RecurringItem>
+    suspend fun pause(publicId: String, expectedRowVersion: Long): Result<RecurringItem>
+    suspend fun resume(publicId: String, expectedRowVersion: Long): Result<RecurringItem>
     suspend fun archive(publicId: String): Result<RecurringItem>
 }
 
@@ -96,24 +96,24 @@ class RecurringRepository(
             }
         }
 
-    override suspend fun pause(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> =
+    override suspend fun pause(publicId: String, expectedRowVersion: Long): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
             ledgerRequestGuard.guardedCall { api ->
                 api.pauseRecurringItem(
                     publicId.trim(),
-                    com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedUpdatedAt),
+                    com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
                 ).toDomain()
             }
         }
 
-    override suspend fun resume(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> =
+    override suspend fun resume(publicId: String, expectedRowVersion: Long): Result<RecurringItem> =
         errorHandler.safeCall {
             require(publicId.isNotBlank()) { "固定支出不存在。" }
             ledgerRequestGuard.guardedCall { api ->
                 api.resumeRecurringItem(
                     publicId.trim(),
-                    com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedUpdatedAt),
+                    com.ticketbox.data.remote.dto.RecurringItemTokenRequest(expectedRowVersion),
                 ).toDomain()
             }
         }

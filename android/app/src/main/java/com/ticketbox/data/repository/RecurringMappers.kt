@@ -25,6 +25,7 @@ fun RecurringItemDto.toDomain(): RecurringItem = RecurringItem(
     amountDeltaPercent = amountDeltaPercent,
     createdAt = createdAt,
     updatedAt = updatedAt,
+    rowVersion = rowVersion,
     pausedAt = pausedAt,
     archivedAt = archivedAt,
 )

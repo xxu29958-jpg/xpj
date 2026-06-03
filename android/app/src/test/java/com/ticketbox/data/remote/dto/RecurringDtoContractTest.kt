@@ -37,6 +37,7 @@ class RecurringDtoContractTest {
                       "amount_delta_percent": 40,
                       "created_at": "2026-05-13T00:00:00Z",
                       "updated_at": "2026-05-13T00:00:00Z",
+                      "row_version": 1,
                       "paused_at": null,
                       "archived_at": null
                     }

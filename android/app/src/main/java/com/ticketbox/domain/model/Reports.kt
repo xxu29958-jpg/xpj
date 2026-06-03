@@ -97,6 +97,7 @@ data class Goal(
     val status: String,
     val createdAt: String,
     val updatedAt: String,
+    val rowVersion: Long,
     val archivedAt: String?,
 ) {
     val progress: Float = (progressPercent / 100f).coerceIn(0f, 1f)
@@ -112,7 +113,7 @@ data class GoalDraft(
 )
 
 data class GoalUpdate(
-    val expectedUpdatedAt: String,
+    val expectedRowVersion: Long,
     val name: String? = null,
     val month: String? = null,
     val targetAmountCents: Long? = null,

@@ -46,26 +46,26 @@ class ExpenseRepositoryExpenseDetailTest {
                     confidence = null,
                 ),
             ),
-            expectedUpdatedAt = "2026-05-03T04:20:00Z",
+            expectedRowVersion = 1L,
         ).getOrThrow()
         val splits = repository.fetchExpenseSplits(9).getOrThrow()
         val replacedSplits = repository.replaceExpenseSplits(
             9,
             listOf(ExpenseSplitDraft(memberId = 12, amountCents = 6000, note = " 一起吃饭 ")),
-            expectedUpdatedAt = "2026-05-03T04:20:00Z",
+            expectedRowVersion = 1L,
         ).getOrThrow()
 
         assertEquals(9L, apiService.itemFetchIds.single())
         assertEquals(9L, apiService.itemReplaceIds.single())
         assertEquals("拿铁", apiService.itemReplaceRequests.single().items.single().name)
         assertEquals("餐饮", apiService.itemReplaceRequests.single().items.single().category)
-        assertEquals("2026-05-03T04:20:00Z", apiService.itemReplaceRequests.single().expectedUpdatedAt)
+        assertEquals(1L, apiService.itemReplaceRequests.single().expectedRowVersion)
         assertEquals("item-1", items.items.single().publicId)
         assertEquals("item-1", replacedItems.items.single().publicId)
         assertEquals(9L, apiService.splitFetchIds.single())
         assertEquals(9L, apiService.splitReplaceIds.single())
         assertEquals("一起吃饭", apiService.splitReplaceRequests.single().splits.single().note)
-        assertEquals("2026-05-03T04:20:00Z", apiService.splitReplaceRequests.single().expectedUpdatedAt)
+        assertEquals(1L, apiService.splitReplaceRequests.single().expectedRowVersion)
         assertEquals("split-1", splits.splits.single().publicId)
         assertEquals("split-1", replacedSplits.splits.single().publicId)
     }
@@ -180,7 +180,7 @@ class ExpenseRepositoryExpenseDetailTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val failure = repository.confirmExpense(9, "2026-05-04T04:30:00Z").exceptionOrNull()
+        val failure = repository.confirmExpense(9, 2L).exceptionOrNull()
 
         assertEquals("账本已切换，请重新操作。", failure?.message)
         assertEquals(listOf(9L), apiService.confirmExpenseIds)
@@ -200,7 +200,7 @@ class ExpenseRepositoryExpenseDetailTest {
             deviceNameProvider = { "Android Test Device" },
         )
 
-        val result = repository.markNotDuplicate(9, "2026-05-04T04:30:00Z").getOrThrow()
+        val result = repository.markNotDuplicate(9, 2L).getOrThrow()
 
         assertEquals(9L, result.id)
         assertEquals(listOf(9L), dao.getConfirmed("owner").map { it.serverId })
@@ -232,12 +232,12 @@ class ExpenseRepositoryExpenseDetailTest {
         val itemResult = repository.replaceExpenseItems(
             9,
             listOf(ExpenseItemDraft("拿铁", null, null, 500, "餐饮", null, null)),
-            expectedUpdatedAt = "2026-05-03T04:20:00Z",
+            expectedRowVersion = 1L,
         )
         val splitResult = repository.replaceExpenseSplits(
             9,
             listOf(ExpenseSplitDraft(memberId = 12, amountCents = 500, note = null)),
-            expectedUpdatedAt = "2026-05-03T04:20:00Z",
+            expectedRowVersion = 1L,
         )
 
         assertEquals("当前角色为只读，无法修改账本。", itemResult.exceptionOrNull()?.message)

@@ -215,7 +215,7 @@ interface ApiService {
     // reject has nothing to restore via the API (its rejection lives in the
     // outbox, not the server); UI should only show the undo affordance after
     // an ExpenseStateOutcome.Synced reject.
-    // ADR-0038 PR-A: undo now carries expected_updated_at — rejects stale
+    // ADR-0038 PR-A: undo now carries expected_row_version — rejects stale
     // /undo from a banner whose row has been re-rejected since the banner
     // was shown. Without it a cached banner could un-do a NEW intentional
     // reject.

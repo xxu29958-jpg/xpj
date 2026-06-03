@@ -104,10 +104,10 @@ DebtCounts = dict[str, int]
 # into services (device_public_id / active_ledger_name) or behind TYPE_CHECKING.
 # Both at 0 means any real route→model import or implicit-None return now fails.
 CODEBASE_DEBT_LIMITS: DebtCounts = {
-    # ADR-0038 expense undo (POST /api/expenses/{id}/undo) bumped this from 12 → 13:
-    # routes/expenses.py crossed 500 lines for the new endpoint. Splitting the file
-    # purely to stay under the line is the wrong trade per this gate's own rule.
-    "files_over_500": 13,
+    # 12→13: ADR-0038 undo pushed routes/expenses.py past 500. 13→14: ADR-0041
+    # self-describing items/splits tests grew test_expense_splits.py past 500.
+    # Splitting cohesive files purely to stay under the line is the wrong trade.
+    "files_over_500": 14,
     # PR-A expanded undo_reject_expense docstring (ABA + child resource
     # contract) tipped one function over the 80-line threshold; bank +1.
     "long_functions": 42,
@@ -208,11 +208,11 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 23,
     "mutate_token_reason_upsert_bucket": 7,
-    # +1 PR-A (/web recurring regression); +7 PR-B income_plan OCC; +4 PR-C
-    # bill_split accept atomic-claim; +8 ADR-0041 phase ③ Slice A row_version
-    # groundwork (exposed / start-at-1 + increment-by-exactly-1 across helper,
-    # inline-CAS recurring pause/resume, and items-replace parent-claim paths).
-    "backend_pytest_count": 1546,
+    # +1 PR-A (/web recurring); +7 PR-B income_plan OCC; +4 PR-C bill_split
+    # accept atomic-claim; +8 ADR-0041 Slice A row_version groundwork; +3
+    # ADR-0041 self-describing items/splits responses (parent row_version in
+    # items-replace, acknowledge-mismatch, splits-replace responses).
+    "backend_pytest_count": 1549,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination

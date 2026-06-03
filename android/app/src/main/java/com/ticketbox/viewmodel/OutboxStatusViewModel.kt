@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
  * resolve branches.
  *
  * Token re-fetch for "keep mine": a 409 means the row's
- * ``expected_updated_at`` is stale, and the 409 body intentionally
+ * ``expected_row_version`` is stale, and the 409 body intentionally
  * carries no fresh token (ADR §41), so we re-GET the resource. v1
  * supports the expense family (``expense:<id>`` — every dispatcher in
  * PR-2g.3–.9 targets it); other families (category_rule / merchant_alias)
@@ -92,11 +92,11 @@ class OutboxStatusViewModel(
         }
     }
 
-    private suspend fun freshExpenseToken(row: OutboxRow): String? {
+    private suspend fun freshExpenseToken(row: OutboxRow): Long? {
         val prefix = "expense:"
         if (!row.targetId.startsWith(prefix)) return null
         val id = row.targetId.removePrefix(prefix).toLongOrNull() ?: return null
-        return expenseRepository.fetchExpense(id).getOrNull()?.updatedAt
+        return expenseRepository.fetchExpense(id).getOrNull()?.rowVersion
     }
 }
 

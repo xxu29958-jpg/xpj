@@ -59,7 +59,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T12:00:00.000Z",
+            expectedRowVersion = 1L,
         )
 
         val coordinator = LocalLedgerSessionCoordinator(
@@ -111,7 +111,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:7",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T12:00:00.000Z",
+            expectedRowVersion = 1L,
         )
 
         val coordinator = LocalLedgerSessionCoordinator(
@@ -184,7 +184,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 2L)
 
         val coordinator = LocalLedgerSessionCoordinator(
             settingsStore = settings,
@@ -270,7 +270,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T12:00:00.000Z",
+            expectedRowVersion = 1L,
         )
 
         val coordinator = LocalLedgerSessionCoordinator(

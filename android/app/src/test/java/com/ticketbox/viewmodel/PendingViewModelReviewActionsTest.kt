@@ -967,6 +967,7 @@ class PendingViewModelReviewActionsTest {
         expenseTime = null,
         createdAt = "2025-01-01T00:00:00Z",
         updatedAt = "2025-01-01T00:00:00Z",
+        rowVersion = 1L,
         confirmedAt = null,
         rejectedAt = null,
     )
@@ -1049,14 +1050,14 @@ private class FakeReviewActions(
     ): Result<com.ticketbox.data.repository.SaveOutcome> =
         Result.failure(IllegalStateException("not exercised — PendingViewModel uses updateExpense"))
 
-    override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> {
+    override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> {
         confirmCalls += 1
         confirmedIds += id
         return confirmResponder?.invoke(id)
-            ?: error("confirmResponder not set; got id=$id token=$expectedUpdatedAt")
+            ?: error("confirmResponder not set; got id=$id token=$expectedRowVersion")
     }
 
-    override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> {
+    override suspend fun rejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> {
         rejectCalls += 1
         return rejectResponder?.invoke(id) ?: error("rejectResponder not set")
     }
@@ -1094,10 +1095,10 @@ private class FakeReviewActions(
             ?: error("rejectResponder/rejectOfflineResponder not set")
     }
 
-    override suspend fun undoRejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
+    override suspend fun undoRejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         undoRejectResponder?.invoke(id) ?: error("undoRejectResponder not set")
 
-    override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> {
+    override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> {
         markNotDuplicateCalls += 1
         return markNotDuplicateResponder?.invoke(id) ?: error("markNotDuplicateResponder not set")
     }

@@ -94,10 +94,10 @@ private class ThumbnailFakeReviewActions(
         baseline: Expense,
     ): Result<SaveOutcome> = Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
+    override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
+    override suspend fun rejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
@@ -106,10 +106,10 @@ private class ThumbnailFakeReviewActions(
     override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun undoRejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
+    override suspend fun undoRejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
-    override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
+    override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> =
         Result.failure(IllegalStateException("not exercised"))
 
     override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
@@ -156,6 +156,7 @@ private fun expense(
     expenseTime = null,
     createdAt = "2026-05-01T00:00:00Z",
     updatedAt = "2026-05-01T00:00:00Z",
+    rowVersion = 1L,
     confirmedAt = null,
     rejectedAt = null,
 )

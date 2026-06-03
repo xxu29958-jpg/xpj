@@ -115,6 +115,7 @@ class MonthlyStatsViewModelTest {
                 expenseTime = "2026-05-12T10:15:00Z",
                 createdAt = "2026-05-12T10:15:00Z",
                 updatedAt = "2026-05-12T10:15:00Z",
+                rowVersion = 1L,
                 confirmedAt = "2026-05-12T10:15:00Z",
                 rejectedAt = null,
             ),
@@ -203,10 +204,10 @@ private class FakeStatsRecurringActions : RecurringActions {
         nextExpectedDate: String?,
     ): Result<RecurringItem> = Result.failure(IllegalArgumentException("not used"))
 
-    override suspend fun pause(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> =
+    override suspend fun pause(publicId: String, expectedRowVersion: Long): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 
-    override suspend fun resume(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> =
+    override suspend fun resume(publicId: String, expectedRowVersion: Long): Result<RecurringItem> =
         Result.failure(IllegalArgumentException("not used"))
 
     override suspend fun archive(publicId: String): Result<RecurringItem> =

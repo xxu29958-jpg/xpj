@@ -190,6 +190,7 @@ internal class FakeApiService(
             expenseTime = request.expenseTime,
             createdAt = "2026-05-13T10:05:00Z",
             updatedAt = "2026-05-13T10:05:00Z",
+            rowVersion = 1L,
             confirmedAt = null,
             rejectedAt = null,
         )
@@ -630,10 +631,12 @@ internal class FakeApiService(
         enabled = enabled,
         createdAt = "2026-05-13T00:00:00Z",
         updatedAt = "2026-05-13T00:05:00Z",
+        rowVersion = 1L,
     )
 
     private fun expenseItemsResponse(): ExpenseItemsResponseDto = ExpenseItemsResponseDto(
         expenseId = 9,
+        rowVersion = 1L,
         parentAmountCents = 1500,
         itemsTotalAmountCents = 500,
         mismatchCents = 1000,
@@ -657,6 +660,7 @@ internal class FakeApiService(
 
     private fun expenseSplitsResponse(): ExpenseSplitsResponseDto = ExpenseSplitsResponseDto(
         expenseId = 9,
+        rowVersion = 1L,
         parentAmountCents = 1500,
         splitsTotalAmountCents = 6000,
         mismatchCents = -4500,
@@ -700,6 +704,7 @@ internal class FakeApiService(
             expenseTime = "2026-05-07T07:29:00Z",
             createdAt = "2026-05-09T08:08:13Z",
             updatedAt = "2026-05-09T08:12:40Z",
+            rowVersion = 1L,
             confirmedAt = "2026-05-09T08:12:40Z",
             rejectedAt = null,
         )
@@ -748,6 +753,7 @@ internal fun cachedConfirmedEntity(
         createdAt = "2026-05-01T00:00:00Z",
         confirmedAt = "2026-05-01T00:00:00Z",
         updatedAt = "2026-05-01T00:00:00Z",
+        rowVersion = 1L,
     )
 
 internal class FakeTicketboxSettingsStore(

@@ -8,7 +8,7 @@ package com.ticketbox.data.local
  * row stays ``PENDING`` until the app catches up with a new build).
  *
  * Mapping to backend routes (one-to-one with the v1.3 PR-2 mutate
- * surface that takes ``expected_updated_at``):
+ * surface that takes ``expected_row_version``):
  *
  *   PatchExpense                     PATCH  /api/expenses/{id}
  *   ConfirmExpense                   POST   /api/expenses/{id}/confirm

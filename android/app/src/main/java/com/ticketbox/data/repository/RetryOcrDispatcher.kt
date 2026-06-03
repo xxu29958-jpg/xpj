@@ -13,7 +13,7 @@ import retrofit2.HttpException
 /**
  * ADR-0038 PR-2g.8: replay a queued ``POST /api/expenses/{id}/ocr/retry``.
  * Same token-only shape as [ConfirmExpenseDispatcher]. The re-run OCR
- * returns the refreshed Expense; its ``updatedAt`` cascades onto
+ * returns the refreshed Expense; its ``rowVersion`` cascades onto
  * same-target PENDING rows.
  */
 class RetryOcrDispatcher(
@@ -29,7 +29,7 @@ class RetryOcrDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -42,7 +42,7 @@ class RetryOcrDispatcher(
 
         return try {
             val retried = apiProvider().retryOcr(expenseId, request)
-            DispatchResult.Success(newUpdatedAt = retried.updatedAt)
+            DispatchResult.Success(newRowVersion = retried.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

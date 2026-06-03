@@ -70,6 +70,7 @@ class ExpenseRepositoryBindServerTest {
                 createdAt = "2026-05-01T00:00:00Z",
                 confirmedAt = "2026-05-01T00:00:00Z",
                 updatedAt = "2026-05-01T00:00:00Z",
+                rowVersion = 1L,
             ),
         )
         dao.insert(

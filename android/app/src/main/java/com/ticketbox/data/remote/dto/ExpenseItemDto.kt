@@ -29,6 +29,11 @@ data class ExpenseItemDto(
 data class ExpenseItemsResponseDto(
     @param:Json(name = "expense_id")
     val expenseId: Long,
+    // ADR-0041: parent expense's post-mutation row_version. Lets the outbox
+    // dispatcher cascade the fresh OCC token without a second GET — the replace
+    // / acknowledge-mismatch responses are now self-describing.
+    @param:Json(name = "row_version")
+    val rowVersion: Long,
     @param:Json(name = "parent_amount_cents")
     val parentAmountCents: Long?,
     @param:Json(name = "items_total_amount_cents")
@@ -56,7 +61,7 @@ data class ExpenseItemRequestDto(
 )
 
 data class ExpenseItemReplaceRequestDto(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
     val items: List<ExpenseItemRequestDto> = emptyList(),
 )

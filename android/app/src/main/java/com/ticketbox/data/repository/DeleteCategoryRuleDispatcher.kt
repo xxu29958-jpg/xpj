@@ -20,8 +20,8 @@ import retrofit2.HttpException
  * UPDATE vs DELETE).
  *
  * Payload at enqueue time: [CategoryRuleDeleteRequest] with
- * ``expectedUpdatedAt`` set to an empty-string placeholder (the
- * DTO field is non-nullable String; row.expectedUpdatedAt is the
+ * ``expectedRowVersion`` set to a ``0L`` placeholder (the
+ * DTO field is non-nullable Long; row.expectedRowVersion is the
  * single source of truth — round-8 P3#5).
  */
 class DeleteCategoryRuleDispatcher(
@@ -37,7 +37,7 @@ class DeleteCategoryRuleDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -50,10 +50,10 @@ class DeleteCategoryRuleDispatcher(
 
         return try {
             apiProvider().deleteCategoryRule(ruleId, request)
-            // DELETE response carries no body; Success.newUpdatedAt
+            // DELETE response carries no body; Success.newRowVersion
             // is null because there's no post-mutation token to
             // cascade (the row is gone).
-            DispatchResult.Success(newUpdatedAt = null)
+            DispatchResult.Success(newRowVersion = null)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

@@ -17,6 +17,7 @@ class ExpenseSplitDtoContractTest {
                 """
                 {
                   "expense_id": 1,
+                  "row_version": 7,
                   "parent_amount_cents": 10000,
                   "splits_total_amount_cents": 9000,
                   "mismatch_cents": 1000,
@@ -40,7 +41,7 @@ class ExpenseSplitDtoContractTest {
         )
         val requestJson = moshi.adapter(ExpenseSplitReplaceRequestDto::class.java).toJson(
             ExpenseSplitReplaceRequestDto(
-                expectedUpdatedAt = "2026-05-03T04:20:00Z",
+                expectedRowVersion = 1L,
                 splits = listOf(
                     ExpenseSplitRequestDto(
                         memberId = 12,
@@ -53,10 +54,11 @@ class ExpenseSplitDtoContractTest {
 
         val split = dto.splits.single()
         assertEquals("split-1", split.publicId)
+        assertEquals(7L, dto.rowVersion)
         assertEquals(1000L, dto.mismatchCents)
         assertEquals("owner", split.role)
         assertEquals(
-            """{"expected_updated_at":"2026-05-03T04:20:00Z","splits":[{"member_id":12,"amount_cents":6000,"note":"我出大头"}]}""",
+            """{"expected_row_version":1,"splits":[{"member_id":12,"amount_cents":6000,"note":"我出大头"}]}""",
             requestJson,
         )
     }

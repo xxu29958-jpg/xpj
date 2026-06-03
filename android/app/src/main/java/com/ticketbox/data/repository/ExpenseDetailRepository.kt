@@ -32,7 +32,7 @@ internal class ExpenseDetailRepository(
     suspend fun replaceExpenseItems(
         id: Long,
         items: List<ExpenseItemDraft>,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<ExpenseItems> = core.errorHandler.safeCall {
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
@@ -42,7 +42,7 @@ internal class ExpenseDetailRepository(
             it.replaceExpenseItems(
                 id,
                 ExpenseItemReplaceRequestDto(
-                    expectedUpdatedAt = expectedUpdatedAt,
+                    expectedRowVersion = expectedRowVersion,
                     items = items.map { item -> item.toRequest() },
                 ),
             )
@@ -52,7 +52,7 @@ internal class ExpenseDetailRepository(
 
     suspend fun acknowledgeExpenseItemsMismatch(
         id: Long,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<ExpenseItems> = core.errorHandler.safeCall {
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
@@ -65,7 +65,7 @@ internal class ExpenseDetailRepository(
             it.acknowledgeExpenseItemsMismatch(
                 id,
                 com.ticketbox.data.remote.dto.ExpenseStateTokenRequest(
-                    expectedUpdatedAt = expectedUpdatedAt,
+                    expectedRowVersion = expectedRowVersion,
                 ),
             )
         }.toDomain()
@@ -100,7 +100,7 @@ internal class ExpenseDetailRepository(
             val items = bound.call {
                 it.acknowledgeExpenseItemsMismatch(
                     expense.id,
-                    ExpenseStateTokenRequest(expectedUpdatedAt = expense.updatedAt),
+                    ExpenseStateTokenRequest(expectedRowVersion = expense.rowVersion),
                 )
             }.toDomain()
             ItemsAckOutcome.Synced(items) as ItemsAckOutcome
@@ -139,7 +139,7 @@ internal class ExpenseDetailRepository(
         }
         val bound = core.ledgerRequestGuard.bind()
         val request = ExpenseItemReplaceRequestDto(
-            expectedUpdatedAt = expense.updatedAt,
+            expectedRowVersion = expense.rowVersion,
             items = items.map { it.toRequest() },
         )
         try {
@@ -148,8 +148,8 @@ internal class ExpenseDetailRepository(
         } catch (networkError: IOException) {
             val outbox = core.outbox
             val adapter = core.replaceItemsAdapter
-            val token = expense.updatedAt
-            if (outbox == null || adapter == null || token.isEmpty()) {
+            val token = expense.rowVersion
+            if (outbox == null || adapter == null || token == 0L) {
                 // Outbox wiring missing OR baseline lacked a token — fall back
                 // to the failure path so we don't pretend we saved.
                 throw networkError
@@ -158,13 +158,13 @@ internal class ExpenseDetailRepository(
             // post-check, so re-assert the session before queuing (a row
             // queued under ledger A must not land in ledger B after a switch).
             bound.requireStillActive()
-            // Strip the token from the payload — the row's expectedUpdatedAt is
+            // Strip the token from the payload — the row's expectedRowVersion is
             // the single source of truth; the dispatcher overwrites it on replay.
             outbox.enqueue(
                 type = PendingMutationType.ReplaceItems,
                 targetId = "expense:${expense.id}",
-                payloadJson = adapter.toJson(request.copy(expectedUpdatedAt = "")),
-                expectedUpdatedAt = token,
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = token,
             )
             ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items)) as ReplaceItemsOutcome
         }
@@ -222,7 +222,7 @@ internal class ExpenseDetailRepository(
     suspend fun replaceExpenseSplits(
         id: Long,
         splits: List<ExpenseSplitDraft>,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<ExpenseSplits> = core.errorHandler.safeCall {
         if (!core.canModifyLedger()) {
             throw RepositoryException("当前角色为只读，无法修改账本。")
@@ -232,7 +232,7 @@ internal class ExpenseDetailRepository(
             it.replaceExpenseSplits(
                 id,
                 ExpenseSplitReplaceRequestDto(
-                    expectedUpdatedAt = expectedUpdatedAt,
+                    expectedRowVersion = expectedRowVersion,
                     splits = splits.map { split -> split.toRequest() },
                 ),
             )
@@ -249,9 +249,9 @@ internal class ExpenseDetailRepository(
         created.toDomain()
     }
 
-    suspend fun retryOcr(id: Long, expectedUpdatedAt: String): Result<Expense> = core.errorHandler.safeCall {
+    suspend fun retryOcr(id: Long, expectedRowVersion: Long): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        val retried = bound.call { it.retryOcr(id, ExpenseStateTokenRequest(expectedUpdatedAt)) }
+        val retried = bound.call { it.retryOcr(id, ExpenseStateTokenRequest(expectedRowVersion)) }
         retried.toDomain()
     }
 
@@ -268,7 +268,7 @@ internal class ExpenseDetailRepository(
             val bound = core.ledgerRequestGuard.bind()
             try {
                 val retried = bound.call {
-                    it.retryOcr(expense.id, ExpenseStateTokenRequest(expense.updatedAt))
+                    it.retryOcr(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
                 }
                 ExpenseStateOutcome.Synced(retried.toDomain()) as ExpenseStateOutcome
             } catch (networkError: IOException) {

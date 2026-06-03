@@ -360,6 +360,11 @@ class ExpenseItemsResponse(BaseModel):
     items_total_amount_cents: int | None
     mismatch_cents: int | None
     items_sum_status: ItemsSumStatus
+    # Parent Expense.row_version (ADR-0041). The items replace /
+    # acknowledge-mismatch endpoints bump the *parent* expense's CAS
+    # counter; exposing it here lets a chained client reuse the fresh
+    # token without a second GET on the expense.
+    row_version: int
     items: list[ExpenseItemResponse]
 
 
@@ -398,6 +403,10 @@ class ExpenseSplitsResponse(BaseModel):
     parent_amount_cents: int | None
     splits_total_amount_cents: int | None
     mismatch_cents: int | None
+    # Parent Expense.row_version (ADR-0041). The splits replace endpoint
+    # bumps the *parent* expense's CAS counter; exposing it here lets a
+    # chained client reuse the fresh token without a second GET.
+    row_version: int
     splits: list[ExpenseSplitResponse]
 
 

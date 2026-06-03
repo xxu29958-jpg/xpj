@@ -78,6 +78,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         expenseTime = "2026-05-20T12:00:00Z",
         createdAt = "2026-05-20T12:00:00Z",
         updatedAt = updatedAt,
+        rowVersion = 1L,
         confirmedAt = null,
         rejectedAt = null,
     )
@@ -157,6 +158,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             expenseTime = "2026-05-20T12:00:00Z",
             createdAt = "2026-05-20T12:00:00Z",
             updatedAt = serverUpdatedAt,
+            rowVersion = 2L,
             confirmedAt = null,
             rejectedAt = null,
         )
@@ -179,6 +181,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         // Server-confirmed: token is the post-PATCH server one, not
         // the pre-mutation baseline.
         assertNotEquals(baseline.updatedAt, outcome.expense.updatedAt)
+        assertNotEquals(baseline.rowVersion, outcome.expense.rowVersion)
         assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
     }
 
@@ -187,7 +190,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         // codex round-8 P2: queued state surfaces the user's edits
         // (new merchant) on the returned Expense, NOT the
         // pre-edit baseline. Also: payload omits the token (P3#5
-        // single source of truth — row.expectedUpdatedAt is
+        // single source of truth — row.expectedRowVersion is
         // authoritative).
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
@@ -212,11 +215,11 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.PatchExpense.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         assertTrue("新商家" in row.payload, "payload must carry the edit: ${row.payload}")
         // codex round-8 P3#5: payload MUST NOT contain the token;
-        // single source of truth is row.expectedUpdatedAt. Replay
+        // single source of truth is row.expectedRowVersion. Replay
         // (PatchExpenseDispatcher) overwrites the request token
         // from the row before dispatching.
         assertTrue(
@@ -430,6 +433,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             .getOrThrow() as ExpenseStateOutcome.Synced
 
         assertNotEquals(baseline.updatedAt, outcome.expense.updatedAt)
+        assertNotEquals(baseline.rowVersion, outcome.expense.rowVersion)
         assertEquals(0, dao.rows.size, "no row should be enqueued on direct success")
     }
 
@@ -454,10 +458,10 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.ConfirmExpense.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         // round-8 P3#5: token must NOT be embedded in payload — the
-        // row's expectedUpdatedAt is the single source of truth.
+        // row's expectedRowVersion is the single source of truth.
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token (single source of truth): ${row.payload}",
@@ -524,7 +528,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.RejectExpense.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token: ${row.payload}",
@@ -553,7 +557,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.MarkNotDuplicate.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token: ${row.payload}",
@@ -595,7 +599,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.RetryOcr.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
     }
 
     @Test
@@ -645,7 +649,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.AcknowledgeItemsMismatch.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token: ${row.payload}",
@@ -708,7 +712,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:42",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-20T12:00:05.000Z",
+            expectedRowVersion = 1L,
         )
 
         assertTrue(rowId > 0)
@@ -730,13 +734,13 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-20T12:00:00.000Z",
+            expectedRowVersion = 2L,
         )
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:2",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-20T12:00:01.000Z",
+            expectedRowVersion = 3L,
         )
 
         val removed = outbox.clearAll()
@@ -757,7 +761,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-20T12:00:00.000Z",
+            expectedRowVersion = 2L,
         )
 
         val removed = outbox.clearAll()
@@ -849,6 +853,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
             acknowledgeException?.let { throw it }
             return ExpenseItemsResponseDto(
                 expenseId = id,
+                rowVersion = 1L,
                 parentAmountCents = 12345L,
                 itemsTotalAmountCents = 10000L,
                 mismatchCents = 2345L,
@@ -918,12 +923,12 @@ class ExpensePendingRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.ReplaceItems.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         assertTrue("咖啡" in row.payload, "payload must carry the edit: ${row.payload}")
         assertTrue(
-            "\"expected_updated_at\":\"\"" in row.payload,
-            "payload token must be stripped to empty (row is the source of truth): ${row.payload}",
+            "\"expected_row_version\":0" in row.payload,
+            "payload token must be stripped to zero (row is the source of truth): ${row.payload}",
         )
     }
 
@@ -938,6 +943,7 @@ class ExpensePendingRepositoryOutboxFallbackTest {
                 request: ExpenseItemReplaceRequestDto,
             ): ExpenseItemsResponseDto = ExpenseItemsResponseDto(
                 expenseId = 42L,
+                rowVersion = 1L,
                 parentAmountCents = 12345L,
                 itemsTotalAmountCents = 2500L,
                 mismatchCents = -9845L,

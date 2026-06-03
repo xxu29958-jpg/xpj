@@ -240,7 +240,7 @@ class OutboxRepository(
         type: PendingMutationType,
         targetId: String,
         payloadJson: String,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Long {
         val id = bindingTransitionLease.withLock {
             val binding = currentBinding()
@@ -250,7 +250,7 @@ class OutboxRepository(
                 type = type.wireValue,
                 targetId = targetId,
                 payload = payloadJson,
-                expectedUpdatedAt = expectedUpdatedAt,
+                expectedRowVersion = expectedRowVersion,
                 status = PendingMutationStatus.Pending.wireValue,
                 createdAt = nowIso(),
             )
@@ -425,7 +425,7 @@ class OutboxRepository(
      *
      * Returns the count of cascaded rows for tests / telemetry.
      */
-    suspend fun cascadeFreshToken(targetId: String, newToken: String): Int =
+    suspend fun cascadeFreshToken(targetId: String, newToken: Long): Int =
         currentBinding().let { binding ->
             dao.cascadeFreshTokenForTarget(
                 serverUrl = binding.serverUrl,
@@ -498,7 +498,7 @@ class OutboxRepository(
      * User picked an action on a conflict-state row.
      *
      * - [ConflictResolution.KeepMine] refreshes the row's
-     *   ``expected_updated_at`` to the fresh token the call site
+     *   ``expected_row_version`` to the fresh token the call site
      *   just fetched and flips the row back to PENDING. Same
      *   ``id`` / ``createdAt``, so the queue order stays causal.
      * - [ConflictResolution.DropMine] permanently deletes the row.
@@ -541,7 +541,7 @@ class OutboxRepository(
      *
      * - [FailedResolution.Retry] flips the row back to PENDING so
      *   the next drain re-claims it. If ``freshToken`` is supplied
-     *   the row's ``expected_updated_at`` is also refreshed.
+     *   the row's ``expected_row_version`` is also refreshed.
      * - [FailedResolution.Drop] permanently deletes the row. The
      *   caller is responsible for rolling back any optimistic UI
      *   update that was tied to this mutation.
@@ -726,7 +726,7 @@ data class OutboxRow(
     val type: PendingMutationType,
     val targetId: String,
     val payloadJson: String,
-    val expectedUpdatedAt: String,
+    val expectedRowVersion: Long,
     val status: PendingMutationStatus,
     val retryCount: Int,
     val lastError: String?,
@@ -766,7 +766,7 @@ private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
     type = PendingMutationType.fromWire(type),
     targetId = targetId,
     payloadJson = payload,
-    expectedUpdatedAt = expectedUpdatedAt,
+    expectedRowVersion = expectedRowVersion,
     status = PendingMutationStatus.fromWire(status),
     retryCount = retryCount,
     lastError = lastError,
@@ -781,7 +781,7 @@ private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
  * one is by definition stale).
  */
 sealed interface ConflictResolution {
-    data class KeepMine(val freshToken: String) : ConflictResolution
+    data class KeepMine(val freshToken: Long) : ConflictResolution
     data object DropMine : ConflictResolution
 }
 
@@ -793,6 +793,6 @@ sealed interface ConflictResolution {
  * an upgraded build" vs "give up".
  */
 sealed interface FailedResolution {
-    data class Retry(val freshToken: String? = null) : FailedResolution
+    data class Retry(val freshToken: Long? = null) : FailedResolution
     data object Drop : FailedResolution
 }

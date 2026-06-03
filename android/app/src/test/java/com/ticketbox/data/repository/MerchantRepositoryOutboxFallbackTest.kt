@@ -41,6 +41,7 @@ class MerchantRepositoryOutboxFallbackTest {
             enabled = true,
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = updatedAt,
+            rowVersion = 1L,
         )
 
     private fun moshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -89,6 +90,7 @@ class MerchantRepositoryOutboxFallbackTest {
             enabled = true,
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = updatedAt,
+            rowVersion = 1L,
         )
 
     @Test
@@ -124,12 +126,16 @@ class MerchantRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.DeleteMerchantAlias.wireValue, row.type)
         assertEquals("merchant_alias:${baseline.publicId}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         // codex round-8 P3#5: token must not be in payload.
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed token: ${row.payload}",
+        )
+        assertTrue(
+            "\"expected_row_version\":0" in row.payload,
+            "payload token must be neutralised to 0: ${row.payload}",
         )
     }
 
@@ -215,11 +221,15 @@ class MerchantRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.UpdateMerchantAlias.wireValue, row.type)
         assertEquals("merchant_alias:${baseline.publicId}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         // round-8 P3#5: token NOT in payload.
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed token: ${row.payload}",
+        )
+        assertTrue(
+            "\"expected_row_version\":0" in row.payload,
+            "payload token must be neutralised to 0: ${row.payload}",
         )
     }
 

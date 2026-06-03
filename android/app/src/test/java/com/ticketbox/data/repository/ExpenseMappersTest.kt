@@ -78,9 +78,9 @@ class ExpenseMappersTest {
         assertEquals("JPY", request.originalCurrency)
         assertEquals("1200", request.originalAmount)
         assertEquals("2026-05-04T04:00:00Z", request.spentAt)
-        // ADR-0038 PR-2a: create 路径不带 baseline，expectedUpdatedAt 必须为 null
+        // ADR-0038 PR-2a: create 路径不带 baseline，expectedRowVersion 必须为 null
         // 让 Moshi 序列化时省略键名，避免 /api/expenses/manual 的 extra="forbid" 拒收。
-        assertEquals(null, request.expectedUpdatedAt)
+        assertEquals(null, request.expectedRowVersion)
     }
 
     @Test
@@ -163,7 +163,7 @@ class ExpenseMappersTest {
         assertEquals(null, request.spentAt)
         assertEquals(null, request.expenseTime)
         assertEquals("新加的备注", request.note)
-        assertEquals("2026-05-04T04:30:00Z", request.expectedUpdatedAt)
+        assertEquals(1L, request.expectedRowVersion)
     }
 
     @Test
@@ -194,7 +194,7 @@ class ExpenseMappersTest {
         assertEquals(null, request.originalAmount)
         assertEquals("2026-05-05T04:20:00Z", request.spentAt)
         assertEquals("2026-05-05T04:20:00Z", request.expenseTime)
-        assertEquals("2026-05-04T04:30:00Z", request.expectedUpdatedAt)
+        assertEquals(1L, request.expectedRowVersion)
     }
 
     @Test
@@ -235,6 +235,7 @@ class ExpenseMappersTest {
     fun mapsExpenseItemsAndNormalizesCategory() {
         val details = ExpenseItemsResponseDto(
             expenseId = 1,
+            rowVersion = 1L,
             parentAmountCents = 1500,
             itemsTotalAmountCents = 1250,
             mismatchCents = 250,
@@ -265,6 +266,7 @@ class ExpenseMappersTest {
     fun mapsExpenseSplitsWithDisabledMemberSignal() {
         val splits = ExpenseSplitsResponseDto(
             expenseId = 1,
+            rowVersion = 1L,
             parentAmountCents = 10000,
             splitsTotalAmountCents = 9000,
             mismatchCents = 1000,
@@ -395,6 +397,7 @@ class ExpenseMappersTest {
             expenseTime = "2026-05-04T04:20:00Z",
             createdAt = "2026-05-04T04:00:00Z",
             updatedAt = "2026-05-04T04:30:00Z",
+            rowVersion = 1L,
             confirmedAt = "2026-05-04T04:30:00Z",
             rejectedAt = null,
         )

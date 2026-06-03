@@ -13,14 +13,14 @@ import retrofit2.HttpException
 /**
  * ADR-0038 PR-2g.9: replay a queued
  * ``POST /api/expenses/{id}/items/acknowledge-mismatch``. Token-only
- * shape like [ConfirmExpenseDispatcher], BUT the response is an items
- * payload that does NOT carry the parent expense's new ``updated_at``
- * — so [DispatchResult.Success] passes ``newUpdatedAt = null`` and the
- * post-ack token is NOT cascaded onto same-target PENDING rows. A
- * chained offline ack→confirm against the same expense could therefore
- * 409 on the follow-up and surface as a CONFLICT row for the user to
- * resolve; that's an accepted edge (the items endpoint shape can't
- * feed the cascade), not a silent loss.
+ * shape like [ConfirmExpenseDispatcher]; the response is an items payload
+ * (ExpenseItemsResponse) that now carries the parent expense's bumped
+ * ``row_version`` on the wrapper. The ack bumps it server-side, so the
+ * dispatcher returns that fresh ``row_version`` directly as
+ * [DispatchResult.Success]'s ``newRowVersion`` (self-describing response,
+ * no second GET) so the drain cascades it onto a chained same-target
+ * PENDING row (e.g. offline ack→confirm), avoiding a spurious 409
+ * (ADR-0041 P1).
  *
  * Non-conflict 409s (e.g. ``items_sum_not_in_mismatch`` — the row left
  * the mismatch state before replay) map to [DispatchResult.Discarded]:
@@ -39,7 +39,7 @@ class AcknowledgeItemsMismatchDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -51,8 +51,8 @@ class AcknowledgeItemsMismatchDispatcher(
         }
 
         return try {
-            apiProvider().acknowledgeExpenseItemsMismatch(expenseId, request)
-            DispatchResult.Success(newUpdatedAt = null)
+            val response = apiProvider().acknowledgeExpenseItemsMismatch(expenseId, request)
+            DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -231,6 +231,60 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // ADR-0041 phase-3 slice C: flip the optimistic-concurrency token from
+        // the row's ``updated_at`` ISO string to the server-side ``row_version``
+        // monotonic int. Two structural changes:
+        //   1. expenses cache gains a ``rowVersion`` column (DEFAULT 1; the real
+        //      value arrives on the next sync refresh).
+        //   2. The outbox token column changes TEXT → INTEGER. SQLite can't ALTER
+        //      a column type, and a string ``updated_at`` token captured by a
+        //      pre-0041 build can't be replayed against the int-CAS backend, so
+        //      the queue is dropped and rebuilt empty (no real install base
+        //      during development — this is a destructive outbox reset by design).
+        private val Migration10To11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE expenses ADD COLUMN rowVersion INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("DROP TABLE IF EXISTS pending_mutations")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS pending_mutations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        serverUrl TEXT NOT NULL DEFAULT '',
+                        ledgerId TEXT NOT NULL DEFAULT '',
+                        type TEXT NOT NULL,
+                        targetId TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        expectedRowVersion INTEGER NOT NULL DEFAULT 0,
+                        status TEXT NOT NULL,
+                        retryCount INTEGER NOT NULL DEFAULT 0,
+                        lastError TEXT,
+                        createdAt TEXT NOT NULL,
+                        attemptedAt TEXT,
+                        completedAt TEXT
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_createdAt ON pending_mutations (createdAt)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_targetId_status ON pending_mutations (targetId, status)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_status ON pending_mutations (status)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_createdAt ON pending_mutations (serverUrl, ledgerId, createdAt)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_targetId_status ON pending_mutations (serverUrl, ledgerId, targetId, status)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_status ON pending_mutations (serverUrl, ledgerId, status)",
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -248,6 +302,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration7To8,
                         Migration8To9,
                         Migration9To10,
+                        Migration10To11,
                     )
                     .build()
                     .also { instance = it }

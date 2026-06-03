@@ -32,11 +32,11 @@ class UpdateMerchantAliasDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            // Row's expectedUpdatedAt is authoritative. Payload was
-            // serialised with an empty-string placeholder for the
-            // token (DTO field is non-nullable String; round-8 P3#5
+            // Row's expectedRowVersion is authoritative. Payload was
+            // serialised with a 0L placeholder for the
+            // token (DTO field is non-nullable Long; round-8 P3#5
             // single-source-of-truth rule).
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -49,7 +49,7 @@ class UpdateMerchantAliasDispatcher(
 
         return try {
             val updated = apiProvider().updateMerchantAlias(publicId, request)
-            DispatchResult.Success(newUpdatedAt = updated.updatedAt)
+            DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

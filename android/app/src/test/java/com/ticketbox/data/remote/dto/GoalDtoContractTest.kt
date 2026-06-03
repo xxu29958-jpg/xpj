@@ -33,6 +33,7 @@ class GoalDtoContractTest {
                       "status": "active",
                       "created_at": "2026-05-13T00:00:00Z",
                       "updated_at": "2026-05-13T00:00:00Z",
+                      "row_version": 1,
                       "archived_at": null
                     }
                   ]
@@ -50,7 +51,7 @@ class GoalDtoContractTest {
         )
         val updateJson = moshi.adapter(GoalUpdateRequestDto::class.java).toJson(
             GoalUpdateRequestDto(
-                expectedUpdatedAt = "2026-05-13T00:05:00Z",
+                expectedRowVersion = 1L,
                 targetAmountCents = 90000,
             ),
         )
@@ -65,7 +66,7 @@ class GoalDtoContractTest {
             createJson,
         )
         assertEquals(
-            """{"expected_updated_at":"2026-05-13T00:05:00Z","target_amount_cents":90000}""",
+            """{"expected_row_version":1,"target_amount_cents":90000}""",
             updateJson,
         )
     }

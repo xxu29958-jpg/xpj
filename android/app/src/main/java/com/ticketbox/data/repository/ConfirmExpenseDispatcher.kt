@@ -13,12 +13,12 @@ import retrofit2.HttpException
 /**
  * ADR-0038 PR-2g.7: replay a queued ``POST /api/expenses/{id}/confirm``.
  *
- * Token-only payload (just ``expected_updated_at``); the dispatcher
- * rebuilds the token from ``row.expectedUpdatedAt`` on replay (single
- * source of truth — the serialised payload carries an empty
+ * Token-only payload (just ``expected_row_version``); the dispatcher
+ * rebuilds the token from ``row.expectedRowVersion`` on replay (single
+ * source of truth — the serialised payload carries a ``0L``
  * placeholder). Target encoding ``expense:<id>`` matches
  * [PatchExpenseDispatcher]; the confirm response is a full Expense so
- * the post-transition ``updatedAt`` cascades onto same-target PENDING
+ * the post-transition ``rowVersion`` cascades onto same-target PENDING
  * rows (a chained offline edit→confirm against the same expense
  * doesn't fake-conflict itself).
  */
@@ -35,7 +35,7 @@ class ConfirmExpenseDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -48,7 +48,7 @@ class ConfirmExpenseDispatcher(
 
         return try {
             val confirmed = apiProvider().confirmExpense(expenseId, request)
-            DispatchResult.Success(newUpdatedAt = confirmed.updatedAt)
+            DispatchResult.Success(newRowVersion = confirmed.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

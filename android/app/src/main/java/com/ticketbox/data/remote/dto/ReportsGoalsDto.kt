@@ -68,13 +68,13 @@ data class GoalCreateRequestDto(
 )
 
 /**
- * ADR-0038 PR-2j: PATCH /api/goals/{publicId} body. ``expectedUpdatedAt``
- * is the client's last-seen ``updated_at`` token; server returns 409 on
+ * ADR-0041: PATCH /api/goals/{publicId} body. ``expectedRowVersion``
+ * is the client's last-seen ``row_version`` token; server returns 409 on
  * stale snapshot.
  */
 data class GoalUpdateRequestDto(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
     val name: String? = null,
     val month: String? = null,
     val category: String? = null,
@@ -108,6 +108,8 @@ data class GoalDto(
     val createdAt: String,
     @param:Json(name = "updated_at")
     val updatedAt: String,
+    @param:Json(name = "row_version")
+    val rowVersion: Long,
     @param:Json(name = "archived_at")
     val archivedAt: String?,
 )

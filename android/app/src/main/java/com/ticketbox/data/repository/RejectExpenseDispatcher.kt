@@ -13,9 +13,9 @@ import retrofit2.HttpException
 /**
  * ADR-0038 PR-2g.7: replay a queued ``POST /api/expenses/{id}/reject``.
  *
- * Same token-only shape as [ConfirmExpenseDispatcher] — payload is an
- * empty placeholder, ``row.expectedUpdatedAt`` is authoritative. The
- * reject response carries the rejected Expense; its ``updatedAt``
+ * Same token-only shape as [ConfirmExpenseDispatcher] — payload is a
+ * ``0L`` placeholder, ``row.expectedRowVersion`` is authoritative. The
+ * reject response carries the rejected Expense; its ``rowVersion``
  * cascades onto same-target PENDING rows.
  */
 class RejectExpenseDispatcher(
@@ -31,7 +31,7 @@ class RejectExpenseDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -44,7 +44,7 @@ class RejectExpenseDispatcher(
 
         return try {
             val rejected = apiProvider().rejectExpense(expenseId, request)
-            DispatchResult.Success(newUpdatedAt = rejected.updatedAt)
+            DispatchResult.Success(newRowVersion = rejected.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

@@ -67,7 +67,7 @@ interface PendingReviewActions {
         draft: ExpenseDraft,
         baseline: Expense,
     ): Result<SaveOutcome>
-    // ADR-0038 PR-2b: 状态机 POST 必须带 expected_updated_at（client
+    // ADR-0038 PR-2b: 状态机 POST 必须带 expected_row_version（client
     // 上次看到的 baseline.updatedAt）。Stale 写入 → 409，由 errorHandler
     // 映射到 RepositoryException 让 UI 提示刷新。
     //
@@ -79,9 +79,9 @@ interface PendingReviewActions {
     // confirm/reject (PendingViewModel.confirm/reject,
     // ExpenseEditViewModel.reject) use the *AllowingOffline variants
     // below instead.
-    suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
-    suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
-    suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense>
+    suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense>
+    suspend fun rejectExpense(id: Long, expectedRowVersion: Long): Result<Expense>
+    suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense>
 
     /**
      * ADR-0038 PR-2g.7: offline-aware confirm / reject. Mirrors
@@ -120,7 +120,7 @@ interface PendingReviewActions {
      *  - IOException / 5xx → ``Result.failure``; no outbox fallback (undo is a
      *    short-window UI nudge, not a durable mutation worth queueing).
      */
-    suspend fun undoRejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense>
+    suspend fun undoRejectExpense(id: Long, expectedRowVersion: Long): Result<Expense>
 
     /**
      * ADR-0038 PR-2g.8: offline-aware mark-not-duplicate. Same

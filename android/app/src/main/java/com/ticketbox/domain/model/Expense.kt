@@ -38,6 +38,7 @@ data class Expense(
     val expenseTime: String?,
     val createdAt: String,
     val updatedAt: String,
+    val rowVersion: Long,
     val confirmedAt: String?,
     val rejectedAt: String?,
 )
@@ -262,6 +263,7 @@ data class CategoryRule(
     val tagContains: String?,
     val createdAt: String,
     val updatedAt: String,
+    val rowVersion: Long,
 ) {
     val hasConditions: Boolean =
         amountMinCents != null ||
@@ -279,6 +281,7 @@ data class MerchantAlias(
     val enabled: Boolean,
     val createdAt: String,
     val updatedAt: String,
+    val rowVersion: Long,
 )
 
 data class RuleApplicationBatch(

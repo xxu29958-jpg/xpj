@@ -20,6 +20,7 @@ data class RecurringItem(
     val amountDeltaPercent: Int?,
     val createdAt: String,
     val updatedAt: String,
+    val rowVersion: Long,
     val pausedAt: String?,
     val archivedAt: String?,
 )

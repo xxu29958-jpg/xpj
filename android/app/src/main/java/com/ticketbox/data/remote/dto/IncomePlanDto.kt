@@ -18,6 +18,7 @@ data class IncomePlanDto(
     val status: String,
     @param:Json(name = "created_at") val createdAt: String,
     @param:Json(name = "updated_at") val updatedAt: String,
+    @param:Json(name = "row_version") val rowVersion: Long,
     @param:Json(name = "archived_at") val archivedAt: String?,
 )
 
@@ -34,12 +35,12 @@ data class IncomePlanCreateRequestDto(
 )
 
 /**
- * ADR-0038 PR-2j: PATCH /api/income-plans/{publicId} body. ``expectedUpdatedAt``
- * is the client's last-seen ``updated_at`` token; server returns 409
+ * ADR-0041: PATCH /api/income-plans/{publicId} body. ``expectedRowVersion``
+ * is the client's last-seen ``row_version`` token; server returns 409
  * on stale snapshot.
  */
 data class IncomePlanUpdateRequestDto(
-    @param:Json(name = "expected_updated_at") val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     val label: String? = null,
     @param:Json(name = "source_type") val sourceType: String? = null,
     @param:Json(name = "amount_cents") val amountCents: Long? = null,
@@ -52,5 +53,5 @@ data class IncomePlanUpdateRequestDto(
  * the richer update DTO would be rejected. Mirrors RecurringItemTokenRequest.
  */
 data class IncomePlanTokenRequestDto(
-    @param:Json(name = "expected_updated_at") val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
 )

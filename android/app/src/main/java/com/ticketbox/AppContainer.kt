@@ -77,7 +77,7 @@ class AppContainer(context: Context) {
     private val categoryRuleUpdateAdapter = outboxMoshi.adapter(CategoryRuleUpdateRequest::class.java)
 
     // PR-2g.5: DELETE adapters. Token-only payload shape; the
-    // dispatcher rebuilds the token from row.expectedUpdatedAt on
+    // dispatcher rebuilds the token from row.expectedRowVersion on
     // replay (single source of truth — round-8 P3#5).
     private val categoryRuleDeleteAdapter = outboxMoshi.adapter(CategoryRuleDeleteRequest::class.java)
     private val merchantAliasDeleteAdapter = outboxMoshi.adapter(MerchantAliasDeleteRequest::class.java)

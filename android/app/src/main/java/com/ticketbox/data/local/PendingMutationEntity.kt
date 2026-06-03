@@ -18,7 +18,7 @@ import androidx.room.PrimaryKey
  *
  * Why a fixed schema instead of polymorphic columns per mutation
  * type: the v1.3 PR-2 series already standardised every mutation on
- * a ``expected_updated_at`` + JSON body shape, so a single Entity
+ * a ``expected_row_version`` + JSON body shape, so a single Entity
  * row holds the entire request: route key (``type``), target
  * identifier, optimistic-concurrency token, and the JSON body the
  * matching ApiService call expects. New mutation types just add a
@@ -43,10 +43,10 @@ import androidx.room.PrimaryKey
  * to the outbox itself; PR-2g's drain just needs equality matching
  * to enforce "same target_id is serial".
  *
- * ``expectedUpdatedAt`` is the ADR-0038 optimistic-concurrency
- * token (ISO-Z string from the row's ``updated_at`` field). For
- * mutations that don't take a token (creates / terminal lifecycle)
- * the field is blank.
+ * ``expectedRowVersion`` is the ADR-0041 optimistic-concurrency
+ * token (the server-side ``row_version`` int of the snapshot the
+ * user mutated). For mutations that don't take a token (creates /
+ * terminal lifecycle) the field is ``0``.
  *
  * ``payload`` is the JSON the matching ApiService call requires.
  * Stored as TEXT; Moshi adapter is owned by the Repository layer
@@ -106,13 +106,14 @@ data class PendingMutationEntity(
     val payload: String,
 
     /**
-     * ADR-0038 optimistic-concurrency token. ISO-Z string. Blank
-     * for routes that don't take a token (creates / terminal
-     * lifecycle / upserts — see ALLOWLIST in
+     * ADR-0041 optimistic-concurrency token: the server-side
+     * ``row_version`` (monotonic int) of the snapshot the user
+     * mutated. ``0`` for routes that don't take a token (creates /
+     * terminal lifecycle / upserts — see ALLOWLIST in
      * ``backend/scripts/_audit_mutate_token_coverage.py``).
      */
-    @ColumnInfo(name = "expectedUpdatedAt")
-    val expectedUpdatedAt: String,
+    @ColumnInfo(name = "expectedRowVersion", defaultValue = "0")
+    val expectedRowVersion: Long = 0,
 
     /** Stringified ``PendingMutationStatus``. */
     @ColumnInfo(name = "status")

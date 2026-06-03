@@ -37,13 +37,13 @@ class OutboxRepositoryTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = """{"merchant":"a"}""",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
         val second = repo.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:2",
             payloadJson = """{"merchant":"b"}""",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
 
         val runnable = repo.dequeueNextRunnable(limit = 10)
@@ -60,7 +60,7 @@ class OutboxRepositoryTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
         // Another row for the SAME target — drain must not pick it
         // up while ``first`` is in flight.
@@ -68,14 +68,14 @@ class OutboxRepositoryTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
         // Different target — drain may take it.
         val third = repo.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:2",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
 
         // Atomic claim flips first PENDING → IN_FLIGHT.
@@ -98,19 +98,19 @@ class OutboxRepositoryTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "t0",
+            expectedRowVersion = 1L,
         )
         repo.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "t0",
+            expectedRowVersion = 1L,
         )
         val differentTarget = repo.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:2",
             payloadJson = "{}",
-            expectedUpdatedAt = "t0",
+            expectedRowVersion = 1L,
         )
 
         val runnable = repo.dequeueNextRunnable(limit = 2).map { it.id }
@@ -122,7 +122,7 @@ class OutboxRepositoryTest {
     fun markDoneSetsCompletedAt() = runTest {
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
 
         repo.tryClaim(id)
         repo.markDone(id)
@@ -137,7 +137,7 @@ class OutboxRepositoryTest {
     fun markConflictPreservesServerMessage() = runTest {
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
 
         repo.markConflict(id, "账单已在其它端被修改，请刷新后重试。")
 
@@ -154,7 +154,7 @@ class OutboxRepositoryTest {
             PendingMutationType.PatchExpense,
             "expense:1",
             "{}",
-            "2026-05-04T00:00:00Z",
+            1L,
         )
         // PR review #6: 预设 retryCount=5 制造"用户在 5 次失败后才看到 conflict"的真场景,
         // 然后断言 KeepMine 把它重置为 0(用户显式重试,该拿到完整 max_attempts 预算)。
@@ -163,12 +163,12 @@ class OutboxRepositoryTest {
 
         repo.resolveConflict(
             id,
-            ConflictResolution.KeepMine(freshToken = "2026-05-04T00:01:00Z"),
+            ConflictResolution.KeepMine(freshToken = 2L),
         )
 
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
-        assertEquals("2026-05-04T00:01:00Z", row.expectedUpdatedAt)
+        assertEquals(2L, row.expectedRowVersion)
         assertNull(row.lastError)
         assertEquals(0, row.retryCount, "KeepMine 是用户显式重试, 必须重置 retryCount 给 max_attempts 完整预算")
     }
@@ -177,7 +177,7 @@ class OutboxRepositoryTest {
     fun resolveConflictDropMineDeletesRow() = runTest {
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markConflict(id, "stale")
 
         repo.resolveConflict(id, ConflictResolution.DropMine)
@@ -191,13 +191,13 @@ class OutboxRepositoryTest {
         val now = "2026-05-04T12:00:00Z"
         val repo = OutboxRepository(dao = dao, clock = fixedClock(now))
 
-        val oldId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val oldId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         // Hand-edit completedAt to before retention window.
         dao.rows[oldId] = dao.rows[oldId]!!.copy(
             status = PendingMutationStatus.Done.wireValue,
             completedAt = "2026-04-01T00:00:00Z",
         )
-        val recentId = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "")
+        val recentId = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
         dao.rows[recentId] = dao.rows[recentId]!!.copy(
             status = PendingMutationStatus.Done.wireValue,
             completedAt = now,
@@ -217,7 +217,7 @@ class OutboxRepositoryTest {
             dao = dao,
             clock = fixedClock("2026-05-04T12:00:00Z"),
         )
-        val failedId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val failedId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
 
         repo.markFailed(failedId, "user must decide")
         val pruned = repo.gcCompleted(retentionMillis = 0)
@@ -237,7 +237,7 @@ class OutboxRepositoryTest {
         // put the row back to PENDING so the next drain re-claims it.
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markFailed(id, "transient parse")
 
         repo.resolveFailed(id, FailedResolution.Retry())
@@ -259,7 +259,7 @@ class OutboxRepositoryTest {
             PendingMutationType.PatchExpense,
             "expense:1",
             "{}",
-            "2026-05-04T00:00:00Z",
+            1L,
         )
         // PR review #13: 预设 retryCount=7 制造"用户在 7 次失败 + max_attempts FAILED 后,
         // 用 freshToken 重试"的真场景。断言 retryCount 重置 0(用户拿 fresh token 显式重试,
@@ -267,11 +267,11 @@ class OutboxRepositoryTest {
         dao.rows[id] = dao.rows[id]!!.copy(retryCount = 7)
         repo.markFailed(id, "stale token")
 
-        repo.resolveFailed(id, FailedResolution.Retry(freshToken = "2026-05-04T01:00:00Z"))
+        repo.resolveFailed(id, FailedResolution.Retry(freshToken = 2L))
 
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
-        assertEquals("2026-05-04T01:00:00Z", row.expectedUpdatedAt)
+        assertEquals(2L, row.expectedRowVersion)
         assertEquals(null, row.lastError)
         assertEquals(0, row.retryCount, "Retry(freshToken) 也是用户显式重试, 必须重置 retryCount")
     }
@@ -283,7 +283,7 @@ class OutboxRepositoryTest {
         // DONE row back to PENDING and trigger a duplicate replay.
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         // Simulate: row was FAILED, another surface retried, drain
         // ran, server accepted → row is now DONE.
         dao.rows[id] = dao.rows[id]!!.copy(
@@ -305,30 +305,30 @@ class OutboxRepositoryTest {
         // a stale banner click is a no-op.
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markConflict(id, "stale")
         // Another surface keep-mined first; row is now PENDING.
         dao.rows[id] = dao.rows[id]!!.copy(
             status = PendingMutationStatus.Pending.wireValue,
-            expectedUpdatedAt = "fresh-token-from-other-surface",
+            expectedRowVersion = 7L,
             lastError = null,
         )
 
         val changed = repo.resolveConflict(
             id,
-            ConflictResolution.KeepMine(freshToken = "stale-banner-token"),
+            ConflictResolution.KeepMine(freshToken = 9L),
         )
 
         assertEquals(false, changed)
         // The other surface's fresh token survives.
-        assertEquals("fresh-token-from-other-surface", dao.rows[id]!!.expectedUpdatedAt)
+        assertEquals(7L, dao.rows[id]!!.expectedRowVersion)
     }
 
     @Test
     fun resolveFailedDropDeletesRow() = runTest {
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markFailed(id, "user gave up")
 
         repo.resolveFailed(id, FailedResolution.Drop)
@@ -341,10 +341,10 @@ class OutboxRepositoryTest {
         val dao = FakePendingMutationDao()
         val repo = OutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
 
-        val pendingId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
-        val doneId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val pendingId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
+        val doneId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         repo.markDone(doneId)
-        repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "")
+        repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
 
         val active = repo.activeForTarget("expense:1").map { it.id }
 
@@ -365,14 +365,14 @@ class OutboxRepositoryTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "old-token",
+            expectedRowVersion = 1L,
         )
         binding = OutboxBinding("https://new.example.com", "ledger-b")
         val newRow = repo.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:2",
             payloadJson = "{}",
-            expectedUpdatedAt = "new-token",
+            expectedRowVersion = 2L,
         )
 
         val runnable = repo.dequeueNextRunnable(limit = 10).map { it.id }
@@ -391,12 +391,12 @@ class OutboxRepositoryTest {
             clock = fixedClock("2026-05-04T00:00:00Z"),
             bindingProvider = { binding },
         )
-        val activePending = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
-        val activeConflict = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "")
+        val activePending = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
+        val activeConflict = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
         repo.markConflict(activeConflict, "stale")
 
         binding = OutboxBinding("https://api.example.com", "other")
-        repo.enqueue(PendingMutationType.PatchExpense, "expense:3", "{}", "")
+        repo.enqueue(PendingMutationType.PatchExpense, "expense:3", "{}", 0L)
         binding = OutboxBinding("https://api.example.com", "active")
 
         val status = repo.observeStatus().first()
@@ -416,14 +416,14 @@ class OutboxRepositoryTest {
             clock = fixedClock("2026-05-04T00:00:00Z"),
             bindingProvider = { binding },
         )
-        val activeRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val activeRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         dao.rows[activeRow] = dao.rows[activeRow]!!.copy(
             status = PendingMutationStatus.InFlight.wireValue,
             attemptedAt = "2026-05-03T00:00:00.000Z",
         )
 
         binding = OutboxBinding("https://api.example.com", "other")
-        val otherRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "")
+        val otherRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
         dao.rows[otherRow] = dao.rows[otherRow]!!.copy(
             status = PendingMutationStatus.InFlight.wireValue,
             attemptedAt = "2026-05-03T00:00:00.000Z",
@@ -460,7 +460,7 @@ class OutboxRepositoryTest {
         transitionStarted.await()
 
         val enqueue = async {
-            repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "token")
+            repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         }
         yield()
         assertEquals(0, dao.rows.size)

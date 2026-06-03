@@ -53,7 +53,8 @@ class CategoryRuleDtoContractTest {
                   "source_contains": "pytest",
                   "tag_contains": "真香",
                   "created_at": "2026-05-13T00:00:00Z",
-                  "updated_at": "2026-05-13T00:00:00Z"
+                  "updated_at": "2026-05-13T00:00:00Z",
+                  "row_version": 1
                 }
                 """.trimIndent(),
             ),
@@ -66,23 +67,23 @@ class CategoryRuleDtoContractTest {
 
     @Test
     fun categoryRuleUpdateAndDeleteCarryExpectedUpdatedAt() {
-        // ADR-0038 PR-1: PATCH/DELETE bodies must carry expected_updated_at
+        // ADR-0038 PR-1: PATCH/DELETE bodies must carry expected_row_version
         // (and DELETE actually sends a body now).
         val updateJson = moshi.adapter(CategoryRuleUpdateRequest::class.java).toJson(
             CategoryRuleUpdateRequest(
-                expectedUpdatedAt = "2026-05-13T00:00:00Z",
+                expectedRowVersion = 1L,
                 enabled = false,
             ),
         )
         val deleteJson = moshi.adapter(CategoryRuleDeleteRequest::class.java).toJson(
-            CategoryRuleDeleteRequest(expectedUpdatedAt = "2026-05-13T00:00:00Z"),
+            CategoryRuleDeleteRequest(expectedRowVersion = 1L),
         )
         assertEquals(
-            """{"expected_updated_at":"2026-05-13T00:00:00Z","enabled":false}""",
+            """{"expected_row_version":1,"enabled":false}""",
             updateJson,
         )
         assertEquals(
-            """{"expected_updated_at":"2026-05-13T00:00:00Z"}""",
+            """{"expected_row_version":1}""",
             deleteJson,
         )
     }

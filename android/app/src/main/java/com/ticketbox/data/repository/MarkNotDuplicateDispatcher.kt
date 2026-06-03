@@ -13,9 +13,9 @@ import retrofit2.HttpException
 /**
  * ADR-0038 PR-2g.8: replay a queued
  * ``POST /api/expenses/{id}/mark-not-duplicate``. Same token-only
- * shape as [ConfirmExpenseDispatcher] — the payload is an empty
- * placeholder, ``row.expectedUpdatedAt`` is authoritative. The
- * response carries the (kept) Expense; its ``updatedAt`` cascades onto
+ * shape as [ConfirmExpenseDispatcher] — the payload is a ``0L``
+ * placeholder, ``row.expectedRowVersion`` is authoritative. The
+ * response carries the (kept) Expense; its ``rowVersion`` cascades onto
  * same-target PENDING rows.
  */
 class MarkNotDuplicateDispatcher(
@@ -31,7 +31,7 @@ class MarkNotDuplicateDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -44,7 +44,7 @@ class MarkNotDuplicateDispatcher(
 
         return try {
             val updated = apiProvider().markNotDuplicate(expenseId, request)
-            DispatchResult.Success(newUpdatedAt = updated.updatedAt)
+            DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

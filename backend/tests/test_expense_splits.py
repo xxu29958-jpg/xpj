@@ -261,6 +261,29 @@ def test_expense_splits_replace_read_and_audit(client: TestClient, *, identity) 
     } == {item["account_public_id"] for item in audit_detail["before"]}
 
 
+def test_expense_splits_replace_response_carries_bumped_parent_row_version(
+    client: TestClient, *, identity,
+) -> None:
+    """ADR-0041 self-describing contract: PUT /splits returns the *parent*
+    expense's row_version, advanced past the value the client sent — so a
+    chained client can reuse it without a second GET on the expense."""
+    (_f, owner_token, _m, _v, expense_id, owner_member_id, member_member_id) = (
+        _family_split_fixture(client, identity=identity)
+    )
+    before = expense_row_version(client, expense_id, headers=_bearer(owner_token))
+
+    replaced = _replace_splits(
+        client, owner_token, expense_id, owner_member_id, member_member_id
+    )
+    assert replaced["row_version"] == before + 1
+    # The bumped token matches the parent's current state, and GET /splits
+    # mirrors it (no extra bump).
+    detail = client.get(f"/api/expenses/{expense_id}", headers=_bearer(owner_token))
+    assert detail.json()["row_version"] == replaced["row_version"]
+    listed = client.get(f"/api/expenses/{expense_id}/splits", headers=_bearer(owner_token))
+    assert listed.json()["row_version"] == replaced["row_version"]
+
+
 def test_expense_splits_do_not_change_stats_or_export(client: TestClient, *, identity) -> None:
     (
         _family_id,

@@ -29,7 +29,7 @@ class DeleteMerchantAliasDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -42,7 +42,7 @@ class DeleteMerchantAliasDispatcher(
 
         return try {
             apiProvider().deleteMerchantAlias(publicId, request)
-            DispatchResult.Success(newUpdatedAt = null)
+            DispatchResult.Success(newRowVersion = null)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

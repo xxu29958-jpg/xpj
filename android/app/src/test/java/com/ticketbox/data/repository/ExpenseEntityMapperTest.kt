@@ -30,6 +30,7 @@ class ExpenseEntityMapperTest {
             createdAt = "2026-05-04T04:00:00Z",
             confirmedAt = "2026-05-04T04:30:00Z",
             updatedAt = "2026-05-04T04:30:00Z",
+            rowVersion = 1L,
         ).toDomain()
 
         assertEquals(9, expense.id)

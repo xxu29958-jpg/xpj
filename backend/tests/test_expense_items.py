@@ -138,6 +138,69 @@ def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: Tes
     assert [item["name"] for item in payload["items"]] == ["咖啡豆"]
 
 
+def test_expense_items_replace_response_carries_bumped_parent_row_version(
+    client: TestClient, *, identity
+) -> None:
+    """ADR-0041 self-describing contract: PUT /items returns the *parent*
+    expense's row_version, advanced past the value the client sent — so a
+    chained client can reuse it without a second GET on the expense."""
+    expense_id = _create_manual_expense(client, amount_cents=1500, identity=identity)
+
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert snapshot.status_code == 200, snapshot.json()
+    before = snapshot.json()["row_version"]
+
+    response = client.put(
+        f"/api/expenses/{expense_id}/items",
+        headers=identity.app_headers,
+        json={
+            "expected_row_version": before,
+            "items": [{"name": "拿铁", "amount_cents": 500, "category": "餐饮"}],
+        },
+    )
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["row_version"] == before + 1
+
+    # The bumped token in the response must match the expense's current state.
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert detail.status_code == 200, detail.json()
+    assert detail.json()["row_version"] == body["row_version"]
+
+    # GET /items mirrors the parent's current row_version (no extra bump).
+    listed = client.get(f"/api/expenses/{expense_id}/items", headers=identity.app_headers)
+    assert listed.status_code == 200, listed.json()
+    assert listed.json()["row_version"] == body["row_version"]
+
+
+def test_acknowledge_mismatch_response_carries_bumped_parent_row_version(
+    client: TestClient, *, identity
+) -> None:
+    """ADR-0041 self-describing contract: acknowledge-mismatch bumps the
+    parent expense's row_version and the response exposes the new value."""
+    expense_id = _create_manual_expense(client, amount_cents=1500, identity=identity)
+    # Build a mismatch_known state: items sum (1250) != expense amount (1500).
+    _replace_items(client, expense_id, identity=identity)
+
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert snapshot.status_code == 200, snapshot.json()
+    before = snapshot.json()["row_version"]
+
+    response = client.post(
+        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
+        headers=identity.app_headers,
+        json={"expected_row_version": before},
+    )
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["items_sum_status"] == "mismatch_acknowledged"
+    assert body["row_version"] == before + 1
+
+    detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
+    assert detail.status_code == 200, detail.json()
+    assert detail.json()["row_version"] == body["row_version"]
+
+
 def test_expense_items_mismatch_does_not_change_stats_or_export(client: TestClient, *, identity) -> None:
     expense_id = _create_manual_expense(client, amount_cents=1500, identity=identity)
     replaced = _replace_items(client, expense_id, identity=identity)

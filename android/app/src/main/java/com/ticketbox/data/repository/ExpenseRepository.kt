@@ -143,15 +143,15 @@ class ExpenseRepository(
     suspend fun replaceExpenseItems(
         id: Long,
         items: List<ExpenseItemDraft>,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<ExpenseItems> =
-        detailRepository.replaceExpenseItems(id, items, expectedUpdatedAt)
+        detailRepository.replaceExpenseItems(id, items, expectedRowVersion)
 
     suspend fun acknowledgeExpenseItemsMismatch(
         id: Long,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<ExpenseItems> =
-        detailRepository.acknowledgeExpenseItemsMismatch(id, expectedUpdatedAt)
+        detailRepository.acknowledgeExpenseItemsMismatch(id, expectedRowVersion)
 
     suspend fun acknowledgeItemsMismatchAllowingOffline(
         expense: Expense,
@@ -205,9 +205,9 @@ class ExpenseRepository(
     suspend fun replaceExpenseSplits(
         id: Long,
         splits: List<ExpenseSplitDraft>,
-        expectedUpdatedAt: String,
+        expectedRowVersion: Long,
     ): Result<ExpenseSplits> =
-        detailRepository.replaceExpenseSplits(id, splits, expectedUpdatedAt)
+        detailRepository.replaceExpenseSplits(id, splits, expectedRowVersion)
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> =
         ledgerRepository.createManualExpense(draft)
@@ -217,11 +217,11 @@ class ExpenseRepository(
         expectedLedgerId: String? = null,
     ): Result<Expense> = detailRepository.createNotificationDraft(draft, expectedLedgerId)
 
-    override suspend fun confirmExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
-        pendingRepository.confirmExpense(id, expectedUpdatedAt)
+    override suspend fun confirmExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
+        pendingRepository.confirmExpense(id, expectedRowVersion)
 
-    override suspend fun rejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
-        pendingRepository.rejectExpense(id, expectedUpdatedAt)
+    override suspend fun rejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
+        pendingRepository.rejectExpense(id, expectedRowVersion)
 
     override suspend fun confirmExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         pendingRepository.confirmExpenseAllowingOffline(expense)
@@ -229,20 +229,20 @@ class ExpenseRepository(
     override suspend fun rejectExpenseAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         pendingRepository.rejectExpenseAllowingOffline(expense)
 
-    override suspend fun undoRejectExpense(id: Long, expectedUpdatedAt: String): Result<Expense> =
-        pendingRepository.undoRejectExpense(id, expectedUpdatedAt)
+    override suspend fun undoRejectExpense(id: Long, expectedRowVersion: Long): Result<Expense> =
+        pendingRepository.undoRejectExpense(id, expectedRowVersion)
 
     override suspend fun markNotDuplicateAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         pendingRepository.markNotDuplicateAllowingOffline(expense)
 
-    suspend fun retryOcr(id: Long, expectedUpdatedAt: String): Result<Expense> =
-        detailRepository.retryOcr(id, expectedUpdatedAt)
+    suspend fun retryOcr(id: Long, expectedRowVersion: Long): Result<Expense> =
+        detailRepository.retryOcr(id, expectedRowVersion)
 
     suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         detailRepository.retryOcrAllowingOffline(expense)
 
-    override suspend fun markNotDuplicate(id: Long, expectedUpdatedAt: String): Result<Expense> =
-        pendingRepository.markNotDuplicate(id, expectedUpdatedAt)
+    override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> =
+        pendingRepository.markNotDuplicate(id, expectedRowVersion)
 
     suspend fun fetchDuplicates(): Result<List<Expense>> =
         detailRepository.fetchDuplicates()

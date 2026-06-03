@@ -141,12 +141,12 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = :pendingStatus,
-            expectedUpdatedAt = :freshToken,
+            expectedRowVersion = :freshToken,
             lastError = NULL
         WHERE id = :id
         """,
     )
-    suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: String): Int
+    suspend fun refreshToken(id: Long, pendingStatus: String, freshToken: Long): Int
 
     /**
      * Atomic ``CONFLICT → PENDING`` or ``FAILED → PENDING`` token refresh used by
@@ -167,7 +167,7 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = :toStatus,
-            expectedUpdatedAt = :freshToken,
+            expectedRowVersion = :freshToken,
             retryCount = 0,
             lastError = NULL
         WHERE id = :id AND status = :fromStatus
@@ -177,7 +177,7 @@ interface PendingMutationDao {
         id: Long,
         fromStatus: String,
         toStatus: String,
-        freshToken: String,
+        freshToken: Long,
     ): Int
 
     /**
@@ -249,7 +249,7 @@ interface PendingMutationDao {
     suspend fun deleteIfStatus(id: Long, expectedStatus: String): Int
 
     /**
-     * Cascade a new ``expected_updated_at`` to every still-PENDING
+     * Cascade a new ``expected_row_version`` to every still-PENDING
      * row that targets the same row as a just-succeeded mutation.
      *
      * Why: offline chain A → B against the same target. A is
@@ -265,7 +265,7 @@ interface PendingMutationDao {
     @Query(
         """
         UPDATE pending_mutations
-        SET expectedUpdatedAt = :freshToken
+        SET expectedRowVersion = :freshToken
         WHERE serverUrl = :serverUrl
           AND ledgerId = :ledgerId
           AND targetId = :targetId
@@ -277,7 +277,7 @@ interface PendingMutationDao {
         ledgerId: String,
         targetId: String,
         pendingStatus: String,
-        freshToken: String,
+        freshToken: Long,
     ): Int
 
     // ---------------------------------------------------------------

@@ -175,16 +175,16 @@ class IncomePlanViewModel(
         }
     }
 
-    fun archive(publicId: String, expectedUpdatedAt: String) {
+    fun archive(publicId: String, expectedRowVersion: Long) {
         viewModelScope.launch {
-            val result = repository.archive(publicId, expectedUpdatedAt)
+            val result = repository.archive(publicId, expectedRowVersion)
             handleSimpleResult(result, success = "已归档")
         }
     }
 
-    fun restore(publicId: String, expectedUpdatedAt: String) {
+    fun restore(publicId: String, expectedRowVersion: Long) {
         viewModelScope.launch {
-            val result = repository.restore(publicId, expectedUpdatedAt)
+            val result = repository.restore(publicId, expectedRowVersion)
             handleSimpleResult(result, success = "已恢复")
         }
     }

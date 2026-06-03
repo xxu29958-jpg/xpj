@@ -138,6 +138,7 @@ class ExpenseDaoContractTest {
             createdAt = "2026-05-04T08:00:00Z",
             confirmedAt = if (status == "confirmed") "2026-05-04T08:30:00Z" else null,
             updatedAt = "2026-05-04T08:30:00Z",
+            rowVersion = 1L,
         )
     }
 }

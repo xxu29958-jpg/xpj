@@ -53,6 +53,7 @@ class RuleRepositoryOutboxFallbackTest {
             tagContains = null,
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = updatedAt,
+            rowVersion = 1L,
         )
 
     private fun successDto(serverUpdatedAt: String = "2026-05-20T13:00:00.000Z"): CategoryRuleDto =
@@ -64,6 +65,7 @@ class RuleRepositoryOutboxFallbackTest {
             priority = 50,
             createdAt = "2026-05-01T00:00:00Z",
             updatedAt = serverUpdatedAt,
+            rowVersion = 2L,
         )
 
     private fun moshi(): Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -152,19 +154,22 @@ class RuleRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.UpdateCategoryRule.wireValue, row.type)
         assertEquals("category_rule:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
         // Payload contains the submitted edits.
         assertTrue("新关键词" in row.payload, "payload must carry keyword: ${row.payload}")
         // codex round-8 P3#5: payload MUST NOT carry the token —
-        // outbox row's expectedUpdatedAt is single source of truth.
-        // CategoryRuleUpdateRequest.expectedUpdatedAt is non-nullable
-        // String, so we set it to empty string before serialising;
-        // dispatcher overwrites it from row.expectedUpdatedAt on
-        // replay.
+        // outbox row's expectedRowVersion is single source of truth.
+        // CategoryRuleUpdateRequest.expectedRowVersion is non-nullable
+        // Long, so we set it to 0L before serialising; dispatcher
+        // overwrites it from row.expectedRowVersion on replay.
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed baseline token: ${row.payload}",
+        )
+        assertTrue(
+            "\"expected_row_version\":0" in row.payload,
+            "payload token must be neutralised to 0: ${row.payload}",
         )
     }
 
@@ -290,11 +295,15 @@ class RuleRepositoryOutboxFallbackTest {
         val row = dao.rows.values.single()
         assertEquals(PendingMutationType.DeleteCategoryRule.wireValue, row.type)
         assertEquals("category_rule:${baseline.id}", row.targetId)
-        assertEquals(baseline.updatedAt, row.expectedUpdatedAt)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
         // codex round-8 P3#5: token must not be in payload.
         assertTrue(
             baseline.updatedAt !in row.payload,
             "payload must NOT embed token: ${row.payload}",
+        )
+        assertTrue(
+            "\"expected_row_version\":0" in row.payload,
+            "payload token must be neutralised to 0: ${row.payload}",
         )
     }
 

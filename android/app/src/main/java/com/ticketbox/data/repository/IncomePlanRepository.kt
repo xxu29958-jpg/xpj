@@ -24,8 +24,8 @@ interface IncomePlanActions {
     suspend fun listIncluding(status: IncomePlanStatus): Result<List<IncomePlan>>
     suspend fun create(draft: IncomePlanDraft): Result<IncomePlan>
     suspend fun update(publicId: String, patch: IncomePlanPatch): Result<IncomePlan>
-    suspend fun archive(publicId: String, expectedUpdatedAt: String): Result<IncomePlan>
-    suspend fun restore(publicId: String, expectedUpdatedAt: String): Result<IncomePlan>
+    suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan>
+    suspend fun restore(publicId: String, expectedRowVersion: Long): Result<IncomePlan>
 }
 
 data class IncomePlanListing(
@@ -105,7 +105,7 @@ class IncomePlanRepository(
         }
     }
 
-    override suspend fun archive(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
+    override suspend fun archive(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
@@ -113,13 +113,13 @@ class IncomePlanRepository(
             ledgerRequestGuard.guardedCall { api ->
                 api.archiveIncomePlan(
                     publicId,
-                    com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedUpdatedAt),
+                    com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedRowVersion),
                 ).toDomain()
             }
         }
     }
 
-    override suspend fun restore(publicId: String, expectedUpdatedAt: String): Result<IncomePlan> {
+    override suspend fun restore(publicId: String, expectedRowVersion: Long): Result<IncomePlan> {
         if (!canModifyLedger()) {
             return Result.failure(RepositoryException("当前角色为只读，无法修改账本。"))
         }
@@ -127,7 +127,7 @@ class IncomePlanRepository(
             ledgerRequestGuard.guardedCall { api ->
                 api.restoreIncomePlan(
                     publicId,
-                    com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedUpdatedAt),
+                    com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto(expectedRowVersion),
                 ).toDomain()
             }
         }

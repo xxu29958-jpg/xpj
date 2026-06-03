@@ -50,6 +50,8 @@ data class RecurringItemDto(
     val createdAt: String,
     @param:Json(name = "updated_at")
     val updatedAt: String,
+    @param:Json(name = "row_version")
+    val rowVersion: Long,
     @param:Json(name = "paused_at")
     val pausedAt: String?,
     @param:Json(name = "archived_at")
@@ -61,8 +63,8 @@ data class RecurringItemDto(
 // updatedAt so a stale toggle (e.g. another device already paused) gets a 409
 // instead of silently re-flipping. Same shape as ExpenseStateTokenRequest.
 data class RecurringItemTokenRequest(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
 )
 
 data class RecurringItemListResponseDto(

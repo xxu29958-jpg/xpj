@@ -111,6 +111,8 @@ data class ExpenseDto(
     val createdAt: String,
     @param:Json(name = "updated_at")
     val updatedAt: String,
+    @param:Json(name = "row_version")
+    val rowVersion: Long,
     @param:Json(name = "confirmed_at")
     val confirmedAt: String?,
     @param:Json(name = "rejected_at")
@@ -118,8 +120,8 @@ data class ExpenseDto(
 )
 
 data class ExpenseUpdateRequest(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String? = null,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long? = null,
     @param:Json(name = "original_currency")
     val originalCurrency: String? = null,
     @param:Json(name = "original_amount")
@@ -142,13 +144,13 @@ data class ExpenseUpdateRequest(
  * ADR-0038 PR-2b: optimistic-concurrency token shared by the
  * confirm / reject / mark-not-duplicate state-machine POSTs and OCR retry.
  *
- * Client passes the ``updatedAt`` of the last ``Expense`` snapshot it
- * saw. Backend ``UPDATE WHERE updated_at = expected_updated_at``
- * rejects stale writes with HTTP 409.
+ * Client passes the ``rowVersion`` of the last ``Expense`` snapshot it
+ * saw. Backend ``UPDATE WHERE row_version = expected_row_version``
+ * rejects stale writes with HTTP 409 (ADR-0041).
  */
 data class ExpenseStateTokenRequest(
-    @param:Json(name = "expected_updated_at")
-    val expectedUpdatedAt: String,
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
 )
 
 data class NotificationDraftRequestDto(

@@ -19,7 +19,7 @@ import retrofit2.HttpException
  * pattern PatchExpenseDispatcher uses for ``expense:<id>``).
  *
  * Payload: Moshi-serialised [CategoryRuleUpdateRequest] with the
- * token field stripped (the row's ``expectedUpdatedAt`` is the
+ * token field stripped (the row's ``expectedRowVersion`` is the
  * single source of truth — same shape as the PR-2g.3 round-8 P3#5
  * decision for PatchExpenseDispatcher).
  */
@@ -39,12 +39,12 @@ class UpdateCategoryRuleDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            // Row's expectedUpdatedAt is authoritative. Payload was
-            // serialised with expectedUpdatedAt set to an empty-string
+            // Row's expectedRowVersion is authoritative. Payload was
+            // serialised with expectedRowVersion set to a 0L
             // placeholder at enqueue time (DTO field is non-nullable
-            // String — see [RuleRepository.updateCategoryRuleAllowingOffline]
+            // Long — see [RuleRepository.updateCategoryRuleAllowingOffline]
             // round-8 P3#5: token-out-of-payload, single source of truth).
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure(
                 "payload JSON shape changed: ${e.message ?: "JsonDataException"}",
@@ -57,7 +57,7 @@ class UpdateCategoryRuleDispatcher(
 
         return try {
             val updated = apiProvider().updateCategoryRule(ruleId, request)
-            DispatchResult.Success(newUpdatedAt = updated.updatedAt)
+            DispatchResult.Success(newRowVersion = updated.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

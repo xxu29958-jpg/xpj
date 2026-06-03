@@ -88,9 +88,9 @@ private class FakeRecurringActions(
         return Result.success(item(merchant = candidate.merchant))
     }
 
-    override suspend fun pause(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun pause(publicId: String, expectedRowVersion: Long): Result<RecurringItem> = Result.success(item(publicId = publicId))
 
-    override suspend fun resume(publicId: String, expectedUpdatedAt: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
+    override suspend fun resume(publicId: String, expectedRowVersion: Long): Result<RecurringItem> = Result.success(item(publicId = publicId))
 
     override suspend fun archive(publicId: String): Result<RecurringItem> = Result.success(item(publicId = publicId))
 }
@@ -127,6 +127,7 @@ private fun item(
     amountDeltaPercent = null,
     createdAt = "2026-05-01T00:00:00Z",
     updatedAt = "2026-05-01T00:00:00Z",
+    rowVersion = 1L,
     pausedAt = null,
     archivedAt = null,
 )

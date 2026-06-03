@@ -67,4 +67,47 @@ class ExpenseDtoContractTest {
         assertFalse(json.contains("amount_cents"))
         assertFalse(json.contains("exchange_rate"))
     }
+
+    @Test
+    fun expenseParsesRowVersionTokenAsNonNullLong() {
+        // ADR-0041: ExpenseDto.rowVersion is a non-null Long sourced from the
+        // server's `row_version`; a representative parse pins the wire contract
+        // (a missing field would otherwise only surface as a runtime Moshi
+        // failure deep in a list/detail fetch).
+        val dto = requireNotNull(
+            moshi.adapter(ExpenseDto::class.java).fromJson(
+                """
+                {
+                  "id": 9,
+                  "amount_cents": 1500,
+                  "merchant": "星巴克",
+                  "category": "餐饮",
+                  "note": null,
+                  "source": "Android截图",
+                  "image_path": null,
+                  "thumbnail_path": null,
+                  "image_hash": null,
+                  "raw_text": null,
+                  "confidence": null,
+                  "duplicate_status": "none",
+                  "duplicate_of_id": null,
+                  "duplicate_reason": null,
+                  "tags": null,
+                  "value_score": null,
+                  "regret_score": null,
+                  "status": "confirmed",
+                  "expense_time": null,
+                  "created_at": "2026-05-13T00:00:00Z",
+                  "updated_at": "2026-05-13T00:05:00Z",
+                  "row_version": 7,
+                  "confirmed_at": "2026-05-13T00:05:00Z",
+                  "rejected_at": null
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(9L, dto.id)
+        assertEquals(7L, dto.rowVersion)
+    }
 }

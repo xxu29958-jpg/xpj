@@ -15,15 +15,17 @@ import retrofit2.HttpException
  *
  * Body-carrying, same shape as [PatchExpenseDispatcher]: the payload is the
  * Moshi-serialised [ExpenseItemReplaceRequestDto] minus the token (the row's
- * ``expectedUpdatedAt`` is the single source of truth and is copied back over
+ * ``expectedRowVersion`` is the single source of truth and is copied back over
  * the payload before dispatch, so a KeepMine token refresh doesn't require
  * re-serialising the whole item list).
  *
- * Unlike PatchExpense, the items endpoint's response (ExpenseItemsResponse)
- * carries the item list, NOT the parent expense's bumped ``updated_at`` — so
- * [DispatchResult.Success] returns ``newUpdatedAt = null`` (no token to
- * cascade to same-target PENDING rows; a follow-up confirm/patch re-reads the
- * fresh token via the conflict-resolution fetch path).
+ * The replace bumps the parent expense's ``row_version`` server-side, and the
+ * items response (ExpenseItemsResponse) now carries that fresh
+ * ``row_version`` on the wrapper, so the dispatcher returns it directly as
+ * [DispatchResult.Success]'s ``newRowVersion`` — the response is
+ * self-describing, no second GET. The drain then cascades it onto a chained
+ * same-target PENDING row (e.g. offline items→confirm) so the follow-up
+ * doesn't replay with a stale token and false-409 (ADR-0041 P1).
  */
 class ReplaceItemsDispatcher(
     private val apiProvider: () -> ApiService,
@@ -41,7 +43,7 @@ class ReplaceItemsDispatcher(
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
-            storedPayload.copy(expectedUpdatedAt = row.expectedUpdatedAt)
+            storedPayload.copy(expectedRowVersion = row.expectedRowVersion)
         } catch (e: JsonDataException) {
             return DispatchResult.Failure("payload JSON shape changed: ${e.message ?: "JsonDataException"}")
         } catch (e: JsonEncodingException) {
@@ -49,8 +51,8 @@ class ReplaceItemsDispatcher(
         }
 
         return try {
-            apiProvider().replaceExpenseItems(expenseId, request)
-            DispatchResult.Success(newUpdatedAt = null)
+            val response = apiProvider().replaceExpenseItems(expenseId, request)
+            DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
         } catch (e: IOException) {

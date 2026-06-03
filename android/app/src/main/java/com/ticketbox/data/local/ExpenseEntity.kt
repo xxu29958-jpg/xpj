@@ -1,5 +1,6 @@
 package com.ticketbox.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -51,4 +52,9 @@ data class ExpenseEntity(
     val createdAt: String,
     val confirmedAt: String?,
     val updatedAt: String?,
+    // ADR-0041: optimistic-concurrency version mirrored from the server.
+    // server_default 1 on the backend; cached rows get DEFAULT 1 on the
+    // v10→v11 migration and the real value on the next sync refresh.
+    @ColumnInfo(defaultValue = "1")
+    val rowVersion: Long,
 )

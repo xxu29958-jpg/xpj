@@ -513,4 +513,5 @@ internal fun ledgerEntity(id: Long, ledgerId: String, serverId: Long): ExpenseEn
     createdAt = "2026-01-01T00:00:00Z",
     confirmedAt = null,
     updatedAt = null,
+    rowVersion = 1L,
 )

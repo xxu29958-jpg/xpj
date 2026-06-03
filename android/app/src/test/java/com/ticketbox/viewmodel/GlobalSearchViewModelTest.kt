@@ -202,6 +202,7 @@ private fun expense(
     expenseTime = "2026-05-17T08:00:00Z",
     createdAt = "2026-05-17T08:00:00Z",
     updatedAt = "2026-05-17T08:00:00Z",
+    rowVersion = 1L,
     confirmedAt = if (status == "confirmed") "2026-05-17T08:01:00Z" else null,
     rejectedAt = null,
 )

@@ -28,6 +28,7 @@ class RecurringMappersTest {
             amountDeltaPercent = 40,
             createdAt = "2026-05-13T00:00:00Z",
             updatedAt = "2026-05-13T00:00:00Z",
+            rowVersion = 1L,
             pausedAt = null,
             archivedAt = null,
         ).toDomain()

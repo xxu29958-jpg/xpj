@@ -16,6 +16,7 @@ fun IncomePlanDto.toDomain(): IncomePlan = IncomePlan(
     status = IncomePlanStatus.fromWire(status),
     createdAt = createdAt,
     updatedAt = updatedAt,
+    rowVersion = rowVersion,
     archivedAt = archivedAt,
 )
 
@@ -35,7 +36,7 @@ fun IncomePlanDraft.toCreateRequest(): IncomePlanCreateRequestDto =
     )
 
 data class IncomePlanPatch(
-    val expectedUpdatedAt: String,
+    val expectedRowVersion: Long,
     val label: String? = null,
     val sourceType: IncomeSourceType? = null,
     val amountCents: Long? = null,
@@ -44,7 +45,7 @@ data class IncomePlanPatch(
 
 fun IncomePlanPatch.toUpdateRequest(): IncomePlanUpdateRequestDto =
     IncomePlanUpdateRequestDto(
-        expectedUpdatedAt = expectedUpdatedAt,
+        expectedRowVersion = expectedRowVersion,
         label = label?.trim(),
         sourceType = sourceType?.wireValue,
         amountCents = amountCents,

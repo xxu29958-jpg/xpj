@@ -258,6 +258,7 @@ private fun formatterExpense(
     expenseTime = "2026-05-04T00:00:00Z",
     createdAt = "2026-05-04T00:00:00Z",
     updatedAt = "2026-05-04T00:00:00Z",
+    rowVersion = 1L,
     confirmedAt = "2026-05-04T00:00:00Z",
     rejectedAt = null,
 )

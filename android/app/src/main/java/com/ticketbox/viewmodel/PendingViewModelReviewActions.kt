@@ -128,9 +128,9 @@ fun PendingViewModel.saveAmountAndConfirm(expenseId: Long, originalAmountMinor: 
                         clearInProgress = false,
                     )
                 }
-                // ADR-0038 PR-2b: post-PATCH ``updated.updatedAt`` is the
+                // ADR-0041: post-PATCH ``updated.rowVersion`` is the
                 // fresh token to confirm against (NOT the pre-PATCH baseline).
-                repository.confirmExpense(expenseId, updated.updatedAt)
+                repository.confirmExpense(expenseId, updated.rowVersion)
                     .onSuccess { confirmed ->
                         _uiState.update { state ->
                             PendingUiStateReducer.afterConfirmed(
@@ -182,7 +182,7 @@ fun PendingViewModel.confirmReadyExpenses() {
         var succeeded = 0
         var failed = 0
         for (expense in ready) {
-            repository.confirmExpense(expense.id, expense.updatedAt)
+            repository.confirmExpense(expense.id, expense.rowVersion)
                 .onSuccess { confirmed ->
                     succeeded += 1
                     _uiState.update { current ->

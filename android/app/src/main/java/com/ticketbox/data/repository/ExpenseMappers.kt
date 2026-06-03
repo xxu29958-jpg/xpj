@@ -82,6 +82,7 @@ fun ExpenseDto.toDomain(): Expense {
         expenseTime = expenseTime,
         createdAt = createdAt,
         updatedAt = updatedAt,
+        rowVersion = rowVersion,
         confirmedAt = confirmedAt,
         rejectedAt = rejectedAt,
     )
@@ -120,6 +121,7 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     createdAt = createdAt,
     confirmedAt = confirmedAt,
     updatedAt = updatedAt,
+    rowVersion = rowVersion,
 )
 
 private val ExpenseDto.resolvedFxRate: String?
@@ -184,6 +186,7 @@ fun ExpenseEntity.toDomain(): Expense {
         expenseTime = expenseTime,
         createdAt = createdAt,
         updatedAt = updatedAt ?: createdAt,
+        rowVersion = rowVersion,
         confirmedAt = confirmedAt,
         rejectedAt = null,
     )
@@ -203,9 +206,9 @@ fun ExpenseDraft.toRequest(baseline: Expense? = null): ExpenseUpdateRequest {
     val timeChanged = baseline != null && expenseTime != baseline.expenseTime
 
     return ExpenseUpdateRequest(
-        // ADR-0038 PR-2a: PATCH 必须携带 baseline.updatedAt 作为乐观锁 token；
+        // ADR-0041: PATCH 必须携带 baseline.rowVersion 作为乐观锁 token；
         // /api/expenses/manual 创建路径 baseline 为 null，Moshi 序列化时省略此键。
-        expectedUpdatedAt = baseline?.updatedAt,
+        expectedRowVersion = baseline?.rowVersion,
         originalCurrency = if (isCreate || currencyChanged) submittedCurrency?.storageKey else null,
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
         spentAt = if (isCreate || timeChanged) expenseTime else null,
@@ -296,6 +299,7 @@ fun CategoryRuleDto.toDomain(): CategoryRule = CategoryRule(
     tagContains = tagContains,
     createdAt = createdAt,
     updatedAt = updatedAt,
+    rowVersion = rowVersion,
 )
 
 fun MerchantAliasDto.toDomain(): MerchantAlias = MerchantAlias(
@@ -307,6 +311,7 @@ fun MerchantAliasDto.toDomain(): MerchantAlias = MerchantAlias(
     enabled = enabled,
     createdAt = createdAt,
     updatedAt = updatedAt,
+    rowVersion = rowVersion,
 )
 
 fun RuleApplicationBatchDto.toDomain(): RuleApplicationBatch = RuleApplicationBatch(

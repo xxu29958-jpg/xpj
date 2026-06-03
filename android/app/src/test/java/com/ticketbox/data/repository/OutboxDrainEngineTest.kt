@@ -31,7 +31,7 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
 
         val summary = engine.drainOnce()
@@ -50,7 +50,7 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
 
         val summary = engine.drainOnce()
@@ -71,7 +71,7 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
 
         val summary = engine.drainOnce()
@@ -94,7 +94,7 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
 
         val summary = engine.drainOnce()
@@ -118,7 +118,7 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
 
         val summary = engine.drainOnce()
@@ -142,13 +142,13 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
         outbox.enqueue(
             type = PendingMutationType.ConfirmExpense,
             targetId = "expense:99",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
 
         val summary = engine.drainOnce()
@@ -172,7 +172,7 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
 
         val first = engine.drainOnce()
@@ -194,19 +194,19 @@ class OutboxDrainEngineTest {
         // After A lands, the server moves to T1; B's row must be
         // rewritten to T1 so it doesn't fake-conflict.
         val (engine, outbox) = withDispatcher(
-            StubDispatcher(result = DispatchResult.Success(newUpdatedAt = "2026-05-04T01:00:00Z")),
+            StubDispatcher(result = DispatchResult.Success(newRowVersion = 2L)),
         )
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
         val secondId = outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
 
         val summary = engine.drainOnce()
@@ -217,7 +217,7 @@ class OutboxDrainEngineTest {
 
         val second = outbox.activeForTarget("expense:1").single { it.id == secondId }
         assertEquals(PendingMutationStatus.Pending, second.status)
-        assertEquals("2026-05-04T01:00:00Z", second.expectedUpdatedAt)
+        assertEquals(2L, second.expectedRowVersion)
     }
 
     @Test
@@ -230,13 +230,13 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "2026-05-04T00:00:00Z",
+            expectedRowVersion = 1L,
         )
 
         val summary = engine.drainOnce()
@@ -260,7 +260,7 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
         outbox.markConflict(blockedHead, "stale")
         // 30 PENDING rows for the blocked target — under the old
@@ -271,14 +271,14 @@ class OutboxDrainEngineTest {
                 type = PendingMutationType.PatchExpense,
                 targetId = "expense:1",
                 payloadJson = "{}",
-                expectedUpdatedAt = "",
+                expectedRowVersion = 0L,
             )
         }
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:2",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
 
         val summary = engine.drainOnce()
@@ -299,14 +299,14 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
         outbox.markConflict(firstId, "stale")
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
 
         val summary = engine.drainOnce()
@@ -328,14 +328,14 @@ class OutboxDrainEngineTest {
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
         outbox.markFailed(firstId, "bad payload")
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
             payloadJson = "{}",
-            expectedUpdatedAt = "",
+            expectedRowVersion = 0L,
         )
 
         val summary = engine.drainOnce()
@@ -364,7 +364,7 @@ class OutboxDrainEngineTest {
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
 
         val thrown = runCatching { engine.drainOnce() }.exceptionOrNull()
         assertTrue(
@@ -394,7 +394,7 @@ class OutboxDrainEngineTest {
         )
         // Direct-poke a row into IN_FLIGHT with attemptedAt ten
         // minutes ago (older than the 5-minute stale threshold).
-        val id = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "")
+        val id = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
         dao.rows[id] = dao.rows[id]!!.copy(
             status = PendingMutationStatus.InFlight.wireValue,
             attemptedAt = "2026-05-04T11:50:00Z",
@@ -436,7 +436,7 @@ class OutboxDrainEngineTest {
             PendingMutationType.PatchExpense,
             "expense:1",
             "{}",
-            "",
+            0L,
         )
         // Pre-claim before drainOnce runs.
         outbox.tryClaim(id)
@@ -475,7 +475,7 @@ class OutboxDrainEngineTest {
         }
         val firstEngine = OutboxDrainEngine(outbox, listOf(dispatcher))
         val secondEngine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         val first = async { firstEngine.drainOnce() }
         val second = async { secondEngine.drainOnce() }
@@ -520,8 +520,8 @@ class OutboxDrainEngineTest {
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
         // Two rows, different targets so dedup doesn't intervene.
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "tok-2")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 2L)
 
         val summary = engine.drainOnce()
 
@@ -549,7 +549,7 @@ class OutboxDrainEngineTest {
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         // Session boundary fires before the drain even starts.
         outbox.clearAll()
@@ -579,7 +579,7 @@ class OutboxDrainEngineTest {
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         val drain = async { engine.drainOnce() }
         dispatchEntered.await()
@@ -614,7 +614,7 @@ class OutboxDrainEngineTest {
             listOf(StubDispatcher(result = DispatchResult.RetryableFailure("server 503"))),
             maxAttempts = 3,
         )
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         // Pass 1: retryCount 0 → 1, attempts=1 < 3, 仍 PENDING
         val first = engine.drainOnce()
@@ -663,8 +663,8 @@ class OutboxDrainEngineTest {
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
-        val secondId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", "tok-2")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
+        val secondId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 2L)
         // 预设第 2 个 row 已经有一次 markRetryable 留下的诊断, 验证 revertClaim 不会
         // 把它淹没。
         dao.rows[secondId] = dao.rows[secondId]!!.copy(lastError = "server 503")
@@ -696,7 +696,7 @@ class OutboxDrainEngineTest {
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         // 模拟连续 3 次 WorkManager cancel — 每次 drainOnce 都会跑到 dispatch 抛
         // CancellationException, 引擎应该 revertClaim 然后 rethrow。
@@ -727,7 +727,7 @@ class OutboxDrainEngineTest {
             listOf(StubDispatcher(result = DispatchResult.RetryableFailure("server 503"))),
             maxAttempts = 2,
         )
-        val rowId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", "tok-1")
+        val rowId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         // Pass 1+2: retryCount 0→1→2, attempts=2 >= 2 → FAILED
         engine.drainOnce()

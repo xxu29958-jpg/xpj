@@ -4177,6 +4177,10 @@
               }
             ],
             "title": "Parent Amount Cents"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -4185,6 +4189,7 @@
           "items_total_amount_cents",
           "mismatch_cents",
           "items_sum_status",
+          "row_version",
           "items"
         ],
         "title": "ExpenseItemsResponse",
@@ -5022,6 +5027,10 @@
             ],
             "title": "Parent Amount Cents"
           },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
           "splits": {
             "items": {
               "$ref": "#/components/schemas/ExpenseSplitResponse"
@@ -5046,6 +5055,7 @@
           "parent_amount_cents",
           "splits_total_amount_cents",
           "mismatch_cents",
+          "row_version",
           "splits"
         ],
         "title": "ExpenseSplitsResponse",

@@ -447,9 +447,9 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(saving = true, message = null) }
             repository.updateExpense(expenseId, draft, baseline)
                 .onSuccess { saved ->
-                    // ADR-0038 PR-2b: post-PATCH ``saved.updatedAt`` is the
+                    // ADR-0041: post-PATCH ``saved.rowVersion`` is the
                     // fresh optimistic-concurrency token confirm must use.
-                    repository.confirmExpense(expenseId, saved.updatedAt)
+                    repository.confirmExpense(expenseId, saved.rowVersion)
                         .onSuccess { confirmed ->
                             _uiState.update { state -> state.copy(expense = confirmed, saving = false, done = true) }
                         }
