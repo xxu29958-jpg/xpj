@@ -297,6 +297,10 @@ dependencies {
     // WorkManager TestDriver / TestListenableWorkerBuilder for the
     // outbox drain worker unit tests (Robolectric-free).
     testImplementation(libs.androidx.work.testing)
+    // ADR-0041 follow-up: in-memory SQLite for the JVM Room-migration SQL test
+    // (instrumented MigrationTestHelper is blocked by a lifecycle↔room-testing
+    // kotlinx-serialization conflict — see AppDatabaseMigrationSqlTest).
+    testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

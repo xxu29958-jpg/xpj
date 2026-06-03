@@ -241,47 +241,42 @@ abstract class AppDatabase : RoomDatabase() {
         //      pre-0041 build can't be replayed against the int-CAS backend, so
         //      the queue is dropped and rebuilt empty (no real install base
         //      during development — this is a destructive outbox reset by design).
+        // SQL exposed as a list (not inline) so AppDatabaseMigrationSqlTest can
+        // run the EXACT production statements against in-memory SQLite. A real
+        // instrumented MigrationTestHelper run is currently blocked by a
+        // lifecycle (strict kotlinx-serialization 1.7.3) ↔ room-testing (needs
+        // ≥1.8.0) binary conflict; the JVM SQL test is the stand-in.
+        internal val MIGRATION_10_11_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE expenses ADD COLUMN rowVersion INTEGER NOT NULL DEFAULT 1",
+            "DROP TABLE IF EXISTS pending_mutations",
+            """
+            CREATE TABLE IF NOT EXISTS pending_mutations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                serverUrl TEXT NOT NULL DEFAULT '',
+                ledgerId TEXT NOT NULL DEFAULT '',
+                type TEXT NOT NULL,
+                targetId TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                expectedRowVersion INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                retryCount INTEGER NOT NULL DEFAULT 0,
+                lastError TEXT,
+                createdAt TEXT NOT NULL,
+                attemptedAt TEXT,
+                completedAt TEXT
+            )
+            """.trimIndent(),
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_createdAt ON pending_mutations (createdAt)",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_targetId_status ON pending_mutations (targetId, status)",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_status ON pending_mutations (status)",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_createdAt ON pending_mutations (serverUrl, ledgerId, createdAt)",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_targetId_status ON pending_mutations (serverUrl, ledgerId, targetId, status)",
+            "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_status ON pending_mutations (serverUrl, ledgerId, status)",
+        )
+
         private val Migration10To11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE expenses ADD COLUMN rowVersion INTEGER NOT NULL DEFAULT 1")
-                db.execSQL("DROP TABLE IF EXISTS pending_mutations")
-                db.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS pending_mutations (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        serverUrl TEXT NOT NULL DEFAULT '',
-                        ledgerId TEXT NOT NULL DEFAULT '',
-                        type TEXT NOT NULL,
-                        targetId TEXT NOT NULL,
-                        payload TEXT NOT NULL,
-                        expectedRowVersion INTEGER NOT NULL DEFAULT 0,
-                        status TEXT NOT NULL,
-                        retryCount INTEGER NOT NULL DEFAULT 0,
-                        lastError TEXT,
-                        createdAt TEXT NOT NULL,
-                        attemptedAt TEXT,
-                        completedAt TEXT
-                    )
-                    """.trimIndent(),
-                )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_createdAt ON pending_mutations (createdAt)",
-                )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_targetId_status ON pending_mutations (targetId, status)",
-                )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_status ON pending_mutations (status)",
-                )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_createdAt ON pending_mutations (serverUrl, ledgerId, createdAt)",
-                )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_targetId_status ON pending_mutations (serverUrl, ledgerId, targetId, status)",
-                )
-                db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_status ON pending_mutations (serverUrl, ledgerId, status)",
-                )
+                MIGRATION_10_11_STATEMENTS.forEach(db::execSQL)
             }
         }
 
