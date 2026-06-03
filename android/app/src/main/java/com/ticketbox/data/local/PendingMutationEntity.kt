@@ -115,6 +115,17 @@ data class PendingMutationEntity(
     @ColumnInfo(name = "expectedRowVersion", defaultValue = "0")
     val expectedRowVersion: Long = 0,
 
+    /**
+     * ADR-0042 request idempotency key — the intent-time UUID v4 the client
+     * generates when the user issues the mutation, carried on both the direct
+     * request and this replayed row so a committed-but-unseen replay dedupes
+     * server-side instead of false-409ing on a stale token. Null for rows
+     * enqueued before Slice B wires key generation at the mutation call sites
+     * (Slice A is the column + plumbing only).
+     */
+    @ColumnInfo(name = "idempotencyKey")
+    val idempotencyKey: String? = null,
+
     /** Stringified ``PendingMutationStatus``. */
     @ColumnInfo(name = "status")
     val status: String,

@@ -40,6 +40,14 @@ class AppDatabaseMigrationSqlTest {
             "retryCount INTEGER NOT NULL DEFAULT 0, lastError TEXT, createdAt TEXT NOT NULL, attemptedAt TEXT, " +
             "completedAt TEXT)"
 
+    // v11 schema: pending_mutations as rebuilt by MIGRATION_10_11 (int token).
+    private val v11PendingMutations =
+        "CREATE TABLE pending_mutations (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "serverUrl TEXT NOT NULL DEFAULT '', ledgerId TEXT NOT NULL DEFAULT '', type TEXT NOT NULL, " +
+            "targetId TEXT NOT NULL, payload TEXT NOT NULL, expectedRowVersion INTEGER NOT NULL DEFAULT 0, " +
+            "status TEXT NOT NULL, retryCount INTEGER NOT NULL DEFAULT 0, lastError TEXT, createdAt TEXT NOT NULL, " +
+            "attemptedAt TEXT, completedAt TEXT)"
+
     @Test
     fun migration10To11RunsAgainstSqliteAndProducesExpectedSchema() {
         Class.forName("org.sqlite.JDBC")
@@ -86,6 +94,34 @@ class AppDatabaseMigrationSqlTest {
             ) { rs ->
                 rs.next()
                 assertEquals(6, rs.getInt(1), "all 6 pending_mutations indices must be rebuilt")
+            }
+        }
+    }
+
+    @Test
+    fun migration11To12AddsNullableIdempotencyKeyPreservingRows() {
+        Class.forName("org.sqlite.JDBC")
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { conn ->
+            conn.createStatement().use { st ->
+                st.execute(v11PendingMutations)
+                // Seed a v11 outbox row — no idempotencyKey column exists yet.
+                st.execute(
+                    "INSERT INTO pending_mutations (serverUrl, ledgerId, type, targetId, payload, " +
+                        "expectedRowVersion, status, createdAt) VALUES ('s', 'owner', 'patch_expense', " +
+                        "'expense:9', '{}', 3, 'pending', '2026-05-13T00:00:00Z')",
+                )
+                AppDatabase.MIGRATION_11_12_STATEMENTS.forEach { st.execute(it) }
+            }
+
+            // Additive: idempotencyKey column added, pre-existing row survives with NULL.
+            assertTrue(
+                conn.columns("pending_mutations").contains("idempotencyKey"),
+                "pending_mutations must gain an idempotencyKey column",
+            )
+            conn.query("SELECT idempotencyKey FROM pending_mutations WHERE targetId = 'expense:9'") { rs ->
+                assertTrue(rs.next(), "the pre-existing v11 outbox row must survive the additive migration")
+                rs.getString(1)
+                assertTrue(rs.wasNull(), "migrated rows carry a NULL idempotencyKey (no key until Slice B)")
             }
         }
     }

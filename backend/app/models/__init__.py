@@ -36,6 +36,7 @@ from app.models.classification import (
 from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.financial_planning import MonthlyIncomePlan
+from app.models.idempotency import ApiIdempotencyKey
 from app.models.identity import (
     Account,
     AuthToken,
@@ -56,6 +57,7 @@ __all__ = [
     "AiMerchantAnonMap",
     "AiTransactionTempIdMap",
     "AlgorithmDecision",
+    "ApiIdempotencyKey",
     "AppMeta",
     "AuthToken",
     "BackgroundTask",

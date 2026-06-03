@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.FxContract
 
 @Database(
     entities = [ExpenseEntity::class, PendingMutationEntity::class],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -282,6 +282,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // ADR-0042 Slice A: add the request-idempotency key column to the
+        // outbox. Nullable additive ALTER (no rebuild, no backfill) — Slice A is
+        // groundwork (column + plumbing); the call sites that generate the
+        // intent-time UUID land in Slice B+, so rows enqueued before then carry
+        // NULL. Exposed as a list so AppDatabaseMigrationSqlTest (JVM,
+        // sqlite-jdbc) runs the EXACT production statement, mirroring 10→11.
+        internal val MIGRATION_11_12_STATEMENTS: List<String> = listOf(
+            "ALTER TABLE pending_mutations ADD COLUMN idempotencyKey TEXT",
+        )
+
+        internal val Migration11To12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_11_12_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -300,6 +316,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration8To9,
                         Migration9To10,
                         Migration10To11,
+                        Migration11To12,
                     )
                     .build()
                     .also { instance = it }

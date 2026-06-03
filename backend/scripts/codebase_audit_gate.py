@@ -127,7 +127,7 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the
     # /web/pending route; bank the reduction so unreferenced_modules can't
     # silently re-creep.
-    "unreferenced_modules": 215,
+    "unreferenced_modules": 216,  # +1 ADR-0042 Slice A api_idempotency_keys model (helper itself is test-imported; wired into routes in Slice B)
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -211,8 +211,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # +1 PR-A (/web recurring); +7 PR-B income_plan OCC; +4 PR-C bill_split
     # accept atomic-claim; +8 ADR-0041 Slice A row_version groundwork; +3
     # ADR-0041 self-describing items/splits responses (parent row_version in
-    # items-replace, acknowledge-mismatch, splits-replace responses).
-    "backend_pytest_count": 1549,
+    # items-replace, acknowledge-mismatch, splits-replace responses); +11 ADR-0042 Slice A idempotency helper tests.
+    "backend_pytest_count": 1560,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination

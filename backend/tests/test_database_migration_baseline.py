@@ -19,7 +19,7 @@ from tests._infra.migration_helpers import (
     table_create_sql,
 )
 
-ALEMBIC_HEAD_REVISION = "20260603_0001"
+ALEMBIC_HEAD_REVISION = "20260603_0002"
 
 
 def test_empty_database_initializes_schema_and_runtime_data() -> None:

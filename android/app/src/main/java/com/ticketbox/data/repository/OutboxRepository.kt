@@ -241,6 +241,10 @@ class OutboxRepository(
         targetId: String,
         payloadJson: String,
         expectedRowVersion: Long,
+        // ADR-0042 request idempotency key. Defaulted null so Slice A (column +
+        // plumbing) lands without touching call sites; Slice B+ passes the
+        // intent-time UUID so committed-but-unseen replays dedupe server-side.
+        idempotencyKey: String? = null,
     ): Long {
         val id = bindingTransitionLease.withLock {
             val binding = currentBinding()
@@ -251,6 +255,7 @@ class OutboxRepository(
                 targetId = targetId,
                 payload = payloadJson,
                 expectedRowVersion = expectedRowVersion,
+                idempotencyKey = idempotencyKey,
                 status = PendingMutationStatus.Pending.wireValue,
                 createdAt = nowIso(),
             )
@@ -733,6 +738,7 @@ data class OutboxRow(
     val createdAt: String,
     val attemptedAt: String?,
     val completedAt: String?,
+    val idempotencyKey: String? = null,
 )
 
 data class OutboxBinding(
@@ -773,6 +779,7 @@ private fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
     createdAt = createdAt,
     attemptedAt = attemptedAt,
     completedAt = completedAt,
+    idempotencyKey = idempotencyKey,
 )
 
 /**

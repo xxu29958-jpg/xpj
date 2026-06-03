@@ -78,4 +78,41 @@ class AppDatabaseMigrationTest {
             assertEquals("v10→v11 intentionally clears the outbox", 0L, cursor.getLong(0))
         }
     }
+
+    @Test
+    fun migrate11To12AddsNullableIdempotencyKey() {
+        // ADR-0042 Slice A: v11→v12 is an additive ALTER (ADD COLUMN
+        // idempotencyKey TEXT). The emulator-free AppDatabaseMigrationSqlTest
+        // runs the raw SQL; this run applies Migration11To12 and validates the
+        // result against the exported 12.json on a device, then asserts a seeded
+        // v11 outbox row survives with a NULL key (no key until Slice B).
+        val name = "migration-11-12-test.db"
+        helper.createDatabase(name, 11).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO pending_mutations (
+                    serverUrl, ledgerId, type, targetId, payload, expectedRowVersion,
+                    status, retryCount, createdAt
+                ) VALUES (
+                    'https://api.example.com', 'owner', 'patch_expense', 'expense:9',
+                    '{}', 3, 'pending', 0, '2026-05-13T00:00:00Z'
+                )
+                """.trimIndent(),
+            )
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            name,
+            12,
+            true,
+            AppDatabase.Migration11To12,
+        )
+
+        db.query(
+            "SELECT idempotencyKey FROM pending_mutations WHERE targetId = 'expense:9'",
+        ).use { cursor ->
+            assertTrue("migrated v11 outbox row must survive", cursor.moveToFirst())
+            assertTrue("idempotencyKey defaults to NULL", cursor.isNull(0))
+        }
+    }
 }
