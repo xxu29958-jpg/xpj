@@ -236,6 +236,14 @@ android {
         compose = true
         resValues = true
     }
+
+    // ADR-0041 follow-up: package the exported Room schemas as androidTest assets
+    // so MigrationTestHelper can load 10.json / 11.json and validate v10→v11.
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDir("$projectDir/schemas")
+        }
+    }
 }
 
 ksp {
@@ -246,6 +254,21 @@ ksp {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+// ADR-0041 follow-up: androidx.lifecycle 2.10.0 transitively pins
+// kotlinx-serialization to 1.7.3 (Kotlin-2.0 era) `strictly`, which is binary-
+// incompatible with room-testing 2.8.4's schema-bundle serializers — they need
+// ≥1.8.0 (AbstractMethodError: GeneratedSerializer.typeParametersSerializers()
+// in MigrationTestHelper.loadSchema otherwise). Align to 1.10.0 to match the
+// project's Kotlin 2.3.21; lifecycle's 1.7.3-era generated serializers run
+// forward-compatibly on the newer runtime (the instrumented screen + migration
+// tests on the emulator lane confirm both still work).
+configurations.configureEach {
+    resolutionStrategy {
+        force("org.jetbrains.kotlinx:kotlinx-serialization-core:1.10.0")
+        force("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     }
 }
 
@@ -297,12 +320,16 @@ dependencies {
     // WorkManager TestDriver / TestListenableWorkerBuilder for the
     // outbox drain worker unit tests (Robolectric-free).
     testImplementation(libs.androidx.work.testing)
-    // ADR-0041 follow-up: in-memory SQLite for the JVM Room-migration SQL test
-    // (instrumented MigrationTestHelper is blocked by a lifecycle↔room-testing
-    // kotlinx-serialization conflict — see AppDatabaseMigrationSqlTest).
+    // ADR-0041 follow-up: in-memory SQLite for the fast, emulator-free JVM
+    // Room-migration SQL test — a local floor complementing the instrumented
+    // MigrationTestHelper test below.
     testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // ADR-0041 follow-up: real Room v10→v11 MigrationTestHelper coverage,
+    // unblocked by aligning kotlinx-serialization to 1.10.0 (configurations
+    // force above). Test-only artifact of the adopted Room library (same 2.8.4).
+    androidTestImplementation(libs.androidx.room.testing)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 

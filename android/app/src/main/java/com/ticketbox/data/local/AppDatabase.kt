@@ -241,11 +241,11 @@ abstract class AppDatabase : RoomDatabase() {
         //      pre-0041 build can't be replayed against the int-CAS backend, so
         //      the queue is dropped and rebuilt empty (no real install base
         //      during development — this is a destructive outbox reset by design).
-        // SQL exposed as a list (not inline) so AppDatabaseMigrationSqlTest can
-        // run the EXACT production statements against in-memory SQLite. A real
-        // instrumented MigrationTestHelper run is currently blocked by a
-        // lifecycle (strict kotlinx-serialization 1.7.3) ↔ room-testing (needs
-        // ≥1.8.0) binary conflict; the JVM SQL test is the stand-in.
+        // SQL exposed as a list (not inline) so AppDatabaseMigrationSqlTest (JVM,
+        // sqlite-jdbc) runs the EXACT production statements against in-memory
+        // SQLite, while the instrumented AppDatabaseMigrationTest hands the
+        // Migration10To11 object below to MigrationTestHelper and validates the
+        // result against the exported 11.json on a device.
         internal val MIGRATION_10_11_STATEMENTS: List<String> = listOf(
             "ALTER TABLE expenses ADD COLUMN rowVersion INTEGER NOT NULL DEFAULT 1",
             "DROP TABLE IF EXISTS pending_mutations",
@@ -274,7 +274,9 @@ abstract class AppDatabase : RoomDatabase() {
             "CREATE INDEX IF NOT EXISTS index_pending_mutations_serverUrl_ledgerId_status ON pending_mutations (serverUrl, ledgerId, status)",
         )
 
-        private val Migration10To11 = object : Migration(10, 11) {
+        // internal (not private) so AppDatabaseMigrationTest can hand this exact
+        // Migration to MigrationTestHelper.runMigrationsAndValidate.
+        internal val Migration10To11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 MIGRATION_10_11_STATEMENTS.forEach(db::execSQL)
             }

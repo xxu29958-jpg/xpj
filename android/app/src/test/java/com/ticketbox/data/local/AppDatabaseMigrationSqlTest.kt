@@ -12,15 +12,12 @@ import kotlin.test.assertTrue
  * in-memory SQLite (sqlite-jdbc), runs the EXACT production statements
  * ([AppDatabase.MIGRATION_10_11_STATEMENTS]), then introspects the result.
  *
- * Why JVM-SQLite and not instrumented MigrationTestHelper: the instrumented
- * helper is blocked by a binary conflict — androidx.lifecycle 2.10.0
- * strict-pins kotlinx-serialization 1.7.3 (via consistent resolution) while
- * room-testing 2.8.4's schema-bundle parser needs ≥1.8.0, so it throws
- * `AbstractMethodError: GeneratedSerializer.typeParametersSerializers()` in
- * `MigrationTestHelper.loadSchema`. Running the real migration SQL against real
- * SQLite still catches the two failure modes that matter on a device upgrade:
- * (1) a statement SQLite rejects (crash) and (2) schema drift — the rowVersion
- * backfill, the TEXT→INTEGER token-column flip, and the rebuilt index set.
+ * This is the fast, emulator-free floor; the instrumented [AppDatabaseMigrationTest]
+ * additionally validates the migrated schema against Room's exported 11.json on a
+ * device. Running the real migration SQL against real SQLite here catches the two
+ * failure modes that matter on a device upgrade — (1) a statement SQLite rejects
+ * (crash) and (2) schema drift: the rowVersion backfill, the TEXT→INTEGER
+ * token-column flip, and the rebuilt index set — locally, on every JVM test run.
  */
 class AppDatabaseMigrationSqlTest {
 

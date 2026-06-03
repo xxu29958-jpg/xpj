@@ -59,9 +59,10 @@ backend Expense.row_version (mutate 时 +1)
   best-effort 重读父）；离线 enqueue 的 payload strip 用 `0L`（非空）/ `null`（可空），dispatcher
   重放前用 `row.expectedRowVersion` 覆盖。
 - 加列 / 改 Room schema：Alembic + legacy `migrate_sqlite_schema`（后端）、Room migration +
-  `exportSchema` 的 `NN.json`（Android）三处对齐；Android 迁移 SQL 由
-  `AppDatabaseMigrationSqlTest` 跑真 SQLite 验证（instrumented MigrationTestHelper 暂被
-  lifecycle↔room-testing 的 kotlinx-serialization 版本冲突挡住）。
+  `exportSchema` 的 `NN.json`（Android）三处对齐；Android 迁移由两层守护：
+  `AppDatabaseMigrationSqlTest`（JVM/sqlite-jdbc，跑真迁移 SQL，快、本地可验）+
+  `AppDatabaseMigrationTest`（instrumented MigrationTestHelper，按导出的 `NN.json` 校验，
+  CI 模拟器 lane 跑——依赖的 kotlinx-serialization 已 force 对齐到 1.10.0 解锁）。
 
 ## 验证锚点
 - 后端：`expected_row_version` 请求字段 + `row_version` 响应字段的契约测试、two-session 409 gate
