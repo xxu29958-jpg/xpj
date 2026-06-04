@@ -105,6 +105,7 @@ fun ExpenseEditScreen(
             drafts = state.splitDrafts,
             parentAmountCents = state.expenseSplits?.parentAmountCents,
             saving = state.splitsSaving,
+            loading = state.splitMembersLoading,
             onToggleMember = onToggleSplitMember,
             onUpdateAmount = onUpdateSplitAmount,
             onEvenSplit = onEvenSplit,
@@ -337,6 +338,7 @@ fun ExpenseEditScreen(
             ocrRunning = state.ocrRunning,
             saving = state.saving,
             readOnly = readOnly,
+            canRecognize = state.expense?.status == "pending",
             onRetryOcr = onRetryOcr,
             onRecognizeText = onOpenRecognizeText,
         )

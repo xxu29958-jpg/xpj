@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
+from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 
 from app.auth import get_current_app_context
@@ -169,6 +170,48 @@ app = FastAPI(
     redoc_url="/redoc" if get_settings().enable_api_docs else None,
     openapi_url="/openapi.json" if get_settings().enable_api_docs else None,
 )
+
+
+def _custom_openapi() -> dict:
+    """OpenAPI document with the ADR-0042 ``Idempotency-Key`` header marked
+    ``required: true`` on the outbox-routed mutate routes.
+
+    The handlers declare the header as ``Header(default=None, ...)`` ON PURPOSE:
+    a missing key is rejected inside the route body (``claim_idempotent_request``
+    → 422 ``idempotency_key_required``) so the client gets the structured
+    ``{"error": ..., "message": ...}`` contract and the three-tier idempotency
+    error codes, instead of FastAPI's own generic validation-error body that a
+    natively-required header would produce. But ``default=None`` makes FastAPI
+    infer ``required: false``, which would tell a generated client the header is
+    optional — callers would omit it and hit the runtime 422. The header IS
+    contractually required, so we post-process the generated schema to say so
+    without changing the runtime 422 body shape (ADR-0042 §4.4). The flip is
+    safe blanket-wide: every ``Idempotency-Key`` parameter in this app belongs to
+    an outbox-routed mutate route that runtime-requires it.
+    """
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    for path_item in schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            for parameter in operation.get("parameters", []):
+                if (
+                    parameter.get("in") == "header"
+                    and parameter.get("name") == "Idempotency-Key"
+                ):
+                    parameter["required"] = True
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi
 
 add_exception_handlers(app)
 app.add_middleware(SanitizedLoggingMiddleware)

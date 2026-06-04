@@ -502,6 +502,17 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(splitsMessage = "账单还在加载，请稍后再试。") }
             return
         }
+        // ADR-0042 P1 data-loss guard: the sheet opens BEFORE the member roster
+        // loads (loadSplitMembers is async), so splitDrafts can still be empty —
+        // the load is in flight, or it failed. Saving then would send splits=[]
+        // and the backend replace deletes every existing split first. Refuse to
+        // save an editor that never finished loading (an empty splitDrafts means
+        // not-loaded; an intentional "remove everyone" still has the unchecked
+        // rows in splitDrafts, so this only blocks the never-loaded case).
+        if (_uiState.value.splitMembersLoading || _uiState.value.splitDrafts.isEmpty()) {
+            _uiState.update { it.copy(splitsMessage = "家庭拆账还在加载，请稍候再保存。") }
+            return
+        }
         val drafts = _uiState.value.splitDrafts
             .filter { (it.included || it.disabled) && it.amountText.isNotBlank() }
             .map { it.toDomainDraft() }
@@ -677,16 +688,29 @@ class ExpenseEditViewModel(
             _uiState.update { it.copy(message = "请先填写金额。") }
             return
         }
+        val baseline = _uiState.value.expense
+        if (baseline == null) {
+            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            return
+        }
         viewModelScope.launch {
-            val baseline = _uiState.value.expense
             _uiState.update { it.copy(saving = true, message = null) }
-            repository.updateExpense(expenseId, draft, baseline)
-                .onSuccess { saved ->
-                    // ADR-0041: post-PATCH ``saved.rowVersion`` is the
-                    // fresh optimistic-concurrency token confirm must use.
-                    repository.confirmExpense(expenseId, saved.rowVersion)
-                        .onSuccess { confirmed ->
-                            _uiState.update { state -> state.copy(expense = confirmed, saving = false, done = true) }
+            // ADR-0042: route the edit-page save+confirm through the offline-aware
+            // path (like the pending-list confirm) instead of the direct
+            // updateExpense+confirmExpense chain, which failed entirely offline and
+            // lost the user's confirm intent. Offline, BOTH mutations queue; the
+            // outbox serialises same-target (PatchExpense before ConfirmExpense) and
+            // cascades the post-save row_version onto the queued confirm, so the
+            // optimistic (pre-save) token on the queued confirm is corrected on
+            // replay. Online, the save Syncs (server token) and the confirm runs
+            // direct against it — same result as before.
+            repository.saveExpenseAllowingOffline(expenseId, draft, baseline)
+                .onSuccess { saveOutcome ->
+                    repository.confirmExpenseAllowingOffline(saveOutcome.expense)
+                        .onSuccess { confirmOutcome ->
+                            _uiState.update { state ->
+                                state.copy(expense = confirmOutcome.expense, saving = false, done = true)
+                            }
                         }
                         .onFailure { error ->
                             _uiState.update { state -> state.copy(saving = false, message = error.message ?: "没有确认成功，请稍后再试。") }

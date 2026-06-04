@@ -47,6 +47,7 @@ fun SplitsEditorSheet(
     drafts: List<EditableSplit>,
     parentAmountCents: Long?,
     saving: Boolean,
+    loading: Boolean,
     onToggleMember: (memberId: Long, included: Boolean) -> Unit,
     onUpdateAmount: (memberId: Long, amountText: String) -> Unit,
     onEvenSplit: () -> Unit,
@@ -70,6 +71,18 @@ fun SplitsEditorSheet(
             )
             Spacer(Modifier.height(12.dp))
 
+            if (drafts.isEmpty()) {
+                // ADR-0042 P1: the roster loads async after the sheet opens. Until
+                // drafts is built, Save is disabled (below) so an empty splits=[]
+                // can't wipe the existing splits; show why the editor is inert.
+                Text(
+                    text = if (loading) "正在加载家庭成员…" else "家庭成员暂时加载失败，请关闭后重试。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp),
+                )
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -90,7 +103,7 @@ fun SplitsEditorSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                OutlinedButton(onClick = onEvenSplit, enabled = !saving) { Text("均分") }
+                OutlinedButton(onClick = onEvenSplit, enabled = !saving && drafts.isNotEmpty()) { Text("均分") }
             }
             Spacer(Modifier.height(8.dp))
             SplitsReconciliationFooter(drafts = drafts, parentAmountCents = parentAmountCents)
@@ -106,8 +119,11 @@ fun SplitsEditorSheet(
                     modifier = Modifier.weight(1f),
                 ) { Text("取消") }
                 Button(
+                    // ADR-0042 P1: never enable Save with an empty draft list — the
+                    // roster hasn't loaded, and saving would send splits=[] which the
+                    // backend replace turns into "delete all existing splits".
                     onClick = onSave,
-                    enabled = !saving,
+                    enabled = !saving && drafts.isNotEmpty(),
                     modifier = Modifier.weight(1f),
                 ) { Text(if (saving) "保存中…" else "保存") }
             }

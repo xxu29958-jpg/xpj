@@ -38,6 +38,15 @@ https://api.我的域名.com
 - Android Room 同时保存 `serverId` 和 `publicId`；`publicId` 必须全局唯一，`serverId` 必须在当前 `ledgerId` 下唯一。
 - 普通 UI 不直接展示 UUID；需要给用户看时使用"账单编号"等生活化文案。
 
+乐观并发与请求幂等键：
+
+- **乐观并发（OCC）**：所有写操作携带 `expected_row_version`（整数 `row_version`，ADR-0041 起取代旧的 `expected_updated_at` 时间戳 token；`updated_at` 仅用于展示/排序）。服务端做原子 `UPDATE … WHERE row_version = expected`，不匹配返回 `409 state_conflict`，客户端刷新拿到最新 `row_version` 后再重试。批量端点用 `expected_row_version_by_id`（`{id: row_version}`）。
+- **请求幂等键（Idempotency-Key，ADR-0042）**：经 Android 离线 outbox 重放的写路由必须带 `Idempotency-Key` 请求头（intent 发生时生成的 UUID v4，直发与重放共用同一值），让"提交成功但响应丢失"后的重放安全地返回规范结果而不是因 stale token 误报 409。该幂等键先于 OCC claim 认领（§4.4）。覆盖的路由（非"仅 PATCH"）：
+  - `PATCH /api/expenses/{id}`、`POST /api/expenses/{id}/confirm`、`POST /api/expenses/{id}/reject`、`POST /api/expenses/{id}/mark-not-duplicate`、`POST /api/expenses/{id}/ocr/retry`、`POST /api/expenses/{id}/recognize-text`、`POST /api/expenses/{id}/items/acknowledge-mismatch`、`PUT /api/expenses/{id}/items`、`PUT /api/expenses/{id}/splits`
+  - `PATCH /api/rules/categories/{id}`、`DELETE /api/rules/categories/{id}`、`PATCH /api/merchants/aliases/{public_id}`、`DELETE /api/merchants/aliases/{public_id}`
+  - 缺头 → `422 idempotency_key_required`；同 key 并发在途 → `409 idempotency_key_in_progress`；同 key 用于内容不同的请求（fingerprint 不符）→ `422 idempotency_key_reused`。
+  - 注：OpenAPI snapshot 把这些路由的 `Idempotency-Key` header 标记为 `required: true`（契约要求），但 handler 仍声明为可选 header，以便缺失时返回上述结构化 `{error, message}` 而非 FastAPI 默认校验错误体；不属于 outbox 重放面的写路由（如 `POST /api/expenses/confirmed/batch-update` 原子批处理）不带该头。
+
 错误：
 
 ```json
@@ -71,6 +80,10 @@ server_error
 invalid_request
 route_not_found
 method_not_allowed
+state_conflict
+idempotency_key_required
+idempotency_key_in_progress
+idempotency_key_reused
 ```
 
 ## 认证
@@ -720,9 +733,9 @@ Content-Type: application/json
 ```json
 {
   "expense_ids": [101, 102],
-  "expected_updated_at_by_id": {
-    "101": "2026-05-04T08:00:00Z",
-    "102": "2026-05-04T08:01:00Z"
+  "expected_row_version_by_id": {
+    "101": 7,
+    "102": 3
   },
   "category": "餐饮",
   "tags": "家庭, 周末"
@@ -731,10 +744,10 @@ Content-Type: application/json
 
 规则：
 
-- `expense_ids` 最多 200 个，服务端按 id 去重；`expected_updated_at_by_id` 必须覆盖每个目标 id，不能缺 token。
+- `expense_ids` 最多 200 个，服务端按 id 去重；`expected_row_version_by_id` 必须覆盖每个目标 id，不能缺 token（值为该账单最后一次读取到的 `row_version` 整数）。
 - `category` / `tags` 至少传一个；空分类返回 `invalid_request`。
 - 只修改当前账本内 `confirmed` 账单；跨账本 id 计入 `skipped_not_found`，非 confirmed 计入 `skipped_not_confirmed`。
-- 任一当前账本内 confirmed 目标行的 `updated_at` 与 token 不匹配时，整个批处理回滚并返回 `409 state_conflict`；客户端需刷新列表后重试。
+- 任一当前账本内 confirmed 目标行的 `row_version` 与 token 不匹配时，整个批处理回滚并返回 `409 state_conflict`；客户端需刷新列表后重试。
 - 标签按普通账单标签规则规范化和去重。
 
 ### GET /api/expenses/categories
@@ -924,12 +937,14 @@ status: 可选，valid/error/applied/insert_failed
 ```http
 Authorization: Bearer <session_token>
 Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
 请求体：
 
 ```json
 {
+  "expected_row_version": 7,
   "original_currency": "USD",
   "original_amount": "5.18",
   "spent_at": "2026-05-03T04:20:00Z",
@@ -944,6 +959,8 @@ Content-Type: application/json
 ```
 
 只能修改 `pending` 或 `confirmed`。如果请求包含原始币种、原始金额或发生时间，后端会按汇率优先级重新解析并冻结 home amount；客户端不得提交汇率或自行折算后的 home amount。只传 `amount_cents` 时仍按旧客户端 home currency 兼容。
+
+`expected_row_version` 是客户端最后一次读取该账单时看到的 `row_version` 整数；账单已被其它端修改时返回 `409 state_conflict`。本路由经 outbox 重放，必须带 `Idempotency-Key`（intent 时生成的 UUID v4，直发与重放共用同一值）；缺失返回 `422 idempotency_key_required`（详见下方“请求幂等键”）。
 
 ### GET /api/expenses/{id}
 
@@ -1003,13 +1020,14 @@ OCR 或 `recognize-text` 能从足够明确的小票文本中生成 `is_ocr_draf
 ```http
 Authorization: Bearer <session_token>
 Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
 请求体：
 
 ```json
 {
-  "expected_updated_at": "2026-05-04T08:00:00Z",
+  "expected_row_version": 7,
   "items": [
     {
       "name": "拿铁",
@@ -1028,7 +1046,8 @@ Content-Type: application/json
 
 - 只能整体替换同一账单的明细行，最多 200 行。
 - 只允许修改 `pending` 或 `confirmed` 账单；`rejected` 返回 `expense_not_found`。
-- `expected_updated_at` 是客户端最后一次读取该账单时看到的 `updated_at`；账单已被其它端修改时返回 `409 state_conflict`。
+- `expected_row_version` 是客户端最后一次读取该账单时看到的 `row_version` 整数；账单已被其它端修改时返回 `409 state_conflict`。
+- 本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 - `position` 由服务端按请求顺序生成。
 - `items_total_amount_cents` 只汇总带 `amount_cents` 的明细；`mismatch_cents = parent_amount_cents - items_total_amount_cents`。
 - viewer 返回 `permission_denied`。
@@ -1075,13 +1094,14 @@ Authorization: Bearer <session_token>
 ```http
 Authorization: Bearer <session_token>
 Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
 请求体：
 
 ```json
 {
-  "expected_updated_at": "2026-05-04T08:00:00Z",
+  "expected_row_version": 7,
   "splits": [
     {
       "member_id": 12,
@@ -1104,7 +1124,8 @@ Content-Type: application/json
 - 已有拆账行在成员停用后仍保留原成员姓名、角色和 `disabled_at`，但不能再把停用成员写入新的拆账替换请求。
 - 同一个成员不能在同一账单内重复出现，重复返回 `invalid_request`。
 - 只允许修改 `pending` 或 `confirmed` 账单；`rejected` 返回 `expense_not_found`。
-- `expected_updated_at` 是客户端最后一次读取该账单时看到的 `updated_at`；账单已被其它端修改时返回 `409 state_conflict`。
+- `expected_row_version` 是客户端最后一次读取该账单时看到的 `row_version` 整数；账单已被其它端修改时返回 `409 state_conflict`。
+- 本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 - `position` 由服务端按请求顺序生成。
 - `splits_total_amount_cents` 汇总拆账金额；`mismatch_cents = parent_amount_cents - splits_total_amount_cents`。
 - 成功替换会写入成员审计日志 `expense_splits_replaced`，`detail` 包含 `expense_public_id` 以及 before/after 的成员分配摘要。
@@ -1116,10 +1137,22 @@ Content-Type: application/json
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
+```
+
+请求体：
+
+```json
+{
+  "expected_row_version": 7
+}
 ```
 
 规则：
 
+- `expected_row_version` 是客户端最后一次读取该账单时看到的 `row_version` 整数；账单已被其它端修改时返回 `409 state_conflict`（已是 `confirmed` 的终态行幂等返回 200，与 token 无关）。
+- 本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 - `amount_cents` 为空时返回 `amount_required`。
 - 状态改为 `confirmed`。
 - 写入 `confirmed_at` 和 `updated_at`。
@@ -1131,9 +1164,19 @@ Authorization: Bearer <session_token>
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
-只能拒绝 `pending`。
+请求体：
+
+```json
+{
+  "expected_row_version": 7
+}
+```
+
+只能拒绝 `pending`。`expected_row_version` 与 `Idempotency-Key` 规则同 `confirm`（`rejected` 也是终态，幂等返回 200）。
 
 ### GET /api/expenses/{id}/image
 
@@ -1161,17 +1204,19 @@ Authorization: Bearer <session_token>
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
 请求体：
 
 ```json
 {
-  "expected_updated_at": "2026-05-04T08:00:00Z"
+  "expected_row_version": 7
 }
 ```
 
-`expected_updated_at` 是客户端最后一次读取该账单时看到的 `updated_at`。如果账单已经被其它端修改，返回 `409 state_conflict`，客户端需要重新读取最新账单后再决定是否重试识别。
+`expected_row_version` 是客户端最后一次读取该账单时看到的 `row_version` 整数。如果账单已经被其它端修改，返回 `409 state_conflict`，客户端需要重新读取最新账单后再决定是否重试识别。本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 
 重新运行当前 `OCR_PROVIDER`。OCR 只写入待确认草稿，不会自动入账。
 如果当前为默认 `OCR_PROVIDER=empty`，返回 `503 ocr_not_configured`，不写入 `ocr_facts`，避免用户点“重试识别”后产生空识别记录但界面无变化。
@@ -1197,23 +1242,26 @@ local_llm
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
 请求体：
 
 ```json
 {
-  "expected_updated_at": "2026-05-04T08:23:25Z",
+  "expected_row_version": 7,
   "raw_text": "中国建设银行\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
 }
 ```
 
 行为：
 
-- ADR-0038 PR-2e：`expected_updated_at` 必填；服务端 `UPDATE WHERE updated_at = expected, status='pending'` 原子 claim。
+- `expected_row_version` 必填；服务端 `UPDATE WHERE row_version = expected, status='pending'` 原子 claim。
   - 缺字段 → `422 invalid_request`
   - token 与当前行不一致 → `409 state_conflict`
   - 当前行不是 `pending` → `404 expense_not_found`
+- 本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 - 从文本规则中提取 `amount_cents`、`merchant`、`expense_time`、`category` 和 `confidence`。
 - 保存 `raw_text`。
 - 对 `pending` 账单，如果文本中存在明确的商品行，会生成 OCR 草稿明细；已存在手工明细时不会覆盖。
@@ -1225,24 +1273,27 @@ Authorization: Bearer <session_token>
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
 请求体：
 
 ```json
 {
-  "expected_updated_at": "2026-05-04T08:23:25Z"
+  "expected_row_version": 7
 }
 ```
 
 行为：
 
 - ADR-0038 PR-2e："原小票如此" 路径：把 `items_sum_status` 从 `mismatch_known` 迁移到 `mismatch_acknowledged`。
-- `expected_updated_at` 必填；服务端 `UPDATE WHERE updated_at = expected, items_sum_status='mismatch_known'` 原子 claim。
+- `expected_row_version` 必填；服务端 `UPDATE WHERE row_version = expected, items_sum_status='mismatch_known'` 原子 claim。
   - 缺字段 → `422 invalid_request`
   - 行不存在 → `404 expense_not_found`
   - 当前行 `items_sum_status` 已不是 `mismatch_known`（如 `matched` / `mismatch_acknowledged`）→ `409 items_sum_not_in_mismatch`
   - token 与当前行不一致（其它端改了 amount/items）→ `409 state_conflict`
+- 本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 
 ### POST /api/expenses/{id}/mark-not-duplicate
 
@@ -1250,9 +1301,19 @@ Authorization: Bearer <session_token>
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
-清除疑似重复标记，并记录这组账单在当前检测类型下的"非重复"判断。图片 hash 重复和金额/商家/时间相似会分别记录，互不覆盖。
+请求体：
+
+```json
+{
+  "expected_row_version": 7
+}
+```
+
+清除疑似重复标记，并记录这组账单在当前检测类型下的"非重复"判断。图片 hash 重复和金额/商家/时间相似会分别记录，互不覆盖。`expected_row_version` 必填，stale → `409 state_conflict`；本路由经 outbox 重放，必须带 `Idempotency-Key`，缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 
 ## 重复检测
 
@@ -1325,15 +1386,20 @@ Authorization: Bearer <session_token>
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
-请求体支持局部更新：
+请求体支持局部更新（`expected_row_version` 必填）：
 
 ```json
 {
+  "expected_row_version": 7,
   "enabled": false
 }
 ```
+
+`expected_row_version` 是客户端最后一次读取该规则时看到的 `row_version` 整数；规则已被其它端修改时返回 `409 state_conflict`。本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 
 ### DELETE /api/rules/categories/{id}
 
@@ -1341,9 +1407,19 @@ Authorization: Bearer <session_token>
 
 ```http
 Authorization: Bearer <session_token>
+Content-Type: application/json
+Idempotency-Key: <uuid-v4>
 ```
 
-删除一条分类规则。
+删除一条分类规则。DELETE 同样携带请求体传 `expected_row_version`：
+
+```json
+{
+  "expected_row_version": 7
+}
+```
+
+`expected_row_version` 规则同 PATCH（stale → `409 state_conflict`）；本路由经 outbox 重放，必须带 `Idempotency-Key`，缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 
 返回：
 

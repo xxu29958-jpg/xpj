@@ -33,6 +33,11 @@ internal fun ExpenseEditMoreSection(
     ocrRunning: Boolean,
     saving: Boolean,
     readOnly: Boolean = false,
+    // ADR-0042: retry-OCR and paste-text-recognize are pending-only server-side
+    // (404 on a confirmed/rejected row). Gate the affordances so a non-pending
+    // expense never offers them — online it 404s, offline it queues a mutation
+    // that the dispatcher discards on replay.
+    canRecognize: Boolean = false,
     onRetryOcr: () -> Unit,
     onRecognizeText: () -> Unit = {},
 ) {
@@ -89,7 +94,7 @@ internal fun ExpenseEditMoreSection(
                     TextButton(onClick = onToggleRawText) {
                         Text(if (rawTextExpanded) "收起识别原文" else "查看识别原文")
                     }
-                    if (!readOnly) {
+                    if (!readOnly && canRecognize) {
                         AppOutlinedButton(
                             enabled = !ocrRunning && !saving,
                             onClick = onRetryOcr,

@@ -11208,7 +11208,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -11292,7 +11292,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -11488,7 +11488,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -11572,7 +11572,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -11656,7 +11656,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -11740,7 +11740,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -11824,7 +11824,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -11908,7 +11908,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -12116,7 +12116,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -15066,7 +15066,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -15148,7 +15148,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -16502,7 +16502,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -16584,7 +16584,7 @@
           {
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "anyOf": [
                 {

@@ -63,9 +63,9 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
     @Test
     fun `a row with no idempotency key fails loudly instead of silently dropping`() = runTest {
         // Pre-ADR-0042 rows (null key) can't be replayed safely. The guard must
-        // surface a visible FAILED row (user can drop it) rather than send a
-        // null header → server 422 → silent Discard. A Success here would mean
-        // the guard didn't fire.
+        // surface a visible FAILED row (user can drop it) before the request
+        // even leaves the device, rather than send a null header and lean on the
+        // server's 422. A Success here would mean the guard didn't fire.
         val stub = ApiServiceStub(updateExpenseResult = ApiResult.Success(successExpenseDto()))
 
         val result = dispatcherFor(stub).dispatch(patchRow(idempotencyKey = null))
@@ -101,14 +101,30 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
     }
 
     @Test
-    fun `422 idempotency_key_reused is discarded, not retried forever`() = runTest {
-        // Same key, different request — terminal (a UUID never legitimately
-        // collides). Drop the structurally-broken row rather than loop on it.
+    fun `422 surfaces as a visible Failure, not a silent Discard`() = runTest {
+        // A 422 is a genuine validation / payload-contract rejection. It is
+        // terminal (won't succeed on retry) but the user MUST see it — a silent
+        // Discard would mark the row DONE and lose their offline edit. Even the
+        // "shouldn't-happen on a clean replay" idempotency_key_reused anomaly is
+        // surfaced (not dropped) so the user can drop / redo it.
         val body = """{"error":"idempotency_key_reused","message":"幂等键已被另一请求使用，请勿复用。"}"""
         val stub = ApiServiceStub(updateExpenseResult = ApiResult.Throw(httpException(422, body)))
 
         val result = dispatcherFor(stub).dispatch(patchRow(idempotencyKey = "key-abc"))
 
-        assertTrue(result is DispatchResult.Discarded, "reused (422) must Discard: $result")
+        assertTrue(result is DispatchResult.Failure, "422 must FAIL visibly, not Discard: $result")
+    }
+
+    @Test
+    fun `404 still discards — the target row is gone`() = runTest {
+        // 404 means the expense was deleted / rejected server-side; the queued
+        // mutation is genuinely moot, so a silent Discard (vs the 422 Failure) is
+        // the correct branch — nothing for the user to keep or redo.
+        val body = """{"error":"not_found","message":"账单不存在。"}"""
+        val stub = ApiServiceStub(updateExpenseResult = ApiResult.Throw(httpException(404, body)))
+
+        val result = dispatcherFor(stub).dispatch(patchRow(idempotencyKey = "key-abc"))
+
+        assertTrue(result is DispatchResult.Discarded, "404 (gone) must Discard: $result")
     }
 }

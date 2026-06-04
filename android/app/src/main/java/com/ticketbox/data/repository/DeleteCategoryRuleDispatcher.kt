@@ -96,7 +96,13 @@ class DeleteCategoryRuleDispatcher(
             )
             // 404 on DELETE means "already gone" — the row's intent
             // is satisfied either way, so silently discard.
-            404, 422 -> DispatchResult.Discarded(message)
+            404 -> DispatchResult.Discarded(message)
+            // 422: a validation / payload-contract rejection (invalid_request,
+            // malformed body, constraint violation, idempotency_key_reused).
+            // It will never succeed on retry, but the user MUST see it —
+            // surface a visible FAILED row, not a silent Discard that drops
+            // their offline edit.
+            422 -> DispatchResult.Failure(message)
             else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${e.code()}" })
         }
     }

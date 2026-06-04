@@ -92,6 +92,16 @@ internal class ExpenseLedgerRepositoryActions(
         // independently (mirrors the per-row keep-mine model, unlike the atomic
         // /web batch endpoint). Sequential — same-scale as the confirmed list and
         // keeps the ledger-session guard + outbox ordering simple.
+        // KNOWN LIMITATION (review P2, deferred): a SYNCED fan-out row updates the
+        // Room cache (patchExpenseOffline → cacheIfConfirmed) so the confirmed list
+        // reflects it immediately; a QUEUED (offline) row does NOT, so during the
+        // offline window the list keeps the old category/tags even though the
+        // "已加入同步" snackbar fired. It self-heals on the next confirmed-list
+        // sync (syncConfirmed re-fetches from the server) — NOT on drain, since
+        // PatchExpenseDispatcher's success doesn't re-cache locally. Optimistic
+        // local-cache write for the queued case needs a domain→entity mapper that
+        // doesn't exist yet; tracked as a follow-up rather than risking an
+        // optimistic/server normalisation skew.
         val pending = ExpensePendingRepository(core)
         var synced = 0
         var queued = 0
