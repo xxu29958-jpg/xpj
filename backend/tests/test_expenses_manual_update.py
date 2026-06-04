@@ -219,3 +219,31 @@ def test_expense_update_normalizes_user_text(client: TestClient, *, identity) ->
     assert payload["category"] == "其他"
     assert payload["note"] == ""
     assert payload["tags"] is None
+
+
+def test_patch_explicit_null_tags_does_not_clobber(client: TestClient, *, identity) -> None:
+    """ADR-0042 defense-in-depth: an explicit ``{"tags": null}`` must NOT clear the
+    column — the field-selective batch (Slice C) touches tags only when the key is
+    SENT, so a stray null can't wipe a row's tags. An empty string still clears
+    (the legitimate "remove all tags" path)."""
+    expense_id = upload_png(client, identity=identity)
+
+    set_tags = patch_expense(
+        client, expense_id, headers=identity.app_headers, fields={"tags": "出差"}
+    )
+    assert set_tags.status_code == 200, set_tags.text
+    assert set_tags.json()["tags"] == "出差"
+
+    # explicit null → untouched (the hardening; before the fix this cleared tags).
+    null_tags = patch_expense(
+        client, expense_id, headers=identity.app_headers, fields={"tags": None}
+    )
+    assert null_tags.status_code == 200, null_tags.text
+    assert null_tags.json()["tags"] == "出差"
+
+    # empty string → genuinely cleared (legitimate remove-tags path preserved).
+    clear_tags = patch_expense(
+        client, expense_id, headers=identity.app_headers, fields={"tags": ""}
+    )
+    assert clear_tags.status_code == 200, clear_tags.text
+    assert clear_tags.json()["tags"] is None

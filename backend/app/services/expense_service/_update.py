@@ -212,7 +212,8 @@ def update_expense(
         expense.expense_time = ensure_utc(updates["spent_at"])
     elif "expense_time" in updates:
         expense.expense_time = ensure_utc(updates["expense_time"])
-    if "tags" in updates:
+    # ADR-0042: explicit {"tags": null} must not clobber tags (Slice C relies on an omitted key leaving them untouched); "" still clears.
+    if updates.get("tags") is not None:
         expense.tags = normalize_tags(updates["tags"])
     if "value_score" in updates:
         expense.value_score = updates["value_score"]
@@ -255,7 +256,7 @@ def update_expense(
         mark_duplicate_status(db, expense)
         db.flush()
         revalidate_duplicate_references_to(db, tenant_id=tenant_id, duplicate_of_id=expense.id)
-    if "tags" in updates:
+    if updates.get("tags") is not None:
         sync_expense_tags(db, expense)
 
     # 0035: amount_cents 改动后必须重算 items_sum_status。
