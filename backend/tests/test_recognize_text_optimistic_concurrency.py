@@ -9,6 +9,8 @@ the expense-mutate surface.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from api_contract_helpers import (
     patch_expense,
@@ -55,7 +57,7 @@ def test_recognize_text_with_stale_token_returns_409(
 
     response = client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": snapshot.json()["row_version"],
             "raw_text": "中国建设银行\n交易金额：18.51",

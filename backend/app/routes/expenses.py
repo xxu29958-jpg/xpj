@@ -587,10 +587,31 @@ def post_retry_ocr(
 def post_recognize_text(
     expense_id: int,
     payload: ExpenseRecognizeTextRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
-    expense = recognize_expense_text(db, expense_id, auth.tenant_id, payload)
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="recognize_text",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # §4.6 HIT — re-serialise the current expense
+        expense = get_expense(db, expense_id, auth.tenant_id)
+        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+
+    expense = recognize_expense_text(db, expense_id, auth.tenant_id, payload, commit=False)
+    mark_idempotency_succeeded(
+        db, claim, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

@@ -127,7 +127,12 @@ def retry_expense_ocr(
 
 
 def recognize_expense_text(
-    db: Session, expense_id: int, tenant_id: str, payload: ExpenseRecognizeTextRequest
+    db: Session,
+    expense_id: int,
+    tenant_id: str,
+    payload: ExpenseRecognizeTextRequest,
+    *,
+    commit: bool = True,
 ) -> Expense:
     # ADR-0038 PR-2e: client supplies ``expected_row_version`` so the
     # atomic claim rejects stale writes (peer edited amount/items
@@ -173,8 +178,13 @@ def recognize_expense_text(
     ):
         mark_duplicate_status(db, expense)
     expense.updated_at = now
-    db.commit()
-    db.refresh(expense)
+    # ADR-0042: the idempotent route folds the key-record + this mutation into a
+    # single commit (commit=False → flush only).
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        db.flush()
     return expense
 
 

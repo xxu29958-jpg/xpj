@@ -154,7 +154,7 @@ def recognize_text_api(
         return snapshot
     return client.post(
         f"/api/expenses/{expense_id}/recognize-text",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": snapshot.json()["row_version"],
             "raw_text": raw_text,
