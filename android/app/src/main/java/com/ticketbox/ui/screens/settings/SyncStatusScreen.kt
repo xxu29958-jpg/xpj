@@ -210,6 +210,11 @@ private fun FailedCard(
     onRetry: () -> Unit,
     onDrop: () -> Unit,
 ) {
+    // ADR-0042 §4.10: a reaper-expired row can't be retried — replaying it would
+    // hit a server-purged idempotency key (and the next drain would just re-reap
+    // it), so Retry is a dead action. Offer only Drop; the message already tells
+    // the user to redo the change fresh (which mints a new key).
+    val expired = isExpiredFailure(row.lastError)
     AppSolidCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
@@ -229,25 +234,31 @@ private fun FailedCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
             ) {
-                AppPrimaryButton(
-                    text = "重试",
-                    icon = Icons.Filled.RestartAlt,
-                    modifier = Modifier.weight(1f),
-                    enabled = !busy,
-                    onClick = onRetry,
-                )
+                if (!expired) {
+                    AppPrimaryButton(
+                        text = "重试",
+                        icon = Icons.Filled.RestartAlt,
+                        modifier = Modifier.weight(1f),
+                        enabled = !busy,
+                        onClick = onRetry,
+                    )
+                }
                 AppOutlinedButton(
                     onClick = onDrop,
                     modifier = Modifier.weight(1f),
                     enabled = !busy,
                     danger = true,
                 ) {
-                    Text("放弃")
+                    Text(if (expired) "移除" else "放弃")
                 }
             }
         }
     }
 }
+
+/** A reaper age-cap expiry (``outbox_row_expired``) is terminal — Retry can't help. */
+internal fun isExpiredFailure(lastError: String?): Boolean =
+    lastError?.startsWith("outbox_row_expired") == true
 
 private fun mutationLabel(type: PendingMutationType): String = when (type) {
     PendingMutationType.PatchExpense -> "修改账单"
