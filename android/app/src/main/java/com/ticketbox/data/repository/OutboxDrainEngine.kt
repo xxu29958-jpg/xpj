@@ -18,6 +18,32 @@ import kotlinx.coroutines.withContext
 internal const val DEFAULT_MAX_ATTEMPTS: Int = 10
 
 /**
+ * ADR-0042 §4.10 client-outbox PENDING age-cap.
+ *
+ * A PENDING row carries an [idempotencyKey] (intent-time UUID). The server keeps
+ * the matching key in `api_idempotency_keys` for only ~30 days, then purges it.
+ * If a row sits PENDING **longer than that retention** and *then* replays, the
+ * server no longer holds its key → it reads the replay as a brand-new request →
+ * **double-apply**: the idempotency protection that the whole ADR-0042 plumbing
+ * exists to provide is silently gone (a confirm fires twice, an edit re-applies
+ * to a now-different state, etc).
+ *
+ * So a row older than this cap must be **reaped — flipped to FAILED and NEVER
+ * replayed** — and surfaced to the user, who can redo the action by hand against
+ * fresh server state. The reaper is a keys-to-production prerequisite.
+ *
+ * 7 days is chosen to stay **safely under** the server's ~30-day key retention:
+ * we fail the row with weeks of head-room, so a reaped row is never one that
+ * *would* have replayed against a still-valid key — we always give up well before
+ * the key could expire, never after. (If the server retention is ever shortened,
+ * this cap must shrink in lock-step to preserve the same margin.)
+ *
+ * `internal` for the same reason as [DEFAULT_MAX_ATTEMPTS]: engine + same-module
+ * tests only; production tuning would go through an engine constructor param.
+ */
+internal const val OUTBOX_PENDING_AGE_CAP_MILLIS: Long = 7L * 24 * 60 * 60 * 1000
+
+/**
  * ADR-0038 PR-2g drain engine.
  *
  * Pure orchestration: dequeue → dispatch → status transition. The
@@ -63,6 +89,15 @@ class OutboxDrainEngine(
      * 由 DAO 重置 0,获得完整新预算)。值选理由 / 命名约定见 [DEFAULT_MAX_ATTEMPTS]。
      */
     private val maxAttempts: Int = DEFAULT_MAX_ATTEMPTS,
+    /**
+     * Wall-clock source for the ADR-0042 §4.10 PENDING age-cap reaper (see
+     * [OUTBOX_PENDING_AGE_CAP_MILLIS]). A ``() -> Long`` lambda — NOT a Clock /
+     * Instant — keeps the engine Android- and java.time-free and makes the cap
+     * trivially testable: a test injects a fixed clock and sets a row's
+     * ``createdAt`` either side of ``now - cap``. Production uses the default
+     * [System.currentTimeMillis].
+     */
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     init {
         // 防止 DI 或 env 误配置成 0/负——会让 attempts = retryCount + 1 >= 0/-N 永远
@@ -92,6 +127,15 @@ class OutboxDrainEngine(
         // adopted / while unbound.
         outbox.adoptLegacyRowsForCurrentBinding()
         outbox.recoverStaleInFlight()
+        // [ADR-0042 §4.10] PENDING age-cap reaper: terminally FAIL (never replay)
+        // any row that has sat PENDING past OUTBOX_PENDING_AGE_CAP_MILLIS, BEFORE
+        // we dequeue runnable work. A row older than the cap can no longer trust
+        // its idempotency key (server retention has likely purged it), so a replay
+        // would double-apply; flipping it to FAILED here means the row never
+        // reaches a dispatcher and instead surfaces in the user's "manual retry /
+        // drop" banner. Done before dequeueNextRunnable so the just-reaped (now
+        // FAILED) rows are excluded from this very pass's batch.
+        val reaped = outbox.reapExpiredPending(now())
         // [codex round-9 P1] session-boundary epoch: capture the
         // counter BEFORE dequeue. A binding transition between this snapshot
         // and the dispatch loop will bump the counter; the post-claim
@@ -99,7 +143,10 @@ class OutboxDrainEngine(
         // before any in-memory row is sent under the new session.
         val capturedEpoch = outbox.currentSessionEpoch()
         val batch = outbox.dequeueNextRunnable()
-        if (batch.isEmpty()) return DrainSummary.IDLE
+        // Even with no runnable work, a reap mutated the DB — return a summary
+        // carrying ``reaped`` (not the shared IDLE constant) so a reap-only pass
+        // still reports anythingChanged to the scheduler / UI.
+        if (batch.isEmpty()) return DrainSummary(attempted = 0, done = 0, conflicts = 0, failures = 0, reaped = reaped)
 
         var done = 0
         var conflicts = 0
@@ -277,6 +324,7 @@ class OutboxDrainEngine(
             unsupported = unsupported,
             raced = raced,
             aborted = aborted,
+            reaped = reaped,
         )
     }
 }
@@ -300,6 +348,13 @@ data class DrainSummary(
      * old binding, so the drain aborted the remaining batch.
      */
     val aborted: Int = 0,
+    /**
+     * [ADR-0042 §4.10] PENDING rows reaped to FAILED at the start of this pass
+     * because they sat PENDING past [OUTBOX_PENDING_AGE_CAP_MILLIS] and could no
+     * longer trust their idempotency key. These rows are NOT in [attempted] —
+     * they were terminally failed before dequeue, never handed to a dispatcher.
+     */
+    val reaped: Int = 0,
 ) {
     /**
      * 任何一行真的改了 DB(状态、retryCount、lastError 等)就为 true。
@@ -309,10 +364,14 @@ data class DrainSummary(
      * 真改了 status + retryCount + attemptedAt, 必须计入, 否则观察 anythingChanged 的
      * caller 会错过 abort 引起的 DB 失效信号。raced 仍排除——它表示这条 row 被别的 drain
      * 抢了, 本 drain 没动它。
+     *
+     * [ADR-0042 §4.10] reaped 也计入: 它把 row PENDING→FAILED, 真改了 DB, 且需要 UI
+     * 刷新 FAILED banner 让用户看到过期的改动。
      */
     val anythingChanged: Boolean
         get() = done > 0 || conflicts > 0 || failures > 0 ||
-            retryable > 0 || discarded > 0 || unsupported > 0 || aborted > 0
+            retryable > 0 || discarded > 0 || unsupported > 0 || aborted > 0 ||
+            reaped > 0
 
     companion object {
         val IDLE = DrainSummary(0, 0, 0, 0)

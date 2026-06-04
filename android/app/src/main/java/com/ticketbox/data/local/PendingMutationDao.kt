@@ -137,6 +137,52 @@ interface PendingMutationDao {
     )
     suspend fun markFailed(id: Long, status: String, lastError: String): Int
 
+    /**
+     * ADR-0042 §4.10 reaper: flip every still-PENDING row enqueued before
+     * [cutoffCreatedAtIso] to a terminal status WITHOUT replaying it. Returns the
+     * rowcount so the repository can report how many rows it reaped.
+     *
+     * Why this exists (the double-apply hazard): a PENDING row's
+     * ``idempotencyKey`` is only honoured by the server while the matching key
+     * is still in ``api_idempotency_keys`` (~30-day retention). A row that's been
+     * PENDING longer than that would, on replay, hit a server that has forgotten
+     * the key → the server treats it as a NEW request → the mutation applies a
+     * second time. Reaping the row (terminal status, never dispatched) before the
+     * key could expire is the only safe outcome; the user redoes the action
+     * against fresh server state. See [OUTBOX_PENDING_AGE_CAP_MILLIS] for the
+     * margin rationale.
+     *
+     * **Cutoff is an ISO-Z string, not millis** — ``createdAt`` is a fixed-width
+     * ISO TEXT column (see [OutboxRepository.ISO]) that SQLite compares
+     * lexicographically; a numeric cutoff would not compare meaningfully against
+     * it. The repository converts ``now - cap`` to the same fixed-width format,
+     * exactly like [recoverStaleInFlight]'s ``staleCutoffIso`` and
+     * [deleteResolvedBefore]'s ``cutoffIso``.
+     *
+     * Intentionally **not binding-scoped** (no ``serverUrl`` / ``ledgerId``
+     * filter, unlike the drain reads): a stale PENDING row under ANY binding is a
+     * double-apply risk the moment that binding becomes active again, so the
+     * reaper must catch all of them — same global reach as the
+     * [deleteResolvedBefore] / [clearAll] DAO ops. The ``status = 'pending'``
+     * guard means only un-dispatched rows are affected; IN_FLIGHT / CONFLICT /
+     * FAILED / DONE rows are never touched (a CONFLICT/FAILED row is already
+     * awaiting the user, and an IN_FLIGHT row is mid-send).
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = :status,
+            lastError = :lastError
+        WHERE status = 'pending'
+          AND createdAt < :cutoffCreatedAtIso
+        """,
+    )
+    suspend fun markExpiredPendingAsFailed(
+        cutoffCreatedAtIso: String,
+        status: String,
+        lastError: String,
+    ): Int
+
     @Query(
         """
         UPDATE pending_mutations

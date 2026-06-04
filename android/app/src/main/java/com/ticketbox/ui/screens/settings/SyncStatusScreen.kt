@@ -286,6 +286,10 @@ private fun friendlyLastError(raw: String?, fallback: String): String {
     return when {
         text.startsWith("max_attempts_exceeded") -> "已连续多次同步失败,请检查网络或稍后再试。"
         text.startsWith("no_dispatcher_registered") -> "App 版本不支持此操作,请升级后再重试。"
+        // ADR-0042 §4.10: row sat PENDING past the age-cap → reaped to FAILED
+        // (never replayed) because its idempotency key could have expired
+        // server-side. The user must redo the action against fresh state.
+        text.startsWith("outbox_row_expired") -> "这笔改动太久没能同步,已过期,请重新操作。"
         // 抑制内部窗口期 / 用户自触发的 marker(它们对应的 row 在 PENDING 队列里,不该到
         // FailedCard / ConflictCard 上展示;万一漂移过来也只显示通用兜底)。
         text == "session_boundary_aborted" -> fallback

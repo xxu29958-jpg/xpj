@@ -694,6 +694,44 @@ class OutboxRepository(
         )
     }
 
+    /**
+     * ADR-0042 §4.10 reaper: terminally FAIL every PENDING row enqueued more than
+     * [OUTBOX_PENDING_AGE_CAP_MILLIS] ago WITHOUT replaying it, and return how
+     * many rows were reaped.
+     *
+     * The drain engine calls this at the start of every pass. A row that's been
+     * PENDING past the cap can no longer rely on its idempotency key (the server
+     * has likely purged it — see [OUTBOX_PENDING_AGE_CAP_MILLIS]), so replaying it
+     * risks a double-apply. Flipping it to FAILED here means [dequeueNextRunnable]
+     * will never hand it to a dispatcher; instead it surfaces in the
+     * "manual retry / drop" banner via [observeFailed] with the
+     * ``outbox_row_expired`` marker, and the user redoes the action by hand
+     * against fresh server state.
+     *
+     * **Global, not binding-scoped** (unlike the drain reads): a stale PENDING row
+     * under ANY binding becomes a double-apply risk as soon as that binding is
+     * active again, so the reap intentionally ignores ``serverUrl`` / ``ledgerId``
+     * — same global reach as [gcCompleted] / [clearAll]. The DAO's
+     * ``status = 'pending'`` guard keeps it from touching IN_FLIGHT / CONFLICT /
+     * FAILED / DONE rows.
+     *
+     * [nowMillis] is injected (the engine passes its lambda clock) so the cap can
+     * be exercised deterministically in a JVM unit test.
+     *
+     * @return the number of expired PENDING rows reaped to FAILED.
+     */
+    suspend fun reapExpiredPending(nowMillis: Long): Int {
+        val cutoff = Instant.ofEpochMilli(nowMillis - OUTBOX_PENDING_AGE_CAP_MILLIS)
+        return dao.markExpiredPendingAsFailed(
+            cutoffCreatedAtIso = ISO.format(cutoff),
+            status = PendingMutationStatus.Failed.wireValue,
+            // Structured marker (snake_case, like recovered_from_stuck_in_flight /
+            // no_dispatcher_registered:): SyncStatusScreen.friendlyLastError maps it
+            // to user-facing copy. Never the raw key/timestamp — §10 jargon rule.
+            lastError = "outbox_row_expired",
+        )
+    }
+
     private fun nowIso(): String = ISO.format(Instant.now(clock))
 
     companion object {

@@ -403,6 +403,12 @@ class OutboxDrainEngineTest {
         val engine = OutboxDrainEngine(
             outbox,
             listOf(StubDispatcher(result = DispatchResult.Success())),
+            // ADR-0042 §4.10: pin the engine clock to the same instant as the repo
+            // clock so the new PENDING age-cap reaper sees this row's createdAt
+            // (= now) as well inside the cap and leaves it for the IN_FLIGHT
+            // recovery path. (In production both clocks are the real wall-clock;
+            // the test must keep them consistent now that drainOnce reads a clock.)
+            now = { now.toEpochMilli() },
         )
         val summary = engine.drainOnce()
 
@@ -748,6 +754,89 @@ class OutboxDrainEngineTest {
         val third = engine.drainOnce()
         assertEquals(1, third.retryable, "重置后的 row 必须重新进入重试循环, 不能再被 max_attempts 拦")
         assertEquals(1, outbox.activeForTarget("expense:1").single().retryCount)
+    }
+
+    @Test
+    fun drainReapsOverAgePendingRowAndNeverDispatchesItWhileFreshRowRuns() = runTest {
+        // ADR-0042 §4.10: at drain start the engine reaps PENDING rows older than
+        // OUTBOX_PENDING_AGE_CAP_MILLIS (7d) to FAILED — never dispatching them,
+        // because their idempotency key may have been purged server-side and a
+        // replay would double-apply. A fresh PENDING row dispatches as usual.
+        val dao = FakePendingMutationDao()
+        val now = java.time.Instant.parse("2026-05-04T12:00:00Z")
+        val outbox = OutboxRepository(
+            dao = dao,
+            clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
+        )
+        val dispatchedTargets = mutableListOf<String>()
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                dispatchedTargets += row.targetId
+                return DispatchResult.Success()
+            }
+        }
+        // Engine clock fixed at the same instant as the repo clock so the cap math
+        // (createdAt < now - 7d) is deterministic.
+        val engine = OutboxDrainEngine(
+            outbox,
+            listOf(dispatcher),
+            now = { now.toEpochMilli() },
+        )
+        // Stale row: enqueued, then back-dated a month (far past the 7-day cap).
+        val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
+        dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
+        // Fresh row, different target — createdAt = now, inside the cap.
+        outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 2L)
+
+        val summary = engine.drainOnce()
+
+        // Stale row reaped (FAILED, never dispatched); fresh row dispatched + DONE.
+        assertEquals(1, summary.reaped, "the over-age PENDING row must be reaped")
+        assertEquals(1, summary.attempted, "only the fresh row enters the batch")
+        assertEquals(1, summary.done)
+        assertTrue(summary.anythingChanged)
+        assertEquals(
+            listOf("expense:2"),
+            dispatchedTargets,
+            "the reaped row must NEVER be dispatched; only the fresh target runs",
+        )
+        val reapedRow = outbox.activeForTarget("expense:1").single()
+        assertEquals(PendingMutationStatus.Failed, reapedRow.status)
+        assertEquals("outbox_row_expired", reapedRow.lastError)
+    }
+
+    @Test
+    fun drainWithOnlyAnOverAgeRowReapsItAndReportsChangedWithEmptyBatch() = runTest {
+        // Reap-only pass: the single PENDING row is over-age, so after the reaper
+        // flips it to FAILED the runnable batch is empty. drainOnce must still
+        // report reaped > 0 + anythingChanged (it mutated the DB) rather than the
+        // shared IDLE summary, so the scheduler/UI refreshes the FAILED banner.
+        val dao = FakePendingMutationDao()
+        val now = java.time.Instant.parse("2026-05-04T12:00:00Z")
+        val outbox = OutboxRepository(
+            dao = dao,
+            clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
+        )
+        var dispatchCalls = 0
+        val dispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.PatchExpense
+            override suspend fun dispatch(row: OutboxRow): DispatchResult {
+                dispatchCalls++
+                return DispatchResult.Success()
+            }
+        }
+        val engine = OutboxDrainEngine(outbox, listOf(dispatcher), now = { now.toEpochMilli() })
+        val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
+        dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
+
+        val summary = engine.drainOnce()
+
+        assertEquals(0, dispatchCalls, "the reaped row must not be dispatched")
+        assertEquals(0, summary.attempted, "no runnable work after the reap")
+        assertEquals(1, summary.reaped)
+        assertTrue(summary.anythingChanged, "a reap-only pass still changed the DB")
+        assertEquals(PendingMutationStatus.Failed, outbox.activeForTarget("expense:1").single().status)
     }
 
     private fun withDispatcher(

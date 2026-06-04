@@ -82,6 +82,26 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
+    override suspend fun markExpiredPendingAsFailed(
+        cutoffCreatedAtIso: String,
+        status: String,
+        lastError: String,
+    ): Int {
+        // Mirrors the DAO SQL: status='pending' AND createdAt < cutoff. createdAt
+        // is a fixed-width ISO string so the lexicographic < matches SQLite, same
+        // as recoverStaleInFlight's attemptedAt comparison. Global (no binding
+        // filter) by design — a stale PENDING row under any binding is a
+        // double-apply risk.
+        val victims = rows.values.filter {
+            it.status == "pending" && it.createdAt < cutoffCreatedAtIso
+        }
+        for (row in victims) {
+            rows[row.id] = row.copy(status = status, lastError = lastError)
+        }
+        if (victims.isNotEmpty()) refreshObservables()
+        return victims.size
+    }
+
     override suspend fun refreshToken(
         id: Long,
         pendingStatus: String,
