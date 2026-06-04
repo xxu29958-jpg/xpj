@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
@@ -29,6 +30,7 @@ import com.ticketbox.data.repository.OutboxScheduler
 import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
+import com.ticketbox.data.repository.RecognizeTextDispatcher
 import com.ticketbox.data.repository.ReplaceItemsDispatcher
 import com.ticketbox.data.repository.ReplaceSplitsDispatcher
 import com.ticketbox.data.repository.RecurringRepository
@@ -105,6 +107,12 @@ class AppContainer(context: Context) {
     // splits-editor call site (PUT /api/expenses/{id}/splits). Same roundtrip
     // guarantee as replaceItemsAdapter.
     private val replaceSplitsAdapter = outboxMoshi.adapter(ExpenseSplitReplaceRequestDto::class.java)
+
+    // ADR-0042 Slice E-2: body-carrying adapter shared between
+    // RecognizeTextDispatcher and ExpenseDetailRepository's offline
+    // "粘贴文字识别" call site (POST /api/expenses/{id}/recognize-text). Same
+    // roundtrip guarantee as replaceItemsAdapter.
+    private val recognizeTextAdapter = outboxMoshi.adapter(ExpenseRecognizeTextRequestDto::class.java)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -244,6 +252,12 @@ class AppContainer(context: Context) {
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = replaceSplitsAdapter,
         ),
+        // ADR-0042 Slice E-2: POST /api/expenses/{id}/recognize-text via outbox
+        // (offline "粘贴文字识别").
+        RecognizeTextDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = recognizeTextAdapter,
+        ),
     )
 
     val outboxDrainEngine = OutboxDrainEngine(
@@ -266,6 +280,7 @@ class AppContainer(context: Context) {
         expenseStateTokenAdapter = expenseStateTokenAdapter,
         replaceItemsAdapter = replaceItemsAdapter,
         replaceSplitsAdapter = replaceSplitsAdapter,
+        recognizeTextAdapter = recognizeTextAdapter,
     )
 
     val ledgerRepository = LedgerRepository(

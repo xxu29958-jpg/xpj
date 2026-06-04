@@ -320,6 +320,12 @@ internal class FakeApiService(
         idempotencyKey: String?,
     ): ExpenseDto = unsupported()
 
+    override suspend fun recognizeText(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto,
+        idempotencyKey: String?,
+    ): ExpenseDto = unsupported()
+
     override suspend fun acceptPendingSuggestion(
         id: Long,
         decisionPublicId: String,

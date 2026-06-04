@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.domain.model.Expense
@@ -426,6 +427,72 @@ internal class ExpenseDetailRepository(
                 ExpenseStateOutcome.Queued(expense) as ExpenseStateOutcome
             }
         }
+
+    /**
+     * ADR-0042 Slice E-2: offline-aware "粘贴文字识别". Body-carrying POST
+     * (mirror of [replaceExpenseItemsAllowingOffline]) but the response is an
+     * [Expense] (like retry-OCR), so it reuses [ExpenseStateOutcome].
+     *  - direct 2xx → [ExpenseStateOutcome.Synced] with the server-parsed expense.
+     *  - IOException → [ExpenseStateOutcome.Queued] with the expense UNCHANGED.
+     *    Parsing happens server-side, so there's NOTHING to project optimistically
+     *    offline — the UI tells the user it'll recognise on reconnect and the
+     *    worker replays the recognize once connectivity returns.
+     *  - HttpException → ``Result.failure``.
+     *
+     * Body-carrying (not the token-only [ExpenseRepositoryCore.enqueueStateTransition]
+     * seam) because the queued row must persist the pasted ``raw_text``.
+     */
+    suspend fun recognizeTextAllowingOffline(
+        expense: Expense,
+        rawText: String,
+    ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
+        if (!core.canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        val bound = core.ledgerRequestGuard.bind()
+        val request = ExpenseRecognizeTextRequestDto(
+            expectedRowVersion = expense.rowVersion,
+            rawText = rawText,
+        )
+        // ADR-0042: one intent-time key shared by the direct attempt and the
+        // outbox replay. A committed-but-unseen POST (it commits server-side but
+        // its response is lost) replays with this SAME key so the server HITs
+        // the recorded success instead of false-409ing on the now-stale token.
+        // The dispatcher replays it from row.idempotencyKey.
+        val idempotencyKey = UUID.randomUUID().toString()
+        try {
+            val recognized = bound.call { it.recognizeText(expense.id, request, idempotencyKey) }.toDomain()
+            ExpenseStateOutcome.Synced(recognized) as ExpenseStateOutcome
+        } catch (networkError: IOException) {
+            val outbox = core.outbox
+            val adapter = core.recognizeTextAdapter
+            val token = expense.rowVersion
+            if (outbox == null || adapter == null || token == 0L) {
+                // Outbox wiring missing OR baseline lacked a token — fall back
+                // to the failure path so we don't pretend we recognised.
+                throw networkError
+            }
+            // Session race guard: an IOException jumps past bound.call's
+            // post-check, so re-assert the session before queuing (a row
+            // queued under ledger A must not land in ledger B after a switch).
+            bound.requireStillActive()
+            // Strip the token from the payload — the row's expectedRowVersion is
+            // the single source of truth; the dispatcher overwrites it on replay.
+            // ``raw_text`` stays in the payload so the queued recognize replays
+            // the user's pasted text.
+            outbox.enqueue(
+                type = PendingMutationType.RecognizeText,
+                targetId = "expense:${expense.id}",
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = token,
+                // Same key as the direct attempt above — the dispatcher replays
+                // it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
+            )
+            // Queued is the expense UNCHANGED — the server does the parsing.
+            ExpenseStateOutcome.Queued(expense) as ExpenseStateOutcome
+        }
+    }
 
     suspend fun fetchDuplicates(): Result<List<Expense>> = core.errorHandler.safeCall {
         core.ledgerRequestGuard.guardedCall { api ->

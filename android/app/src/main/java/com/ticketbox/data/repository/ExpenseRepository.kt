@@ -5,6 +5,7 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
@@ -69,6 +70,8 @@ class ExpenseRepository(
     replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
     // ADR-0042 Slice E-1: body-carrying adapter for the offline-aware splits editor.
     replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
+    // ADR-0042 Slice E-2: body-carrying adapter for the offline-aware "粘贴文字识别".
+    recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
 ) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
@@ -82,6 +85,7 @@ class ExpenseRepository(
         expenseStateTokenAdapter = expenseStateTokenAdapter,
         replaceItemsAdapter = replaceItemsAdapter,
         replaceSplitsAdapter = replaceSplitsAdapter,
+        recognizeTextAdapter = recognizeTextAdapter,
     )
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
@@ -262,6 +266,9 @@ class ExpenseRepository(
 
     suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         detailRepository.retryOcrAllowingOffline(expense)
+
+    suspend fun recognizeTextAllowingOffline(expense: Expense, rawText: String): Result<ExpenseStateOutcome> =
+        detailRepository.recognizeTextAllowingOffline(expense, rawText)
 
     override suspend fun markNotDuplicate(id: Long, expectedRowVersion: Long): Result<Expense> =
         pendingRepository.markNotDuplicate(id, expectedRowVersion)

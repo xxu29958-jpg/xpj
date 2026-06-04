@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
@@ -73,6 +74,15 @@ internal class ExpenseRepositoryCore(
      * hard failure when either the outbox OR this adapter is missing.
      */
     val replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
+    /**
+     * ADR-0042 Slice E-2: body-carrying payload adapter shared between the
+     * offline-aware "粘贴文字识别"
+     * ([ExpenseDetailRepository.recognizeTextAllowingOffline]) and
+     * [RecognizeTextDispatcher]. ``null`` keeps pre-Slice-E-2 tests (no outbox
+     * wiring) on the direct-only path — the IOException catch falls back to a
+     * hard failure when either the outbox OR this adapter is missing.
+     */
+    val recognizeTextAdapter: JsonAdapter<ExpenseRecognizeTextRequestDto>? = null,
 ) {
     val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,

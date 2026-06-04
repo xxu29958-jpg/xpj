@@ -80,6 +80,7 @@ data class ExpenseEditUiState(
     val splitMembersLoading: Boolean = false,
     val splitsSaving: Boolean = false,
     val splitsMessage: String? = null,
+    val recognizeTextDialogOpen: Boolean = false,
     val message: String? = null,
     val done: Boolean = false,
 )
@@ -725,6 +726,62 @@ class ExpenseEditViewModel(
                     val message = when (outcome) {
                         is ExpenseStateOutcome.Synced -> "识别已重试"
                         is ExpenseStateOutcome.Queued -> "已离线，联网后重试识别"
+                    }
+                    _uiState.update { it.copy(expense = outcome.expense, ocrRunning = false, message = message) }
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(ocrRunning = false, message = error.message ?: "没有识别成功，请稍后再试。") }
+                }
+        }
+    }
+
+    /** Open / close the "粘贴文字识别" input dialog. Gated on read-only at the
+     *  UI layer (the affordance is hidden), but the open call also no-ops if the
+     *  expense hasn't loaded so the dialog never opens on a half-loaded page. */
+    fun openRecognizeTextDialog() {
+        if (_uiState.value.expense == null) {
+            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            return
+        }
+        _uiState.update { it.copy(recognizeTextDialogOpen = true) }
+    }
+
+    fun closeRecognizeTextDialog() {
+        _uiState.update { it.copy(recognizeTextDialogOpen = false) }
+    }
+
+    /**
+     * ADR-0042 Slice E-2: submit pasted receipt text for server-side parsing.
+     * Modeled on [retryOcr] (Synced/Queued ExpenseStateOutcome), but body-carrying
+     * — the pasted [rawText] travels to the server, which parses it into the
+     * empty draft fields (DISTINCT from retryOcr, which re-runs the OCR provider
+     * on the stored image). The parsed result only fills EMPTY fields — that's
+     * enforced server-side (recognize is pending-only + the OCR-apply owns only
+     * draft fields), so the copy is honest about it and there's no client-side
+     * overwrite logic.
+     */
+    fun recognizeText(rawText: String) {
+        if (blockReadOnlyWrite()) return
+        val expense = _uiState.value.expense
+        if (expense == null) {
+            _uiState.update { it.copy(message = "页面尚未加载完成，请稍后再试。") }
+            return
+        }
+        val text = rawText.trim()
+        if (text.isBlank()) {
+            _uiState.update { it.copy(message = "请先粘贴小票文字。") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(ocrRunning = true, recognizeTextDialogOpen = false, message = null) }
+            repository.recognizeTextAllowingOffline(expense, text)
+                .onSuccess { outcome ->
+                    val message = when (outcome) {
+                        // Server parsed the text and returned the refreshed expense;
+                        // the Screen re-derives its field state from it (parsed
+                        // result already filled the empty fields server-side).
+                        is ExpenseStateOutcome.Synced -> "已识别（识别结果已填入空白项）"
+                        is ExpenseStateOutcome.Queued -> "已离线，联网后识别"
                     }
                     _uiState.update { it.copy(expense = outcome.expense, ocrRunning = false, message = message) }
                 }

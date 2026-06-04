@@ -153,6 +153,23 @@ data class ExpenseStateTokenRequest(
     val expectedRowVersion: Long,
 )
 
+/**
+ * ADR-0042 Slice E-2: ``POST /api/expenses/{id}/recognize-text`` body.
+ *
+ * Body-carrying (unlike the token-only [ExpenseStateTokenRequest]): the client
+ * supplies the receipt text it pasted and the server parses it into the draft
+ * fields (DISTINCT from OCR retry, which re-runs the server OCR provider on the
+ * stored image). ``expectedRowVersion`` is the optimistic-concurrency token; the
+ * outbox row strips it to ``0L`` and the dispatcher overwrites it from the row on
+ * replay, so a KeepMine token refresh doesn't require re-serialising ``rawText``.
+ */
+data class ExpenseRecognizeTextRequestDto(
+    @param:Json(name = "expected_row_version")
+    val expectedRowVersion: Long,
+    @param:Json(name = "raw_text")
+    val rawText: String,
+)
+
 data class NotificationDraftRequestDto(
     val source: String,
     @param:Json(name = "original_currency")

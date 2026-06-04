@@ -7,6 +7,7 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.CurrencyCode
@@ -221,6 +222,9 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         private val retryOcrResult: ApiResult = ApiResult.Throw(
             IllegalStateException("retryOcr not configured"),
         ),
+        private val recognizeTextResult: ApiResult = ApiResult.Throw(
+            IllegalStateException("recognizeText not configured"),
+        ),
         // acknowledge returns ExpenseItemsResponseDto (not ExpenseDto), so
         // it can't reuse ApiResult; null exception = success.
         private val acknowledgeException: Throwable? = null,
@@ -248,6 +252,10 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         var lastMarkNotDuplicateIdempotencyKey: String? = null
             private set
         var lastRetryOcrIdempotencyKey: String? = null
+            private set
+        var lastRecognizeTextIdempotencyKey: String? = null
+            private set
+        var lastRecognizeTextRequest: ExpenseRecognizeTextRequestDto? = null
             private set
         var lastAcknowledgeIdempotencyKey: String? = null
             private set
@@ -308,6 +316,19 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         ): ExpenseDto {
             lastRetryOcrIdempotencyKey = idempotencyKey
             return when (val r = retryOcrResult) {
+                is ApiResult.Success -> r.dto
+                is ApiResult.Throw -> throw r.exception
+            }
+        }
+
+        override suspend fun recognizeText(
+            id: Long,
+            request: ExpenseRecognizeTextRequestDto,
+            idempotencyKey: String?,
+        ): ExpenseDto {
+            lastRecognizeTextIdempotencyKey = idempotencyKey
+            lastRecognizeTextRequest = request
+            return when (val r = recognizeTextResult) {
                 is ApiResult.Success -> r.dto
                 is ApiResult.Throw -> throw r.exception
             }

@@ -40,6 +40,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditMerchantField
 import com.ticketbox.ui.screens.expense.ExpenseEditMoreSection
 import com.ticketbox.ui.screens.expense.ExpenseEditNoteField
 import com.ticketbox.ui.screens.expense.ExpenseEditPrimaryActions
+import com.ticketbox.ui.screens.expense.ExpenseEditRecognizeTextDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditRejectDialog
 import com.ticketbox.ui.screens.expense.ExpenseEditSourceInfo
 import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
@@ -58,6 +59,9 @@ fun ExpenseEditScreen(
     onConfirm: (ExpenseDraft) -> Unit,
     onReject: () -> Unit,
     onRetryOcr: () -> Unit,
+    onRecognizeText: (String) -> Unit = {},
+    onOpenRecognizeText: () -> Unit = {},
+    onDismissRecognizeText: () -> Unit = {},
     onLoadFullImage: () -> Unit,
     onKeepDuplicate: () -> Unit,
     onDone: () -> Unit,
@@ -106,6 +110,13 @@ fun ExpenseEditScreen(
             onEvenSplit = onEvenSplit,
             onSave = onSaveSplits,
             onDismiss = onDismissSplitsEditor,
+        )
+    }
+
+    if (state.recognizeTextDialogOpen && !state.readOnly) {
+        ExpenseEditRecognizeTextDialog(
+            onRecognize = onRecognizeText,
+            onDismiss = onDismissRecognizeText,
         )
     }
 
@@ -327,6 +338,7 @@ fun ExpenseEditScreen(
             saving = state.saving,
             readOnly = readOnly,
             onRetryOcr = onRetryOcr,
+            onRecognizeText = onOpenRecognizeText,
         )
 
         message?.let {

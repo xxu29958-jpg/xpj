@@ -257,6 +257,11 @@ internal class StubApi(
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
         idempotencyKey: String?,
     ): ExpenseDto = ledgerUnsupported()
+    override suspend fun recognizeText(
+        id: Long,
+        request: com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto,
+        idempotencyKey: String?,
+    ): ExpenseDto = ledgerUnsupported()
     override suspend fun acceptPendingSuggestion(
         id: Long,
         decisionPublicId: String,

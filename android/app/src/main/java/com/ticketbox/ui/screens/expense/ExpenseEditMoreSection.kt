@@ -34,6 +34,7 @@ internal fun ExpenseEditMoreSection(
     saving: Boolean,
     readOnly: Boolean = false,
     onRetryOcr: () -> Unit,
+    onRecognizeText: () -> Unit = {},
 ) {
     AppSolidCard {
         Column(
@@ -94,6 +95,15 @@ internal fun ExpenseEditMoreSection(
                             onClick = onRetryOcr,
                         ) {
                             Text(if (ocrRunning) "识别中" else "重新识别")
+                        }
+                        // ADR-0042 Slice E-2: paste the receipt text by hand and
+                        // let the server parse it into the empty fields (distinct
+                        // from re-running OCR on the stored image).
+                        AppOutlinedButton(
+                            enabled = !ocrRunning && !saving,
+                            onClick = onRecognizeText,
+                        ) {
+                            Text("粘贴文字识别")
                         }
                     }
                 }

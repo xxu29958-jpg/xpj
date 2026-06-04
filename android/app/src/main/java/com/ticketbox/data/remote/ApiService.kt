@@ -256,6 +256,18 @@ interface ApiService {
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
+    // ADR-0042 Slice E-2: client supplies ``raw_text`` and the server parses it
+    // into the draft fields (DISTINCT from retryOcr, which re-runs the server OCR
+    // provider on the stored image). Body-carrying like replaceExpenseItems.
+    @POST("api/expenses/{id}/recognize-text")
+    suspend fun recognizeText(
+        @Path("id") id: Long,
+        @Body request: com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
+    ): ExpenseDto
+
     @POST("api/expenses/{id}/suggestions/{decisionPublicId}/accept")
     suspend fun acceptPendingSuggestion(
         @Path("id") id: Long,
