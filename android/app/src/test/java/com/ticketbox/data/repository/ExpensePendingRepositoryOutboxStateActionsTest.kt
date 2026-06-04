@@ -8,6 +8,7 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -74,6 +75,11 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token (single source of truth): ${row.payload}",
         )
+        // ADR-0042: the enqueued row carries the SAME intent-time key the direct
+        // attempt used — that's what lets a committed-but-unseen replay HIT the
+        // server's recorded success instead of false-409ing on the stale token.
+        assertNotNull(row.idempotencyKey, "ConfirmExpense row must carry an idempotency key")
+        assertEquals(api.lastConfirmIdempotencyKey, row.idempotencyKey)
     }
 
     @Test
@@ -141,6 +147,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token: ${row.payload}",
         )
+        // ADR-0042: direct attempt + enqueued row share one intent-time key.
+        assertNotNull(row.idempotencyKey, "RejectExpense row must carry an idempotency key")
+        assertEquals(api.lastRejectIdempotencyKey, row.idempotencyKey)
     }
 
     // endregion
@@ -170,6 +179,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token: ${row.payload}",
         )
+        // ADR-0042: direct attempt + enqueued row share one intent-time key.
+        assertNotNull(row.idempotencyKey, "MarkNotDuplicate row must carry an idempotency key")
+        assertEquals(api.lastMarkNotDuplicateIdempotencyKey, row.idempotencyKey)
     }
 
     @Test
@@ -208,6 +220,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertEquals(PendingMutationType.RetryOcr.wireValue, row.type)
         assertEquals("expense:${baseline.id}", row.targetId)
         assertEquals(baseline.rowVersion, row.expectedRowVersion)
+        // ADR-0042: direct attempt + enqueued row share one intent-time key.
+        assertNotNull(row.idempotencyKey, "RetryOcr row must carry an idempotency key")
+        assertEquals(api.lastRetryOcrIdempotencyKey, row.idempotencyKey)
     }
 
     @Test
@@ -253,6 +268,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
             baseline.updatedAt !in row.payload,
             "payload must NOT embed the token: ${row.payload}",
         )
+        // ADR-0042: direct attempt + enqueued row share one intent-time key.
+        assertNotNull(row.idempotencyKey, "AcknowledgeItemsMismatch row must carry an idempotency key")
+        assertEquals(api.lastAcknowledgeIdempotencyKey, row.idempotencyKey)
     }
 
     @Test

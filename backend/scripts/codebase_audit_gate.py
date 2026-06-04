@@ -211,8 +211,8 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # +1 PR-A (/web recurring); +7 PR-B income_plan OCC; +4 PR-C bill_split
     # accept atomic-claim; +8 ADR-0041 Slice A row_version groundwork; +3
     # ADR-0041 self-describing items/splits responses (parent row_version in
-    # items-replace, acknowledge-mismatch, splits-replace responses); +12 ADR-0042 Slice A idempotency helper tests; +5 Slice B PATCH-route idempotency tests (4 + a §4.9 conflict-reclaim).
-    "backend_pytest_count": 1566,
+    # items-replace, acknowledge-mismatch, splits-replace responses); +12 ADR-0042 Slice A idempotency helper tests; +5 Slice B PATCH idempotency tests; +12 Slice D-1 state-machine idempotency tests (confirm/reject/markNotDup/retryOcr/ack + ack/retry committed-but-unseen HIT).
+    "backend_pytest_count": 1578,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination

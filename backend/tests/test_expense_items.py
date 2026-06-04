@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import recognize_text_api, reject_expense_api, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -188,7 +190,7 @@ def test_acknowledge_mismatch_response_carries_bumped_parent_row_version(
 
     response = client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": before},
     )
     assert response.status_code == 200, response.json()

@@ -35,6 +35,7 @@ from app.schemas import (
     StatusResponse,
     TagsResponse,
 )
+from app.services.cleanup_service import cleanup_after_confirm
 from app.services.expense_response_service import (
     expense_raw_text_by_id,
     expense_to_response,
@@ -59,9 +60,7 @@ from app.services.expense_service import (
 )
 from app.services.expense_split_service import list_expense_splits, replace_expense_splits
 from app.services.idempotency import (
-    IdempotencyOutcomeKind,
-    claim_idempotency_key,
-    fingerprint_request,
+    claim_idempotent_request,
     mark_idempotency_succeeded,
 )
 from app.services.pending_suggestion_service import (
@@ -246,6 +245,7 @@ def put_expense_item_rows(
 def acknowledge_expense_items_mismatch(
     expense_id: int,
     payload: ExpenseAcknowledgeItemsMismatchRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseItemsResponse:
@@ -253,12 +253,32 @@ def acknowledge_expense_items_mismatch(
     # user clicking "原小票如此" on a stale page after a peer edited
     # amount/items — without the token the service would flip a *new*
     # mismatch into ``mismatch_acknowledged``.
-    return acknowledge_items_sum_mismatch(
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="acknowledge_items_mismatch",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # §4.6 HIT — re-serialise current canonical items state
+        return list_expense_items(db, expense_id, auth.tenant_id)
+
+    response = acknowledge_items_sum_mismatch(
         db,
         expense_id,
         auth.tenant_id,
         expected_row_version=payload.expected_row_version,
+        commit=False,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    return response
 
 
 @router.get("/{expense_id}/splits", response_model=ExpenseSplitsResponse)
@@ -337,13 +357,10 @@ def patch_expense(
     permission) leaves no ``succeeded`` row, so a legitimate retry still runs
     (§4.9).
     """
-    if not idempotency_key:
-        # Outbox-routed mutate面 MUST carry the key (the Android client mints an
-        # intent-time UUID v4 at the call site). Absence is a contract breach,
-        # not a user-facing condition.
-        raise AppError("idempotency_key_required", status_code=422)
-
-    fingerprint = fingerprint_request(
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
         operation="patch_expense",
         target_id=str(expense_id),
         body=payload.model_dump(
@@ -351,35 +368,20 @@ def patch_expense(
         ),
         expected_row_version=payload.expected_row_version,
     )
-    outcome = claim_idempotency_key(
-        db,
-        tenant_id=auth.tenant_id,
-        idempotency_key=idempotency_key,
-        operation="patch_expense",
-        request_fingerprint=fingerprint,
-        target_type="expense",
-        target_id=str(expense_id),
-    )
-
-    if outcome.kind is IdempotencyOutcomeKind.HIT:
-        # §4.6: the original PATCH already committed — return the row's current
-        # canonical state, skipping the OCC claim that would false-409. If the
-        # resource was hard-deleted between the original commit and this replay
-        # (an extreme tail — the replay window is seconds, expenses soft-reject
-        # rather than hard-delete), get_expense honestly 404s: a deleted row has
-        # no canonical state to re-serialise.
+    if claim is None:
+        # §4.6 HIT: the original PATCH already committed — re-serialise the row's
+        # current canonical state, skipping the OCC claim that would false-409.
+        # A resource hard-deleted between the original commit and this replay (an
+        # extreme tail — the replay window is seconds, expenses soft-reject) makes
+        # get_expense honestly 404: a deleted row has no canonical state.
         expense = get_expense(db, expense_id, auth.tenant_id)
         return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
-    if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
-        raise AppError("idempotency_key_in_progress", status_code=409)
-    if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
-        raise AppError("idempotency_key_reused", status_code=422)
 
-    # PROCEED: we won the claim. Run the mutation without committing, record the
-    # key's success, then commit both atomically.
+    # PROCEED: run the mutation without committing, record the key's success,
+    # then commit both atomically (§4.5).
     expense = update_expense(db, expense_id, auth.tenant_id, payload, commit=False)
     mark_idempotency_succeeded(
-        db, outcome.row, resource_type="expense", resource_id=str(expense_id)
+        db, claim, resource_type="expense", resource_id=str(expense_id)
     )
     db.commit()
     db.refresh(expense)
@@ -390,15 +392,42 @@ def patch_expense(
 def post_confirm_expense(
     expense_id: int,
     payload: ExpenseConfirmRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="confirm_expense",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # §4.6 HIT — re-serialise current (already-confirmed) state
+        expense = get_expense(db, expense_id, auth.tenant_id)
+        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+
     expense = confirm_expense(
         db,
         expense_id,
         auth.tenant_id,
         expected_row_version=payload.expected_row_version,
+        commit=False,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    db.refresh(expense)
+    # Post-confirm image GC — the same side-effect commit confirm_expense runs
+    # internally when it owns the commit (kept out of the atomic key+confirm one).
+    if cleanup_after_confirm(expense):
+        db.commit()
+        db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
@@ -406,15 +435,37 @@ def post_confirm_expense(
 def post_reject_expense(
     expense_id: int,
     payload: ExpenseRejectRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="reject_expense",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:
+        expense = get_expense(db, expense_id, auth.tenant_id)
+        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+
     expense = reject_expense(
         db,
         expense_id,
         auth.tenant_id,
         expected_row_version=payload.expected_row_version,
+        commit=False,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
@@ -455,15 +506,37 @@ def post_undo_expense(
 def post_retry_ocr(
     expense_id: int,
     payload: ExpenseOcrRetryRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="retry_ocr",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:
+        expense = get_expense(db, expense_id, auth.tenant_id)
+        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+
     expense = retry_expense_ocr(
         db,
         expense_id,
         auth.tenant_id,
         expected_row_version=payload.expected_row_version,
+        commit=False,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
@@ -534,15 +607,37 @@ def post_reject_pending_suggestion(
 def post_mark_not_duplicate(
     expense_id: int,
     payload: ExpenseMarkNotDuplicateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="mark_not_duplicate",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:
+        expense = get_expense(db, expense_id, auth.tenant_id)
+        return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
+
     expense = mark_expense_not_duplicate(
         db,
         expense_id,
         auth.tenant_id,
         expected_row_version=payload.expected_row_version,
+        commit=False,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    db.refresh(expense)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

@@ -64,6 +64,7 @@ def retry_expense_ocr(
     tenant_id: str,
     *,
     expected_row_version: int,
+    commit: bool = True,
 ) -> Expense:
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status != "pending":
@@ -117,8 +118,11 @@ def retry_expense_ocr(
     ):
         mark_duplicate_status(db, expense)
     expense.updated_at = now
-    db.commit()
-    db.refresh(expense)
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        db.flush()
     return expense
 
 

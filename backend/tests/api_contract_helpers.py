@@ -55,7 +55,7 @@ def confirm_expense_api(
         return snapshot
     return client.post(
         f"/api/expenses/{expense_id}/confirm",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
@@ -71,7 +71,7 @@ def reject_expense_api(
         return snapshot
     return client.post(
         f"/api/expenses/{expense_id}/reject",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
@@ -114,7 +114,7 @@ def mark_not_duplicate_api(
         return snapshot
     return client.post(
         f"/api/expenses/{expense_id}/mark-not-duplicate",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
@@ -130,7 +130,7 @@ def retry_ocr_api(
         return snapshot
     return client.post(
         f"/api/expenses/{expense_id}/ocr/retry",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
@@ -175,7 +175,7 @@ def acknowledge_items_mismatch_api(
         return snapshot
     return client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
 

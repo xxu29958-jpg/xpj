@@ -18,6 +18,8 @@ T1`` predicate is the DB-layer guard.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from api_contract_helpers import (
     confirm_expense_api,
@@ -100,7 +102,7 @@ def test_confirm_with_stale_updated_at_returns_409(
     assert patched.status_code == 200, patched.text
     stale = client.post(
         f"/api/expenses/{expense_id}/confirm",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": stale_token},
     )
     assert stale.status_code == 409, stale.text
@@ -117,6 +119,7 @@ def test_confirm_without_expected_row_version_returns_422(
         json={},
     )
     assert resp.status_code == 422, resp.text
+    assert resp.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 def test_confirm_already_confirmed_is_idempotent(
@@ -131,7 +134,7 @@ def test_confirm_already_confirmed_is_idempotent(
     # the row is already terminal.
     replay = client.post(
         f"/api/expenses/{expense_id}/confirm",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": 999999},
     )
     assert replay.status_code == 200, replay.text
@@ -143,7 +146,7 @@ def test_confirm_unknown_expense_returns_404(
 ) -> None:
     resp = client.post(
         "/api/expenses/9999999/confirm",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": 999999},
     )
     assert resp.status_code == 404, resp.text
@@ -176,7 +179,7 @@ def test_reject_with_stale_updated_at_returns_409(
     assert patched.status_code == 200, patched.text
     stale = client.post(
         f"/api/expenses/{expense_id}/reject",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": stale_token},
     )
     assert stale.status_code == 409, stale.text
@@ -193,6 +196,7 @@ def test_reject_without_expected_row_version_returns_422(
         json={},
     )
     assert resp.status_code == 422, resp.text
+    assert resp.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 def test_reject_already_rejected_is_idempotent(
@@ -203,7 +207,7 @@ def test_reject_already_rejected_is_idempotent(
     assert first.status_code == 200
     replay = client.post(
         f"/api/expenses/{expense_id}/reject",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": 999999},
     )
     assert replay.status_code == 200, replay.text
@@ -250,7 +254,7 @@ def test_mark_not_duplicate_with_stale_updated_at_returns_409(
     assert patched.status_code == 200, patched.text
     stale = client.post(
         f"/api/expenses/{expense_id}/mark-not-duplicate",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": stale_token},
     )
     assert stale.status_code == 409, stale.text
@@ -267,6 +271,7 @@ def test_mark_not_duplicate_without_expected_row_version_returns_422(
         json={},
     )
     assert resp.status_code == 422, resp.text
+    assert resp.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 # ---------------------------------------------------------------------------

@@ -48,6 +48,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.errors import AppError
 from app.models import ApiIdempotencyKey
 from app.services.time_service import ensure_utc, now_utc
 
@@ -59,6 +60,7 @@ __all__ = [
     "IdempotencyOutcome",
     "IdempotencyOutcomeKind",
     "claim_idempotency_key",
+    "claim_idempotent_request",
     "fingerprint_request",
     "mark_idempotency_succeeded",
 ]
@@ -263,3 +265,63 @@ def mark_idempotency_succeeded(
     row.resource_id = resource_id if resource_id is not None else row.target_id
     row.completed_at = now_utc()
     db.flush()
+
+
+def claim_idempotent_request(
+    db: Session,
+    *,
+    idempotency_key: str | None,
+    tenant_id: str,
+    operation: str,
+    target_id: str,
+    body: Any,
+    expected_row_version: int | None,
+    target_type: str = "expense",
+) -> ApiIdempotencyKey | None:
+    """Route-layer ADR-0042 claim-before-OCC handshake (§4.4) — the shared front
+    door every outbox-routed mutate route uses.
+
+    Returns the claimed ``in_progress`` row to PROCEED with: the caller runs the
+    mutation with ``commit=False``, then calls :func:`mark_idempotency_succeeded`
+    and a SINGLE ``db.commit()`` so the success record and the mutation land
+    atomically (§4.5). Returns ``None`` on a HIT — the key already succeeded, so
+    the caller re-serialises the resource's current canonical state instead of
+    re-running the mutation (§4.6, kills the committed-but-unseen false-409).
+
+    Raises :class:`AppError` for the three contract-violation outcomes so the
+    route body stays a thin ``if claim is None`` branch:
+
+    * no key            → 422 ``idempotency_key_required``
+    * concurrent in-flight (same key) → 409 ``idempotency_key_in_progress``
+    * same key, different request (fingerprint mismatch) → 422
+      ``idempotency_key_reused``
+
+    ``body`` must be JSON-canonical (a Pydantic ``model_dump(mode="json",
+    exclude_unset=True, exclude={"expected_row_version"})``); for a token-only
+    request it is ``{}`` and ``operation`` + ``target_id`` keep the fingerprint
+    distinct per (op, target, token).
+    """
+    if not idempotency_key:
+        raise AppError("idempotency_key_required", status_code=422)
+    fingerprint = fingerprint_request(
+        operation=operation,
+        target_id=target_id,
+        body=body,
+        expected_row_version=expected_row_version,
+    )
+    outcome = claim_idempotency_key(
+        db,
+        tenant_id=tenant_id,
+        idempotency_key=idempotency_key,
+        operation=operation,
+        request_fingerprint=fingerprint,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    if outcome.kind is IdempotencyOutcomeKind.HIT:
+        return None
+    if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
+        raise AppError("idempotency_key_in_progress", status_code=409)
+    if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        raise AppError("idempotency_key_reused", status_code=422)
+    return outcome.row

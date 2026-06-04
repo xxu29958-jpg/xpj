@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import (
@@ -172,6 +173,7 @@ def test_retry_ocr_without_expected_row_version_returns_422(
         json={},
     )
     assert response.status_code == 422, response.text
+    assert response.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 def test_retry_ocr_with_stale_updated_at_returns_409(
@@ -201,7 +203,7 @@ def test_retry_ocr_with_stale_updated_at_returns_409(
 
     stale = client.post(
         f"/api/expenses/{expense_id}/ocr/retry",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
 
@@ -214,11 +216,43 @@ def test_retry_ocr_unknown_expense_returns_404(
 ) -> None:
     response = client.post(
         "/api/expenses/9999999/ocr/retry",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text
     assert response.json()["error"] == "expense_not_found"
+
+
+def test_retry_ocr_replay_same_key_returns_canonical_not_409(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch, *, identity,
+) -> None:
+    """ADR-0042 committed-but-unseen for retry-ocr (a ③-true op, not terminal-
+    idempotent): same key + same now-stale token returns the canonical row, not
+    the false-409 the OCC claim would raise on the bumped row_version."""
+    expense_id = upload_png(client, identity=identity)
+    v0 = client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()["row_version"]
+    monkeypatch.setattr(
+        "app.services.expense_service._ocr._active_provider_name", lambda: "mock"
+    )
+    monkeypatch.setattr(
+        "app.services.expense_service._ocr.extract_ocr_result",
+        lambda expense: OcrResult(raw_text="OCR\n12.00", amount_cents=1200, confidence=None),
+    )
+    key = str(uuid4())
+    headers = {**identity.app_headers, "Idempotency-Key": key}
+    body = {"expected_row_version": v0}
+
+    first = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=headers, json=body)
+    assert first.status_code == 200, first.text
+    v1 = first.json()["row_version"]
+    assert v1 != v0
+
+    replay = client.post(f"/api/expenses/{expense_id}/ocr/retry", headers=headers, json=body)
+    assert replay.status_code == 200, replay.text  # HIT, not 409
+    assert replay.json()["row_version"] == v1
 
 
 def test_retry_ocr_rejects_stale_pending_snapshot(

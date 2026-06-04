@@ -280,6 +280,13 @@ internal class ExpenseRepositoryCore(
         type: PendingMutationType,
         expense: Expense,
         networkError: IOException,
+        // ADR-0042 Slice D-1: the intent-time idempotency key the offline-aware
+        // caller already used for its direct attempt. The enqueued row carries
+        // the SAME key so a committed-but-unseen first attempt (the POST
+        // committed server-side but the response was lost) replays with it — the
+        // server HITs the recorded success instead of false-409ing on the now-
+        // stale token. The dispatcher replays it from ``row.idempotencyKey``.
+        idempotencyKey: String,
     ) {
         val outboxRef = outbox
         val adapter = expenseStateTokenAdapter
@@ -292,6 +299,7 @@ internal class ExpenseRepositoryCore(
             targetId = "expense:${expense.id}",
             payloadJson = adapter.toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L)),
             expectedRowVersion = expense.rowVersion,
+            idempotencyKey = idempotencyKey,
         )
     }
 

@@ -15,6 +15,7 @@ import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecurringCandidate
 import java.io.IOException
+import java.util.UUID
 
 internal class ExpenseDetailRepository(
     private val core: ExpenseRepositoryCore,
@@ -67,6 +68,8 @@ internal class ExpenseDetailRepository(
                 com.ticketbox.data.remote.dto.ExpenseStateTokenRequest(
                     expectedRowVersion = expectedRowVersion,
                 ),
+                // ADR-0042: single-use key — direct-only path, no replay.
+                UUID.randomUUID().toString(),
             )
         }.toDomain()
     }
@@ -96,11 +99,18 @@ internal class ExpenseDetailRepository(
             throw RepositoryException("当前角色为只读，无法修改账本。")
         }
         val bound = core.ledgerRequestGuard.bind()
+        // ADR-0042: one intent-time key shared by the direct attempt and the
+        // outbox replay — a committed-but-unseen acknowledge replays with this
+        // SAME key so the server HITs the recorded success instead of false-
+        // 409ing on the stale token. The dispatcher replays it from
+        // row.idempotencyKey.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             val items = bound.call {
                 it.acknowledgeExpenseItemsMismatch(
                     expense.id,
                     ExpenseStateTokenRequest(expectedRowVersion = expense.rowVersion),
+                    idempotencyKey,
                 )
             }.toDomain()
             ItemsAckOutcome.Synced(items) as ItemsAckOutcome
@@ -110,6 +120,7 @@ internal class ExpenseDetailRepository(
                 type = PendingMutationType.AcknowledgeItemsMismatch,
                 expense = expense,
                 networkError = networkError,
+                idempotencyKey = idempotencyKey,
             )
             ItemsAckOutcome.Queued(
                 currentItems.copy(itemsSumStatus = ItemsSumStatus.MISMATCH_ACKNOWLEDGED),
@@ -251,7 +262,10 @@ internal class ExpenseDetailRepository(
 
     suspend fun retryOcr(id: Long, expectedRowVersion: Long): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
-        val retried = bound.call { it.retryOcr(id, ExpenseStateTokenRequest(expectedRowVersion)) }
+        // ADR-0042: single-use key — direct-only path, no replay.
+        val retried = bound.call {
+            it.retryOcr(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
+        }
         retried.toDomain()
     }
 
@@ -266,9 +280,12 @@ internal class ExpenseDetailRepository(
     suspend fun retryOcrAllowingOffline(expense: Expense): Result<ExpenseStateOutcome> =
         core.errorHandler.safeCall {
             val bound = core.ledgerRequestGuard.bind()
+            // ADR-0042: one intent-time key for both the direct attempt and the
+            // replay — see acknowledgeItemsMismatchAllowingOffline for rationale.
+            val idempotencyKey = UUID.randomUUID().toString()
             try {
                 val retried = bound.call {
-                    it.retryOcr(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
+                    it.retryOcr(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 }
                 ExpenseStateOutcome.Synced(retried.toDomain()) as ExpenseStateOutcome
             } catch (networkError: IOException) {
@@ -277,6 +294,7 @@ internal class ExpenseDetailRepository(
                     type = PendingMutationType.RetryOcr,
                     expense = expense,
                     networkError = networkError,
+                    idempotencyKey = idempotencyKey,
                 )
                 ExpenseStateOutcome.Queued(expense) as ExpenseStateOutcome
             }

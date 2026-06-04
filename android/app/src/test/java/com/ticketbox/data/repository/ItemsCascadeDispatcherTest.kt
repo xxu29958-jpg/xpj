@@ -48,6 +48,7 @@ class ItemsCascadeDispatcherTest {
             override suspend fun acknowledgeExpenseItemsMismatch(
                 id: Long,
                 request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
             ): ExpenseItemsResponseDto = itemsResponseWithParentRowVersion(id)
         }
     }
@@ -76,6 +77,10 @@ class ItemsCascadeDispatcherTest {
         createdAt = "2026-05-20T12:00:00.000Z",
         attemptedAt = "2026-05-20T12:00:00.000Z",
         completedAt = null,
+        // ADR-0042: AcknowledgeItemsMismatch now requires a key (the dispatcher
+        // fails a keyless row). ReplaceItems ignores it. Supply one so both
+        // cascade tests exercise the success path.
+        idempotencyKey = "key-cascade",
     )
 
     @Test

@@ -225,11 +225,22 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             confirmedFailuresRemaining = 0,
         ),
     ) : ApiService by delegate {
-        // ADR-0042: records the Idempotency-Key the repository supplied on the
-        // direct PATCH so tests can assert it matches the enqueued row's key.
+        // ADR-0042: records the Idempotency-Key the repository supplied on each
+        // direct attempt so tests can assert it matches the enqueued row's key.
         // Captured before the result is applied so the IOException path still
-        // sees it.
+        // sees it. ``lastIdempotencyKey`` is the PATCH one (Slice B); the
+        // per-op vars below cover the Slice D-1 state-machine mutations.
         var lastIdempotencyKey: String? = null
+            private set
+        var lastConfirmIdempotencyKey: String? = null
+            private set
+        var lastRejectIdempotencyKey: String? = null
+            private set
+        var lastMarkNotDuplicateIdempotencyKey: String? = null
+            private set
+        var lastRetryOcrIdempotencyKey: String? = null
+            private set
+        var lastAcknowledgeIdempotencyKey: String? = null
             private set
 
         override suspend fun updateExpense(
@@ -247,39 +258,57 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         override suspend fun confirmExpense(
             id: Long,
             request: ExpenseStateTokenRequest,
-        ): ExpenseDto = when (val r = confirmExpenseResult) {
-            is ApiResult.Success -> r.dto
-            is ApiResult.Throw -> throw r.exception
+            idempotencyKey: String?,
+        ): ExpenseDto {
+            lastConfirmIdempotencyKey = idempotencyKey
+            return when (val r = confirmExpenseResult) {
+                is ApiResult.Success -> r.dto
+                is ApiResult.Throw -> throw r.exception
+            }
         }
 
         override suspend fun rejectExpense(
             id: Long,
             request: ExpenseStateTokenRequest,
-        ): ExpenseDto = when (val r = rejectExpenseResult) {
-            is ApiResult.Success -> r.dto
-            is ApiResult.Throw -> throw r.exception
+            idempotencyKey: String?,
+        ): ExpenseDto {
+            lastRejectIdempotencyKey = idempotencyKey
+            return when (val r = rejectExpenseResult) {
+                is ApiResult.Success -> r.dto
+                is ApiResult.Throw -> throw r.exception
+            }
         }
 
         override suspend fun markNotDuplicate(
             id: Long,
             request: ExpenseStateTokenRequest,
-        ): ExpenseDto = when (val r = markNotDuplicateResult) {
-            is ApiResult.Success -> r.dto
-            is ApiResult.Throw -> throw r.exception
+            idempotencyKey: String?,
+        ): ExpenseDto {
+            lastMarkNotDuplicateIdempotencyKey = idempotencyKey
+            return when (val r = markNotDuplicateResult) {
+                is ApiResult.Success -> r.dto
+                is ApiResult.Throw -> throw r.exception
+            }
         }
 
         override suspend fun retryOcr(
             id: Long,
             request: ExpenseStateTokenRequest,
-        ): ExpenseDto = when (val r = retryOcrResult) {
-            is ApiResult.Success -> r.dto
-            is ApiResult.Throw -> throw r.exception
+            idempotencyKey: String?,
+        ): ExpenseDto {
+            lastRetryOcrIdempotencyKey = idempotencyKey
+            return when (val r = retryOcrResult) {
+                is ApiResult.Success -> r.dto
+                is ApiResult.Throw -> throw r.exception
+            }
         }
 
         override suspend fun acknowledgeExpenseItemsMismatch(
             id: Long,
             request: ExpenseStateTokenRequest,
+            idempotencyKey: String?,
         ): ExpenseItemsResponseDto {
+            lastAcknowledgeIdempotencyKey = idempotencyKey
             acknowledgeException?.let { throw it }
             return ExpenseItemsResponseDto(
                 expenseId = id,

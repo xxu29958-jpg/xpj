@@ -212,7 +212,9 @@ internal class ExpensePendingRepository(
         val bound = core.ledgerRequestGuard.bind()
         val confirmed = core.cacheIfConfirmed(
             bound.call {
-                it.confirmExpense(id, ExpenseStateTokenRequest(expectedRowVersion))
+                // ADR-0042: this DIRECT path never enqueues, so the key is
+                // single-use — it only satisfies the server's mandatory header.
+                it.confirmExpense(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
             },
             bound.ledgerId,
         )
@@ -225,7 +227,8 @@ internal class ExpensePendingRepository(
     ): Result<Expense> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
         val rejected = bound.call {
-            it.rejectExpense(id, ExpenseStateTokenRequest(expectedRowVersion))
+            // ADR-0042: single-use key — direct-only path, no replay.
+            it.rejectExpense(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
         }
         rejected.toDomain()
     }
@@ -249,7 +252,8 @@ internal class ExpensePendingRepository(
         val bound = core.ledgerRequestGuard.bind()
         val updated = core.cacheIfConfirmed(
             bound.call {
-                it.markNotDuplicate(id, ExpenseStateTokenRequest(expectedRowVersion))
+                // ADR-0042: single-use key — direct-only path, no replay.
+                it.markNotDuplicate(id, ExpenseStateTokenRequest(expectedRowVersion), UUID.randomUUID().toString())
             },
             bound.ledgerId,
         )
@@ -260,10 +264,16 @@ internal class ExpensePendingRepository(
         expense: Expense,
     ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
+        // ADR-0042: ONE intent-time key shared by the direct attempt and the
+        // outbox replay. A committed-but-unseen confirm (the POST commits
+        // server-side but its response is lost) replays with this SAME key — the
+        // server HITs the recorded success instead of false-409ing on the stale
+        // token. The dispatcher replays it from row.idempotencyKey.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             val confirmed = core.cacheIfConfirmed(
                 bound.call {
-                    it.confirmExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
+                    it.confirmExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },
                 bound.ledgerId,
             )
@@ -274,6 +284,7 @@ internal class ExpensePendingRepository(
                 type = PendingMutationType.ConfirmExpense,
                 expense = expense,
                 networkError = networkError,
+                idempotencyKey = idempotencyKey,
             )
             ExpenseStateOutcome.Queued(expense.copy(status = "confirmed")) as ExpenseStateOutcome
         }
@@ -283,9 +294,12 @@ internal class ExpensePendingRepository(
         expense: Expense,
     ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
+        // ADR-0042: one intent-time key for both the direct attempt and the
+        // replay — see confirmExpenseAllowingOffline for the rationale.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             val rejected = bound.call {
-                it.rejectExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
+                it.rejectExpense(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
             }
             ExpenseStateOutcome.Synced(rejected.toDomain()) as ExpenseStateOutcome
         } catch (networkError: IOException) {
@@ -294,6 +308,7 @@ internal class ExpensePendingRepository(
                 type = PendingMutationType.RejectExpense,
                 expense = expense,
                 networkError = networkError,
+                idempotencyKey = idempotencyKey,
             )
             ExpenseStateOutcome.Queued(expense.copy(status = "rejected")) as ExpenseStateOutcome
         }
@@ -303,10 +318,13 @@ internal class ExpensePendingRepository(
         expense: Expense,
     ): Result<ExpenseStateOutcome> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()
+        // ADR-0042: one intent-time key for both the direct attempt and the
+        // replay — see confirmExpenseAllowingOffline for the rationale.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             val updated = core.cacheIfConfirmed(
                 bound.call {
-                    it.markNotDuplicate(expense.id, ExpenseStateTokenRequest(expense.rowVersion))
+                    it.markNotDuplicate(expense.id, ExpenseStateTokenRequest(expense.rowVersion), idempotencyKey)
                 },
                 bound.ledgerId,
             )
@@ -317,6 +335,7 @@ internal class ExpensePendingRepository(
                 type = PendingMutationType.MarkNotDuplicate,
                 expense = expense,
                 networkError = networkError,
+                idempotencyKey = idempotencyKey,
             )
             // Optimistic projection: the suspected-duplicate badge clears
             // the moment the user taps "保留" — duplicateStatus flips to

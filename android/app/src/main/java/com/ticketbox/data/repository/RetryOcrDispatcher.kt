@@ -26,6 +26,13 @@ class RetryOcrDispatcher(
         val expenseId = parseExpenseId(row.targetId)
             ?: return DispatchResult.Discarded("invalid target id: ${row.targetId}")
 
+        // ADR-0042: a RetryOcr row MUST carry an idempotency key (every enqueue
+        // mints one). A null key means a malformed / pre-ADR-0042 row the server
+        // would 422 anyway — surface it as a visible FAILED row the user can
+        // drop, not a silent server round-trip + Discard.
+        val idempotencyKey = row.idempotencyKey
+            ?: return DispatchResult.Failure("RetryOcr row missing idempotency key")
+
         val request = try {
             val storedPayload = payloadAdapter.fromJson(row.payloadJson)
                 ?: return DispatchResult.Failure("payload deserialised to null")
@@ -41,7 +48,10 @@ class RetryOcrDispatcher(
         }
 
         return try {
-            val retried = apiProvider().retryOcr(expenseId, request)
+            // ADR-0042: replay carries the row's original intent-time key, so a
+            // committed-but-unseen first attempt is deduped server-side (HIT →
+            // canonical row) instead of false-409ing on the stale row_version.
+            val retried = apiProvider().retryOcr(expenseId, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = retried.rowVersion)
         } catch (e: HttpException) {
             mapHttpException(e)
@@ -58,9 +68,17 @@ class RetryOcrDispatcher(
         val body = e.response()?.errorBody()?.string().orEmpty()
         val message = extractServerMessage(body) ?: e.message().orEmpty()
         return when (e.code()) {
-            409 -> {
-                if ("state_conflict" in body) DispatchResult.Conflict(message)
-                else DispatchResult.Discarded(message)
+            409 -> when {
+                // ADR-0038 contract: only ``state_conflict`` becomes a
+                // user-visible CONFLICT row.
+                "state_conflict" in body -> DispatchResult.Conflict(message)
+                // ADR-0042: a concurrent same-key request is still mid-flight
+                // (claimed, not yet committed). The replay will HIT once it
+                // lands — retry on the next tick, don't drop.
+                "idempotency_key_in_progress" in body ->
+                    DispatchResult.RetryableFailure(message.ifEmpty { "idempotency key in progress" })
+                // Other 409s are structural and belong in Discarded.
+                else -> DispatchResult.Discarded(message)
             }
             in 500..599, 408, 429 -> DispatchResult.RetryableFailure(
                 message.ifEmpty { "server ${e.code()}" },

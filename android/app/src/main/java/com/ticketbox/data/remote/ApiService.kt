@@ -160,6 +160,9 @@ interface ApiService {
     suspend fun acknowledgeExpenseItemsMismatch(
         @Path("id") id: Long,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseItemsResponseDto
 
     // ADR-0029 bill split workflow
@@ -206,12 +209,18 @@ interface ApiService {
     suspend fun confirmExpense(
         @Path("id") id: Long,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
     @POST("api/expenses/{id}/reject")
     suspend fun rejectExpense(
         @Path("id") id: Long,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
     // ADR-0038 undo: restore a recently-rejected expense (5-min window). No
@@ -236,6 +245,9 @@ interface ApiService {
     suspend fun retryOcr(
         @Path("id") id: Long,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
     @POST("api/expenses/{id}/suggestions/{decisionPublicId}/accept")
@@ -254,6 +266,9 @@ interface ApiService {
     suspend fun markNotDuplicate(
         @Path("id") id: Long,
         @Body request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseDto
 
     @GET("api/expenses/{id}/image")

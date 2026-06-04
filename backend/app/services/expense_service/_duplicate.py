@@ -30,6 +30,7 @@ def mark_expense_not_duplicate(
     tenant_id: str,
     *,
     expected_row_version: int,
+    commit: bool = True,
 ) -> Expense:
     """ADR-0038 PR-2b: claim-then-apply mark-not-duplicate.
 
@@ -80,6 +81,9 @@ def mark_expense_not_duplicate(
 
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
-    db.commit()
-    db.refresh(expense)
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        db.flush()
     return expense

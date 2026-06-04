@@ -279,6 +279,7 @@ def confirm_expense(
     tenant_id: str,
     *,
     expected_row_version: int,
+    commit: bool = True,
 ) -> Expense:
     """ADR-0038 PR-2b: confirm with optimistic concurrency.
 
@@ -286,6 +287,11 @@ def confirm_expense(
     ``confirmed`` row returns 200 without inspecting the token. Stale
     snapshot against a still-``pending`` row → 409 ``state_conflict``
     via DB-level ``updated_at = expected`` predicate.
+
+    ADR-0042: ``commit=False`` lets the idempotent confirm route fold the
+    key claim + this status flip + ``mark_idempotency_succeeded`` into ONE
+    commit (§4.5); the route then runs ``cleanup_after_confirm`` as the same
+    post-confirm side-effect commit this method does internally when ``commit``.
     """
     expense = get_expense(db, expense_id, tenant_id)
     if expense.status == "confirmed":
@@ -334,11 +340,16 @@ def confirm_expense(
         subject_kind="expense",
         subject_id=expense.id,
     )
-    db.commit()
-    db.refresh(expense)
-    if cleanup_after_confirm(expense):
+    if commit:
         db.commit()
         db.refresh(expense)
+        if cleanup_after_confirm(expense):
+            db.commit()
+            db.refresh(expense)
+    else:
+        # Idempotent route owns the commit (it folds in the key record), then
+        # runs cleanup_after_confirm + its own commit afterwards.
+        db.flush()
     return expense
 
 
@@ -348,11 +359,13 @@ def reject_expense(
     tenant_id: str,
     *,
     expected_row_version: int,
+    commit: bool = True,
 ) -> Expense:
     """ADR-0038 PR-2b: reject with optimistic concurrency.
 
     Like ``confirm_expense``, idempotent on ``rejected`` (terminal) and
-    409 on stale ``pending`` rows.
+    409 on stale ``pending`` rows. ADR-0042 ``commit=False``: the idempotent
+    route owns the single commit (folds in the key record).
     """
     now = now_utc()
     rowcount = claim_row_with_token(
@@ -387,8 +400,11 @@ def reject_expense(
         subject_kind="expense",
         subject_id=expense.id,
     )
-    db.commit()
-    db.refresh(expense)
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        db.flush()
     return expense
 
 

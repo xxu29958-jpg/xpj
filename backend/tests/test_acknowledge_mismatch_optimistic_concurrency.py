@@ -10,6 +10,8 @@ returns 409 ``state_conflict`` instead of writing an out-of-date ack.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from api_contract_helpers import (
     acknowledge_items_mismatch_api,
@@ -61,6 +63,47 @@ def test_acknowledge_mismatch_without_token_returns_422(
         json={},
     )
     assert response.status_code == 422, response.text
+    # The 422 is the Pydantic missing-field path (no idempotency key sent
+    # either, but body validation fires first) — pin it so a future
+    # reorder can't silently turn this into the missing-key guard's 422.
+    assert response.json()["error"] == "invalid_request"
+
+
+def test_acknowledge_mismatch_replay_same_key_returns_canonical_not_409(
+    client: TestClient, *, identity
+) -> None:
+    """ADR-0042 committed-but-unseen for acknowledge — the one D-1 op whose HIT
+    path re-serialises via ``list_expense_items`` (not ``get_expense``). Same key
+    + same now-stale token must return the canonical (already-acknowledged) items
+    response, never the false-409 the OCC claim would raise (ack is not
+    terminal-idempotent: the second claim's ``items_sum_status='mismatch_known'``
+    predicate would miss)."""
+    expense_id = _create_mismatch_expense(client, identity=identity)
+    v0 = client.get(
+        f"/api/expenses/{expense_id}", headers=identity.app_headers
+    ).json()["row_version"]
+    key = str(uuid4())
+    headers = {**identity.app_headers, "Idempotency-Key": key}
+    body = {"expected_row_version": v0}
+
+    first = client.post(
+        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
+        headers=headers,
+        json=body,
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["items_sum_status"] == "mismatch_acknowledged"
+    v1 = first.json()["row_version"]
+    assert v1 != v0
+
+    replay = client.post(
+        f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
+        headers=headers,
+        json=body,
+    )
+    assert replay.status_code == 200, replay.text  # HIT via list_expense_items, not 409
+    assert replay.json()["items_sum_status"] == "mismatch_acknowledged"
+    assert replay.json()["row_version"] == v1
 
 
 def test_acknowledge_mismatch_with_stale_token_returns_409(
@@ -82,7 +125,7 @@ def test_acknowledge_mismatch_with_stale_token_returns_409(
 
     response = client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
     assert response.status_code == 409, response.text
@@ -119,7 +162,7 @@ def test_acknowledge_mismatch_status_check_preserves_existing_409(
     # filter because we surface the status-specific 409 first.
     response = client.post(
         f"/api/expenses/{expense_id}/items/acknowledge-mismatch",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"]},
     )
     assert response.status_code == 409, response.text
@@ -184,7 +227,7 @@ def test_acknowledge_mismatch_unknown_expense_returns_404(
 ) -> None:
     response = client.post(
         "/api/expenses/9999999/items/acknowledge-mismatch",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text

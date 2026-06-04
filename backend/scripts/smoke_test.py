@@ -363,7 +363,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/manual",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=manual_body,
     )
     assert_equal(result.status, 200, "manual create status")
@@ -375,7 +379,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/manual",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=b'{"merchant":"missing amount"}',
     )
     assert_error(result, 400, "amount_required")
@@ -430,7 +438,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{expense_id}/confirm",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=confirm_no_amount_body,
     )
     assert_error(result, 400, "amount_required")
@@ -481,7 +493,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{expense_id}/ocr/retry",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=retry_body,
     )
     assert_error(result, 503, "ocr_not_configured")
@@ -514,7 +530,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{recognize_id}/recognize-text",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=recognize_body,
     )
     assert_equal(result.status, 200, "recognize text status")
@@ -537,7 +557,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{expense_id}/confirm",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=confirm_body,
     )
     assert_equal(result.status, 200, "confirm status")
@@ -600,7 +624,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/rules/categories",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=rule_body,
     )
     assert_equal(result.status, 200, "rule create status")
@@ -613,7 +641,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "PATCH",
         f"{base_url}/api/rules/categories/{rule_id}",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=patch_rule_body,
     )
     assert_equal(result.status, 200, "rule patch status")
@@ -626,7 +658,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "DELETE",
         f"{base_url}/api/rules/categories/{rule_id}",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=delete_rule_body,
     )
     assert_equal(result.status, 200, "rule delete status")
@@ -684,7 +720,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{second_id}/mark-not-duplicate",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=second_mnd_body,
     )
     assert_equal(result.status, 200, "mark not duplicate status")
@@ -706,7 +746,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{similar_id}/mark-not-duplicate",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=similar_mnd_body,
     )
     assert_equal(result.status, 200, "similar clear hash duplicate")
@@ -752,7 +796,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{similar_id}/reject",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=reject_body,
     )
     assert_equal(result.status, 200, "reject status")
@@ -772,7 +820,11 @@ def run_smoke(base_url: str) -> None:
     result = request(
         "POST",
         f"{base_url}/api/expenses/{second_id}/confirm",
-        headers={**app_headers(), "Content-Type": "application/json"},
+        headers={
+            **app_headers(),
+            "Content-Type": "application/json",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
         body=second_confirm_body,
     )
     assert_equal(result.status, 200, "second confirm status")

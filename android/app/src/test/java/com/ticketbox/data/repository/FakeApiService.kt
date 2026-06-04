@@ -220,6 +220,7 @@ internal class FakeApiService(
     override suspend fun acknowledgeExpenseItemsMismatch(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        idempotencyKey: String?,
     ): ExpenseItemsResponseDto {
         return expenseItemsResponse()
     }
@@ -293,6 +294,7 @@ internal class FakeApiService(
     override suspend fun confirmExpense(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        idempotencyKey: String?,
     ): ExpenseDto {
         confirmExpenseIds += id
         onConfirmExpense?.invoke()
@@ -302,6 +304,7 @@ internal class FakeApiService(
     override suspend fun rejectExpense(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        idempotencyKey: String?,
     ): ExpenseDto = unsupported()
 
     override suspend fun undoExpense(
@@ -312,6 +315,7 @@ internal class FakeApiService(
     override suspend fun retryOcr(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        idempotencyKey: String?,
     ): ExpenseDto = unsupported()
 
     override suspend fun acceptPendingSuggestion(
@@ -327,6 +331,7 @@ internal class FakeApiService(
     override suspend fun markNotDuplicate(
         id: Long,
         request: com.ticketbox.data.remote.dto.ExpenseStateTokenRequest,
+        idempotencyKey: String?,
     ): ExpenseDto {
         markNotDuplicateIds += id
         return confirmedExpenseDto()

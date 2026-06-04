@@ -111,6 +111,7 @@ def acknowledge_items_sum_mismatch(
     tenant_id: str,
     *,
     expected_row_version: int,
+    commit: bool = True,
 ) -> ExpenseItemsResponse:
     """User-confirmed "原小票如此" path: mismatch_known → mismatch_acknowledged.
 
@@ -151,7 +152,8 @@ def acknowledge_items_sum_mismatch(
                 status_code=409,
             )
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    if commit:
+        db.commit()
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
     return _build_response(db, expense)
