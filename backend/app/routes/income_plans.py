@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -21,9 +21,14 @@ from app.schemas import (
     IncomePlanTokenRequest,
     IncomePlanUpdateRequest,
 )
+from app.services.idempotency import (
+    claim_idempotent_request,
+    mark_idempotency_succeeded,
+)
 from app.services.income_plan_service import (
     archive_income_plan,
     create_income_plan,
+    get_income_plan,
     list_income_plans,
     restore_income_plan,
     total_monthly_income_cents,
@@ -91,10 +96,30 @@ def create_plan(
 def update_plan(
     public_id: str,
     payload: IncomePlanUpdateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> IncomePlanResponse:
-    # ADR-0038 PR-2j: token-gated PATCH. Stale snapshot → 409.
+    # ADR-0038 PR-2j: token-gated PATCH (stale snapshot → 409). ADR-0042: claim
+    # the Idempotency-Key before that OCC claim so an offline-outbox replay of a
+    # committed-but-unseen edit re-serialises the plan instead of false-409ing.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="update_income_plan",
+        target_id=public_id,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+        target_type="income_plan",
+    )
+    if claim is None:  # §4.6 HIT — re-serialise the current plan
+        return _to_response(
+            get_income_plan(db, tenant_id=auth.tenant_id, public_id=public_id)
+        )
+
     plan = update_income_plan(
         db,
         tenant_id=auth.tenant_id,
@@ -104,7 +129,12 @@ def update_plan(
         source_type=payload.source_type,
         amount_cents=payload.amount_cents,
         pay_day=payload.pay_day,
+        commit=False,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="income_plan", resource_id=public_id
+    )
+    db.commit()
     return _to_response(plan)
 
 

@@ -8,6 +8,8 @@ existing "请先恢复" message via the status filter.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -19,6 +21,13 @@ from app.services.income_plan_service import (
     archive_income_plan,
     update_income_plan,
 )
+
+
+def _idem_headers(identity) -> dict[str, str]:
+    """ADR-0042: PATCH now claims an ``Idempotency-Key`` before the OCC claim.
+    A fresh UUID per call mints a distinct intent, so a token-bearing request
+    reaches the service (archive/restore are unchanged — still keyless)."""
+    return {**identity.app_headers, "Idempotency-Key": str(uuid4())}
 
 
 def _create_plan(client: TestClient, *, identity, label: str = "工资 A") -> dict:
@@ -54,7 +63,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
     plan = _create_plan(client, identity=identity)
     bump = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={
             "expected_row_version": plan["row_version"],
             "amount_cents": 1_100_000,
@@ -64,7 +73,7 @@ def test_income_plan_patch_with_stale_token_returns_409(
 
     stale = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={
             "expected_row_version": plan["row_version"],
             "amount_cents": 1_200_000,
@@ -77,9 +86,11 @@ def test_income_plan_patch_with_stale_token_returns_409(
 def test_income_plan_patch_unknown_returns_404(
     client: TestClient, *, identity
 ) -> None:
+    # Carries a key so the idempotency claim passes and the handler reaches the
+    # 404 (a keyless request would 422 idempotency_key_required first).
     response = client.patch(
         "/api/income-plans/no-such-public-id",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={
             "expected_row_version": 999999,
             "label": "Bogus",
@@ -162,7 +173,7 @@ def test_archived_plan_patch_preserves_existing_409(
 
     response = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={
             "expected_row_version": plan["row_version"],
             "amount_cents": 999,
@@ -193,7 +204,7 @@ def test_income_plan_archive_with_stale_token_returns_409(
     # plan is still active — the archive must then 409 rather than flip it.
     bump = client.patch(
         f"/api/income-plans/{plan['public_id']}",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={"expected_row_version": plan["row_version"], "amount_cents": 1_100_000},
     )
     assert bump.status_code == 200, bump.text

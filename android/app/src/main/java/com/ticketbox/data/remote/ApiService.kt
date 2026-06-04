@@ -435,6 +435,9 @@ interface ApiService {
     suspend fun updateGoal(
         @Path("publicId") publicId: String,
         @Body request: GoalUpdateRequestDto,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
         @Query("timezone") timezone: String? = null,
     ): GoalDto
 
@@ -483,6 +486,9 @@ interface ApiService {
     suspend fun updateIncomePlan(
         @Path("publicId") publicId: String,
         @Body request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.IncomePlanDto
 
     @HTTP(method = "DELETE", path = "api/income-plans/{publicId}", hasBody = true)

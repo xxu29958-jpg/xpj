@@ -13,6 +13,8 @@ import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
+import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.repository.ApiServiceProvider
@@ -42,6 +44,8 @@ import com.ticketbox.data.repository.RejectExpenseDispatcher
 import com.ticketbox.data.repository.RetryOcrDispatcher
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.UpdateCategoryRuleDispatcher
+import com.ticketbox.data.repository.UpdateGoalDispatcher
+import com.ticketbox.data.repository.UpdateIncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.security.SecureTokenStore
 import kotlinx.coroutines.flow.map
@@ -113,6 +117,15 @@ class AppContainer(context: Context) {
     // "粘贴文字识别" call site (POST /api/expenses/{id}/recognize-text). Same
     // roundtrip guarantee as replaceItemsAdapter.
     private val recognizeTextAdapter = outboxMoshi.adapter(ExpenseRecognizeTextRequestDto::class.java)
+
+    // ADR-0042 Slice F: PATCH /api/goals/{publicId} adapter. Shared between
+    // UpdateGoalDispatcher and ReportsRepository.updateGoalAllowingOffline.
+    private val goalUpdateAdapter = outboxMoshi.adapter(GoalUpdateRequestDto::class.java)
+
+    // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} adapter. Shared
+    // between UpdateIncomePlanDispatcher and
+    // IncomePlanRepository.updateAllowingOffline.
+    private val incomePlanUpdateAdapter = outboxMoshi.adapter(IncomePlanUpdateRequestDto::class.java)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -258,6 +271,16 @@ class AppContainer(context: Context) {
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = recognizeTextAdapter,
         ),
+        // ADR-0042 Slice F: PATCH /api/goals/{publicId} via outbox.
+        UpdateGoalDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = goalUpdateAdapter,
+        ),
+        // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
+        UpdateIncomePlanDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = incomePlanUpdateAdapter,
+        ),
     )
 
     val outboxDrainEngine = OutboxDrainEngine(
@@ -311,6 +334,9 @@ class AppContainer(context: Context) {
         settingsStore = settingsStore,
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
+        // ADR-0042 Slice F: outbox + adapter for updateAllowingOffline.
+        outbox = outboxRepository,
+        incomePlanUpdateAdapter = incomePlanUpdateAdapter,
     )
 
     val reportsRepository = ReportsRepository(
@@ -318,6 +344,9 @@ class AppContainer(context: Context) {
         settingsStore = settingsStore,
         tokenStore = tokenStore,
         apiProvider = apiServiceProvider,
+        // ADR-0042 Slice F: outbox + adapter for updateGoalAllowingOffline.
+        outbox = outboxRepository,
+        goalUpdateAdapter = goalUpdateAdapter,
     )
 
     val ruleRepository = RuleRepository(

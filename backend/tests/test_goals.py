@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -320,9 +321,10 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
     public_id = created.json()["public_id"]
 
     # ADR-0038 PR-2j: PATCH requires expected_row_version token.
+    # ADR-0042: PATCH also requires an Idempotency-Key (claimed before the OCC).
     updated = client.patch(
         f"/api/goals/{public_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created.json()["row_version"],
             "name": "全月目标",
@@ -353,7 +355,7 @@ def test_goals_update_archive_and_validation(client: TestClient, *, identity) ->
 
     archived_patch = client.patch(
         f"/api/goals/{public_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": archived.json()["row_version"],
             "name": "不能修改",

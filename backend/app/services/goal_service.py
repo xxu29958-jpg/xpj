@@ -286,6 +286,7 @@ def update_goal(
     public_id: str,
     payload: GoalUpdateRequest,
     timezone_name: str | None = None,
+    commit: bool = True,
 ) -> GoalResponse:
     """ADR-0038 PR-2j: atomic optimistic-concurrency PATCH.
 
@@ -297,6 +298,12 @@ def update_goal(
     layer so a peer archiving between the read and this PATCH
     surfaces as state_conflict, not a silent overwrite of an
     archived row.
+
+    ADR-0042: ``commit=False`` lets the route commit the OCC claim together
+    with the idempotency-key success record in a single transaction (§4.5);
+    the row is still flushed + expired so the re-read sees the post-UPDATE
+    state. The OCC-conflict path always rolls back its own placeholder
+    regardless of ``commit``.
     """
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     if goal.status == "archived":
@@ -356,7 +363,12 @@ def update_goal(
         if current.status != "active":
             raise AppError("invalid_request", "目标已归档，不能继续修改。", status_code=409)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    # synchronize_session=False left the identity-mapped row stale; drop it so
+    # the re-read below reflects the UPDATE (whether committed or only flushed).
     db.expire_all()
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     totals = _month_spend_totals(

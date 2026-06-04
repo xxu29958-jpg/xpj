@@ -7,6 +7,8 @@ shape-of-response contract that the Android / web client will consume.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 # ---------------------------------------------------------------------------
@@ -71,9 +73,10 @@ def test_update_income_plan_partial(client: TestClient, *, identity) -> None:
     pid = created["public_id"]
 
     # ADR-0038 PR-2j: PATCH requires expected_row_version token.
+    # ADR-0042: PATCH also requires an Idempotency-Key (claimed before the OCC).
     updated = client.patch(
         f"/api/income-plans/{pid}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "amount_cents": 500_000,
@@ -87,9 +90,11 @@ def test_update_income_plan_partial(client: TestClient, *, identity) -> None:
 
 
 def test_update_unknown_income_plan_returns_404(client: TestClient, *, identity) -> None:
+    # Key lets the idempotency claim pass so the handler reaches the 404
+    # (keyless would 422 idempotency_key_required first).
     resp = client.patch(
         "/api/income-plans/nonexistent",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": 999999,
             "label": "x",

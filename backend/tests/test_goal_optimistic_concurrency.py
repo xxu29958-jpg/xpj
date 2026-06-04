@@ -8,6 +8,8 @@ status='active'`` rejects stale writes as 409.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -17,6 +19,13 @@ from app.errors import AppError
 from app.models import Goal
 from app.schemas import GoalUpdateRequest
 from app.services.goal_service import update_goal
+
+
+def _idem_headers(identity) -> dict[str, str]:
+    """ADR-0042: PATCH now claims an ``Idempotency-Key`` before the OCC claim.
+    A fresh UUID per call mints a distinct intent (matching the production
+    Android-outbox flow), so a token-bearing request reaches the service."""
+    return {**identity.app_headers, "Idempotency-Key": str(uuid4())}
 
 
 def _create_goal(client: TestClient, *, identity, name: str = "Goal A") -> dict:
@@ -52,14 +61,14 @@ def test_goal_patch_with_stale_token_returns_409(
     goal = _create_goal(client, identity=identity)
     bump = client.patch(
         f"/api/goals/{goal['public_id']}",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={"expected_row_version": goal["row_version"], "name": "First"},
     )
     assert bump.status_code == 200, bump.text
 
     stale = client.patch(
         f"/api/goals/{goal['public_id']}",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={"expected_row_version": goal["row_version"], "name": "Stale"},
     )
     assert stale.status_code == 409, stale.text
@@ -67,9 +76,12 @@ def test_goal_patch_with_stale_token_returns_409(
 
 
 def test_goal_patch_unknown_returns_404(client: TestClient, *, identity) -> None:
+    # Carries a key so the idempotency claim passes and the handler reaches the
+    # 404 (the claim runs before the get_goal lookup; a keyless request would
+    # 422 idempotency_key_required first).
     response = client.patch(
         "/api/goals/no-such-public-id",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={
             "expected_row_version": 999999,
             "name": "Bogus",
@@ -141,7 +153,7 @@ def test_goal_patch_against_archived_returns_409(
 
     response = client.patch(
         f"/api/goals/{goal['public_id']}",
-        headers=identity.app_headers,
+        headers=_idem_headers(identity),
         json={
             "expected_row_version": archived.json()["row_version"],
             "name": "Cannot Edit",

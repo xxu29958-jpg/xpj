@@ -535,6 +535,7 @@ internal class FakeApiService(
     override suspend fun updateGoal(
         publicId: String,
         request: GoalUpdateRequestDto,
+        idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = unsupported()
     override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto = unsupported()
@@ -551,7 +552,7 @@ internal class FakeApiService(
     ): BudgetMonthlyDto = unsupported()
     override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = unsupported()
     override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
-    override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
+    override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun budgetDiscretionary(savingsTargetCents: Long, reservedBufferCents: Long): com.ticketbox.data.remote.dto.DiscretionaryResponseDto = unsupported()

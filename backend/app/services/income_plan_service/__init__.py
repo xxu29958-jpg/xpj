@@ -103,6 +103,7 @@ def update_income_plan(
     amount_cents: int | None = None,
     pay_day: int | None = None,
     now: datetime | None = None,
+    commit: bool = True,
 ) -> MonthlyIncomePlan:
     """Partial update. Only fields explicitly provided are changed.
     Archived plans cannot be edited — caller must reactivate first.
@@ -113,6 +114,11 @@ def update_income_plan(
     ``rowcount == 0`` disambiguates: row archived in the meantime →
     409 ``state_conflict`` (existing UX preserved); otherwise →
     409 ``state_conflict``.
+
+    ADR-0042: ``commit=False`` lets the route commit the OCC claim together
+    with the idempotency-key success record in one transaction (§4.5); the
+    row is flushed + expired so the re-read reflects the UPDATE. The
+    OCC-conflict path always rolls back its own placeholder regardless.
     """
 
     plan = _require_plan(db, tenant_id=tenant_id, public_id=public_id)
@@ -180,7 +186,12 @@ def update_income_plan(
                 status_code=409,
             )
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    # synchronize_session=False left the identity-mapped row stale; drop it so
+    # the re-read reflects the UPDATE (whether committed or only flushed).
     db.expire_all()
     return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
@@ -270,6 +281,16 @@ def restore_income_plan(
     return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
 
 
+def get_income_plan(
+    db: Session, *, tenant_id: str, public_id: str
+) -> MonthlyIncomePlan:
+    """Tenant-scoped single read (404 when absent). Public wrapper over the
+    private ``_require_plan`` so the route layer can re-serialise canonical
+    state on an ADR-0042 idempotency HIT without crossing into the model."""
+
+    return _require_plan(db, tenant_id=tenant_id, public_id=public_id)
+
+
 def total_monthly_income_cents(db: Session, *, tenant_id: str) -> int:
     """Sum of active income lines for the tenant. Drives the income leg
     of the v1.1 "本月可自由支配" formula in ``budget_baseline_service``."""
@@ -302,6 +323,7 @@ __all__ = [
     "IncomeStatus",
     "archive_income_plan",
     "create_income_plan",
+    "get_income_plan",
     "list_income_plans",
     "restore_income_plan",
     "total_monthly_income_cents",

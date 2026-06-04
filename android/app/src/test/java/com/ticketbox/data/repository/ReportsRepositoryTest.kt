@@ -233,6 +233,7 @@ private data class CreateGoalCall(
 private data class UpdateGoalCall(
     val publicId: String,
     val request: GoalUpdateRequestDto,
+    val idempotencyKey: String?,
     val timezone: String?,
 )
 
@@ -312,10 +313,13 @@ private class ReportsApiHandler : InvocationHandler {
             }
             "goal" -> goalDto()
             "updateGoal" -> {
+                // ADR-0042 Slice F: arg order is now
+                // [publicId, request, idempotencyKey, timezone].
                 updateGoalCalls += UpdateGoalCall(
                     publicId = values[0] as String,
                     request = values[1] as GoalUpdateRequestDto,
-                    timezone = values[2] as String?,
+                    idempotencyKey = values[2] as String?,
+                    timezone = values[3] as String?,
                 )
                 goalDto(category = (values[1] as GoalUpdateRequestDto).category)
             }
