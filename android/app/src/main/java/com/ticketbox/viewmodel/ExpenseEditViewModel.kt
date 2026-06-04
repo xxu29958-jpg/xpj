@@ -21,7 +21,7 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.screens.expense.evenSplitCents
+import com.ticketbox.ui.screens.expense.evenSplitActiveCents
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -470,7 +470,14 @@ class ExpenseEditViewModel(
             val parent = state.expenseSplits?.parentAmountCents ?: return@update state
             val checked = state.splitDrafts.filter { it.included && !it.disabled }
             if (checked.isEmpty()) return@update state
-            val shares = evenSplitCents(parent, checked.size)
+            // Disabled members already on the split hold fixed amounts the user
+            // can't edit — subtract them so 均分 distributes only the REMAINING
+            // amount across the active members and 合计 actually reaches the parent
+            // total (otherwise 差额 can never reach zero when a disabled share exists).
+            val fixedDisabledTotal = state.splitDrafts
+                .filter { it.disabled }
+                .sumOf { parseAmountCents(it.amountText) ?: 0L }
+            val shares = evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
             val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
             val drafts = state.splitDrafts.map { draft ->
                 val share = shareByMember[draft.memberId]

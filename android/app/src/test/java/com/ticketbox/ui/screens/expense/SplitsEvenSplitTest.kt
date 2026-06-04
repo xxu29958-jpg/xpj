@@ -38,4 +38,24 @@ class SplitsEvenSplitTest {
         assertEquals(emptyList(), evenSplitCents(10000L, 0))
         assertEquals(emptyList(), evenSplitCents(10000L, -2))
     }
+
+    // ADR-0042 follow-up: 均分 reserves disabled members' fixed shares so 差额→0.
+
+    @Test
+    fun `reserves a disabled member's fixed share so active shares plus fixed sum to parent`() {
+        // ¥100 parent, a disabled member holds ¥30 → only ¥70 distributes over 2.
+        val active = evenSplitActiveCents(parentCents = 10000L, fixedDisabledCents = 3000L, activeCount = 2)
+        assertEquals(listOf(3500L, 3500L), active)
+        assertEquals(10000L, active.sum() + 3000L, "active + fixed disabled = parent (差额 0)")
+    }
+
+    @Test
+    fun `with no disabled reservation it matches evenSplitCents`() {
+        assertEquals(evenSplitCents(10000L, 3), evenSplitActiveCents(10000L, 0L, 3))
+    }
+
+    @Test
+    fun `an over-reserved fixed total clamps the distributable to zero`() {
+        assertEquals(listOf(0L, 0L), evenSplitActiveCents(parentCents = 10000L, fixedDisabledCents = 12000L, activeCount = 2))
+    }
 }
