@@ -66,6 +66,7 @@ def replace_expense_splits(
     payload: ExpenseSplitReplaceRequest,
     *,
     actor_account_id: int | None,
+    commit: bool = True,
 ) -> ExpenseSplitsResponse:
     member_ids = [item.member_id for item in payload.splits]
     if len(member_ids) != len(set(member_ids)):
@@ -141,8 +142,14 @@ def replace_expense_splits(
         before_snapshot=before_snapshot,
         after_snapshot=_audit_snapshot(new_splits, members),
     )
-    db.commit()
-    db.refresh(expense)
+    # ADR-0042: the idempotent route folds the key-record + this mutation into a
+    # single commit (commit=False → flush only); online /web callers keep
+    # commit=True.
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        db.flush()
     return _build_response(db, expense)
 
 

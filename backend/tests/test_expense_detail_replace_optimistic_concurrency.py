@@ -163,7 +163,7 @@ def test_replace_splits_with_stale_updated_at_returns_409_and_keeps_rows(
 
     first = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": stale,
             "splits": [{"member_id": member_id, "amount_cents": 1500, "note": "First"}],
@@ -171,9 +171,11 @@ def test_replace_splits_with_stale_updated_at_returns_409_and_keeps_rows(
     )
     assert first.status_code == 200, first.text
 
+    # Distinct key — a genuine second writer with the same stale token, so this
+    # must lose on OCC (409), not be deflected as an idempotency replay.
     replay = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": stale,
             "splits": [{"member_id": member_id, "amount_cents": 1000, "note": "Second"}],

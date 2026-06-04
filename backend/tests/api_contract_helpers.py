@@ -220,7 +220,7 @@ def replace_splits_api(
         return snapshot
     return client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"], "splits": splits},
     )
 

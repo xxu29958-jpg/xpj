@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 
 from api_contract_helpers import confirm_expense_api, expense_row_version, reject_expense_api
 from fastapi.testclient import TestClient
@@ -141,7 +142,7 @@ def _replace_splits(
     assert snapshot.status_code == 200, snapshot.json()
     response = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": snapshot.json()["row_version"],
             "splits": [
@@ -402,7 +403,7 @@ def test_expense_splits_preserve_disabled_member_attribution(
 
     replace_with_disabled_member = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=_bearer(owner_token),
+        headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": expense_row_version(
                 client, expense_id, headers=_bearer(owner_token)
@@ -432,7 +433,7 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
 
     duplicate = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=_bearer(owner_token),
+        headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": expense_row_version(
                 client, expense_id, headers=_bearer(owner_token)
@@ -448,7 +449,7 @@ def test_expense_splits_reject_duplicate_and_cross_ledger_members(
 
     cross_ledger = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=_bearer(owner_token),
+        headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": expense_row_version(
                 client, expense_id, headers=_bearer(owner_token)
@@ -478,7 +479,7 @@ def test_rejected_expense_splits_cannot_be_replaced(client: TestClient, *, ident
 
     response = client.put(
         f"/api/expenses/{expense_id}/splits",
-        headers=_bearer(owner_token),
+        headers={**_bearer(owner_token), "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": rejected.json()["row_version"],
             "splits": [{"member_id": owner_member_id, "amount_cents": 10000}],

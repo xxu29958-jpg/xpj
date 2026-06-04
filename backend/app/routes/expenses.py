@@ -316,16 +316,37 @@ def get_expense_split_rows(
 def put_expense_split_rows(
     expense_id: int,
     payload: ExpenseSplitReplaceRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> ExpenseSplitsResponse:
-    return replace_expense_splits(
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="replace_splits",
+        target_id=str(expense_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+    )
+    if claim is None:  # §4.6 HIT — re-serialise current splits state
+        return list_expense_splits(db, expense_id, auth.tenant_id)
+
+    response = replace_expense_splits(
         db,
         expense_id,
         auth.tenant_id,
         payload,
         actor_account_id=auth.account_id,
+        commit=False,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="expense", resource_id=str(expense_id)
+    )
+    db.commit()
+    return response
 
 
 @router.get("/{expense_id}", response_model=ExpenseResponse)
