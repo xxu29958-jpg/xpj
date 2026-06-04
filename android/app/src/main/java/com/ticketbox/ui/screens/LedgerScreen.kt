@@ -17,11 +17,13 @@ import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppScrollableContent
 import com.ticketbox.ui.components.MonthPickerSheet
 import com.ticketbox.ui.screens.ledger.EmptyLedgerState
+import com.ticketbox.ui.screens.ledger.LedgerBulkEditSheet
 import com.ticketbox.ui.screens.ledger.LedgerDayHeader
 import com.ticketbox.ui.screens.ledger.LedgerExpenseCard
 import com.ticketbox.ui.screens.ledger.LedgerExpenseListRow
 import com.ticketbox.ui.screens.ledger.LedgerExpenseTableRow
 import com.ticketbox.ui.screens.ledger.LedgerFilterPanel
+import com.ticketbox.ui.screens.ledger.LedgerSelectionBar
 import com.ticketbox.ui.screens.ledger.LedgerToolsSheet
 import com.ticketbox.viewmodel.LedgerUiState
 import com.ticketbox.viewmodel.LedgerViewMode
@@ -40,10 +42,17 @@ fun LedgerScreen(
     onManualCreate: (ExpenseDraft) -> Unit,
     onViewModeChange: (LedgerViewMode) -> Unit,
     onEdit: (Expense) -> Unit,
+    onEnterSelection: (Long?) -> Unit = {},
+    onExitSelection: () -> Unit = {},
+    onToggleSelect: (Long) -> Unit = {},
+    onSelectAllVisible: () -> Unit = {},
+    onApplyBatchCategory: (String) -> Unit = {},
+    onApplyBatchTags: (String) -> Unit = {},
 ) {
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
     var showManualSheet by rememberSaveable { mutableStateOf(false) }
     var showLedgerTools by rememberSaveable { mutableStateOf(false) }
+    var showBulkEdit by rememberSaveable { mutableStateOf(false) }
     val canExport = state.items.isNotEmpty() && !state.exporting
 
     if (showMonthPicker) {
@@ -90,6 +99,25 @@ fun LedgerScreen(
         }
     }
 
+    if (showBulkEdit && state.selectionMode && !state.readOnly) {
+        ModalBottomSheet(onDismissRequest = { showBulkEdit = false }) {
+            LedgerBulkEditSheet(
+                selectedCount = state.selectedCount,
+                selectedHaveTags = state.selectedHaveTags,
+                categories = state.categories,
+                applying = state.applyingBatch,
+                onApplyCategory = {
+                    showBulkEdit = false
+                    onApplyBatchCategory(it)
+                },
+                onApplyTags = {
+                    showBulkEdit = false
+                    onApplyBatchTags(it)
+                },
+            )
+        }
+    }
+
     val groupedItems = remember(state.items) { groupLedgerExpenses(state.items) }
 
     AppScrollableContent(
@@ -99,14 +127,24 @@ fun LedgerScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            LedgerFilterPanel(
-                state = state,
-                onOpenMonthPicker = { showMonthPicker = true },
-                onOpenTools = { showLedgerTools = true },
-                onManualAdd = { if (!state.readOnly) showManualSheet = true },
-                onCategoryChange = onCategoryChange,
-                onViewModeChange = onViewModeChange,
-            )
+            if (state.selectionMode) {
+                LedgerSelectionBar(
+                    selectedCount = state.selectedCount,
+                    applying = state.applyingBatch,
+                    onExit = onExitSelection,
+                    onSelectAll = onSelectAllVisible,
+                    onEdit = { showBulkEdit = true },
+                )
+            } else {
+                LedgerFilterPanel(
+                    state = state,
+                    onOpenMonthPicker = { showMonthPicker = true },
+                    onOpenTools = { showLedgerTools = true },
+                    onManualAdd = { if (!state.readOnly) showManualSheet = true },
+                    onCategoryChange = onCategoryChange,
+                    onViewModeChange = onViewModeChange,
+                )
+            }
         }
         if (state.items.isEmpty()) {
             item {
@@ -123,18 +161,33 @@ fun LedgerScreen(
                 LedgerDayHeader(group.label)
             }
             items(group.items, key = { it.id }) { expense ->
+                val selected = expense.id in state.selectedIds
+                val onToggle = { onToggleSelect(expense.id) }
+                val onLongPress = { onEnterSelection(expense.id) }
                 when (state.viewMode) {
                     LedgerViewMode.Card -> LedgerExpenseCard(
                         expense = expense,
                         onEdit = { onEdit(expense) },
+                        selectionMode = state.selectionMode,
+                        selected = selected,
+                        onToggleSelect = onToggle,
+                        onLongPress = onLongPress,
                     )
                     LedgerViewMode.List -> LedgerExpenseListRow(
                         expense = expense,
                         onEdit = { onEdit(expense) },
+                        selectionMode = state.selectionMode,
+                        selected = selected,
+                        onToggleSelect = onToggle,
+                        onLongPress = onLongPress,
                     )
                     LedgerViewMode.Table -> LedgerExpenseTableRow(
                         expense = expense,
                         onEdit = { onEdit(expense) },
+                        selectionMode = state.selectionMode,
+                        selected = selected,
+                        onToggleSelect = onToggle,
+                        onLongPress = onLongPress,
                     )
                 }
             }

@@ -205,6 +205,10 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         private val updateExpenseResult: ApiResult = ApiResult.Throw(
             IllegalStateException("updateExpense not configured"),
         ),
+        // ADR-0042 Slice C: per-expense-id overrides so a fan-out test can mix
+        // outcomes (id 1 → Success, id 2 → IOException, id 3 → 409) in one batch.
+        // Falls back to ``updateExpenseResult`` for ids not in the map.
+        private val updateExpenseResultById: Map<Long, ApiResult> = emptyMap(),
         private val confirmExpenseResult: ApiResult = ApiResult.Throw(
             IllegalStateException("confirmExpense not configured"),
         ),
@@ -232,6 +236,11 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
         // per-op vars below cover the Slice D-1 state-machine mutations.
         var lastIdempotencyKey: String? = null
             private set
+        // ADR-0042 Slice C: the body of the most recent updateExpense PATCH so
+        // fan-out tests can assert the field-selective build (category-only must
+        // not carry tags and vice-versa).
+        var lastUpdateRequest: ExpenseUpdateRequest? = null
+            private set
         var lastConfirmIdempotencyKey: String? = null
             private set
         var lastRejectIdempotencyKey: String? = null
@@ -249,7 +258,8 @@ internal abstract class ExpensePendingRepositoryOutboxTestBase {
             idempotencyKey: String?,
         ): ExpenseDto {
             lastIdempotencyKey = idempotencyKey
-            return when (val r = updateExpenseResult) {
+            lastUpdateRequest = request
+            return when (val r = updateExpenseResultById[id] ?: updateExpenseResult) {
                 is ApiResult.Success -> r.dto
                 is ApiResult.Throw -> throw r.exception
             }

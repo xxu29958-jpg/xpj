@@ -19,7 +19,6 @@ package com.ticketbox.data.local
  *   ReplaceItems                     PUT    /api/expenses/{id}/items
  *   ReplaceSplits                    PUT    /api/expenses/{id}/splits
  *   AcknowledgeItemsMismatch         POST   /api/expenses/{id}/items/acknowledge-mismatch
- *   ConfirmedBatchUpdate             POST   /api/expenses/confirmed/batch-update
  *   UpdateCategoryRule               PATCH  /api/rules/categories/{id}
  *   DeleteCategoryRule               DELETE /api/rules/categories/{id}
  *   UpdateMerchantAlias              PATCH  /api/merchants/aliases/{publicId}
@@ -42,7 +41,6 @@ enum class PendingMutationType(val wireValue: String) {
     ReplaceItems("replace_items"),
     ReplaceSplits("replace_splits"),
     AcknowledgeItemsMismatch("acknowledge_items_mismatch"),
-    ConfirmedBatchUpdate("confirmed_batch_update"),
     UpdateCategoryRule("update_category_rule"),
     DeleteCategoryRule("delete_category_rule"),
     UpdateMerchantAlias("update_merchant_alias"),

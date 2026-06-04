@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -78,5 +79,34 @@ internal class ExpenseLedgerRepositoryActions(
         val bound = core.ledgerRequestGuard.bind()
         val created = core.cacheIfConfirmed(bound.call { it.createManualExpense(draft.toRequest()) }, bound.ledgerId)
         created.toDomain()
+    }
+
+    override suspend fun applyConfirmedBatch(
+        expenses: List<Expense>,
+        category: String?,
+        tags: String?,
+    ): Result<BatchApplyResult> = core.errorHandler.safeCall {
+        // Fan out into one offline-aware PatchExpense per expense. Each call owns
+        // its own direct-PATCH-then-outbox attempt + idempotency key, so the
+        // batch is non-atomic by design: synced / queued / failed are tallied
+        // independently (mirrors the per-row keep-mine model, unlike the atomic
+        // /web batch endpoint). Sequential — same-scale as the confirmed list and
+        // keeps the ledger-session guard + outbox ordering simple.
+        val pending = ExpensePendingRepository(core)
+        var synced = 0
+        var queued = 0
+        var failed = 0
+        for (expense in expenses) {
+            pending.applyConfirmedFieldsOffline(expense, category = category, tags = tags).fold(
+                onSuccess = { outcome ->
+                    when (outcome) {
+                        is SaveOutcome.Synced -> synced++
+                        is SaveOutcome.Queued -> queued++
+                    }
+                },
+                onFailure = { failed++ },
+            )
+        }
+        BatchApplyResult(synced = synced, queued = queued, failed = failed)
     }
 }

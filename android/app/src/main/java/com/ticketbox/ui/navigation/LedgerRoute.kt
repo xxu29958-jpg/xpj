@@ -70,5 +70,11 @@ internal fun LedgerRoute(
         onManualCreate = ledgerViewModel::createManualExpense,
         onViewModeChange = ledgerViewModel::setViewMode,
         onEdit = { navController.openExpense(it.id) },
+        onEnterSelection = ledgerViewModel::enterSelection,
+        onExitSelection = ledgerViewModel::exitSelection,
+        onToggleSelect = ledgerViewModel::toggleSelected,
+        onSelectAllVisible = ledgerViewModel::selectAllVisible,
+        onApplyBatchCategory = ledgerViewModel::applyBatchCategory,
+        onApplyBatchTags = ledgerViewModel::applyBatchTags,
     )
 }

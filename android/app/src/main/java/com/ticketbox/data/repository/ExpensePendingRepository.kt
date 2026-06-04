@@ -4,6 +4,7 @@ import android.util.Log
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -114,22 +115,79 @@ internal class ExpensePendingRepository(
         draft: ExpenseDraft,
         baseline: Expense,
     ): Result<SaveOutcome> = core.errorHandler.safeCall {
+        patchExpenseOffline(
+            id = id,
+            request = draft.toRequest(baseline = baseline),
+            optimistic = projectOptimisticExpense(baseline, draft),
+        )
+    }
+
+    /**
+     * ADR-0042 Slice C: offline-aware batch primitive. Applies a single field
+     * edit (category XOR tags — at least one non-null) to ONE already-confirmed
+     * expense, reusing the same direct-PATCH-then-outbox path as
+     * [saveExpenseAllowingOffline]. The batch seam ([LedgerActions.applyConfirmedBatch])
+     * fans a multi-select out into one of these calls per selected expense, so a
+     * stale row 409s / queues independently of its siblings (partial success).
+     *
+     * Builds the [ExpenseUpdateRequest] FIELD-SELECTIVELY — deliberately NOT via
+     * [ExpenseDraft.toRequest], whose ``category = normalizeExpenseCategory(category)``
+     * coerces an untouched (null) category to "其他" and would silently overwrite
+     * every batch target's category. Only the field(s) being edited are non-null;
+     * Moshi omits the rest (same null-omission the token-strip below relies on) so
+     * the backend's ``exclude_unset`` leaves the untouched columns alone.
+     */
+    suspend fun applyConfirmedFieldsOffline(
+        expense: Expense,
+        category: String?,
+        tags: String?,
+    ): Result<SaveOutcome> = core.errorHandler.safeCall {
+        require(category != null || tags != null) { "请选择要修改的字段。" }
+        val request = ExpenseUpdateRequest(
+            expectedRowVersion = expense.rowVersion,
+            merchant = null,
+            category = category,
+            note = null,
+            expenseTime = null,
+            tags = tags,
+            valueScore = null,
+            regretScore = null,
+        )
+        val optimistic = expense.copy(
+            category = category ?: expense.category,
+            tags = tags ?: expense.tags,
+        )
+        patchExpenseOffline(id = expense.id, request = request, optimistic = optimistic)
+    }
+
+    /**
+     * Shared offline-aware PATCH core for [saveExpenseAllowingOffline] and
+     * [applyConfirmedFieldsOffline]. Mints ONE intent-time Idempotency-Key, tries
+     * the direct PATCH, and on IOException (only) enqueues a PatchExpense outbox
+     * row replaying that SAME key; [optimistic] is the Expense surfaced in
+     * [SaveOutcome.Queued]. HttpException (409 / 4xx / 5xx) propagates to safeCall
+     * as ``Result.failure``.
+     */
+    private suspend fun patchExpenseOffline(
+        id: Long,
+        request: ExpenseUpdateRequest,
+        optimistic: Expense,
+    ): SaveOutcome {
         val bound = core.ledgerRequestGuard.bind()
-        val request = draft.toRequest(baseline = baseline)
         // ADR-0042: ONE intent-time key shared by the direct attempt and the
         // outbox replay. If the direct PATCH commits server-side but its
         // response is lost (IOException below), the enqueued row replays with
         // this SAME key — the server HITs the recorded success and returns the
         // canonical row instead of false-409ing on the now-stale row_version.
         val idempotencyKey = UUID.randomUUID().toString()
-        try {
+        return try {
             // Direct PATCH first — fast path when online. Returns
             // Synced with the server's canonical Expense.
             val updated = core.cacheIfConfirmed(
                 bound.call { it.updateExpense(id, request, idempotencyKey) },
                 bound.ledgerId,
             )
-            SaveOutcome.Synced(updated.toDomain()) as SaveOutcome
+            SaveOutcome.Synced(updated.toDomain())
         } catch (networkError: IOException) {
             // Network failed. Enqueue for the worker to replay AND
             // return an optimistic Expense so the UI reflects the
@@ -174,7 +232,7 @@ internal class ExpensePendingRepository(
                 // it's minted. The dispatcher replays it from row.idempotencyKey.
                 idempotencyKey = idempotencyKey,
             )
-            SaveOutcome.Queued(projectOptimisticExpense(baseline, draft)) as SaveOutcome
+            SaveOutcome.Queued(optimistic)
         }
     }
 

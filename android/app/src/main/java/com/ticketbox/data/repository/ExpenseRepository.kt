@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.BackgroundTask
+import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.ConnectionDiagnostics
@@ -211,6 +212,12 @@ class ExpenseRepository(
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> =
         ledgerRepository.createManualExpense(draft)
+
+    override suspend fun applyConfirmedBatch(
+        expenses: List<Expense>,
+        category: String?,
+        tags: String?,
+    ): Result<BatchApplyResult> = ledgerRepository.applyConfirmedBatch(expenses, category, tags)
 
     suspend fun createNotificationDraft(
         draft: NotificationDraft,

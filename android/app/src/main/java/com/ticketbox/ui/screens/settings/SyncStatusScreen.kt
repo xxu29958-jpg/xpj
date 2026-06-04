@@ -259,7 +259,6 @@ private fun mutationLabel(type: PendingMutationType): String = when (type) {
     PendingMutationType.ReplaceItems -> "修改小票明细"
     PendingMutationType.ReplaceSplits -> "修改家庭拆账"
     PendingMutationType.AcknowledgeItemsMismatch -> "确认小票差异"
-    PendingMutationType.ConfirmedBatchUpdate -> "批量修改已确认账单"
     PendingMutationType.UpdateCategoryRule -> "修改分类规则"
     PendingMutationType.DeleteCategoryRule -> "删除分类规则"
     PendingMutationType.UpdateMerchantAlias -> "修改商家别名"

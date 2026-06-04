@@ -1,7 +1,10 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
 package com.ticketbox.ui.screens.ledger
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,10 +59,17 @@ internal fun LedgerDayHeader(label: String) {
 internal fun LedgerExpenseCard(
     expense: Expense,
     onEdit: () -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onLongPress: () -> Unit = {},
 ) {
     val visuals = LocalThemeVisuals.current
     AppGlassCard(
-        modifier = Modifier.clickable(onClick = onEdit),
+        modifier = Modifier.combinedClickable(
+            onClick = { if (selectionMode) onToggleSelect() else onEdit() },
+            onLongClick = onLongPress,
+        ),
         containerAlpha = LedgerItemLayout.CardContainerAlpha,
     ) {
         Row(
@@ -66,6 +77,9 @@ internal fun LedgerExpenseCard(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (selectionMode) {
+                Checkbox(checked = selected, onCheckedChange = null)
+            }
             LedgerCategoryMark(category = expense.category)
             Column(
                 modifier = Modifier.weight(1f),
@@ -126,9 +140,16 @@ internal fun LedgerExpenseCard(
 internal fun LedgerExpenseListRow(
     expense: Expense,
     onEdit: () -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onLongPress: () -> Unit = {},
 ) {
     AppGlassCard(
-        modifier = Modifier.clickable(onClick = onEdit),
+        modifier = Modifier.combinedClickable(
+            onClick = { if (selectionMode) onToggleSelect() else onEdit() },
+            onLongClick = onLongPress,
+        ),
         containerAlpha = LedgerItemLayout.ListContainerAlpha,
         radius = RoundedCornerShape(AppRadius.medium),
     ) {
@@ -137,6 +158,9 @@ internal fun LedgerExpenseListRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (selectionMode) {
+                Checkbox(checked = selected, onCheckedChange = null)
+            }
             LedgerCategoryMark(category = expense.category)
             Column(
                 modifier = Modifier.weight(1f),
@@ -184,10 +208,17 @@ internal fun LedgerExpenseListRow(
 internal fun LedgerExpenseTableRow(
     expense: Expense,
     onEdit: () -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onLongPress: () -> Unit = {},
 ) {
     val visuals = LocalThemeVisuals.current
     AppGlassCard(
-        modifier = Modifier.clickable(onClick = onEdit),
+        modifier = Modifier.combinedClickable(
+            onClick = { if (selectionMode) onToggleSelect() else onEdit() },
+            onLongClick = onLongPress,
+        ),
         containerAlpha = LedgerItemLayout.TableContainerAlpha,
         radius = RoundedCornerShape(AppRadius.small),
     ) {
@@ -196,6 +227,9 @@ internal fun LedgerExpenseTableRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (selectionMode) {
+                Checkbox(checked = selected, onCheckedChange = null)
+            }
             Column(
                 modifier = Modifier.weight(LedgerItemLayout.TableMerchantWeight),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),

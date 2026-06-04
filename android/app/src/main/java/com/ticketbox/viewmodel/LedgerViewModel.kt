@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.repository.LedgerActions
+import com.ticketbox.domain.model.BatchApplyResult
 import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
@@ -55,8 +56,22 @@ data class LedgerUiState(
     val syncing: Boolean = false,
     val exporting: Boolean = false,
     val creatingManual: Boolean = false,
+    // ADR-0042 Slice C: multi-select + batch-edit state. selectionMode toggles
+    // the contextual action bar + per-row checkboxes; selectedIds is the set of
+    // expense ids the bulk edit fans out over; applyingBatch gates the sheet
+    // while the fan-out runs.
+    val selectionMode: Boolean = false,
+    val selectedIds: Set<Long> = emptySet(),
+    // Whether ANY selected expense already has tags — drives the destructive
+    // replace-tags confirm dialog. Computed in the VM from the full synced list
+    // (the same source the fan-out resolves targets from), NOT the filtered view,
+    // so a filter change can't slip a tagged row past the confirm gate.
+    val selectedHaveTags: Boolean = false,
+    val applyingBatch: Boolean = false,
     val message: String? = null,
 ) {
+    val selectedCount: Int get() = selectedIds.size
+
     val summary: LedgerSummaryUi
         get() = LedgerSummaryUi(
             totalAmountCents = items.sumOf { it.amountCents ?: 0L },
@@ -100,7 +115,13 @@ class LedgerViewModel(
             repository.observeConfirmed().collect { expenses ->
                 allConfirmed = expenses
                 _uiState.update { state ->
-                    state.copy(items = filterItems(expenses, state))
+                    state.copy(
+                        items = filterItems(expenses, state),
+                        // Keep the replace-gate flag honest if the synced data
+                        // changes while a selection is open.
+                        selectedHaveTags = state.selectionMode &&
+                            expenses.any { it.id in state.selectedIds && !it.tags.isNullOrBlank() },
+                    )
                 }
             }
         }
@@ -261,6 +282,96 @@ class LedgerViewModel(
                     }
                 }
         }
+    }
+
+    // ADR-0042 Slice C — multi-select + batch edit -------------------------
+
+    private fun withSelection(state: LedgerUiState, ids: Set<Long>): LedgerUiState =
+        state.copy(
+            selectionMode = true,
+            selectedIds = ids,
+            // From allConfirmed (the fan-out's target source), not the filtered view.
+            selectedHaveTags = allConfirmed.any { it.id in ids && !it.tags.isNullOrBlank() },
+        )
+
+    fun enterSelection(initialId: Long? = null) {
+        _uiState.update {
+            withSelection(it, if (initialId != null) it.selectedIds + initialId else it.selectedIds)
+        }
+    }
+
+    fun exitSelection() {
+        _uiState.update { it.copy(selectionMode = false, selectedIds = emptySet(), selectedHaveTags = false) }
+    }
+
+    fun toggleSelected(id: Long) {
+        _uiState.update { state ->
+            val next = if (id in state.selectedIds) state.selectedIds - id else state.selectedIds + id
+            // Leaving selection mode entirely is an explicit action (exitSelection);
+            // unticking the last row keeps the bar open so the user can re-pick.
+            withSelection(state, next)
+        }
+    }
+
+    /** Select every expense currently visible under the active filters. */
+    fun selectAllVisible() {
+        _uiState.update { state -> withSelection(state, state.items.map { it.id }.toSet()) }
+    }
+
+    fun applyBatchCategory(category: String) = applyBatch(category = category, tags = null)
+
+    fun applyBatchTags(tags: String) = applyBatch(category = null, tags = tags)
+
+    private fun applyBatch(category: String?, tags: String?) {
+        if (!repository.canModifyLedger()) {
+            _uiState.update { it.copy(readOnly = true, applyingBatch = false, message = READ_ONLY_LEDGER_MESSAGE) }
+            return
+        }
+        val selected = _uiState.value.selectedIds
+        // Resolve to the full Expense objects (each carries its own rowVersion
+        // token) from the synced confirmed cache, not the filtered view.
+        val targets = allConfirmed.filter { it.id in selected }
+        if (targets.isEmpty()) {
+            _uiState.update { it.copy(message = "请先选择要修改的账单。") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(applyingBatch = true, message = null) }
+            repository.applyConfirmedBatch(targets, category = category, tags = tags)
+                .onSuccess { result ->
+                    // A freshly-applied category / tag may be new — refresh the
+                    // filter chips so it shows up immediately.
+                    loadCategories()
+                    loadTags()
+                    _uiState.update {
+                        it.copy(
+                            applyingBatch = false,
+                            selectionMode = false,
+                            selectedIds = emptySet(),
+                            selectedHaveTags = false,
+                            message = batchResultMessage(result),
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(applyingBatch = false, message = error.message ?: "批量修改没有成功，请稍后再试。")
+                    }
+                }
+        }
+    }
+
+    /**
+     * Honest partial-success copy: the fan-out is non-atomic, so synced /
+     * queued / failed are reported separately rather than a single "done".
+     */
+    private fun batchResultMessage(result: BatchApplyResult): String {
+        val parts = buildList {
+            if (result.synced > 0) add("已更新 ${result.synced} 笔")
+            if (result.queued > 0) add("${result.queued} 笔已加入同步")
+            if (result.failed > 0) add("${result.failed} 笔需重新同步")
+        }
+        return parts.joinToString("，").ifEmpty { "没有需要修改的账单。" }
     }
 
     fun exportLaunchHandled() {
