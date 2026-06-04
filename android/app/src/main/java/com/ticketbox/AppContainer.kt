@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
@@ -29,6 +30,7 @@ import com.ticketbox.data.repository.AcknowledgeItemsMismatchDispatcher
 import com.ticketbox.data.repository.ConfirmExpenseDispatcher
 import com.ticketbox.data.repository.PatchExpenseDispatcher
 import com.ticketbox.data.repository.ReplaceItemsDispatcher
+import com.ticketbox.data.repository.ReplaceSplitsDispatcher
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsRepository
 import com.ticketbox.data.repository.DeleteCategoryRuleDispatcher
@@ -97,6 +99,12 @@ class AppContainer(context: Context) {
     // ExpenseDetailRepository's offline items-editor call site (PUT
     // /api/expenses/{id}/items). Same roundtrip guarantee as patchExpenseAdapter.
     private val replaceItemsAdapter = outboxMoshi.adapter(ExpenseItemReplaceRequestDto::class.java)
+
+    // ADR-0042 Slice E-1: body-carrying adapter shared between
+    // ReplaceSplitsDispatcher and ExpenseDetailRepository's offline
+    // splits-editor call site (PUT /api/expenses/{id}/splits). Same roundtrip
+    // guarantee as replaceItemsAdapter.
+    private val replaceSplitsAdapter = outboxMoshi.adapter(ExpenseSplitReplaceRequestDto::class.java)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -230,6 +238,12 @@ class AppContainer(context: Context) {
             apiProvider = { apiServiceProvider.current() },
             payloadAdapter = replaceItemsAdapter,
         ),
+        // ADR-0042 Slice E-1: PUT /api/expenses/{id}/splits via outbox
+        // (offline splits editor).
+        ReplaceSplitsDispatcher(
+            apiProvider = { apiServiceProvider.current() },
+            payloadAdapter = replaceSplitsAdapter,
+        ),
     )
 
     val outboxDrainEngine = OutboxDrainEngine(
@@ -251,6 +265,7 @@ class AppContainer(context: Context) {
         patchExpenseAdapter = patchExpenseAdapter,
         expenseStateTokenAdapter = expenseStateTokenAdapter,
         replaceItemsAdapter = replaceItemsAdapter,
+        replaceSplitsAdapter = replaceSplitsAdapter,
     )
 
     val ledgerRepository = LedgerRepository(

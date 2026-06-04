@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.ServerSettingsDto
@@ -63,6 +64,15 @@ internal class ExpenseRepositoryCore(
      * hard failure when either the outbox OR this adapter is missing.
      */
     val replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
+    /**
+     * ADR-0042 Slice E-1: body-carrying payload adapter shared between the
+     * offline-aware splits editor
+     * ([ExpenseDetailRepository.replaceExpenseSplitsAllowingOffline]) and
+     * [ReplaceSplitsDispatcher]. ``null`` keeps pre-Slice-E-1 tests (no outbox
+     * wiring) on the direct-only path — the IOException catch falls back to a
+     * hard failure when either the outbox OR this adapter is missing.
+     */
+    val replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
 ) {
     val errorHandler = NetworkErrorHandler(
         settingsStore = settingsStore,

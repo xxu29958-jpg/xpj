@@ -5,6 +5,7 @@ import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
+import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.domain.model.BackgroundTask
@@ -20,6 +21,7 @@ import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.NotificationDraft
@@ -65,6 +67,8 @@ class ExpenseRepository(
     expenseStateTokenAdapter: JsonAdapter<ExpenseStateTokenRequest>? = null,
     // PR-D: body-carrying adapter for the offline-aware items editor.
     replaceItemsAdapter: JsonAdapter<ExpenseItemReplaceRequestDto>? = null,
+    // ADR-0042 Slice E-1: body-carrying adapter for the offline-aware splits editor.
+    replaceSplitsAdapter: JsonAdapter<ExpenseSplitReplaceRequestDto>? = null,
 ) : ServerBindingRepository, PendingReviewActions, LedgerActions, GlobalSearchActions, StatsActions {
     private val core = ExpenseRepositoryCore(
         expenseDao = expenseDao,
@@ -77,6 +81,7 @@ class ExpenseRepository(
         patchExpenseAdapter = patchExpenseAdapter,
         expenseStateTokenAdapter = expenseStateTokenAdapter,
         replaceItemsAdapter = replaceItemsAdapter,
+        replaceSplitsAdapter = replaceSplitsAdapter,
     )
     private val bindingRepository = ExpenseBindingRepository(core)
     private val connectionRepository = ExpenseConnectionRepository(core)
@@ -209,6 +214,16 @@ class ExpenseRepository(
         expectedRowVersion: Long,
     ): Result<ExpenseSplits> =
         detailRepository.replaceExpenseSplits(id, splits, expectedRowVersion)
+
+    suspend fun replaceExpenseSplitsAllowingOffline(
+        expense: Expense,
+        splits: List<ExpenseSplitDraft>,
+        currentSplits: ExpenseSplits,
+    ): Result<ReplaceSplitsOutcome> =
+        detailRepository.replaceExpenseSplitsAllowingOffline(expense, splits, currentSplits)
+
+    suspend fun fetchSplitMembers(): Result<List<FamilyMember>> =
+        detailRepository.fetchSplitMembers()
 
     override suspend fun createManualExpense(draft: ExpenseDraft): Result<Expense> =
         ledgerRepository.createManualExpense(draft)

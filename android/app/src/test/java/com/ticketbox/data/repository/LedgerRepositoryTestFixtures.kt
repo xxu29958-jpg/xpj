@@ -236,6 +236,7 @@ internal class StubApi(
     override suspend fun replaceExpenseSplits(
         id: Long,
         request: ExpenseSplitReplaceRequestDto,
+        idempotencyKey: String?,
     ): ExpenseSplitsResponseDto = ledgerUnsupported()
     override suspend fun confirmExpense(
         id: Long,

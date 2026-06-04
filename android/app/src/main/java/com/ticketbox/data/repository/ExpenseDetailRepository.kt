@@ -5,10 +5,12 @@ import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.domain.model.Expense
+import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ExpenseItem
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ItemsSumStatus
+import com.ticketbox.domain.model.ExpenseSplit
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.NotificationDraft
@@ -241,6 +243,17 @@ internal class ExpenseDetailRepository(
         bound.call { it.expenseSplits(id) }.toDomain()
     }
 
+    /**
+     * ADR-0042 Slice E-1: ledger member roster for the splits editor's member
+     * checklist. Passthrough to ``GET /api/ledgers/{ledgerId}/members`` scoped
+     * to the active ledger; disabled members are kept (the editor greys them
+     * read-only so historical attribution isn't dropped).
+     */
+    suspend fun fetchSplitMembers(): Result<List<FamilyMember>> = core.errorHandler.safeCall {
+        val bound = core.ledgerRequestGuard.bind()
+        bound.call { it.ledgerMembers(bound.ledgerId) }.members.map { it.toFamilyMember() }
+    }
+
     suspend fun replaceExpenseSplits(
         id: Long,
         splits: List<ExpenseSplitDraft>,
@@ -257,9 +270,112 @@ internal class ExpenseDetailRepository(
                     expectedRowVersion = expectedRowVersion,
                     splits = splits.map { split -> split.toRequest() },
                 ),
+                // ADR-0042: single-use key — direct-only path, no replay.
+                UUID.randomUUID().toString(),
             )
         }
         updated.toDomain()
+    }
+
+    /**
+     * ADR-0042 Slice E-1: offline-aware splits replace. Body-carrying PUT
+     * (mirror of [replaceExpenseItemsAllowingOffline]).
+     *  - direct 2xx → [ReplaceSplitsOutcome.Synced] with the server splits.
+     *  - IOException → [ReplaceSplitsOutcome.Queued] with an optimistic
+     *    projection of the user's edited splits (recomputed total + mismatch);
+     *    the row enqueues and replays on connectivity-up.
+     *  - HttpException → ``Result.failure``.
+     *
+     * The optimistic projection is display-only — the server recomputes the
+     * splits total + mismatch authoritatively when the queued PUT replays.
+     */
+    suspend fun replaceExpenseSplitsAllowingOffline(
+        expense: Expense,
+        splits: List<ExpenseSplitDraft>,
+        currentSplits: ExpenseSplits,
+    ): Result<ReplaceSplitsOutcome> = core.errorHandler.safeCall {
+        if (!core.canModifyLedger()) {
+            throw RepositoryException("当前角色为只读，无法修改账本。")
+        }
+        val bound = core.ledgerRequestGuard.bind()
+        val request = ExpenseSplitReplaceRequestDto(
+            expectedRowVersion = expense.rowVersion,
+            splits = splits.map { it.toRequest() },
+        )
+        // ADR-0042: one intent-time key shared by the direct attempt and the
+        // outbox replay. A committed-but-unseen PUT (it commits server-side but
+        // its response is lost) replays with this SAME key so the server HITs
+        // the recorded success instead of false-409ing on the now-stale token.
+        // The dispatcher replays it from row.idempotencyKey.
+        val idempotencyKey = UUID.randomUUID().toString()
+        try {
+            val saved = bound.call { it.replaceExpenseSplits(expense.id, request, idempotencyKey) }.toDomain()
+            ReplaceSplitsOutcome.Synced(saved) as ReplaceSplitsOutcome
+        } catch (networkError: IOException) {
+            val outbox = core.outbox
+            val adapter = core.replaceSplitsAdapter
+            val token = expense.rowVersion
+            if (outbox == null || adapter == null || token == 0L) {
+                // Outbox wiring missing OR baseline lacked a token — fall back
+                // to the failure path so we don't pretend we saved.
+                throw networkError
+            }
+            // Session race guard: an IOException jumps past bound.call's
+            // post-check, so re-assert the session before queuing (a row
+            // queued under ledger A must not land in ledger B after a switch).
+            bound.requireStillActive()
+            // Strip the token from the payload — the row's expectedRowVersion is
+            // the single source of truth; the dispatcher overwrites it on replay.
+            outbox.enqueue(
+                type = PendingMutationType.ReplaceSplits,
+                targetId = "expense:${expense.id}",
+                payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
+                expectedRowVersion = token,
+                // Same key as the direct attempt above — the dispatcher replays
+                // it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
+            )
+            ReplaceSplitsOutcome.Queued(projectOptimisticSplits(currentSplits, splits)) as ReplaceSplitsOutcome
+        }
+    }
+
+    /**
+     * Build the optimistic [ExpenseSplits] the server WOULD return once the
+     * queued PUT replays: the user's edited rows + a recomputed total and
+     * mismatch against the (unchanged) parent amount. Split timestamps are left
+     * blank — they aren't surfaced in the editor and the server overwrites the
+     * whole snapshot on replay. Member account names are carried over from the
+     * current splits (or left blank for newly-added members the editor knows
+     * about but the snapshot doesn't); the server re-resolves them on replay.
+     */
+    private fun projectOptimisticSplits(
+        currentSplits: ExpenseSplits,
+        drafts: List<ExpenseSplitDraft>,
+    ): ExpenseSplits {
+        val nameByMember = currentSplits.splits.associateBy({ it.memberId }, { it.accountName })
+        val roleByMember = currentSplits.splits.associateBy({ it.memberId }, { it.role })
+        val projected = drafts.mapIndexed { index, draft ->
+            ExpenseSplit(
+                publicId = "local-pending-$index",
+                position = index,
+                memberId = draft.memberId,
+                accountName = nameByMember[draft.memberId].orEmpty(),
+                role = roleByMember[draft.memberId] ?: "member",
+                amountCents = draft.amountCents,
+                note = draft.note,
+                disabledAt = null,
+                createdAt = "",
+                updatedAt = "",
+            )
+        }
+        val total = drafts.sumOf { it.amountCents }
+        val parent = currentSplits.parentAmountCents
+        val mismatch = parent?.let { total - it }
+        return currentSplits.copy(
+            splitsTotalAmountCents = total,
+            mismatchCents = mismatch,
+            splits = projected,
+        )
     }
 
     suspend fun createNotificationDraft(
@@ -365,4 +481,21 @@ sealed interface ReplaceItemsOutcome {
 
     /** Network failed; the replace is queued and [items] is the optimistic projection. */
     data class Queued(override val items: ExpenseItems) : ReplaceItemsOutcome
+}
+
+/**
+ * ADR-0042 Slice E-1 sealed result for
+ * [ExpenseDetailRepository.replaceExpenseSplitsAllowingOffline]. Mirrors
+ * [ReplaceItemsOutcome]: on [Synced] the splits are the server snapshot; on
+ * [Queued] they are the optimistic projection of the user's edit (recomputed
+ * total + mismatch), shown immediately while the queued PUT replays.
+ */
+sealed interface ReplaceSplitsOutcome {
+    val splits: ExpenseSplits
+
+    /** Server confirmed the replace; [splits] is the server snapshot. */
+    data class Synced(override val splits: ExpenseSplits) : ReplaceSplitsOutcome
+
+    /** Network failed; the replace is queued and [splits] is the optimistic projection. */
+    data class Queued(override val splits: ExpenseSplits) : ReplaceSplitsOutcome
 }

@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.ExpenseRepository
 import com.ticketbox.data.repository.ExpenseStateOutcome
 import com.ticketbox.data.repository.ItemsAckOutcome
 import com.ticketbox.data.repository.ReplaceItemsOutcome
+import com.ticketbox.data.repository.ReplaceSplitsOutcome
 import com.ticketbox.data.repository.SaveOutcome
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
@@ -15,9 +16,12 @@ import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.ExpenseItems
+import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
+import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.screens.expense.evenSplitCents
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -38,6 +42,21 @@ data class EditableItem(
     val kind: String = ExpenseItemKind.PRODUCT,
 )
 
+/**
+ * ADR-0042 Slice E-1 UI-editable working copy of one member's bill-split share.
+ * One row per ledger member: [included] is the checkbox, [amountText] the raw
+ * yuan magnitude the user types (parsed to cents on save). [disabled] members
+ * already on a split render greyed read-only so historical attribution isn't
+ * dropped — they can't be toggled or edited but keep their existing amount.
+ */
+data class EditableSplit(
+    val memberId: Long,
+    val displayName: String,
+    val included: Boolean,
+    val amountText: String = "",
+    val disabled: Boolean = false,
+)
+
 data class ExpenseEditUiState(
     val expense: Expense? = null,
     val expenseLoading: Boolean = true,
@@ -56,6 +75,10 @@ data class ExpenseEditUiState(
     val itemDrafts: List<EditableItem> = emptyList(),
     val itemsSaving: Boolean = false,
     val itemsMessage: String? = null,
+    val splitEditorOpen: Boolean = false,
+    val splitDrafts: List<EditableSplit> = emptyList(),
+    val splitMembersLoading: Boolean = false,
+    val splitsSaving: Boolean = false,
     val splitsMessage: String? = null,
     val message: String? = null,
     val done: Boolean = false,
@@ -369,6 +392,210 @@ class ExpenseEditViewModel(
                 }
         }
     }
+
+    // region — Slice E-1 splits editor
+
+    /** Open the splits editor and load the ledger member roster. The drafts are
+     *  built once members arrive (member checklist seeded from the current
+     *  splits — see [loadSplitMembers]). No-op until splits have loaded. */
+    fun openSplitsEditor() {
+        if (_uiState.value.expenseSplits == null) {
+            _uiState.update { it.copy(splitsMessage = "家庭拆账还在加载，请稍后再点。") }
+            return
+        }
+        _uiState.update { it.copy(splitEditorOpen = true, splitsMessage = null) }
+        loadSplitMembers()
+    }
+
+    /** Fetch the ledger member roster and merge it with the current splits into
+     *  the editable checklist: members already on a split are pre-checked and
+     *  carry their amount; disabled members already on a split stay visible
+     *  read-only (historical attribution); other disabled members are dropped. */
+    fun loadSplitMembers() {
+        val currentSplits = _uiState.value.expenseSplits ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(splitMembersLoading = true, splitsMessage = null) }
+            repository.fetchSplitMembers()
+                .onSuccess { members ->
+                    _uiState.update {
+                        it.copy(
+                            splitDrafts = buildSplitDrafts(members, currentSplits),
+                            splitMembersLoading = false,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            splitMembersLoading = false,
+                            splitsMessage = error.message ?: "家庭成员暂时加载失败。",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun updateSplitIncluded(memberId: Long, included: Boolean) {
+        _uiState.update { state ->
+            val drafts = state.splitDrafts.map { draft ->
+                if (draft.memberId == memberId && !draft.disabled) {
+                    draft.copy(included = included)
+                } else {
+                    draft
+                }
+            }
+            state.copy(splitDrafts = drafts)
+        }
+    }
+
+    fun updateSplitAmount(memberId: Long, amountText: String) {
+        _uiState.update { state ->
+            val drafts = state.splitDrafts.map { draft ->
+                if (draft.memberId == memberId && !draft.disabled) {
+                    draft.copy(amountText = amountText)
+                } else {
+                    draft
+                }
+            }
+            state.copy(splitDrafts = drafts)
+        }
+    }
+
+    /** Largest-remainder fill of the parent amount across the currently-checked
+     *  members (by display order). One-shot — the user can still edit any amount
+     *  afterwards. No-op if no editable members are checked. */
+    fun evenSplitAmounts() {
+        _uiState.update { state ->
+            val parent = state.expenseSplits?.parentAmountCents ?: return@update state
+            val checked = state.splitDrafts.filter { it.included && !it.disabled }
+            if (checked.isEmpty()) return@update state
+            val shares = evenSplitCents(parent, checked.size)
+            val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
+            val drafts = state.splitDrafts.map { draft ->
+                val share = shareByMember[draft.memberId]
+                if (share != null) draft.copy(amountText = centsToYuanText(share)) else draft
+            }
+            state.copy(splitDrafts = drafts)
+        }
+    }
+
+    fun closeSplitsEditor() {
+        _uiState.update { it.copy(splitEditorOpen = false, splitDrafts = emptyList()) }
+    }
+
+    /** Persist the edited splits. Mirrors [saveItems]: Synced refreshes the
+     *  parent token + shows the saved splits; Queued keeps the optimistic
+     *  projection and tells the user it'll sync. Disabled members already on a
+     *  split are preserved (kept in the request with their existing amount). */
+    fun saveSplits() {
+        val expense = _uiState.value.expense
+        val currentSplits = _uiState.value.expenseSplits
+        if (expense == null || currentSplits == null) {
+            _uiState.update { it.copy(splitsMessage = "账单还在加载，请稍后再试。") }
+            return
+        }
+        val drafts = _uiState.value.splitDrafts
+            .filter { (it.included || it.disabled) && it.amountText.isNotBlank() }
+            .map { it.toDomainDraft() }
+        viewModelScope.launch {
+            _uiState.update { it.copy(splitsSaving = true, splitsMessage = null) }
+            repository.replaceExpenseSplitsAllowingOffline(expense, drafts, currentSplits)
+                .onSuccess { outcome ->
+                    when (outcome) {
+                        is ReplaceSplitsOutcome.Synced -> {
+                            // Replace bumps the parent's row_version server-side;
+                            // refresh the token so later same-page mutations don't
+                            // race a stale one. Inline refresh (not loadExpense)
+                            // keeps the success banner visible.
+                            val refreshed = repository.fetchExpense(expense.id).getOrNull()
+                            _uiState.update {
+                                it.copy(
+                                    expense = refreshed ?: it.expense,
+                                    expenseSplits = outcome.splits,
+                                    splitEditorOpen = false,
+                                    splitDrafts = emptyList(),
+                                    splitsSaving = false,
+                                    message = "家庭拆账已更新。",
+                                )
+                            }
+                        }
+                        is ReplaceSplitsOutcome.Queued -> {
+                            _uiState.update {
+                                it.copy(
+                                    expenseSplits = outcome.splits,
+                                    splitEditorOpen = false,
+                                    splitDrafts = emptyList(),
+                                    splitsSaving = false,
+                                    message = "已离线保存，联网后同步。",
+                                )
+                            }
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            splitsSaving = false,
+                            splitsMessage = error.message ?: "拆账保存失败，请稍后再试。",
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun buildSplitDrafts(
+        members: List<FamilyMember>,
+        currentSplits: ExpenseSplits,
+    ): List<EditableSplit> {
+        val splitByMember = currentSplits.splits.associateBy { it.memberId }
+        // Members on a split that the roster no longer lists (disabled + dropped
+        // from /members) still need a read-only row so we don't silently lose
+        // their historical attribution on save.
+        val rosterMemberIds = members.map { it.memberId }.toSet()
+        val orphanedSplits = currentSplits.splits.filter { it.memberId !in rosterMemberIds }
+
+        val rosterDrafts = members.mapNotNull { member ->
+            val existing = splitByMember[member.memberId]
+            when {
+                // Active member: a row regardless of whether they're on a split.
+                !member.isDisabled -> EditableSplit(
+                    memberId = member.memberId,
+                    displayName = member.displayName,
+                    included = existing != null,
+                    amountText = existing?.let { centsToYuanText(it.amountCents) }.orEmpty(),
+                    disabled = false,
+                )
+                // Disabled member already on a split: keep, read-only.
+                existing != null -> EditableSplit(
+                    memberId = member.memberId,
+                    displayName = member.displayName,
+                    included = true,
+                    amountText = centsToYuanText(existing.amountCents),
+                    disabled = true,
+                )
+                // Disabled member NOT on a split: drop (can't add a disabled member).
+                else -> null
+            }
+        }
+        val orphanDrafts = orphanedSplits.map { split ->
+            EditableSplit(
+                memberId = split.memberId,
+                displayName = split.accountName.ifBlank { "未命名成员" },
+                included = true,
+                amountText = centsToYuanText(split.amountCents),
+                disabled = true,
+            )
+        }
+        return rosterDrafts + orphanDrafts
+    }
+
+    private fun EditableSplit.toDomainDraft(): ExpenseSplitDraft = ExpenseSplitDraft(
+        memberId = memberId,
+        amountCents = parseAmountCents(amountText) ?: 0L,
+        note = null,
+    )
+
+    // endregion
 
     fun loadFullImage() {
         viewModelScope.launch {

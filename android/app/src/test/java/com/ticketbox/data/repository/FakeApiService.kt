@@ -286,6 +286,7 @@ internal class FakeApiService(
     override suspend fun replaceExpenseSplits(
         id: Long,
         request: ExpenseSplitReplaceRequestDto,
+        idempotencyKey: String?,
     ): ExpenseSplitsResponseDto {
         splitReplaceIds += id
         splitReplaceRequests += request

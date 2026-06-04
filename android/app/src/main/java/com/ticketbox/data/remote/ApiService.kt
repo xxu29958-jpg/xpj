@@ -206,6 +206,9 @@ interface ApiService {
     suspend fun replaceExpenseSplits(
         @Path("id") id: Long,
         @Body request: ExpenseSplitReplaceRequestDto,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseSplitsResponseDto
 
     @POST("api/expenses/{id}/confirm")

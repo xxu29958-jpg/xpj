@@ -63,6 +63,12 @@ internal fun ExpenseEditRoute(
         onRemoveItemRow = editViewModel::removeItemRow,
         onSaveItems = editViewModel::saveItems,
         onDismissItemsEditor = editViewModel::closeItemsEditor,
+        onEditSplits = editViewModel::openSplitsEditor,
+        onToggleSplitMember = editViewModel::updateSplitIncluded,
+        onUpdateSplitAmount = editViewModel::updateSplitAmount,
+        onEvenSplit = editViewModel::evenSplitAmounts,
+        onSaveSplits = editViewModel::saveSplits,
+        onDismissSplitsEditor = editViewModel::closeSplitsEditor,
         onDone = {
             if (editViewModel.consumeDone()) {
                 onCompleted()

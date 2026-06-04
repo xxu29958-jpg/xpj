@@ -41,6 +41,7 @@ internal fun ExpenseEditV1DetailsSection(
     splitsMessage: String?,
     onAcknowledgeItemsMismatch: () -> Unit = {},
     onEditItems: (() -> Unit)? = null,
+    onEditSplits: (() -> Unit)? = null,
 ) {
     val currencyDisplay = LocalCurrencyDisplay.current
 
@@ -57,6 +58,7 @@ internal fun ExpenseEditV1DetailsSection(
         loading = splitsLoading,
         message = splitsMessage,
         currencyDisplay = currencyDisplay,
+        onEditSplits = onEditSplits,
     )
 }
 
@@ -222,6 +224,7 @@ private fun ExpenseSplitsPanel(
     loading: Boolean,
     message: String?,
     currencyDisplay: CurrencyDisplay,
+    onEditSplits: (() -> Unit)? = null,
 ) {
     AppSolidCard {
         Column(
@@ -233,6 +236,16 @@ private fun ExpenseSplitsPanel(
                 subtitle = "拆账只记录家庭分摊，不改动原始账单金额",
                 trailing = expenseSplits?.splitsTotalAmountCents?.let { formatDisplayAmount(it, currencyDisplay) },
             )
+            if (onEditSplits != null && !loading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onEditSplits) {
+                        Text(if (expenseSplits?.splits.isNullOrEmpty()) "添加拆账" else "编辑拆账")
+                    }
+                }
+            }
             when {
                 loading -> DetailLoadingState(
                     title = "拆账加载中",

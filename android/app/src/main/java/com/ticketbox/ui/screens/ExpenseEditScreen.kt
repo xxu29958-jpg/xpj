@@ -46,6 +46,7 @@ import com.ticketbox.ui.screens.expense.ExpenseEditTimePicker
 import com.ticketbox.ui.screens.expense.ExpenseEditV1DetailsSection
 import com.ticketbox.ui.screens.expense.ItemsEditorSheet
 import com.ticketbox.ui.screens.expense.OcrProgressCard
+import com.ticketbox.ui.screens.expense.SplitsEditorSheet
 import com.ticketbox.viewmodel.ExpenseEditUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +68,12 @@ fun ExpenseEditScreen(
     onRemoveItemRow: (index: Int) -> Unit = {},
     onSaveItems: () -> Unit = {},
     onDismissItemsEditor: () -> Unit = {},
+    onEditSplits: () -> Unit = {},
+    onToggleSplitMember: (memberId: Long, included: Boolean) -> Unit = { _, _ -> },
+    onUpdateSplitAmount: (memberId: Long, amountText: String) -> Unit = { _, _ -> },
+    onEvenSplit: () -> Unit = {},
+    onSaveSplits: () -> Unit = {},
+    onDismissSplitsEditor: () -> Unit = {},
     allowConfirm: Boolean = true,
     allowReject: Boolean = true,
 ) {
@@ -86,6 +93,19 @@ fun ExpenseEditScreen(
             onRemoveRow = onRemoveItemRow,
             onSave = onSaveItems,
             onDismiss = onDismissItemsEditor,
+        )
+    }
+
+    if (state.splitEditorOpen) {
+        SplitsEditorSheet(
+            drafts = state.splitDrafts,
+            parentAmountCents = state.expenseSplits?.parentAmountCents,
+            saving = state.splitsSaving,
+            onToggleMember = onToggleSplitMember,
+            onUpdateAmount = onUpdateSplitAmount,
+            onEvenSplit = onEvenSplit,
+            onSave = onSaveSplits,
+            onDismiss = onDismissSplitsEditor,
         )
     }
 
@@ -288,6 +308,7 @@ fun ExpenseEditScreen(
             splitsMessage = state.splitsMessage,
             onAcknowledgeItemsMismatch = onAcknowledgeItemsMismatch,
             onEditItems = if (state.readOnly) null else onEditItems,
+            onEditSplits = if (state.readOnly) null else onEditSplits,
         )
 
         ExpenseEditMoreSection(
