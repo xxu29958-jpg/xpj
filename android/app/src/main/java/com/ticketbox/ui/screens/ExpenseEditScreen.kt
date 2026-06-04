@@ -338,7 +338,7 @@ fun ExpenseEditScreen(
             ocrRunning = state.ocrRunning,
             saving = state.saving,
             readOnly = readOnly,
-            canRecognize = state.expense?.status == "pending",
+            canRecognize = expense.status == "pending",
             onRetryOcr = onRetryOcr,
             onRecognizeText = onOpenRecognizeText,
         )
