@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import (
     confirm_expense_api,
     mark_not_duplicate_api,
@@ -579,7 +581,7 @@ def test_category_rule_mutations_are_tenant_scoped(client: TestClient, *, identi
     expected_row_version = owner_rule.json()["row_version"]
     patch = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "keyword": "tester不该改",
             "category": "购物",
@@ -593,7 +595,7 @@ def test_category_rule_mutations_are_tenant_scoped(client: TestClient, *, identi
     delete = client.request(
         "DELETE",
         f"/api/rules/categories/{rule_id}",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": expected_row_version},
     )
     assert delete.status_code == 404

@@ -153,6 +153,7 @@ def update_merchant_alias(
     canonical_merchant: str | None = None,
     alias: str | None = None,
     enabled: bool | None = None,
+    commit: bool = True,
 ) -> MerchantAlias:
     """ADR-0038 PR-2e: atomic optimistic-concurrency PATCH.
 
@@ -219,7 +220,8 @@ def update_merchant_alias(
         if current is None:
             raise AppError("merchant_alias_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    if commit:
+        db.commit()
     # Force the read-back to hit the DB: claim_row_with_token's default
     # synchronize_session="auto" can't sync the in-session row on PostgreSQL
     # (aware timestamptz vs the naive OCC predicate), so with expire_on_commit
@@ -240,6 +242,7 @@ def delete_merchant_alias(
     item: MerchantAlias,
     *,
     expected_row_version: int,
+    commit: bool = True,
 ) -> None:
     """ADR-0038 undo: atomic optimistic-concurrency SOFT delete.
 
@@ -274,7 +277,8 @@ def delete_merchant_alias(
         if current is None:
             raise AppError("merchant_alias_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def undo_delete_merchant_alias(

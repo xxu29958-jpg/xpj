@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
@@ -97,7 +98,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
 
     updated = client.patch(
         f"/api/merchants/aliases/{public_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "canonical_merchant": "星巴克咖啡",
@@ -114,7 +115,7 @@ def test_merchant_alias_crud_and_conflict_within_ledger(client: TestClient, *, i
     deleted = client.request(
         "DELETE",
         f"/api/merchants/aliases/{public_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": payload["row_version"]},
     )
     assert deleted.status_code == 200
@@ -152,7 +153,7 @@ def test_merchant_aliases_are_ledger_isolated(client: TestClient, *, identity) -
 
     cross_patch = client.patch(
         f"/api/merchants/aliases/{owner['public_id']}",
-        headers=identity.gray_app_headers,
+        headers={**identity.gray_app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": owner["row_version"],
             "canonical_merchant": "越权改名",

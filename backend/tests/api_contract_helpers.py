@@ -203,7 +203,7 @@ def replace_items_api(
         return snapshot
     return client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"], "items": items},
     )
 

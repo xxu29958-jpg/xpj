@@ -32,6 +32,8 @@ def replace_expense_items(
     expense_id: int,
     tenant_id: str,
     payload: ExpenseItemReplaceRequest,
+    *,
+    commit: bool = True,
 ) -> ExpenseItemsResponse:
     now = now_utc()
     rowcount = claim_row_with_token(
@@ -70,8 +72,11 @@ def replace_expense_items(
         db.add(_new_item(expense, position, request_item, now=now))
     db.flush()
     recompute_items_sum_status(db, expense)
-    db.commit()
-    db.refresh(expense)
+    if commit:
+        db.commit()
+        db.refresh(expense)
+    else:
+        db.flush()
     return _build_response(db, expense)
 
 

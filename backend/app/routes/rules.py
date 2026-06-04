@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -40,6 +40,10 @@ from app.services.classify_service import (
     undo_delete_rule,
     update_rule,
     validate_rule_application_preview,
+)
+from app.services.idempotency import (
+    claim_idempotent_request,
+    mark_idempotency_succeeded,
 )
 from app.services.permission_service import require_write_expense
 from app.tenants import AuthContext
@@ -82,37 +86,80 @@ def post_category_rule(
 def patch_category_rule(
     rule_id: int,
     payload: CategoryRuleUpdateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> CategoryRuleResponse:
-    # ADR-0038: client sends `expected_row_version` (the value it saw
-    # when it read the rule). update_rule raises state_conflict 409
-    # if the server's current value differs.
+    # ADR-0038: client sends `expected_row_version`; update_rule raises
+    # state_conflict 409 if the server's current value differs. ADR-0042: the
+    # outbox-routed PATCH claims the Idempotency-Key before that OCC claim.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="update_category_rule",
+        target_id=str(rule_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+        target_type="category_rule",
+    )
+    if claim is None:  # §4.6 HIT — re-serialise the current rule
+        return get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
+
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
     field_updates = payload.model_dump(
         exclude={"expected_row_version"}, exclude_unset=True
     )
-    return update_rule(
+    result = update_rule(
         db,
         rule,
         expected_row_version=payload.expected_row_version,
+        commit=False,
         **field_updates,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="category_rule", resource_id=str(rule_id)
+    )
+    db.commit()
+    return result
 
 
 @router.delete("/categories/{rule_id}", response_model=StatusResponse)
 def delete_category_rule(
     rule_id: int,
     payload: CategoryRuleDeleteRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
-    # ADR-0038: DELETE carries a body with `expected_row_version` so
-    # stale clicks (rule edited by another window between list-render
-    # and delete-click) surface as state_conflict 409 instead of
-    # silently destroying the concurrent edit.
+    # ADR-0038: DELETE carries `expected_row_version` so stale clicks surface as
+    # state_conflict 409. ADR-0042: claim the key before that OCC claim; a HIT
+    # means the soft-delete already landed (idempotent — return ok).
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="delete_category_rule",
+        target_id=str(rule_id),
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+        target_type="category_rule",
+    )
+    if claim is None:  # §4.6 HIT — already deleted
+        return StatusResponse()
+
     rule = get_rule_for_tenant(db, tenant_id=auth.tenant_id, rule_id=rule_id)
-    delete_rule(db, rule, expected_row_version=payload.expected_row_version)
+    delete_rule(
+        db, rule, expected_row_version=payload.expected_row_version, commit=False
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="category_rule", resource_id=str(rule_id)
+    )
+    db.commit()
     return StatusResponse()
 
 

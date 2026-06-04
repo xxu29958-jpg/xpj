@@ -137,6 +137,13 @@ class MerchantRepositoryOutboxFallbackTest {
             "\"expected_row_version\":0" in row.payload,
             "payload token must be neutralised to 0: ${row.payload}",
         )
+        // ADR-0042: direct attempt + enqueued row share one intent-time key.
+        assertEquals(
+            api.lastIdempotencyKey,
+            row.idempotencyKey,
+            "enqueued row must carry the same key the direct DELETE used",
+        )
+        assertTrue(row.idempotencyKey != null, "DeleteMerchantAlias row must carry an idempotency key")
     }
 
     @Test
@@ -231,6 +238,13 @@ class MerchantRepositoryOutboxFallbackTest {
             "\"expected_row_version\":0" in row.payload,
             "payload token must be neutralised to 0: ${row.payload}",
         )
+        // ADR-0042: direct attempt + enqueued row share one intent-time key.
+        assertEquals(
+            api.lastIdempotencyKey,
+            row.idempotencyKey,
+            "enqueued row must carry the same key the direct PATCH used",
+        )
+        assertTrue(row.idempotencyKey != null, "UpdateMerchantAlias row must carry an idempotency key")
     }
 
     @Test
@@ -316,12 +330,21 @@ class MerchantRepositoryOutboxFallbackTest {
             confirmedFailuresRemaining = 0,
         ),
     ) : ApiService by delegate {
+        // ADR-0042: capture the direct PATCH's Idempotency-Key so a test can
+        // assert the enqueued row carries the SAME key.
+        var lastIdempotencyKey: String? = null
+            private set
+
         override suspend fun updateMerchantAlias(
             publicId: String,
             request: MerchantAliasUpdateRequest,
-        ): MerchantAliasDto = when (val r = updateResult) {
-            is UpdateAliasResult.Success -> r.dto
-            is UpdateAliasResult.Throw -> throw r.exception
+            idempotencyKey: String?,
+        ): MerchantAliasDto {
+            lastIdempotencyKey = idempotencyKey
+            return when (val r = updateResult) {
+                is UpdateAliasResult.Success -> r.dto
+                is UpdateAliasResult.Throw -> throw r.exception
+            }
         }
     }
 
@@ -353,10 +376,20 @@ class MerchantRepositoryOutboxFallbackTest {
             confirmedFailuresRemaining = 0,
         ),
     ) : ApiService by delegate {
+        // ADR-0042: capture the direct DELETE's Idempotency-Key so a test can
+        // assert the enqueued row carries the SAME key. Captured before the
+        // exception is thrown so the IOException path still sees it.
+        var lastIdempotencyKey: String? = null
+            private set
+
         override suspend fun deleteMerchantAlias(
             publicId: String,
             request: MerchantAliasDeleteRequest,
-        ): StatusDto = throw exception
+            idempotencyKey: String?,
+        ): StatusDto {
+            lastIdempotencyKey = idempotencyKey
+            throw exception
+        }
     }
 
     private fun httpException(code: Int, body: String): HttpException {

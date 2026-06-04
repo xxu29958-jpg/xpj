@@ -7,6 +7,8 @@ PR-2 covers: missing token → 422, stale token → 409, two-session race
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -40,6 +42,7 @@ def test_merchant_alias_patch_without_token_returns_422(
         json={"enabled": False},
     )
     assert response.status_code == 422, response.text
+    assert response.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 def test_merchant_alias_delete_without_token_returns_422(
@@ -53,6 +56,7 @@ def test_merchant_alias_delete_without_token_returns_422(
         json={},
     )
     assert response.status_code == 422, response.text
+    assert response.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 def test_merchant_alias_patch_with_stale_token_returns_409(
@@ -62,7 +66,7 @@ def test_merchant_alias_patch_with_stale_token_returns_409(
     # Mutate the alias once so the originally-seen ``updated_at`` is stale.
     bump = client.patch(
         f"/api/merchants/aliases/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "enabled": False,
@@ -72,7 +76,7 @@ def test_merchant_alias_patch_with_stale_token_returns_409(
 
     response = client.patch(
         f"/api/merchants/aliases/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "enabled": True,
@@ -88,7 +92,7 @@ def test_merchant_alias_delete_with_stale_token_returns_409(
     created = _create_alias(client, identity.app_headers)
     bump = client.patch(
         f"/api/merchants/aliases/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": created["row_version"],
             "enabled": False,
@@ -99,7 +103,7 @@ def test_merchant_alias_delete_with_stale_token_returns_409(
     response = client.request(
         "DELETE",
         f"/api/merchants/aliases/{created['public_id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"]},
     )
     assert response.status_code == 409, response.text
@@ -251,7 +255,7 @@ def test_delete_then_patch_race_resolves_to_404(
 def test_patch_unknown_alias_returns_404(client: TestClient, *, identity) -> None:
     response = client.patch(
         "/api/merchants/aliases/no-such-public-id",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": 999999,
             "enabled": False,
@@ -265,7 +269,7 @@ def test_delete_unknown_alias_returns_404(client: TestClient, *, identity) -> No
     response = client.request(
         "DELETE",
         "/api/merchants/aliases/no-such-public-id",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": 999999},
     )
     assert response.status_code == 404, response.text

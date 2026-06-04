@@ -12,6 +12,7 @@ Covers the Undo invariants this slice lands:
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -39,7 +40,7 @@ def _delete(client: TestClient, headers: dict[str, str], created: dict) -> None:
     response = client.request(
         "DELETE",
         f"/api/merchants/aliases/{created['public_id']}",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": created["row_version"]},
     )
     assert response.status_code == 200, response.text

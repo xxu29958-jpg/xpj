@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from api_contract_helpers import insert_confirmed_expense, patch_expense, upload_png
 from fastapi.testclient import TestClient
@@ -155,7 +156,7 @@ def test_rule_apply_pending_requires_fresh_preview_token(client: TestClient, *, 
 
     changed_rule = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "category": "Transport",
             "expected_row_version": created.json()["row_version"],

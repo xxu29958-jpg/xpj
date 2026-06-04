@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import (
     mark_not_duplicate_api,
     patch_expense,
@@ -125,7 +127,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
     created_rule = response.json()
     response = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "priority": 2,
             "enabled": False,
@@ -139,7 +141,7 @@ def test_duplicate_and_category_rule_contract(client: TestClient, *, identity) -
     response = client.request(
         "DELETE",
         f"/api/rules/categories/{rule_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": response.json()["row_version"]},
     )
     assert response.status_code == 200

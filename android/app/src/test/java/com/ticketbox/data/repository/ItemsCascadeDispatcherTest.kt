@@ -43,6 +43,7 @@ class ItemsCascadeDispatcherTest {
             override suspend fun replaceExpenseItems(
                 id: Long,
                 request: ExpenseItemReplaceRequestDto,
+                idempotencyKey: String?,
             ): ExpenseItemsResponseDto = itemsResponseWithParentRowVersion(id)
 
             override suspend fun acknowledgeExpenseItemsMismatch(

@@ -1,6 +1,8 @@
 """v0.4-alpha3 Smart Ledger Engine — Rules preview/apply + Recurring candidates."""
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import patch_expense, upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -207,7 +209,7 @@ def test_rule_patch_can_clear_optional_filters(client: TestClient, *, identity) 
 
     patched = client.patch(
         f"/api/rules/categories/{rule_id}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "amount_min_cents": None,
             "amount_max_cents": None,

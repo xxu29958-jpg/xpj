@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
@@ -12,6 +12,10 @@ from app.schemas import (
     MerchantAliasResponse,
     MerchantAliasUpdateRequest,
     StatusResponse,
+)
+from app.services.idempotency import (
+    claim_idempotent_request,
+    mark_idempotency_succeeded,
 )
 from app.services.merchant_alias_service import (
     create_merchant_alias,
@@ -58,38 +62,78 @@ def post_merchant_alias(
 def patch_merchant_alias(
     public_id: str,
     payload: MerchantAliasUpdateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> MerchantAliasResponse:
-    # ADR-0038 PR-2e: ``expected_row_version`` token gates the PATCH;
-    # ``state_conflict`` 409 on stale snapshot (peer edited the alias
-    # between the client's read and this PATCH).
+    # ADR-0038 PR-2e: ``expected_row_version`` token gates the PATCH (409 on
+    # stale snapshot). ADR-0042: claim the Idempotency-Key before that OCC claim.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="update_merchant_alias",
+        target_id=public_id,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+        target_type="merchant_alias",
+    )
+    if claim is None:  # §4.6 HIT — re-serialise the current alias
+        return get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
+
     item = get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
     field_updates = payload.model_dump(
         exclude={"expected_row_version"}, exclude_unset=True
     )
-    return update_merchant_alias(
+    result = update_merchant_alias(
         db,
         item,
         expected_row_version=payload.expected_row_version,
+        commit=False,
         **field_updates,
     )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="merchant_alias", resource_id=public_id
+    )
+    db.commit()
+    return result
 
 
 @router.delete("/aliases/{public_id}", response_model=StatusResponse)
 def delete_merchant_alias_route(
     public_id: str,
     payload: MerchantAliasDeleteRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
-    # ADR-0038 PR-2e: DELETE carries a body with ``expected_row_version``
-    # (same shape as category_rule DELETE). Stale clicks against an
-    # alias edited by another window between list-render and delete-
-    # click surface as ``state_conflict`` 409 instead of silently
-    # destroying the concurrent edit.
+    # ADR-0038 PR-2e: DELETE carries ``expected_row_version`` (stale → 409).
+    # ADR-0042: claim the key before the OCC claim; HIT = already deleted.
+    claim = claim_idempotent_request(
+        db,
+        idempotency_key=idempotency_key,
+        tenant_id=auth.tenant_id,
+        operation="delete_merchant_alias",
+        target_id=public_id,
+        body=payload.model_dump(
+            mode="json", exclude_unset=True, exclude={"expected_row_version"}
+        ),
+        expected_row_version=payload.expected_row_version,
+        target_type="merchant_alias",
+    )
+    if claim is None:  # §4.6 HIT — already deleted
+        return StatusResponse()
+
     item = get_merchant_alias(db, tenant_id=auth.tenant_id, public_id=public_id)
-    delete_merchant_alias(db, item, expected_row_version=payload.expected_row_version)
+    delete_merchant_alias(
+        db, item, expected_row_version=payload.expected_row_version, commit=False
+    )
+    mark_idempotency_succeeded(
+        db, claim, resource_type="merchant_alias", resource_id=public_id
+    )
+    db.commit()
     return StatusResponse()
 
 

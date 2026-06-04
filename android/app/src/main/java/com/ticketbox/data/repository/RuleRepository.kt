@@ -15,6 +15,7 @@ import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
 import java.io.IOException
+import java.util.UUID
 
 /**
  * Category-rule CRUD and bulk rule application over confirmed expenses.
@@ -108,6 +109,8 @@ class RuleRepository(
                         enabled = enabled,
                         priority = priority,
                     ),
+                    // ADR-0042: single-use key — direct-only path, no replay.
+                    UUID.randomUUID().toString(),
                 ).toDomain()
             }
         }
@@ -158,9 +161,15 @@ class RuleRepository(
         // NEW enqueue happens AFTER that wipe). Re-checking before
         // enqueue closes the race.
         val bound = ledgerRequestGuard.bind()
+        // ADR-0042: ONE intent-time key shared by the direct attempt and the
+        // outbox replay. A committed-but-unseen PATCH (it commits server-side
+        // but its response is lost) replays with this SAME key — the server
+        // HITs the recorded success instead of false-409ing on the now-stale
+        // token. The dispatcher replays it from row.idempotencyKey.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             val updated = bound.call { api ->
-                api.updateCategoryRule(baseline.id, request).toDomain()
+                api.updateCategoryRule(baseline.id, request, idempotencyKey).toDomain()
             }
             CategoryRuleSaveOutcome.Synced(updated) as CategoryRuleSaveOutcome
         } catch (networkError: IOException) {
@@ -187,6 +196,9 @@ class RuleRepository(
                 targetId = "category_rule:${baseline.id}",
                 payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
                 expectedRowVersion = baseline.rowVersion,
+                // Same key as the direct attempt above — see the rationale where
+                // it's minted. The dispatcher replays it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
             )
             CategoryRuleSaveOutcome.Queued(
                 projectOptimisticRule(baseline, keyword, category, enabled, priority),
@@ -220,6 +232,8 @@ class RuleRepository(
                 api.deleteCategoryRule(
                     id,
                     CategoryRuleDeleteRequest(expectedRowVersion = expectedRowVersion),
+                    // ADR-0042: single-use key — direct-only path, no replay.
+                    UUID.randomUUID().toString(),
                 )
             }
             Unit
@@ -249,9 +263,12 @@ class RuleRepository(
         // post-check and would let an old-ledger DELETE slip into
         // the now-current ledger's outbox after a switch.
         val bound = ledgerRequestGuard.bind()
+        // ADR-0042: one intent-time key for both the direct attempt and the
+        // replay — see updateCategoryRuleAllowingOffline for the rationale.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             bound.call { api ->
-                api.deleteCategoryRule(rule.id, request)
+                api.deleteCategoryRule(rule.id, request, idempotencyKey)
             }
             DeleteOutcome.Synced as DeleteOutcome
         } catch (networkError: IOException) {
@@ -276,6 +293,9 @@ class RuleRepository(
                 targetId = "category_rule:${rule.id}",
                 payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
                 expectedRowVersion = rule.rowVersion,
+                // Same key as the direct attempt above — the dispatcher replays
+                // it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
             )
             DeleteOutcome.Queued as DeleteOutcome
         }

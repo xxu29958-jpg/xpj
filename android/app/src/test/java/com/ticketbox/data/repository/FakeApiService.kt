@@ -211,6 +211,7 @@ internal class FakeApiService(
     override suspend fun replaceExpenseItems(
         id: Long,
         request: ExpenseItemReplaceRequestDto,
+        idempotencyKey: String?,
     ): ExpenseItemsResponseDto {
         itemReplaceIds += id
         itemReplaceRequests += request
@@ -350,11 +351,13 @@ internal class FakeApiService(
     override suspend fun updateCategoryRule(
         id: Long,
         request: com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest,
+        idempotencyKey: String?,
     ): CategoryRuleDto = unsupported()
 
     override suspend fun deleteCategoryRule(
         id: Long,
         request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+        idempotencyKey: String?,
     ): StatusDto = unsupported()
 
     override suspend fun undoCategoryRule(id: Long): CategoryRuleDto = unsupported()
@@ -387,6 +390,7 @@ internal class FakeApiService(
     override suspend fun updateMerchantAlias(
         publicId: String,
         request: com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest,
+        idempotencyKey: String?,
     ): MerchantAliasDto {
         merchantAliasPatchTargets += publicId
         merchantAliasUpdateRequests += request
@@ -403,6 +407,7 @@ internal class FakeApiService(
     override suspend fun deleteMerchantAlias(
         publicId: String,
         request: com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest,
+        idempotencyKey: String?,
     ): StatusDto {
         merchantAliasDeleteTargets += publicId
         merchantAliasDeleteRequests += request

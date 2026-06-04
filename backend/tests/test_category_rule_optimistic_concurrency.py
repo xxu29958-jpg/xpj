@@ -14,6 +14,8 @@ T1`` predicate must be rejected at the DB layer (rowcount=0 → 409).
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -49,7 +51,7 @@ def test_patch_category_rule_with_fresh_updated_at_succeeds(
     rule = _create_rule(client, identity=identity)
     resp = client.patch(
         f"/api/rules/categories/{rule['id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "category": "交通",
             "expected_row_version": rule["row_version"],
@@ -67,7 +69,7 @@ def test_patch_category_rule_with_stale_updated_at_returns_409(
     # First PATCH succeeds and bumps updated_at.
     first = client.patch(
         f"/api/rules/categories/{rule['id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "category": "交通",
             "expected_row_version": rule["row_version"],
@@ -77,7 +79,7 @@ def test_patch_category_rule_with_stale_updated_at_returns_409(
     # Second PATCH replays the original updated_at — now stale.
     stale = client.patch(
         f"/api/rules/categories/{rule['id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "category": "购物",
             "expected_row_version": rule["row_version"],
@@ -99,6 +101,7 @@ def test_patch_category_rule_without_expected_row_version_returns_422(
         json={"category": "交通"},
     )
     assert resp.status_code == 422, resp.text
+    assert resp.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +115,7 @@ def test_delete_category_rule_with_fresh_updated_at_succeeds(
     resp = client.request(
         "DELETE",
         f"/api/rules/categories/{rule['id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": rule["row_version"]},
     )
     assert resp.status_code == 200, resp.text
@@ -125,7 +128,7 @@ def test_delete_category_rule_with_stale_updated_at_returns_409(
     # First mutate to bump updated_at so the original snapshot is stale.
     first = client.patch(
         f"/api/rules/categories/{rule['id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "enabled": False,
             "expected_row_version": rule["row_version"],
@@ -136,7 +139,7 @@ def test_delete_category_rule_with_stale_updated_at_returns_409(
     stale = client.request(
         "DELETE",
         f"/api/rules/categories/{rule['id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": rule["row_version"]},
     )
     assert stale.status_code == 409
@@ -153,6 +156,7 @@ def test_delete_category_rule_without_expected_row_version_returns_422(
         headers=identity.app_headers,
     )
     assert resp.status_code == 422, resp.text
+    assert resp.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 # ---------------------------------------------------------------------------

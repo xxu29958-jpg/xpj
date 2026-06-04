@@ -211,6 +211,7 @@ internal class StubApi(
     override suspend fun replaceExpenseItems(
         id: Long,
         request: ExpenseItemReplaceRequestDto,
+        idempotencyKey: String?,
     ): ExpenseItemsResponseDto = ledgerUnsupported()
     override suspend fun acknowledgeExpenseItemsMismatch(
         id: Long,
@@ -276,20 +277,24 @@ internal class StubApi(
     override suspend fun updateCategoryRule(
         id: Long,
         request: com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest,
+        idempotencyKey: String?,
     ): CategoryRuleDto = ledgerUnsupported()
     override suspend fun deleteCategoryRule(
         id: Long,
         request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+        idempotencyKey: String?,
     ): StatusDto = ledgerUnsupported()
     override suspend fun merchantAliases(): MerchantAliasListDto = ledgerUnsupported()
     override suspend fun createMerchantAlias(request: MerchantAliasRequest): MerchantAliasDto = ledgerUnsupported()
     override suspend fun updateMerchantAlias(
         publicId: String,
         request: com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest,
+        idempotencyKey: String?,
     ): MerchantAliasDto = ledgerUnsupported()
     override suspend fun deleteMerchantAlias(
         publicId: String,
         request: com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest,
+        idempotencyKey: String?,
     ): StatusDto = ledgerUnsupported()
     override suspend fun undoMerchantAlias(publicId: String): MerchantAliasDto = ledgerUnsupported()
     override suspend fun undoCategoryRule(id: Long): com.ticketbox.data.remote.dto.CategoryRuleDto = ledgerUnsupported()

@@ -154,6 +154,9 @@ interface ApiService {
     suspend fun replaceExpenseItems(
         @Path("id") id: Long,
         @Body request: ExpenseItemReplaceRequestDto,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): ExpenseItemsResponseDto
 
     @POST("api/expenses/{id}/items/acknowledge-mismatch")
@@ -292,12 +295,18 @@ interface ApiService {
     suspend fun updateCategoryRule(
         @Path("id") id: Long,
         @Body request: CategoryRuleUpdateRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): CategoryRuleDto
 
     @HTTP(method = "DELETE", path = "api/rules/categories/{id}", hasBody = true)
     suspend fun deleteCategoryRule(
         @Path("id") id: Long,
         @Body request: CategoryRuleDeleteRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): StatusDto
 
     // ADR-0038 undo: restore a soft-deleted category rule (no body / token — it
@@ -315,12 +324,18 @@ interface ApiService {
     suspend fun updateMerchantAlias(
         @Path("publicId") publicId: String,
         @Body request: MerchantAliasUpdateRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): MerchantAliasDto
 
     @HTTP(method = "DELETE", path = "api/merchants/aliases/{publicId}", hasBody = true)
     suspend fun deleteMerchantAlias(
         @Path("publicId") publicId: String,
         @Body request: MerchantAliasDeleteRequest,
+        // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
+        // for Retrofit ergonomics; the repository always supplies a UUID.
+        @Header("Idempotency-Key") idempotencyKey: String?,
     ): StatusDto
 
     // ADR-0038 undo: restore a soft-deleted alias (no body / token — it

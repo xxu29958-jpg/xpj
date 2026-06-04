@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from api_contract_helpers import acknowledge_items_mismatch_api
 from fastapi.testclient import TestClient
 
@@ -32,7 +34,7 @@ def _put_items(client: TestClient, *, identity, expense_id: int, items: list[dic
     assert snapshot.status_code == 200, snapshot.json()
     return client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": snapshot.json()["row_version"], "items": items},
     )
 

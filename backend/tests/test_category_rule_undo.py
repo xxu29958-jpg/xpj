@@ -13,6 +13,7 @@ never collide with a live row.
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -41,7 +42,7 @@ def _soft_delete(client: TestClient, *, identity, rule: dict) -> None:
     resp = client.request(
         "DELETE",
         f"/api/rules/categories/{rule['id']}",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": rule["row_version"]},
     )
     assert resp.status_code == 200, resp.text

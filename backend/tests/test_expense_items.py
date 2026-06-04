@@ -42,7 +42,7 @@ def _replace_items(
     assert snapshot.status_code == 200, snapshot.json()
     response = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=request_headers,
+        headers={**request_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": snapshot.json()["row_version"],
             "items": [
@@ -127,7 +127,7 @@ def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: Tes
 
     second_replace = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": detail.json()["row_version"],
             "items": [{"name": "咖啡豆", "amount_cents": 1500, "category": "购物"}],
@@ -154,7 +154,7 @@ def test_expense_items_replace_response_carries_bumped_parent_row_version(
 
     response = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": before,
             "items": [{"name": "拿铁", "amount_cents": 500, "category": "餐饮"}],
@@ -295,7 +295,7 @@ def test_recognize_text_does_not_overwrite_manual_items(client: TestClient, *, i
 
     manual = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": client.get(
                 f"/api/expenses/{expense_id}", headers=identity.app_headers
@@ -352,7 +352,7 @@ def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: Test
 
     viewer_write = client.put(
         f"/api/expenses/{owner_expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": viewer_snapshot.json()["row_version"],
             "items": [{"name": "不该写入", "amount_cents": 1}],
@@ -369,7 +369,7 @@ def test_rejected_expense_items_cannot_be_replaced(client: TestClient, *, identi
 
     response = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": rejected.json()["row_version"],
             "items": [{"name": "作废明细", "amount_cents": 100}],

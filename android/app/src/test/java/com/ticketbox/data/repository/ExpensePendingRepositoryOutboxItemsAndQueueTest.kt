@@ -29,11 +29,18 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
         val outbox = OutboxRepository(dao = dao)
+        // ADR-0042: capture the Idempotency-Key the repository supplied on the
+        // direct PUT so we can assert the enqueued row carries the SAME key.
+        var directIdempotencyKey: String? = null
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun replaceExpenseItems(
                 id: Long,
                 request: ExpenseItemReplaceRequestDto,
-            ): ExpenseItemsResponseDto = throw IOException("net out")
+                idempotencyKey: String?,
+            ): ExpenseItemsResponseDto {
+                directIdempotencyKey = idempotencyKey
+                throw IOException("net out")
+            }
         }
 
         val outcome = itemsRepo(api, outbox)
@@ -57,6 +64,15 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
             "\"expected_row_version\":0" in row.payload,
             "payload token must be stripped to zero (row is the source of truth): ${row.payload}",
         )
+        // ADR-0042: the direct attempt + the enqueued row share ONE intent-time
+        // key — that's what lets a committed-but-unseen replay HIT the server's
+        // recorded success instead of false-409ing on the stale token.
+        assertEquals(
+            directIdempotencyKey,
+            row.idempotencyKey,
+            "enqueued row must carry the same key the direct PUT used",
+        )
+        assertTrue(row.idempotencyKey != null, "ReplaceItems row must carry an idempotency key")
     }
 
     @Test
@@ -68,6 +84,7 @@ internal class ExpensePendingRepositoryOutboxItemsAndQueueTest : ExpensePendingR
             override suspend fun replaceExpenseItems(
                 id: Long,
                 request: ExpenseItemReplaceRequestDto,
+                idempotencyKey: String?,
             ): ExpenseItemsResponseDto = ExpenseItemsResponseDto(
                 expenseId = 42L,
                 rowVersion = 1L,

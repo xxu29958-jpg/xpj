@@ -221,6 +221,7 @@ def update_rule(
     amount_max_cents: int | None | object = _UNSET,
     source_contains: str | None | object = _UNSET,
     tag_contains: str | None | object = _UNSET,
+    commit: bool = True,
 ) -> CategoryRule:
     """Update a category rule with ADR-0038 atomic optimistic concurrency.
 
@@ -304,7 +305,8 @@ def update_rule(
         if current is None:
             raise AppError("rule_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    if commit:
+        db.commit()
     # Force the read-back to hit the DB. claim_row_with_token's default
     # synchronize_session="auto" (evaluate) cannot sync the in-session row on
     # PostgreSQL — it compares the aware timestamptz updated_at against the
@@ -322,7 +324,7 @@ def update_rule(
 
 
 def delete_rule(
-    db: Session, rule: CategoryRule, *, expected_row_version: int
+    db: Session, rule: CategoryRule, *, expected_row_version: int, commit: bool = True
 ) -> None:
     """ADR-0038 undo: SOFT delete a category rule with atomic optimistic
     concurrency.
@@ -358,7 +360,8 @@ def delete_rule(
         if current is None:
             raise AppError("rule_not_found", status_code=404)
         raise AppError("state_conflict", status_code=409)
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def undo_delete_rule(

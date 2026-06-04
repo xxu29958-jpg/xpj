@@ -46,6 +46,8 @@ internal class ExpenseDetailRepository(
                     expectedRowVersion = expectedRowVersion,
                     items = items.map { item -> item.toRequest() },
                 ),
+                // ADR-0042: single-use key — direct-only path, no replay.
+                UUID.randomUUID().toString(),
             )
         }
         updated.toDomain()
@@ -153,8 +155,14 @@ internal class ExpenseDetailRepository(
             expectedRowVersion = expense.rowVersion,
             items = items.map { it.toRequest() },
         )
+        // ADR-0042: one intent-time key shared by the direct attempt and the
+        // outbox replay. A committed-but-unseen PUT (it commits server-side but
+        // its response is lost) replays with this SAME key so the server HITs
+        // the recorded success instead of false-409ing on the now-stale token.
+        // The dispatcher replays it from row.idempotencyKey.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
-            val saved = bound.call { it.replaceExpenseItems(expense.id, request) }.toDomain()
+            val saved = bound.call { it.replaceExpenseItems(expense.id, request, idempotencyKey) }.toDomain()
             ReplaceItemsOutcome.Synced(saved) as ReplaceItemsOutcome
         } catch (networkError: IOException) {
             val outbox = core.outbox
@@ -176,6 +184,9 @@ internal class ExpenseDetailRepository(
                 targetId = "expense:${expense.id}",
                 payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
                 expectedRowVersion = token,
+                // Same key as the direct attempt above — the dispatcher replays
+                // it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
             )
             ReplaceItemsOutcome.Queued(projectOptimisticItems(currentItems, items)) as ReplaceItemsOutcome
         }

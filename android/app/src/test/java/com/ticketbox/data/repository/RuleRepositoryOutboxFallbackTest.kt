@@ -171,6 +171,15 @@ class RuleRepositoryOutboxFallbackTest {
             "\"expected_row_version\":0" in row.payload,
             "payload token must be neutralised to 0: ${row.payload}",
         )
+        // ADR-0042: the direct attempt + the enqueued row share ONE intent-time
+        // key so a committed-but-unseen PATCH replays with it (server HITs the
+        // recorded success, not a false 409 on the stale token).
+        assertEquals(
+            api.lastUpdateIdempotencyKey,
+            row.idempotencyKey,
+            "enqueued row must carry the same key the direct PATCH used",
+        )
+        assertTrue(row.idempotencyKey != null, "UpdateCategoryRule row must carry an idempotency key")
     }
 
     @Test
@@ -305,6 +314,13 @@ class RuleRepositoryOutboxFallbackTest {
             "\"expected_row_version\":0" in row.payload,
             "payload token must be neutralised to 0: ${row.payload}",
         )
+        // ADR-0042: direct attempt + enqueued row share one intent-time key.
+        assertEquals(
+            api.lastDeleteIdempotencyKey,
+            row.idempotencyKey,
+            "enqueued row must carry the same key the direct DELETE used",
+        )
+        assertTrue(row.idempotencyKey != null, "DeleteCategoryRule row must carry an idempotency key")
     }
 
     @Test
@@ -368,6 +384,7 @@ class RuleRepositoryOutboxFallbackTest {
             override suspend fun deleteCategoryRule(
                 id: Long,
                 request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+                idempotencyKey: String?,
             ): com.ticketbox.data.remote.dto.StatusDto {
                 settings.saveIdentity(
                     accountName = "我",
@@ -425,18 +442,33 @@ class RuleRepositoryOutboxFallbackTest {
             confirmedFailuresRemaining = 0,
         ),
     ) : ApiService by delegate {
+        // ADR-0042: capture the Idempotency-Key the repository supplies on each
+        // direct attempt so tests can assert it matches the enqueued row's key.
+        // Captured before the result is applied so the IOException path still
+        // sees it.
+        var lastUpdateIdempotencyKey: String? = null
+            private set
+        var lastDeleteIdempotencyKey: String? = null
+            private set
+
         override suspend fun updateCategoryRule(
             id: Long,
             request: CategoryRuleUpdateRequest,
-        ): CategoryRuleDto = when (val r = updateCategoryRuleResult) {
-            is ApiResult.Success -> r.dto
-            is ApiResult.Throw -> throw r.exception
+            idempotencyKey: String?,
+        ): CategoryRuleDto {
+            lastUpdateIdempotencyKey = idempotencyKey
+            return when (val r = updateCategoryRuleResult) {
+                is ApiResult.Success -> r.dto
+                is ApiResult.Throw -> throw r.exception
+            }
         }
 
         override suspend fun deleteCategoryRule(
             id: Long,
             request: com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest,
+            idempotencyKey: String?,
         ): com.ticketbox.data.remote.dto.StatusDto {
+            lastDeleteIdempotencyKey = idempotencyKey
             deleteCategoryRuleException?.let { throw it }
             // Real ApiService returns StatusDto; production code
             // ignores the value (deleteCategoryRuleAllowingOffline

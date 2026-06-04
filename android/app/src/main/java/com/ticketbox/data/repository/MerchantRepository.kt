@@ -11,6 +11,7 @@ import com.ticketbox.domain.model.MerchantAlias
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.security.SessionTokenStore
 import java.io.IOException
+import java.util.UUID
 
 /**
  * Merchant-alias CRUD. Extracted from ExpenseRepository.
@@ -94,6 +95,8 @@ class MerchantRepository(
                         alias = alias?.trim()?.takeIf { it.isNotBlank() },
                         enabled = enabled,
                     ),
+                    // ADR-0042: single-use key — direct-only path, no replay.
+                    UUID.randomUUID().toString(),
                 ).toDomain()
             }
         }
@@ -109,6 +112,8 @@ class MerchantRepository(
                 api.deleteMerchantAlias(
                     cleanPublicId,
                     MerchantAliasDeleteRequest(expectedRowVersion = expectedRowVersion),
+                    // ADR-0042: single-use key — direct-only path, no replay.
+                    UUID.randomUUID().toString(),
                 )
             }
             Unit
@@ -151,9 +156,15 @@ class MerchantRepository(
         // ledger DELETE could land in the new ledger's outbox
         // after a switch.
         val bound = ledgerRequestGuard.bind()
+        // ADR-0042: one intent-time key for both the direct attempt and the
+        // outbox replay — a committed-but-unseen DELETE replays with this SAME
+        // key so the server HITs the recorded success instead of false-409ing
+        // on the now-stale token. The dispatcher replays it from
+        // row.idempotencyKey.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             bound.call { api ->
-                api.deleteMerchantAlias(cleanPublicId, request)
+                api.deleteMerchantAlias(cleanPublicId, request, idempotencyKey)
             }
             DeleteOutcome.Synced as DeleteOutcome
         } catch (networkError: IOException) {
@@ -172,6 +183,9 @@ class MerchantRepository(
                 targetId = "merchant_alias:$cleanPublicId",
                 payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
                 expectedRowVersion = alias.rowVersion,
+                // Same key as the direct attempt above — the dispatcher replays
+                // it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
             )
             DeleteOutcome.Queued as DeleteOutcome
         }
@@ -206,9 +220,12 @@ class MerchantRepository(
         // [codex round-13 P1] Explicit bind so IOException catch
         // can re-check session activity before enqueue.
         val bound = ledgerRequestGuard.bind()
+        // ADR-0042: one intent-time key for both the direct attempt and the
+        // replay — see deleteMerchantAliasAllowingOffline for the rationale.
+        val idempotencyKey = UUID.randomUUID().toString()
         try {
             val updated = bound.call { api ->
-                api.updateMerchantAlias(cleanPublicId, request).toDomain()
+                api.updateMerchantAlias(cleanPublicId, request, idempotencyKey).toDomain()
             }
             MerchantAliasSaveOutcome.Synced(updated) as MerchantAliasSaveOutcome
         } catch (networkError: IOException) {
@@ -227,6 +244,9 @@ class MerchantRepository(
                 targetId = "merchant_alias:$cleanPublicId",
                 payloadJson = adapter.toJson(request.copy(expectedRowVersion = 0L)),
                 expectedRowVersion = baseline.rowVersion,
+                // Same key as the direct attempt above — the dispatcher replays
+                // it from row.idempotencyKey.
+                idempotencyKey = idempotencyKey,
             )
             MerchantAliasSaveOutcome.Queued(
                 projectOptimisticAlias(baseline, canonicalMerchant, alias, enabled),

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -62,6 +64,7 @@ def test_replace_items_without_expected_row_version_returns_422(
         json={"items": [{"name": "Latte", "amount_cents": 500}]},
     )
     assert response.status_code == 422, response.text
+    assert response.json()["error"] == "invalid_request"  # Pydantic, not missing-key
 
 
 def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
@@ -72,7 +75,7 @@ def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
 
     first = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": stale,
             "items": [{"name": "First", "amount_cents": 500}],
@@ -82,7 +85,7 @@ def test_replace_items_with_stale_updated_at_returns_409_and_keeps_rows(
 
     replay = client.put(
         f"/api/expenses/{expense_id}/items",
-        headers=identity.app_headers,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={
             "expected_row_version": stale,
             "items": [{"name": "Second", "amount_cents": 600}],
