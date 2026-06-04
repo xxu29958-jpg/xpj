@@ -102,6 +102,21 @@ class FakePendingMutationDao : PendingMutationDao {
         return victims.size
     }
 
+    override suspend fun expireIfStatusAndOverAge(
+        id: Long,
+        fromStatus: String,
+        cutoffCreatedAtIso: String,
+        expiredStatus: String,
+        lastError: String,
+    ): Int {
+        // Mirrors the DAO SQL: id AND status=fromStatus AND createdAt < cutoff.
+        val current = rows[id] ?: return 0
+        if (current.status != fromStatus || current.createdAt >= cutoffCreatedAtIso) return 0
+        rows[id] = current.copy(status = expiredStatus, lastError = lastError)
+        refreshObservables()
+        return 1
+    }
+
     override suspend fun refreshToken(
         id: Long,
         pendingStatus: String,

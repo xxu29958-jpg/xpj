@@ -523,16 +523,24 @@ class OutboxRepository(
         // actually changed the row.
         return when (resolution) {
             is ConflictResolution.KeepMine ->
-                dao.refreshTokenIfStatus(
-                    id = id,
-                    fromStatus = PendingMutationStatus.Conflict.wireValue,
-                    toStatus = PendingMutationStatus.Pending.wireValue,
-                    freshToken = resolution.freshToken,
-                    // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
-                    // rotate the idempotency key (DAO applies it only to
-                    // key-bearing rows; keyless types stay null).
-                    rotatedIdempotencyKey = UUID.randomUUID().toString(),
-                ) > 0
+                // ADR-0042 §4.10: an over-age CONFLICT row can't be re-queued —
+                // expire it instead (rotating the key can't save a committed-but-
+                // unseen original whose server key the ~30d retention already
+                // purged → double-apply). Otherwise the normal token-refresh flip.
+                if (expireOverAgeOnResolve(id, PendingMutationStatus.Conflict.wireValue)) {
+                    true
+                } else {
+                    dao.refreshTokenIfStatus(
+                        id = id,
+                        fromStatus = PendingMutationStatus.Conflict.wireValue,
+                        toStatus = PendingMutationStatus.Pending.wireValue,
+                        freshToken = resolution.freshToken,
+                        // ADR-0042 §4.8: KeepMine = overwrite-the-new-version intent →
+                        // rotate the idempotency key (DAO applies it only to
+                        // key-bearing rows; keyless types stay null).
+                        rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                    ) > 0
+                }
             ConflictResolution.DropMine ->
                 dao.deleteIfStatus(
                     id = id,
@@ -565,24 +573,32 @@ class OutboxRepository(
         // already been retried + DONE elsewhere must be a no-op.
         return when (resolution) {
             is FailedResolution.Retry -> {
-                val freshToken = resolution.freshToken
-                if (freshToken != null) {
-                    dao.refreshTokenIfStatus(
-                        id = id,
-                        fromStatus = PendingMutationStatus.Failed.wireValue,
-                        toStatus = PendingMutationStatus.Pending.wireValue,
-                        freshToken = freshToken,
-                        // §4.8: retry-with-fresh-token is the same overwrite-new-
-                        // version intent as KeepMine → rotate the key too.
-                        rotatedIdempotencyKey = UUID.randomUUID().toString(),
-                    ) > 0
+                // ADR-0042 §4.10: an over-age FAILED row can't be retried — the next
+                // drain's reaper would re-expire it, and replaying risks double-apply
+                // (a rotated/fresh token doesn't help once the server purged the
+                // original key). Expire it so the UI offers only 移除.
+                if (expireOverAgeOnResolve(id, PendingMutationStatus.Failed.wireValue)) {
+                    true
                 } else {
-                    dao.markRetryableIfStatus(
-                        id = id,
-                        fromStatus = PendingMutationStatus.Failed.wireValue,
-                        toStatus = PendingMutationStatus.Pending.wireValue,
-                        lastError = "manual_retry",
-                    ) > 0
+                    val freshToken = resolution.freshToken
+                    if (freshToken != null) {
+                        dao.refreshTokenIfStatus(
+                            id = id,
+                            fromStatus = PendingMutationStatus.Failed.wireValue,
+                            toStatus = PendingMutationStatus.Pending.wireValue,
+                            freshToken = freshToken,
+                            // §4.8: retry-with-fresh-token is the same overwrite-new-
+                            // version intent as KeepMine → rotate the key too.
+                            rotatedIdempotencyKey = UUID.randomUUID().toString(),
+                        ) > 0
+                    } else {
+                        dao.markRetryableIfStatus(
+                            id = id,
+                            fromStatus = PendingMutationStatus.Failed.wireValue,
+                            toStatus = PendingMutationStatus.Pending.wireValue,
+                            lastError = "manual_retry",
+                        ) > 0
+                    }
                 }
             }
             FailedResolution.Drop ->
@@ -730,6 +746,29 @@ class OutboxRepository(
             // to user-facing copy. Never the raw key/timestamp — §10 jargon rule.
             lastError = "outbox_row_expired",
         )
+    }
+
+    /**
+     * ADR-0042 §4.10 resolve-time age guard. The reaper ([reapExpiredPending]) only
+     * touches PENDING rows, so a FAILED / CONFLICT row awaiting the user past the
+     * age cap never carries the ``outbox_row_expired`` marker. Retry / KeepMine
+     * would flip it to PENDING with its original ``createdAt`` → the next drain's
+     * reaper instantly re-expires it (a dead action), and replaying risks
+     * double-apply (a rotated/fresh token can't undo a committed-but-unseen
+     * original whose ~30d-retention server key was purged). Expires the row
+     * (terminal) iff it's still in [fromStatus] AND over-age; returns true if it
+     * fired so the resolve path skips the normal flip-to-PENDING. Uses the repo's
+     * own [clock] — this is the user-action path, not the engine's drain clock.
+     */
+    private suspend fun expireOverAgeOnResolve(id: Long, fromStatus: String): Boolean {
+        val cutoff = ISO.format(Instant.now(clock).minusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS))
+        return dao.expireIfStatusAndOverAge(
+            id = id,
+            fromStatus = fromStatus,
+            cutoffCreatedAtIso = cutoff,
+            expiredStatus = PendingMutationStatus.Failed.wireValue,
+            lastError = "outbox_row_expired",
+        ) > 0
     }
 
     private fun nowIso(): String = ISO.format(Instant.now(clock))

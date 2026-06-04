@@ -183,6 +183,37 @@ interface PendingMutationDao {
         lastError: String,
     ): Int
 
+    /**
+     * ADR-0042 §4.10 resolve-time age guard. The reaper ([markExpiredPendingAsFailed])
+     * only touches PENDING rows, so a FAILED (``max_attempts_exceeded``) or CONFLICT
+     * row that's been awaiting the user past the age cap never gets the
+     * ``outbox_row_expired`` marker. Retrying / keep-mine-ing such a row flips it to
+     * PENDING with its ORIGINAL ``createdAt``, so the very next drain's reaper
+     * re-expires it — a dead action that also risks double-apply (a rotated key
+     * doesn't save a committed-but-unseen original whose key the server has purged).
+     * This atomically expires the row (terminal, never re-queued) iff it's still in
+     * [fromStatus] AND already over-age, so the resolve path defers to the same
+     * cutoff the reaper uses. Returns rowcount so the repo can short-circuit the
+     * normal re-queue when this fired.
+     */
+    @Query(
+        """
+        UPDATE pending_mutations
+        SET status = :expiredStatus,
+            lastError = :lastError
+        WHERE id = :id
+          AND status = :fromStatus
+          AND createdAt < :cutoffCreatedAtIso
+        """,
+    )
+    suspend fun expireIfStatusAndOverAge(
+        id: Long,
+        fromStatus: String,
+        cutoffCreatedAtIso: String,
+        expiredStatus: String,
+        lastError: String,
+    ): Int
+
     @Query(
         """
         UPDATE pending_mutations
