@@ -92,6 +92,9 @@ fun AppBottomNav(
                         modifier = Modifier
                             .weight(if (selected) AppBottomNavLayout.SelectedWeight else 1f)
                             .height(AppBottomNavLayout.ItemHeight)
+                            // clip 必须在 clickable 之前：把点按 ripple 裁进胶囊圆角，
+                            // 否则未裁切的方形点击区会露出方角高亮（UI/UX P0：底部导航黑框）。
+                            .clip(RoundedCornerShape(AppRadius.large))
                             // Role.Tab + selected 让 TalkBack 念出 "已选中 / 共 N 项 / 当前是第 X 项"
                             .semantics {
                                 role = Role.Tab

@@ -65,7 +65,9 @@
 :root {
     --font-zh: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     --font-num: "Inter", "Noto Sans SC", system-ui, sans-serif;
-    --font-serif: "Newsreader", "Source Han Serif SC", "Songti SC", serif;
+    /* Newsreader 只覆盖西文/数字（editorial 金额）；中文 fallback 走黑体而非宋体，
+       避免中文标题在屏上发虚老气。纯数字元素仍呈 serif，含中文的标题自动黑体。 */
+    --font-serif: "Newsreader", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
 /* ───── Body 噪点纸本质感（midnight 弱化） ───── */
