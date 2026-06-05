@@ -74,7 +74,7 @@
     {% endif %}
   </div>
 
-  <form method="post" action="/owner/learning-maintenance/run" style="margin-top:16px" data-confirm-message="立即跑学习层 cleanup？将 sweep stale active + prune 过期行 + 写入 last_run。">
+  <form method="post" action="/owner/learning-maintenance/run" style="margin-top:16px" data-confirm="立即跑学习层 cleanup？将 sweep stale active + prune 过期行 + 写入 last_run。">
     <button type="submit" class="btn btn-primary">立即清理</button>
   </form>
 </div>
@@ -117,7 +117,7 @@
           <td>{% if decision.score is not none %}{{ "%.2f"|format(decision.score) }}{% else %}—{% endif %}</td>
           <td><code style="font-size:0.85em">{{ decision.output_payload[:80] }}{% if decision.output_payload and decision.output_payload|length > 80 %}…{% endif %}</code></td>
           <td>
-            <form method="post" action="/owner/learning-maintenance/dismiss-decision" class="inline" data-confirm-message="将这条建议 dismiss？UI 不会再展示，账本不受影响。">
+            <form method="post" action="/owner/learning-maintenance/dismiss-decision" class="inline" data-confirm="将这条建议 dismiss？UI 不会再展示，账本不受影响。">
               <input type="hidden" name="decision_public_id" value="{{ decision.public_id }}">
               <button type="submit" class="btn btn-danger">Dismiss</button>
             </form>

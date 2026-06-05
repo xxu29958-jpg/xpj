@@ -39,12 +39,12 @@ body {
     border-radius: 999px;
     font-size: 11px;
     font-weight: 600;
-    background: #e2e8f0;
-    color: #334155;
+    background: var(--state-neutral-bg);
+    color: var(--state-neutral-fg);
 }
-.ledger-role-chip.ledger-role-owner { background: #fde68a; color: #78350f; }
-.ledger-role-chip.ledger-role-member { background: #bfdbfe; color: #1e3a8a; }
-.ledger-role-chip.ledger-role-viewer { background: #e2e8f0; color: #475569; }
+.ledger-role-chip.ledger-role-owner { background: var(--state-warn-bg); color: var(--state-warn-fg); }
+.ledger-role-chip.ledger-role-member { background: var(--state-info-bg); color: var(--state-info-fg); }
+.ledger-role-chip.ledger-role-viewer { background: var(--state-neutral-bg); color: var(--state-neutral-fg); }
 
 /* .page 容器已由 _shell.css 的 .content 接管(shell 内自动管理宽度) */
 

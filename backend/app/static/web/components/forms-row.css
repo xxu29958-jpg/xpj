@@ -43,6 +43,23 @@
 }
 .dt-actions--end { justify-content: flex-end; }
 
+/* ───── dt-form (纵向表单容器) + dt-inline-form (表格内单按钮表单) ───── */
+.dt-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.dt-inline-form { display: inline; }
+
+/* ───── dt-h4 (段内小标题, 如 AI 建议摘要) ───── */
+.dt-h4 {
+    font-size: var(--type-subtitle-size);
+    line-height: var(--type-subtitle-line);
+    font-weight: var(--type-subtitle-weight);
+    color: var(--text-default);
+    margin: 0 0 var(--space-3);
+}
+
 /* ───── dt-eyebrow (小标签,带 letter-spacing,uppercase) ───── */
 .dt-eyebrow {
     font-family: var(--font-num);

@@ -35,7 +35,7 @@
           <td class="num-cell">{{ row.withdrawn_count }}</td>
           <td>
             {% if row.active_count > 0 %}
-            <form method="post" action="/owner/algorithm-versions/withdraw" class="inline" data-confirm-message="撤回该算法版本的所有 active 建议？">
+            <form method="post" action="/owner/algorithm-versions/withdraw" class="inline" data-confirm="撤回该算法版本的所有 active 建议？">
               <input type="hidden" name="decision_type" value="{{ row.decision_type }}">
               <input type="hidden" name="algorithm_version" value="{{ row.algorithm_version }}">
               <button type="submit" class="btn btn-danger">Withdraw</button>

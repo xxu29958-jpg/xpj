@@ -18,7 +18,7 @@
   <div class="kpi-amount">
     <span class="yuan">{{ home_currency_symbol }}</span>{{ total_yuan }}
   </div>
-  <div class="dt-meta">来自下方所有"在用"状态的收入计划。</div>
+  <div class="text-meta">来自下方所有"在用"状态的收入计划。</div>
 </div>
 
 {% if can_write %}
@@ -27,11 +27,11 @@
   <form method="post" action="/web/income-plans/create" class="dt-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="dt-form-row">
-      <label class="dt-label">名称</label>
+      <label>名称</label>
       <input class="dt-input" type="text" name="label" maxlength="64" required placeholder="例如：我的工资">
     </div>
     <div class="dt-form-row">
-      <label class="dt-label">类型</label>
+      <label>类型</label>
       <select class="dt-input" name="source_type">
         <option value="salary">工资</option>
         <option value="bonus">奖金</option>
@@ -41,15 +41,15 @@
       </select>
     </div>
     <div class="dt-form-row">
-      <label class="dt-label">金额（元 / 月）</label>
+      <label>金额（元 / 月）</label>
       <input class="dt-input" type="number" name="amount_yuan" step="0.01" min="0" required>
     </div>
     <div class="dt-form-row">
-      <label class="dt-label">发薪日（1-31）</label>
+      <label>发薪日（1-31）</label>
       <input class="dt-input" type="number" name="pay_day" min="1" max="31" required value="10">
     </div>
-    <div class="dt-form-actions">
-      <button class="dt-btn dt-btn--primary" type="submit">添加</button>
+    <div class="dt-actions">
+      <button class="dt-btn primary" type="submit">添加</button>
     </div>
   </form>
 </div>
@@ -63,7 +63,7 @@
       <tr>
         <th>名称</th>
         <th>类型</th>
-        <th class="dt-num">金额</th>
+        <th class="amount">金额</th>
         <th>发薪日</th>
         {% if can_write %}<th></th>{% endif %}
       </tr>
@@ -73,7 +73,7 @@
       <tr>
         <td>{{ plan.label }}</td>
         <td>{{ plan.source_type }}</td>
-        <td class="dt-num">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
+        <td class="amount">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
         <td>{{ plan.pay_day }} 号</td>
         {% if can_write %}
         <td>
@@ -83,7 +83,7 @@
                archive (plan edited elsewhere since) fails the atomic UPDATE WHERE
                and redirects with the 过期 message instead of flipping status. #}
             <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
-            <button class="dt-btn dt-btn--ghost" type="submit">归档</button>
+            <button class="dt-btn ghost" type="submit">归档</button>
           </form>
         </td>
         {% endif %}
@@ -92,7 +92,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="dt-meta">还没有收入计划。添加第一笔后，"本月可自由支配"才能算出来。</div>
+  <div class="text-meta">还没有收入计划。添加第一笔后，"本月可自由支配"才能算出来。</div>
   {% endif %}
 </div>
 
@@ -104,22 +104,22 @@
       <tr>
         <th>名称</th>
         <th>类型</th>
-        <th class="dt-num">原金额</th>
+        <th class="amount">原金额</th>
         {% if can_write %}<th></th>{% endif %}
       </tr>
     </thead>
     <tbody>
       {% for plan in plans_archived %}
       <tr>
-        <td class="dt-text-muted">{{ plan.label }}</td>
-        <td class="dt-text-muted">{{ plan.source_type }}</td>
-        <td class="dt-num dt-text-muted">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
+        <td class="text-muted">{{ plan.label }}</td>
+        <td class="text-muted">{{ plan.source_type }}</td>
+        <td class="amount text-muted">{{ home_currency_symbol }}{{ '%.2f' % (plan.amount_cents / 100) }}</td>
         {% if can_write %}
         <td>
           <form method="post" action="/web/income-plans/{{ plan.public_id }}/restore" class="dt-inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="expected_row_version" value="{{ plan.row_version }}">
-            <button class="dt-btn dt-btn--ghost" type="submit">恢复</button>
+            <button class="dt-btn ghost" type="submit">恢复</button>
           </form>
         </td>
         {% endif %}
