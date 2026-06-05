@@ -2,7 +2,7 @@
 
 按编号排序。每份 ADR 一旦下发不再修改；如方向变了写新的 ADR 并标 supersedes。
 
-**编号范围**：0001–0042（0018 已撤回；0032–0034 未使用，编号跳过；0040 保留给 outbox 子资源 undo 契约，见 `expense_service/_update.py`，尚未下发）。
+**编号范围**：0001–0042（0018 已撤回；0032–0034 未使用，编号跳过）。
 
 ## 索引
 
@@ -44,13 +44,13 @@
 | [0037](0037-v1.2-learning-feedback-dual-tables.md) | v1.2 Learning Feedback Dual Tables | algorithm_decisions / ledger_learning_events / ocr_facts 三表 append-only 建议层，不污染账本 | v1.2 学习反馈底层 |
 | [0038](0038-v1.3-multi-surface-sync.md) | v1.3 Multi-Surface Sync | mutate endpoint body `expected_updated_at` + 409 `state_conflict`；Android Room offline outbox + WorkManager drain；soft-delete + 5s undo window | v1.3 同步 invariant |
 | [0039](0039-adr-implementation-calibration.md) | ADR Implementation Calibration | 校准 0001–0038 的当前实现状态；区分仍绑定、文字漂移、真实待修和计划未完成 | ADR 审计校准 |
-| 0040 | — | **保留**：outbox 子资源 undo 契约（`expense_service/_update.py` 引用，未下发） | — |
+| [0040](0040-outbox-subresource-target-and-child-undo.md) | outbox 子资源 target_id + 子资源 undo 契约 | 子资源锚父 Expense `row_version`（无自有 token）；undo 只翻父行不重放子资源 | accepted；[[0038]]/[[0041]]/[[0042]] |
 | [0041](0041-postgresql-engine-migration.md) | 存储层完整性债清偿 | 开发期一次性清存储层债：本机自托管 Postgres + row_version 替 `updated_at`-as-CAS；SQLite+row_version 保留为 fallback | accepted；[[0038]] 升级 |
 | [0042](0042-offline-availability-and-request-idempotency.md) | 离线可用性边界 + 请求幂等键 | 堵 committed-but-unseen 假 409：outbox-routed mutate 面加请求幂等键（独立表 + intent-time UUID + key 先于 OCC）；离线边界判据升为契约；批改走客户端 fan-out | accepted；[[0038]]/[[0041]]；解除 §14 deferral |
 
 ## 编写新 ADR
 
-下一编号 `0043`（`0040` 保留给 outbox 子资源 undo 契约）。命名 `NNNN-kebab-case-topic.md`。常见结构：
+下一编号 `0043`。命名 `NNNN-kebab-case-topic.md`。常见结构：
 
 ```markdown
 # ADR-NNNN: 标题

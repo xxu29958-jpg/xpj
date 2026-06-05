@@ -443,14 +443,14 @@ def undo_reject_expense(
     resource_public_id = expense.public_id。和 merchant_alias undo /
     category_rule undo 同 pattern。
 
-    **Current /undo contract for child resources (v1.x temporary —
-    replaced by ADR-0040 when landed)**: undo ONLY flips the parent
-    Expense row's status / rejected_at / updated_at. Splits, items, and
-    suggestion decisions on this expense are NOT touched. After undo,
-    child resources retain whatever state they had during reject. This
-    is explicit deterministic behavior, not undefined — but the full
-    semantic (e.g. should bill_split invitations re-activate? should
-    item-level acknowledge-mismatch persist?) is owned by ADR-0040.
+    **Child-resource /undo contract (ADR-0040)**: undo ONLY flips the
+    parent Expense row's status / rejected_at / row_version. Splits,
+    items, suggestion decisions, bill_split invitations and item-level
+    acknowledge-mismatch (items_sum_status) are NOT touched/rolled back;
+    child resources keep whatever state they had during reject. This is
+    explicit deterministic behavior — restoring the child subtree is NEW
+    behavior needing its own ADR. ADR-0040 formalizes the invariant
+    (children anchor OCC / idempotency on the parent row_version).
 
     **ABA (resolved, ADR-0041)**: the CAS token here is the monotonic
     ``row_version`` int (``WHERE row_version = expected``), which strictly
