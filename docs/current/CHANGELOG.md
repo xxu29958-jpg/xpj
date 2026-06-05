@@ -2,6 +2,29 @@
 
 ## Upgrade Notes
 
+- ADR-0040 landed + ADR-0039 Priority Calibration closures (sweep at `27cd3dc2`):
+  ADR-0040 (`0040-outbox-subresource-target-and-child-undo.md`) formalizes two
+  already-implemented invariants — items/splits have no own CAS token and anchor
+  their OCC + request-idempotency on the parent Expense `row_version` (outbox
+  `target_id = expense:<parent_id>`, giving same-target serial); and `/undo` flips
+  ONLY the parent lifecycle (status/rejected_at/row_version), never replaying child
+  state (splits/items/`items_sum_status`/bill_split invitations) — closing the
+  temporary "owned by ADR-0040 when landed" placeholder in
+  `expense_service/_update.py`. The four ADR-0039 calibration items are all verified
+  closed against current code (recorded here, not by rewriting ADR-0039 per its §19):
+  #1 /web ECharts ID mismatch — closed by #169 (`f134d050`), `reports.js`/`reports.html`
+  IDs aligned, guarded by `test_web_reports_goals.py`; #2 v1 cut-over atomicity —
+  `mark_v1_cut_over_completed` now writes in one `begin_nested()`+`commit` via
+  `_set_value_in_transaction`, rollback-tested (`test_v1_cutover.py`); #3 Android
+  outbox enqueue — 15 `PendingMutationType` → 15 dispatchers, production call sites
+  enqueue, closed by ADR-0042 slices A–F; #4 `/undo` — soft-delete + undo endpoints
+  + `ledger_audit_logs action='undo'` + Android/`/web` banner all landed (`/owner`
+  correctly out of scope). Plus: ENGINEERING_RULES v1.3.0 → v1.4.0 (MINOR, §14
+  ADR-0042 idempotency rule); new auto-discovered CI lane `month-tz-accounting`
+  (`backend/scripts/_audit_month_tz_accounting.py`) guarding against UTC-`now`-derived
+  month labels without `.astimezone(accounting tz)` — the regression class that bit
+  month-boundary stats ~4×.
+
 - ADR-0038 undo (first slice — merchant_alias): `DELETE /api/merchants/aliases/{id}`
   now SOFT-deletes (sets `deleted_at`). The alias is hidden from every read but
   recoverable via `POST /api/merchants/aliases/{id}/undo` until cleanup purges

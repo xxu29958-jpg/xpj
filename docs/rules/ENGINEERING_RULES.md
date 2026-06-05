@@ -1,6 +1,6 @@
 # 工程规范
 
-> 通用部分采用模板 v1.3.0（2026-05-22；§13 增"当前阶段不做" + "规则演进"两段）；后端 + 客户端协作项目契约。
+> 规则版本 v1.4.0（采用通用模板 v1.3.0，2026-05-22，§13 增"当前阶段不做" + "规则演进"两段；v1.3.0→v1.4.0：§14 经 [[0042]] 引入 outbox-routed 请求幂等键规则，见下行 2026-06-04 注，MINOR/增加规则）；后端 + 客户端协作项目契约。
 > §14 在 2026-05-22 增"字段命名"+"当前阶段不引入"两小节：解释 `expense_time`/`tenant_id` 项目命名与模板 §3/§4 的关系，并显式标注当前 v0.x 不引入 `/api/v1` 前缀、`client_request_id` 幂等键、`/health/liveness+readiness` 拆分、UI 字符串资源化（与 §13 "不做完整 i18n" 一致）。
 > §14 在 2026-06-04 更新「不引入 `client_request_id` 幂等键」条（MINOR / 增加规则）：[[0042]] 已为 **outbox-routed mutate 面**引入服务端请求幂等键（`Idempotency-Key` header + `api_idempotency_keys` 表），解除该范围的限制；其余写操作仍不带 client-side dedup key。
 > 任何放宽必须写入 `docs/DECISIONS/`，注明原因、风险、偿还计划和回收条件。
