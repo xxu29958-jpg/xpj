@@ -1,5 +1,5 @@
 # Desktop backend-manager runtime deps (installed into whatever Python runs it).
 # psutil: per-adapter IPv4 enumeration (the only reliable LAN-IP source behind a
-# Clash/full-tunnel VPN, where socket routing is hijacked). Optional — netinfo
+# Clash/full-tunnel VPN, where socket routing is hijacked). Optional - netinfo
 # degrades to hostname resolution if it is absent.
 psutil>=5.9
