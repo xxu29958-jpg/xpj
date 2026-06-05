@@ -86,7 +86,10 @@ def parse_frankfurter_rates(json_text: str) -> EcbDailyRates:
     currency is re-inserted at 1.0 because Frankfurter omits it from ``rates``.
     """
     try:
-        payload = json.loads(json_text)
+        # parse_float=Decimal keeps full precision — going through float64 (the
+        # json default) would silently truncate, unlike the ECB XML path which
+        # builds Decimals straight from the string attribute.
+        payload = json.loads(json_text, parse_float=Decimal)
     except (ValueError, TypeError) as exc:
         raise ValueError("Frankfurter response is not valid JSON") from exc
     raw_date = payload.get("date")

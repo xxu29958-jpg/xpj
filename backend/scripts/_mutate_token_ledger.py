@@ -276,8 +276,9 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/devices/{public_id}/rename": Exempt("admin_single_writer", "owner_console", ("devices",)),
     "POST /owner/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE),
     # ADR-0027: idempotent upsert of the ECB reference-rate bucket (keyed by
-    # source/home/currency/date); scheduler + this loopback trigger are the only
-    # writers, no row_version to guard.
+    # source/home/currency/date). Two writers (daily scheduler + this loopback
+    # trigger) but no row_version to guard — concurrency safety rests on the
+    # upsert being idempotent (same data either way), not on single-writer.
     "POST /owner/fx/refresh": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
     "POST /owner/learning-maintenance/dismiss-decision": Exempt(
         "terminal_flag_flip", "learning", _ALGO_DECISIONS

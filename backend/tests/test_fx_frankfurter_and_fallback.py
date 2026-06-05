@@ -74,6 +74,29 @@ def test_fetch_reference_rates_defaults_to_frankfurter() -> None:
     assert daily.rates_per_eur["CNY"] == Decimal("7.8793")
 
 
+def test_fetch_reference_rates_ecb_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    # FX_RATE_SOURCE=ecb routes through the XML transport, not Frankfurter.
+    from dataclasses import replace
+
+    cfg = replace(provider.get_settings(), fx_rate_source="ecb")
+    monkeypatch.setattr(provider, "get_settings", lambda: cfg)
+    ecb_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01"'
+        ' xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">'
+        '<Cube><Cube time="2026-05-29"><Cube currency="CNY" rate="7.8793"/></Cube></Cube>'
+        "</gesmes:Envelope>"
+    )
+    resp = MagicMock()
+    resp.read.return_value = ecb_xml.encode("utf-8")
+    resp.__enter__.return_value = resp
+    resp.__exit__.return_value = False
+    with patch.object(provider, "urlopen", return_value=resp):
+        daily = fetch_reference_rates()
+    assert daily.rate_date == date(2026, 5, 29)
+    assert daily.rates_per_eur["CNY"] == Decimal("7.8793")
+
+
 # ─────────────────────── weekend / holiday fallback ────────────────────────
 
 
@@ -122,6 +145,9 @@ def test_weekend_expense_resolves_to_prior_working_day_rate(client: TestClient, 
     assert Decimal(body["exchange_rate_to_cny"]) == Decimal("7.00000000")
     assert body["amount_cents"] == 70000
     assert body["exchange_rate_source"] == "ecb"
+    # Provenance honesty: the snapshot must record the rate's TRUE publish date
+    # (Friday), not the Saturday expense date — ECB never published on the 30th.
+    assert body["exchange_rate_date"] == "2026-05-29"
 
 
 def test_expense_before_any_rate_still_pending(client: TestClient, *, identity) -> None:
@@ -173,6 +199,22 @@ def test_run_fx_sync_once_network_drop_keeps_last_known(monkeypatch: pytest.Monk
     assert ok is False
     assert after.failed_count == before.failed_count + 1
     assert "UNEXPECTED_EOF" in (after.last_error or "")
+
+
+def test_run_fx_sync_once_unexpected_error_recorded(monkeypatch: pytest.MonkeyPatch, *, identity) -> None:
+    from app.database import SessionLocal
+
+    def boom(_db):  # noqa: ANN001 - test stub
+        raise ValueError("provider schema changed")
+
+    monkeypatch.setattr(scheduler, "refresh_ecb_fx_rates", boom)
+    before = scheduler.fx_rate_sync_status()
+    with SessionLocal() as db:
+        ok = scheduler.run_fx_sync_once(db)
+    after = scheduler.fx_rate_sync_status()
+    assert ok is False
+    assert after.failed_count == before.failed_count + 1
+    assert "ValueError" in (after.last_error or "")
 
 
 # ─────────────────────────── owner FX panel ────────────────────────────────

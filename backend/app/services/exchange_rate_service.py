@@ -190,14 +190,23 @@ def resolve_payload_rate(
     tenant_id: str,
     currency_code: str,
     rate_date: date,
-) -> tuple[Decimal | None, str | None, str]:
+) -> tuple[Decimal | None, str | None, str, date]:
+    """Resolve (rate, source, fx_status, effective_date) for a currency on a date.
+
+    ``effective_date`` is the date the returned rate was actually published — for
+    the weekend / holiday fallback it is the earlier working-day row's date, NOT
+    the requested ``rate_date``. The caller freezes it into the snapshot so the
+    record is honest about provenance (ADR-0027: the snapshot must not claim a
+    rate "as of" a date the source never published). On ``pending`` there is no
+    rate, so the requested date is echoed back.
+    """
     code = normalize_currency_code(currency_code)
     home = home_currency_code()
     if code == home:
-        return Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY
+        return Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY, rate_date
     stored = get_exchange_rate(db, tenant_id=tenant_id, currency_code=code, rate_date=rate_date)
     if stored is not None:
-        return Decimal(stored.rate_to_cny), stored.source, FX_STATUS_READY
+        return Decimal(stored.rate_to_cny), stored.source, FX_STATUS_READY, stored.rate_date
     # A tenant manual rate is an exact-date override; the auto-fetched global set
     # falls back to the newest rate on or before the date so weekend / holiday
     # expenses resolve to the last published rate instead of staying pending.
@@ -208,8 +217,8 @@ def resolve_payload_rate(
         home_currency_code=home,
     )
     if global_rate is not None:
-        return Decimal(global_rate.rate_to_home), global_rate.source, FX_STATUS_READY
-    return None, None, FX_STATUS_PENDING
+        return Decimal(global_rate.rate_to_home), global_rate.source, FX_STATUS_READY, global_rate.rate_date
+    return None, None, FX_STATUS_PENDING, rate_date
 
 
 def _payload_attr(payload: CurrencyPayload, name: str):
@@ -295,9 +304,9 @@ def apply_currency_payload(
         or _payload_rate_date(payload, expense.expense_time)
     )
     if code == home:
-        rate, source, fx_status = Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY
+        rate, source, fx_status, effective_rate_date = Decimal("1"), FX_SOURCE_BASE, FX_STATUS_READY, rate_date
     else:
-        rate, source, fx_status = resolve_payload_rate(
+        rate, source, fx_status, effective_rate_date = resolve_payload_rate(
             db,
             tenant_id=tenant_id,
             currency_code=code,
@@ -307,7 +316,7 @@ def apply_currency_payload(
     expense.original_currency_code = code
     expense.original_amount_minor = original_amount
     expense.exchange_rate_to_cny = rate
-    expense.exchange_rate_date = rate_date
+    expense.exchange_rate_date = effective_rate_date
     expense.exchange_rate_source = source
     expense.fx_status = fx_status
     expense.amount_cents = calculate_cny_cents(

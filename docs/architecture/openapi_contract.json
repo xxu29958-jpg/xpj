@@ -17604,6 +17604,48 @@
         ]
       }
     },
+    "/owner/fx": {
+      "get": {
+        "operationId": "owner_fx_get_owner_fx_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Fx Get",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/fx/refresh": {
+      "post": {
+        "operationId": "owner_fx_refresh_owner_fx_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Owner Fx Refresh",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/learning-maintenance": {
       "get": {
         "operationId": "owner_learning_maintenance_get_owner_learning_maintenance_get",
