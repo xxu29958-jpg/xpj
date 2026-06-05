@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}汇率同步 — 小票夹{% endblock %}
+{% block content %}
+<h1>汇率同步</h1>
+
+{% if refreshed == 'ok' %}
+<div class="alert alert-success">
+  ✅ 已拉取最新汇率{% if fx_latest_date %}（最新价格日期 {{ fx_latest_date }}）{% endif %}。
+</div>
+{% elif refreshed == 'fail' %}
+<div class="alert alert-danger">
+  ⚠️ 拉取失败，已保留上一次的汇率。原因见下方「最近错误」。
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>同步状态</h2>
+  <div class="kv-grid">
+    <span class="kv-key">数据源</span>
+    <span class="kv-val">
+      {% if fx_source == 'ecb' %}ECB 直连{% else %}Frankfurter（欧央行参考价镜像，国内可达，免 key）{% endif %}
+      <br><span class="path-mono">{{ fx_source_url }}</span>
+    </span>
+    <span class="kv-key">自动同步</span>
+    <span class="kv-val">
+      {% if fx_auto_enabled %}
+      <span class="badge badge-ok">开</span> 每日 {{ fx_sync_times }}（{{ fx_sync_timezone }}）
+      {% else %}
+      <span class="badge badge-warn">关</span>
+      {% endif %}
+    </span>
+    <span class="kv-key">上次成功</span>
+    <span class="kv-val">{{ fx_last_success_at | owner_datetime }} · 成功 {{ fx_success_count }} 次 / 失败 {{ fx_failed_count }} 次</span>
+    {% if fx_last_error %}
+    <span class="kv-key">最近错误</span>
+    <span class="kv-val"><span class="badge badge-err">!</span> {{ fx_last_error }}</span>
+    {% endif %}
+  </div>
+  <form method="post" action="/owner/fx/refresh" class="form-row" data-show-loading="正在拉取最新汇率，请稍候…">
+    <button type="submit" class="btn btn-primary">立即拉取一次</button>
+  </form>
+  <p class="text-meta" style="margin-top:8px">
+    汇率取欧央行每日参考中间价（经 Frankfurter 转发）。周末 / 节假日无新价时，记账会自动沿用最近一个工作日的价格，不再卡成「待汇率」。
+  </p>
+</div>
+
+<div class="card">
+  <h2>最新汇率（折算到 {{ home_currency_code }}）</h2>
+  {% if fx_rows %}
+  <table>
+    <thead>
+      <tr>
+        <th style="white-space:nowrap">币种</th>
+        <th class="num">1 外币 = ? {{ home_currency_code }}</th>
+        <th style="white-space:nowrap">价格日期</th>
+        <th style="white-space:nowrap">来源</th>
+        <th style="white-space:nowrap">拉取时间</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in fx_rows %}
+      <tr>
+        <td style="white-space:nowrap">{{ row.currency }}</td>
+        <td class="num">{{ row.rate }}</td>
+        <td style="white-space:nowrap">{{ row.rate_date }}</td>
+        <td style="white-space:nowrap">{{ row.source }}</td>
+        <td style="white-space:nowrap">{{ row.fetched_at | owner_datetime }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-meta">还没有任何汇率记录。点击上方「立即拉取一次」获取。</p>
+  {% endif %}
+</div>
+{% endblock %}

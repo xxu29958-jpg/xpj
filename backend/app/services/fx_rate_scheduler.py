@@ -6,10 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy.orm import Session
+
 from app.config import get_settings
 from app.database import SessionLocal
 from app.services.fx_rate_provider import FxFetchError, refresh_ecb_fx_rates
 from app.services.scheduler_lease_service import try_claim_scheduler_lease
+from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
 _SCHEDULER_LEASE_SECONDS = 10 * 60
@@ -85,42 +88,52 @@ def _seconds_until_next_run(now: datetime, sync_times: list[time]) -> float:
     return max((candidate - now).total_seconds(), 1)
 
 
+def run_fx_sync_once(db: Session) -> bool:
+    """Run one FX sync, updating the shared status counters; returns success.
+
+    Shared by the scheduler loop and the owner-console manual "立即拉取" trigger
+    so both paths feed the same ``fx_rate_sync_status()`` snapshot. A transient
+    network / TLS drop (this machine intermittently kills outbound handshakes —
+    same flakiness that hits Maven; the fetch already retried) degrades
+    gracefully to last-known rates and logs at WARNING with no traceback.
+    Anything else is unexpected (provider schema change, DB lock, bug): logged at
+    ERROR with the full traceback so the owner status page can surface it. Either
+    way the caller is never crashed — critical for the daemon thread.
+    """
+    try:
+        rows = refresh_ecb_fx_rates(db)
+    except FxFetchError as exc:
+        _status.failed_count += 1
+        _status.last_error = str(exc)[:200]
+        logger.warning("FX sync skipped (network); keeping last-known rates: %s", exc)
+        return False
+    except Exception as exc:  # noqa: BLE001 — daemon thread + UI trigger must not crash
+        _status.failed_count += 1
+        _status.last_error = f"{type(exc).__name__}: {exc}"[:200]
+        logger.exception("FX sync failed (unexpected)")
+        return False
+    _status.success_count += 1
+    _status.last_success_at = now_utc()
+    _status.last_error = None
+    logger.info("FX sync completed: %s rates", len(rows))
+    return True
+
+
 def _scheduler_loop(stop_event: threading.Event, sync_times: list[time], timezone: ZoneInfo) -> None:
     while not stop_event.is_set():
         delay_seconds = _seconds_until_next_run(datetime.now(timezone), sync_times)
         if stop_event.wait(delay_seconds):
             return
-        try:
-            with SessionLocal() as db:
-                if not try_claim_scheduler_lease(
-                    db,
-                    name="fx_rate_sync",
-                    lease_seconds=_SCHEDULER_LEASE_SECONDS,
-                ):
-                    logger.info("ECB FX sync skipped: scheduler lease is held")
-                    continue
-            with SessionLocal() as db:
-                rows = refresh_ecb_fx_rates(db)
-            _status.success_count += 1
-            _status.last_success_at = datetime.now(timezone)
-            logger.info("ECB FX sync completed: %s rates", len(rows))
-        except FxFetchError as exc:
-            # Transient network / TLS drop (this machine intermittently kills
-            # outbound handshakes — same flakiness that hits Maven). The fetch
-            # already retried; rates degrade gracefully to last-known and the
-            # next scheduled cycle retries. Log at WARNING with no traceback so
-            # a routine network blip doesn't spam the error log.
-            _status.failed_count += 1
-            _status.last_error = str(exc)[:200]
-            logger.warning("ECB FX sync skipped (network); keeping last-known rates: %s", exc)
-        except Exception as exc:
-            # Daemon thread: a propagated exception would kill the scheduler
-            # silently. Stay broad so an upstream surprise (ECB schema change,
-            # DB lock, bug) can't take the worker down — but THIS is unexpected,
-            # so keep the full traceback at ERROR for the health endpoint + logs.
-            _status.failed_count += 1
-            _status.last_error = f"{type(exc).__name__}: {exc}"[:200]
-            logger.exception("ECB FX sync failed (unexpected)")
+        with SessionLocal() as db:
+            if not try_claim_scheduler_lease(
+                db,
+                name="fx_rate_sync",
+                lease_seconds=_SCHEDULER_LEASE_SECONDS,
+            ):
+                logger.info("FX sync skipped: scheduler lease is held")
+                continue
+        with SessionLocal() as db:
+            run_fx_sync_once(db)
 
 
 def start_fx_rate_scheduler() -> FxRateScheduler | None:

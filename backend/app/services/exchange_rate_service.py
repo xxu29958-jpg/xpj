@@ -25,7 +25,7 @@ from app.services.currency_common import (
     normalize_currency_code,
     supported_currency_codes,
 )
-from app.services.fx_rate_provider import get_fx_rate
+from app.services.fx_rate_provider import get_fx_rate_on_or_before
 from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.time_service import now_utc
 
@@ -198,7 +198,10 @@ def resolve_payload_rate(
     stored = get_exchange_rate(db, tenant_id=tenant_id, currency_code=code, rate_date=rate_date)
     if stored is not None:
         return Decimal(stored.rate_to_cny), stored.source, FX_STATUS_READY
-    global_rate = get_fx_rate(
+    # A tenant manual rate is an exact-date override; the auto-fetched global set
+    # falls back to the newest rate on or before the date so weekend / holiday
+    # expenses resolve to the last published rate instead of staying pending.
+    global_rate = get_fx_rate_on_or_before(
         db,
         currency_code=code,
         rate_date=rate_date,

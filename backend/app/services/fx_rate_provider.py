@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import time as _time
 from dataclasses import dataclass
@@ -76,13 +77,44 @@ def parse_ecb_daily_rates(xml_text: str) -> EcbDailyRates:
     return EcbDailyRates(rate_date=date.fromisoformat(day_cube.attrib["time"]), rates_per_eur=rates)
 
 
-def _fetch_ecb_xml(target: str) -> str:
-    """GET the ECB daily XML, retrying transient network/TLS failures.
+def parse_frankfurter_rates(json_text: str) -> EcbDailyRates:
+    """Parse Frankfurter's JSON into the same EUR-based reference-rate shape.
+
+    Frankfurter redistributes the ECB daily reference set, so the data is
+    identical to :func:`parse_ecb_daily_rates`; only the wire format differs
+    (``{"base":"EUR","date":"YYYY-MM-DD","rates":{"CNY":7.8,...}}``). The base
+    currency is re-inserted at 1.0 because Frankfurter omits it from ``rates``.
+    """
+    try:
+        payload = json.loads(json_text)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Frankfurter response is not valid JSON") from exc
+    raw_date = payload.get("date")
+    raw_rates = payload.get("rates")
+    if not raw_date or not isinstance(raw_rates, dict):
+        raise ValueError("Frankfurter response missing date/rates")
+    base = str(payload.get("base") or ECB_PROVIDER_BASE_CURRENCY).strip().upper()
+    rates: dict[str, Decimal] = {base: Decimal("1")}
+    for code, value in raw_rates.items():
+        try:
+            rates[str(code).strip().upper()] = Decimal(str(value))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(f"Frankfurter response has invalid rate for {code}") from exc
+    try:
+        rate_date = date.fromisoformat(str(raw_date))
+    except ValueError as exc:
+        raise ValueError("Frankfurter response has invalid date") from exc
+    return EcbDailyRates(rate_date=rate_date, rates_per_eur=rates)
+
+
+def _http_get_text(target: str) -> str:
+    """GET ``target`` as UTF-8 text, retrying transient network/TLS failures.
 
     ``URLError`` (urllib's wrapper) and ``OSError`` (covers ssl.SSLError,
     ConnectionError, TimeoutError) are the transient family worth retrying;
     everything else propagates. After [FETCH_RETRIES] attempts we raise
-    [FxFetchError] so the caller can degrade gracefully.
+    [FxFetchError] so the caller can degrade gracefully. Used by both the ECB
+    (XML) and Frankfurter (JSON) transports.
     """
     request = Request(target, headers={"User-Agent": "xiaopiaojia-fx-sync/1.0"})
     last_exc: Exception | None = None
@@ -95,7 +127,7 @@ def _fetch_ecb_xml(target: str) -> str:
             if attempt < FETCH_RETRIES:
                 _time.sleep(FETCH_BACKOFF_SECONDS * attempt)
     raise FxFetchError(
-        f"ECB fetch failed after {FETCH_RETRIES} attempts: "
+        f"FX rate fetch failed after {FETCH_RETRIES} attempts: "
         f"{type(last_exc).__name__}: {last_exc}"
     ) from last_exc
 
@@ -103,8 +135,29 @@ def _fetch_ecb_xml(target: str) -> str:
 def fetch_ecb_daily_rates(url: str | None = None) -> EcbDailyRates:
     settings = get_settings()
     target = url or settings.fx_rate_ecb_url
-    xml_text = _fetch_ecb_xml(target)
-    return parse_ecb_daily_rates(xml_text)
+    return parse_ecb_daily_rates(_http_get_text(target))
+
+
+def fetch_frankfurter_daily_rates(url: str | None = None) -> EcbDailyRates:
+    settings = get_settings()
+    target = url or settings.fx_rate_frankfurter_url
+    return parse_frankfurter_rates(_http_get_text(target))
+
+
+def fetch_reference_rates() -> EcbDailyRates:
+    """Fetch EUR-based reference rates from the configured transport.
+
+    Default is Frankfurter (``FX_RATE_SOURCE=frankfurter``): key-free and
+    reachable from mainland China without a proxy, where europa.eu intermittently
+    drops the outbound TLS handshake. Both transports yield the ECB reference set
+    (Frankfurter redistributes it), so ``source='ecb'`` still describes the data
+    provenance. Set ``FX_RATE_SOURCE=ecb`` to fetch europa.eu directly. See
+    ADR-0027.
+    """
+    settings = get_settings()
+    if (settings.fx_rate_source or "frankfurter").strip().lower() == "ecb":
+        return fetch_ecb_daily_rates()
+    return fetch_frankfurter_daily_rates()
 
 
 def cross_rate_to_home(
@@ -145,6 +198,37 @@ def get_fx_rate(
         .where(FxRate.home_currency_code == home)
         .where(FxRate.currency_code == currency)
         .where(FxRate.rate_date == rate_date)
+    )
+
+
+def get_fx_rate_on_or_before(
+    db: Session,
+    *,
+    currency_code: str,
+    rate_date: date,
+    home_currency_code: str | None = None,
+    source: str = FX_SOURCE_ECB,
+) -> FxRate | None:
+    """Most recent fetched rate effective on ``rate_date`` (``rate_date <= D``).
+
+    ECB / Frankfurter only publish on TARGET working days, so an expense dated on
+    a weekend or holiday has no exact-date row. The rate in effect that day is the
+    last published one — markets carry Friday's rate through the weekend — so we
+    fall back to the newest row at or before the requested date instead of leaving
+    the expense ``pending``. Returns an exact-date row when one exists.
+    """
+    currency = normalize_currency_code(currency_code)
+    home = normalize_currency_code(home_currency_code or current_home_currency_code())
+    if currency == home:
+        return None
+    return db.scalar(
+        select(FxRate)
+        .where(FxRate.source == source)
+        .where(FxRate.home_currency_code == home)
+        .where(FxRate.currency_code == currency)
+        .where(FxRate.rate_date <= rate_date)
+        .order_by(FxRate.rate_date.desc())
+        .limit(1)
     )
 
 
@@ -204,7 +288,9 @@ def refresh_ecb_fx_rates(
     currencies: set[str] | None = None,
     url: str | None = None,
 ) -> list[FxRate]:
-    daily = fetch_ecb_daily_rates(url)
+    # ``url`` forces the ECB XML transport (tests / explicit override); the
+    # default path dispatches on FX_RATE_SOURCE (Frankfurter by default).
+    daily = fetch_ecb_daily_rates(url) if url is not None else fetch_reference_rates()
     home = normalize_currency_code(home_currency_code or current_home_currency_code())
     target_currencies = currencies or supported_currency_codes()
     rows: list[FxRate] = []

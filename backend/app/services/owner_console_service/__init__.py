@@ -40,6 +40,11 @@ from app.services.owner_console_service._devices import (
     do_revoke_device,
     get_devices,
 )
+from app.services.owner_console_service._fx import (
+    FxPanelVM,
+    FxRowVM,
+    get_fx_panel_vm,
+)
 from app.services.owner_console_service._index import (
     BudgetStatusVM,
     ConsoleIndexVM,
@@ -88,6 +93,8 @@ __all__ = [
     "BudgetStatusVM",
     "ConsoleIndexVM",
     "DeviceSummary",
+    "FxPanelVM",
+    "FxRowVM",
     "LedgerConsoleVM",
     "LedgerHealthVM",
     "OWNER_CONSOLE_TIMEZONE",
@@ -113,6 +120,7 @@ __all__ = [
     "do_update_upload_link_limits",
     "get_default_ledger_id",
     "get_devices",
+    "get_fx_panel_vm",
     "get_index_vm",
     "get_owner_account_id",
     "get_recurring_ops",

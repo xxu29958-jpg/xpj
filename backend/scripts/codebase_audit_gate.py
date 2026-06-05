@@ -118,16 +118,16 @@ CODEBASE_DEBT_LIMITS: DebtCounts = {
     "cached_singletons": 3,
     "nested_dict_args": 17,
     "mixed_return_functions": 0,
-    "broad_exception": 24,
+    "broad_exception": 23,
     "generic_raises": 7,
     "todo_markers": 9,
-    "hardcoded_urls": 10,
+    "hardcoded_urls": 12,  # +2 ADR-0027 Frankfurter default URL (config default, mirrors ECB inline pattern)
     "credentials_risk": 4,
     "n_plus_one": 2,
     # PR-A wires fetch_expense_updated_at_in_status (new in _query.py) into the
     # /web/pending route; bank the reduction so unreferenced_modules can't
     # silently re-creep.
-    "unreferenced_modules": 216,  # +1 ADR-0042 Slice A api_idempotency_keys model (helper itself is test-imported; wired into routes in Slice B)
+    "unreferenced_modules": 218,  # +2 ADR-0027 owner FX panel service + test (re-exported via __init__, only reached indirectly)
     "import_cycles": 0,
     "sql_outside_database": 0,
     "import_star": 0,
@@ -196,7 +196,7 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     # routes moved from ALLOWLIST (terminal_flag_flip) to token carriers — the
     # SELECT-then-write archive/restore are now atomic UPDATE WHERE + token.
     "mutate_token_carriers": 40,
-    "mutate_token_exempted": 110,
+    "mutate_token_exempted": 111,
     "mutate_token_reason_admin_single_writer": 9,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 19,
@@ -207,12 +207,12 @@ STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_reason_read_only_compute": 3,
     "mutate_token_reason_session_rotation": 5,
     "mutate_token_reason_terminal_flag_flip": 23,
-    "mutate_token_reason_upsert_bucket": 7,
+    "mutate_token_reason_upsert_bucket": 8,
     # +1 PR-A (/web recurring); +7 PR-B income_plan OCC; +4 PR-C bill_split
     # accept atomic-claim; +8 ADR-0041 Slice A row_version groundwork; +3
     # ADR-0041 self-describing items/splits responses (parent row_version in
-    # items-replace, acknowledge-mismatch, splits-replace responses); +12 ADR-0042 Slice A idempotency helper tests; +5 Slice B PATCH idempotency tests; +12 Slice D-1 state-machine idempotency tests; +15 Slice D-2 rules/aliases/items idempotency tests (header-required×5, committed-but-unseen rule+items+alias, delete HIT rule+alias, in-progress×2, reuse×2); +5 Slice E-1 splits-replace idempotency tests (header-required, committed-but-unseen, stale-409, in-progress, reuse); +5 Slice E-2 recognize-text idempotency tests (same shape); +1 ADR-0042 tags-guard hardening (explicit {"tags":null} no longer clobbers); +10 Slice F goals/income-plan PATCH idempotency tests (header-required×2, committed-but-unseen goal+plan, stale-409×2, in-progress×2, reuse×2). +1 owner-console live DB dialect readiness test (ADR-0041 cut-over visibility).
-    "backend_pytest_count": 1615,
+    # items-replace, acknowledge-mismatch, splits-replace responses); +12 ADR-0042 Slice A idempotency helper tests; +5 Slice B PATCH idempotency tests; +12 Slice D-1 state-machine idempotency tests; +15 Slice D-2 rules/aliases/items idempotency tests (header-required×5, committed-but-unseen rule+items+alias, delete HIT rule+alias, in-progress×2, reuse×2); +5 Slice E-1 splits-replace idempotency tests (header-required, committed-but-unseen, stale-409, in-progress, reuse); +5 Slice E-2 recognize-text idempotency tests (same shape); +1 ADR-0042 tags-guard hardening (explicit {"tags":null} no longer clobbers); +10 Slice F goals/income-plan PATCH idempotency tests (header-required×2, committed-but-unseen goal+plan, stale-409×2, in-progress×2, reuse×2). +1 owner-console live DB dialect readiness test (ADR-0041 cut-over visibility). +11 ADR-0027 Frankfurter transport + weekend fallback + owner FX panel tests (parse×4, dispatcher, weekend-resolve, pre-history pending, run_once×2, owner 403 + manual refresh); +1 mutate exempt /owner/fx/refresh (upsert_bucket).
+    "backend_pytest_count": 1626,
     # Android ``@Test`` count is enforced separately by the Android CI
     # lane (``:app:verifyTestCountBaseline`` gradle task against
     # ``android/audit/test_count_baseline.txt``). Cross-job coordination

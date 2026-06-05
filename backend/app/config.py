@@ -145,7 +145,9 @@ class Settings:
     fx_rate_auto_sync_enabled: bool
     fx_rate_sync_times: str
     fx_rate_sync_timezone: str
+    fx_rate_source: str
     fx_rate_ecb_url: str
+    fx_rate_frankfurter_url: str
 
     @property
     def max_upload_size_bytes(self) -> int:
@@ -394,11 +396,19 @@ def get_settings() -> Settings:
         fx_rate_auto_sync_enabled=_bool_env("FX_RATE_AUTO_SYNC_ENABLED", True),
         fx_rate_sync_times=os.getenv("FX_RATE_SYNC_TIMES", "09:10,23:10").strip() or "09:10,23:10",
         fx_rate_sync_timezone=os.getenv("FX_RATE_SYNC_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",
+        fx_rate_source=(os.getenv("FX_RATE_SOURCE", "frankfurter").strip().lower() or "frankfurter"),
         fx_rate_ecb_url=(
             os.getenv(
                 "FX_RATE_ECB_URL",
                 "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
             ).strip()
             or "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+        ),
+        fx_rate_frankfurter_url=(
+            os.getenv(
+                "FX_RATE_FRANKFURTER_URL",
+                "https://api.frankfurter.dev/v1/latest?base=EUR",
+            ).strip()
+            or "https://api.frankfurter.dev/v1/latest?base=EUR"
         ),
     )

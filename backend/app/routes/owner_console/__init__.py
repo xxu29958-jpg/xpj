@@ -23,6 +23,8 @@ Navigation:
     POST /owner/upload-links/{id}/revoke  — revoke link
     POST /owner/upload-links/{id}/delete  — delete link
     GET  /owner/diagnostics         — diagnostics page
+    GET  /owner/fx                  — FX rate sync status + latest rates
+    POST /owner/fx/refresh          — run one FX sync now (manual trigger)
     GET  /owner/settings(/*)        — runtime settings (5 endpoints)
     GET  /owner/backups             — list manual backups
     POST /owner/backups             — create new manual backup
@@ -40,6 +42,7 @@ from app.routes.owner_console import (
     _backups,
     _devices,
     _diagnostics,
+    _fx,
     _index,
     _learning_maintenance,
     _pairing,
@@ -64,6 +67,7 @@ router.include_router(_devices.router)
 router.include_router(_pairing.router)
 router.include_router(_upload_links.router)
 router.include_router(_diagnostics.router)
+router.include_router(_fx.router)
 router.include_router(_settings.router)
 router.include_router(_backups.router)
 

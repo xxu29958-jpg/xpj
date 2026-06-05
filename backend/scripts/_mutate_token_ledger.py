@@ -275,6 +275,10 @@ ALLOWLIST: dict[str, Exempt] = {
     "POST /owner/devices/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE, "medium"),
     "POST /owner/devices/{public_id}/rename": Exempt("admin_single_writer", "owner_console", ("devices",)),
     "POST /owner/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE),
+    # ADR-0027: idempotent upsert of the ECB reference-rate bucket (keyed by
+    # source/home/currency/date); scheduler + this loopback trigger are the only
+    # writers, no row_version to guard.
+    "POST /owner/fx/refresh": Exempt("upsert_bucket", "exchange_rates", ("fx_rates",)),
     "POST /owner/learning-maintenance/dismiss-decision": Exempt(
         "terminal_flag_flip", "learning", _ALGO_DECISIONS
     ),
