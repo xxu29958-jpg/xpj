@@ -11,6 +11,11 @@ $BackendRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
 $BackupDir = Join-Path $DataRoot "backups"
 
+# 共享 SQLite 备份/校验函数(Resolve-Python / Get-BackendVersion / Test-SqliteBackup /
+# Backup-SqliteDatabase),与 scripts\maintenance_ticketbox.ps1 共用同一份实现。dot-source
+# 后这些函数沿用本脚本作用域的 $BackendRoot(此处已就绪)。
+. (Join-Path $PSScriptRoot "lib\sqlite_backup.ps1")
+
 function Get-BackendEnvValue {
     param([Parameter(Mandatory = $true)][string]$Name)
 
@@ -86,32 +91,6 @@ function Get-PgDumpBinary {
     throw "未找到 pg_dump，无法备份 PostgreSQL 数据库。请设置 PG_DUMP_PATH 或将其加入 PATH。"
 }
 
-function Resolve-Python {
-    $venvPython = Join-Path $BackendRoot ".venv\Scripts\python.exe"
-    if (Test-Path -LiteralPath $venvPython) {
-        return $venvPython
-    }
-    $command = Get-Command python -ErrorAction SilentlyContinue
-    if ($command) {
-        return $command.Source
-    }
-    throw "未找到 Python，无法使用 SQLite Online Backup API。"
-}
-
-function Get-BackendVersion {
-    param([Parameter(Mandatory = $true)][string]$BackendRoot)
-
-    $versionFile = Join-Path $BackendRoot "app\version.py"
-    if (-not (Test-Path -LiteralPath $versionFile)) {
-        throw "未找到后端版本文件：$versionFile"
-    }
-    $content = Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8
-    if ($content -notmatch "BACKEND_VERSION\s*=\s*['""]([^'""]+)['""]") {
-        throw "无法从 app\version.py 读取 BACKEND_VERSION。"
-    }
-    return $Matches[1]
-}
-
 function Assert-PathInside {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -129,77 +108,6 @@ function Assert-PathInside {
         throw "拒绝访问备份目录外路径：$fullPath"
     }
     return $fullPath
-}
-
-function Test-SqliteBackup {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$ExpectedBackendVersion
-    )
-
-    $python = Resolve-Python
-    $previousPythonPath = [Environment]::GetEnvironmentVariable("PYTHONPATH")
-    try {
-        if ([string]::IsNullOrWhiteSpace($previousPythonPath)) {
-            $env:PYTHONPATH = $BackendRoot
-        }
-        else {
-            $env:PYTHONPATH = "$BackendRoot;$previousPythonPath"
-        }
-        & $python -m app.services.sqlite_backup_validation_service $Path --expected-backend-version $ExpectedBackendVersion
-        if ($LASTEXITCODE -ne 0) {
-            throw "Ticketbox 备份校验失败：$Path"
-        }
-    }
-    finally {
-        if ($null -eq $previousPythonPath) {
-            Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
-        }
-        else {
-            $env:PYTHONPATH = $previousPythonPath
-        }
-    }
-}
-
-function Backup-SqliteDatabase {
-    param(
-        [Parameter(Mandatory = $true)][string]$SourcePath,
-        [Parameter(Mandatory = $true)][string]$TargetPath
-    )
-
-    $python = Resolve-Python
-    $tempPath = "$TargetPath.tmp-$PID"
-    $script = @'
-import sqlite3
-import sys
-
-source, target = sys.argv[1], sys.argv[2]
-src = sqlite3.connect(source)
-try:
-    dst = sqlite3.connect(target)
-    try:
-        src.backup(dst)
-        result = dst.execute('PRAGMA integrity_check').fetchone()[0]
-        if result != 'ok':
-            raise SystemExit('SQLite backup integrity_check failed: ' + str(result))
-    finally:
-        dst.close()
-finally:
-    src.close()
-'@
-    try {
-        & $python -c $script $SourcePath $tempPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "SQLite 备份失败。"
-        }
-        Test-SqliteBackup -Path $tempPath -ExpectedBackendVersion (Get-BackendVersion -BackendRoot $BackendRoot)
-        Move-Item -LiteralPath $tempPath -Destination $TargetPath -Force
-    }
-    finally {
-        if (Test-Path -LiteralPath $tempPath) {
-            Remove-Item -LiteralPath $tempPath -Force
-        }
-    }
 }
 
 function Test-PostgresBackup {
