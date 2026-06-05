@@ -14,6 +14,12 @@ $BackendRoot = Join-Path $ProjectRoot "backend"
 $DataRoot = if ([string]::IsNullOrWhiteSpace($env:TICKETBOX_DATA_DIR)) { $BackendRoot } else { $env:TICKETBOX_DATA_DIR }
 $BackupDir = Join-Path $DataRoot "backups"
 
+# 共享 SQLite 校验/备份函数(Resolve-Python / Get-BackendVersion / Test-SqliteBackup)
+# 与 backup_database.ps1 / maintenance_ticketbox.ps1 共用一份(backend/scripts/lib),
+# 消除第三处重复拷贝。restore 特有的 Resolve-DbPath / Assert-PathInside /
+# Get-BackendEnvValue / 带 FK-check 的恢复前备份保留在本脚本。
+. (Join-Path $BackendRoot "scripts\lib\sqlite_backup.ps1")
+
 function Get-BackendEnvValue {
     param([Parameter(Mandatory = $true)][string]$Name)
 
@@ -69,32 +75,6 @@ function Format-Bytes {
     return "$Bytes B"
 }
 
-function Resolve-Python {
-    $venvPython = Join-Path $BackendRoot ".venv\Scripts\python.exe"
-    if (Test-Path -LiteralPath $venvPython) {
-        return $venvPython
-    }
-    $command = Get-Command python -ErrorAction SilentlyContinue
-    if ($command) {
-        return $command.Source
-    }
-    throw "未找到 Python，无法校验 SQLite 备份。"
-}
-
-function Get-BackendVersion {
-    param([Parameter(Mandatory = $true)][string]$BackendRoot)
-
-    $versionFile = Join-Path $BackendRoot "app\version.py"
-    if (-not (Test-Path -LiteralPath $versionFile)) {
-        throw "未找到后端版本文件：$versionFile"
-    }
-    $content = Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8
-    if ($content -notmatch "BACKEND_VERSION\s*=\s*['""]([^'""]+)['""]") {
-        throw "无法从 app\version.py 读取 BACKEND_VERSION。"
-    }
-    return $Matches[1]
-}
-
 function Assert-PathInside {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -112,36 +92,6 @@ function Assert-PathInside {
         throw "恢复文件必须位于备份目录内：$fullPath"
     }
     return $fullPath
-}
-
-function Test-SqliteBackup {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$ExpectedBackendVersion
-    )
-
-    $python = Resolve-Python
-    $previousPythonPath = [Environment]::GetEnvironmentVariable("PYTHONPATH")
-    try {
-        if ([string]::IsNullOrWhiteSpace($previousPythonPath)) {
-            $env:PYTHONPATH = $BackendRoot
-        }
-        else {
-            $env:PYTHONPATH = "$BackendRoot;$previousPythonPath"
-        }
-        & $python -m app.services.sqlite_backup_validation_service $Path --expected-backend-version $ExpectedBackendVersion
-        if ($LASTEXITCODE -ne 0) {
-            throw "Ticketbox 备份校验失败：$Path"
-        }
-    }
-    finally {
-        if ($null -eq $previousPythonPath) {
-            Remove-Item Env:\PYTHONPATH -ErrorAction SilentlyContinue
-        }
-        else {
-            $env:PYTHONPATH = $previousPythonPath
-        }
-    }
 }
 
 $BackendVersion = Get-BackendVersion -BackendRoot $BackendRoot
