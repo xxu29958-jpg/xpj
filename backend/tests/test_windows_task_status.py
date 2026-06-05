@@ -141,6 +141,9 @@ def test_owner_index_marks_nonzero_task_result_red(
 
 def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
     project_root = Path(__file__).resolve().parents[2]
+    backup_lib = (
+        project_root / "backend" / "scripts" / "lib" / "sqlite_backup.ps1"
+    ).read_text(encoding="utf-8-sig")
     for script in (
         project_root / "scripts" / "maintenance_ticketbox.ps1",
         project_root / "scripts" / "restore_ticketbox_db.ps1",
@@ -150,7 +153,11 @@ def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
         assert "Resolve-DbPath" in text
         assert "DATABASE_URL" in text
         assert '$DbPath = Join-Path $BackendRoot "data\\ticketbox.db"' not in text
-        assert "app.services.sqlite_backup_validation_service" in text
+        # The SQLite backup + verify path (incl. the validation-service call) is
+        # shared via the dot-sourced lib for scripts that source it; the restore
+        # script references the validator inline.
+        effective = text + (backup_lib if "sqlite_backup.ps1" in text else "")
+        assert "app.services.sqlite_backup_validation_service" in effective
 
 
 def test_legacy_restore_script_delegates_to_canonical_restore_entrypoint() -> None:
