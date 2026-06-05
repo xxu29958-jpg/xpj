@@ -17,7 +17,7 @@
 .summary-card-num { font-size: 24px; font-weight: 700; color: var(--text-default); }
 .summary-card-hint { font-size: 11px; color: var(--text-meta); margin-top: 4px; }
 .summary-card.primary .summary-card-num { color: var(--brand-primary); }
-.summary-card.warn { background: #fffbeb; }
+.summary-card.warn { background: var(--state-warn-bg); }
 .summary-card.warn .summary-card-num { color: var(--state-warn-fg); }
 
 /* Status chips */
@@ -33,14 +33,14 @@
 .status-chip.warn    { background: var(--state-warn-bg); color: var(--state-warn-fg); }
 .status-chip.ok      { background: var(--state-success-bg); color: var(--state-success-fg); }
 .status-chip.muted   { background: var(--state-neutral-bg); color: var(--state-neutral-fg); }
-.status-chip.err     { background: #fee2e2; color: var(--state-danger-fg); }
+.status-chip.err     { background: var(--state-danger-bg); color: var(--state-danger-fg); }
 
 .category-badge {
     display: inline-block;
     padding: 2px 10px;
     border-radius: 999px;
-    background: #eef2ff;
-    color: #4338ca;
+    background: var(--state-info-bg);
+    color: var(--state-info-fg);
     font-size: 11px;
     font-weight: 600;
 }
@@ -48,9 +48,9 @@
 /* Transactions */
 .transaction-table { width: 100%; border-collapse: collapse; }
 .transaction-table th { text-align: left; padding: 8px 10px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border-card); font-weight: 600; }
-.transaction-table td { padding: 10px; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
+.transaction-table td { padding: 10px; border-bottom: 1px solid var(--border-card); font-size: 13px; vertical-align: middle; }
 .transaction-table tr:hover td { background: var(--surface-sunken); }
 .transaction-table .row-title { font-weight: 600; color: var(--text-default); }
 .transaction-table .row-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.transaction-row.is-duplicate { background: #fffbeb; }
+.transaction-row.is-duplicate { background: var(--state-warn-bg); }
 td.amount { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: right; font-weight: 600; color: var(--text-default); }
