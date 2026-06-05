@@ -35,7 +35,7 @@ Chosen: **C**。两条不变量升为契约：
 
 **① 子资源锚定父 Expense（outbox target_id 契约）**：items / splits 的 replace 操作没有自己的 CAS token；其 OCC 谓词与 [[0042]] 请求幂等 fingerprint 都锚在**父 Expense `row_version`** 上。一次成功的子资源替换原子地 `bump` 父 `row_version`，响应 wrapper（`ExpenseItemsResponse` / `ExpenseSplitsResponse`）回传父行的 post-mutation `row_version`，让 outbox 把新 token cascade 给同一父 expense 的后续 mutation。Android outbox row 对子资源 mutation 用**父 expense 的 target**（`expense:<parent_id>`）作 `target_id`——因此「替换 items」与「编辑同一 expense」天然 same-target serial 串行，同一父行的多条 mutation 不会乱序。子资源**不**在 outbox 里独立寻址。
 
-**② undo 只翻父行（子资源 undo 契约）**：`POST /api/expenses/{id}/undo` 是 reject 的对称恢复（[[0038]]）；它**只**把父 Expense 的 `status` / `rejected_at` / `row_version` 翻回可编辑态，**不**重放任何子资源状态。具体地：splits、line items、suggestion 决策保留 reject 期间的现状；bill_split 邀请**不**重新激活；item 级 acknowledge-mismatch 的 `items_sum_status` **不**回滚。这是**确定性显式行为**，不是 undefined——undo 的语义是「把这一行拉回 reject 前最普通的可编辑状态」，而非「时光倒流整棵子树」。merchant_alias / rule 的 undo 同构：清 `deleted_at` 恢复该行本身，不反向重建它曾清除过的 duplicate 指针等旁路状态（与 `undo_reject_expense` 已记录的 duplicate-reference 限制一致）。
+**② undo 只翻父行（子资源 undo 契约）**：`POST /api/expenses/{id}/undo` 是 reject 的对称恢复（[[0038]]）；它**只**把父 Expense 的 `status` / `rejected_at` / `updated_at`(展示戳) / `row_version`(CAS token) 翻回可编辑态，**不**重放任何子资源状态。具体地：splits、line items、suggestion 决策保留 reject 期间的现状；bill_split 邀请**不**重新激活；item 级 acknowledge-mismatch 的 `items_sum_status` **不**回滚。这是**确定性显式行为**，不是 undefined——undo 的语义是「把这一行拉回 reject 前最普通的可编辑状态」，而非「时光倒流整棵子树」。merchant_alias / rule 的 undo 同构：清 `deleted_at` 恢复该行本身，不反向重建它曾清除过的 duplicate 指针等旁路状态（与 `undo_reject_expense` 已记录的 duplicate-reference 限制一致）。
 
 边界口径：若未来真需要「undo 连子资源一起恢复」（例如拆账邀请回滚），那是**新行为**，须新开 ADR + 设计子资源快照/恢复，不在本契约内悄悄扩。本 ADR 只钉死当前实现 = parent-only。
 

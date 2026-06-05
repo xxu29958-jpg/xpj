@@ -444,7 +444,7 @@ def undo_reject_expense(
     category_rule undo 同 pattern。
 
     **Child-resource /undo contract (ADR-0040)**: undo ONLY flips the
-    parent Expense row's status / rejected_at / row_version. Splits,
+    parent Expense row's status / rejected_at / updated_at / row_version. Splits,
     items, suggestion decisions, bill_split invitations and item-level
     acknowledge-mismatch (items_sum_status) are NOT touched/rolled back;
     child resources keep whatever state they had during reject. This is
