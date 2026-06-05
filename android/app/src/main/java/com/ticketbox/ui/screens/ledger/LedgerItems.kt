@@ -115,7 +115,7 @@ internal fun LedgerExpenseCard(
             ) {
                 Text(
                     text = expense.amountCents?.let(::formatAmount) ?: "待填写",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = AppTypography.amountMedium.weight,
                     maxLines = 1,
@@ -187,7 +187,7 @@ internal fun LedgerExpenseListRow(
             ) {
                 Text(
                     text = expense.amountCents?.let(::formatAmount) ?: "待填写",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = AppTypography.amountMedium.weight,
                     maxLines = 1,
@@ -266,7 +266,7 @@ internal fun LedgerExpenseTableRow(
             Text(
                 text = expense.amountCents?.let(::formatAmount) ?: "待填写",
                 modifier = Modifier.weight(LedgerItemLayout.TableAmountWeight),
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = AppTypography.amountMedium.weight,
                 maxLines = 1,

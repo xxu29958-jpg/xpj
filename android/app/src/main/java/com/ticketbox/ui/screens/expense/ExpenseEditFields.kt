@@ -81,7 +81,7 @@ internal fun EditDraftPreviewCard(
                 Text(
                     text = formatExpensePrimaryAmount(expense, currencyDisplay),
                     style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 formatExpenseExchangeMeta(expense)?.let { meta ->
                     Text(

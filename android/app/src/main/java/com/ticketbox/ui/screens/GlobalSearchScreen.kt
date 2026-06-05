@@ -213,7 +213,7 @@ private fun SearchResultCard(
             }
             Text(
                 text = formatAmount(expense.amountCents),
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleMedium.tabularNum(),
                 fontWeight = AppTypography.amountMedium.weight,
                 maxLines = 1,

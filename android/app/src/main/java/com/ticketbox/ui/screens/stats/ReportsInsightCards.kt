@@ -97,7 +97,7 @@ internal fun ReportsInsightCard(
                 }
                 Text(
                     text = formatAmount(overview.totalAmountCents),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = AppTextHierarchy.heading.weight,
                 )

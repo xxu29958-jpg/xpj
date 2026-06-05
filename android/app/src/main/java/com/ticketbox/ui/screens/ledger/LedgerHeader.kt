@@ -184,7 +184,7 @@ private fun LedgerKpiCell(
         )
         Text(
             text = value,
-            color = if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onSurface,
             style = if (emphasized) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
             fontWeight = AppTextHierarchy.heading.weight,
             maxLines = 1,

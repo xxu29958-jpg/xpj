@@ -162,7 +162,7 @@ fun ExpenseCard(
                             lineHeight = 28.sp,
                             letterSpacing = 0.sp,
                         ).tabularNum(),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = AppTypography.amountMedium.weight,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

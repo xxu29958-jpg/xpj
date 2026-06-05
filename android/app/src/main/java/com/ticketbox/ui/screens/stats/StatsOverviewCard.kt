@@ -91,7 +91,7 @@ internal fun StatsOverviewCard(
             Text(
                 modifier = Modifier.weight(1f),
                 text = formatDisplayAmount(stats.totalAmountCents, currencyDisplay),
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontSize = AppTypography.amountLarge.size,
                     lineHeight = 38.sp,

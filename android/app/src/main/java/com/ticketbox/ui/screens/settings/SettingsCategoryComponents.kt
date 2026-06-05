@@ -129,7 +129,7 @@ internal fun PreviewReceipt(
             Text(title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
-        Text(amount, color = MaterialTheme.colorScheme.primary, fontWeight = AppTextHierarchy.heading.weight)
+        Text(amount, color = MaterialTheme.colorScheme.onSurface, fontWeight = AppTextHierarchy.heading.weight)
     }
 }
 

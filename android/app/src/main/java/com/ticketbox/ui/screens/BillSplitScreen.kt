@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.domain.model.BillSplitInbox
 import com.ticketbox.domain.model.BillSplitSent
 import com.ticketbox.domain.model.BillSplitStatusValues
+import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.viewmodel.BillSplitViewModel
 
 /** ADR-0029 bill split UI: two tabs (Inbox / Sent), actions per row. */
@@ -127,7 +128,7 @@ private fun InboxRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(row.senderDisplayName, fontWeight = FontWeight.SemiBold)
-            Text("¥${row.amountCents / 100.0}")
+            Text(formatAmount(row.amountCents))
         }
         Text(
             text = "${row.merchantSnapshot ?: "—"} · ${row.categorySuggestion ?: "—"} · ${row.status}",
@@ -175,7 +176,7 @@ private fun SentRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(row.receiverDisplayNameSnapshot ?: "—", fontWeight = FontWeight.SemiBold)
-            Text("¥${row.amountCents / 100.0}")
+            Text(formatAmount(row.amountCents))
         }
         Text(
             text = "${row.merchantSnapshot ?: "—"} · ${row.status}",

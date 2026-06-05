@@ -296,7 +296,7 @@ private fun DetailHeader(
         trailing?.let {
             Text(
                 text = it,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = AppTextHierarchy.heading.weight,
                 maxLines = 1,
