@@ -20,10 +20,23 @@ jobs:
         shell: powershell
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout (offline — local Gitea, no github.com)
+        working-directory: ${{ github.workspace }}
+        env:
+          REPO_TOKEN: ${{ github.token }}
+        run: |
+          $ws = $env:GITHUB_WORKSPACE
+          New-Item -ItemType Directory -Force -Path $ws | Out-Null
+          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          git init -q $ws
+          $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          git -C $ws remote add origin "$server/$env:GITHUB_REPOSITORY.git"
+          git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
+          git -C $ws checkout -q -f $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws log --oneline -1
 
       - name: Tool versions
         run: |
@@ -106,10 +119,23 @@ jobs:
         shell: powershell
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout (offline — local Gitea, no github.com)
+        working-directory: ${{ github.workspace }}
+        env:
+          REPO_TOKEN: ${{ github.token }}
+        run: |
+          $ws = $env:GITHUB_WORKSPACE
+          New-Item -ItemType Directory -Force -Path $ws | Out-Null
+          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          git init -q $ws
+          $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          git -C $ws remote add origin "$server/$env:GITHUB_REPOSITORY.git"
+          git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
+          git -C $ws checkout -q -f $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws log --oneline -1
 
       - name: Install desktop dependencies
         run: |
@@ -142,10 +168,23 @@ jobs:
       ANDROID_SDK_ROOT: E:\projects\xiaopiaojia\.toolchains\android-sdk
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout (offline — local Gitea, no github.com)
+        working-directory: ${{ github.workspace }}
+        env:
+          REPO_TOKEN: ${{ github.token }}
+        run: |
+          $ws = $env:GITHUB_WORKSPACE
+          New-Item -ItemType Directory -Force -Path $ws | Out-Null
+          Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          git init -q $ws
+          $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
+          git -C $ws remote add origin "$server/$env:GITHUB_REPOSITORY.git"
+          git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
+          git -C $ws checkout -q -f $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git checkout $env:GITHUB_SHA failed" }
+          git -C $ws log --oneline -1
 
       - name: Point Gradle at local Android SDK
         run: |
