@@ -153,11 +153,15 @@ def test_db_maintenance_scripts_resolve_configured_database_url() -> None:
         assert "Resolve-DbPath" in text
         assert "DATABASE_URL" in text
         assert '$DbPath = Join-Path $BackendRoot "data\\ticketbox.db"' not in text
-        # The SQLite backup + verify path (incl. the validation-service call) is
-        # shared via the dot-sourced lib for scripts that source it; the restore
-        # script references the validator inline.
+        # The SQLite backup + verify functions (incl. the validation-service
+        # call) are shared via the dot-sourced lib; the validator string lives in
+        # the lib, so fold it in when the script sources it.
         effective = text + (backup_lib if "sqlite_backup.ps1" in text else "")
         assert "app.services.sqlite_backup_validation_service" in effective
+        # ...and the script must actually INVOKE the validating path (Backup-
+        # SqliteDatabase / Test-SqliteBackup), not merely source the lib — so a
+        # script that sources it only for, say, Resolve-Python can't pass silently.
+        assert "Test-SqliteBackup" in text or "Backup-SqliteDatabase" in text
 
 
 def test_legacy_restore_script_delegates_to_canonical_restore_entrypoint() -> None:
