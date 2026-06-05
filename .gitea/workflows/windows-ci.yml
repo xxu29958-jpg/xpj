@@ -11,8 +11,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  backend-basic:
-    name: Backend basic checks
+  backend-full:
+    name: Backend full checks
     runs-on: windows-latest
 
     defaults:
@@ -30,9 +30,30 @@ jobs:
           git --version
           python --version
 
+      - name: Check PowerShell scripts
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts\check_text_encoding.ps1
+          powershell -ExecutionPolicy Bypass -File scripts\check_dependency_versions.ps1
+          $roots = @("backend/scripts", "android/scripts", "scripts") | Where-Object { Test-Path $_ }
+          $files = Get-ChildItem -Path $roots -Filter *.ps1 -Recurse
+          foreach ($file in $files) {
+            $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+            if (-not $hasBom) {
+              throw "$($file.FullName) must be UTF-8 with BOM for Windows PowerShell 5.1"
+            }
+            $errors = $null
+            [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw -Encoding UTF8 -LiteralPath $file.FullName), [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              throw "$($file.FullName) syntax error: $($errors[0].Message)"
+            }
+            Write-Host "OK $($file.FullName)"
+          }
+
       - name: Install backend dependencies
         working-directory: backend
         run: |
+          if (Test-Path .ci-venv) { Remove-Item -Recurse -Force .ci-venv }
           python -m venv .ci-venv
           .\.ci-venv\Scripts\python.exe -m pip install --upgrade pip
           .\.ci-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -47,22 +68,65 @@ jobs:
 
       - name: Test backend
         working-directory: backend
-        run: .\.ci-venv\Scripts\python.exe -m pytest -q
+        run: .\.ci-venv\Scripts\python.exe -m pytest --cov=app --cov-report=term-missing
 
-      - name: API contract (OpenAPI snapshot in sync)
+      - name: API contract
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe scripts\check_api_contract.py
 
-      - name: Release audit (19 read-only lanes)
-        # Single gate for every audit in scripts/release_audit.py::LANES —
-        # dispatcher coverage, token parity, mutate-token coverage, pr-delta
-        # count, dialect convergence, etc. On a push event (no base ref) the
-        # pr-delta lane runs strict-equality vs the committed baseline.
+      - name: Test file-backed SQLite lane
+        working-directory: backend
+        env:
+          XPJ_TEST_FILE_BACKED: "1"
+        run: .\.ci-venv\Scripts\python.exe -m pytest -q -m file_backed_only
+
+      - name: Smoke test
+        working-directory: backend
+        run: .\.ci-venv\Scripts\python.exe scripts\smoke_test.py
+
+      - name: Release audit
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe scripts\release_audit.py
 
+      - name: Dependency vulnerability scan
+        working-directory: backend
+        run: |
+          .\.ci-venv\Scripts\python.exe -m pip install pip-audit
+          .\.ci-venv\Scripts\python.exe -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt
+
+  desktop-manager:
+    name: Desktop manager
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: desktop
+        shell: powershell
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install desktop dependencies
+        run: |
+          if (Test-Path .ci-venv) { Remove-Item -Recurse -Force .ci-venv }
+          python -m venv .ci-venv
+          .\.ci-venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.ci-venv\Scripts\python.exe -m pip install -r requirements.txt python-dotenv pytest ruff
+
+      - name: Compile desktop manager
+        run: .\.ci-venv\Scripts\python.exe -m compileall backend_manager tests
+
+      - name: Lint desktop manager
+        run: .\.ci-venv\Scripts\ruff.exe check backend_manager tests
+
+      - name: Test desktop manager
+        run: .\.ci-venv\Scripts\python.exe -m pytest -q
+
   android-unit:
-    name: Android unit
+    name: Android unit/build
     runs-on: windows-latest
 
     defaults:
@@ -71,35 +135,28 @@ jobs:
         shell: powershell
 
     env:
-      # Mirrors ci.yml: populates BuildConfig.DEFAULT_SERVER_URL without
-      # hardcoding the domain in build.gradle.kts.
       TICKETBOX_SERVER_URL: https://api.zen70.cn
+      ANDROID_HOME: E:\projects\xiaopiaojia\.toolchains\android-sdk
+      ANDROID_SDK_ROOT: E:\projects\xiaopiaojia\.toolchains\android-sdk
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # assertAndroidTestCountEqualsBaseline reads the base baseline via
-          # git on PR events; full history keeps that reachable. On push it
-          # degrades to strict-equality vs the committed baseline file.
           fetch-depth: 0
 
-      - name: Point gradle at the Android SDK (self-hosted runner)
-        # The runner's fresh checkout has no git-ignored local.properties.
-        # Prefer the runner's ANDROID_HOME if it ever gets one; else fall back to
-        # this box's project-local toolchain SDK — that's what local dev builds
-        # against (the global ~/AppData SDK is missing build-tools). Update the
-        # fallback path on a new machine / the future Mac Mini.
+      - name: Point Gradle at local Android SDK
         run: |
-          $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "E:/projects/xiaopiaojia/.toolchains/android-sdk" }
-          $sdkEscaped = ($sdk -replace '\\','/') -replace ':','\:'
-          Set-Content -Path local.properties -Value "sdk.dir=$sdkEscaped" -Encoding ascii
-          Get-Content local.properties
+          if (-not (Test-Path $env:ANDROID_HOME)) {
+            throw "Android SDK not found: $env:ANDROID_HOME"
+          }
+          "sdk.dir=E\:/projects/xiaopiaojia/.toolchains/android-sdk" | Set-Content -Encoding ASCII -Path local.properties
+          "ticketbox.serverUrl=$env:TICKETBOX_SERVER_URL" | Add-Content -Encoding ASCII -Path local.properties
 
       - name: Gradle / JVM versions
         run: .\gradlew.bat --no-daemon --version
 
-      - name: Compile + unit tests
+      - name: Compile and unit tests
         run: .\gradlew.bat --no-daemon :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
 
       - name: Assert test count equals baseline
@@ -110,3 +167,6 @@ jobs:
 
       - name: Assemble gray debug APK
         run: .\gradlew.bat --no-daemon :app:assembleGrayDebug
+
+      - name: Assemble internal debug APK
+        run: .\gradlew.bat --no-daemon :app:assembleInternalDebug
