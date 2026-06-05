@@ -20,6 +20,8 @@
     <span class="kv-val">{{ migration.identity_schema }}</span>
     <span class="kv-key">数据库类型</span>
     <span class="kv-val">{{ migration.database_kind }}</span>
+    <span class="kv-key">数据库方言</span>
+    <span class="kv-val"><code>{{ migration.dialect }}</code></span>
     <span class="kv-key">最新备份</span>
     <span class="kv-val">
       {% if migration.latest_backup %}

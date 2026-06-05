@@ -82,6 +82,7 @@ class MigrationReadinessReport:
     backend_version: str
     identity_schema: str
     database_kind: str
+    dialect: str
     backup_created: str | None
     latest_backup: str | None
     latest_backup_kind: str | None
@@ -97,6 +98,7 @@ class MigrationReadinessReport:
             "backend_version": self.backend_version,
             "identity_schema": self.identity_schema,
             "database_kind": self.database_kind,
+            "dialect": self.dialect,
             "ready": self.ready,
             "backup_created": self.backup_created,
             "latest_backup": self.latest_backup,
@@ -107,6 +109,18 @@ class MigrationReadinessReport:
 
 def _check(code: str, status: str, message: str) -> MigrationCheck:
     return MigrationCheck(code=code, status=status, message=message)
+
+
+def _live_dialect_name() -> str:
+    """Name of the live SQLAlchemy engine dialect (``sqlite`` / ``postgresql``).
+
+    Reuses the canonical ``engine.dialect.name`` probe (same source as
+    ``app.database.data_migration._is_postgres``). This is the *actual* engine
+    bound at startup, distinct from ``database_kind`` (derived from the config
+    URL string): the ADR-0041 cut-over target is PostgreSQL, so surfacing the
+    live dialect tells the operator which engine the readiness check ran against.
+    """
+    return engine.dialect.name
 
 
 def _database_path_exists() -> bool:
@@ -218,6 +232,7 @@ def _report(
         backend_version=BACKEND_VERSION,
         identity_schema=IDENTITY_SCHEMA_VERSION,
         database_kind=database_kind,
+        dialect=_live_dialect_name(),
         backup_created=backup_created,
         latest_backup=latest_backup.file_name if latest_backup else None,
         latest_backup_kind=latest_backup.kind if latest_backup else None,

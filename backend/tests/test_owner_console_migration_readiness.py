@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.main import app
 from app.models import BackgroundTask
 from app.routes.owner_console import _require_local
@@ -72,6 +72,25 @@ def test_owner_migration_readiness_page_opens(local_client: TestClient) -> None:
     assert "v1.0 迁移预检" in resp.text
     assert "检查项" in resp.text
     assert "创建 pre-v1.0 备份并重新检查" in resp.text
+
+
+def test_owner_migration_readiness_reports_live_db_dialect(
+    local_client: TestClient,
+) -> None:
+    # The report carries the live SQLAlchemy engine dialect (reusing
+    # engine.dialect.name) — distinct from database_kind (config-URL derived).
+    # ADR-0041's cut-over target is PostgreSQL, so the operator needs to see
+    # which engine the readiness check actually ran against.
+    report = build_v1_migration_readiness_report(create_backup=False)
+    assert report.dialect == engine.dialect.name
+    assert report.dialect in {"sqlite", "postgresql"}
+    assert report.to_dict()["dialect"] == engine.dialect.name
+
+    resp = local_client.get("/owner/migration-readiness")
+
+    assert resp.status_code == 200
+    assert "数据库方言" in resp.text
+    assert engine.dialect.name in resp.text
 
 
 def test_owner_migration_readiness_remote_returns_403(client: TestClient) -> None:

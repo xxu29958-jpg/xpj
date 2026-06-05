@@ -42,6 +42,7 @@ def _migration_readiness_view(
         "backend_version": report.backend_version,
         "identity_schema": report.identity_schema,
         "database_kind": report.database_kind,
+        "dialect": report.dialect,
         "ready": report.ready,
         "backup_created": report.backup_created,
         "latest_backup": report.latest_backup,
