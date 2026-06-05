@@ -84,6 +84,18 @@ jobs:
           # degrades to strict-equality vs the committed baseline file.
           fetch-depth: 0
 
+      - name: Point gradle at the Android SDK (self-hosted runner)
+        # The runner's fresh checkout has no git-ignored local.properties.
+        # Prefer the runner's ANDROID_HOME if it ever gets one; else fall back to
+        # this box's project-local toolchain SDK — that's what local dev builds
+        # against (the global ~/AppData SDK is missing build-tools). Update the
+        # fallback path on a new machine / the future Mac Mini.
+        run: |
+          $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "E:/projects/xiaopiaojia/.toolchains/android-sdk" }
+          $sdkEscaped = ($sdk -replace '\\','/') -replace ':','\:'
+          Set-Content -Path local.properties -Value "sdk.dir=$sdkEscaped" -Encoding ascii
+          Get-Content local.properties
+
       - name: Gradle / JVM versions
         run: .\gradlew.bat --no-daemon --version
 
