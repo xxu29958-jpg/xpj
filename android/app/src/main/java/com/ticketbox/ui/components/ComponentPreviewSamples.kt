@@ -58,7 +58,7 @@ private fun AppVisualComponentsPreview() {
                 ) {
                     ReceiptIllustration(compact = true)
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AppStatusPill(text = "无待确认")
+                        StatusPill(text = "无待确认", active = true)
                         Text("识别结果只是草稿")
                     }
                 }

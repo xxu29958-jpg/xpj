@@ -33,8 +33,6 @@
     call("initTrendChart");
     call("initCategoryDonut");
     call("initDragReorder");
-    call("initSwipeRow");
-    call("initSkeleton");
     call("initSplitLayout");
   }
 

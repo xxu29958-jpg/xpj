@@ -25,10 +25,6 @@
     return app.homeCurrencySymbol() + app.escapeHtml(value);
   };
 
-  app.homeMoneyRounded = function homeMoneyRounded(value) {
-    return app.homeCurrencySymbol() + app.escapeHtml(Math.round(Number(value || 0)));
-  };
-
   app.dashboardUrl = function dashboardUrl(path, ledgerId, extra) {
     const params = new URLSearchParams(extra || {});
     if (ledgerId) params.set("ledger_id", ledgerId);

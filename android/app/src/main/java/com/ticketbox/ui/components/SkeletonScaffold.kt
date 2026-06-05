@@ -40,26 +40,3 @@ fun SkeletonScaffold(
         } else { content() }
     }
 }
-
-@Composable
-fun ListSkeletonPreset(
-    rows: Int = 6,
-    modifier: Modifier = Modifier,
-    verticalSpacing: Dp = AppSpacing.smallGap,
-) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(verticalSpacing)) {
-        repeat(rows) { ListItemSkeleton() }
-    }
-}
-
-@Composable
-fun CardStackSkeletonPreset(
-    cards: Int = 3,
-    lines: Int = 3,
-    modifier: Modifier = Modifier,
-    verticalSpacing: Dp = AppSpacing.contentGap,
-) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(verticalSpacing)) {
-        repeat(cards) { CardSkeleton(lines = lines) }
-    }
-}

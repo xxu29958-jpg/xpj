@@ -25,44 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun MonthSelectorButton(
-    modifier: Modifier = Modifier,
-    selectedMonth: String,
-    label: String = "月份",
-    onClick: () -> Unit,
-) {
-    AppSolidCard(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = label,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-                Text(
-                    text = selectedMonth.takeIf { it.isNotBlank() }?.let(::displayMonthLabel) ?: "全部月份",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-            }
-            Icon(
-                imageVector = Icons.Filled.ExpandMore,
-                contentDescription = "选择月份",
-            )
-        }
-    }
-}
-
-@Composable
 fun MonthPickerSheet(
     months: List<String>,
     selectedMonth: String,
