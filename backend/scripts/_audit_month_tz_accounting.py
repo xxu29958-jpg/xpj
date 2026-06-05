@@ -12,12 +12,14 @@ The correct form threads the accounting tz: ``current_month(tz)`` /
 ``<utc>.astimezone(<zone>)`` *before* taking ``.month`` / ``%Y-%m``.
 
 This lane walks the AST and flags ``.month`` / a year-month ``.strftime(...)`` /
-a year-month f-string ``format_spec`` whose root is a UTC now — taken either
-directly (``now_utc().month``) **or** through a local variable that holds a raw
-UTC now (``m = now_utc(); m.month``) — with NO ``.astimezone(...)`` between the
-now and the access. The canonical helpers thread the tz as a parameter (so the
-now is already localized via ``.astimezone``) and are not flagged; ``time_service``
-itself IS the helper and is allowlisted.
+a year-month f-string ``format_spec`` whose root is a UTC now — taken directly
+(``now_utc().month``), through a local variable holding a raw UTC now
+(``m = now_utc(); m.month``), or through a same-file zero-/any-arg helper that
+returns a raw UTC now (``def _now(): return now_utc()`` then ``_now().month``) —
+with NO ``.astimezone(...)`` between the now and the access. The canonical
+helpers thread the tz as a parameter (so the now is already localized via
+``.astimezone``) and are not flagged; ``time_service`` IS the helper and is
+allowlisted.
 
 Run from ``backend/``::
 
@@ -36,8 +38,8 @@ import sys
 APP_DIR = pathlib.Path("app")
 
 # Calls that return a *UTC* now. ``.month`` / year-month ``.strftime`` taken off
-# one of these (directly or via a raw-now local var), with no intervening
-# ``.astimezone(...)``, is the bug.
+# one of these (directly, via a raw-now local var, or via a now-returning helper),
+# with no intervening ``.astimezone(...)``, is the bug.
 _NOW_FUNCS = ("now_utc", "now", "utcnow")
 
 # A format string that is *only* a year-month label (any separator / order),
@@ -51,14 +53,15 @@ _DAY_OR_TIME_FIELD = re.compile(r"%[djHMSpILUWwyfzZcxX]")
 ALLOWLIST = ("app/services/time_service.py",)
 
 _NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+_EMPTY: frozenset[str] = frozenset()
 
 
-def _is_now_call(node: ast.AST) -> bool:
+def _is_now_call(node: ast.AST, aliases: frozenset[str] = _EMPTY) -> bool:
     if not isinstance(node, ast.Call):
         return False
     func = node.func
     if isinstance(func, ast.Name):
-        return func.id in _NOW_FUNCS
+        return func.id in _NOW_FUNCS or func.id in aliases
     if isinstance(func, ast.Attribute):  # datetime.now(...) / datetime.utcnow()
         return func.attr in _NOW_FUNCS
     return False
@@ -79,12 +82,14 @@ def _astimezone_in_chain(node: ast.AST) -> bool:
             return False
 
 
-def _root_now_or_tainted(node: ast.AST, tainted: frozenset[str]) -> bool:
-    """Walk the attribute/call chain; True if its root is a UTC-now call or a
-    local name that currently holds a raw UTC now (``tainted``)."""
+def _root_now_or_tainted(
+    node: ast.AST, tainted: frozenset[str], aliases: frozenset[str] = _EMPTY
+) -> bool:
+    """Walk the attribute/call chain; True if its root is a UTC-now call (incl. a
+    now-returning helper) or a local name holding a raw UTC now (``tainted``)."""
     cur = node
     while True:
-        if _is_now_call(cur):
+        if _is_now_call(cur, aliases):
             return True
         if isinstance(cur, ast.Name):
             return cur.id in tainted
@@ -122,7 +127,7 @@ def _assignment_target_and_value(node: ast.AST):
     return [], None
 
 
-def _tainted_names(scope: ast.AST) -> frozenset[str]:
+def _tainted_names(scope: ast.AST, aliases: frozenset[str] = _EMPTY) -> frozenset[str]:
     """Names whose *every* assignment in this scope is a raw UTC now (now-rooted,
     no ``.astimezone``) — i.e. the name holds a raw UTC instant. A name ever
     assigned anything else (incl. a localized value) is NOT tainted, so the
@@ -133,10 +138,29 @@ def _tainted_names(scope: ast.AST) -> frozenset[str]:
         names, value = _assignment_target_and_value(node)
         if not names:
             continue
-        is_raw_now = _root_now_or_tainted(value, frozenset()) and not _astimezone_in_chain(value)
+        is_raw_now = _root_now_or_tainted(value, _EMPTY, aliases) and not _astimezone_in_chain(value)
         for name in names:
             (raw if is_raw_now else other).add(name)
     return frozenset(raw - other)
+
+
+def _collect_now_aliases(tree: ast.AST) -> frozenset[str]:
+    """Names of same-file helpers whose *every* ``return`` yields a raw UTC now
+    (now-rooted, no ``.astimezone``) — calling such a helper is itself a raw now.
+    Intra-file only; one level (helper → ``now_utc()``), no cross-module chase."""
+    aliases: set[str] = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        returns = [
+            n for n in _iter_scope(fn) if isinstance(n, ast.Return) and n.value is not None
+        ]
+        if returns and all(
+            _root_now_or_tainted(r.value, _tainted_names(fn)) and not _astimezone_in_chain(r.value)
+            for r in returns
+        ):
+            aliases.add(fn.name)
+    return frozenset(aliases)
 
 
 def _month_only_strftime_fmt(node: ast.Call) -> str | None:
@@ -171,6 +195,7 @@ def _classify_month_fmt(fmt: object) -> str | None:
 
 def _hits(path: pathlib.Path, tree: ast.AST) -> list[str]:
     out: list[str] = []
+    aliases = _collect_now_aliases(tree)
     scopes: list[ast.AST] = [tree]
     scopes += [
         n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -180,23 +205,23 @@ def _hits(path: pathlib.Path, tree: ast.AST) -> list[str]:
         ".astimezone(accounting tz) before the access"
     )
     for scope in scopes:
-        tainted = _tainted_names(scope)
+        tainted = _tainted_names(scope, aliases)
         for node in _iter_scope(scope):
-            # case 1: <now-or-raw-now-var>.month  (no .astimezone between)
+            # case 1: <now-or-raw-now-var-or-now-helper>.month  (no .astimezone)
             if (
                 isinstance(node, ast.Attribute)
                 and node.attr == "month"
-                and _root_now_or_tainted(node.value, tainted)
+                and _root_now_or_tainted(node.value, tainted, aliases)
                 and not _astimezone_in_chain(node.value)
             ):
                 out.append(f"{path.as_posix()}:{node.lineno} `.month` off a UTC now — {advice}")
                 continue
-            # case 2: <now-or-raw-now-var>.strftime("%Y-%m")
+            # case 2: <...>.strftime("%Y-%m")
             if isinstance(node, ast.Call):
                 fmt = _month_only_strftime_fmt(node)
                 if (
                     fmt is not None
-                    and _root_now_or_tainted(node.func, tainted)
+                    and _root_now_or_tainted(node.func, tainted, aliases)
                     and not _astimezone_in_chain(node.func)
                 ):
                     out.append(
@@ -204,12 +229,12 @@ def _hits(path: pathlib.Path, tree: ast.AST) -> list[str]:
                         f"off a UTC now — {advice}"
                     )
                     continue
-            # case 3: f-string  f"{<now-or-raw-now-var>:%Y-%m}"
+            # case 3: f-string  f"{<...>:%Y-%m}"
             if isinstance(node, ast.FormattedValue):
                 fmt = _fstring_month_spec(node)
                 if (
                     fmt is not None
-                    and _root_now_or_tainted(node.value, tainted)
+                    and _root_now_or_tainted(node.value, tainted, aliases)
                     and not _astimezone_in_chain(node.value)
                 ):
                     out.append(
