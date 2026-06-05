@@ -80,7 +80,8 @@
     font-size: 16px;
     color: var(--text-default);
     text-align: right;
-    font-weight: 500;
+    /* 金额是账单行的视觉焦点：SemiBold 与 14px/500 的商家名拉开层级（token 注释「最重 SemiBold 即止」内）。 */
+    font-weight: 600;
 }
 .exp-amt-missing { color: var(--state-danger-fg); font-family: var(--font-zh); font-size: 12.5px; font-weight: normal; }
 .exp-cat {

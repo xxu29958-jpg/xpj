@@ -100,6 +100,7 @@ import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.components.formatAmount
 import com.ticketbox.ui.components.formatAmountInput
 import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.theme.backgroundBrushForSkin
 import com.ticketbox.ui.theme.colorSchemeForSkin
 import com.ticketbox.viewmodel.SettingsUiState
@@ -138,117 +139,130 @@ fun SettingsRootScreen(
         subtitle = "账本状态、外观和本机数据。",
         onBack = null,
     ) {
-        AccountStatusCard(
-            serverSettings = state.serverSettings,
-            accountName = state.accountName,
-            ledgerName = state.ledgerName,
-            deviceName = state.deviceName,
-            role = state.role,
-            lastUploadAt = state.lastUploadAt,
-            lastSyncAt = state.lastConfirmedSyncAt,
-        )
-        SettingsEntryRow(
-            title = connectionTitle,
-            subtitle = connectionSubtitle,
-            icon = Icons.Filled.CloudDone,
-            onClick = onOpenServer,
-        )
-        SettingsEntryRow(
-            title = "外观与主题",
-            subtitle = "主题皮肤、自定义背景、沉浸强度",
-            icon = Icons.Filled.Palette,
-            onClick = onOpenAppearance,
-        )
-        SettingsEntryRow(
-            title = "首页卡片",
-            subtitle = "调整统计页卡片显示、隐藏和排序",
-            icon = Icons.Filled.DashboardCustomize,
-            onClick = onOpenDashboardCards,
-        )
-        SettingsEntryRow(
-            title = "分类规则",
-            subtitle = "商家关键词和自动分类建议",
-            icon = Icons.Filled.Category,
-            onClick = onOpenCategoryRules,
-        )
-        SettingsEntryRow(
-            title = "商家别名",
-            subtitle = "把不同写法归到同一商家",
-            icon = Icons.Filled.Tune,
-            onClick = onOpenMerchantAliases,
-        )
-        SettingsEntryRow(
-            title = "数据与导出",
-            subtitle = "本地缓存、表格导出说明",
-            icon = Icons.Filled.FileDownload,
-            onClick = onOpenDataExport,
-        )
-        SettingsEntryRow(
-            title = "通知与提醒",
-            subtitle = "待确认、大额和固定支出提醒开关",
-            icon = Icons.Filled.Notifications,
-            onClick = onOpenNotifications,
-        )
-        SettingsEntryRow(
-            title = "安全与隐私",
-            subtitle = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
-                "本机解锁、本地数据、退出账本"
-            } else {
-                "本机验证已关闭、本地数据、退出账本"
-            },
-            icon = Icons.Filled.Security,
-            onClick = onOpenSecurity,
-        )
-        SettingsEntryRow(
-            title = "账本 (实验)",
-            subtitle = "查看、切换、新建账本",
-            icon = Icons.Filled.FolderShared,
-            onClick = onOpenLedgers,
-        )
-        SettingsEntryRow(
-            title = "家庭成员",
-            subtitle = "查看当前账本成员、角色和状态",
-            icon = Icons.Filled.Group,
-            onClick = onOpenFamilyMembers,
-        )
-        SettingsEntryRow(
-            title = "加入家庭账本",
-            subtitle = "使用本机管理后台生成的邀请明文",
-            icon = Icons.Filled.GroupAdd,
-            onClick = onOpenJoinFamilyLedger,
-        )
-        SettingsEntryRow(
-            title = "拆账",
-            subtitle = "收到的拆账邀请与你发出的拆账",
-            icon = Icons.Filled.Group,
-            onClick = onOpenBillSplits,
-        )
-        SettingsEntryRow(
-            title = "后台任务",
-            subtitle = "CSV 导入 / v1.0 迁移等长任务的状态",
-            icon = Icons.Filled.Tune,
-            onClick = onOpenBackgroundTasks,
-        )
-        SettingsEntryRow(
-            title = "离线同步",
-            subtitle = "离线改动的同步状态，处理冲突与失败",
-            icon = Icons.Filled.Sync,
-            onClick = onOpenSyncStatus,
-        )
-        SettingsEntryRow(
-            title = "收入计划",
-            subtitle = "记录月度收入，算「本月可自由支配」",
-            icon = Icons.Filled.AccountBalanceWallet,
-            onClick = onOpenIncomePlans,
-        )
-        SettingsEntryRow(
-            title = "关于",
-            subtitle = "版本和产品边界",
-            icon = Icons.Filled.Info,
-            onClick = onOpenAbout,
-        )
-        state.message?.let {
-            Text(it, color = MaterialTheme.colorScheme.secondary)
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
+            AccountStatusCard(
+                serverSettings = state.serverSettings,
+                accountName = state.accountName,
+                ledgerName = state.ledgerName,
+                deviceName = state.deviceName,
+                role = state.role,
+                lastUploadAt = state.lastUploadAt,
+                lastSyncAt = state.lastConfirmedSyncAt,
+            )
+            // 16 入口按功能域分 5 组（高频靠前、罕用靠后），用已有 SettingsSection 做分组标题。
+            SettingsSection(title = "账本与同步", icon = Icons.Filled.CloudDone) {
+                SettingsEntryRow(
+                    title = connectionTitle,
+                    subtitle = connectionSubtitle,
+                    icon = Icons.Filled.CloudDone,
+                    onClick = onOpenServer,
+                )
+                SettingsEntryRow(
+                    title = "离线同步",
+                    subtitle = "离线改动的同步状态，处理冲突与失败",
+                    icon = Icons.Filled.Sync,
+                    onClick = onOpenSyncStatus,
+                )
+                SettingsEntryRow(
+                    title = "后台任务",
+                    subtitle = "CSV 导入 / v1.0 迁移等长任务的状态",
+                    icon = Icons.Filled.Tune,
+                    onClick = onOpenBackgroundTasks,
+                )
+                SettingsEntryRow(
+                    title = "账本 (实验)",
+                    subtitle = "查看、切换、新建账本",
+                    icon = Icons.Filled.FolderShared,
+                    onClick = onOpenLedgers,
+                )
+            }
+            SettingsSection(title = "记账设置", icon = Icons.Filled.Category) {
+                SettingsEntryRow(
+                    title = "分类规则",
+                    subtitle = "商家关键词和自动分类建议",
+                    icon = Icons.Filled.Category,
+                    onClick = onOpenCategoryRules,
+                )
+                SettingsEntryRow(
+                    title = "商家别名",
+                    subtitle = "把不同写法归到同一商家",
+                    icon = Icons.Filled.Tune,
+                    onClick = onOpenMerchantAliases,
+                )
+                SettingsEntryRow(
+                    title = "通知与提醒",
+                    subtitle = "待确认、大额和固定支出提醒开关",
+                    icon = Icons.Filled.Notifications,
+                    onClick = onOpenNotifications,
+                )
+                SettingsEntryRow(
+                    title = "收入计划",
+                    subtitle = "记录月度收入，算「本月可自由支配」",
+                    icon = Icons.Filled.AccountBalanceWallet,
+                    onClick = onOpenIncomePlans,
+                )
+            }
+            SettingsSection(title = "家庭协作", icon = Icons.Filled.Group) {
+                SettingsEntryRow(
+                    title = "家庭成员",
+                    subtitle = "查看当前账本成员、角色和状态",
+                    icon = Icons.Filled.Group,
+                    onClick = onOpenFamilyMembers,
+                )
+                SettingsEntryRow(
+                    title = "加入家庭账本",
+                    subtitle = "使用本机管理后台生成的邀请明文",
+                    icon = Icons.Filled.GroupAdd,
+                    onClick = onOpenJoinFamilyLedger,
+                )
+                SettingsEntryRow(
+                    title = "拆账",
+                    subtitle = "收到的拆账邀请与你发出的拆账",
+                    icon = Icons.Filled.Group,
+                    onClick = onOpenBillSplits,
+                )
+            }
+            SettingsSection(title = "外观与数据", icon = Icons.Filled.Palette) {
+                SettingsEntryRow(
+                    title = "外观与主题",
+                    subtitle = "主题皮肤、自定义背景、沉浸强度",
+                    icon = Icons.Filled.Palette,
+                    onClick = onOpenAppearance,
+                )
+                SettingsEntryRow(
+                    title = "首页卡片",
+                    subtitle = "调整统计页卡片显示、隐藏和排序",
+                    icon = Icons.Filled.DashboardCustomize,
+                    onClick = onOpenDashboardCards,
+                )
+                SettingsEntryRow(
+                    title = "数据与导出",
+                    subtitle = "本地缓存、表格导出说明",
+                    icon = Icons.Filled.FileDownload,
+                    onClick = onOpenDataExport,
+                )
+            }
+            SettingsSection(title = "安全与关于", icon = Icons.Filled.Security) {
+                SettingsEntryRow(
+                    title = "安全与隐私",
+                    subtitle = if (BuildConfig.REQUIRE_LOCAL_UNLOCK) {
+                        "本机解锁、本地数据、退出账本"
+                    } else {
+                        "本机验证已关闭、本地数据、退出账本"
+                    },
+                    icon = Icons.Filled.Security,
+                    onClick = onOpenSecurity,
+                )
+                SettingsEntryRow(
+                    title = "关于",
+                    subtitle = "版本和产品边界",
+                    icon = Icons.Filled.Info,
+                    onClick = onOpenAbout,
+                )
+            }
+            state.message?.let {
+                Text(it, color = MaterialTheme.colorScheme.secondary)
+            }
         }
     }
 }

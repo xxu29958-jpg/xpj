@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -36,13 +35,13 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
-import com.patrykandpatrick.vico.compose.cartesian.data.lineSeries
-import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.data.columnSeries
+import com.patrykandpatrick.vico.compose.cartesian.layer.ColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.ReportCategoryComparison
@@ -103,14 +102,20 @@ internal fun ReportsInsightCard(
                     fontWeight = AppTextHierarchy.heading.weight,
                 )
             }
-            if (chartPoints.any { it.amountCents > 0L }) {
-                ReportsTrendLineChart(points = chartPoints)
-            } else {
-                Text(
+            val nonZeroDays = chartPoints.count { it.amountCents > 0L }
+            when {
+                nonZeroDays == 0 -> Text(
                     text = "这个月份还没有可画出的确认支出。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                // 稀疏态：1–2 天有支出时柱状信息量太低，降级成文案而非画误导图（区分 空态/稀疏态/正常态）。
+                nonZeroDays <= 2 -> Text(
+                    text = "本月只有 $nonZeroDays 天有确认支出，数据还太少；多记几笔后这里会显示每日支出柱状趋势。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                else -> ReportsTrendColumnChart(points = chartPoints)
             }
             if (overview.merchantRanking.isNotEmpty()) {
                 RankingBlock(
@@ -154,7 +159,7 @@ internal fun GoalsSummaryCard(
 }
 
 @Composable
-private fun ReportsTrendLineChart(points: List<ReportTrendChartPoint>) {
+private fun ReportsTrendColumnChart(points: List<ReportTrendChartPoint>) {
     val chartTokens = LocalChartTokens.current
     val modelProducer = remember { CartesianChartModelProducer() }
     val labels = remember(points) { points.map { it.label } }
@@ -164,11 +169,12 @@ private fun ReportsTrendLineChart(points: List<ReportTrendChartPoint>) {
     val startAxisValueFormatter = CartesianValueFormatter { _, value, _ ->
         compactAmountCentsLabel(value.toLong())
     }
-    val lineColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
+    val columnColor = chartTokens.series.firstOrNull() ?: MaterialTheme.colorScheme.primary
 
     LaunchedEffect(points) {
         modelProducer.runTransaction {
-            lineSeries {
+            // 按天支出是离散事件：用柱状强调每天的量级，不用折线（平滑折线会暗示天与天之间连续变化）。
+            columnSeries {
                 series(
                     x = points.map { it.x },
                     y = points.map { it.amountCents },
@@ -179,18 +185,11 @@ private fun ReportsTrendLineChart(points: List<ReportTrendChartPoint>) {
 
     CartesianChartHost(
         chart = rememberCartesianChart(
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(
-                    LineCartesianLayer.rememberLine(
-                        fill = LineCartesianLayer.LineFill.single(Fill(lineColor)),
-                        areaFill = LineCartesianLayer.AreaFill.single(
-                            Fill(
-                                Brush.verticalGradient(
-                                    listOf(lineColor.copy(alpha = 0.34f), lineColor.copy(alpha = 0.02f)),
-                                ),
-                            ),
-                        ),
-                        interpolator = LineCartesianLayer.Interpolator.catmullRom(),
+            rememberColumnCartesianLayer(
+                columnProvider = ColumnCartesianLayer.ColumnProvider.series(
+                    rememberLineComponent(
+                        fill = Fill(columnColor),
+                        thickness = 10.dp,
                     ),
                 ),
             ),
