@@ -82,35 +82,3 @@ fun SafeBadge(
 ) {
     StatusPill(text = text, modifier = modifier, active = true)
 }
-
-@Composable
-fun IconChip(
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    selected: Boolean = false,
-) {
-    Row(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-            )
-            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.contentGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.chipGap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(18.dp),
-        )
-        Text(
-            text = label,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = AppTextHierarchy.body.weight,
-        )
-    }
-}

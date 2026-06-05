@@ -138,39 +138,3 @@ fun AppHeroCard(
         content()
     }
 }
-
-@Composable
-fun DeepHeroPanel(
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    AppHeroCard(modifier = modifier, content = content)
-}
-
-@Composable
-fun MetricTile(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.primary,
-) {
-    Column(
-        modifier = modifier
-            .clip(MaterialTheme.shapes.medium)
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f))
-            .padding(horizontal = AppSpacing.cardPaddingTight, vertical = AppSpacing.compactGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
-        Text(
-            text = value,
-            color = tint,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = AppTextHierarchy.heading.weight,
-        )
-    }
-}

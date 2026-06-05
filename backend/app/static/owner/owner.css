@@ -279,10 +279,6 @@ form.inline { display: inline; }
     outline-offset: 2px;
     border-radius: 2px;
 }
-.nav a:focus-visible {
-    outline-offset: 0;
-    background: var(--state-neutral-bg);
-}
 
 /* ───── Skeleton 占位骨架（与 /web components/skeleton.css 同语义） ───── */
 @keyframes skeleton-shimmer {
