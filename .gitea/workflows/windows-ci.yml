@@ -29,9 +29,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
           Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           git init -q $ws
+          if ($LASTEXITCODE -ne 0) { throw "git init failed" }
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $origin = "$server/$env:GITHUB_REPOSITORY.git"
+          if (@(git -C $ws remote) -contains "origin") {
+            git -C $ws remote set-url origin $origin
+          } else {
+            git -C $ws remote add origin $origin
+          }
+          if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
           $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
-          git -C $ws remote add origin "$server/$env:GITHUB_REPOSITORY.git"
           git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
@@ -128,9 +135,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
           Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           git init -q $ws
+          if ($LASTEXITCODE -ne 0) { throw "git init failed" }
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $origin = "$server/$env:GITHUB_REPOSITORY.git"
+          if (@(git -C $ws remote) -contains "origin") {
+            git -C $ws remote set-url origin $origin
+          } else {
+            git -C $ws remote add origin $origin
+          }
+          if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
           $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
-          git -C $ws remote add origin "$server/$env:GITHUB_REPOSITORY.git"
           git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
@@ -177,9 +191,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path $ws | Out-Null
           Get-ChildItem -LiteralPath $ws -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
           git init -q $ws
+          if ($LASTEXITCODE -ne 0) { throw "git init failed" }
           $server = $env:GITHUB_SERVER_URL.TrimEnd('/')
+          $origin = "$server/$env:GITHUB_REPOSITORY.git"
+          if (@(git -C $ws remote) -contains "origin") {
+            git -C $ws remote set-url origin $origin
+          } else {
+            git -C $ws remote add origin $origin
+          }
+          if ($LASTEXITCODE -ne 0) { throw "git remote setup failed" }
           $b64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:REPO_TOKEN"))
-          git -C $ws remote add origin "$server/$env:GITHUB_REPOSITORY.git"
           git -C $ws -c "http.extraheader=AUTHORIZATION: basic $b64" -c protocol.version=2 fetch -q --prune --no-recurse-submodules origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
           if ($LASTEXITCODE -ne 0) { throw "git fetch from local Gitea failed" }
           git -C $ws checkout -q -f $env:GITHUB_SHA
