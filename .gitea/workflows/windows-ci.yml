@@ -90,6 +90,8 @@ jobs:
 
       - name: Dependency vulnerability scan
         working-directory: backend
+        env:
+          PYTHONUTF8: "1"
         run: |
           .\.ci-venv\Scripts\python.exe -m pip install pip-audit
           .\.ci-venv\Scripts\python.exe -m pip_audit --strict --vulnerability-service osv -r requirements.txt -r requirements-dev.txt
