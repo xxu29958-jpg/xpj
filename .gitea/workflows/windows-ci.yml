@@ -48,3 +48,53 @@ jobs:
       - name: Test backend
         working-directory: backend
         run: .\.ci-venv\Scripts\python.exe -m pytest -q
+
+      - name: API contract (OpenAPI snapshot in sync)
+        working-directory: backend
+        run: .\.ci-venv\Scripts\python.exe scripts\check_api_contract.py
+
+      - name: Release audit (19 read-only lanes)
+        # Single gate for every audit in scripts/release_audit.py::LANES —
+        # dispatcher coverage, token parity, mutate-token coverage, pr-delta
+        # count, dialect convergence, etc. On a push event (no base ref) the
+        # pr-delta lane runs strict-equality vs the committed baseline.
+        working-directory: backend
+        run: .\.ci-venv\Scripts\python.exe scripts\release_audit.py
+
+  android-unit:
+    name: Android unit
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        working-directory: android
+        shell: powershell
+
+    env:
+      # Mirrors ci.yml: populates BuildConfig.DEFAULT_SERVER_URL without
+      # hardcoding the domain in build.gradle.kts.
+      TICKETBOX_SERVER_URL: https://api.zen70.cn
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # assertAndroidTestCountEqualsBaseline reads the base baseline via
+          # git on PR events; full history keeps that reachable. On push it
+          # degrades to strict-equality vs the committed baseline file.
+          fetch-depth: 0
+
+      - name: Gradle / JVM versions
+        run: .\gradlew.bat --no-daemon --version
+
+      - name: Compile + unit tests
+        run: .\gradlew.bat --no-daemon :app:compileGrayDebugKotlin :app:testGrayDebugUnitTest
+
+      - name: Assert test count equals baseline
+        run: .\gradlew.bat --no-daemon :app:assertAndroidTestCountEqualsBaseline
+
+      - name: Lint
+        run: .\gradlew.bat --no-daemon :app:lintGrayDebug
+
+      - name: Assemble gray debug APK
+        run: .\gradlew.bat --no-daemon :app:assembleGrayDebug
