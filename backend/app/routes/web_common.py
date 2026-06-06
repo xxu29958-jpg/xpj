@@ -115,6 +115,17 @@ def _list_ledger_options(db: Session) -> list[LedgerOption]:
     ]
 
 
+def _stamp_session_role(options: list[LedgerOption] | None, session_auth) -> None:
+    """Override the matching ledger option's role with the Web session's role
+    (ENGINEERING_RULES §14: a session's role gates writes, not the owner console)."""
+    if options is None:
+        return
+    for opt in options:
+        if opt.ledger_id == session_auth.ledger_id:
+            opt.role = session_auth.role
+            return
+
+
 def _resolve_selected_ledger_id(
     db: Session,
     requested: str | None,
@@ -138,6 +149,10 @@ def _resolve_selected_ledger_id(
     if request is not None:
         session_auth = getattr(request.state, "web_session_auth", None)
         if session_auth is not None:
+            # ENGINEERING_RULES §14: a Web session's role is the paired device's
+            # role on its ledger, NOT the owner-console role — stamp it on so the
+            # write-gate + rendered role reflect the session (viewer stays RO).
+            _stamp_session_role(options, session_auth)
             return session_auth.ledger_id
 
     opts = options if options is not None else _list_ledger_options(db)
@@ -170,8 +185,12 @@ def _selected_option(options: list[LedgerOption], ledger_id: str) -> LedgerOptio
 
 
 def _require_selected_ledger_write(options: list[LedgerOption], ledger_id: str) -> None:
-    selected = _selected_option(options, ledger_id)
-    if selected.role not in {"owner", "member"}:
+    # Deny if the ledger isn't an explicit option for this caller: never fall
+    # back to options[0] (a different ledger that may be writable) for a WRITE
+    # gate. The role on the matching option already reflects the Web session
+    # (stamped by _resolve_selected_ledger_id) vs. the owner console.
+    selected = next((opt for opt in options if opt.ledger_id == ledger_id), None)
+    if selected is None or selected.role not in {"owner", "member"}:
         raise AppError(
             "permission_denied",
             "当前角色为只读，无法修改账本。",

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -259,6 +260,17 @@ def _claim_merge_pair(
 # --------------------------------------------------------------------------- #
 # Mutations
 # --------------------------------------------------------------------------- #
+def _tag_conflict_error(clash: Tag | None, tag: Tag) -> AppError:
+    """409 tag_conflict carrying the clashing tag's public_id + row_version so the
+    client can offer a merge (契约 5); None details when clash is absent / self."""
+    details = (
+        {"conflict_tag_public_id": clash.public_id, "conflict_tag_row_version": int(clash.row_version)}
+        if clash is not None and clash.id != tag.id
+        else None
+    )
+    return AppError("tag_conflict", status_code=409, details=details)
+
+
 def rename_tag(
     db: Session,
     *,
@@ -281,24 +293,25 @@ def rename_tag(
     if new_key != tag.key:
         clash = _tag_by_key_any_state(db, tenant_id, new_key)
         if clash is not None and clash.id != tag.id:
-            raise AppError(
-                "tag_conflict",
-                status_code=409,
-                details={
-                    "conflict_tag_public_id": clash.public_id,
-                    "conflict_tag_row_version": int(clash.row_version),
-                },
-            )
+            raise _tag_conflict_error(clash, tag)
 
-    rowcount = claim_row_with_token(
-        db,
-        Tag,
-        pk_id=tag.id,
-        tenant_id=tenant_id,
-        expected_row_version=expected_row_version,
-        set_values={"name": new_name, "key": new_key, "updated_at": now_utc()},
-        synchronize_session=False,
-    )
+    try:
+        rowcount = claim_row_with_token(
+            db,
+            Tag,
+            pk_id=tag.id,
+            tenant_id=tenant_id,
+            expected_row_version=expected_row_version,
+            set_values={"name": new_name, "key": new_key, "updated_at": now_utc()},
+            synchronize_session=False,
+        )
+    except IntegrityError as exc:
+        # A concurrent rename committed the same key between the pre-check above
+        # and this UPDATE — the (tenant_id, key) unique constraint fires. Surface
+        # the ADR 409 tag_conflict (merge hint, 契约 5) instead of a raw 500.
+        db.rollback()
+        clash = _tag_by_key_any_state(db, tenant_id, new_key)
+        raise _tag_conflict_error(clash, tag) from exc
     if rowcount != 1:
         raise _disambiguate_tag_claim(db, tenant_id, public_id)
 
