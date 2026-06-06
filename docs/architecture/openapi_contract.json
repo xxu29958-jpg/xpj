@@ -1071,6 +1071,24 @@
         "title": "Body_owner_settings_set_public_base_url_owner_settings_public_base_url_post",
         "type": "object"
       },
+      "Body_owner_tag_cleanup_delete_owner_tag_cleanup_delete_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id"
+        ],
+        "title": "Body_owner_tag_cleanup_delete_owner_tag_cleanup_delete_post",
+        "type": "object"
+      },
       "Body_owner_upload_links_limits_owner_upload_links__public_id__limits_post": {
         "properties": {
           "daily_byte_budget": {
@@ -2158,6 +2176,80 @@
           }
         },
         "title": "Body_web_splits_save_web_expenses__expense_id__splits_save_post",
+        "type": "object"
+      },
+      "Body_web_tag_delete_web_tags__public_id__delete_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_tag_delete_web_tags__public_id__delete_post",
+        "type": "object"
+      },
+      "Body_web_tag_merge_web_tags__public_id__merge_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_tag_merge_web_tags__public_id__merge_post",
+        "type": "object"
+      },
+      "Body_web_tag_rename_web_tags__public_id__rename_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_tag_rename_web_tags__public_id__rename_post",
+        "type": "object"
+      },
+      "Body_web_tag_undo_web_tags_mutations__mutation_public_id__undo_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          },
+          "ledger_id": {
+            "default": "",
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_tag_undo_web_tags_mutations__mutation_public_id__undo_post",
         "type": "object"
       },
       "Body_web_task_cancel_web_tasks__public_id__cancel_post": {
@@ -19045,6 +19137,90 @@
         ]
       }
     },
+    "/owner/tag-cleanup": {
+      "get": {
+        "operationId": "owner_tag_cleanup_get_owner_tag_cleanup_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Msg",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Tag Cleanup Get",
+        "tags": [
+          "owner"
+        ]
+      }
+    },
+    "/owner/tag-cleanup/delete": {
+      "post": {
+        "operationId": "owner_tag_cleanup_delete_owner_tag_cleanup_delete_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_tag_cleanup_delete_owner_tag_cleanup_delete_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Tag Cleanup Delete",
+        "tags": [
+          "owner"
+        ]
+      }
+    },
     "/owner/upload-links": {
       "get": {
         "operationId": "owner_upload_links_get_owner_upload_links_get",
@@ -23482,6 +23658,283 @@
           }
         },
         "summary": "Web Stats",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/tags": {
+      "get": {
+        "operationId": "web_tags_web_tags_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "msg",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Msg",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undo",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Undo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undo_rv",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Undo Rv",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Tags",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/tags/mutations/{mutation_public_id}/undo": {
+      "post": {
+        "operationId": "web_tag_undo_web_tags_mutations__mutation_public_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mutation_public_id",
+            "required": true,
+            "schema": {
+              "title": "Mutation Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_tag_undo_web_tags_mutations__mutation_public_id__undo_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Tag Undo",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/tags/{public_id}/delete": {
+      "post": {
+        "operationId": "web_tag_delete_web_tags__public_id__delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_tag_delete_web_tags__public_id__delete_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Tag Delete",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/tags/{public_id}/merge": {
+      "post": {
+        "operationId": "web_tag_merge_web_tags__public_id__merge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_tag_merge_web_tags__public_id__merge_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Tag Merge",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/tags/{public_id}/rename": {
+      "post": {
+        "operationId": "web_tag_rename_web_tags__public_id__rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_tag_rename_web_tags__public_id__rename_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Tag Rename",
         "tags": [
           "web"
         ]

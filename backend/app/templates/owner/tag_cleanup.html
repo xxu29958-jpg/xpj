@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}标签清理 - 小票夹 Owner Console{% endblock %}
+{% block content %}
+<h1>标签清理</h1>
+
+{% if flash_message %}
+<div class="alert alert-info" style="margin-bottom:16px">{{ flash_message }}</div>
+{% endif %}
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div>
+      <h2>孤儿标签（使用次数为 0）</h2>
+      <p class="text-meta">
+        孤儿标签 = 仍存在但没有任何账单引用的标签（最后一笔账单移除该标签后留下）。
+        孤儿标签没有账单引用，删除是安全的；删除走软删，由定时清理在窗口期后永久移除。
+        当前账本 <code>{{ tenant_id }}</code> 共 {{ total_tags }} 个标签，其中 {{ orphans|length }} 个孤儿。
+      </p>
+    </div>
+    <span class="badge badge-off">维护</span>
+  </div>
+
+  {% if orphans %}
+  <div class="table-scroll" style="margin-top:12px">
+    <table>
+      <thead>
+        <tr>
+          <th>标签</th>
+          <th class="num">使用</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for tag in orphans %}
+        <tr>
+          <td>{{ tag.name }}</td>
+          <td class="num-cell">{{ tag.usage_count }}</td>
+          <td>
+            <form method="post" action="/owner/tag-cleanup/delete" class="inline"
+                  data-confirm="删除孤儿标签 [{{ tag.name }}]？该标签没有任何账单引用。">
+              <input type="hidden" name="public_id" value="{{ tag.public_id }}">
+              <input type="hidden" name="expected_row_version" value="{{ tag.row_version }}">
+              <button type="submit" class="btn btn-danger">删除</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="empty-note" style="margin-top:12px">当前没有孤儿标签。重命名 / 合并 / 删除等管理操作请到网页端「标签管理」。</p>
+  {% endif %}
+</div>
+{% endblock %}

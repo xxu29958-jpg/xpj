@@ -69,6 +69,7 @@ from app.routes import (
     web_reports,
     web_search,
     web_stats,
+    web_tags,
     web_tasks,
 )
 from app.routes import web_rules as web_rules_routes
@@ -282,6 +283,7 @@ app.include_router(web_duplicates.router)
 app.include_router(web_import_export.router)
 app.include_router(web_recurring.router)
 app.include_router(web_merchants.router)
+app.include_router(web_tags.router)
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 
