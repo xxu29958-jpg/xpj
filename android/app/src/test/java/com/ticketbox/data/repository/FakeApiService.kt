@@ -149,6 +149,12 @@ internal class FakeApiService(
 
     override suspend fun tags(): TagsDto = unsupported()
 
+    override suspend fun listManagedTags(): com.ticketbox.data.remote.dto.TagManagementListDto = unsupported()
+    override suspend fun renameTag(publicId: String, request: com.ticketbox.data.remote.dto.TagRenameRequest): com.ticketbox.data.remote.dto.TagDetailDto = unsupported()
+    override suspend fun deleteTag(publicId: String, request: com.ticketbox.data.remote.dto.TagDeleteRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()
+    override suspend fun mergeTag(publicId: String, request: com.ticketbox.data.remote.dto.TagMergeRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()
+    override suspend fun undoTagMutation(mutationPublicId: String, request: com.ticketbox.data.remote.dto.TagUndoRequest): com.ticketbox.data.remote.dto.TagUndoDto = unsupported()
+
     override suspend fun months(timezone: String?): MonthsDto = unsupported()
 
     override suspend fun exportCsv(month: String?, category: String?, tag: String?, timezone: String?): Response<ResponseBody> = unsupported()

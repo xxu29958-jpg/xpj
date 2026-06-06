@@ -57,6 +57,14 @@ import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
+import com.ticketbox.data.remote.dto.TagDeleteRequest
+import com.ticketbox.data.remote.dto.TagDetailDto
+import com.ticketbox.data.remote.dto.TagManagementListDto
+import com.ticketbox.data.remote.dto.TagMergeRequest
+import com.ticketbox.data.remote.dto.TagMutationDto
+import com.ticketbox.data.remote.dto.TagRenameRequest
+import com.ticketbox.data.remote.dto.TagUndoDto
+import com.ticketbox.data.remote.dto.TagUndoRequest
 import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
 import com.ticketbox.data.remote.dto.UserUiPreferencesDto
@@ -357,6 +365,36 @@ interface ApiService {
     // restores the row the caller just deleted). Returns the restored alias.
     @POST("api/merchants/aliases/{publicId}/undo")
     suspend fun undoMerchantAlias(@Path("publicId") publicId: String): MerchantAliasDto
+
+    // ADR-0043 slice C — tag management (online-only mutate surface, 契约 7):
+    // every mutation carries expected_row_version in its body; NONE declares an
+    // Idempotency-Key header (declaring it would route through the replay path).
+    @GET("api/tags")
+    suspend fun listManagedTags(): TagManagementListDto
+
+    @POST("api/tags/{publicId}/rename")
+    suspend fun renameTag(
+        @Path("publicId") publicId: String,
+        @Body request: TagRenameRequest,
+    ): TagDetailDto
+
+    @POST("api/tags/{publicId}/delete")
+    suspend fun deleteTag(
+        @Path("publicId") publicId: String,
+        @Body request: TagDeleteRequest,
+    ): TagMutationDto
+
+    @POST("api/tags/{publicId}/merge")
+    suspend fun mergeTag(
+        @Path("publicId") publicId: String,
+        @Body request: TagMergeRequest,
+    ): TagMutationDto
+
+    @POST("api/tags/mutations/{mutationPublicId}/undo")
+    suspend fun undoTagMutation(
+        @Path("mutationPublicId") mutationPublicId: String,
+        @Body request: TagUndoRequest,
+    ): TagUndoDto
 
     @GET("api/rules/applications")
     suspend fun ruleApplications(

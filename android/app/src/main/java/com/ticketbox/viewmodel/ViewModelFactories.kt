@@ -12,6 +12,7 @@ import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.RecurringRepository
 import com.ticketbox.data.repository.ReportsActions
 import com.ticketbox.data.repository.RuleRepository
+import com.ticketbox.data.repository.TagActions
 import com.ticketbox.security.SecureTokenStore
 
 @Suppress("UNCHECKED_CAST")
@@ -99,6 +100,15 @@ fun merchantAliasViewModelFactory(
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return MerchantAliasViewModel(merchantRepository, repository) as T
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun tagManagementViewModelFactory(
+    tagRepository: TagActions,
+): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return TagManagementViewModel(tagRepository) as T
     }
 }
 
