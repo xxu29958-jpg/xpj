@@ -1,4 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ADR-0044: Android UI 字符串外置（string-resourcing，非翻译）。
+  只放中文；不建第二语言文件。命名 `模块_位置_用途`，不缩写，别撞车。
+  `common_*` = 跨屏复用的 UI 原子（取消/保存中/删除…），其余按 screen/module。
+  日志/调试中文不进这里；只放用户可见的。
+-->
 <resources>
     <string name="app_name">小票夹</string>
+
+    <!-- 通用：跨屏复用的 UI 原子 -->
+    <string name="common_cancel">取消</string>
+    <string name="common_saving">保存中</string>
+
+    <!-- QuickCategory：待确认流「补一下分类」sheet -->
+    <string name="quick_category_sheet_title">补一下分类</string>
+    <string name="quick_category_sheet_hint">选一个常用分类，或自定义。保存后不会自动确认入账。</string>
+    <string name="quick_category_custom_label">或者输入新分类</string>
+    <string name="quick_category_save_button">保存分类</string>
 </resources>
