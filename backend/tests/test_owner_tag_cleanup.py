@@ -70,6 +70,35 @@ def test_owner_tag_cleanup_delete_removes_orphan(local_client: TestClient, *, id
     assert "当前没有孤儿标签" in page.text
 
 
+def test_owner_tag_cleanup_delete_skips_if_no_longer_orphan(
+    local_client: TestClient, *, identity
+) -> None:
+    """TOCTOU: a tag re-used between page-load and delete is no longer an orphan
+    and must NOT be deleted (the OCC token alone can't catch this — re-tagging a
+    live tag doesn't bump its row_version)."""
+    _seed_orphan_tag(local_client, identity.app_headers)  # 工作 is the orphan
+    page = local_client.get("/owner/tag-cleanup")
+    m = _re.search(
+        r"name=\"public_id\" value=\"([^\"]+)\".*?name=\"expected_row_version\" value=\"([^\"]+)\"",
+        page.text,
+        flags=_re.DOTALL,
+    )
+    assert m, page.text[:1500]
+    public_id, token = m.group(1), m.group(2)
+
+    # Re-tag a new expense with 工作 → it's no longer an orphan (usage > 0).
+    manual_expense(local_client, identity.app_headers, tags="工作", merchant="B")
+
+    deleted = local_client.post(
+        "/owner/tag-cleanup/delete",
+        data={"public_id": public_id, "expected_row_version": token},
+        follow_redirects=False,
+    )
+    assert deleted.status_code == 303
+    # The delete was skipped — 工作 is still a live tag (now in use).
+    assert "工作" in tag_index(local_client, identity.app_headers)
+
+
 def test_owner_tag_cleanup_remote_returns_403(client: TestClient, *, identity) -> None:
     # Both the GET panel AND the POST mutate must be loopback-gated. There is no
     # owner route-inventory guard (unlike /web), so this test is the only thing

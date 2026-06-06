@@ -66,6 +66,20 @@ def owner_tag_cleanup_delete(
             url=f"/owner/tag-cleanup?msg={quote('该标签已变化或不存在，请刷新后重试。')}",
             status_code=303,
         )
+    # TOCTOU guard: re-assert orphan-ness in the SAME request right before the
+    # delete. Tagging a live tag does NOT bump its row_version (only the
+    # soft-delete-revive path does), so the OCC token alone can't catch an
+    # expense re-tagged between page-load and this click — this re-check does.
+    # The window between this read and delete_tag's claim is a single
+    # synchronous handler with no I/O, so it's effectively closed.
+    if not any(
+        t.public_id == public_id and t.usage_count == 0
+        for t in list_tags_with_usage(db, tenant_id)
+    ):
+        return RedirectResponse(
+            url=f"/owner/tag-cleanup?msg={quote('该标签已不再是孤儿（可能刚被使用），已跳过。')}",
+            status_code=303,
+        )
     try:
         delete_tag(
             db,

@@ -56,6 +56,17 @@ fun TagManagementScreen(
     var renaming by remember { mutableStateOf<ManagedTag?>(null) }
     var merging by remember { mutableStateOf<ManagedTag?>(null) }
     var deleting by remember { mutableStateOf<ManagedTag?>(null) }
+    var preselectedMergeTarget by remember { mutableStateOf<ManagedTag?>(null) }
+
+    // 契约 5: a rename key-collision against a live tag steers into the merge
+    // dialog, preselected on the colliding tag (still user-confirmed).
+    LaunchedEffect(state.mergeSuggestion) {
+        state.mergeSuggestion?.let { suggestion ->
+            preselectedMergeTarget = suggestion.target
+            merging = suggestion.source
+            viewModel.consumeMergeSuggestion()
+        }
+    }
 
     renaming?.let { tag ->
         RenameTagDialog(
@@ -71,11 +82,16 @@ fun TagManagementScreen(
         MergeTagDialog(
             source = source,
             targets = state.tags.filter { it.publicId != source.publicId },
+            initialTarget = preselectedMergeTarget,
             onConfirm = { target ->
                 viewModel.mergeTags(source, target)
                 merging = null
+                preselectedMergeTarget = null
             },
-            onDismiss = { merging = null },
+            onDismiss = {
+                merging = null
+                preselectedMergeTarget = null
+            },
         )
     }
     deleting?.let { tag ->
@@ -159,7 +175,10 @@ fun TagManagementScreen(
                             busy = state.busy,
                             canMerge = state.tags.size > 1,
                             onRename = { renaming = tag },
-                            onMerge = { merging = tag },
+                            onMerge = {
+                                preselectedMergeTarget = null
+                                merging = tag
+                            },
                             onDelete = { deleting = tag },
                         )
                     }
@@ -272,8 +291,11 @@ private fun MergeTagDialog(
     targets: List<ManagedTag>,
     onConfirm: (ManagedTag) -> Unit,
     onDismiss: () -> Unit,
+    initialTarget: ManagedTag? = null,
 ) {
-    var selected by remember { mutableStateOf<ManagedTag?>(null) }
+    // Fresh per dialog open (the merging?.let block re-enters composition), so the
+    // 契约-5 preselected target seeds here without a remember key.
+    var selected by remember { mutableStateOf(initialTarget) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("合并标签") },

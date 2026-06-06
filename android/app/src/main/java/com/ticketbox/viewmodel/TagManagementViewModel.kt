@@ -21,6 +21,18 @@ data class TagManagementUiState(
     val busy: Boolean = false,
     val message: String? = null,
     val undoable: TagUndoHandle? = null,
+    // 契约 5: a rename that collided with an existing live tag — the screen opens
+    // the merge dialog preselected on [MergeSuggestion.target] (still user-
+    // confirmed, NOT a silent merge). Null unless a conflict just resolved to a
+    // live tag in the current list.
+    val mergeSuggestion: MergeSuggestion? = null,
+)
+
+/** A rename key-collision steered into a (user-confirmed) merge: rename [source]
+ *  collided with the live [target]; offer to merge source → target instead. */
+data class MergeSuggestion(
+    val source: ManagedTag,
+    val target: ManagedTag,
 )
 
 /**
@@ -62,10 +74,37 @@ class TagManagementViewModel(
             _uiState.update { it.copy(busy = true, message = null) }
             tagRepository.renameTag(tag.publicId, tag.rowVersion, newName)
                 .onSuccess { finishWithReload(message = "标签已重命名为「${newName.trim()}」") }
-                // tag_conflict → "标签名已被占用，请改用合并。" (契约 5; the user then
-                // picks the colliding tag as the merge target).
-                .onFailure { error -> failWith(error) }
+                .onFailure { error -> handleRenameFailure(error, source = tag, attemptedName = newName) }
         }
+    }
+
+    /** 契约 5: on a key-collision (tag_conflict), if the colliding name maps to a
+     *  LIVE tag in the current list, steer into a preselected merge dialog; else
+     *  (e.g. the key is held by a soft-deleted tag, not in the list) fall back to
+     *  the generic "请改用合并" message. Never auto-merges — the user confirms. */
+    private fun handleRenameFailure(error: Throwable, source: ManagedTag, attemptedName: String) {
+        if ((error as? RepositoryException)?.errorCode == "tag_conflict") {
+            val wanted = attemptedName.trim()
+            val target = _uiState.value.tags.firstOrNull {
+                it.publicId != source.publicId && it.name.trim().equals(wanted, ignoreCase = true)
+            }
+            if (target != null) {
+                _uiState.update {
+                    it.copy(
+                        busy = false,
+                        message = "「$wanted」已存在，合并到它？",
+                        mergeSuggestion = MergeSuggestion(source, target),
+                    )
+                }
+                return
+            }
+        }
+        failWith(error)
+    }
+
+    /** The screen consumed the merge suggestion (opened the dialog). */
+    fun consumeMergeSuggestion() {
+        _uiState.update { it.copy(mergeSuggestion = null) }
     }
 
     fun deleteTag(tag: ManagedTag) {

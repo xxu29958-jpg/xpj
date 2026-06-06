@@ -123,6 +123,28 @@ class TagManagementViewModelTest {
         vm.renameTag(tag("a", "出差", 1), "差旅")
         advanceUntilIdle()
         assertTrue(vm.uiState.value.message?.contains("合并") == true)
+        // The colliding key isn't a live tag in the list (e.g. soft-deleted) →
+        // no merge prefill, just the steering message (契约 5 fallback).
+        assertNull(vm.uiState.value.mergeSuggestion)
+    }
+
+    @Test
+    fun renameConflictWithLiveTagPrefillsMerge() = runTest(dispatcher) {
+        // 契约 5: renaming 出差 → 差旅 collides with the live 差旅 tag → the VM
+        // steers into a preselected merge (source=出差, target=差旅), not silent.
+        val repo = FakeTagActions(listOf(tag("a", "出差", 1), tag("b", "差旅", 2)))
+        val vm = TagManagementViewModel(repo)
+        advanceUntilIdle()
+        repo.failNext = RepositoryException("标签名已被占用，请改用合并。", "tag_conflict")
+        vm.renameTag(tag("a", "出差", 1), "差旅")
+        advanceUntilIdle()
+        val sug = vm.uiState.value.mergeSuggestion
+        assertTrue(sug != null)
+        assertEquals("a", sug.source.publicId)
+        assertEquals("b", sug.target.publicId)
+        // consume clears it (screen opened the dialog).
+        vm.consumeMergeSuggestion()
+        assertNull(vm.uiState.value.mergeSuggestion)
     }
 
     @Test
